@@ -1,0 +1,93 @@
+{
+  "workflow": "pptx-find-to-apply-verify",
+  "initialFind": {
+    "packageType": "pptx",
+    "query": "Content Slide",
+    "totalHits": 1,
+    "firstKind": "pptx-text",
+    "firstHandle": "H:pptx/s:257/shape:n:2",
+    "primarySelector": "slide:2",
+    "matchedValue": "Content Slide"
+  },
+  "ops": [
+    {
+      "command": "pptx replace text-occurrences",
+      "args": [
+        {
+          "name": "for-shape",
+          "value": "H:pptx/s:257/shape:n:2"
+        },
+        {
+          "name": "match-text",
+          "value": "Content Slide"
+        },
+        {
+          "name": "new-text",
+          "value": "Renamed Content"
+        }
+      ]
+    }
+  ],
+  "apply": {
+    "schemaVersion": 1,
+    "opsCount": 1,
+    "dryRun": false,
+    "outputPublished": true,
+    "validateCommandPresent": true,
+    "appliedCommands": [
+      "pptx replace text-occurrences"
+    ],
+    "readback": {
+      "operation": "pptx.replace.text-occurrences",
+      "matchText": "Content Slide",
+      "newText": "Renamed Content",
+      "dryRun": false,
+      "changedTargetCount": 1,
+      "replacementCount": 1,
+      "scopeSlides": [
+        2
+      ],
+      "match": {
+        "slideNumber": 2,
+        "shapeId": 2,
+        "targetKind": "title",
+        "primarySelector": "title",
+        "beforeText": "Content Slide",
+        "afterText": "Renamed Content",
+        "matchCount": 1
+      },
+      "readbackCommands": {
+        "readback": true,
+        "slide": true,
+        "validate": true,
+        "render": true
+      }
+    }
+  },
+  "postFind": {
+    "newQueryHits": 1,
+    "newQueryHandle": "H:pptx/s:257/shape:n:2",
+    "oldQueryHits": 0,
+    "matchedNewValue": "Renamed Content"
+  },
+  "verify": {
+    "schemaVersion": "1.0",
+    "type": "pptx",
+    "valid": true,
+    "validationStatus": "valid",
+    "renderStatus": "unavailable",
+    "summaryChanges": 1,
+    "diffType": "pptx",
+    "changedSlides": [
+      2
+    ],
+    "textDiffCount": 1,
+    "firstTextDiff": {
+      "slide": 2,
+      "shapeKey": "title",
+      "shapeName": "Title 1",
+      "before": "Content Slide",
+      "after": "Renamed Content"
+    }
+  }
+}

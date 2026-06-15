@@ -1,0 +1,78 @@
+{
+  "workflow": "chart-template-apply-readback-validate",
+  "tokens": {
+    "pptxChartStyles": 2,
+    "xlsxChartStyles": 1
+  },
+  "pptx": {
+    "targetType": "pptx",
+    "totalUpdates": 2,
+    "appliedCharts": [
+      {
+        "partUri": "/ppt/charts/chart1.xml",
+        "seriesFillColor": "FF0000",
+        "seriesLineColor": "00FF00"
+      },
+      {
+        "partUri": "/ppt/charts/chart2.xml",
+        "seriesFillColor": "FF0000",
+        "seriesLineColor": "00FF00"
+      }
+    ],
+    "skipped": [],
+    "chart": {
+      "primarySelector": "chart:1",
+      "partUri": "/ppt/charts/chart1.xml",
+      "title": "Revenue by Region",
+      "types": [
+        "barChart"
+      ],
+      "seriesCount": 1,
+      "firstSeries": {
+        "number": 1,
+        "name": "Revenue",
+        "fillColor": "FF0000",
+        "lineColor": "00FF00"
+      }
+    },
+    "validationStatus": "valid",
+    "validateCommandPresent": true
+  },
+  "xlsx": {
+    "targetType": "xlsx",
+    "totalUpdates": 1,
+    "appliedCharts": [
+      {
+        "partUri": "/xl/charts/chart1.xml",
+        "seriesFillColor": "FF0000",
+        "seriesLineColor": "00FF00"
+      }
+    ],
+    "skipped": [],
+    "chart": {
+      "primarySelector": "chart:1",
+      "partUri": "/xl/charts/chart1.xml",
+      "title": "Revenue by Region",
+      "types": [
+        "barChart"
+      ],
+      "seriesCount": 1,
+      "firstSeries": {
+        "number": 1,
+        "name": "Revenue",
+        "fillColor": "FF0000",
+        "lineColor": "00FF00"
+      }
+    },
+    "validationStatus": "valid",
+    "validateCommandPresent": true
+  },
+  "commands": {
+    "pptxShowCommandPresent": true,
+    "pptxShowCommandHasSlide": true,
+    "pptxShowCommandHasChart": true,
+    "xlsxShowCommandPresent": true,
+    "xlsxShowCommandHasSheet": true,
+    "xlsxShowCommandHasChart": true
+  }
+}

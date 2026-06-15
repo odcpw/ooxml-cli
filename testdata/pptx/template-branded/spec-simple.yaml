@@ -1,0 +1,21 @@
+# Simple compilation spec for testing
+version: "1.0"
+title: "Generated Presentation"
+author: "Test Generator"
+description: "A simple test presentation generated from the branded template"
+
+slides:
+  # Slide 1: Title Slide
+  - archetype: title-slide
+    content:
+      title: "Welcome to Our Presentation"
+      subtitle: "Generated from Template"
+
+  # Slide 2: Content Slide
+  - archetype: content-slide
+    content:
+      title: "First Topic"
+      body: |
+        - First point
+        - Second point
+        - Third point

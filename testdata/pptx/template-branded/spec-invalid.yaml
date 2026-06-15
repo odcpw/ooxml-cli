@@ -1,0 +1,21 @@
+# Invalid compilation spec for testing error handling
+version: "1.0"
+title: "Invalid Presentation"
+
+slides:
+  # This slide references a non-existent archetype
+  - archetype: unknown-archetype
+    content:
+      title: "This will fail"
+
+  # This slide is missing required content
+  - archetype: content-slide
+    content:
+      title: "Missing body content"
+      # body is required but missing
+
+  # This archetype doesn't exist
+  - archetype: custom-layout
+    content:
+      title: "Custom content"
+      body: "Some text"

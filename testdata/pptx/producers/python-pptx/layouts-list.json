@@ -1,0 +1,228 @@
+{
+  "file": "testdata/pptx/producers/python-pptx/presentation.pptx",
+  "layouts": [
+    {
+      "id": "layout-1",
+      "masterId": "master-1",
+      "name": "Title Slide",
+      "number": 1,
+      "partUri": "/ppt/slideLayouts/slideLayout1.xml",
+      "placeholderCount": 5,
+      "placeholders": [
+        "ctrTitle",
+        "subTitle:1",
+        "dt:10",
+        "ftr:11",
+        "sldNum:12"
+      ],
+      "primarySelector": "1",
+      "selectors": [
+        "1",
+        "Title Slide"
+      ]
+    },
+    {
+      "id": "layout-2",
+      "masterId": "master-1",
+      "name": "Title and Content",
+      "number": 2,
+      "partUri": "/ppt/slideLayouts/slideLayout2.xml",
+      "placeholderCount": 5,
+      "placeholders": [
+        "title",
+        "shape:3",
+        "dt:10",
+        "ftr:11",
+        "sldNum:12"
+      ],
+      "primarySelector": "2",
+      "selectors": [
+        "2",
+        "Title and Content"
+      ]
+    },
+    {
+      "id": "layout-3",
+      "masterId": "master-1",
+      "name": "Section Header",
+      "number": 3,
+      "partUri": "/ppt/slideLayouts/slideLayout3.xml",
+      "placeholderCount": 5,
+      "placeholders": [
+        "title",
+        "body:1",
+        "dt:10",
+        "ftr:11",
+        "sldNum:12"
+      ],
+      "primarySelector": "3",
+      "selectors": [
+        "3",
+        "Section Header"
+      ]
+    },
+    {
+      "id": "layout-4",
+      "masterId": "master-1",
+      "name": "Two Content",
+      "number": 4,
+      "partUri": "/ppt/slideLayouts/slideLayout4.xml",
+      "placeholderCount": 6,
+      "placeholders": [
+        "title",
+        "shape:3",
+        "shape:4",
+        "dt:10",
+        "ftr:11",
+        "sldNum:12"
+      ],
+      "primarySelector": "4",
+      "selectors": [
+        "4",
+        "Two Content"
+      ]
+    },
+    {
+      "id": "layout-5",
+      "masterId": "master-1",
+      "name": "Comparison",
+      "number": 5,
+      "partUri": "/ppt/slideLayouts/slideLayout5.xml",
+      "placeholderCount": 8,
+      "placeholders": [
+        "title",
+        "body:1",
+        "shape:4",
+        "body:3",
+        "shape:6",
+        "dt:10",
+        "ftr:11",
+        "sldNum:12"
+      ],
+      "primarySelector": "5",
+      "selectors": [
+        "5",
+        "Comparison"
+      ]
+    },
+    {
+      "id": "layout-6",
+      "masterId": "master-1",
+      "name": "Title Only",
+      "number": 6,
+      "partUri": "/ppt/slideLayouts/slideLayout6.xml",
+      "placeholderCount": 4,
+      "placeholders": [
+        "title",
+        "dt:10",
+        "ftr:11",
+        "sldNum:12"
+      ],
+      "primarySelector": "6",
+      "selectors": [
+        "6",
+        "Title Only"
+      ]
+    },
+    {
+      "id": "layout-7",
+      "masterId": "master-1",
+      "name": "Blank",
+      "number": 7,
+      "partUri": "/ppt/slideLayouts/slideLayout7.xml",
+      "placeholderCount": 3,
+      "placeholders": [
+        "dt:10",
+        "ftr:11",
+        "sldNum:12"
+      ],
+      "primarySelector": "7",
+      "selectors": [
+        "7",
+        "Blank"
+      ]
+    },
+    {
+      "id": "layout-8",
+      "masterId": "master-1",
+      "name": "Content with Caption",
+      "number": 8,
+      "partUri": "/ppt/slideLayouts/slideLayout8.xml",
+      "placeholderCount": 6,
+      "placeholders": [
+        "title",
+        "shape:3",
+        "body:2",
+        "dt:10",
+        "ftr:11",
+        "sldNum:12"
+      ],
+      "primarySelector": "8",
+      "selectors": [
+        "8",
+        "Content with Caption"
+      ]
+    },
+    {
+      "id": "layout-9",
+      "masterId": "master-1",
+      "name": "Picture with Caption",
+      "number": 9,
+      "partUri": "/ppt/slideLayouts/slideLayout9.xml",
+      "placeholderCount": 6,
+      "placeholders": [
+        "title",
+        "pic:1",
+        "body:2",
+        "dt:10",
+        "ftr:11",
+        "sldNum:12"
+      ],
+      "primarySelector": "9",
+      "selectors": [
+        "9",
+        "Picture with Caption"
+      ]
+    },
+    {
+      "id": "layout-10",
+      "masterId": "master-1",
+      "name": "Title and Vertical Text",
+      "number": 10,
+      "partUri": "/ppt/slideLayouts/slideLayout10.xml",
+      "placeholderCount": 5,
+      "placeholders": [
+        "title",
+        "body:1",
+        "dt:10",
+        "ftr:11",
+        "sldNum:12"
+      ],
+      "primarySelector": "10",
+      "selectors": [
+        "10",
+        "Title and Vertical Text"
+      ]
+    },
+    {
+      "id": "layout-11",
+      "masterId": "master-1",
+      "name": "Vertical Title and Text",
+      "number": 11,
+      "partUri": "/ppt/slideLayouts/slideLayout11.xml",
+      "placeholderCount": 5,
+      "placeholders": [
+        "title",
+        "body:1",
+        "dt:10",
+        "ftr:11",
+        "sldNum:12"
+      ],
+      "primarySelector": "11",
+      "selectors": [
+        "11",
+        "Vertical Title and Text"
+      ]
+    }
+  ]
+}

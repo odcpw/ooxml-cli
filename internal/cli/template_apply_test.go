@@ -1,0 +1,240 @@
+package cli
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/ooxml-cli/ooxml-cli/pkg/capabilities"
+	"github.com/spf13/pflag"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// runTemplateApply resets the apply-specific package-level flags (cobra BoolVar
+// state persists across the shared root command) and runs the command.
+func runTemplateApply(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	templateApplyFrom = ""
+	templateApplyTokens = ""
+	templateApplyFor = "auto"
+	templateApplyColors = false
+	templateApplyFonts = false
+	templateApplyCharts = false
+	templateApplyRanges = false
+	// Reset this command's local flags (--out/--in-place/--dry-run/--backup etc.)
+	// which otherwise persist on the shared root command across test invocations.
+	templateApplyCmd.Flags().VisitAll(func(f *pflag.Flag) {
+		_ = templateApplyCmd.Flags().Set(f.Name, f.DefValue)
+	})
+	return executeRootForXLSXTest(t, args...)
+}
+
+func copyFixture(t *testing.T, src string) string {
+	t.Helper()
+	data, err := os.ReadFile(src)
+	require.NoError(t, err)
+	dst := filepath.Join(t.TempDir(), filepath.Base(src))
+	require.NoError(t, os.WriteFile(dst, data, 0o644))
+	return dst
+}
+
+func TestTemplateApply_FromPPTX_ColorsAndFonts(t *testing.T) {
+	srcFixture := "../../testdata/pptx/theme-custom-colors/presentation.pptx"
+	tgtFixture := "../../testdata/pptx/minimal-title/presentation.pptx"
+	if _, err := os.Stat(srcFixture); err != nil {
+		t.Skipf("fixture not found: %s", srcFixture)
+	}
+	target := copyFixture(t, tgtFixture)
+	out := filepath.Join(t.TempDir(), "out.pptx")
+
+	output, err := runTemplateApply(t, "--json", "template", "apply", target,
+		"--from", srcFixture, "--out", out)
+	require.NoError(t, err)
+
+	var res TemplateApplyResult
+	require.NoError(t, json.Unmarshal([]byte(output), &res))
+	assert.Equal(t, "pptx", res.TargetType)
+	assert.False(t, res.DryRun)
+	assert.Len(t, res.Applied.Colors, 12)
+	require.NotNil(t, res.Applied.Fonts)
+	assert.Equal(t, "Calibri", res.Applied.Fonts.MajorFont)
+	assert.Equal(t, 13, res.TotalUpdates)
+
+	// Output must exist and strict-validate.
+	require.FileExists(t, out)
+	vout, verr := executeRootForXLSXTest(t, "validate", "--strict", out)
+	require.NoError(t, verr)
+	assert.Contains(t, vout, "valid")
+
+	// Readback: applied accent1 from source.
+	tokOut, terr := runTemplateApply(t, "--json", "template", "tokens", out)
+	require.NoError(t, terr)
+	var tok map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(tokOut), &tok))
+	pptx := tok["pptx"].(map[string]interface{})
+	theme := pptx["theme"].(map[string]interface{})
+	cs := theme["colorScheme"].(map[string]interface{})
+	assert.Equal(t, "4F81BD", cs["accent1"])
+}
+
+func TestTemplateApply_DryRunNoWrite(t *testing.T) {
+	srcFixture := "../../testdata/pptx/theme-custom-colors/presentation.pptx"
+	tgtFixture := "../../testdata/pptx/minimal-title/presentation.pptx"
+	if _, err := os.Stat(srcFixture); err != nil {
+		t.Skipf("fixture not found: %s", srcFixture)
+	}
+	target := copyFixture(t, tgtFixture)
+
+	output, err := runTemplateApply(t, "--json", "template", "apply", target,
+		"--from", srcFixture, "--dry-run")
+	require.NoError(t, err)
+
+	var res TemplateApplyResult
+	require.NoError(t, json.Unmarshal([]byte(output), &res))
+	assert.True(t, res.DryRun)
+	assert.Empty(t, res.Output)
+	assert.Len(t, res.Applied.Colors, 12)
+}
+
+func TestTemplateApply_ChartsFromTokensProfile(t *testing.T) {
+	tgtFixture := "../../testdata/pptx/chart-simple/presentation.pptx"
+	if _, err := os.Stat(tgtFixture); err != nil {
+		t.Skipf("fixture not found: %s", tgtFixture)
+	}
+	target := copyFixture(t, tgtFixture)
+	out := filepath.Join(t.TempDir(), "out.pptx")
+
+	profile := filepath.Join(t.TempDir(), "prof.json")
+	require.NoError(t, os.WriteFile(profile, []byte(
+		`{"schemaVersion":"1.0","type":"pptx","source":"prof","pptx":{"theme":null,"defaultTextStyles":[],"tableStyles":[],"chartStyles":[{"partUri":"/x","seriesFillColor":"FF0000","seriesLineColor":"00FF00"}]}}`), 0o644))
+
+	output, err := runTemplateApply(t, "--json", "template", "apply", target,
+		"--tokens", profile, "--target-charts", "--out", out)
+	require.NoError(t, err)
+
+	var res TemplateApplyResult
+	require.NoError(t, json.Unmarshal([]byte(output), &res))
+	require.NotEmpty(t, res.Applied.Charts)
+	for _, c := range res.Applied.Charts {
+		assert.Equal(t, "FF0000", c.SeriesFillColor)
+		assert.Equal(t, "00FF00", c.SeriesLineColor)
+	}
+	// charts-only selection must not touch colors/fonts.
+	assert.Empty(t, res.Applied.Colors)
+	assert.Nil(t, res.Applied.Fonts)
+
+	vout, verr := executeRootForXLSXTest(t, "validate", "--strict", out)
+	require.NoError(t, verr)
+	assert.Contains(t, vout, "valid")
+}
+
+func TestTemplateApply_XLSX_ChartsFromTokensProfile(t *testing.T) {
+	tgtFixture := "../../testdata/xlsx/chart-workbook/workbook.xlsx"
+	if _, err := os.Stat(tgtFixture); err != nil {
+		t.Skipf("fixture not found: %s", tgtFixture)
+	}
+	target := copyFixture(t, tgtFixture)
+	out := filepath.Join(t.TempDir(), "out.xlsx")
+
+	profile := filepath.Join(t.TempDir(), "prof.json")
+	require.NoError(t, os.WriteFile(profile, []byte(
+		`{"schemaVersion":"1.0","type":"xlsx","source":"prof","xlsx":{"theme":null,"namedCellStyles":[],"chartStyles":[{"partUri":"/x","seriesFillColor":"FF0000","seriesLineColor":"00FF00"}]}}`), 0o644))
+
+	output, err := runTemplateApply(t, "--json", "template", "apply", target,
+		"--tokens", profile, "--target-charts", "--out", out)
+	require.NoError(t, err)
+
+	var res TemplateApplyResult
+	require.NoError(t, json.Unmarshal([]byte(output), &res))
+	assert.Equal(t, "xlsx", res.TargetType)
+	require.NotEmpty(t, res.Applied.Charts, "xlsx chart series styling must apply")
+	for _, c := range res.Applied.Charts {
+		assert.Contains(t, c.PartURI, "/xl/charts/chart")
+		assert.Equal(t, "FF0000", c.SeriesFillColor)
+	}
+
+	vout, verr := executeRootForXLSXTest(t, "validate", "--strict", out)
+	require.NoError(t, verr)
+	assert.Contains(t, vout, "valid")
+}
+
+func TestTemplateApply_RejectsDecorativeTokens(t *testing.T) {
+	tgtFixture := "../../testdata/pptx/minimal-title/presentation.pptx"
+	target := copyFixture(t, tgtFixture)
+	out := filepath.Join(t.TempDir(), "out.pptx")
+
+	profile := filepath.Join(t.TempDir(), "bad.json")
+	require.NoError(t, os.WriteFile(profile, []byte(
+		`{"schemaVersion":"1.0","type":"pptx","pptx":{"theme":{}},"gradients":{"x":1}}`), 0o644))
+
+	_, err := runTemplateApply(t, "template", "apply", target, "--tokens", profile, "--out", out)
+	require.Error(t, err)
+	assert.Contains(t, strings.ToLower(err.Error()), "decorative effects")
+	assert.Contains(t, err.Error(), "gradients")
+}
+
+func TestTemplateApply_RequiresExactlyOneSource(t *testing.T) {
+	tgtFixture := "../../testdata/pptx/minimal-title/presentation.pptx"
+	target := copyFixture(t, tgtFixture)
+	out := filepath.Join(t.TempDir(), "out.pptx")
+
+	// Neither source.
+	_, err := runTemplateApply(t, "template", "apply", target, "--out", out)
+	require.Error(t, err)
+	assert.Contains(t, strings.ToLower(err.Error()), "exactly one token source")
+
+	// Both sources.
+	_, err = runTemplateApply(t, "template", "apply", target,
+		"--from", tgtFixture, "--tokens", "x.json", "--out", out)
+	require.Error(t, err)
+	assert.Contains(t, strings.ToLower(err.Error()), "exactly one token source")
+}
+
+func TestTemplateApply_RangesReportedSkipped(t *testing.T) {
+	srcFixture := "../../testdata/pptx/theme-custom-colors/presentation.pptx"
+	tgtFixture := "../../testdata/pptx/minimal-title/presentation.pptx"
+	if _, err := os.Stat(srcFixture); err != nil {
+		t.Skipf("fixture not found: %s", srcFixture)
+	}
+	target := copyFixture(t, tgtFixture)
+	out := filepath.Join(t.TempDir(), "out.pptx")
+
+	output, err := runTemplateApply(t, "--json", "template", "apply", target,
+		"--from", srcFixture, "--target-colors", "--target-ranges", "--out", out)
+	require.NoError(t, err)
+
+	var res TemplateApplyResult
+	require.NoError(t, json.Unmarshal([]byte(output), &res))
+	found := false
+	for _, s := range res.Skipped {
+		if strings.Contains(s, "ranges") {
+			found = true
+		}
+	}
+	assert.True(t, found, "expected a skipped reason for ranges, got %v", res.Skipped)
+	// --target-ranges alone with --target-colors still applies colors.
+	assert.NotEmpty(t, res.Applied.Colors)
+}
+
+func TestTemplateApply_DryRunCannotCombineWithOut(t *testing.T) {
+	tgtFixture := "../../testdata/pptx/minimal-title/presentation.pptx"
+	target := copyFixture(t, tgtFixture)
+	out := filepath.Join(t.TempDir(), "out.pptx")
+
+	_, err := runTemplateApply(t, "template", "apply", target,
+		"--from", tgtFixture, "--dry-run", "--out", out)
+	require.Error(t, err)
+	assert.Contains(t, strings.ToLower(err.Error()), "dry-run")
+}
+
+func TestTemplateApply_CapabilitiesRegistered(t *testing.T) {
+	meta, ok := capabilities.MetadataFor("ooxml template apply")
+	require.True(t, ok, "template apply must have capabilities metadata")
+	assert.NotEmpty(t, meta.Examples)
+	for _, kind := range meta.TargetObjectKinds {
+		assert.True(t, capabilities.IsObjectKind(kind), "target kind %q must be in the closed vocabulary", kind)
+	}
+}

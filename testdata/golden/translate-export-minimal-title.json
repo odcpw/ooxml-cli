@@ -1,0 +1,26 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "exportedAt": "2026-03-10T21:01:08.62824016Z",
+    "sourceLanguage": "en-US",
+    "targetLanguage": "fr-FR",
+    "deckName": "minimal-title.pptx",
+    "slideCount": 1,
+    "entryCount": 1
+  },
+  "entries": [
+    {
+      "id": "slide:0_title_p0_r0",
+      "type": "title",
+      "sourceText": "Minimal Title Slide",
+      "slideId": 0,
+      "slideNumber": 1,
+      "placeholderKey": "title",
+      "shapeId": 2,
+      "shapeName": "Title 1",
+      "paragraphIndex": 0,
+      "runIndex": 0,
+      "segmentType": "text"
+    }
+  ]
+}

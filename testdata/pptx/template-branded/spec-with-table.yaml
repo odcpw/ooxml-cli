@@ -1,0 +1,12 @@
+# Spec for testing table slot fill
+version: "1.0"
+title: "Table Test Presentation"
+author: "Test Generator"
+description: "Test presentation with table slot"
+
+slides:
+  - archetype: content-slide
+    content:
+      title: "Slide with Table"
+      body: |
+        • Table data test

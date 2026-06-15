@@ -1,0 +1,19 @@
+{
+  "type": "pptx",
+  "file": "testdata/pptx/minimal-title/presentation.pptx",
+  "summary": {
+    "slides": 1,
+    "masters": 1,
+    "layouts": 11,
+    "themes": 1,
+    "notesMasters": 0,
+    "handoutMasters": 0,
+    "mediaAssets": 0,
+    "customXmlParts": 0,
+    "slideSize": {
+      "cx": 9144000,
+      "cy": 6858000,
+      "unit": "emu"
+    }
+  }
+}

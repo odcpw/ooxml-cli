@@ -1,0 +1,103 @@
+{
+  "defaultTextStyleInfo": {
+    "accentColors": [
+      "4F81BD",
+      "C0504D",
+      "9BBB59",
+      "8064A2",
+      "4BACC6",
+      "F79646"
+    ],
+    "majorFont": "Calibri",
+    "minorFont": "Calibri",
+    "themeName": "Office Theme"
+  },
+  "id": "layout-1",
+  "masterId": "master-1",
+  "name": "Title Slide",
+  "partUri": "/ppt/slideLayouts/slideLayout1.xml",
+  "placeholders": [
+    {
+      "geometry": {
+        "bounds": {
+          "cx": 7772400,
+          "cy": 1470025,
+          "x": 685800,
+          "y": 2130425
+        }
+      },
+      "index": 0,
+      "key": "ctrTitle",
+      "literalType": "",
+      "resolvedType": "",
+      "role": "title",
+      "shapeName": "Title 1"
+    },
+    {
+      "geometry": {
+        "bounds": {
+          "cx": 6400800,
+          "cy": 1752600,
+          "x": 1371600,
+          "y": 3886200
+        }
+      },
+      "index": 1,
+      "key": "subTitle:1",
+      "literalType": "",
+      "resolvedType": "",
+      "role": "subtitle",
+      "shapeName": "Subtitle 2"
+    },
+    {
+      "index": 10,
+      "key": "dt:10",
+      "literalType": "",
+      "resolvedType": "",
+      "role": "date",
+      "shapeName": "Date Placeholder 3"
+    },
+    {
+      "index": 11,
+      "key": "ftr:11",
+      "literalType": "",
+      "resolvedType": "",
+      "role": "footer",
+      "shapeName": "Footer Placeholder 4"
+    },
+    {
+      "index": 12,
+      "key": "sldNum:12",
+      "literalType": "",
+      "resolvedType": "",
+      "role": "slideNumber",
+      "shapeName": "Slide Number Placeholder 5"
+    }
+  ],
+  "preserve": true,
+  "theme": {
+    "colorScheme": {
+      "accent1": "4F81BD",
+      "accent2": "C0504D",
+      "accent3": "9BBB59",
+      "accent4": "8064A2",
+      "accent5": "4BACC6",
+      "accent6": "F79646",
+      "dark1": "000000",
+      "dark2": "1F497D",
+      "folLink": "800080",
+      "hypLink": "0000FF",
+      "light1": "FFFFFF",
+      "light2": "EEECE1",
+      "name": "Office"
+    },
+    "fontScheme": {
+      "majorFont": "Calibri",
+      "minorFont": "Calibri",
+      "name": "Office"
+    },
+    "name": "Office Theme"
+  },
+  "themeUri": "/ppt/theme/theme1.xml",
+  "userDrawn": false
+}

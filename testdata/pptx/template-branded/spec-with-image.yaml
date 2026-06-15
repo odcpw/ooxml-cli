@@ -1,0 +1,16 @@
+# Spec for testing image slot fill
+version: "1.0"
+title: "Image Test Presentation"
+author: "Test Generator"
+description: "Test presentation with image slot"
+
+slides:
+  - archetype: content-slide
+    content:
+      title: "Slide with Image"
+      body: |
+        • Bullet point 1
+        • Bullet point 2
+      image:
+        path: test-image.png
+        fitMode: contain

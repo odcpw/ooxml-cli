@@ -1,0 +1,40 @@
+{
+  "file": "testdata/pptx/producers/google-slides/presentation.pptx",
+  "slides": [
+    {
+      "id": "slide1",
+      "layoutNumber": 7,
+      "layoutPartUri": "/ppt/slideLayouts/slideLayout7.xml",
+      "layoutReadbackCommand": "ooxml --json pptx layouts show testdata/pptx/producers/google-slides/presentation.pptx --layout 7",
+      "layoutRef": "Blank",
+      "partUri": "/ppt/slides/slide1.xml",
+      "primarySelector": "1",
+      "readbackCommand": "ooxml --json pptx slides show testdata/pptx/producers/google-slides/presentation.pptx --slide 1 --include-text --include-bounds",
+      "relationshipId": "rId7",
+      "selectors": [
+        "1",
+        "part:/ppt/slides/slide1.xml",
+        "slideId:256",
+        "rId:rId7"
+      ],
+      "selectorsCommand": "ooxml --json pptx slides selectors testdata/pptx/producers/google-slides/presentation.pptx --slide 1",
+      "shapes": [
+        {
+          "id": 2,
+          "isPlaceholder": false,
+          "shapeName": "TextBox 1",
+          "type": "sp"
+        },
+        {
+          "id": 3,
+          "isPlaceholder": false,
+          "shapeName": "TextBox 2",
+          "type": "sp"
+        }
+      ],
+      "shapesCommand": "ooxml --json pptx shapes show testdata/pptx/producers/google-slides/presentation.pptx --slide 1 --include-text --include-bounds",
+      "slide": 1,
+      "slideId": 256
+    }
+  ]
+}

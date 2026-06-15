@@ -1,0 +1,92 @@
+{
+  "workflow": "vba-source-module-manage-validate",
+  "initial": {
+    "macroEnabled": true,
+    "moduleCount": 2,
+    "modules": [
+      "Class1:class:.cls",
+      "Module1:standard:.bas"
+    ]
+  },
+  "extract": {
+    "module1BasWritten": true,
+    "class1ClsWritten": true,
+    "module1ContainsHelloWorld": true,
+    "class1ContainsAnswer": true,
+    "moduleCount": 2,
+    "listCommandPresent": true,
+    "officeCheckCommandPresent": true,
+    "validateCommandPresent": true
+  },
+  "mutations": [
+    {
+      "action": "add-module",
+      "module": "Module2",
+      "kind": "standard",
+      "previousCount": 2,
+      "moduleCount": 3,
+      "shaPresent": true,
+      "purgedCaches": true,
+      "recompilesOnOpen": true,
+      "compatibility": "experimental",
+      "validationStatus": "valid"
+    },
+    {
+      "action": "add-module",
+      "module": "Class2",
+      "kind": "class",
+      "previousCount": 3,
+      "moduleCount": 4,
+      "shaPresent": true,
+      "purgedCaches": true,
+      "recompilesOnOpen": true,
+      "compatibility": "experimental",
+      "validationStatus": "valid"
+    },
+    {
+      "action": "replace-module",
+      "module": "Module2",
+      "kind": "standard",
+      "previousShaPresent": true,
+      "shaPresent": true,
+      "shaChanged": true,
+      "purgedCaches": true,
+      "recompilesOnOpen": true,
+      "compatibility": "experimental",
+      "validationStatus": "valid"
+    },
+    {
+      "action": "remove-module",
+      "module": "Class2",
+      "kind": "class",
+      "previousShaPresent": true,
+      "shaPresent": false,
+      "removed": true,
+      "purgedCaches": true,
+      "recompilesOnOpen": true,
+      "compatibility": "experimental",
+      "validationStatus": "valid"
+    }
+  ],
+  "commands": {
+    "inspectPresent": true,
+    "validatePresent": true,
+    "officeCheckPresent": true,
+    "packageReadbackPresent": true,
+    "listPresent": true,
+    "extractPresentAfterAddReplace": true,
+    "extractAbsentAfterRemove": true
+  },
+  "final": {
+    "macroEnabled": true,
+    "moduleCount": 3,
+    "modules": [
+      "Class1:class:.cls",
+      "Module1:standard:.bas",
+      "Module2:standard:.bas"
+    ],
+    "removedClassAbsent": true,
+    "replacementExtractContainsNewText": true,
+    "validationStatus": "valid"
+  }
+}

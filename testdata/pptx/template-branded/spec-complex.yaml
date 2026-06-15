@@ -1,0 +1,54 @@
+# Complex compilation spec for testing multiple slides and content types
+version: "1.0"
+title: "Complex Presentation"
+author: "Test Generator"
+description: "A more complex test presentation with multiple slides and content types"
+
+slides:
+  # Slide 1: Title Slide
+  - archetype: title-slide
+    content:
+      title: "Complex Presentation"
+      subtitle: "Testing Template Compilation"
+
+  # Slide 2: Content with bullets
+  - archetype: content-slide
+    content:
+      title: "Overview"
+      body: |
+        • Section 1: Foundations
+        • Section 2: Methodology
+        • Section 3: Results
+        • Section 4: Conclusions
+
+  # Slide 3: Content with more detailed bullets
+  - archetype: content-slide
+    content:
+      title: "Section 1: Foundations"
+      body: |
+        • Core principle 1
+        • Core principle 2
+        • Core principle 3
+        • Supporting evidence from research
+
+  # Slide 4: Content with different formatting
+  - archetype: content-slide
+    content:
+      title: "Section 2: Methodology"
+      body: |
+        • Step 1: Define objectives
+        • Step 2: Collect data
+        • Step 3: Analyze results
+        • Step 4: Document findings
+
+  # Slide 5: Final slide with minimal content
+  - archetype: title-slide
+    content:
+      title: "Thank You"
+      subtitle: "Questions?"
+
+themeOverrides:
+  colors:
+    accent1: "1F4E79"
+    accent2: "C00000"
+  majorFont: "Calibri"

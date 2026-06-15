@@ -1,0 +1,77 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "exportedAt": "2026-03-10T21:01:08.634365012Z",
+    "sourceLanguage": "en-US",
+    "deckName": "multi-layout.pptx",
+    "slideCount": 4,
+    "entryCount": 5
+  },
+  "entries": [
+    {
+      "id": "slide:0_title_p0_r0",
+      "type": "title",
+      "sourceText": "Multi-Layout Presentation",
+      "slideId": 0,
+      "slideNumber": 1,
+      "placeholderKey": "title",
+      "shapeId": 2,
+      "shapeName": "Title 1",
+      "paragraphIndex": 0,
+      "runIndex": 0,
+      "segmentType": "text"
+    },
+    {
+      "id": "slide:1_title_p0_r0",
+      "type": "title",
+      "sourceText": "Content Slide",
+      "slideId": 1,
+      "slideNumber": 2,
+      "placeholderKey": "title",
+      "shapeId": 2,
+      "shapeName": "Title 1",
+      "paragraphIndex": 0,
+      "runIndex": 0,
+      "segmentType": "text"
+    },
+    {
+      "id": "slide:1_body:1_p0_r0",
+      "type": "body",
+      "sourceText": "This slide uses Title and Content layout",
+      "slideId": 1,
+      "slideNumber": 2,
+      "placeholderKey": "body:1",
+      "shapeId": 3,
+      "shapeName": "Content Placeholder 2",
+      "paragraphIndex": 0,
+      "runIndex": 0,
+      "segmentType": "text"
+    },
+    {
+      "id": "slide:2_title_p0_r0",
+      "type": "title",
+      "sourceText": "Section Header",
+      "slideId": 2,
+      "slideNumber": 3,
+      "placeholderKey": "title",
+      "shapeId": 2,
+      "shapeName": "Title 1",
+      "paragraphIndex": 0,
+      "runIndex": 0,
+      "segmentType": "text"
+    },
+    {
+      "id": "slide:3_TextBox 1_p0_r0",
+      "type": "body",
+      "sourceText": "Blank Layout",
+      "slideId": 3,
+      "slideNumber": 4,
+      "placeholderKey": "TextBox 1",
+      "shapeId": 2,
+      "shapeName": "TextBox 1",
+      "paragraphIndex": 0,
+      "runIndex": 0,
+      "segmentType": "text"
+    }
+  ]
+}

@@ -1,0 +1,670 @@
+[
+  {
+    "scenario": "xlsx-chart-create-bar",
+    "family": "xlsx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ],
+    "packageFacts": [
+      {
+        "name": "part:/xl/drawings/drawing1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.drawing+xml"
+      },
+      {
+        "name": "part:/xl/charts/chart1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+      },
+      {
+        "name": "relationship:/xl/worksheets/sheet1.xml:drawing",
+        "status": "passed",
+        "detail": "target=../drawings/drawing1.xml mode=internal"
+      },
+      {
+        "name": "relationship:/xl/drawings/drawing1.xml:chart",
+        "status": "passed",
+        "detail": "target=../charts/chart1.xml mode=internal"
+      },
+      {
+        "name": "xml:/xl/worksheets/sheet1.xml:drawing",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+      },
+      {
+        "name": "xml:/xl/drawings/drawing1.xml:chart",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:barChart",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      }
+    ]
+  },
+  {
+    "scenario": "xlsx-chart-update-source",
+    "family": "xlsx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ],
+    "packageFacts": [
+      {
+        "name": "part:/xl/charts/chart1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+      },
+      {
+        "name": "relationship:/xl/drawings/drawing1.xml:chart",
+        "status": "passed",
+        "detail": "target=../charts/chart1.xml mode=internal"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:barChart",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:f",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:numCache",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      }
+    ]
+  },
+  {
+    "scenario": "xlsx-chart-convert-type",
+    "family": "xlsx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ],
+    "packageFacts": [
+      {
+        "name": "part:/xl/charts/chart1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+      },
+      {
+        "name": "relationship:/xl/drawings/drawing1.xml:chart",
+        "status": "passed",
+        "detail": "target=../charts/chart1.xml mode=internal"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:lineChart",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:catAx",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:valAx",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      }
+    ]
+  },
+  {
+    "scenario": "xlsx-chart-style-chain",
+    "family": "xlsx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ],
+    "packageFacts": [
+      {
+        "name": "part:/xl/charts/chart1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+      },
+      {
+        "name": "relationship:/xl/drawings/drawing1.xml:chart",
+        "status": "passed",
+        "detail": "target=../charts/chart1.xml mode=internal"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:title",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:legend",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:valAx",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:numFmt",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:spPr",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/xl/charts/chart1.xml:solidFill",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/main"
+      }
+    ]
+  },
+  {
+    "scenario": "xlsx-range-style",
+    "family": "xlsx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ],
+    "packageFacts": [
+      {
+        "name": "part:/xl/styles.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"
+      },
+      {
+        "name": "relationship:/xl/workbook.xml:styles",
+        "status": "passed",
+        "detail": "target=styles.xml mode=internal"
+      },
+      {
+        "name": "xml:/xl/styles.xml:fonts",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+      },
+      {
+        "name": "xml:/xl/styles.xml:fills",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+      },
+      {
+        "name": "xml:/xl/styles.xml:borders",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+      },
+      {
+        "name": "xml:/xl/styles.xml:cellXfs",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+      },
+      {
+        "name": "xml:/xl/worksheets/sheet1.xml:cell-style",
+        "status": "passed",
+        "detail": "cell=A1 styleIndex=1"
+      }
+    ]
+  },
+  {
+    "scenario": "xlsx-pivot-create",
+    "family": "xlsx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ],
+    "packageFacts": [
+      {
+        "name": "part:/xl/pivotTables/pivotTable1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml"
+      },
+      {
+        "name": "part:/xl/pivotCache/pivotCacheDefinition1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml"
+      },
+      {
+        "name": "part:/xl/pivotCache/pivotCacheRecords1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheRecords+xml"
+      },
+      {
+        "name": "relationship:/xl/worksheets/sheet1.xml:pivotTable",
+        "status": "passed",
+        "detail": "target=../pivotTables/pivotTable1.xml mode=internal"
+      },
+      {
+        "name": "relationship:/xl/workbook.xml:pivotCacheDefinition",
+        "status": "passed",
+        "detail": "target=pivotCache/pivotCacheDefinition1.xml mode=internal"
+      },
+      {
+        "name": "relationship:/xl/pivotCache/pivotCacheDefinition1.xml:pivotCacheRecords",
+        "status": "passed",
+        "detail": "target=pivotCacheRecords1.xml mode=internal"
+      },
+      {
+        "name": "xml:/xl/pivotTables/pivotTable1.xml:pivotTableDefinition",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+      },
+      {
+        "name": "xml:/xl/pivotCache/pivotCacheDefinition1.xml:pivotCacheDefinition",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+      },
+      {
+        "name": "xml:/xl/pivotCache/pivotCacheRecords1.xml:pivotCacheRecords",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+      }
+    ]
+  },
+  {
+    "scenario": "xlsx-hyperlink-add",
+    "family": "xlsx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ],
+    "packageFacts": [
+      {
+        "name": "part:/xl/worksheets/sheet1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"
+      },
+      {
+        "name": "relationship:/xl/worksheets/sheet1.xml:hyperlink",
+        "status": "passed",
+        "detail": "target=https://example.com mode=External"
+      },
+      {
+        "name": "xml:/xl/worksheets/sheet1.xml:hyperlink",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+      },
+      {
+        "name": "xml-relationship:/xl/worksheets/sheet1.xml:hyperlink",
+        "status": "passed",
+        "detail": "rid=rId1 target=https://example.com mode=External"
+      }
+    ]
+  },
+  {
+    "scenario": "pptx-chart-create-inline",
+    "family": "pptx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ],
+    "packageFacts": [
+      {
+        "name": "part:/ppt/charts/chart1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+      },
+      {
+        "name": "relationship:/ppt/slides/slide1.xml:chart",
+        "status": "passed",
+        "detail": "target=../charts/chart1.xml mode=internal"
+      },
+      {
+        "name": "xml:/ppt/slides/slide1.xml:chart",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:barChart",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      }
+    ]
+  },
+  {
+    "scenario": "pptx-chart-style-chain",
+    "family": "pptx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ],
+    "packageFacts": [
+      {
+        "name": "part:/ppt/charts/chart1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+      },
+      {
+        "name": "relationship:/ppt/slides/slide1.xml:chart",
+        "status": "passed",
+        "detail": "target=../charts/chart1.xml mode=internal"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:title",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:legend",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:valAx",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:numFmt",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:spPr",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:solidFill",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/main"
+      }
+    ]
+  },
+  {
+    "scenario": "pptx-chart-convert-type",
+    "family": "pptx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ],
+    "packageFacts": [
+      {
+        "name": "part:/ppt/charts/chart1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+      },
+      {
+        "name": "relationship:/ppt/slides/slide1.xml:chart",
+        "status": "passed",
+        "detail": "target=../charts/chart1.xml mode=internal"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:lineChart",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:catAx",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:valAx",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      }
+    ]
+  },
+  {
+    "scenario": "pptx-chart-create-embedded-workbook",
+    "family": "pptx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ],
+    "packageFacts": [
+      {
+        "name": "part:/ppt/charts/chart1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+      },
+      {
+        "name": "part:/ppt/embeddings/Microsoft_Excel_Sheet1.xlsx",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      },
+      {
+        "name": "relationship:/ppt/slides/slide1.xml:chart",
+        "status": "passed",
+        "detail": "target=../charts/chart1.xml mode=internal"
+      },
+      {
+        "name": "relationship:/ppt/charts/chart1.xml:package",
+        "status": "passed",
+        "detail": "target=../embeddings/Microsoft_Excel_Sheet1.xlsx mode=internal"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:barChart",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:externalData",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      }
+    ]
+  },
+  {
+    "scenario": "pptx-chart-update-data",
+    "family": "pptx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ],
+    "packageFacts": [
+      {
+        "name": "part:/ppt/charts/chart1.xml",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+      },
+      {
+        "name": "part:/ppt/embeddings/Microsoft_Excel_Sheet1.xlsx",
+        "status": "passed",
+        "detail": "contentType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      },
+      {
+        "name": "relationship:/ppt/slides/slide1.xml:chart",
+        "status": "passed",
+        "detail": "target=../charts/chart1.xml mode=internal"
+      },
+      {
+        "name": "relationship:/ppt/charts/chart1.xml:package",
+        "status": "passed",
+        "detail": "target=../embeddings/Microsoft_Excel_Sheet1.xlsx mode=internal"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:barChart",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:externalData",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:numCache",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      },
+      {
+        "name": "xml:/ppt/charts/chart1.xml:strCache",
+        "status": "passed",
+        "detail": "namespace=http://schemas.openxmlformats.org/drawingml/2006/chart"
+      }
+    ]
+  }
+]

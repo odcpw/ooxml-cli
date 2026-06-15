@@ -1,0 +1,347 @@
+{
+  "file": "testdata/pptx/rich-alignment/presentation.pptx",
+  "slides": [
+    {
+      "shapes": [
+        {
+          "id": 2,
+          "key": "TextBox 1",
+          "name": "TextBox 1",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 44
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Paragraph Alignment Variants"
+                  }
+                ],
+                "text": "Paragraph Alignment Variants"
+              }
+            ],
+            "plainText": "Paragraph Alignment Variants"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 3,
+          "key": "TextBox 2",
+          "name": "TextBox 2",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "alignment": "l",
+                  "defaultRunProperties": {
+                    "fontSize": 18
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Left aligned text"
+                  }
+                ],
+                "text": "Left aligned text"
+              }
+            ],
+            "plainText": "Left aligned text"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 4,
+          "key": "TextBox 3",
+          "name": "TextBox 3",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "alignment": "ctr",
+                  "defaultRunProperties": {
+                    "fontSize": 18
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Center aligned text"
+                  }
+                ],
+                "text": "Center aligned text"
+              }
+            ],
+            "plainText": "Center aligned text"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 5,
+          "key": "TextBox 4",
+          "name": "TextBox 4",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "alignment": "r",
+                  "defaultRunProperties": {
+                    "fontSize": 18
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Right aligned text"
+                  }
+                ],
+                "text": "Right aligned text"
+              }
+            ],
+            "plainText": "Right aligned text"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 6,
+          "key": "TextBox 5",
+          "name": "TextBox 5",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "alignment": "just",
+                  "defaultRunProperties": {
+                    "fontSize": 14
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Justified text that should wrap across multiple lines to demonstrate the justify alignment option when we have enough content"
+                  }
+                ],
+                "text": "Justified text that should wrap across multiple lines to demonstrate the justify alignment option when we have enough content"
+              }
+            ],
+            "plainText": "Justified text that should wrap across multiple lines to demonstrate the justify alignment option when we have enough content"
+          },
+          "type": "sp"
+        }
+      ],
+      "slide": 1
+    },
+    {
+      "shapes": [
+        {
+          "id": 2,
+          "key": "TextBox 1",
+          "name": "TextBox 1",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 44
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Font Sizes and Colors"
+                  }
+                ],
+                "text": "Font Sizes and Colors"
+              }
+            ],
+            "plainText": "Font Sizes and Colors"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 3,
+          "key": "TextBox 2",
+          "name": "TextBox 2",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 12,
+                    "solidColor": {
+                      "type": "srgbClr",
+                      "value": "000000"
+                    }
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Font size 12pt"
+                  }
+                ],
+                "text": "Font size 12pt"
+              }
+            ],
+            "plainText": "Font size 12pt"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 4,
+          "key": "TextBox 3",
+          "name": "TextBox 3",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 16,
+                    "solidColor": {
+                      "type": "srgbClr",
+                      "value": "FF0000"
+                    }
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Font size 16pt"
+                  }
+                ],
+                "text": "Font size 16pt"
+              }
+            ],
+            "plainText": "Font size 16pt"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 5,
+          "key": "TextBox 4",
+          "name": "TextBox 4",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 20,
+                    "solidColor": {
+                      "type": "srgbClr",
+                      "value": "008000"
+                    }
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Font size 20pt"
+                  }
+                ],
+                "text": "Font size 20pt"
+              }
+            ],
+            "plainText": "Font size 20pt"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 6,
+          "key": "TextBox 5",
+          "name": "TextBox 5",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 24,
+                    "solidColor": {
+                      "type": "srgbClr",
+                      "value": "0000FF"
+                    }
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Font size 24pt"
+                  }
+                ],
+                "text": "Font size 24pt"
+              }
+            ],
+            "plainText": "Font size 24pt"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 7,
+          "key": "TextBox 6",
+          "name": "TextBox 6",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 28,
+                    "solidColor": {
+                      "type": "srgbClr",
+                      "value": "800080"
+                    }
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Font size 28pt"
+                  }
+                ],
+                "text": "Font size 28pt"
+              }
+            ],
+            "plainText": "Font size 28pt"
+          },
+          "type": "sp"
+        }
+      ],
+      "slide": 2
+    }
+  ]
+}

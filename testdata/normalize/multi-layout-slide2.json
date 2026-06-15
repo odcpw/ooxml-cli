@@ -1,0 +1,22 @@
+{
+  "fixture": "multi-layout",
+  "slide": 2,
+  "placeholders": [
+    {
+      "key": "title",
+      "role": "title",
+      "index": -1,
+      "shapeName": "Title 1",
+      "literalType": "title",
+      "resolvedType": "title"
+    },
+    {
+      "key": "body:1",
+      "role": "body",
+      "index": 1,
+      "shapeName": "Content Placeholder 2",
+      "literalType": "",
+      "resolvedType": "body"
+    }
+  ]
+}

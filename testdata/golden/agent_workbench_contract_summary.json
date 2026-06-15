@@ -1,0 +1,1767 @@
+{
+  "capabilities": {
+    "contractVersion": "ooxml-cli.agent-capabilities.v4",
+    "packageTypes": [
+      "pptx",
+      "pptm",
+      "xlsx",
+      "xlsm",
+      "docx",
+      "vbaProject.bin macro project payload"
+    ],
+    "commandCount": 290,
+    "objectKindCount": 22,
+    "workflowNames": [
+      "pptx inspect then edit",
+      "pptx animations author",
+      "xlsx inspect then edit",
+      "pptx from xlsx bindings",
+      "vba project and module handling"
+    ]
+  },
+  "commands": [
+    {
+      "path": "ooxml find",
+      "flags": [
+        "--apply",
+        "--backup",
+        "--dry-run",
+        "--ignore-case",
+        "--in-place",
+        "--max",
+        "--no-validate",
+        "--out",
+        "--regex",
+        "--replace",
+        "--to-ops",
+        "--type"
+      ],
+      "targetObjectKinds": [
+        "cell",
+        "package",
+        "paragraph",
+        "shape"
+      ],
+      "exampleCommands": [
+        "ooxml --json find \"Acme Corp\" deck.pptx",
+        "ooxml --json find \"Old Name\" deck.pptx --replace \"New Name\" --to-ops \u003e ops.json"
+      ],
+      "commonErrorPatterns": [
+        "no scoped mutation",
+        "unsupported_type"
+      ]
+    },
+    {
+      "path": "ooxml apply",
+      "flags": [
+        "--backup",
+        "--dry-run",
+        "--in-place",
+        "--no-validate",
+        "--ops",
+        "--out"
+      ],
+      "targetObjectKinds": [
+        "package"
+      ],
+      "exampleCommands": [
+        "ooxml --json apply deck.pptx --ops ops.json --dry-run",
+        "ooxml --json apply workbook.xlsx --ops ops.json --out edited.xlsx"
+      ],
+      "commonErrorPatterns": [
+        "HANDLE_STALE",
+        "invalid ops JSON",
+        "owned by the apply/serve/MCP session"
+      ]
+    },
+    {
+      "path": "ooxml inspect",
+      "flags": [],
+      "targetObjectKinds": [
+        "package"
+      ],
+      "exampleCommands": [
+        "ooxml --json inspect deck.pptx"
+      ],
+      "commonErrorPatterns": [
+        "file_not_found",
+        "unsupported_type"
+      ]
+    },
+    {
+      "path": "ooxml validate",
+      "flags": [],
+      "targetObjectKinds": [
+        "package"
+      ],
+      "exampleCommands": [
+        "ooxml validate --strict edited.pptx"
+      ],
+      "commonErrorPatterns": [
+        "validation_failed"
+      ]
+    },
+    {
+      "path": "ooxml conformance check",
+      "flags": [
+        "--office-check",
+        "--office-check-out-dir"
+      ],
+      "targetObjectKinds": [
+        "package"
+      ],
+      "exampleCommands": [
+        "ooxml --json conformance check edited.pptx --office-check --office-check-out-dir office-open-proof",
+        "ooxml --json conformance check edited.xlsx"
+      ],
+      "commonErrorPatterns": [
+        "OOXML_OFFICE_CHECK_FAILED",
+        "validation_failed"
+      ]
+    },
+    {
+      "path": "ooxml conformance coverage",
+      "flags": [],
+      "targetObjectKinds": [
+        "package"
+      ],
+      "exampleCommands": [
+        "ooxml --json conformance coverage"
+      ],
+      "commonErrorPatterns": [
+        "external-oracle",
+        "local-engine-optional"
+      ]
+    },
+    {
+      "path": "ooxml verify",
+      "flags": [
+        "--baseline"
+      ],
+      "targetObjectKinds": [
+        "package"
+      ],
+      "exampleCommands": [
+        "ooxml --json verify edited.pptx --baseline original.pptx"
+      ],
+      "commonErrorPatterns": [
+        "render_failed",
+        "validation_failed"
+      ]
+    },
+    {
+      "path": "ooxml doctor",
+      "flags": [
+        "--online",
+        "--only"
+      ],
+      "targetObjectKinds": [
+        "package"
+      ],
+      "exampleCommands": [
+        "ooxml --json doctor",
+        "ooxml --json doctor capabilities",
+        "ooxml doctor health"
+      ],
+      "commonErrorPatterns": [
+        "missing_microsoft_office_com",
+        "missing_openxml_sdk",
+        "missing_render_engine",
+        "stale_binary"
+      ]
+    },
+    {
+      "path": "ooxml serve",
+      "flags": [],
+      "targetObjectKinds": [
+        "package"
+      ],
+      "exampleCommands": [
+        "ooxml serve"
+      ],
+      "commonErrorPatterns": [
+        "inspect command is not allowed",
+        "must specify exactly one of out, in-place, or dry-run",
+        "owned by the apply/serve/MCP session"
+      ]
+    },
+    {
+      "path": "ooxml mcp",
+      "flags": [],
+      "targetObjectKinds": [
+        "package"
+      ],
+      "exampleCommands": [
+        "ooxml mcp"
+      ],
+      "commonErrorPatterns": [
+        "invalid_args",
+        "next_actions",
+        "unknown tool"
+      ]
+    },
+    {
+      "path": "ooxml pptx slides show",
+      "flags": [
+        "--include-bounds",
+        "--include-text",
+        "--slide"
+      ],
+      "targetObjectKinds": [
+        "shape",
+        "slide"
+      ],
+      "exampleCommands": [
+        "ooxml --json pptx slides show deck.pptx --slide 1 --include-text --include-bounds"
+      ],
+      "commonErrorPatterns": [
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml pptx replace text",
+      "flags": [
+        "--align",
+        "--auto-num",
+        "--backup",
+        "--bullet-char",
+        "--bullet-mode",
+        "--dry-run",
+        "--for-slides",
+        "--in-place",
+        "--level",
+        "--line-spacing",
+        "--mode",
+        "--no-validate",
+        "--out",
+        "--rich-text-file",
+        "--slide",
+        "--space-after",
+        "--space-before",
+        "--target",
+        "--text",
+        "--text-file"
+      ],
+      "targetObjectKinds": [
+        "paragraph",
+        "placeholder",
+        "shape"
+      ],
+      "exampleCommands": [
+        "ooxml --json pptx replace text deck.pptx --slide 1 --target title --text NEW --out edited.pptx"
+      ],
+      "commonErrorPatterns": [
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml pptx charts update-data",
+      "flags": [
+        "--backup",
+        "--categories",
+        "--categories-json",
+        "--chart",
+        "--dry-run",
+        "--expect-point-count",
+        "--expect-values-hash",
+        "--in-place",
+        "--no-validate",
+        "--out",
+        "--series",
+        "--slide",
+        "--values",
+        "--values-json"
+      ],
+      "targetObjectKinds": [
+        "chart"
+      ],
+      "exampleCommands": [
+        "ooxml --json pptx charts update-data deck.pptx --slide 1 --chart chart:1 --series 1 --values-json '[\"150\",\"175\"]' --expect-point-count 2 --out edited.pptx"
+      ],
+      "commonErrorPatterns": [
+        "diff_threshold",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml pptx charts set-title",
+      "flags": [
+        "--backup",
+        "--chart",
+        "--dry-run",
+        "--expect-title",
+        "--font-bold",
+        "--font-color",
+        "--font-family",
+        "--font-italic",
+        "--font-size",
+        "--in-place",
+        "--no-validate",
+        "--out",
+        "--slide",
+        "--title"
+      ],
+      "targetObjectKinds": [
+        "chart",
+        "style"
+      ],
+      "exampleCommands": [
+        "ooxml --json pptx charts set-title deck.pptx --slide 1 --chart chart:1 --title \"Q4 Revenue\" --font-family Aptos --font-bold=true --out edited.pptx"
+      ],
+      "commonErrorPatterns": [
+        "expect-title",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml pptx charts set-axis",
+      "flags": [
+        "--axis",
+        "--backup",
+        "--chart",
+        "--dry-run",
+        "--expect-axis-count",
+        "--expect-axis-title",
+        "--hidden",
+        "--in-place",
+        "--major-gridlines",
+        "--major-unit",
+        "--max",
+        "--min",
+        "--minor-gridlines",
+        "--no-validate",
+        "--number-format",
+        "--out",
+        "--slide",
+        "--tick-label-font-bold",
+        "--tick-label-font-color",
+        "--tick-label-font-family",
+        "--tick-label-font-italic",
+        "--tick-label-font-size",
+        "--title",
+        "--title-font-bold",
+        "--title-font-color",
+        "--title-font-family",
+        "--title-font-italic",
+        "--title-font-size"
+      ],
+      "targetObjectKinds": [
+        "chart",
+        "style"
+      ],
+      "exampleCommands": [
+        "ooxml --json pptx charts set-axis deck.pptx --slide 1 --chart chart:1 --axis value --title \"Revenue\" --number-format '$#,##0' --major-gridlines=true --out edited.pptx"
+      ],
+      "commonErrorPatterns": [
+        "expect-axis",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml pptx charts set-series-style",
+      "flags": [
+        "--backup",
+        "--chart",
+        "--dry-run",
+        "--expect-series-count",
+        "--fill-color",
+        "--in-place",
+        "--line-color",
+        "--line-width-pt",
+        "--marker-size",
+        "--marker-symbol",
+        "--no-validate",
+        "--out",
+        "--series",
+        "--slide"
+      ],
+      "targetObjectKinds": [
+        "chart",
+        "style"
+      ],
+      "exampleCommands": [
+        "ooxml --json pptx charts set-series-style deck.pptx --slide 1 --chart chart:1 --series 1 --fill-color '#1F77B4' --line-width-pt 2 --out edited.pptx"
+      ],
+      "commonErrorPatterns": [
+        "expect-series-count",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml pptx animations add",
+      "flags": [
+        "--backup",
+        "--by-paragraph",
+        "--direction",
+        "--dry-run",
+        "--duration-ms",
+        "--effect",
+        "--expect-paragraph-count",
+        "--expect-shape-name",
+        "--in-place",
+        "--no-validate",
+        "--out",
+        "--paragraph-range",
+        "--shape",
+        "--slide",
+        "--start"
+      ],
+      "targetObjectKinds": [
+        "shape",
+        "slide"
+      ],
+      "exampleCommands": [
+        "ooxml --json pptx animations add deck.pptx --slide 1 --shape shape:4 --effect appear --out edited.pptx",
+        "ooxml --json pptx animations add deck.pptx --slide 1 --shape shape:5 --effect fade --by-paragraph --expect-paragraph-count 4 --out edited.pptx"
+      ],
+      "commonErrorPatterns": [
+        "expect-paragraph-count",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml xlsx cells set",
+      "flags": [
+        "--backup",
+        "--cell",
+        "--dry-run",
+        "--formula",
+        "--in-place",
+        "--no-validate",
+        "--out",
+        "--ref",
+        "--sheet",
+        "--type",
+        "--value"
+      ],
+      "targetObjectKinds": [
+        "cell",
+        "sheet"
+      ],
+      "exampleCommands": [
+        "ooxml --json xlsx cells set workbook.xlsx --sheet Sheet1 --cell B2 --value '42' --out edited.xlsx"
+      ],
+      "commonErrorPatterns": [
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml xlsx ranges set-style",
+      "flags": [
+        "--alignment-horizontal",
+        "--alignment-vertical",
+        "--alignment-wrap-text",
+        "--backup",
+        "--border-bottom",
+        "--border-color",
+        "--border-left",
+        "--border-right",
+        "--border-style",
+        "--border-top",
+        "--dry-run",
+        "--fill-color",
+        "--font-bold",
+        "--font-color",
+        "--font-italic",
+        "--font-name",
+        "--font-size",
+        "--font-underline",
+        "--in-place",
+        "--max-cells",
+        "--no-validate",
+        "--out",
+        "--range",
+        "--sheet"
+      ],
+      "targetObjectKinds": [
+        "range",
+        "sheet",
+        "style"
+      ],
+      "exampleCommands": [
+        "ooxml --json xlsx ranges set-style workbook.xlsx --sheet Sheet1 --range A1:D1 --font-bold=true --fill-color '#D9EAF7' --alignment-wrap-text --out edited.xlsx"
+      ],
+      "commonErrorPatterns": [
+        "invalid_args",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml xlsx tables append-records",
+      "flags": [
+        "--backup",
+        "--dry-run",
+        "--expect-range",
+        "--ignore-extra-fields",
+        "--in-place",
+        "--max-cells",
+        "--missing",
+        "--no-validate",
+        "--null-policy",
+        "--out",
+        "--overwrite-formulas",
+        "--records",
+        "--records-file",
+        "--sheet",
+        "--table"
+      ],
+      "targetObjectKinds": [
+        "range",
+        "sheet",
+        "table"
+      ],
+      "exampleCommands": [
+        "ooxml --json xlsx tables append-records workbook.xlsx --table Sales --records '[{\"Region\":\"North\",\"Amount\":42}]' --out edited.xlsx"
+      ],
+      "commonErrorPatterns": [
+        "invalid_args",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml xlsx charts update-source",
+      "flags": [
+        "--backup",
+        "--cache",
+        "--chart",
+        "--dry-run",
+        "--expect-formula",
+        "--expect-source-range",
+        "--formula",
+        "--in-place",
+        "--max-cells",
+        "--no-validate",
+        "--out",
+        "--role",
+        "--series",
+        "--sheet",
+        "--source-range",
+        "--source-sheet"
+      ],
+      "targetObjectKinds": [
+        "chart",
+        "range",
+        "sheet"
+      ],
+      "exampleCommands": [
+        "ooxml --json xlsx charts update-source workbook.xlsx --chart chart:1 --series 1 --role values --source-sheet Sheet1 --source-range '$B$2:$B$20' --out edited.xlsx"
+      ],
+      "commonErrorPatterns": [
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml xlsx charts set-title",
+      "flags": [
+        "--backup",
+        "--chart",
+        "--dry-run",
+        "--expect-title",
+        "--font-bold",
+        "--font-color",
+        "--font-family",
+        "--font-italic",
+        "--font-size",
+        "--in-place",
+        "--no-validate",
+        "--out",
+        "--sheet",
+        "--title"
+      ],
+      "targetObjectKinds": [
+        "chart",
+        "style"
+      ],
+      "exampleCommands": [
+        "ooxml --json xlsx charts set-title workbook.xlsx --chart chart:1 --title \"Q4 Revenue\" --font-family Aptos --font-bold=true --out edited.xlsx"
+      ],
+      "commonErrorPatterns": [
+        "expect-title",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml xlsx charts set-series-style",
+      "flags": [
+        "--backup",
+        "--chart",
+        "--dry-run",
+        "--expect-series-count",
+        "--fill-color",
+        "--in-place",
+        "--line-color",
+        "--line-width-pt",
+        "--marker-size",
+        "--marker-symbol",
+        "--no-validate",
+        "--out",
+        "--series",
+        "--sheet"
+      ],
+      "targetObjectKinds": [
+        "chart",
+        "style"
+      ],
+      "exampleCommands": [
+        "ooxml --json xlsx charts set-series-style workbook.xlsx --chart chart:1 --series 1 --fill-color '#1F77B4' --line-width-pt 2 --out edited.xlsx"
+      ],
+      "commonErrorPatterns": [
+        "expect-series-count",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml xlsx pivots create",
+      "flags": [
+        "--anchor",
+        "--backup",
+        "--cols",
+        "--dry-run",
+        "--expect-source-range",
+        "--filters",
+        "--in-place",
+        "--max-cells",
+        "--name",
+        "--no-validate",
+        "--out",
+        "--range",
+        "--rows",
+        "--sheet",
+        "--table",
+        "--target-sheet",
+        "--values"
+      ],
+      "targetObjectKinds": [
+        "pivot",
+        "range",
+        "sheet",
+        "table"
+      ],
+      "exampleCommands": [
+        "ooxml --json xlsx pivots create workbook.xlsx --table Sales --name SalesPivot --target-sheet Pivot --rows Region --values Amount:sum --out edited.xlsx"
+      ],
+      "commonErrorPatterns": [
+        "invalid_args",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml vba inspect",
+      "flags": [],
+      "targetObjectKinds": [
+        "module",
+        "package"
+      ],
+      "exampleCommands": [
+        "ooxml --json vba inspect source.xlsm"
+      ],
+      "commonErrorPatterns": [
+        "VBA_HOST_",
+        "unsupported_type"
+      ]
+    },
+    {
+      "path": "ooxml vba inspect-bin",
+      "flags": [
+        "--family"
+      ],
+      "targetObjectKinds": [
+        "module"
+      ],
+      "exampleCommands": [
+        "ooxml --json vba inspect-bin vbaProject.bin --family pptx",
+        "ooxml --json vba inspect-bin vbaProject.bin --family xlsx"
+      ],
+      "commonErrorPatterns": [
+        "--family must be pptx or xlsx",
+        "Compound File Binary",
+        "failed to read VBA binary"
+      ]
+    },
+    {
+      "path": "ooxml vba create",
+      "flags": [
+        "--enable-vba-object-model-access",
+        "--extract-bin",
+        "--family",
+        "--force",
+        "--office-create-script",
+        "--source",
+        "--visible"
+      ],
+      "targetObjectKinds": [
+        "module",
+        "package"
+      ],
+      "exampleCommands": [
+        "ooxml --json vba create deck.pptm --family pptx --source macros/Module1.bas --force",
+        "ooxml --json vba create workbook.xlsm --family xlsx --source macros/Module1.bas --source macros/Worker.cls --extract-bin vbaProject.bin --enable-vba-object-model-access --force"
+      ],
+      "commonErrorPatterns": [
+        "Trust access to the VBA project object model",
+        "VBA source file not found",
+        "requires Windows desktop Microsoft Office",
+        "windows-office-vba-create.ps1 not found"
+      ]
+    },
+    {
+      "path": "ooxml vba add-module",
+      "flags": [
+        "--allow-experimental-vba-source-rewrite",
+        "--backup",
+        "--dry-run",
+        "--expect-module-count",
+        "--in-place",
+        "--kind",
+        "--name",
+        "--no-validate",
+        "--out",
+        "--source"
+      ],
+      "targetObjectKinds": [
+        "module"
+      ],
+      "exampleCommands": [
+        "ooxml --json vba add-module source.xlsm --source macros/NewModule.bas --expect-module-count 2 --out edited.xlsm"
+      ],
+      "commonErrorPatterns": [
+        "experimental VBA source rewrite refused",
+        "module count mismatch"
+      ]
+    },
+    {
+      "path": "ooxml vba replace-module",
+      "flags": [
+        "--allow-experimental-vba-source-rewrite",
+        "--backup",
+        "--dry-run",
+        "--expect-sha256",
+        "--in-place",
+        "--module",
+        "--no-validate",
+        "--out",
+        "--source"
+      ],
+      "targetObjectKinds": [
+        "module"
+      ],
+      "exampleCommands": [
+        "ooxml --json vba replace-module source.xlsm --module module:Module1 --source macros/Module1.bas --expect-sha256 0000000000000000000000000000000000000000000000000000000000000000 --out edited.xlsm"
+      ],
+      "commonErrorPatterns": [
+        "VBA module not found",
+        "experimental VBA source rewrite refused",
+        "source hash mismatch"
+      ]
+    },
+    {
+      "path": "ooxml vba remove-module",
+      "flags": [
+        "--allow-experimental-vba-source-rewrite",
+        "--backup",
+        "--dry-run",
+        "--expect-sha256",
+        "--in-place",
+        "--module",
+        "--no-validate",
+        "--out"
+      ],
+      "targetObjectKinds": [
+        "module"
+      ],
+      "exampleCommands": [
+        "ooxml --json vba remove-module source.xlsm --module module:Module1 --expect-sha256 0000000000000000000000000000000000000000000000000000000000000000 --out edited.xlsm"
+      ],
+      "commonErrorPatterns": [
+        "VBA module not found",
+        "experimental VBA source rewrite refused",
+        "source hash mismatch"
+      ]
+    },
+    {
+      "path": "ooxml docx styles apply",
+      "flags": [
+        "--backup",
+        "--dry-run",
+        "--expect-hash",
+        "--handle",
+        "--in-place",
+        "--index",
+        "--no-validate",
+        "--out",
+        "--style",
+        "--target"
+      ],
+      "targetObjectKinds": [
+        "paragraph",
+        "style"
+      ],
+      "exampleCommands": [
+        "ooxml --json docx styles apply report.docx --index 1 --target paragraph --style Heading1 --out styled.docx"
+      ],
+      "commonErrorPatterns": [
+        "HANDLE_STALE",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml docx paragraphs set",
+      "flags": [
+        "--backup",
+        "--dry-run",
+        "--handle",
+        "--in-place",
+        "--index",
+        "--no-validate",
+        "--out",
+        "--text",
+        "--text-file"
+      ],
+      "targetObjectKinds": [
+        "paragraph"
+      ],
+      "exampleCommands": [
+        "ooxml --json docx paragraphs set report.docx --index 1 --text \"Updated summary\" --out edited.docx"
+      ],
+      "commonErrorPatterns": [
+        "HANDLE_STALE",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml docx tables set-cell",
+      "flags": [
+        "--backup",
+        "--col",
+        "--dry-run",
+        "--expect-hash",
+        "--in-place",
+        "--no-validate",
+        "--out",
+        "--row",
+        "--table",
+        "--text",
+        "--text-file"
+      ],
+      "targetObjectKinds": [
+        "table"
+      ],
+      "exampleCommands": [
+        "ooxml --json docx tables set-cell report.docx --table 1 --row 2 --col 3 --text \"Approved\" --out edited.docx"
+      ],
+      "commonErrorPatterns": [
+        "invalid_args",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml docx headers list",
+      "flags": [],
+      "targetObjectKinds": [
+        "footer",
+        "header"
+      ],
+      "exampleCommands": [
+        "ooxml --json docx headers list report.docx"
+      ],
+      "commonErrorPatterns": [
+        "file_not_found",
+        "unsupported_type"
+      ]
+    },
+    {
+      "path": "ooxml docx headers show",
+      "flags": [
+        "--id",
+        "--section",
+        "--selector",
+        "--type"
+      ],
+      "targetObjectKinds": [
+        "header",
+        "paragraph"
+      ],
+      "exampleCommands": [
+        "ooxml --json docx headers show report.docx --selector header:1:default"
+      ],
+      "commonErrorPatterns": [
+        "invalid_args",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml docx headers set-text",
+      "flags": [
+        "--backup",
+        "--dry-run",
+        "--id",
+        "--in-place",
+        "--index",
+        "--no-validate",
+        "--out",
+        "--section",
+        "--selector",
+        "--text",
+        "--text-file",
+        "--type"
+      ],
+      "targetObjectKinds": [
+        "header",
+        "paragraph"
+      ],
+      "exampleCommands": [
+        "ooxml --json docx headers set-text report.docx --selector header:1:default/p:1 --text \"Confidential\" --out edited.docx"
+      ],
+      "commonErrorPatterns": [
+        "invalid_args",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml docx footers list",
+      "flags": [],
+      "targetObjectKinds": [
+        "footer",
+        "header"
+      ],
+      "exampleCommands": [
+        "ooxml --json docx footers list report.docx"
+      ],
+      "commonErrorPatterns": [
+        "file_not_found",
+        "unsupported_type"
+      ]
+    },
+    {
+      "path": "ooxml docx footers show",
+      "flags": [
+        "--id",
+        "--section",
+        "--selector",
+        "--type"
+      ],
+      "targetObjectKinds": [
+        "footer",
+        "paragraph"
+      ],
+      "exampleCommands": [
+        "ooxml --json docx footers show report.docx --selector footer:1:default"
+      ],
+      "commonErrorPatterns": [
+        "invalid_args",
+        "target_not_found"
+      ]
+    },
+    {
+      "path": "ooxml docx footers set-text",
+      "flags": [
+        "--backup",
+        "--dry-run",
+        "--id",
+        "--in-place",
+        "--index",
+        "--no-validate",
+        "--out",
+        "--section",
+        "--selector",
+        "--text",
+        "--text-file",
+        "--type"
+      ],
+      "targetObjectKinds": [
+        "footer",
+        "paragraph"
+      ],
+      "exampleCommands": [
+        "ooxml --json docx footers set-text report.docx --selector footer:1:default/p:1 --text \"Page Footer\" --out edited.docx"
+      ],
+      "commonErrorPatterns": [
+        "invalid_args",
+        "target_not_found"
+      ]
+    }
+  ],
+  "handles": {
+    "field": "handle",
+    "prefix": "H:",
+    "accepted": true,
+    "issued": true,
+    "emittedByFindToOps": true,
+    "acceptedBy": [
+      {
+        "command": "ooxml docx comments edit",
+        "flags": [
+          "--handle"
+        ],
+        "handleKinds": [
+          "docx.comment"
+        ]
+      },
+      {
+        "command": "ooxml docx comments remove",
+        "flags": [
+          "--handle"
+        ],
+        "handleKinds": [
+          "docx.comment"
+        ]
+      },
+      {
+        "command": "ooxml docx paragraphs clear",
+        "flags": [
+          "--handle"
+        ],
+        "handleKinds": [
+          "docx.paragraph"
+        ]
+      },
+      {
+        "command": "ooxml docx paragraphs set",
+        "flags": [
+          "--handle"
+        ],
+        "handleKinds": [
+          "docx.paragraph"
+        ]
+      },
+      {
+        "command": "ooxml docx styles apply",
+        "flags": [
+          "--handle",
+          "--style"
+        ],
+        "handleKinds": [
+          "docx.paragraph",
+          "docx.style"
+        ]
+      },
+      {
+        "command": "ooxml pptx animations add",
+        "flags": [
+          "--shape"
+        ],
+        "handleKinds": [
+          "pptx.shape"
+        ]
+      },
+      {
+        "command": "ooxml pptx comments edit",
+        "flags": [
+          "--handle"
+        ],
+        "handleKinds": [
+          "pptx.comment"
+        ]
+      },
+      {
+        "command": "ooxml pptx comments remove",
+        "flags": [
+          "--handle"
+        ],
+        "handleKinds": [
+          "pptx.comment"
+        ]
+      },
+      {
+        "command": "ooxml pptx replace images",
+        "flags": [
+          "--target"
+        ],
+        "handleKinds": [
+          "pptx.shape"
+        ]
+      },
+      {
+        "command": "ooxml pptx replace text",
+        "flags": [
+          "--target"
+        ],
+        "handleKinds": [
+          "pptx.shape"
+        ]
+      },
+      {
+        "command": "ooxml pptx replace text-occurrences",
+        "flags": [
+          "--for-slides"
+        ],
+        "handleKinds": [
+          "pptx.slide"
+        ]
+      },
+      {
+        "command": "ooxml pptx replace text-occurrences",
+        "flags": [
+          "--for-shape"
+        ],
+        "handleKinds": [
+          "pptx.shape"
+        ]
+      },
+      {
+        "command": "ooxml xlsx cells clear",
+        "flags": [
+          "--range"
+        ],
+        "handleKinds": [
+          "xlsx.cell"
+        ]
+      },
+      {
+        "command": "ooxml xlsx cells set",
+        "flags": [
+          "--cell"
+        ],
+        "handleKinds": [
+          "xlsx.cell"
+        ]
+      },
+      {
+        "command": "ooxml xlsx comments remove",
+        "flags": [
+          "--handle"
+        ],
+        "handleKinds": [
+          "xlsx.comment"
+        ]
+      },
+      {
+        "command": "ooxml xlsx comments update",
+        "flags": [
+          "--handle"
+        ],
+        "handleKinds": [
+          "xlsx.comment"
+        ]
+      },
+      {
+        "command": "ooxml xlsx names delete",
+        "flags": [
+          "--name"
+        ],
+        "handleKinds": [
+          "xlsx.definedName"
+        ]
+      },
+      {
+        "command": "ooxml xlsx names rename",
+        "flags": [
+          "--name"
+        ],
+        "handleKinds": [
+          "xlsx.definedName"
+        ]
+      },
+      {
+        "command": "ooxml xlsx names show",
+        "flags": [
+          "--name"
+        ],
+        "handleKinds": [
+          "xlsx.definedName"
+        ]
+      },
+      {
+        "command": "ooxml xlsx names update",
+        "flags": [
+          "--name"
+        ],
+        "handleKinds": [
+          "xlsx.definedName"
+        ]
+      }
+    ],
+    "errors": [
+      "HANDLE_AMBIGUOUS",
+      "HANDLE_FORMAT_MISMATCH",
+      "HANDLE_MALFORMED",
+      "HANDLE_SCOPE_STALE",
+      "HANDLE_STALE"
+    ]
+  },
+  "mcp": {
+    "toolNames": [
+      "abort",
+      "commit",
+      "inspect",
+      "op",
+      "open",
+      "plan",
+      "validate"
+    ],
+    "resourceURIs": [
+      "resource://agent-guide",
+      "resource://capabilities"
+    ],
+    "resourceTemplates": [
+      "resource://command/{path}"
+    ],
+    "commandResourceReads": [
+      {
+        "uriPath": "ooxml%20find",
+        "path": "ooxml find",
+        "flags": [
+          "--apply",
+          "--backup",
+          "--dry-run",
+          "--ignore-case",
+          "--in-place",
+          "--max",
+          "--no-validate",
+          "--out",
+          "--regex",
+          "--replace",
+          "--to-ops",
+          "--type"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20apply",
+        "path": "ooxml apply",
+        "flags": [
+          "--backup",
+          "--dry-run",
+          "--in-place",
+          "--no-validate",
+          "--ops",
+          "--out"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20inspect",
+        "path": "ooxml inspect",
+        "flags": []
+      },
+      {
+        "uriPath": "ooxml%20validate",
+        "path": "ooxml validate",
+        "flags": []
+      },
+      {
+        "uriPath": "ooxml%20conformance%20check",
+        "path": "ooxml conformance check",
+        "flags": [
+          "--office-check",
+          "--office-check-out-dir"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20conformance%20coverage",
+        "path": "ooxml conformance coverage",
+        "flags": []
+      },
+      {
+        "uriPath": "ooxml%20verify",
+        "path": "ooxml verify",
+        "flags": [
+          "--baseline"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20doctor",
+        "path": "ooxml doctor",
+        "flags": [
+          "--online",
+          "--only"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20serve",
+        "path": "ooxml serve",
+        "flags": []
+      },
+      {
+        "uriPath": "ooxml%20mcp",
+        "path": "ooxml mcp",
+        "flags": []
+      },
+      {
+        "uriPath": "ooxml%20pptx%20slides%20show",
+        "path": "ooxml pptx slides show",
+        "flags": [
+          "--include-bounds",
+          "--include-text",
+          "--slide"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20pptx%20replace%20text",
+        "path": "ooxml pptx replace text",
+        "flags": [
+          "--align",
+          "--auto-num",
+          "--backup",
+          "--bullet-char",
+          "--bullet-mode",
+          "--dry-run",
+          "--for-slides",
+          "--in-place",
+          "--level",
+          "--line-spacing",
+          "--mode",
+          "--no-validate",
+          "--out",
+          "--rich-text-file",
+          "--slide",
+          "--space-after",
+          "--space-before",
+          "--target",
+          "--text",
+          "--text-file"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20pptx%20charts%20update-data",
+        "path": "ooxml pptx charts update-data",
+        "flags": [
+          "--backup",
+          "--categories",
+          "--categories-json",
+          "--chart",
+          "--dry-run",
+          "--expect-point-count",
+          "--expect-values-hash",
+          "--in-place",
+          "--no-validate",
+          "--out",
+          "--series",
+          "--slide",
+          "--values",
+          "--values-json"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20pptx%20charts%20set-title",
+        "path": "ooxml pptx charts set-title",
+        "flags": [
+          "--backup",
+          "--chart",
+          "--dry-run",
+          "--expect-title",
+          "--font-bold",
+          "--font-color",
+          "--font-family",
+          "--font-italic",
+          "--font-size",
+          "--in-place",
+          "--no-validate",
+          "--out",
+          "--slide",
+          "--title"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20pptx%20charts%20set-axis",
+        "path": "ooxml pptx charts set-axis",
+        "flags": [
+          "--axis",
+          "--backup",
+          "--chart",
+          "--dry-run",
+          "--expect-axis-count",
+          "--expect-axis-title",
+          "--hidden",
+          "--in-place",
+          "--major-gridlines",
+          "--major-unit",
+          "--max",
+          "--min",
+          "--minor-gridlines",
+          "--no-validate",
+          "--number-format",
+          "--out",
+          "--slide",
+          "--tick-label-font-bold",
+          "--tick-label-font-color",
+          "--tick-label-font-family",
+          "--tick-label-font-italic",
+          "--tick-label-font-size",
+          "--title",
+          "--title-font-bold",
+          "--title-font-color",
+          "--title-font-family",
+          "--title-font-italic",
+          "--title-font-size"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20pptx%20charts%20set-series-style",
+        "path": "ooxml pptx charts set-series-style",
+        "flags": [
+          "--backup",
+          "--chart",
+          "--dry-run",
+          "--expect-series-count",
+          "--fill-color",
+          "--in-place",
+          "--line-color",
+          "--line-width-pt",
+          "--marker-size",
+          "--marker-symbol",
+          "--no-validate",
+          "--out",
+          "--series",
+          "--slide"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20pptx%20animations%20add",
+        "path": "ooxml pptx animations add",
+        "flags": [
+          "--backup",
+          "--by-paragraph",
+          "--direction",
+          "--dry-run",
+          "--duration-ms",
+          "--effect",
+          "--expect-paragraph-count",
+          "--expect-shape-name",
+          "--in-place",
+          "--no-validate",
+          "--out",
+          "--paragraph-range",
+          "--shape",
+          "--slide",
+          "--start"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20xlsx%20cells%20set",
+        "path": "ooxml xlsx cells set",
+        "flags": [
+          "--backup",
+          "--cell",
+          "--dry-run",
+          "--formula",
+          "--in-place",
+          "--no-validate",
+          "--out",
+          "--ref",
+          "--sheet",
+          "--type",
+          "--value"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20xlsx%20ranges%20set-style",
+        "path": "ooxml xlsx ranges set-style",
+        "flags": [
+          "--alignment-horizontal",
+          "--alignment-vertical",
+          "--alignment-wrap-text",
+          "--backup",
+          "--border-bottom",
+          "--border-color",
+          "--border-left",
+          "--border-right",
+          "--border-style",
+          "--border-top",
+          "--dry-run",
+          "--fill-color",
+          "--font-bold",
+          "--font-color",
+          "--font-italic",
+          "--font-name",
+          "--font-size",
+          "--font-underline",
+          "--in-place",
+          "--max-cells",
+          "--no-validate",
+          "--out",
+          "--range",
+          "--sheet"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20xlsx%20tables%20append-records",
+        "path": "ooxml xlsx tables append-records",
+        "flags": [
+          "--backup",
+          "--dry-run",
+          "--expect-range",
+          "--ignore-extra-fields",
+          "--in-place",
+          "--max-cells",
+          "--missing",
+          "--no-validate",
+          "--null-policy",
+          "--out",
+          "--overwrite-formulas",
+          "--records",
+          "--records-file",
+          "--sheet",
+          "--table"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20xlsx%20charts%20update-source",
+        "path": "ooxml xlsx charts update-source",
+        "flags": [
+          "--backup",
+          "--cache",
+          "--chart",
+          "--dry-run",
+          "--expect-formula",
+          "--expect-source-range",
+          "--formula",
+          "--in-place",
+          "--max-cells",
+          "--no-validate",
+          "--out",
+          "--role",
+          "--series",
+          "--sheet",
+          "--source-range",
+          "--source-sheet"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20xlsx%20charts%20set-title",
+        "path": "ooxml xlsx charts set-title",
+        "flags": [
+          "--backup",
+          "--chart",
+          "--dry-run",
+          "--expect-title",
+          "--font-bold",
+          "--font-color",
+          "--font-family",
+          "--font-italic",
+          "--font-size",
+          "--in-place",
+          "--no-validate",
+          "--out",
+          "--sheet",
+          "--title"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20xlsx%20charts%20set-series-style",
+        "path": "ooxml xlsx charts set-series-style",
+        "flags": [
+          "--backup",
+          "--chart",
+          "--dry-run",
+          "--expect-series-count",
+          "--fill-color",
+          "--in-place",
+          "--line-color",
+          "--line-width-pt",
+          "--marker-size",
+          "--marker-symbol",
+          "--no-validate",
+          "--out",
+          "--series",
+          "--sheet"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20xlsx%20pivots%20create",
+        "path": "ooxml xlsx pivots create",
+        "flags": [
+          "--anchor",
+          "--backup",
+          "--cols",
+          "--dry-run",
+          "--expect-source-range",
+          "--filters",
+          "--in-place",
+          "--max-cells",
+          "--name",
+          "--no-validate",
+          "--out",
+          "--range",
+          "--rows",
+          "--sheet",
+          "--table",
+          "--target-sheet",
+          "--values"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20vba%20inspect",
+        "path": "ooxml vba inspect",
+        "flags": []
+      },
+      {
+        "uriPath": "ooxml%20vba%20inspect-bin",
+        "path": "ooxml vba inspect-bin",
+        "flags": [
+          "--family"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20vba%20create",
+        "path": "ooxml vba create",
+        "flags": [
+          "--enable-vba-object-model-access",
+          "--extract-bin",
+          "--family",
+          "--force",
+          "--office-create-script",
+          "--source",
+          "--visible"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20vba%20add-module",
+        "path": "ooxml vba add-module",
+        "flags": [
+          "--allow-experimental-vba-source-rewrite",
+          "--backup",
+          "--dry-run",
+          "--expect-module-count",
+          "--in-place",
+          "--kind",
+          "--name",
+          "--no-validate",
+          "--out",
+          "--source"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20vba%20replace-module",
+        "path": "ooxml vba replace-module",
+        "flags": [
+          "--allow-experimental-vba-source-rewrite",
+          "--backup",
+          "--dry-run",
+          "--expect-sha256",
+          "--in-place",
+          "--module",
+          "--no-validate",
+          "--out",
+          "--source"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20vba%20remove-module",
+        "path": "ooxml vba remove-module",
+        "flags": [
+          "--allow-experimental-vba-source-rewrite",
+          "--backup",
+          "--dry-run",
+          "--expect-sha256",
+          "--in-place",
+          "--module",
+          "--no-validate",
+          "--out"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20docx%20styles%20apply",
+        "path": "ooxml docx styles apply",
+        "flags": [
+          "--backup",
+          "--dry-run",
+          "--expect-hash",
+          "--handle",
+          "--in-place",
+          "--index",
+          "--no-validate",
+          "--out",
+          "--style",
+          "--target"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20docx%20paragraphs%20set",
+        "path": "ooxml docx paragraphs set",
+        "flags": [
+          "--backup",
+          "--dry-run",
+          "--handle",
+          "--in-place",
+          "--index",
+          "--no-validate",
+          "--out",
+          "--text",
+          "--text-file"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20docx%20tables%20set-cell",
+        "path": "ooxml docx tables set-cell",
+        "flags": [
+          "--backup",
+          "--col",
+          "--dry-run",
+          "--expect-hash",
+          "--in-place",
+          "--no-validate",
+          "--out",
+          "--row",
+          "--table",
+          "--text",
+          "--text-file"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20docx%20headers%20list",
+        "path": "ooxml docx headers list",
+        "flags": []
+      },
+      {
+        "uriPath": "ooxml%20docx%20headers%20show",
+        "path": "ooxml docx headers show",
+        "flags": [
+          "--id",
+          "--section",
+          "--selector",
+          "--type"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20docx%20headers%20set-text",
+        "path": "ooxml docx headers set-text",
+        "flags": [
+          "--backup",
+          "--dry-run",
+          "--id",
+          "--in-place",
+          "--index",
+          "--no-validate",
+          "--out",
+          "--section",
+          "--selector",
+          "--text",
+          "--text-file",
+          "--type"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20docx%20footers%20list",
+        "path": "ooxml docx footers list",
+        "flags": []
+      },
+      {
+        "uriPath": "ooxml%20docx%20footers%20show",
+        "path": "ooxml docx footers show",
+        "flags": [
+          "--id",
+          "--section",
+          "--selector",
+          "--type"
+        ]
+      },
+      {
+        "uriPath": "ooxml%20docx%20footers%20set-text",
+        "path": "ooxml docx footers set-text",
+        "flags": [
+          "--backup",
+          "--dry-run",
+          "--id",
+          "--in-place",
+          "--index",
+          "--no-validate",
+          "--out",
+          "--section",
+          "--selector",
+          "--text",
+          "--text-file",
+          "--type"
+        ]
+      }
+    ]
+  }
+}

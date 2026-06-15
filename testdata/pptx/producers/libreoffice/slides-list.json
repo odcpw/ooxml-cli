@@ -1,0 +1,55 @@
+{
+  "file": "testdata/pptx/producers/libreoffice/presentation.pptx",
+  "slides": [
+    {
+      "handle": "H:pptx/s:256",
+      "images": 0,
+      "layout": "Title Slide",
+      "layoutNumber": 1,
+      "layoutPartUri": "/ppt/slideLayouts/slideLayout1.xml",
+      "layoutReadbackCommand": "ooxml --json pptx layouts show testdata/pptx/producers/libreoffice/presentation.pptx --layout 1",
+      "notes": false,
+      "number": 1,
+      "partUri": "/ppt/slides/slide1.xml",
+      "primarySelector": "1",
+      "readbackCommand": "ooxml --json pptx slides show testdata/pptx/producers/libreoffice/presentation.pptx --slide 1 --include-text --include-bounds",
+      "relationshipId": "rId7",
+      "selectors": [
+        "1",
+        "part:/ppt/slides/slide1.xml",
+        "slideId:256",
+        "rId:rId7"
+      ],
+      "selectorsCommand": "ooxml --json pptx slides selectors testdata/pptx/producers/libreoffice/presentation.pptx --slide 1",
+      "shapesCommand": "ooxml --json pptx shapes show testdata/pptx/producers/libreoffice/presentation.pptx --slide 1 --include-text --include-bounds",
+      "slideId": 256,
+      "tables": 0,
+      "textShapes": 2
+    },
+    {
+      "handle": "H:pptx/s:257",
+      "images": 0,
+      "layout": "Title and Content",
+      "layoutNumber": 2,
+      "layoutPartUri": "/ppt/slideLayouts/slideLayout2.xml",
+      "layoutReadbackCommand": "ooxml --json pptx layouts show testdata/pptx/producers/libreoffice/presentation.pptx --layout 2",
+      "notes": false,
+      "number": 2,
+      "partUri": "/ppt/slides/slide2.xml",
+      "primarySelector": "2",
+      "readbackCommand": "ooxml --json pptx slides show testdata/pptx/producers/libreoffice/presentation.pptx --slide 2 --include-text --include-bounds",
+      "relationshipId": "rId8",
+      "selectors": [
+        "2",
+        "part:/ppt/slides/slide2.xml",
+        "slideId:257",
+        "rId:rId8"
+      ],
+      "selectorsCommand": "ooxml --json pptx slides selectors testdata/pptx/producers/libreoffice/presentation.pptx --slide 2",
+      "shapesCommand": "ooxml --json pptx shapes show testdata/pptx/producers/libreoffice/presentation.pptx --slide 2 --include-text --include-bounds",
+      "slideId": 257,
+      "tables": 0,
+      "textShapes": 2
+    }
+  ]
+}

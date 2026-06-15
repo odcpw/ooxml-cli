@@ -1,0 +1,69 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+
+# Go workspace file
+go.work
+
+# Build artifacts
+/ooxml
+/ooxml-*
+/tools/openxml-validator/bin/
+/tools/openxml-validator/obj/
+
+# Dependency download directory
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temp directories
+/tmp/
+/.tmp/
+
+# Generated test files
+*.golden
+*.golden.json
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# Local agent/QA artifacts (may contain private notes, client files, and generated outputs)
+/.ooxml-doctor-probe-*
+/.pi/
+/testing/
+/.agents/
+/.codex/
+/.claude/
+/refactor/
+
+# Local exploded OOXML package roots
+/[Content_Types].xml
+/_rels/
+/docProps/
+/ppt/
+/word/
+/xl/
+
+# Local real Office macro fixtures for manual compatibility checks
+/testdata/vba/local/

@@ -1,0 +1,185 @@
+{
+  "table": {
+    "name": "Sales",
+    "range": "A1:B6",
+    "dataRowCount": 5
+  },
+  "export": {
+    "range": "A1:C6",
+    "rows": 6,
+    "cols": 3,
+    "formulaCount": 5,
+    "values": [
+      [
+        "Region",
+        "Amount",
+        "RunRate"
+      ],
+      [
+        "East",
+        10,
+        null
+      ],
+      [
+        "West",
+        20,
+        null
+      ],
+      [
+        "North",
+        30,
+        null
+      ],
+      [
+        "South",
+        40,
+        null
+      ],
+      [
+        "Central",
+        50,
+        null
+      ]
+    ],
+    "types": [
+      [
+        "string",
+        "string",
+        "string"
+      ],
+      [
+        "string",
+        "number",
+        "number"
+      ],
+      [
+        "string",
+        "number",
+        "number"
+      ],
+      [
+        "string",
+        "number",
+        "number"
+      ],
+      [
+        "string",
+        "number",
+        "number"
+      ],
+      [
+        "string",
+        "number",
+        "number"
+      ]
+    ],
+    "formulas": [
+      [
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        "B2*1.1"
+      ],
+      [
+        null,
+        null,
+        "B3*1.1"
+      ],
+      [
+        null,
+        null,
+        "B4*1.1"
+      ],
+      [
+        null,
+        null,
+        "B5*1.1"
+      ],
+      [
+        null,
+        null,
+        "B6*1.1"
+      ]
+    ],
+    "numberFormatCodes": [
+      [
+        "General",
+        "General",
+        "General"
+      ],
+      [
+        null,
+        "\"$\"#,##0",
+        null
+      ],
+      [
+        null,
+        "\"$\"#,##0",
+        null
+      ],
+      [
+        null,
+        "\"$\"#,##0",
+        null
+      ],
+      [
+        null,
+        "\"$\"#,##0",
+        null
+      ],
+      [
+        null,
+        "\"$\"#,##0",
+        null
+      ]
+    ]
+  },
+  "filters": {
+    "autoFilterRef": "A1:C6",
+    "filterValues": [
+      "East",
+      "North",
+      "South"
+    ],
+    "sortRef": "A1:C6",
+    "sortColumns": [
+      "B1:B6 desc"
+    ]
+  },
+  "freeze": {
+    "frozen": true,
+    "rows": 1,
+    "cols": 0,
+    "topLeftCell": "A2"
+  },
+  "dataValidations": {
+    "count": 1,
+    "range": "A2:A6",
+    "type": "list"
+  },
+  "charts": {
+    "count": 1,
+    "types": [
+      "barChart"
+    ],
+    "title": "Sales by Region",
+    "seriesCount": 1,
+    "categoryRange": "$A$2:$A$6",
+    "valueRange": "$B$2:$B$6",
+    "categoryCount": 5
+  },
+  "pivots": {
+    "count": 1,
+    "sourceRange": "A1:B6",
+    "rows": [
+      "Region"
+    ],
+    "values": [
+      "Amount"
+    ]
+  }
+}

@@ -1,0 +1,236 @@
+{
+  "xlsx": {
+    "sheets": [
+      {
+        "name": "Types",
+        "sheetId": "1",
+        "primarySelector": "sheetId:1",
+        "handle": "H:xlsx/ws:1",
+        "selectors": [
+          "sheetId:1",
+          "sheet:1",
+          "#1",
+          "rId:rId1",
+          "rid:rId1",
+          "part:/xl/worksheets/sheet1.xml",
+          "name:Types",
+          "~Types",
+          "Types"
+        ]
+      }
+    ],
+    "range": {
+      "sheet": "Types",
+      "range": "A1:D4",
+      "rows": 4,
+      "cols": 4,
+      "formulaCount": 0,
+      "values": [
+        [
+          "Region",
+          "Revenue",
+          "Active",
+          "Error"
+        ],
+        [
+          "North",
+          1234.5,
+          true,
+          "#DIV/0!"
+        ],
+        [
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          "Sparse tail",
+          null
+        ]
+      ],
+      "types": [
+        [
+          "string",
+          "string",
+          "string",
+          "string"
+        ],
+        [
+          "string",
+          "number",
+          "boolean",
+          "error"
+        ],
+        [
+          "empty",
+          "empty",
+          "empty",
+          "empty"
+        ],
+        [
+          "empty",
+          "empty",
+          "string",
+          "empty"
+        ]
+      ],
+      "numberFormatCodes": null
+    },
+    "chart": {
+      "count": 1,
+      "sheet": "Data",
+      "title": "Revenue by Region",
+      "types": [
+        "barChart"
+      ],
+      "seriesCount": 1,
+      "categoryRange": "$A$2:$A$4",
+      "valueRange": "$B$2:$B$4",
+      "categoryCount": 3,
+      "valueCount": 3
+    }
+  },
+  "vba": {
+    "inspectBinXlsx": {
+      "family": "xlsx",
+      "moduleCount": 3,
+      "modules": [
+        {
+          "name": "Module1",
+          "kind": "standard",
+          "extension": ".bas",
+          "primarySelector": "module:Module1",
+          "lineCount": 3
+        },
+        {
+          "name": "Class1",
+          "kind": "class",
+          "extension": ".cls",
+          "primarySelector": "module:Class1",
+          "lineCount": 4
+        },
+        {
+          "name": "ThisWorkbook",
+          "kind": "class",
+          "extension": ".cls",
+          "primarySelector": "module:ThisWorkbook",
+          "lineCount": 3
+        }
+      ],
+      "compatibility": "unverified",
+      "hostWarningCodes": null,
+      "signatureArtifacts": 0
+    },
+    "inspectBinPptx": {
+      "family": "pptx",
+      "moduleCount": 3,
+      "modules": [
+        {
+          "name": "Module1",
+          "kind": "standard",
+          "extension": ".bas",
+          "primarySelector": "module:Module1",
+          "lineCount": 3
+        },
+        {
+          "name": "Class1",
+          "kind": "class",
+          "extension": ".cls",
+          "primarySelector": "module:Class1",
+          "lineCount": 4
+        },
+        {
+          "name": "ThisWorkbook",
+          "kind": "class",
+          "extension": ".cls",
+          "primarySelector": "module:ThisWorkbook",
+          "lineCount": 3
+        }
+      ],
+      "compatibility": "risk",
+      "hostWarningCodes": [
+        "VBA_HOST_EXCEL_MODULES_IN_PPTM"
+      ],
+      "signatureArtifacts": 0
+    }
+  },
+  "docx": {
+    "styles": {
+      "count": 9,
+      "stylesPart": "/word/styles.xml",
+      "styleIds": [
+        "Normal",
+        "Heading1",
+        "BodyText",
+        "MyCustomPara",
+        "DefaultParagraphFont",
+        "Emphasis",
+        "TableNormal",
+        "TableGrid",
+        "NoList"
+      ],
+      "heading1": {
+        "styleId": "Heading1",
+        "name": "heading 1",
+        "type": "paragraph",
+        "basedOn": "Normal",
+        "next": "BodyText",
+        "handle": "H:docx/pt:styles/style:n:Heading1"
+      }
+    },
+    "block": {
+      "id": "body.b2",
+      "index": 2,
+      "kind": "paragraph",
+      "text": "Bold heading",
+      "style": "Heading1",
+      "runs": [
+        {
+          "text": "Bold heading",
+          "bold": true
+        }
+      ]
+    },
+    "table": {
+      "count": 1,
+      "table": 1,
+      "block": 1,
+      "rows": 2,
+      "cols": 2,
+      "merged": false,
+      "cells": [
+        [
+          "A1",
+          "B1"
+        ],
+        [
+          "A2",
+          "B2"
+        ]
+      ]
+    },
+    "headerFooter": {
+      "headerSelector": "header:1:default",
+      "headerSelectors": [
+        "header:1:default",
+        "id:rId10",
+        "rId10",
+        "part:/word/header1.xml",
+        "/word/header1.xml"
+      ],
+      "headerParagraphSelector": "header:1:default/p:1",
+      "footerSelector": "footer:1:default",
+      "footerSelectors": [
+        "footer:1:default",
+        "id:rId11",
+        "rId11",
+        "part:/word/footer1.xml",
+        "/word/footer1.xml"
+      ],
+      "footerParagraphSelector": "footer:1:default/p:1"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "plainText": "This is bold and colored text",
+  "paragraphs": [
+    {
+      "text": "This is bold and colored text",
+      "segments": [
+        {
+          "type": "text",
+          "text": "This is ",
+          "properties": null
+        },
+        {
+          "type": "text",
+          "text": "bold and colored",
+          "properties": {
+            "bold": true,
+            "color": "FF0000"
+          }
+        },
+        {
+          "type": "text",
+          "text": " text",
+          "properties": null
+        }
+      ]
+    }
+  ]
+}

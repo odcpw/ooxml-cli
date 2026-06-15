@@ -1,0 +1,22 @@
+{
+  "fixture": "picture-placeholder",
+  "slide": 1,
+  "placeholders": [
+    {
+      "key": "title",
+      "role": "title",
+      "index": -1,
+      "shapeName": "Title 1",
+      "literalType": "ctrTitle",
+      "resolvedType": "ctrTitle"
+    },
+    {
+      "key": "subtitle",
+      "role": "subtitle",
+      "index": 1,
+      "shapeName": "Subtitle 2",
+      "literalType": "subTitle",
+      "resolvedType": "subTitle"
+    }
+  ]
+}

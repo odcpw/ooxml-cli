@@ -1,0 +1,47 @@
+{
+  "plainText": "First point\nSecond point\nThird point",
+  "paragraphs": [
+    {
+      "text": "First point",
+      "segments": [
+        {
+          "type": "text",
+          "text": "First point"
+        }
+      ],
+      "properties": {
+        "level": 0,
+        "bulletMode": "buChar",
+        "bulletCharacter": "•"
+      }
+    },
+    {
+      "text": "Second point",
+      "segments": [
+        {
+          "type": "text",
+          "text": "Second point"
+        }
+      ],
+      "properties": {
+        "level": 1,
+        "bulletMode": "buChar",
+        "bulletCharacter": "◦"
+      }
+    },
+    {
+      "text": "Third point",
+      "segments": [
+        {
+          "type": "text",
+          "text": "Third point"
+        }
+      ],
+      "properties": {
+        "level": 0,
+        "bulletMode": "buChar",
+        "bulletCharacter": "•"
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+# Spec for testing notes fill
+version: "1.0"
+title: "Notes Test Presentation"
+author: "Test Generator"
+description: "Test presentation with notes"
+
+slides:
+  - archetype: title-slide
+    content:
+      title: "Slide with Notes"
+      subtitle: "Testing Notes"
+    notes: "This is a speaker note for the title slide"

@@ -1,0 +1,310 @@
+{
+  "file": "testdata/pptx/rich-bodypr/presentation.pptx",
+  "slides": [
+    {
+      "shapes": [
+        {
+          "id": 2,
+          "key": "TextBox 1",
+          "name": "TextBox 1",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 44
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Text Body Properties"
+                  }
+                ],
+                "text": "Text Body Properties"
+              }
+            ],
+            "plainText": "Text Body Properties"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 3,
+          "key": "TextBox 2",
+          "name": "TextBox 2",
+          "text": {
+            "bodyProperties": {
+              "anchor": "t",
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 16
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Top anchor"
+                  }
+                ],
+                "text": "Top anchor"
+              }
+            ],
+            "plainText": "Top anchor"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 4,
+          "key": "TextBox 3",
+          "name": "TextBox 3",
+          "text": {
+            "bodyProperties": {
+              "anchor": "ctr",
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 16
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Middle anchor"
+                  }
+                ],
+                "text": "Middle anchor"
+              }
+            ],
+            "plainText": "Middle anchor"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 5,
+          "key": "TextBox 4",
+          "name": "TextBox 4",
+          "text": {
+            "bodyProperties": {
+              "anchor": "b",
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 16
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Bottom anchor"
+                  }
+                ],
+                "text": "Bottom anchor"
+              }
+            ],
+            "plainText": "Bottom anchor"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 6,
+          "key": "TextBox 5",
+          "name": "TextBox 5",
+          "text": {
+            "bodyProperties": {
+              "anchor": "t",
+              "autofitType": "spAutoFit",
+              "wrap": "square"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 16
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Top with word wrap"
+                  }
+                ],
+                "text": "Top with word wrap"
+              }
+            ],
+            "plainText": "Top with word wrap"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 7,
+          "key": "TextBox 6",
+          "name": "TextBox 6",
+          "text": {
+            "bodyProperties": {
+              "anchor": "ctr",
+              "autofitType": "spAutoFit",
+              "wrap": "square"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 16
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Middle with word wrap"
+                  }
+                ],
+                "text": "Middle with word wrap"
+              }
+            ],
+            "plainText": "Middle with word wrap"
+          },
+          "type": "sp"
+        }
+      ],
+      "slide": 1
+    },
+    {
+      "shapes": [
+        {
+          "id": 2,
+          "key": "TextBox 1",
+          "name": "TextBox 1",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 44
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Margin Variants"
+                  }
+                ],
+                "text": "Margin Variants"
+              }
+            ],
+            "plainText": "Margin Variants"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 3,
+          "key": "TextBox 2",
+          "name": "TextBox 2",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "bottomInset": 182880,
+              "leftInset": 182880,
+              "rightInset": 182880,
+              "topInset": 182880,
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 14
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Margins: L=0.2\" T=0.2\" R=0.2\" B=0.2\""
+                  }
+                ],
+                "text": "Margins: L=0.2\" T=0.2\" R=0.2\" B=0.2\""
+              }
+            ],
+            "plainText": "Margins: L=0.2\" T=0.2\" R=0.2\" B=0.2\""
+          },
+          "type": "sp"
+        },
+        {
+          "id": 4,
+          "key": "TextBox 3",
+          "name": "TextBox 3",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "bottomInset": 91440,
+              "leftInset": 457200,
+              "rightInset": 457200,
+              "topInset": 91440,
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 14
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Margins: L=0.5\" T=0.1\" R=0.5\" B=0.1\""
+                  }
+                ],
+                "text": "Margins: L=0.5\" T=0.1\" R=0.5\" B=0.1\""
+              }
+            ],
+            "plainText": "Margins: L=0.5\" T=0.1\" R=0.5\" B=0.1\""
+          },
+          "type": "sp"
+        },
+        {
+          "id": 5,
+          "key": "TextBox 4",
+          "name": "TextBox 4",
+          "text": {
+            "bodyProperties": {
+              "autofitType": "spAutoFit",
+              "bottomInset": 457200,
+              "topInset": 457200,
+              "wrap": "none"
+            },
+            "paragraphs": [
+              {
+                "properties": {
+                  "defaultRunProperties": {
+                    "fontSize": 14
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Margins: L=0.1\" T=0.5\" R=0.1\" B=0.5\""
+                  }
+                ],
+                "text": "Margins: L=0.1\" T=0.5\" R=0.1\" B=0.5\""
+              }
+            ],
+            "plainText": "Margins: L=0.1\" T=0.5\" R=0.1\" B=0.5\""
+          },
+          "type": "sp"
+        }
+      ],
+      "slide": 2
+    }
+  ]
+}

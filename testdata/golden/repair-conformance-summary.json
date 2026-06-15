@@ -1,0 +1,178 @@
+[
+  {
+    "fixture": "xlsx-minimal-workbook",
+    "family": "xlsx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ]
+  },
+  {
+    "fixture": "xlsx-chart-workbook",
+    "family": "xlsx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ]
+  },
+  {
+    "fixture": "xlsx-corrupted-missing-worksheet",
+    "family": "xlsx",
+    "status": "failed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "failed",
+        "diagnostics": 2
+      },
+      {
+        "name": "repair-invariants",
+        "status": "failed",
+        "diagnostics": 2
+      }
+    ]
+  },
+  {
+    "fixture": "pptx-minimal-title",
+    "family": "pptx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ]
+  },
+  {
+    "fixture": "pptx-chart-simple",
+    "family": "pptx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      }
+    ]
+  },
+  {
+    "fixture": "pptx-animations-stale-media",
+    "family": "pptx",
+    "status": "failed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "failed",
+        "diagnostics": 5
+      },
+      {
+        "name": "repair-invariants",
+        "status": "failed",
+        "diagnostics": 3
+      }
+    ]
+  },
+  {
+    "fixture": "pptx-corrupted-dangling-layout",
+    "family": "pptx",
+    "status": "failed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "failed",
+        "diagnostics": 1
+      },
+      {
+        "name": "repair-invariants",
+        "status": "failed",
+        "diagnostics": 1
+      }
+    ]
+  },
+  {
+    "fixture": "pptx-corrupted-missing-media",
+    "family": "pptx",
+    "status": "failed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "failed",
+        "diagnostics": 2
+      },
+      {
+        "name": "repair-invariants",
+        "status": "failed",
+        "diagnostics": 1
+      }
+    ]
+  }
+]

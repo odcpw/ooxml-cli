@@ -1,0 +1,493 @@
+{
+  "schemaVersion": "ooxml-cli.conformance.coverage.v1",
+  "scope": "pptx-xlsx-office-repair-plus-docx-targeted-invariants",
+  "status": "active",
+  "harnessStages": [
+    {
+      "name": "package-open",
+      "status": "implemented",
+      "evidence": [
+        "pkg/conformance.CheckPackage",
+        "pkg/conformance.TestConformanceGoldenSummary"
+      ]
+    },
+    {
+      "name": "repo-validation",
+      "status": "implemented",
+      "evidence": [
+        "pkg/validate.ValidatePackage",
+        "pkg/conformance.TestConformanceGoldenSummary"
+      ]
+    },
+    {
+      "name": "repair-invariants",
+      "status": "implemented",
+      "evidence": [
+        "pkg/conformance.CheckRepairInvariants",
+        "pkg/conformance.TestRepairInvariants*"
+      ]
+    },
+    {
+      "name": "golden-summary",
+      "status": "implemented",
+      "evidence": [
+        "testdata/golden/repair-conformance-summary.json",
+        "testdata/golden/repair-conformance-office-open-summary.json",
+        "testdata/golden/generated-repair-proof-bundle.json"
+      ]
+    },
+    {
+      "name": "office-open",
+      "status": "local-engine-optional",
+      "evidence": [
+        "pkg/officecheck",
+        "pkg/conformance.TestConformanceOfficeOpenGoldenSummary",
+        "pkg/conformance.TestCheckPackageOfficeCheckFailureFailsReport",
+        "internal/cli.TestConformanceCheckOfficeCheckJSON",
+        "internal/cli.TestGeneratedRepairConformanceOfficeOpenIfAvailable"
+      ]
+    }
+  ],
+  "repairClasses": [
+    {
+      "id": "content-types",
+      "status": "covered",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "OOXML_CONTENT_TYPES_READ_ERROR",
+        "OOXML_CONTENT_TYPES_PARSE_ERROR",
+        "OOXML_CONTENT_TYPES_ROOT",
+        "OOXML_CONTENT_TYPES_DEFAULT_REQUIRED",
+        "OOXML_CONTENT_TYPES_DEFAULT_DUPLICATE",
+        "OOXML_CONTENT_TYPES_OVERRIDE_REQUIRED",
+        "OOXML_CONTENT_TYPES_OVERRIDE_DUPLICATE",
+        "OOXML_CONTENT_TYPES_OVERRIDE_TARGET_MISSING",
+        "OOXML_CONTENT_TYPES_PART_UNMAPPED",
+        "OOXML_CONTENT_TYPE_MISMATCH"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchContentTypesRootProblem",
+        "TestRepairInvariantsCatchContentTypesReadAndParseProblems",
+        "TestRepairInvariantsCatchContentTypesPartProblems",
+        "TestRepairInvariantsCatchContentTypesCoverageProblems",
+        "TestRepairInvariantsCatchKnownContentTypeMismatch"
+      ]
+    },
+    {
+      "id": "relationships",
+      "status": "covered",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "OOXML_RELS_READ_ERROR",
+        "OOXML_RELS_PARSE_ERROR",
+        "OOXML_RELS_ORPHANED",
+        "OOXML_RELATIONSHIP_MISSING_ID",
+        "OOXML_RELATIONSHIP_DUPLICATE_ID",
+        "OOXML_RELATIONSHIP_MISSING_TYPE",
+        "OOXML_RELATIONSHIP_MISSING_TARGET",
+        "OOXML_RELATIONSHIP_TARGET_MODE",
+        "OOXML_RELATIONSHIP_EXTERNAL_MODE_MISSING",
+        "OOXML_RELATIONSHIP_TARGET_MISSING",
+        "OOXML_RELATIONSHIP_TARGET_CONTENT_TYPE"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchMalformedRelationshipPart",
+        "TestRepairInvariantsCatchRelationshipPartReadError",
+        "TestRepairInvariantsCatchRelationshipClosureProblems",
+        "TestRepairInvariantsCatchRelationshipTargetContentTypeMismatch",
+        "TestConformanceCommittedPPTXXLSXFixtureManifest"
+      ]
+    },
+    {
+      "id": "part-roots",
+      "status": "covered",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "XLSX_WORKBOOK_ROOT",
+        "XLSX_WORKSHEET_ROOT",
+        "XLSX_SHARED_STRINGS_ROOT",
+        "XLSX_STYLES_ROOT",
+        "XLSX_TABLE_ROOT",
+        "XLSX_PIVOT_TABLE_ROOT",
+        "XLSX_PIVOT_CACHE_ROOT",
+        "XLSX_PIVOT_RECORDS_ROOT",
+        "XLSX_CALC_CHAIN_ROOT",
+        "PPTX_PRESENTATION_ROOT",
+        "PPTX_SLIDE_ROOT",
+        "PPTX_SLIDE_LAYOUT_ROOT",
+        "PPTX_SLIDE_MASTER_ROOT",
+        "XLSX_DRAWING_ROOT",
+        "OOXML_CHART_ROOT",
+        "OOXML_XML_PARSE_ERROR"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchKnownPartRootMismatches",
+        "TestRepairInvariantsCatchKnownPartRootNamespaceMismatches",
+        "TestRepairInvariantsCatchHighValuePartRootMismatches",
+        "TestRepairInvariantsCatchSlideLayoutAndMasterProblems",
+        "TestRepairInvariantsCatchXMLParseErrors"
+      ]
+    },
+    {
+      "id": "reference-lists",
+      "status": "covered",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "XLSX_WORKBOOK_SHEET_REFERENCE",
+        "PPTX_PRESENTATION_REFERENCE",
+        "XLSX_WORKSHEET_RELATIONSHIP_REFERENCE",
+        "XLSX_WORKSHEET_HYPERLINK_REFERENCE",
+        "XLSX_WORKSHEET_PIVOT_REFERENCE",
+        "XLSX_WORKSHEET_TABLEPARTS_COUNT",
+        "PPTX_SLIDE_LAYOUT_MASTER_REFERENCE",
+        "PPTX_SLIDE_MASTER_LAYOUT_REFERENCE",
+        "OOXML_CHART_RELATIONSHIP_REFERENCE"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchWorkbookSheetReferenceProblems",
+        "TestRepairInvariantsCatchWorksheetRelationshipReferenceProblems",
+        "TestRepairInvariantsCatchWorksheetHyperlinkReferenceProblems",
+        "TestRepairInvariantsAllowWorksheetHyperlinkReferences",
+        "TestRepairInvariantsCatchWorksheetTablePartsCountMismatch",
+        "TestRepairInvariantsCatchChartRelationshipReferenceProblems",
+        "TestRepairInvariantsCatchPresentationReferenceProblems",
+        "TestRepairInvariantsCatchSlideLayoutAndMasterProblems",
+        "TestRepairInvariantsAllowSlideLayoutAndMasterReferences"
+      ]
+    },
+    {
+      "id": "pptx-animations",
+      "status": "covered",
+      "families": [
+        "pptx"
+      ],
+      "diagnosticCodes": [
+        "PPTX_ANIMATION_TARGET_REFERENCE"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchSlideAnimationTargetProblems",
+        "TestRepairInvariantsAllowSlideAnimationTargets"
+      ]
+    },
+    {
+      "id": "drawing-media-references",
+      "status": "covered",
+      "families": [
+        "docx",
+        "pptx",
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "OOXML_IMAGE_RELATIONSHIP_REFERENCE",
+        "OOXML_IMAGE_PAYLOAD",
+        "PPTX_MEDIA_RELATIONSHIP_REFERENCE"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchDOCXImagePayloadProblems",
+        "TestRepairInvariantsAllowDOCXImagePayloadReferences",
+        "TestRepairInvariantsCatchDrawingMediaRelationshipProblems",
+        "TestRepairInvariantsAllowDrawingMediaRelationshipReferences"
+      ]
+    },
+    {
+      "id": "chart-external-data",
+      "status": "covered",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "OOXML_CHART_EXTERNAL_DATA_REFERENCE",
+        "OOXML_CHART_EXTERNAL_DATA_EMBEDDED_WORKBOOK_OPEN"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchChartExternalDataRelationshipProblems",
+        "TestRepairInvariantsCatchChartExternalDataCorruptEmbeddedWorkbookBytes",
+        "TestRepairInvariantsAllowChartExternalDataRelationshipReferences"
+      ]
+    },
+    {
+      "id": "chart-axis-references",
+      "status": "covered",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "OOXML_CHART_AXIS_REFERENCE"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchChartAxisReferenceProblems",
+        "TestRepairInvariantsAllowChartAxisReferences"
+      ]
+    },
+    {
+      "id": "chart-series-caches",
+      "status": "covered",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "OOXML_CHART_SERIES_CACHE"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchChartSeriesCacheProblems",
+        "TestRepairInvariantsAllowChartSeriesCaches"
+      ]
+    },
+    {
+      "id": "xlsx-defined-names",
+      "status": "covered",
+      "families": [
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "XLSX_DEFINED_NAME_REQUIRED",
+        "XLSX_DEFINED_NAME_SCOPE",
+        "XLSX_DEFINED_NAME_DUPLICATE",
+        "XLSX_DEFINED_NAME_REFERENCE"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchWorkbookDefinedNameProblems",
+        "TestRepairInvariantsAllowWorkbookDefinedNames"
+      ]
+    },
+    {
+      "id": "xlsx-tables",
+      "status": "covered",
+      "families": [
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "XLSX_TABLE_DEFINITION"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchTableDefinitionProblems",
+        "TestRepairInvariantsAllowTableDefinitions"
+      ]
+    },
+    {
+      "id": "xlsx-pivots",
+      "status": "covered",
+      "families": [
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "XLSX_WORKBOOK_PIVOT_CACHE_REFERENCE",
+        "XLSX_PIVOT_TABLE_DEFINITION",
+        "XLSX_PIVOT_CACHE_DEFINITION",
+        "XLSX_PIVOT_CACHE_RECORDS_REFERENCE",
+        "XLSX_PIVOT_RECORDS_DEFINITION"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchPivotDefinitionProblems",
+        "TestRepairInvariantsAllowPivotDefinitions"
+      ]
+    },
+    {
+      "id": "schema-order",
+      "status": "covered",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "XLSX_WORKSHEET_CHILD_ORDER",
+        "XLSX_TABLE_CHILD_ORDER",
+        "XLSX_PIVOT_TABLE_CHILD_ORDER",
+        "XLSX_PIVOT_CACHE_CHILD_ORDER",
+        "PPTX_SLIDE_CHILD_ORDER",
+        "PPTX_SLIDE_LAYOUT_CHILD_ORDER",
+        "PPTX_SLIDE_MASTER_CHILD_ORDER",
+        "XLSX_DRAWING_ANCHOR_ORDER",
+        "XLSX_DRAWING_ANCHOR_REQUIRED",
+        "OOXML_CHARTSPACE_CHILD_ORDER",
+        "OOXML_CHART_CHILD_ORDER",
+        "OOXML_PLOTAREA_CHILD_ORDER",
+        "OOXML_BARCHART_CHILD_ORDER",
+        "OOXML_LINECHART_CHILD_ORDER",
+        "OOXML_AREACHART_CHILD_ORDER",
+        "OOXML_PIECHART_CHILD_ORDER",
+        "OOXML_SCATTERCHART_CHILD_ORDER"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchWorksheetChildOrder",
+        "TestRepairInvariantsCatchTableDefinitionProblems",
+        "TestRepairInvariantsAllowTableDefinitions",
+        "TestRepairInvariantsCatchPivotDefinitionProblems",
+        "TestRepairInvariantsAllowPivotDefinitions",
+        "TestRepairInvariantsCatchSlideChildOrder",
+        "TestRepairInvariantsCatchSlideLayoutAndMasterProblems",
+        "TestRepairInvariantsAllowSlideLayoutAndMasterReferences",
+        "TestRepairInvariantsCatchDrawingAnchorOrderAndRequiredShape",
+        "TestRepairInvariantsCatchChartPartOrder",
+        "TestRepairInvariantsCatchNestedChartPartOrder"
+      ]
+    },
+    {
+      "id": "xlsx-counts-styles",
+      "status": "covered",
+      "families": [
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "XLSX_SHARED_STRINGS_COUNTS",
+        "XLSX_STYLES_COUNT_MISMATCH",
+        "XLSX_CELL_STYLE_REFERENCE",
+        "XLSX_CELL_STYLE_INDEX_OUT_OF_RANGE"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchSharedStringsCountProblems",
+        "TestRepairInvariantsAllowSharedStringsOmittedCountsAndReuseCount",
+        "TestRepairInvariantsCatchStylesCountProblems",
+        "TestRepairInvariantsCatchWorksheetStyleReferenceProblems",
+        "TestRepairInvariantsCatchWorksheetStyleReferenceWithoutStyles"
+      ]
+    },
+    {
+      "id": "xlsx-calc-chain",
+      "status": "covered",
+      "families": [
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "XLSX_CALC_CHAIN_REFERENCE"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchCalcChainReferenceProblems",
+        "TestRepairInvariantsAllowCalcChainReferences"
+      ]
+    },
+    {
+      "id": "zip-metadata",
+      "status": "covered",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "OOXML_ZIP_TIMESTAMP_INVALID"
+      ],
+      "evidence": [
+        "TestRepairInvariantsCatchInvalidZipTimestamp"
+      ]
+    },
+    {
+      "id": "local-office-open",
+      "status": "optional-local-oracle",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "diagnosticCodes": [
+        "OOXML_OFFICE_CHECK_SKIPPED",
+        "OOXML_OFFICE_CHECK_FAILED"
+      ],
+      "evidence": [
+        "TestConformanceOfficeOpenGoldenSummary",
+        "TestCheckPackageOfficeCheckFailureFailsReport",
+        "internal/cli.TestConformanceCheckOfficeCheckJSON",
+        "internal/cli.TestGeneratedRepairConformanceOfficeOpenIfAvailable",
+        "pkg/officecheck"
+      ]
+    },
+    {
+      "id": "real-microsoft-office",
+      "status": "external-oracle",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "evidence": [
+        "OFFICE_REPAIR_CONFORMANCE_GOAL.md"
+      ]
+    }
+  ],
+  "fixtureSets": [
+    {
+      "name": "committed-pptx-xlsx-fixture-manifest",
+      "status": "implemented",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "evidence": [
+        "TestConformanceCommittedPPTXXLSXFixtureManifest",
+        "testdata/pptx/*",
+        "testdata/xlsx/*"
+      ]
+    },
+    {
+      "name": "repair-conformance-golden-summary",
+      "status": "implemented",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "evidence": [
+        "TestConformanceGoldenSummary",
+        "testdata/golden/repair-conformance-summary.json"
+      ]
+    },
+    {
+      "name": "office-open-golden-summary",
+      "status": "implemented",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "evidence": [
+        "TestConformanceOfficeOpenGoldenSummary",
+        "testdata/golden/repair-conformance-office-open-summary.json"
+      ]
+    },
+    {
+      "name": "generated-output-repair-conformance",
+      "status": "implemented",
+      "families": [
+        "pptx",
+        "xlsx"
+      ],
+      "evidence": [
+        "internal/cli.TestGeneratedRepairConformanceGolden",
+        "internal/cli.TestGeneratedRepairConformanceOfficeOpenIfAvailable",
+        "testdata/golden/generated-repair-conformance-summary.json",
+        "testdata/golden/generated-repair-proof-bundle.json"
+      ]
+    },
+    {
+      "name": "windows-office-edit-smoke-release-gate",
+      "status": "implemented",
+      "families": [
+        "docx",
+        "pptx",
+        "xlsx"
+      ],
+      "evidence": [
+        "Makefile",
+        "tools/windows-office-edit-smoke.ps1",
+        "docs/windows-office-oracle.md"
+      ]
+    }
+  ],
+  "knownLimitations": [
+    "This is a repair-focused harness for practical generated DOCX/PPTX/XLSX files, not an exhaustive ISO/IEC 29500 conformance suite.",
+    "Static repair and generated-output golden summaries remain PPTX/XLSX-only; DOCX coverage is targeted invariants plus Windows edit-smoke release gates.",
+    "LibreOffice/soffice open checks are useful local evidence but are not proof that Microsoft Office will avoid a repair prompt.",
+    "Real Microsoft Office repair prompts on Windows/macOS remain the final external oracle for user-facing compatibility.",
+    "Macro code is not executed or compiled by this harness."
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "Branded Template",
+  "description": "A branded template with title slide and content slide archetypes",
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0,
+    "createdAt": "2026-03-11T08:30:00Z",
+    "notes": "Initial branded template release"
+  },
+  "createdAt": "2026-03-11T08:30:00Z",
+  "modifiedAt": "2026-03-11T08:30:00Z",
+  "author": "Template Author",
+  "organization": "Test Organization",
+  "archetypes": [
+    {
+      "id": "title-slide",
+      "name": "Title Slide",
+      "description": "A branded title slide with title and subtitle",
+      "layoutName": "Title Slide",
+      "masterName": "Office Theme",
+      "sourceSlideNumber": 1,
+      "slots": [
+        {
+          "id": "title",
+          "name": "Title",
+          "kind": "text",
+          "required": true,
+          "placeholderKey": "title",
+          "placeholderRole": "title",
+          "bounds": {
+            "x": 457200,
+            "y": 1828800,
+            "cx": 8229600,
+            "cy": 1143000
+          }
+        },
+        {
+          "id": "subtitle",
+          "name": "Subtitle",
+          "kind": "text",
+          "required": false,
+          "placeholderKey": "subtitle",
+          "placeholderRole": "subtitle",
+          "bounds": {
+            "x": 457200,
+            "y": 3124200,
+            "cx": 8229600,
+            "cy": 1143000
+          }
+        }
+      ],
+      "staticShapes": [],
+      "notes": "Standard title slide archetype"
+    },
+    {
+      "id": "content-slide",
+      "name": "Content Slide",
+      "description": "A branded content slide with title, bullets, and optional image",
+      "layoutName": "Title and Content",
+      "masterName": "Office Theme",
+      "sourceSlideNumber": 2,
+      "slots": [
+        {
+          "id": "title",
+          "name": "Title",
+          "kind": "text",
+          "required": true,
+          "placeholderKey": "title",
+          "placeholderRole": "title",
+          "bounds": {
+            "x": 457200,
+            "y": 457200,
+            "cx": 8229600,
+            "cy": 1143000
+          }
+        },
+        {
+          "id": "body",
+          "name": "Body",
+          "kind": "bullets",
+          "required": true,
+          "placeholderKey": "body",
+          "placeholderRole": "body",
+          "bounds": {
+            "x": 457200,
+            "y": 1600200,
+            "cx": 8229600,
+            "cy": 5143200
+          }
+        },
+        {
+          "id": "image",
+          "name": "Image",
+          "kind": "image",
+          "required": false,
+          "bounds": {
+            "x": 457200,
+            "y": 1600200,
+            "cx": 4114800,
+            "cy": 5143200
+          },
+          "aspectRatio": 1.0
+        }
+      ],
+      "staticShapes": [],
+      "notes": "Standard content slide with optional image"
+    }
+  ],
+  "themeReference": {
+    "colors": {
+      "accent1": "1F4E79",
+      "accent2": "C00000",
+      "accent3": "A5A5A5",
+      "accent4": "FFC000"
+    },
+    "majorFont": "Calibri",
+    "minorFont": "Calibri"
+  },
+  "notes": "This is a reference branded template for testing template capture and compilation."
+}

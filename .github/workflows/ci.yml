@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+      
+      - name: Install render smoke dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libreoffice-impress \
+            poppler-utils \
+            fonts-liberation \
+            fonts-noto-core \
+            fonts-noto-cjk \
+            fonts-noto-color-emoji \
+            fonts-dejavu-core \
+            imagemagick
+
+      - name: Run CI gate
+        run: make check-ci
+
+  office-schema-conformance-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Run Office schema/conformance smoke
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass `
+            -File .\tools\windows-office-edit-smoke.ps1 `
+            -RepoRoot . `
+            -MutationParallelism 4 `
+            -RequireOpenXmlSdk `
+            -RunConformance `
+            -SkipOffice

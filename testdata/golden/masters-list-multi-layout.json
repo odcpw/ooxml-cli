@@ -1,0 +1,14 @@
+{
+  "masters": [
+    {
+      "index": 1,
+      "layouts": 11,
+      "primarySelector": "1",
+      "selectors": [
+        "1"
+      ],
+      "theme": "/ppt/theme/theme1.xml",
+      "uri": "/ppt/slideMasters/slideMaster1.xml"
+    }
+  ]
+}

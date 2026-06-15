@@ -1,0 +1,181 @@
+{
+  "file": "testdata/pptx/rich-numbered-lists/presentation.pptx",
+  "slides": [
+    {
+      "shapes": [
+        {
+          "id": 2,
+          "key": "title",
+          "name": "Title 1",
+          "text": {
+            "bodyProperties": {},
+            "paragraphs": [
+              {
+                "runs": [
+                  {
+                    "text": "Numbered List"
+                  }
+                ],
+                "text": "Numbered List"
+              }
+            ],
+            "plainText": "Numbered List"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 3,
+          "key": "body:1",
+          "name": "Content Placeholder 2",
+          "text": {
+            "bodyProperties": {},
+            "paragraphs": [
+              {
+                "properties": {},
+                "runs": [
+                  {
+                    "text": "First numbered item"
+                  }
+                ],
+                "text": "First numbered item"
+              },
+              {
+                "properties": {},
+                "runs": [
+                  {
+                    "text": "Second numbered item"
+                  }
+                ],
+                "text": "Second numbered item"
+              },
+              {
+                "level": 1,
+                "properties": {
+                  "level": 1
+                },
+                "runs": [
+                  {
+                    "text": "Sub-item of second"
+                  }
+                ],
+                "text": "Sub-item of second"
+              },
+              {
+                "properties": {},
+                "runs": [
+                  {
+                    "text": "Third numbered item"
+                  }
+                ],
+                "text": "Third numbered item"
+              }
+            ],
+            "plainText": "First numbered item\nSecond numbered item\nSub-item of second\nThird numbered item"
+          },
+          "type": "sp"
+        }
+      ],
+      "slide": 1
+    },
+    {
+      "shapes": [
+        {
+          "id": 2,
+          "key": "title",
+          "name": "Title 1",
+          "text": {
+            "bodyProperties": {},
+            "paragraphs": [
+              {
+                "runs": [
+                  {
+                    "text": "Mixed Formatting"
+                  }
+                ],
+                "text": "Mixed Formatting"
+              }
+            ],
+            "plainText": "Mixed Formatting"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 3,
+          "key": "body:1",
+          "name": "Content Placeholder 2",
+          "text": {
+            "bodyProperties": {},
+            "paragraphs": [
+              {
+                "properties": {},
+                "runs": [
+                  {
+                    "text": "Item one with "
+                  },
+                  {
+                    "properties": {
+                      "bold": true
+                    },
+                    "text": "bold"
+                  }
+                ],
+                "text": "Item one with bold"
+              },
+              {
+                "properties": {},
+                "runs": [
+                  {
+                    "text": "Item two with "
+                  },
+                  {
+                    "properties": {
+                      "italic": true
+                    },
+                    "text": "italic"
+                  },
+                  {
+                    "text": " and "
+                  },
+                  {
+                    "properties": {
+                      "solidColor": {
+                        "type": "srgbClr",
+                        "value": "FF0000"
+                      }
+                    },
+                    "text": "red color"
+                  }
+                ],
+                "text": "Item two with italic and red color"
+              },
+              {
+                "level": 1,
+                "properties": {
+                  "level": 1
+                },
+                "runs": [
+                  {
+                    "text": "Sub-item with "
+                  },
+                  {
+                    "properties": {
+                      "solidColor": {
+                        "type": "srgbClr",
+                        "value": "0000FF"
+                      }
+                    },
+                    "text": "blue"
+                  }
+                ],
+                "text": "Sub-item with blue"
+              }
+            ],
+            "plainText": "Item one with bold\nItem two with italic and red color\nSub-item with blue"
+          },
+          "type": "sp"
+        }
+      ],
+      "slide": 2
+    }
+  ]
+}

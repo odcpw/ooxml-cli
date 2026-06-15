@@ -1,0 +1,201 @@
+{
+  "file": "testdata/pptx/rich-formatting/presentation.pptx",
+  "slides": [
+    {
+      "shapes": [
+        {
+          "id": 2,
+          "key": "title",
+          "name": "Title 1",
+          "text": {
+            "bodyProperties": {},
+            "paragraphs": [
+              {
+                "runs": [
+                  {
+                    "text": "Rich Text Formatting"
+                  }
+                ],
+                "text": "Rich Text Formatting"
+              }
+            ],
+            "plainText": "Rich Text Formatting"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 3,
+          "key": "subtitle",
+          "name": "Subtitle 2",
+          "text": {
+            "bodyProperties": {},
+            "paragraphs": [
+              {
+                "runs": [
+                  {
+                    "text": "This is "
+                  },
+                  {
+                    "properties": {
+                      "bold": true
+                    },
+                    "text": "bold"
+                  },
+                  {
+                    "text": " and this is "
+                  },
+                  {
+                    "properties": {
+                      "italic": true
+                    },
+                    "text": "italic"
+                  },
+                  {
+                    "text": " with "
+                  },
+                  {
+                    "properties": {
+                      "solidColor": {
+                        "type": "srgbClr",
+                        "value": "FF0000"
+                      }
+                    },
+                    "text": "color"
+                  },
+                  {
+                    "text": "."
+                  }
+                ],
+                "text": "This is bold and this is italic with color."
+              }
+            ],
+            "plainText": "This is bold and this is italic with color."
+          },
+          "type": "sp"
+        }
+      ],
+      "slide": 1
+    },
+    {
+      "shapes": [
+        {
+          "id": 2,
+          "key": "title",
+          "name": "Title 1",
+          "text": {
+            "bodyProperties": {},
+            "paragraphs": [
+              {
+                "runs": [
+                  {
+                    "text": "Bullet Points with Formatting"
+                  }
+                ],
+                "text": "Bullet Points with Formatting"
+              }
+            ],
+            "plainText": "Bullet Points with Formatting"
+          },
+          "type": "sp"
+        },
+        {
+          "id": 3,
+          "key": "body:1",
+          "name": "Content Placeholder 2",
+          "text": {
+            "bodyProperties": {},
+            "paragraphs": [
+              {
+                "properties": {},
+                "runs": [
+                  {
+                    "text": "First item with "
+                  },
+                  {
+                    "properties": {
+                      "bold": true
+                    },
+                    "text": "bold formatting"
+                  }
+                ],
+                "text": "First item with bold formatting"
+              },
+              {
+                "level": 1,
+                "properties": {
+                  "level": 1
+                },
+                "runs": [
+                  {
+                    "text": "Sub-item with "
+                  },
+                  {
+                    "properties": {
+                      "solidColor": {
+                        "type": "srgbClr",
+                        "value": "0000FF"
+                      }
+                    },
+                    "text": "blue color"
+                  }
+                ],
+                "text": "Sub-item with blue color"
+              },
+              {
+                "level": 1,
+                "properties": {
+                  "level": 1
+                },
+                "runs": [
+                  {
+                    "text": "Another sub-item with "
+                  },
+                  {
+                    "properties": {
+                      "italic": true
+                    },
+                    "text": "italic"
+                  }
+                ],
+                "text": "Another sub-item with italic"
+              },
+              {
+                "properties": {},
+                "runs": [
+                  {
+                    "text": "Second main item "
+                  },
+                  {
+                    "properties": {
+                      "solidColor": {
+                        "type": "srgbClr",
+                        "value": "008000"
+                      }
+                    },
+                    "text": "green"
+                  },
+                  {
+                    "text": " and "
+                  },
+                  {
+                    "properties": {
+                      "solidColor": {
+                        "type": "srgbClr",
+                        "value": "FFA500"
+                      }
+                    },
+                    "text": "orange"
+                  }
+                ],
+                "text": "Second main item green and orange"
+              }
+            ],
+            "plainText": "First item with bold formatting\nSub-item with blue color\nAnother sub-item with italic\nSecond main item green and orange"
+          },
+          "type": "sp"
+        }
+      ],
+      "slide": 2
+    }
+  ]
+}

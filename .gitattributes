@@ -1,0 +1,23 @@
+# Auto detect text files and normalize line endings to LF
+* text=auto
+
+# Explicit binaries
+*.bin binary
+*.exe binary
+*.o binary
+*.a binary
+*.so binary
+*.dylib binary
+
+# Go binaries
+/ooxml binary diff=binary merge=binary -text
+ooxml-* binary diff=binary merge=binary -text
+
+# Test fixtures - treat as binary
+testdata/pptx/** binary diff=binary merge=binary -text
+*.pptx binary diff=binary merge=binary -text
+
+# Keep Python and shell scripts as text with LF
+*.py text eol=lf
+*.sh text eol=lf
+Makefile text eol=lf

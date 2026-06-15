@@ -1,0 +1,73 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "exportedAt": "2026-03-10T21:01:08.621066697Z",
+    "sourceLanguage": "en-US",
+    "deckName": "notes-slide.pptx",
+    "slideCount": 2,
+    "entryCount": 5
+  },
+  "entries": [
+    {
+      "id": "slide:0_title_p0_r0",
+      "type": "title",
+      "sourceText": "Notes Slide",
+      "slideId": 0,
+      "slideNumber": 1,
+      "placeholderKey": "title",
+      "shapeId": 2,
+      "shapeName": "Title 1",
+      "paragraphIndex": 0,
+      "runIndex": 0,
+      "segmentType": "text"
+    },
+    {
+      "id": "slide:1_title_p0_r0",
+      "type": "title",
+      "sourceText": "Slide with Speaker Notes",
+      "slideId": 1,
+      "slideNumber": 2,
+      "placeholderKey": "title",
+      "shapeId": 2,
+      "shapeName": "Title 1",
+      "paragraphIndex": 0,
+      "runIndex": 0,
+      "segmentType": "text"
+    },
+    {
+      "id": "slide:1_body:1_p0_r0",
+      "type": "body",
+      "sourceText": "Main content on slide",
+      "slideId": 1,
+      "slideNumber": 2,
+      "placeholderKey": "body:1",
+      "shapeId": 3,
+      "shapeName": "Content Placeholder 2",
+      "paragraphIndex": 0,
+      "runIndex": 0,
+      "segmentType": "text"
+    },
+    {
+      "id": "slide:1_notes_p0_r0",
+      "type": "notes",
+      "sourceText": "These are the speaker notes for this slide.",
+      "slideId": 1,
+      "slideNumber": 2,
+      "placeholderKey": "notes",
+      "paragraphIndex": 0,
+      "runIndex": 0,
+      "segmentType": "text"
+    },
+    {
+      "id": "slide:1_notes_p1_r0",
+      "type": "notes",
+      "sourceText": "They should not be visible to the audience.",
+      "slideId": 1,
+      "slideNumber": 2,
+      "placeholderKey": "notes",
+      "paragraphIndex": 1,
+      "runIndex": 0,
+      "segmentType": "text"
+    }
+  ]
+}

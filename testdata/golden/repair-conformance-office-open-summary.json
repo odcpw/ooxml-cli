@@ -1,0 +1,89 @@
+[
+  {
+    "scenario": "xlsx-office-open-passed",
+    "family": "xlsx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "office-open",
+        "status": "passed",
+        "diagnostics": 0,
+        "officeCheckStatus": "passed",
+        "officeOpenVerified": true
+      }
+    ]
+  },
+  {
+    "scenario": "xlsx-office-open-missing-engine",
+    "family": "xlsx",
+    "status": "passed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "office-open",
+        "status": "skipped",
+        "diagnostics": 1,
+        "officeCheckStatus": "skipped",
+        "officeCheckCode": "missing_engine"
+      }
+    ]
+  },
+  {
+    "scenario": "pptx-office-open-failed",
+    "family": "pptx",
+    "status": "failed",
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed",
+        "diagnostics": 0
+      },
+      {
+        "name": "office-open",
+        "status": "failed",
+        "diagnostics": 1,
+        "officeCheckStatus": "failed",
+        "officeCheckCode": "engine_failed"
+      }
+    ]
+  }
+]
