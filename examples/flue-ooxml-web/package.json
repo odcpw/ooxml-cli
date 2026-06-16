@@ -9,7 +9,9 @@
     "start": "node dist/server.mjs",
     "typecheck": "tsc --noEmit",
     "smoke:agent": "node scripts/smoke-agent-edit.mjs",
-    "smoke:auth": "node scripts/smoke-auth-isolation.mjs"
+    "smoke:auth": "node scripts/smoke-auth-isolation.mjs",
+    "smoke:auth-abuse": "node scripts/smoke-auth-abuse.mjs",
+    "smoke:nonpptx": "node scripts/smoke-nonpptx.mjs"
   },
   "dependencies": {
     "@flue/runtime": "1.0.0-beta.1",

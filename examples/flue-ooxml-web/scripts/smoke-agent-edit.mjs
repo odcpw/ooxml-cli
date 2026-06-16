@@ -274,6 +274,7 @@ async function fetchWithCookies(url, init = {}) {
   if (cookie) headers.set('Cookie', cookie);
   const method = String(init.method || 'GET').toUpperCase();
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    if (!headers.has('Origin')) headers.set('Origin', new URL(baseUrl).origin);
     const csrf = cookieJar.get('ooxml_csrf');
     if (csrf) headers.set('x-ooxml-csrf', csrf);
   }

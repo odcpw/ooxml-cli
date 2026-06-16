@@ -74,7 +74,6 @@ export const CSRF_HEADER_NAME = 'x-ooxml-csrf';
 const sessionTtlMs = 30 * 24 * 60 * 60 * 1000;
 const csrfTtlSeconds = 30 * 24 * 60 * 60;
 const magicLinkTokenTtlMs = 15 * 60 * 1000;
-const magicLinkActiveTokenLimit = 3;
 const magicLinkRequestWindowMs = 60 * 60 * 1000;
 const oauthStateTtlSeconds = 10 * 60;
 const stateChangingMethods = new Set(['DELETE', 'PATCH', 'POST', 'PUT']);
@@ -137,7 +136,14 @@ export async function issueSessionForEmail(c: Context, email: string, identity?:
 
   const user = await mutateAuthState((state) => {
     cleanupAuthState(state, now);
-    let existing = state.users.find((candidate) => candidate.email === normalizedEmail);
+    let existing: AuthUser | undefined;
+    if (identity) {
+      const linked = state.oauthIdentities.find(
+        (candidate) => candidate.provider === identity.provider && candidate.subject === identity.subject,
+      );
+      if (linked) existing = state.users.find((candidate) => candidate.id === linked.userId);
+    }
+    existing ??= state.users.find((candidate) => candidate.email === normalizedEmail);
     if (!existing) {
       existing = {
         id: `user-${randomUUID()}`,
@@ -147,6 +153,11 @@ export async function issueSessionForEmail(c: Context, email: string, identity?:
       };
       state.users.push(existing);
     } else {
+      const emailOwner = state.users.find((candidate) => candidate.email === normalizedEmail);
+      if (emailOwner && emailOwner.id !== existing.id) {
+        throw new Error('This email is already linked to another account.');
+      }
+      existing.email = normalizedEmail;
       existing.lastSeenAt = now.toISOString();
     }
 
@@ -184,6 +195,22 @@ export function clearAuthCookies(c: Context): void {
   deleteCookie(c, CSRF_COOKIE_NAME, { path: '/' });
 }
 
+export async function revokeCurrentSession(c: Context): Promise<void> {
+  const cookieValue = getCookie(c, SESSION_COOKIE_NAME);
+  if (cookieValue) {
+    const parsed = parseSessionCookie(cookieValue);
+    if (parsed) {
+      await mutateAuthState((state) => {
+        state.sessions = state.sessions.filter(
+          (session) => !(session.id === parsed.sessionId && timingSafeEqualString(session.tokenHash, parsed.tokenHash)),
+        );
+        return undefined;
+      });
+    }
+  }
+  clearAuthCookies(c);
+}
+
 export async function requestMagicLink(input: { c: Context; email: string }): Promise<{ ok: boolean; retryAfterSeconds?: number }> {
   const email = normalizeEmail(input.email);
   if (!isValidEmail(email)) {
@@ -191,11 +218,9 @@ export async function requestMagicLink(input: { c: Context; email: string }): Pr
   }
 
   const clientScope = clientIpScope(input.c);
-  const emailScope = `magic-link:email:${sha256(email).slice(0, 32)}`;
   const globalScope = 'magic-link:global';
   const rateLimits = [
-    await checkRateLimit(emailScope, 3, magicLinkRequestWindowMs),
-    clientScope ? await checkRateLimit(`magic-link:${clientScope}`, 30, magicLinkRequestWindowMs) : { allowed: true as const },
+    clientScope ? await checkRateLimit(`magic-link:${clientScope}`, 20, magicLinkRequestWindowMs) : { allowed: true as const },
     await checkRateLimit(globalScope, 300, magicLinkRequestWindowMs),
   ];
   const denied = rateLimits.find((candidate) => !candidate.allowed);
@@ -208,10 +233,9 @@ export async function requestMagicLink(input: { c: Context; email: string }): Pr
   const tokenHash = sha256(token);
   const expiresAt = new Date(now.getTime() + magicLinkTokenTtlMs);
 
-  const created = await mutateAuthState((state) => {
+  await mutateAuthState((state) => {
     cleanupAuthState(state, now);
-    const active = state.magicLinks.filter((link) => link.email === email && Date.parse(link.expiresAt) > now.getTime());
-    if (active.length >= magicLinkActiveTokenLimit) return false;
+    state.magicLinks = state.magicLinks.filter((link) => link.email !== email);
     state.magicLinks.push({
       id: randomUUID(),
       email,
@@ -219,10 +243,8 @@ export async function requestMagicLink(input: { c: Context; email: string }): Pr
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
     });
-    return true;
+    return undefined;
   });
-
-  if (!created) return { ok: true };
 
   try {
     await sendMagicLinkEmail({
@@ -342,8 +364,8 @@ export async function finishOAuth(c: Context, provider: OAuthProvider): Promise<
   try {
     const token = await exchangeOAuthCode({ provider, code, codeVerifier: stateCookie.codeVerifier, requestUrl: url });
     const userInfo = await fetchOAuthUserInfo(provider, token.accessToken);
-    const email = extractVerifiedOAuthEmail(provider, userInfo, token.idTokenClaims);
-    const subject = extractOAuthSubject(provider, userInfo, token.idTokenClaims);
+    const email = extractVerifiedOAuthEmail(provider, userInfo);
+    const subject = extractOAuthSubject(provider, userInfo);
     if (!email || !subject) {
       return c.redirect('/signin?error=oauth_email', 303);
     }
@@ -365,7 +387,7 @@ export function getSafeRedirectPath(value: string | null | undefined): string {
   return trimmed;
 }
 
-export function hasAllowedVerificationOrigin(c: Context): boolean {
+export function hasAllowedVerificationOrigin(c: Context, options: { requireHeader?: boolean } = {}): boolean {
   const requestOrigin = new URL(c.req.url).origin;
   const allowedOrigins = new Set([requestOrigin]);
   const appBaseUrl = process.env.APP_BASE_URL?.trim();
@@ -381,7 +403,7 @@ export function hasAllowedVerificationOrigin(c: Context): boolean {
   if (origin) return allowedOrigins.has(origin);
 
   const referer = c.req.header('referer');
-  if (!referer) return true;
+  if (!referer) return !options.requireHeader;
 
   try {
     return allowedOrigins.has(new URL(referer).origin);
@@ -400,15 +422,14 @@ export function authUserResponse(user: AuthUser): Record<string, unknown> {
 }
 
 async function validateSessionCookie(cookieValue: string): Promise<AuthUser | null> {
-  const [sessionId, token] = cookieValue.split('.');
-  if (!sessionId || !token) return null;
-  const tokenHash = sha256(token);
+  const parsed = parseSessionCookie(cookieValue);
+  if (!parsed) return null;
   const now = new Date();
 
   return mutateAuthState((state) => {
     cleanupAuthState(state, now);
     const session = state.sessions.find(
-      (candidate) => candidate.id === sessionId && timingSafeEqualString(candidate.tokenHash, tokenHash),
+      (candidate) => candidate.id === parsed.sessionId && timingSafeEqualString(candidate.tokenHash, parsed.tokenHash),
     );
     if (!session) return null;
     const user = state.users.find((candidate) => candidate.id === session.userId);
@@ -526,11 +547,9 @@ function pruneUserSessions(state: AuthState, userId: string): void {
   const userSessions = state.sessions
     .filter((session) => session.userId === userId)
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-  while (userSessions.length > 10) {
-    const oldest = userSessions.shift();
-    if (!oldest) break;
-    state.sessions = state.sessions.filter((session) => session.id !== oldest.id);
-  }
+  if (userSessions.length <= 10) return;
+  const keep = new Set(userSessions.slice(-10).map((session) => session.id));
+  state.sessions = state.sessions.filter((session) => session.userId !== userId || keep.has(session.id));
 }
 
 type MagicLinkEmail = {
@@ -695,7 +714,7 @@ async function exchangeOAuthCode(input: {
   code: string;
   codeVerifier: string;
   requestUrl: URL;
-}): Promise<{ accessToken: string; idTokenClaims: Record<string, unknown> | null }> {
+}): Promise<{ accessToken: string }> {
   const config = oauthProviderConfig(input.provider);
   const body = new URLSearchParams({
     client_id: config.clientId,
@@ -715,14 +734,11 @@ async function exchangeOAuthCode(input: {
     body,
   });
   if (!response.ok) throw new Error(`${input.provider} OAuth token exchange failed with status ${response.status}.`);
-  const payload = (await response.json()) as { access_token?: unknown; id_token?: unknown };
+  const payload = (await response.json()) as { access_token?: unknown };
   if (typeof payload.access_token !== 'string' || !payload.access_token) {
     throw new Error(`${input.provider} OAuth token response did not include an access token.`);
   }
-  return {
-    accessToken: payload.access_token,
-    idTokenClaims: typeof payload.id_token === 'string' ? decodeJwtPayload(payload.id_token) : null,
-  };
+  return { accessToken: payload.access_token };
 }
 
 async function fetchOAuthUserInfo(provider: OAuthProvider, accessToken: string): Promise<Record<string, unknown>> {
@@ -741,9 +757,8 @@ async function fetchOAuthUserInfo(provider: OAuthProvider, accessToken: string):
 function extractVerifiedOAuthEmail(
   provider: OAuthProvider,
   userInfo: Record<string, unknown>,
-  idTokenClaims: Record<string, unknown> | null,
 ): string | null {
-  const claims = idTokenClaims ?? userInfo;
+  const claims = userInfo;
   if (provider === 'google' && !isTruthy(claims.email_verified)) return null;
   if (provider === 'microsoft' && process.env.OOXML_MICROSOFT_REQUIRE_EDOV !== '0' && !isTruthy(claims.xms_edov)) return null;
   const email = normalizeEmail(typeof claims.email === 'string' ? claims.email : '');
@@ -753,9 +768,8 @@ function extractVerifiedOAuthEmail(
 function extractOAuthSubject(
   provider: OAuthProvider,
   userInfo: Record<string, unknown>,
-  idTokenClaims: Record<string, unknown> | null,
 ): string | null {
-  const claims = idTokenClaims ?? userInfo;
+  const claims = userInfo;
   if (typeof claims.sub === 'string' && claims.sub.trim()) return claims.sub.trim();
   if (provider === 'microsoft' && typeof claims.oid === 'string') {
     const tid = typeof claims.tid === 'string' ? claims.tid.trim() : '';
@@ -829,11 +843,11 @@ function assertEmailAllowed(email: string): void {
 }
 
 function clientIpScope(c: Context): string | null {
+  if (process.env.OOXML_TRUST_PROXY_HEADERS !== '1') return null;
   const raw =
     c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
     c.req.header('cf-connecting-ip')?.trim() ||
     c.req.header('x-real-ip')?.trim() ||
-    c.req.header('host')?.trim() ||
     '';
   if (!raw) return null;
   return `ip:${sha256(raw).slice(0, 32)}`;
@@ -841,6 +855,12 @@ function clientIpScope(c: Context): string | null {
 
 function randomToken(bytes = 32): string {
   return randomBytes(bytes).toString('base64url');
+}
+
+function parseSessionCookie(cookieValue: string): { sessionId: string; tokenHash: string } | null {
+  const [sessionId, token] = cookieValue.split('.');
+  if (!sessionId || !token) return null;
+  return { sessionId, tokenHash: sha256(token) };
 }
 
 function sha256(value: string): string {
@@ -872,17 +892,6 @@ function requiredEnv(primary: string, fallback?: string): string {
 
 function isTruthy(value: unknown): boolean {
   return value === true || value === 'true';
-}
-
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  const [, payload] = token.split('.');
-  if (!payload) return null;
-  try {
-    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as unknown;
-    return decoded && typeof decoded === 'object' && !Array.isArray(decoded) ? (decoded as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
 }
 
 function escapeHtml(value: string): string {

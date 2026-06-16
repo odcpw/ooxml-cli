@@ -73,6 +73,12 @@ async function main() {
     await expectStatus(jarB, artifactPath, {}, 404, 'cross-user artifact');
   }
 
+  const capturedSession = jarA.get('ooxml_session');
+  if (!capturedSession) throw new Error('Could not capture owner session before logout.');
+  await postJson(jarA, '/api/auth/logout', {});
+  const replayJar = new Map([['ooxml_session', capturedSession]]);
+  await expectStatus(replayJar, '/api/auth/me', {}, 401, 'replayed logged-out session');
+
   console.log(JSON.stringify({ ok: true, threadId: thread.id, users: [userA, userB] }, null, 2));
 }
 
@@ -160,8 +166,12 @@ async function fetchWithCookies(jar, url, init = {}, options = {}) {
   if (cookie) headers.set('Cookie', cookie);
   const method = String(init.method || 'GET').toUpperCase();
   if (!options.skipCsrf && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    if (!headers.has('Origin')) headers.set('Origin', new URL(baseUrl).origin);
     const csrf = jar.get('ooxml_csrf');
     if (csrf) headers.set('x-ooxml-csrf', csrf);
+  }
+  if (options.skipCsrf && !['GET', 'HEAD', 'OPTIONS'].includes(method) && !headers.has('Origin')) {
+    headers.set('Origin', new URL(baseUrl).origin);
   }
   const response = await fetch(url, { ...init, headers });
   rememberSetCookies(jar, response);

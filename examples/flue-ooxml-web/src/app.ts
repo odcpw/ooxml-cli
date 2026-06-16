@@ -6,7 +6,6 @@ import { extname } from 'node:path';
 import {
   authUserResponse,
   checkRateLimit,
-  clearAuthCookies,
   consumeMagicLink,
   finishOAuth,
   getAuthUser,
@@ -17,6 +16,7 @@ import {
   rateLimitResponse,
   requestMagicLink,
   requireAuth,
+  revokeCurrentSession,
   startOAuth,
   type AuthEnv,
 } from './shared/auth.ts';
@@ -43,7 +43,7 @@ app.get('/signin', (c) => c.html(signInHtml(getSafeRedirectPath(c.req.query('ret
 app.get('/health', (c) => c.json({ ok: true }));
 
 app.post('/api/auth/magic-link/request', async (c) => {
-  if (!hasAllowedVerificationOrigin(c)) return c.json({ error: 'Sign-in request rejected.' }, 403);
+  if (!hasAllowedVerificationOrigin(c, { requireHeader: true })) return c.json({ error: 'Sign-in request rejected.' }, 403);
   const email = await readEmail(c.req.raw);
   try {
     const result = await requestMagicLink({ c, email });
@@ -61,7 +61,7 @@ app.get('/api/auth/magic-link/verify', (c) => {
 });
 
 app.post('/api/auth/magic-link/verify', async (c) => {
-  if (!hasAllowedVerificationOrigin(c)) return c.json({ error: 'Magic link is invalid or expired.' }, 403);
+  if (!hasAllowedVerificationOrigin(c, { requireHeader: true })) return c.json({ error: 'Magic link is invalid or expired.' }, 403);
   const token = await readToken(c.req.raw);
   if (!token) return c.json({ error: 'Magic link is invalid or expired.' }, 400);
   try {
@@ -90,7 +90,7 @@ app.post('/api/auth/dev-session', async (c) => {
   if (process.env.NODE_ENV === 'production' || (process.env.OOXML_AUTH_DEV_SESSIONS !== '1' && process.env.OOXML_AUTH_DEV_BYPASS !== '1')) {
     return c.json({ error: 'Development sessions are disabled.' }, 404);
   }
-  if (!hasAllowedVerificationOrigin(c)) return c.json({ error: 'Development session rejected.' }, 403);
+  if (!hasAllowedVerificationOrigin(c, { requireHeader: true })) return c.json({ error: 'Development session rejected.' }, 403);
   const contentType = c.req.header('content-type') ?? '';
   const email = contentType.toLowerCase().startsWith('application/json')
     ? String(((await c.req.json().catch(() => ({}))) as { email?: unknown }).email ?? '')
@@ -117,16 +117,17 @@ app.get('/', requireAuth, (c) => c.html(workbenchHtml()));
 
 app.get('/api/auth/me', (c) => c.json({ user: authUserResponse(getAuthUser(c)) }));
 
-app.post('/api/auth/logout', (c) => {
-  clearAuthCookies(c);
+app.post('/api/auth/logout', async (c) => {
+  await revokeCurrentSession(c);
   return c.json({ ok: true });
 });
 
 app.get('/api/threads', async (c) => {
   try {
     const user = getAuthUser(c);
+    const limit = positiveInteger(c.req.query('limit'), 100);
     return c.json({
-      threads: (await listThreads(user.id)).map((thread) => publicThreadSummary(thread)),
+      threads: (await listThreads(user.id, { limit })).map((thread) => publicThreadSummary(thread)),
     });
   } catch (error) {
     return errorResponse(c, error, 500);
@@ -328,9 +329,14 @@ async function officeFilesFromForm(form: FormData): Promise<UploadedOfficeFile[]
   if (files.length === 0) {
     throw new Error('Missing Office file upload.');
   }
-  const maxFiles = Number(process.env.OOXML_UPLOAD_MAX_FILES || 10);
-  const maxBytes = Number(process.env.OOXML_UPLOAD_MAX_BYTES || 50 * 1024 * 1024);
+  const maxFiles = positiveInteger(process.env.OOXML_UPLOAD_MAX_FILES, 8);
+  const maxBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_BYTES, 25 * 1024 * 1024);
+  const maxTotalBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_TOTAL_BYTES, 80 * 1024 * 1024);
   if (files.length > maxFiles) throw new Error(`Upload at most ${maxFiles} file(s) at once.`);
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > maxTotalBytes) {
+    throw new Error(`Upload batches must be ${Math.floor(maxTotalBytes / 1024 / 1024)} MB or smaller.`);
+  }
   for (const file of files) {
     if (file.size > maxBytes) throw new Error(`Upload files must be ${Math.floor(maxBytes / 1024 / 1024)} MB or smaller.`);
   }
@@ -383,6 +389,12 @@ function publicAuthError(error: unknown): string {
   const message = errorMessage(error);
   if (message.includes('domain is not allowed') || message.includes('valid email')) return message;
   return 'Sign-in request could not be completed.';
+}
+
+function positiveInteger(value: string | number | undefined, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.trunc(parsed);
 }
 
 function signInHtml(returnTo: string): string {

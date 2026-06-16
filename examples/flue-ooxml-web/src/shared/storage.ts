@@ -52,6 +52,7 @@ export type UploadedOfficeFile = {
 };
 
 const allowedExtensions = new Set(['.pptx', '.pptm', '.docx', '.xlsx', '.xlsm']);
+const threadMutationQueues = new Map<string, Promise<void>>();
 
 export function dataRoot(): string {
   return runtimeDataRoot();
@@ -101,24 +102,33 @@ export async function readThread(threadId: string, ownerUserId?: string): Promis
   return thread;
 }
 
-export async function listThreads(ownerUserId?: string): Promise<ThreadRecord[]> {
+export async function listThreads(ownerUserId?: string, options: { limit?: number } = {}): Promise<ThreadRecord[]> {
   await ensureDataRoot();
   const entries = await readdir(threadsRoot(), { withFileTypes: true });
-  const threads = await Promise.all(
-    entries
-      .filter((entry) => entry.isDirectory())
-      .map(async (entry) => {
+  const directories = entries.filter((entry) => entry.isDirectory());
+  const threads: ThreadRecord[] = [];
+  const batchSize = 8;
+  for (let index = 0; index < directories.length; index += batchSize) {
+    const batch = directories.slice(index, index + batchSize);
+    const loaded = await Promise.all(
+      batch.map(async (entry) => {
         try {
           return await readThread(entry.name);
         } catch {
           return undefined;
         }
       }),
-  );
+    );
+    for (const thread of loaded) {
+      if (thread && (!ownerUserId || thread.ownerUserId === ownerUserId)) {
+        threads.push(thread);
+      }
+    }
+  }
+  const limit = clampListLimit(options.limit);
   return threads
-    .filter((thread): thread is ThreadRecord => Boolean(thread))
-    .filter((thread) => !ownerUserId || thread.ownerUserId === ownerUserId)
-    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+    .slice(0, limit);
 }
 
 export async function writeThread(thread: ThreadRecord): Promise<void> {
@@ -212,49 +222,73 @@ export async function createThreadFromUpload(input: UploadedOfficeFile & { title
 
 export async function addDocumentsToThread(threadId: string, files: UploadedOfficeFile[], ownerUserId?: string): Promise<ThreadRecord> {
   if (files.length === 0) throw new Error('At least one Office file is required.');
-  const thread = await readThread(threadId, ownerUserId);
-  const now = new Date().toISOString();
-  const added: ThreadDocument[] = [];
+  return withThreadMutation(threadId, async () => {
+    const thread = await readThread(threadId, ownerUserId);
+    const now = new Date().toISOString();
+    const added: ThreadDocument[] = [];
 
-  for (const file of files) {
-    const document = await writeUploadedDocument(thread.id, file, now);
-    thread.documents.push(document);
-    added.push(document);
-  }
-  thread.currentDocumentId = added[0].id;
-  await writeThread(thread);
-  return thread;
+    for (const file of files) {
+      const document = await writeUploadedDocument(thread.id, file, now);
+      thread.documents.push(document);
+      added.push(document);
+    }
+    thread.currentDocumentId = added[0].id;
+    await writeThread(thread);
+    return thread;
+  });
 }
 
 export async function selectDocument(threadId: string, documentId: string, ownerUserId?: string): Promise<ThreadRecord> {
-  const thread = await readThread(threadId, ownerUserId);
-  const document = documentById(thread, documentId);
-  thread.currentDocumentId = document.id;
-  await writeThread(thread);
-  return thread;
+  return withThreadMutation(threadId, async () => {
+    const thread = await readThread(threadId, ownerUserId);
+    const document = documentById(thread, documentId);
+    thread.currentDocumentId = document.id;
+    await writeThread(thread);
+    return thread;
+  });
 }
 
 export async function removeDocumentFromThread(threadId: string, documentId: string, ownerUserId?: string): Promise<ThreadRecord> {
-  const thread = await readThread(threadId, ownerUserId);
-  const document = documentById(thread, documentId);
-  if (thread.documents.length <= 1) {
-    throw new Error('A thread must keep at least one document.');
-  }
+  return withThreadMutation(threadId, async () => {
+    const thread = await readThread(threadId, ownerUserId);
+    const document = documentById(thread, documentId);
+    if (thread.documents.length <= 1) {
+      throw new Error('A thread must keep at least one document.');
+    }
 
-  thread.documents = thread.documents.filter((candidate) => candidate.id !== document.id);
-  if (thread.currentDocumentId === document.id) {
-    thread.currentDocumentId = thread.documents[0].id;
-  }
-  await writeThread(thread);
+    thread.documents = thread.documents.filter((candidate) => candidate.id !== document.id);
+    if (thread.currentDocumentId === document.id) {
+      thread.currentDocumentId = thread.documents[0].id;
+    }
+    await writeThread(thread);
 
-  if (document.id !== 'doc-primary') {
-    await rm(documentDir(thread.id, document.id), { recursive: true, force: true });
-  }
-  return thread;
+    if (document.id !== 'doc-primary') {
+      await rm(documentDir(thread.id, document.id), { recursive: true, force: true });
+    }
+    return thread;
+  });
 }
 
 export function nextVersionId(document: ThreadDocument): string {
   return `v${String(document.versions.length + 1).padStart(4, '0')}`;
+}
+
+export async function withThreadMutation<T>(threadId: string, fn: () => Promise<T>): Promise<T> {
+  const key = safeId(threadId);
+  const previous = threadMutationQueues.get(key) ?? Promise.resolve();
+  const run = previous.catch(() => undefined).then(fn);
+  const done = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  threadMutationQueues.set(key, done);
+  try {
+    return await run;
+  } finally {
+    if (threadMutationQueues.get(key) === done) {
+      threadMutationQueues.delete(key);
+    }
+  }
 }
 
 export function safeJoin(base: string, unsafePath: string): string {
@@ -349,4 +383,9 @@ async function writeUploadedDocument(threadId: string, input: UploadedOfficeFile
 
 function uploadBaseName(originalName: string): string {
   return basename(originalName).replace(/[^\w.\- ()]/g, '_') || 'document';
+}
+
+function clampListLimit(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) return 100;
+  return Math.max(1, Math.min(200, Math.trunc(value)));
 }

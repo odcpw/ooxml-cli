@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -14,6 +15,8 @@ import {
   relativeToThread,
   safeJoin,
   threadDir,
+  versionById,
+  withThreadMutation,
   type FileVersion,
   type RenderInfo,
   type ThreadDocument,
@@ -206,8 +209,8 @@ export async function replaceTextCurrent(input: {
   const dir = threadDir(input.threadId);
   const newVersionId = nextVersionId(document);
   const ext = extname(version.path);
-  const outPath = join(dir, 'documents', document.id, 'versions', `${newVersionId}-replace${ext}`);
-  const opsPath = join(dir, 'documents', document.id, 'tmp', `${newVersionId}-ops.json`);
+  const outPath = newVersionOutputPath(dir, document.id, newVersionId, 'replace', ext);
+  const opsPath = join(dir, 'documents', document.id, 'tmp', `${newVersionId}-ops-${randomUUID().slice(0, 8)}.json`);
   await mkdir(join(dir, 'documents', document.id, 'versions'), { recursive: true });
   await mkdir(join(dir, 'documents', document.id, 'tmp'), { recursive: true });
 
@@ -250,7 +253,7 @@ export async function setSlideShapeTextCurrent(input: {
   const dir = threadDir(input.threadId);
   const newVersionId = nextVersionId(document);
   const ext = extname(version.path);
-  const outPath = join(dir, 'documents', document.id, 'versions', `${newVersionId}-slide-text${ext}`);
+  const outPath = newVersionOutputPath(dir, document.id, newVersionId, 'slide-text', ext);
   await mkdir(join(dir, 'documents', document.id, 'versions'), { recursive: true });
   const applied = await runOoxml(
     [
@@ -298,7 +301,7 @@ export async function applyTemplateToCurrentDocument(input: {
   const dir = threadDir(input.threadId);
   const newVersionId = nextVersionId(document);
   const ext = extname(version.path);
-  const outPath = join(dir, 'documents', document.id, 'versions', `${newVersionId}-template${ext}`);
+  const outPath = newVersionOutputPath(dir, document.id, newVersionId, 'template', ext);
   await mkdir(join(dir, 'documents', document.id, 'versions'), { recursive: true });
 
   const args = [
@@ -384,7 +387,7 @@ export async function applyOoxmlOpsToCurrent(input: {
   const file = absoluteVersionPath(thread, version);
   const newVersionId = nextVersionId(document);
   const ext = extname(version.path);
-  const outPath = join(dir, 'documents', document.id, 'versions', `${newVersionId}-ooxml${ext}`);
+  const outPath = newVersionOutputPath(dir, document.id, newVersionId, 'ooxml', ext);
   await mkdir(join(dir, 'documents', document.id, 'versions'), { recursive: true });
 
   const requests: ServeRequest[] = [serveRequest(1, 'open', { file, out: outPath })];
@@ -441,7 +444,7 @@ export async function renderCurrent(threadId: string): Promise<Record<string, un
 
   const dir = threadDir(threadId);
   const file = absoluteVersionPath(thread, version);
-  const renderDir = join(dir, 'documents', document.id, 'renders', version.id);
+  const renderDir = join(dir, 'documents', document.id, 'renders', `${version.id}-${randomUUID().slice(0, 8)}`);
   await mkdir(renderDir, { recursive: true });
 
   const rendered = await runOoxml(['--json', 'pptx', 'render', file, '--out', renderDir, '--thumbnails'], dir);
@@ -466,8 +469,18 @@ export async function renderCurrent(threadId: string): Promise<Record<string, un
     manifestPath: relativeToThread(threadId, join(renderDir, 'thumbnails-manifest.json')),
     thumbnails,
   };
-  version.render = renderInfo;
-  await writeThread(thread);
+  try {
+    await withThreadMutation(threadId, async () => {
+      const latestThread = await readThread(threadId);
+      const latestDocument = documentById(latestThread, document.id);
+      const latestVersion = versionById(latestDocument, version.id);
+      latestVersion.render = renderInfo;
+      await writeThread(latestThread);
+    });
+  } catch (error) {
+    await rm(renderDir, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
 
   return {
     rendered: true,
@@ -580,43 +593,52 @@ async function publishNewVersion(input: {
   apply: unknown;
   extra?: Record<string, unknown>;
 }): Promise<Record<string, unknown>> {
-  const validate = await runOoxml(['--json', '--strict', 'validate', input.outPath], threadDir(input.thread.id));
-  const latestThread = await readThread(input.thread.id);
-  const latestDocument = documentById(latestThread, input.document.id);
-  const latestVersion = currentVersion(latestThread, latestDocument);
-  if (latestThread.currentDocumentId !== input.document.id || latestVersion.id !== input.sourceVersion.id) {
-    throw new Error(
-      [
-        'Thread changed while the agent was working, so the edit was not published.',
-        `Expected current document/version ${input.document.id}/${input.sourceVersion.id}.`,
-        `Actual current document/version ${latestThread.currentDocumentId}/${latestVersion.id}.`,
-        'Select the intended document and retry the edit.',
-      ].join(' '),
-    );
-  }
-  const ext = extname(input.sourceVersion.path);
-  const now = new Date().toISOString();
-  const newVersion = {
-    id: input.versionId,
-    originalName: `${basename(input.document.originalName, ext)}-${input.versionId}${ext}`,
-    path: relativeToThread(input.thread.id, input.outPath),
-    createdAt: now,
-    note: input.note,
-  };
-  latestDocument.versions.push(newVersion);
-  latestDocument.currentVersionId = input.versionId;
-  latestThread.currentDocumentId = latestDocument.id;
-  await writeThread(latestThread);
+  try {
+    const validate = await runOoxml(['--json', '--strict', 'validate', input.outPath], threadDir(input.thread.id));
+    const validateResult = JSON.parse(validate.stdout);
+    const published = await withThreadMutation(input.thread.id, async () => {
+      const latestThread = await readThread(input.thread.id);
+      const latestDocument = documentById(latestThread, input.document.id);
+      const latestVersion = currentVersion(latestThread, latestDocument);
+      if (latestThread.currentDocumentId !== input.document.id || latestVersion.id !== input.sourceVersion.id) {
+        throw new Error(
+          [
+            'Thread changed while the agent was working, so the edit was not published.',
+            `Expected current document/version ${input.document.id}/${input.sourceVersion.id}.`,
+            `Actual current document/version ${latestThread.currentDocumentId}/${latestVersion.id}.`,
+            'Select the intended document and retry the edit.',
+          ].join(' '),
+        );
+      }
+      const ext = extname(input.sourceVersion.path);
+      const now = new Date().toISOString();
+      const newVersion: FileVersion = {
+        id: input.versionId,
+        originalName: `${basename(input.document.originalName, ext)}-${input.versionId}${ext}`,
+        path: relativeToThread(input.thread.id, input.outPath),
+        createdAt: now,
+        note: input.note,
+      };
+      latestDocument.versions.push(newVersion);
+      latestDocument.currentVersionId = input.versionId;
+      latestThread.currentDocumentId = latestDocument.id;
+      await writeThread(latestThread);
+      return { latestThread, latestDocument, newVersion };
+    });
 
-  return {
-    changed: true,
-    documentId: latestDocument.id,
-    version: newVersion,
-    apply: input.apply,
-    validate: JSON.parse(validate.stdout),
-    downloadUrl: fileUrlFor(latestThread.id, latestDocument.id, input.versionId),
-    ...input.extra,
-  };
+    return {
+      changed: true,
+      documentId: published.latestDocument.id,
+      version: published.newVersion,
+      apply: input.apply,
+      validate: validateResult,
+      downloadUrl: fileUrlFor(published.latestThread.id, published.latestDocument.id, input.versionId),
+      ...input.extra,
+    };
+  } catch (error) {
+    await rm(input.outPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 function assertExpectedSelection(input: {
@@ -673,20 +695,40 @@ function serveRequest(id: number, method: string, params?: Record<string, unknow
 
 async function runOoxmlServe(requests: ServeRequest[], cwd: string): Promise<ServeResponse[]> {
   const bin = process.env.OOXML_BIN || 'ooxml';
+  const maxServeOutputBytes = positiveIntegerEnv('OOXML_SERVE_MAX_OUTPUT_BYTES', 24 * 1024 * 1024);
   const child = spawn(bin, ['serve'], {
     cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const stdout: Buffer[] = [];
   const stderr: Buffer[] = [];
+  let stdoutBytes = 0;
+  let stderrBytes = 0;
+  let outputLimitError: string | null = null;
   let settled = false;
 
   const timeout = setTimeout(() => {
     if (!settled) child.kill('SIGKILL');
   }, 120_000);
 
-  child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
-  child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+  child.stdout.on('data', (chunk: Buffer) => {
+    stdoutBytes += chunk.length;
+    if (stdoutBytes > maxServeOutputBytes) {
+      outputLimitError = `ooxml serve stdout exceeded ${maxServeOutputBytes} bytes.`;
+      child.kill('SIGKILL');
+      return;
+    }
+    stdout.push(chunk);
+  });
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderrBytes += chunk.length;
+    if (stderrBytes > maxServeOutputBytes) {
+      outputLimitError = `ooxml serve stderr exceeded ${maxServeOutputBytes} bytes.`;
+      child.kill('SIGKILL');
+      return;
+    }
+    stderr.push(chunk);
+  });
   for (const request of requests) {
     child.stdin.write(`${JSON.stringify(request)}\n`);
   }
@@ -706,6 +748,10 @@ async function runOoxmlServe(requests: ServeRequest[], cwd: string): Promise<Ser
   const stdoutText = Buffer.concat(stdout).toString();
   const stderrText = Buffer.concat(stderr).toString();
   const parsed = parseServeResponses(stdoutText);
+
+  if (outputLimitError) {
+    throw new Error(outputLimitError);
+  }
 
   if (code !== 0) {
     throw new Error(
@@ -833,6 +879,11 @@ function previewSupportedFor(version: FileVersion): boolean {
   return ext === '.pptx' || ext === '.pptm';
 }
 
+function newVersionOutputPath(dir: string, documentId: string, versionId: string, label: string, ext: string): string {
+  const operationId = randomUUID().slice(0, 8);
+  return join(dir, 'documents', documentId, 'versions', `${versionId}-${label}-${operationId}${ext}`);
+}
+
 function allowedRenderArtifactPaths(version: FileVersion): Set<string> {
   const allowed = new Set<string>();
   if (!version.render) return allowed;
@@ -850,4 +901,10 @@ function decodeArtifactPath(raw: string): string {
   } catch {
     return raw.replace(/\\/g, '/');
   }
+}
+
+function positiveIntegerEnv(name: string, fallback: number): number {
+  const parsed = Number(process.env[name]);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.trunc(parsed);
 }

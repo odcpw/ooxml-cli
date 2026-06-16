@@ -41,6 +41,10 @@ For local smoke testing only, `OOXML_AUTH_DEV_SESSIONS=1` enables
 `POST /api/auth/dev-session`. `OOXML_AUTH_DEV_BYPASS=1` auto-signs local
 requests into `OOXML_DEV_AUTH_EMAIL`; do not enable it in production.
 
+Set `OOXML_TRUST_PROXY_HEADERS=1` only when the app is behind a trusted reverse
+proxy that overwrites forwarding headers. Otherwise the magic-link IP limiter
+ignores client-supplied forwarding headers and relies on global limits.
+
 ## Architecture
 
 - `src/app.ts` owns the Hono app, upload/download/render APIs, and mounts Flue
@@ -79,6 +83,8 @@ without spending model tokens:
 
 ```bash
 npm run smoke:auth
+npm run smoke:auth-abuse
+npm run smoke:nonpptx
 ```
 
 Then exercise the real sign-in -> upload -> Flue agent -> stream -> OOXML edit
