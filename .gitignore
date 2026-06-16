@@ -57,6 +57,14 @@ __pycache__/
 /.claude/
 /refactor/
 
+# Flue OOXML web prototype local state
+/examples/flue-ooxml-web/node_modules/
+/examples/flue-ooxml-web/.flue-vite/
+/examples/flue-ooxml-web/dist/
+/examples/flue-ooxml-web/data/
+/examples/flue-ooxml-web/.env
+/examples/.flue-ooxml-web-data/
+
 # Local exploded OOXML package roots
 /[Content_Types].xml
 /_rels/
