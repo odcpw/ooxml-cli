@@ -147,6 +147,15 @@ export function workbenchHtml(): string {
         text-transform: uppercase;
         letter-spacing: .08em;
       }
+      .privacy-note {
+        margin-top: 10px;
+        color: var(--color-muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .privacy-note a {
+        color: #aab0ff;
+      }
 	      .upload-form { display: grid; gap: 9px; }
 	      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 	      .composer-row { justify-content: space-between; }
@@ -320,6 +329,10 @@ export function workbenchHtml(): string {
             <input id="fileInput" type="file" accept=".pptx,.pptm,.docx,.xlsx,.xlsm" multiple required />
             <button id="uploadBtn" type="submit">Upload file(s)</button>
           </form>
+          <div class="privacy-note">
+            Do not upload unnecessary personal data or sensitive PII.
+            <a href="${basePath}/privacy">Privacy</a>
+          </div>
         </div>
         <div class="section">
           <h2 class="section-title">Library</h2>

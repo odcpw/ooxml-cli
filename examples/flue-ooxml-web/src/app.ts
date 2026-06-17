@@ -297,6 +297,10 @@ const privacySections = [
     body: 'Uploaded files are used only to inspect, render, validate, and edit documents you submit in the workbench. Agent requests may send the relevant prompt and document-derived context to the configured model provider.',
   },
   {
+    title: 'Personal data',
+    body: 'Do not upload unnecessary personal data, sensitive personal information, or documents containing PII that is not needed for the task. Remove or redact that information before using the workbench.',
+  },
+  {
     title: 'Account data',
     body: 'Google and Microsoft sign-in are used only to identify your account email and keep your private workbench data separate from other users.',
   },
