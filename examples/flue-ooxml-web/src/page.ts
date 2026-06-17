@@ -436,8 +436,7 @@ export function workbenchHtml(): string {
 	        try {
           const url = state.thread ? '/api/threads/' + encodeURIComponent(state.thread.id) + '/upload' : '/api/upload';
           const response = await apiFetch(url, { method: 'POST', body: form });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || 'Upload failed');
+          const data = await readApiJson(response, 'Upload');
           state.thread = data;
           fileInput.value = '';
           titleInput.value = '';
@@ -468,8 +467,7 @@ export function workbenchHtml(): string {
 	        setBusy(true, 'Rendering preview');
 	        try {
 	          const response = await apiFetch('/api/threads/' + encodeURIComponent(state.thread.id) + '/render', { method: 'POST' });
-	          const data = await response.json();
-	          if (!response.ok) throw new Error(data.error || 'Render failed');
+	          const data = await readApiJson(response, 'Render');
 	          if (data.rendered === false) {
 	            addMessage('trace', 'preview not rendered · ' + (data.reason || 'unsupported file type'));
 	            return;
@@ -497,8 +495,7 @@ export function workbenchHtml(): string {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message })
           });
-          const data = await response.json();
-          if (!response.ok) throw new Error(agentErrorMessage(data));
+          const data = await readApiJson(response, 'Agent request', agentErrorMessage);
           if (data.submissionId) addMessage('trace', 'submission accepted · ' + String(data.submissionId).slice(0, 8));
           await streamAgentEvents(data);
           await refreshThread();
@@ -516,7 +513,7 @@ export function workbenchHtml(): string {
 
       async function loadAccount() {
         const response = await apiFetch('/api/auth/me');
-        const data = await response.json();
+        const data = await readApiJson(response, 'Current user');
         if (response.ok && data.user?.email) {
           accountLine.textContent = data.user.email;
         }
@@ -524,8 +521,7 @@ export function workbenchHtml(): string {
 
       async function loadThreads(selectId, loadSelected = true) {
         const response = await apiFetch('/api/threads');
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Could not load threads');
+        const data = await readApiJson(response, 'Thread list');
         state.threads = data.threads || [];
         const targetId = selectId || state.thread?.id || state.threads[0]?.id;
         if (targetId && loadSelected) {
@@ -538,8 +534,7 @@ export function workbenchHtml(): string {
 
 	      async function openThread(threadId, options = {}) {
 	        const response = await apiFetch('/api/threads/' + encodeURIComponent(threadId));
-	        const data = await response.json();
-	        if (!response.ok) throw new Error(data.error || 'Thread not found');
+	        const data = await readApiJson(response, 'Thread');
 	        state.thread = data;
 	        if (options.clearChat !== false) {
 	          chat.innerHTML = '';
@@ -673,8 +668,7 @@ export function workbenchHtml(): string {
           const response = await apiFetch('/api/threads/' + encodeURIComponent(state.thread.id) + '/documents/' + encodeURIComponent(documentId) + '/select', {
             method: 'POST'
           });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || 'Select failed');
+          const data = await readApiJson(response, 'Select file');
           state.thread = data;
           await loadThreads(data.id, false);
           renderThread();
@@ -693,8 +687,7 @@ export function workbenchHtml(): string {
           const response = await apiFetch('/api/threads/' + encodeURIComponent(state.thread.id) + '/documents/' + encodeURIComponent(documentId), {
             method: 'DELETE'
           });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || 'Remove failed');
+          const data = await readApiJson(response, 'Remove file');
           state.thread = data;
           await loadThreads(data.id, false);
           renderThread();
@@ -944,10 +937,53 @@ export function workbenchHtml(): string {
         return JSON.stringify(data, null, 2);
       }
 
+      async function readApiJson(response, label, errorFormatter) {
+        const contentType = response.headers.get('content-type') || '';
+        const text = await response.text();
+        let data = {};
+        if (text) {
+          const jsonLike = contentType.includes('application/json') || /^\\s*[\\[{]/.test(text);
+          if (jsonLike) {
+            try {
+              data = JSON.parse(text);
+            } catch (error) {
+              throw new Error(label + ' returned invalid JSON (' + response.status + ') from ' + responsePath(response) + '.');
+            }
+          } else {
+            throw new Error(nonJsonResponseMessage(response, label, contentType, text));
+          }
+        }
+        if (!response.ok) {
+          const formatted = typeof errorFormatter === 'function' ? errorFormatter(data) : undefined;
+          throw new Error(formatted || data?.error?.message || data?.error || data?.message || label + ' failed (' + response.status + ').');
+        }
+        return data;
+      }
+
+      function nonJsonResponseMessage(response, label, contentType, text) {
+        const type = contentType || 'no content type';
+        const path = responsePath(response);
+        if (/^\\s*<!doctype|^\\s*<html/i.test(text)) {
+          return label + ' returned an HTML page instead of JSON (' + response.status + ', ' + type + ') from ' + path + '. Refresh the page and sign in again; if it repeats, this is a proxy/auth routing bug.';
+        }
+        const preview = text.replace(/\\s+/g, ' ').slice(0, 120);
+        return label + ' returned non-JSON (' + response.status + ', ' + type + ') from ' + path + ': ' + preview;
+      }
+
+      function responsePath(response) {
+        try {
+          const url = new URL(response.url);
+          return url.pathname + url.search;
+        } catch {
+          return 'the requested endpoint';
+        }
+      }
+
       async function apiFetch(url, options = {}) {
         const init = { ...options };
         const method = String(init.method || 'GET').toUpperCase();
         const headers = new Headers(init.headers || {});
+        if (!headers.has('accept')) headers.set('accept', 'application/json');
         if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
           const csrf = cookieValue('ooxml_csrf');
           if (csrf) headers.set('x-ooxml-csrf', csrf);

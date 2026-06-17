@@ -83,7 +83,10 @@ app.use('/flue/*', async (c, next) => {
   await next();
 });
 
-app.get('/', authMiddleware, (c) => c.html(workbenchHtml()));
+app.get('/', authMiddleware, (c) => {
+  c.header('Cache-Control', 'no-store');
+  return c.html(workbenchHtml());
+});
 
 app.get('/api/auth/me', (c) => currentUserResponse(c));
 
