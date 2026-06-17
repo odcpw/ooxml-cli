@@ -306,7 +306,7 @@ const privacySections = [
   },
   {
     title: 'Contact',
-    body: 'For access or deletion requests, contact the app operator at oliver@decaro.ch.',
+    body: 'For access or deletion requests, use the private support channel that shared this workbench with you.',
   },
 ];
 
@@ -325,7 +325,7 @@ const termsSections = [
   },
   {
     title: 'Contact',
-    body: 'Questions about these terms can be sent to oliver@decaro.ch.',
+    body: 'Questions about these terms should go through the private support channel that shared this workbench with you.',
   },
 ];
 
