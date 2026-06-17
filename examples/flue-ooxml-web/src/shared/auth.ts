@@ -1,27 +1,35 @@
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { Context, MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
-import { runtimeDataRoot } from './runtime-paths.ts';
+import { dataRoot } from './storage.ts';
+
+export const SESSION_COOKIE_NAME = 'ooxml_session';
+export const CSRF_COOKIE_NAME = 'ooxml_csrf';
+export const CSRF_HEADER_NAME = 'x-ooxml-csrf';
+
+const sessionTtlMs = 30 * 24 * 60 * 60 * 1000;
+const magicLinkTtlMs = 15 * 60 * 1000;
+const oauthStateTtlSeconds = 10 * 60;
+const csrfCookieMaxAgeSeconds = 30 * 24 * 60 * 60;
+const maxActiveMagicTokens = 3;
+const magicLinkRateLimitWindowMs = 60 * 60 * 1000;
+
+type OAuthProvider = 'google' | 'microsoft';
 
 export type AuthUser = {
   id: string;
   email: string;
   createdAt: string;
-  lastSeenAt: string;
-};
-
-export type AuthEnv = {
-  Variables: {
-    authUser: AuthUser;
-  };
+  updatedAt: string;
 };
 
 type SessionRecord = {
   id: string;
-  userId: string;
   tokenHash: string;
+  userId: string;
+  csrfToken: string;
   createdAt: string;
   expiresAt: string;
   lastSeenAt: string;
@@ -31,6 +39,7 @@ type MagicLinkRecord = {
   id: string;
   email: string;
   tokenHash: string;
+  returnTo: string;
   createdAt: string;
   expiresAt: string;
 };
@@ -40,14 +49,13 @@ type OAuthIdentityRecord = {
   subject: string;
   userId: string;
   email: string;
-  updatedAt: string;
+  createdAt: string;
 };
 
 type RateLimitRecord = {
-  scope: string;
-  bucketStart: number;
+  key: string;
+  bucketStart: string;
   count: number;
-  updatedAt: string;
 };
 
 type AuthState = {
@@ -58,272 +66,359 @@ type AuthState = {
   rateLimits: RateLimitRecord[];
 };
 
-export type OAuthProvider = 'google' | 'microsoft';
-
 type OAuthStateCookie = {
-  provider: OAuthProvider;
-  state: string;
   codeVerifier: string;
+  provider: OAuthProvider;
   returnTo: string;
+  state: string;
 };
 
-export const SESSION_COOKIE_NAME = 'ooxml_session';
-export const CSRF_COOKIE_NAME = 'ooxml_csrf';
-export const CSRF_HEADER_NAME = 'x-ooxml-csrf';
+export type AuthContext = {
+  user: AuthUser;
+  session: SessionRecord;
+};
 
-const sessionTtlMs = 30 * 24 * 60 * 60 * 1000;
-const csrfTtlSeconds = 30 * 24 * 60 * 60;
-const magicLinkTokenTtlMs = 15 * 60 * 1000;
-const magicLinkRequestWindowMs = 60 * 60 * 1000;
-const oauthStateTtlSeconds = 10 * 60;
-const stateChangingMethods = new Set(['DELETE', 'PATCH', 'POST', 'PUT']);
-const providers = new Set<OAuthProvider>(['google', 'microsoft']);
+export type AuthEnv = {
+  Variables: {
+    auth?: AuthContext;
+  };
+};
 
-let authMutationQueue: Promise<unknown> = Promise.resolve();
+type AppContext = Context<{ Variables: { auth?: AuthContext } }>;
 
-export function getAuthUser(c: Context): AuthUser {
-  const user = c.get('authUser');
-  if (!user) throw new Error('Authentication required.');
-  return user as AuthUser;
-}
+let stateQueue: Promise<unknown> = Promise.resolve();
 
-export function isStateChangingMethod(method: string): boolean {
-  return stateChangingMethods.has(method.toUpperCase());
-}
-
-export async function currentSessionUser(c: Context): Promise<AuthUser | null> {
-  const devUser = await maybeIssueDevBypassSession(c);
-  if (devUser) return devUser;
-
-  const cookieValue = getCookie(c, SESSION_COOKIE_NAME);
-  if (!cookieValue) return null;
-  return validateSessionCookie(cookieValue);
-}
-
-export const requireAuth: MiddlewareHandler<AuthEnv> = async (c, next) => {
-  const user = await currentSessionUser(c);
-  if (!user) {
-    return unauthenticated(c);
+export const authMiddleware: MiddlewareHandler = async (c, next) => {
+  const pathname = new URL(c.req.url).pathname;
+  if (isPublicPath(pathname)) {
+    await next();
+    return;
   }
 
-  c.set('authUser', user);
+  const auth = await validateAuthContext(c as AppContext);
+  if (!auth) {
+    return unauthenticatedResponse(c);
+  }
 
   if (isStateChangingMethod(c.req.method) && !hasValidCsrf(c)) {
     return c.json({ error: 'CSRF token required.' }, 403);
   }
 
+  c.set('auth', auth);
   await next();
 };
 
-export function requireJsonContent(c: Context): Response | null {
-  const contentType = c.req.header('content-type') ?? '';
-  if (!contentType.toLowerCase().startsWith('application/json')) {
-    return c.json({ error: 'Content-Type must be application/json.' }, 415);
+export function requireAuth(c: AppContext): AuthContext {
+  const auth = c.get('auth');
+  if (!auth) {
+    throw new Error('Authentication required.');
   }
-  return null;
+  return auth;
 }
 
-export async function issueSessionForEmail(c: Context, email: string, identity?: { provider: OAuthProvider; subject: string }): Promise<AuthUser> {
-  const normalizedEmail = normalizeEmail(email);
-  assertValidEmail(normalizedEmail);
-  assertEmailAllowed(normalizedEmail);
-
-  const now = new Date();
-  const token = randomToken();
-  const tokenHash = sha256(token);
-  const sessionId = randomUUID();
-  const expiresAt = new Date(now.getTime() + sessionTtlMs).toISOString();
-
-  const user = await mutateAuthState((state) => {
-    cleanupAuthState(state, now);
-    let existing: AuthUser | undefined;
-    if (identity) {
-      const linked = state.oauthIdentities.find(
-        (candidate) => candidate.provider === identity.provider && candidate.subject === identity.subject,
-      );
-      if (linked) existing = state.users.find((candidate) => candidate.id === linked.userId);
-    }
-    existing ??= state.users.find((candidate) => candidate.email === normalizedEmail);
-    if (!existing) {
-      existing = {
-        id: `user-${randomUUID()}`,
-        email: normalizedEmail,
-        createdAt: now.toISOString(),
-        lastSeenAt: now.toISOString(),
-      };
-      state.users.push(existing);
-    } else {
-      const emailOwner = state.users.find((candidate) => candidate.email === normalizedEmail);
-      if (emailOwner && emailOwner.id !== existing.id) {
-        throw new Error('This email is already linked to another account.');
-      }
-      existing.email = normalizedEmail;
-      existing.lastSeenAt = now.toISOString();
-    }
-
-    if (identity) {
-      state.oauthIdentities = state.oauthIdentities.filter(
-        (candidate) => !(candidate.provider === identity.provider && candidate.subject === identity.subject),
-      );
-      state.oauthIdentities.push({
-        provider: identity.provider,
-        subject: identity.subject,
-        userId: existing.id,
-        email: normalizedEmail,
-        updatedAt: now.toISOString(),
-      });
-    }
-
-    state.sessions.push({
-      id: sessionId,
-      userId: existing.id,
-      tokenHash,
-      createdAt: now.toISOString(),
-      expiresAt,
-      lastSeenAt: now.toISOString(),
-    });
-    pruneUserSessions(state, existing.id);
-    return existing;
-  });
-
-  setSessionCookies(c, `${sessionId}.${token}`, Math.floor(sessionTtlMs / 1000));
-  return user;
+export function requireAuthUser(c: AppContext): AuthUser {
+  return requireAuth(c).user;
 }
 
-export function clearAuthCookies(c: Context): void {
-  deleteCookie(c, SESSION_COOKIE_NAME, { path: '/' });
-  deleteCookie(c, CSRF_COOKIE_NAME, { path: '/' });
-}
-
-export async function revokeCurrentSession(c: Context): Promise<void> {
-  const cookieValue = getCookie(c, SESSION_COOKIE_NAME);
-  if (cookieValue) {
-    const parsed = parseSessionCookie(cookieValue);
-    if (parsed) {
-      await mutateAuthState((state) => {
-        state.sessions = state.sessions.filter(
-          (session) => !(session.id === parsed.sessionId && timingSafeEqualString(session.tokenHash, parsed.tokenHash)),
-        );
-        return undefined;
-      });
-    }
-  }
-  clearAuthCookies(c);
-}
-
-export async function requestMagicLink(input: { c: Context; email: string }): Promise<{ ok: boolean; retryAfterSeconds?: number }> {
-  const email = normalizeEmail(input.email);
-  if (!isValidEmail(email)) {
-    throw new Error('Enter a valid email address.');
-  }
-
-  const clientScope = clientIpScope(input.c);
-  const globalScope = 'magic-link:global';
-  const rateLimits = [
-    clientScope ? await checkRateLimit(`magic-link:${clientScope}`, 20, magicLinkRequestWindowMs) : { allowed: true as const },
-    await checkRateLimit(globalScope, 300, magicLinkRequestWindowMs),
-  ];
-  const denied = rateLimits.find((candidate) => !candidate.allowed);
-  if (denied && !denied.allowed) {
-    return { ok: false, retryAfterSeconds: denied.retryAfterSeconds };
-  }
-
-  const now = new Date();
-  const token = randomToken();
-  const tokenHash = sha256(token);
-  const expiresAt = new Date(now.getTime() + magicLinkTokenTtlMs);
-
-  await mutateAuthState((state) => {
-    cleanupAuthState(state, now);
-    state.magicLinks = state.magicLinks.filter((link) => link.email !== email);
-    state.magicLinks.push({
-      id: randomUUID(),
-      email,
-      tokenHash,
-      createdAt: now.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-    });
-    return undefined;
-  });
-
-  try {
-    await sendMagicLinkEmail({
-      to: email,
-      from: process.env.EMAIL_FROM || 'no-reply@ooxml-workbench.local',
-      magicLinkUrl: buildMagicLinkUrl(baseUrlFor(input.c), token),
-      expiresAt,
-    });
-  } catch (error) {
-    await mutateAuthState((state) => {
-      state.magicLinks = state.magicLinks.filter((link) => link.tokenHash !== tokenHash);
-      return undefined;
-    });
-    console.warn('[ooxml-web] Magic-link delivery failed.', errorReason(error));
-  }
-
-  return { ok: true };
-}
-
-export async function consumeMagicLink(c: Context, token: string): Promise<AuthUser> {
-  const tokenHash = sha256(token);
-  const now = new Date();
-  const result = await mutateAuthState((state) => {
-    cleanupAuthState(state, now);
-    const link = state.magicLinks.find((candidate) => timingSafeEqualString(candidate.tokenHash, tokenHash));
-    if (!link) return null;
-    if (Date.parse(link.expiresAt) <= now.getTime()) {
-      state.magicLinks = state.magicLinks.filter((candidate) => candidate.id !== link.id);
-      return null;
-    }
-    state.magicLinks = state.magicLinks.filter((candidate) => candidate.id !== link.id);
-    return link.email;
-  });
-
-  if (!result) throw new Error('Magic link is invalid or expired.');
-  return issueSessionForEmail(c, result);
+export function authUserResponse(user: AuthUser): { id: string; email: string } {
+  return {
+    id: user.id,
+    email: user.email,
+  };
 }
 
 export async function checkRateLimit(
-  scope: string,
+  key: string,
   limit: number,
   windowMs: number,
 ): Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }> {
-  const now = Date.now();
-  const bucketStart = Math.floor(now / windowMs) * windowMs;
-  return mutateAuthState((state) => {
-    state.rateLimits = state.rateLimits.filter((bucket) => bucket.bucketStart >= now - 24 * 60 * 60 * 1000);
-    let bucket = state.rateLimits.find((candidate) => candidate.scope === scope && candidate.bucketStart === bucketStart);
-    if (!bucket) {
-      bucket = { scope, bucketStart, count: 0, updatedAt: new Date(now).toISOString() };
-      state.rateLimits.push(bucket);
+  const now = new Date();
+  const normalizedLimit = Number.isFinite(limit) && limit > 0 ? Math.trunc(limit) : 60;
+  const normalizedWindowMs = Number.isFinite(windowMs) && windowMs > 0 ? Math.trunc(windowMs) : 60_000;
+  return mutateAuthState(async (state) => {
+    const bucketStart = new Date(Math.floor(now.getTime() / normalizedWindowMs) * normalizedWindowMs);
+    state.rateLimits = state.rateLimits.filter((record) => now.getTime() - Date.parse(record.bucketStart) < 24 * 60 * 60 * 1000);
+    let record = state.rateLimits.find((candidate) => candidate.key === key && candidate.bucketStart === bucketStart.toISOString());
+    if (!record) {
+      record = { key, bucketStart: bucketStart.toISOString(), count: 0 };
+      state.rateLimits.push(record);
     }
-    bucket.count += 1;
-    bucket.updatedAt = new Date(now).toISOString();
-    if (bucket.count <= limit) return { allowed: true };
-    return {
-      allowed: false,
-      retryAfterSeconds: Math.max(1, Math.ceil((bucketStart + windowMs - now) / 1000)),
-    };
+    record.count += 1;
+    if (record.count > normalizedLimit) {
+      return {
+        allowed: false,
+        retryAfterSeconds: Math.max(1, Math.ceil((bucketStart.getTime() + normalizedWindowMs - now.getTime()) / 1000)),
+      };
+    }
+    return { allowed: true };
   });
 }
 
 export function rateLimitResponse(c: Context, retryAfterSeconds: number): Response {
-  c.header('Retry-After', String(retryAfterSeconds));
-  return c.json({ error: 'Too many requests. Try again later.' }, 429);
+  return c.json(
+    { error: 'Too many requests. Try again later.' },
+    429,
+    { 'Retry-After': String(Math.max(1, Math.ceil(retryAfterSeconds))) },
+  );
 }
 
-export function isOAuthProvider(value: string): value is OAuthProvider {
-  return providers.has(value as OAuthProvider);
+export function signInHtml(input: { returnTo?: string | null } = {}): string {
+  const returnTo = safeReturnTo(input.returnTo);
+  const microsoftConfigured = isOAuthConfigured('microsoft');
+  const googleConfigured = isOAuthConfigured('google');
+  const devEnabled = isDevSessionEnabled();
+  return `<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sign in - OOXML Workbench</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0e0e10;
+        --surface: #16161a;
+        --surface-2: #1c1c21;
+        --border: #2a2a32;
+        --text: #e4e4e8;
+        --muted: #8e8e9a;
+        --accent: #7b83ff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main {
+        width: min(420px, calc(100vw - 32px));
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        padding: 24px;
+      }
+      h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: 0; }
+      p { margin: 0 0 18px; color: var(--muted); line-height: 1.45; }
+      form, .stack { display: grid; gap: 10px; }
+      input {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: #111115;
+        color: var(--text);
+        padding: 10px 11px;
+        font: inherit;
+      }
+      button, a.button {
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 40px;
+        border: 1px solid transparent;
+        border-radius: 7px;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+        padding: 9px 12px;
+      }
+      a.button.secondary, button.secondary {
+        background: var(--surface-2);
+        border-color: var(--border);
+        color: var(--text);
+      }
+      .divider {
+        margin: 18px 0;
+        border-top: 1px solid var(--border);
+      }
+      .message { margin-top: 12px; color: var(--muted); min-height: 18px; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>OOXML Workbench</h1>
+      <p>Sign in to use your private file library and agent threads.</p>
+      <div class="stack">
+        ${microsoftConfigured ? `<a class="button" href="/api/auth/oauth/microsoft/start?returnTo=${encodeURIComponent(returnTo)}">Continue with Microsoft</a>` : ''}
+        ${googleConfigured ? `<a class="button secondary" href="/api/auth/oauth/google/start?returnTo=${encodeURIComponent(returnTo)}">Continue with Google</a>` : ''}
+      </div>
+      <div class="divider"></div>
+      <form id="magicForm">
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="name@company.com" required />
+        <input name="returnTo" type="hidden" value="${escapeHtml(returnTo)}" />
+        <button type="submit">Send sign-in link</button>
+      </form>
+      ${devEnabled ? `<form method="post" action="/api/auth/dev-session" style="margin-top:10px"><input name="returnTo" type="hidden" value="${escapeHtml(returnTo)}" /><button class="secondary" type="submit">Use development session</button></form>` : ''}
+      <div id="message" class="message"></div>
+    </main>
+    <script>
+      const form = document.getElementById('magicForm');
+      const message = document.getElementById('message');
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        message.textContent = 'Sending sign-in link...';
+        const response = await fetch('/api/auth/magic-link/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('email').value,
+            returnTo: ${JSON.stringify(returnTo)}
+          })
+        });
+        const data = await response.json().catch(() => ({}));
+        message.textContent = data.message || (response.ok ? 'Check your email.' : 'Sign-in link could not be requested.');
+      });
+    </script>
+  </body>
+</html>`;
 }
 
-export async function startOAuth(c: Context, provider: OAuthProvider, returnTo?: string | null): Promise<Response> {
+export async function currentUserResponse(c: AppContext): Promise<Response> {
+  const auth = requireAuth(c);
+  return c.json({
+    user: {
+      id: auth.user.id,
+      email: auth.user.email,
+    },
+    csrfHeader: CSRF_HEADER_NAME,
+  });
+}
+
+export async function requestMagicLinkRoute(c: Context): Promise<Response> {
+  if (!hasAllowedOrigin(c)) {
+    return c.json({ error: 'Sign-in request rejected.' }, 403);
+  }
+  const input = await readJsonOrForm(c);
+  const email = normalizeEmail(stringValue(input.email));
+  if (!isValidEmail(email)) {
+    return c.json({ message: 'Enter a valid email address.' }, 400);
+  }
+
+  const rateLimit = await checkMagicLinkRateLimit(email, clientIp(c.req.raw.headers));
+  if (!rateLimit.allowed) {
+    return c.json(
+      { message: 'Too many sign-in links requested. Try again later.' },
+      429,
+      { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+    );
+  }
+
+  const token = randomToken();
+  const returnTo = safeReturnTo(stringValue(input.returnTo));
+  const now = new Date();
+  await mutateAuthState(async (state) => {
+    pruneExpired(state, now);
+    const active = state.magicLinks
+      .filter((candidate) => candidate.email === email && Date.parse(candidate.expiresAt) > now.getTime())
+      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    while (active.length >= maxActiveMagicTokens) {
+      const oldest = active.shift();
+      if (!oldest) break;
+      state.magicLinks = state.magicLinks.filter((candidate) => candidate.id !== oldest.id);
+    }
+    state.magicLinks.push({
+      id: randomUUID(),
+      email,
+      tokenHash: hashToken(token),
+      returnTo,
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + magicLinkTtlMs).toISOString(),
+    });
+  });
+
+  await sendMagicLink({
+    email,
+    magicLinkUrl: new URL(`/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`, appBaseUrl(c)).toString(),
+    expiresAt: new Date(now.getTime() + magicLinkTtlMs),
+  });
+
+  return c.json({ message: 'Check your email for a sign-in link.' }, 202);
+}
+
+export function confirmMagicLinkHtml(token: string): string {
+  return `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Sign in</title></head>
+<body>
+  <main>
+    <h1>Sign in to OOXML Workbench</h1>
+    <p>Confirm this browser should be signed in.</p>
+    <form method="post" action="/api/auth/magic-link/verify">
+      <input type="hidden" name="token" value="${escapeHtml(token)}" />
+      <button type="submit">Sign in</button>
+    </form>
+  </main>
+</body>
+</html>`;
+}
+
+export async function verifyMagicLinkRoute(c: Context): Promise<Response> {
+  if (!hasAllowedVerificationOrigin(c)) {
+    return c.json({ message: 'Magic link is invalid or already used.' }, 403);
+  }
+
+  const input = await readJsonOrForm(c);
+  const token = stringValue(input.token) || new URL(c.req.url).searchParams.get('token') || '';
+  if (!token) {
+    return c.json({ message: 'Magic link is invalid or already used.' }, 400);
+  }
+
+  const consumed = await mutateAuthState(async (state) => {
+    const now = new Date();
+    pruneExpired(state, now);
+    const tokenHash = hashToken(token);
+    const index = state.magicLinks.findIndex((candidate) => candidate.tokenHash === tokenHash);
+    if (index === -1) return null;
+    const record = state.magicLinks[index];
+    if (!record || Date.parse(record.expiresAt) <= now.getTime()) {
+      if (index !== -1) state.magicLinks.splice(index, 1);
+      return { error: 'expired' as const };
+    }
+    state.magicLinks.splice(index, 1);
+    const user = findOrCreateUserByEmail(state, record.email, now);
+    return { user, returnTo: record.returnTo };
+  });
+
+  if (!consumed) {
+    return c.json({ message: 'Magic link is invalid or already used.' }, 400);
+  }
+  if ('error' in consumed) {
+    return c.json({ message: 'Magic link expired. Request a new sign-in link.' }, 410);
+  }
+
+  await issueSession(c, consumed.user);
+  if (wantsHtml(c)) {
+    return c.redirect(consumed.returnTo, 303);
+  }
+  return c.json({
+    message: 'Signed in.',
+    user: {
+      id: consumed.user.id,
+      email: consumed.user.email,
+    },
+  });
+}
+
+export async function startOAuthRoute(c: Context, provider: string): Promise<Response> {
+  if (!isOAuthProvider(provider)) {
+    return c.json({ message: 'Unsupported OAuth provider.' }, 404);
+  }
   const config = oauthProviderConfig(provider);
+  if (!config.clientId || !config.clientSecret) {
+    return c.json({ message: `${provider} OAuth is not configured.` }, 404);
+  }
+
   const state = randomToken();
   const codeVerifier = randomToken(48);
-  const requestUrl = new URL(c.req.url);
-  const redirectUri = oauthRedirectUri(provider, requestUrl);
+  const returnTo = safeReturnTo(new URL(c.req.url).searchParams.get('returnTo'));
+  const redirectUri = oauthRedirectUri(c, provider);
   const authorizationUrl = new URL(config.authorizationEndpoint);
-
   authorizationUrl.searchParams.set('client_id', config.clientId);
   authorizationUrl.searchParams.set('code_challenge', pkceChallenge(codeVerifier));
   authorizationUrl.searchParams.set('code_challenge_method', 'S256');
@@ -333,313 +428,283 @@ export async function startOAuth(c: Context, provider: OAuthProvider, returnTo?:
   authorizationUrl.searchParams.set('state', state);
   authorizationUrl.searchParams.set('prompt', 'select_account');
 
-  setCookie(c, oauthStateCookieName(provider), encodeOAuthStateCookie({
-    provider,
-    state,
-    codeVerifier,
-    returnTo: getSafeRedirectPath(returnTo || '/'),
-  }), {
+  setCookie(c, oauthStateCookieName(provider), encodeOAuthStateCookie({ codeVerifier, provider, returnTo, state }), {
     httpOnly: true,
     maxAge: oauthStateTtlSeconds,
     path: '/',
     sameSite: 'Lax',
-    secure: secureCookies(),
+    secure: isSecureCookie(),
   });
 
   return c.redirect(authorizationUrl.toString(), 303);
 }
 
-export async function finishOAuth(c: Context, provider: OAuthProvider): Promise<Response> {
+export async function oauthCallbackRoute(c: Context, provider: string): Promise<Response> {
+  if (!isOAuthProvider(provider)) {
+    return c.json({ message: 'Unsupported OAuth provider.' }, 404);
+  }
+
   const cookieName = oauthStateCookieName(provider);
-  const stateCookie = decodeOAuthStateCookie(getCookie(c, cookieName) ?? '');
-  clearOAuthStateCookie(c, cookieName);
-
+  const stateCookie = decodeOAuthStateCookie(getCookie(c, cookieName) || '');
   const url = new URL(c.req.url);
-  const state = url.searchParams.get('state') ?? '';
-  const code = url.searchParams.get('code') ?? '';
-  if (!stateCookie || stateCookie.provider !== provider || !timingSafeEqualString(stateCookie.state, state) || !code) {
-    return c.redirect('/signin?error=oauth_state', 303);
+  const stateParam = url.searchParams.get('state') || '';
+  const code = url.searchParams.get('code') || '';
+  const providerError = url.searchParams.get('error');
+
+  deleteCookie(c, cookieName, { path: '/' });
+
+  if (!stateCookie || stateCookie.provider !== provider || stateCookie.state !== stateParam || providerError || !code) {
+    return c.redirect(`/signin?oauth=${encodeURIComponent(providerError || 'oauth_failed')}`, 303);
   }
 
   try {
-    const token = await exchangeOAuthCode({ provider, code, codeVerifier: stateCookie.codeVerifier, requestUrl: url });
+    const token = await exchangeOAuthCode(c, provider, code, stateCookie.codeVerifier);
     const userInfo = await fetchOAuthUserInfo(provider, token.accessToken);
-    const email = extractVerifiedOAuthEmail(provider, userInfo);
-    const subject = extractOAuthSubject(provider, userInfo);
+    const claims = token.idTokenClaims ?? userInfo;
+    const email = extractVerifiedOAuthEmail(provider, claims);
+    const subject = extractOAuthSubject(provider, claims);
     if (!email || !subject) {
-      return c.redirect('/signin?error=oauth_email', 303);
+      return c.redirect('/signin?oauth=oauth_email', 303);
     }
-    await issueSessionForEmail(c, email, { provider, subject });
-    return c.redirect(getSafeRedirectPath(stateCookie.returnTo), 303);
+    const user = await mutateAuthState(async (state) => {
+      const now = new Date();
+      const user = findOrCreateUserByEmail(state, email, now);
+      if (!state.oauthIdentities.some((identity) => identity.provider === provider && identity.subject === subject)) {
+        state.oauthIdentities.push({
+          provider,
+          subject,
+          userId: user.id,
+          email,
+          createdAt: now.toISOString(),
+        });
+      }
+      return user;
+    });
+    await issueSession(c, user);
+    return c.redirect(stateCookie.returnTo, 303);
   } catch (error) {
-    console.warn('[ooxml-web] OAuth sign-in failed.', { provider, reason: errorReason(error) });
-    return c.redirect('/signin?error=oauth_failed', 303);
+    console.warn('OAuth sign-in failed.', { provider, reason: error instanceof Error ? error.message : String(error) });
+    return c.redirect('/signin?oauth=oauth_failed', 303);
   }
 }
 
-export function getSafeRedirectPath(value: string | null | undefined): string {
-  const fallback = '/';
-  if (!value) return fallback;
-  const trimmed = value.trim();
-  if (!trimmed.startsWith('/')) return fallback;
-  if (trimmed.startsWith('//')) return fallback;
-  if (trimmed.includes('://') || trimmed.includes('\\')) return fallback;
-  return trimmed;
+export async function devSessionRoute(c: Context): Promise<Response> {
+  if (!isDevSessionEnabled()) {
+    return c.json({ message: 'Development sessions are not enabled.' }, 404);
+  }
+  const input = await readJsonOrForm(c);
+  const email = normalizeEmail(stringValue(input.email) || process.env.OOXML_DEV_AUTH_EMAIL || 'dev-ooxml@example.test');
+  const returnTo = safeReturnTo(stringValue(input.returnTo));
+  const user = await mutateAuthState(async (state) => findOrCreateUserByEmail(state, email, new Date()));
+  await issueSession(c, user);
+  if (wantsHtml(c)) return c.redirect(returnTo, 303);
+  return c.json({ message: 'Development session started.', user: { id: user.id, email: user.email } });
 }
 
-export function hasAllowedVerificationOrigin(c: Context, options: { requireHeader?: boolean } = {}): boolean {
-  const requestOrigin = new URL(c.req.url).origin;
-  const allowedOrigins = new Set([requestOrigin]);
-  const appBaseUrl = process.env.APP_BASE_URL?.trim();
-  if (appBaseUrl) {
-    try {
-      allowedOrigins.add(new URL(appBaseUrl).origin);
-    } catch {
-      // Ignore invalid deployment hints; request origin remains authoritative.
-    }
+export async function logoutRoute(c: Context): Promise<Response> {
+  const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
+  if (sessionCookie) {
+    const tokenHash = hashToken(sessionCookie);
+    await mutateAuthState(async (state) => {
+      state.sessions = state.sessions.filter((session) => session.tokenHash !== tokenHash);
+    });
   }
+  deleteCookie(c, SESSION_COOKIE_NAME, { path: '/' });
+  deleteCookie(c, CSRF_COOKIE_NAME, { path: '/' });
+  return c.json({ message: 'Signed out.' });
+}
 
-  const origin = c.req.header('origin');
-  if (origin) return allowedOrigins.has(origin);
+function isPublicPath(pathname: string): boolean {
+  if (pathname === '/signin' || pathname === '/health' || pathname === '/favicon.ico' || pathname === '/robots.txt') {
+    return true;
+  }
+  return (
+    pathname === '/api/auth/magic-link/request' ||
+    pathname === '/api/auth/magic-link/verify' ||
+    pathname === '/api/auth/dev-session' ||
+    /^\/api\/auth\/oauth\/[^/]+\/(?:start|callback)$/.test(pathname)
+  );
+}
 
-  const referer = c.req.header('referer');
-  if (!referer) return !options.requireHeader;
+function isStateChangingMethod(method: string): boolean {
+  return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+}
 
+async function validateAuthContext(c: AppContext): Promise<AuthContext | null> {
+  const sessionToken = getCookie(c, SESSION_COOKIE_NAME);
+  if (!sessionToken) return null;
+  const tokenHash = hashToken(sessionToken);
+  const now = new Date();
+  return mutateAuthState(async (state) => {
+    pruneExpired(state, now);
+    const session = state.sessions.find((candidate) => candidate.tokenHash === tokenHash);
+    if (!session) return null;
+    const user = state.users.find((candidate) => candidate.id === session.userId);
+    if (!user) return null;
+    session.lastSeenAt = now.toISOString();
+    session.expiresAt = new Date(now.getTime() + sessionTtlMs).toISOString();
+    return { user, session };
+  });
+}
+
+async function issueSession(c: Context, user: AuthUser): Promise<void> {
+  const now = new Date();
+  const sessionToken = randomToken();
+  const csrfToken = randomUUID();
+  await mutateAuthState(async (state) => {
+    pruneExpired(state, now);
+    state.sessions.push({
+      id: randomUUID(),
+      tokenHash: hashToken(sessionToken),
+      userId: user.id,
+      csrfToken,
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + sessionTtlMs).toISOString(),
+      lastSeenAt: now.toISOString(),
+    });
+  });
+
+  setCookie(c, SESSION_COOKIE_NAME, sessionToken, {
+    httpOnly: true,
+    maxAge: Math.floor(sessionTtlMs / 1000),
+    path: '/',
+    sameSite: 'Lax',
+    secure: isSecureCookie(),
+  });
+  setCookie(c, CSRF_COOKIE_NAME, csrfToken, {
+    httpOnly: false,
+    maxAge: csrfCookieMaxAgeSeconds,
+    path: '/',
+    sameSite: 'Lax',
+    secure: isSecureCookie(),
+  });
+}
+
+function hasValidCsrf(c: Context): boolean {
+  if (!hasAllowedOrigin(c)) return false;
+  const csrfCookie = getCookie(c, CSRF_COOKIE_NAME);
+  const csrfHeader = c.req.header(CSRF_HEADER_NAME);
+  return Boolean(csrfCookie && csrfHeader && csrfCookie === csrfHeader);
+}
+
+function hasAllowedOrigin(c: Context): boolean {
+  const expected = new URL(c.req.url).origin;
+  const origin = c.req.header('Origin');
+  if (origin) return origin === expected;
+  const referer = c.req.header('Referer');
+  if (!referer) return true;
   try {
-    return allowedOrigins.has(new URL(referer).origin);
+    return new URL(referer).origin === expected;
   } catch {
     return false;
   }
 }
 
-export function authUserResponse(user: AuthUser): Record<string, unknown> {
-  return {
-    id: user.id,
-    email: user.email,
-    createdAt: user.createdAt,
-    lastSeenAt: user.lastSeenAt,
-  };
+function hasAllowedVerificationOrigin(c: Context): boolean {
+  return hasAllowedOrigin(c);
 }
 
-async function validateSessionCookie(cookieValue: string): Promise<AuthUser | null> {
-  const parsed = parseSessionCookie(cookieValue);
-  if (!parsed) return null;
-  const now = new Date();
-
-  return mutateAuthState((state) => {
-    cleanupAuthState(state, now);
-    const session = state.sessions.find(
-      (candidate) => candidate.id === parsed.sessionId && timingSafeEqualString(candidate.tokenHash, parsed.tokenHash),
-    );
-    if (!session) return null;
-    const user = state.users.find((candidate) => candidate.id === session.userId);
-    if (!user) return null;
-    session.expiresAt = new Date(now.getTime() + sessionTtlMs).toISOString();
-    session.lastSeenAt = now.toISOString();
-    user.lastSeenAt = now.toISOString();
-    return user;
-  });
-}
-
-async function maybeIssueDevBypassSession(c: Context): Promise<AuthUser | null> {
-  if (process.env.OOXML_AUTH_DEV_BYPASS !== '1') return null;
-  if (process.env.NODE_ENV === 'production') return null;
-  const email = process.env.OOXML_DEV_AUTH_EMAIL || 'oliver@local.test';
-  const existing = await validateSessionCookie(getCookie(c, SESSION_COOKIE_NAME) ?? '');
-  if (existing?.email === normalizeEmail(email)) return existing;
-  return issueSessionForEmail(c, email);
-}
-
-function setSessionCookies(c: Context, sessionCookieValue: string, maxAgeSeconds: number): void {
-  setCookie(c, SESSION_COOKIE_NAME, sessionCookieValue, {
-    httpOnly: true,
-    maxAge: maxAgeSeconds,
-    path: '/',
-    sameSite: 'Lax',
-    secure: secureCookies(),
-  });
-  setCookie(c, CSRF_COOKIE_NAME, randomUUID(), {
-    httpOnly: false,
-    maxAge: csrfTtlSeconds,
-    path: '/',
-    sameSite: 'Lax',
-    secure: secureCookies(),
-  });
-}
-
-function clearOAuthStateCookie(c: Context, cookieName: string): void {
-  setCookie(c, cookieName, '', {
-    httpOnly: true,
-    maxAge: 0,
-    path: '/',
-    sameSite: 'Lax',
-    secure: secureCookies(),
-  });
-}
-
-function hasValidCsrf(c: Context): boolean {
-  if (!hasAllowedVerificationOrigin(c)) return false;
-  const csrfCookie = getCookie(c, CSRF_COOKIE_NAME);
-  const csrfHeader = c.req.header(CSRF_HEADER_NAME);
-  return Boolean(csrfCookie && csrfHeader && timingSafeEqualString(csrfCookie, csrfHeader));
-}
-
-function unauthenticated(c: Context): Response {
+function unauthenticatedResponse(c: Context): Response {
   const pathname = new URL(c.req.url).pathname;
   if (pathname.startsWith('/api/') || pathname.startsWith('/flue/')) {
     return c.json({ error: 'Authentication required.' }, 401);
   }
-  const signin = new URL('/signin', c.req.url);
-  signin.searchParams.set('returnTo', `${pathname}${new URL(c.req.url).search}`);
-  return c.redirect(signin.toString(), 303);
+  const signInUrl = new URL('/signin', c.req.url);
+  signInUrl.searchParams.set('returnTo', `${pathname}${new URL(c.req.url).search}`);
+  return c.redirect(signInUrl.toString(), 303);
 }
 
-async function mutateAuthState<T>(fn: (state: AuthState) => T | Promise<T>): Promise<T> {
-  const run = authMutationQueue.then(async () => {
-    const state = await loadAuthState();
-    const result = await fn(state);
-    await saveAuthState(state);
-    return result;
+async function checkMagicLinkRateLimit(
+  email: string,
+  ip: string | undefined,
+): Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }> {
+  const now = new Date();
+  const emailLimit = Number(process.env.OOXML_MAGIC_LINK_RATE_LIMIT_PER_HOUR || 6);
+  const ipLimit = Number(process.env.OOXML_MAGIC_LINK_IP_RATE_LIMIT_PER_HOUR || 30);
+  const globalLimit = Number(process.env.OOXML_MAGIC_LINK_GLOBAL_RATE_LIMIT_PER_HOUR || 300);
+  const scopes = [
+    { key: `email:${email}`, limit: emailLimit },
+    ...(ip ? [{ key: `ip:${hashToken(ip).slice(0, 32)}`, limit: ipLimit }] : []),
+    { key: 'global', limit: globalLimit },
+  ];
+  return mutateAuthState(async (state) => {
+    const bucketStart = new Date(Math.floor(now.getTime() / magicLinkRateLimitWindowMs) * magicLinkRateLimitWindowMs);
+    state.rateLimits = state.rateLimits.filter((record) => now.getTime() - Date.parse(record.bucketStart) < 24 * 60 * 60 * 1000);
+    for (const scope of scopes) {
+      let record = state.rateLimits.find((candidate) => candidate.key === scope.key && candidate.bucketStart === bucketStart.toISOString());
+      if (!record) {
+        record = { key: scope.key, bucketStart: bucketStart.toISOString(), count: 0 };
+        state.rateLimits.push(record);
+      }
+      record.count += 1;
+      if (record.count > scope.limit) {
+        const retryAfterSeconds = Math.max(1, Math.ceil((bucketStart.getTime() + magicLinkRateLimitWindowMs - now.getTime()) / 1000));
+        return { allowed: false, retryAfterSeconds };
+      }
+    }
+    return { allowed: true };
   });
-  authMutationQueue = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
 }
 
-async function loadAuthState(): Promise<AuthState> {
-  try {
-    const raw = await readFile(authStatePath(), 'utf8');
-    return normalizeAuthState(JSON.parse(raw) as Partial<AuthState>);
-  } catch {
-    return normalizeAuthState({});
-  }
-}
-
-async function saveAuthState(state: AuthState): Promise<void> {
-  const path = authStatePath();
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(normalizeAuthState(state), null, 2)}\n`, { mode: 0o600 });
-}
-
-function authStatePath(): string {
-  return resolve(runtimeDataRoot(), 'auth', 'auth.json');
-}
-
-function normalizeAuthState(state: Partial<AuthState>): AuthState {
-  return {
-    users: Array.isArray(state.users) ? state.users : [],
-    sessions: Array.isArray(state.sessions) ? state.sessions : [],
-    magicLinks: Array.isArray(state.magicLinks) ? state.magicLinks : [],
-    oauthIdentities: Array.isArray(state.oauthIdentities) ? state.oauthIdentities : [],
-    rateLimits: Array.isArray(state.rateLimits) ? state.rateLimits : [],
-  };
-}
-
-function cleanupAuthState(state: AuthState, now: Date): void {
-  const nowMs = now.getTime();
-  state.sessions = state.sessions.filter((session) => Date.parse(session.expiresAt) > nowMs);
-  state.magicLinks = state.magicLinks.filter((link) => Date.parse(link.expiresAt) > nowMs);
-}
-
-function pruneUserSessions(state: AuthState, userId: string): void {
-  const userSessions = state.sessions
-    .filter((session) => session.userId === userId)
-    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-  if (userSessions.length <= 10) return;
-  const keep = new Set(userSessions.slice(-10).map((session) => session.id));
-  state.sessions = state.sessions.filter((session) => session.userId !== userId || keep.has(session.id));
-}
-
-type MagicLinkEmail = {
-  to: string;
-  from: string;
-  magicLinkUrl: string;
-  expiresAt: Date;
-};
-
-async function sendMagicLinkEmail(email: MagicLinkEmail): Promise<void> {
-  const transport = (process.env.EMAIL_TRANSPORT || (process.env.NODE_ENV === 'production' ? 'postmark' : 'dev')).toLowerCase();
+async function sendMagicLink(input: { email: string; magicLinkUrl: string; expiresAt: Date }): Promise<void> {
+  const transport = (process.env.EMAIL_TRANSPORT || 'dev').toLowerCase();
+  const from = process.env.EMAIL_FROM || 'no-reply@ooxml-workbench.local';
   if (transport === 'dev') {
-    const logPath = resolve(process.env.OOXML_MAGIC_LINK_LOG || join(runtimeDataRoot(), 'auth', 'magic-links.jsonl'));
-    await mkdir(dirname(logPath), { recursive: true });
-    await appendFile(
-      logPath,
-      `${JSON.stringify({
-        kind: 'magic-link',
-        to: email.to,
-        from: email.from,
-        subject: 'Sign in to OOXML Workbench',
-        magicLinkUrl: email.magicLinkUrl,
-        expiresAt: email.expiresAt.toISOString(),
-        sentAt: new Date().toISOString(),
-      })}\n`,
-      { encoding: 'utf8', mode: 0o600 },
-    );
+    await appendDevMagicLink(input, from);
     return;
   }
-
   if (transport === 'resend') {
-    const apiKey = requiredEnv('RESEND_API_KEY');
-    const response = await fetch(process.env.RESEND_ENDPOINT || 'https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: email.from,
-        to: email.to,
-        subject: 'Sign in to OOXML Workbench',
-        text: magicLinkText(email),
-        html: magicLinkHtml(email),
-      }),
+    await sendJsonEmail('https://api.resend.com/emails', process.env.RESEND_API_KEY, {
+      from,
+      to: input.email,
+      subject: 'Sign in to OOXML Workbench',
+      text: magicLinkText(input),
+      html: magicLinkHtml(input),
     });
-    if (!response.ok) throw new Error(`Resend email send failed with status ${response.status}.`);
     return;
   }
-
   if (transport === 'postmark') {
-    const response = await fetch(process.env.POSTMARK_ENDPOINT || 'https://api.postmarkapp.com/email', {
+    const token = requiredEnv('POSTMARK_SERVER_TOKEN', 'EMAIL_TRANSPORT=postmark');
+    const body: Record<string, unknown> = {
+      From: from,
+      To: input.email,
+      Subject: 'Sign in to OOXML Workbench',
+      TextBody: magicLinkText(input),
+      HtmlBody: magicLinkHtml(input),
+      TrackLinks: 'None',
+      TrackOpens: false,
+    };
+    if (process.env.POSTMARK_MESSAGE_STREAM) body.MessageStream = process.env.POSTMARK_MESSAGE_STREAM;
+    const response = await fetch('https://api.postmarkapp.com/email', {
       method: 'POST',
       headers: {
         accept: 'application/json',
         'content-type': 'application/json',
-        'x-postmark-server-token': requiredEnv('POSTMARK_SERVER_TOKEN'),
+        'x-postmark-server-token': token,
       },
-      body: JSON.stringify({
-        From: email.from,
-        To: email.to,
-        Subject: 'Sign in to OOXML Workbench',
-        TextBody: magicLinkText(email),
-        HtmlBody: magicLinkHtml(email),
-        MessageStream: process.env.POSTMARK_MESSAGE_STREAM || undefined,
-        TrackLinks: 'None',
-        TrackOpens: false,
-      }),
+      body: JSON.stringify(body),
     });
     if (!response.ok) throw new Error(`Postmark email send failed with status ${response.status}.`);
     return;
   }
-
   if (transport === 'mailgun') {
+    const apiKey = requiredEnv('MAILGUN_API_KEY', 'EMAIL_TRANSPORT=mailgun');
+    const domain = requiredEnv('MAILGUN_DOMAIN', 'EMAIL_TRANSPORT=mailgun');
+    const baseUrl = (process.env.MAILGUN_BASE_URL || 'https://api.mailgun.net').replace(/\/+$/, '');
     const body = new URLSearchParams({
-      from: email.from,
-      to: email.to,
+      from,
+      to: input.email,
       subject: 'Sign in to OOXML Workbench',
-      text: magicLinkText(email),
-      html: magicLinkHtml(email),
+      text: magicLinkText(input),
+      html: magicLinkHtml(input),
       'o:tracking': 'no',
       'o:tracking-clicks': 'no',
       'o:tracking-opens': 'no',
     });
-    const domain = requiredEnv('MAILGUN_DOMAIN');
-    const base = (process.env.MAILGUN_BASE_URL || 'https://api.mailgun.net').replace(/\/+$/, '');
-    const response = await fetch(`${base}/v3/${encodeURIComponent(domain)}/messages`, {
+    const response = await fetch(`${baseUrl}/v3/${encodeURIComponent(domain)}/messages`, {
       method: 'POST',
       headers: {
-        authorization: `Basic ${Buffer.from(`api:${requiredEnv('MAILGUN_API_KEY')}`).toString('base64')}`,
+        authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString('base64')}`,
         'content-type': 'application/x-www-form-urlencoded',
       },
       body,
@@ -647,135 +712,155 @@ async function sendMagicLinkEmail(email: MagicLinkEmail): Promise<void> {
     if (!response.ok) throw new Error(`Mailgun email send failed with status ${response.status}.`);
     return;
   }
-
   throw new Error(`Unsupported EMAIL_TRANSPORT: ${transport}`);
 }
 
-function magicLinkText(email: MagicLinkEmail): string {
-  return [
-    'Sign in to OOXML Workbench:',
-    email.magicLinkUrl,
-    '',
-    `This link expires at ${email.expiresAt.toISOString()}.`,
-  ].join('\n');
+async function appendDevMagicLink(input: { email: string; magicLinkUrl: string; expiresAt: Date }, from: string): Promise<void> {
+  const logPath = process.env.OOXML_MAGIC_LINK_LOG || join(dataRoot(), 'auth', 'magic-links.jsonl');
+  await mkdir(dirname(logPath), { recursive: true });
+  await appendFile(
+    logPath,
+    `${JSON.stringify({
+      kind: 'magic-link',
+      to: input.email,
+      from,
+      subject: 'Sign in to OOXML Workbench',
+      magicLinkUrl: input.magicLinkUrl,
+      expiresAt: input.expiresAt.toISOString(),
+      sentAt: new Date().toISOString(),
+    })}\n`,
+    { encoding: 'utf8', mode: 0o600 },
+  );
 }
 
-function magicLinkHtml(email: MagicLinkEmail): string {
-  const link = escapeHtml(email.magicLinkUrl);
-  return [
-    '<p>Sign in to OOXML Workbench:</p>',
-    `<p><a href="${link}">${link}</a></p>`,
-    `<p>This link expires at ${escapeHtml(email.expiresAt.toISOString())}.</p>`,
-  ].join('');
+async function sendJsonEmail(endpoint: string, apiKey: string | undefined, body: unknown): Promise<void> {
+  if (!apiKey?.trim()) throw new Error('RESEND_API_KEY is required when EMAIL_TRANSPORT=resend.');
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`Resend email send failed with status ${response.status}.`);
 }
 
-type OAuthProviderConfig = {
+function magicLinkText(input: { magicLinkUrl: string; expiresAt: Date }): string {
+  return `Sign in to OOXML Workbench:\n\n${input.magicLinkUrl}\n\nThis link expires at ${input.expiresAt.toISOString()}.`;
+}
+
+function magicLinkHtml(input: { magicLinkUrl: string; expiresAt: Date }): string {
+  return `<p>Sign in to OOXML Workbench:</p><p><a href="${escapeHtml(input.magicLinkUrl)}">Sign in</a></p><p>This link expires at ${escapeHtml(input.expiresAt.toISOString())}.</p>`;
+}
+
+function oauthProviderConfig(provider: OAuthProvider): {
   authorizationEndpoint: string;
-  tokenEndpoint: string;
-  userInfoEndpoint: string;
   clientId: string;
   clientSecret: string;
   scopes: string[];
-};
-
-function oauthProviderConfig(provider: OAuthProvider): OAuthProviderConfig {
+  tokenEndpoint: string;
+  userInfoEndpoint: string;
+} {
   if (provider === 'microsoft') {
     const tenant = process.env.MICROSOFT_OAUTH_TENANT || process.env.AZURE_AD_TENANT_ID || 'common';
     return {
       authorizationEndpoint: `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/authorize`,
+      clientId: process.env.MICROSOFT_OAUTH_CLIENT_ID || process.env.AZURE_AD_CLIENT_ID || '',
+      clientSecret: process.env.MICROSOFT_OAUTH_CLIENT_SECRET || process.env.AZURE_AD_CLIENT_SECRET || '',
+      scopes: ['openid', 'email', 'profile'],
       tokenEndpoint: `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,
       userInfoEndpoint: 'https://graph.microsoft.com/oidc/userinfo',
-      clientId: requiredEnv('MICROSOFT_OAUTH_CLIENT_ID', 'AZURE_AD_CLIENT_ID'),
-      clientSecret: requiredEnv('MICROSOFT_OAUTH_CLIENT_SECRET', 'AZURE_AD_CLIENT_SECRET'),
-      scopes: ['openid', 'email', 'profile'],
     };
   }
   return {
     authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+    clientId: process.env.GOOGLE_OAUTH_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '',
+    scopes: ['openid', 'email', 'profile'],
     tokenEndpoint: 'https://oauth2.googleapis.com/token',
     userInfoEndpoint: 'https://openidconnect.googleapis.com/v1/userinfo',
-    clientId: requiredEnv('GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_CLIENT_ID'),
-    clientSecret: requiredEnv('GOOGLE_OAUTH_CLIENT_SECRET', 'GOOGLE_CLIENT_SECRET'),
-    scopes: ['openid', 'email', 'profile'],
   };
 }
 
-function oauthRedirectUri(provider: OAuthProvider, requestUrl: URL): string {
-  const explicit =
-    provider === 'microsoft'
-      ? process.env.MICROSOFT_OAUTH_REDIRECT_URI || process.env.AZURE_AD_REDIRECT_URI
-      : process.env.GOOGLE_OAUTH_REDIRECT_URI || process.env.GOOGLE_REDIRECT_URI;
-  if (explicit?.trim()) return explicit.trim();
-  return new URL(`/api/auth/oauth/${provider}/callback`, baseOrigin(requestUrl)).toString();
+function isOAuthConfigured(provider: OAuthProvider): boolean {
+  const config = oauthProviderConfig(provider);
+  return Boolean(config.clientId && config.clientSecret);
 }
 
-async function exchangeOAuthCode(input: {
-  provider: OAuthProvider;
-  code: string;
-  codeVerifier: string;
-  requestUrl: URL;
-}): Promise<{ accessToken: string }> {
-  const config = oauthProviderConfig(input.provider);
+async function exchangeOAuthCode(
+  c: Context,
+  provider: OAuthProvider,
+  code: string,
+  codeVerifier: string,
+): Promise<{ accessToken: string; idTokenClaims: Record<string, unknown> | null }> {
+  const config = oauthProviderConfig(provider);
   const body = new URLSearchParams({
     client_id: config.clientId,
     client_secret: config.clientSecret,
-    code: input.code,
-    code_verifier: input.codeVerifier,
+    code,
+    code_verifier: codeVerifier,
     grant_type: 'authorization_code',
-    redirect_uri: oauthRedirectUri(input.provider, input.requestUrl),
+    redirect_uri: oauthRedirectUri(c, provider),
     scope: config.scopes.join(' '),
   });
   const response = await fetch(config.tokenEndpoint, {
-    method: 'POST',
+    body,
     headers: {
       accept: 'application/json',
       'content-type': 'application/x-www-form-urlencoded',
     },
-    body,
+    method: 'POST',
   });
-  if (!response.ok) throw new Error(`${input.provider} OAuth token exchange failed with status ${response.status}.`);
-  const payload = (await response.json()) as { access_token?: unknown };
+  if (!response.ok) throw new Error(`${provider} OAuth token exchange failed with status ${response.status}.`);
+  const payload = (await response.json()) as { access_token?: unknown; id_token?: unknown };
   if (typeof payload.access_token !== 'string' || !payload.access_token) {
-    throw new Error(`${input.provider} OAuth token response did not include an access token.`);
+    throw new Error(`${provider} OAuth token response did not include an access token.`);
   }
-  return { accessToken: payload.access_token };
+  return {
+    accessToken: payload.access_token,
+    idTokenClaims: typeof payload.id_token === 'string' ? decodeJwtPayload(payload.id_token) : null,
+  };
 }
 
 async function fetchOAuthUserInfo(provider: OAuthProvider, accessToken: string): Promise<Record<string, unknown>> {
-  const config = oauthProviderConfig(provider);
-  const response = await fetch(config.userInfoEndpoint, {
-    method: 'GET',
+  const response = await fetch(oauthProviderConfig(provider).userInfoEndpoint, {
     headers: {
       accept: 'application/json',
       authorization: `Bearer ${accessToken}`,
     },
+    method: 'GET',
   });
   if (!response.ok) throw new Error(`${provider} OAuth userinfo request failed with status ${response.status}.`);
   return (await response.json()) as Record<string, unknown>;
 }
 
-function extractVerifiedOAuthEmail(
-  provider: OAuthProvider,
-  userInfo: Record<string, unknown>,
-): string | null {
-  const claims = userInfo;
+function extractVerifiedOAuthEmail(provider: OAuthProvider, claims: Record<string, unknown>): string | null {
   if (provider === 'google' && !isTruthy(claims.email_verified)) return null;
-  if (provider === 'microsoft' && process.env.OOXML_MICROSOFT_REQUIRE_EDOV !== '0' && !isTruthy(claims.xms_edov)) return null;
-  const email = normalizeEmail(typeof claims.email === 'string' ? claims.email : '');
-  return isValidEmail(email) ? email : null;
+  if (provider === 'microsoft' && !isTruthy(claims.xms_edov)) return null;
+  return normalizeEmail(typeof claims.email === 'string' ? claims.email : '');
 }
 
-function extractOAuthSubject(
-  provider: OAuthProvider,
-  userInfo: Record<string, unknown>,
-): string | null {
-  const claims = userInfo;
+function extractOAuthSubject(provider: OAuthProvider, claims: Record<string, unknown>): string | null {
   if (typeof claims.sub === 'string' && claims.sub.trim()) return claims.sub.trim();
   if (provider === 'microsoft' && typeof claims.oid === 'string') {
-    const tid = typeof claims.tid === 'string' ? claims.tid.trim() : '';
-    return tid ? `${tid}:${claims.oid.trim()}` : claims.oid.trim();
+    const tenantId = typeof claims.tid === 'string' ? claims.tid.trim() : '';
+    return tenantId ? `${tenantId}:${claims.oid.trim()}` : claims.oid.trim();
   }
   return null;
+}
+
+function oauthRedirectUri(c: Context, provider: OAuthProvider): string {
+  const explicit =
+    provider === 'microsoft'
+      ? process.env.MICROSOFT_OAUTH_REDIRECT_URI || process.env.AZURE_AD_REDIRECT_URI
+      : process.env.GOOGLE_OAUTH_REDIRECT_URI || process.env.GOOGLE_REDIRECT_URI;
+  if (explicit?.trim()) return explicit.trim();
+  return new URL(`/api/auth/oauth/${provider}/callback`, appBaseUrl(c)).toString();
+}
+
+function oauthStateCookieName(provider: OAuthProvider): string {
+  return `ooxml_oauth_${provider}`;
 }
 
 function encodeOAuthStateCookie(value: OAuthStateCookie): string {
@@ -785,37 +870,130 @@ function encodeOAuthStateCookie(value: OAuthStateCookie): string {
 function decodeOAuthStateCookie(value: string): OAuthStateCookie | null {
   try {
     const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as Partial<OAuthStateCookie>;
-    if (!parsed.provider || !isOAuthProvider(parsed.provider)) return null;
-    if (typeof parsed.state !== 'string' || typeof parsed.codeVerifier !== 'string' || typeof parsed.returnTo !== 'string') {
+    if (!isOAuthProvider(parsed.provider) || typeof parsed.codeVerifier !== 'string' || typeof parsed.returnTo !== 'string' || typeof parsed.state !== 'string') {
       return null;
     }
     return {
-      provider: parsed.provider,
-      state: parsed.state,
       codeVerifier: parsed.codeVerifier,
-      returnTo: getSafeRedirectPath(parsed.returnTo),
+      provider: parsed.provider,
+      returnTo: safeReturnTo(parsed.returnTo),
+      state: parsed.state,
     };
   } catch {
     return null;
   }
 }
 
-function oauthStateCookieName(provider: OAuthProvider): string {
-  return `ooxml_oauth_${provider}`;
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const [, payload] = token.split('.');
+  if (!payload) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as unknown;
+    return decoded && typeof decoded === 'object' && !Array.isArray(decoded) ? (decoded as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
-function buildMagicLinkUrl(baseUrl: string, token: string): string {
-  const url = new URL('/api/auth/magic-link/verify', baseUrl);
-  url.searchParams.set('token', token);
-  return url.toString();
+function pkceChallenge(codeVerifier: string): string {
+  return createHash('sha256').update(codeVerifier).digest('base64url');
 }
 
-function baseUrlFor(c: Context): string {
-  return process.env.APP_BASE_URL?.trim() || baseOrigin(new URL(c.req.url));
+async function readJsonOrForm(c: Context): Promise<Record<string, unknown>> {
+  const contentType = c.req.header('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const parsed = (await c.req.json().catch(() => ({}))) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  }
+  if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
+    const form = await c.req.formData().catch(() => null);
+    if (!form) return {};
+    return Object.fromEntries([...form.entries()].map(([key, value]) => [key, typeof value === 'string' ? value : value.name]));
+  }
+  return {};
 }
 
-function baseOrigin(requestUrl: URL): string {
-  return process.env.APP_BASE_URL?.trim() || requestUrl.origin;
+async function mutateAuthState<T>(callback: (state: AuthState) => Promise<T> | T): Promise<T> {
+  const run = async () => {
+    const state = await loadAuthState();
+    const result = await callback(state);
+    await saveAuthState(state);
+    return result;
+  };
+  const next = stateQueue.then(run, run);
+  stateQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
+async function loadAuthState(): Promise<AuthState> {
+  try {
+    const raw = await readFile(authJsonPath(), 'utf8');
+    const parsed = JSON.parse(raw) as Partial<AuthState>;
+    return {
+      users: Array.isArray(parsed.users) ? parsed.users : [],
+      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+      magicLinks: Array.isArray(parsed.magicLinks) ? parsed.magicLinks : [],
+      oauthIdentities: Array.isArray(parsed.oauthIdentities) ? parsed.oauthIdentities : [],
+      rateLimits: Array.isArray(parsed.rateLimits) ? parsed.rateLimits : [],
+    };
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { users: [], sessions: [], magicLinks: [], oauthIdentities: [], rateLimits: [] };
+    }
+    throw error;
+  }
+}
+
+async function saveAuthState(state: AuthState): Promise<void> {
+  const path = authJsonPath();
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+}
+
+function authJsonPath(): string {
+  return join(dataRoot(), 'auth', 'auth.json');
+}
+
+function findOrCreateUserByEmail(state: AuthState, email: string, now: Date): AuthUser {
+  const normalized = normalizeEmail(email);
+  const existing = state.users.find((user) => user.email === normalized);
+  if (existing) {
+    existing.updatedAt = now.toISOString();
+    return existing;
+  }
+  const user = {
+    id: `user-${randomUUID()}`,
+    email: normalized,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+  state.users.push(user);
+  return user;
+}
+
+function pruneExpired(state: AuthState, now: Date): void {
+  const nowMs = now.getTime();
+  state.sessions = state.sessions.filter((session) => Date.parse(session.expiresAt) > nowMs);
+  state.magicLinks = state.magicLinks.filter((token) => Date.parse(token.expiresAt) > nowMs);
+}
+
+function appBaseUrl(c: Context): string {
+  return process.env.APP_BASE_URL?.trim() || new URL(c.req.url).origin;
+}
+
+function clientIp(headers: Headers): string | undefined {
+  return headers.get('x-forwarded-for')?.split(',')[0]?.trim() || headers.get('cf-connecting-ip')?.trim() || headers.get('x-real-ip')?.trim() || undefined;
+}
+
+function randomToken(bytes = 32): string {
+  return randomBytes(bytes).toString('base64url');
+}
+
+function hashToken(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
 function normalizeEmail(email: string): string {
@@ -826,78 +1004,47 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function assertValidEmail(email: string): void {
-  if (!isValidEmail(email)) throw new Error('Enter a valid email address.');
+export function isOAuthProvider(value: unknown): value is OAuthProvider {
+  return value === 'google' || value === 'microsoft';
 }
 
-function assertEmailAllowed(email: string): void {
-  const allowed = (process.env.OOXML_AUTH_ALLOWED_EMAIL_DOMAINS || '')
-    .split(',')
-    .map((domain) => domain.trim().toLowerCase())
-    .filter(Boolean);
-  if (!allowed.length) return;
-  const domain = email.split('@')[1] ?? '';
-  if (!allowed.includes(domain)) {
-    throw new Error('This email domain is not allowed for this workbench.');
-  }
+function safeReturnTo(value: string | null | undefined): string {
+  const trimmed = value?.trim() || '/';
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.includes('://') || trimmed.includes('\\')) return '/';
+  return trimmed;
 }
 
-function clientIpScope(c: Context): string | null {
-  if (process.env.OOXML_TRUST_PROXY_HEADERS !== '1') return null;
-  const raw =
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-    c.req.header('cf-connecting-ip')?.trim() ||
-    c.req.header('x-real-ip')?.trim() ||
-    '';
-  if (!raw) return null;
-  return `ip:${sha256(raw).slice(0, 32)}`;
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
-function randomToken(bytes = 32): string {
-  return randomBytes(bytes).toString('base64url');
+function wantsHtml(c: Context): boolean {
+  const contentType = c.req.header('content-type') || '';
+  const accept = c.req.header('accept') || '';
+  return contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data') || accept.includes('text/html');
 }
 
-function parseSessionCookie(cookieValue: string): { sessionId: string; tokenHash: string } | null {
-  const [sessionId, token] = cookieValue.split('.');
-  if (!sessionId || !token) return null;
-  return { sessionId, tokenHash: sha256(token) };
+function isSecureCookie(): boolean {
+  return process.env.NODE_ENV === 'production';
 }
 
-function sha256(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
-
-function pkceChallenge(codeVerifier: string): string {
-  return createHash('sha256').update(codeVerifier).digest('base64url');
-}
-
-function timingSafeEqualString(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  if (left.length !== right.length) return false;
-  return timingSafeEqual(left, right);
-}
-
-function secureCookies(): boolean {
-  if (process.env.NODE_ENV === 'production') return true;
-  const base = process.env.APP_BASE_URL?.trim();
-  return Boolean(base?.startsWith('https://'));
-}
-
-function requiredEnv(primary: string, fallback?: string): string {
-  const value = process.env[primary]?.trim() || (fallback ? process.env[fallback]?.trim() : '');
-  if (!value) throw new Error(`${primary}${fallback ? ` or ${fallback}` : ''} is required.`);
-  return value;
+function isDevSessionEnabled(): boolean {
+  return (
+    process.env.NODE_ENV !== 'production' &&
+    Boolean(process.env.OOXML_DEV_AUTH_EMAIL || process.env.OOXML_AUTH_DEV_BYPASS === '1' || process.env.OOXML_AUTH_DEV_SESSIONS === '1')
+  );
 }
 
 function isTruthy(value: unknown): boolean {
   return value === true || value === 'true';
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function requiredEnv(name: string, context: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} is required when ${context}.`);
+  return value;
 }
 
-function errorReason(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

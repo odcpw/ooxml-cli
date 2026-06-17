@@ -1,7 +1,7 @@
 import { createAgent, type AgentRouteHandler } from '@flue/runtime';
 import ooxmlSkill from '../skills/ooxml/SKILL.md' with { type: 'skill' };
 import { createOoxmlTools } from '../shared/ooxml-tools.ts';
-import { getAuthUser } from '../shared/auth.ts';
+import { requireAuthUser } from '../shared/auth.ts';
 import { threadExists } from '../shared/storage.ts';
 
 export const route: AgentRouteHandler = async (c, next) => {
@@ -9,7 +9,7 @@ export const route: AgentRouteHandler = async (c, next) => {
   if (!threadId) {
     return c.json({ error: 'Thread id is required' }, 400);
   }
-  const user = getAuthUser(c);
+  const user = requireAuthUser(c);
   if (!(await threadExists(threadId, user.id))) {
     return c.json({ error: 'Thread not found' }, 404);
   }
