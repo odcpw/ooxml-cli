@@ -1,4 +1,7 @@
+import { appPathPrefix } from './shared/app-url.ts';
+
 export function workbenchHtml(): string {
+  const basePath = appPathPrefix();
   return `<!doctype html>
 <html lang="en" class="dark">
   <head>
@@ -360,6 +363,7 @@ export function workbenchHtml(): string {
       </main>
     </div>
     <script>
+      const APP_BASE_PATH = ${JSON.stringify(basePath)};
 		      const state = { threads: [], thread: null, thumbWidth: 280, busy: false, busyLabel: 'Working', stopStream: null };
       const threadList = document.getElementById('threadList');
       const newThreadBtn = document.getElementById('newThreadBtn');
@@ -395,7 +399,7 @@ export function workbenchHtml(): string {
 
       logoutBtn.addEventListener('click', async () => {
         await apiFetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
-        window.location.href = '/signin';
+        window.location.href = appUrl('/signin');
       });
 
       newThreadBtn.addEventListener('click', () => {
@@ -579,7 +583,7 @@ export function workbenchHtml(): string {
         const currentDocument = documents.find((document) => document.id === thread.currentDocumentId);
         threadInfo.textContent = thread.title + ' · ' + (thread.currentDocumentName || currentDocument?.originalName || thread.currentFile || '');
         uploadBtn.textContent = 'Add file(s)';
-        downloadLink.href = thread.downloadUrl;
+        downloadLink.href = appUrl(thread.downloadUrl);
 	        renderDocumentList(documents, thread.currentDocumentId);
 	        renderPreview(thread, currentDocument);
 	        updateStatus();
@@ -638,7 +642,7 @@ export function workbenchHtml(): string {
           const card = document.createElement('div');
           card.className = 'thumb';
           const img = document.createElement('img');
-          img.src = thumb.url;
+          img.src = appUrl(thumb.url);
           img.alt = 'Slide ' + thumb.index;
           const label = document.createElement('div');
           label.className = 'doc-meta';
@@ -713,8 +717,8 @@ export function workbenchHtml(): string {
 	        let assistantText = '';
 	        let sawEvent = false;
 	        await new Promise((resolve, reject) => {
-	          const url = new URL(streamUrl, window.location.origin);
-	          if (url.origin !== window.location.origin || !url.pathname.startsWith('/flue/')) {
+	          const url = new URL(appUrl(streamUrl), window.location.origin);
+	          if (url.origin !== window.location.origin || !isAppPath(url.pathname, '/flue/')) {
 	            throw new Error('Agent returned an unexpected event stream URL.');
 	          }
 	          url.searchParams.set('offset', offset);
@@ -842,7 +846,7 @@ export function workbenchHtml(): string {
         return text
           .replace(/\`([^\`]+)\`/g, '<code>$1</code>')
           .replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>')
-          .replace(/(\\/api\\/[^\\s<]+)/g, '<a href="$1">$1</a>');
+          .replace(/(\\/api\\/[^\\s<]+)/g, (match) => '<a href="' + appUrl(match) + '">' + match + '</a>');
       }
 
       function escapeHtml(value) {
@@ -936,11 +940,36 @@ export function workbenchHtml(): string {
           if (csrf) headers.set('x-ooxml-csrf', csrf);
         }
         init.headers = headers;
-        const response = await fetch(url, init);
+        const response = await fetch(appUrl(url), init);
         if (response.status === 401) {
-          window.location.href = '/signin?returnTo=' + encodeURIComponent(window.location.pathname + window.location.search);
+          window.location.href = appUrl('/signin?returnTo=' + encodeURIComponent(window.location.pathname + window.location.search));
         }
         return response;
+      }
+
+      function appUrl(value) {
+        const url = String(value || '/');
+        if (/^https?:\\/\\//i.test(url)) {
+          const parsed = new URL(url);
+          if (parsed.origin !== window.location.origin) return url;
+          return parsed.pathname.startsWith(APP_BASE_PATH + '/') || parsed.pathname === APP_BASE_PATH
+            ? parsed.pathname + parsed.search + parsed.hash
+            : prefixPath(parsed.pathname + parsed.search + parsed.hash);
+        }
+        if (!APP_BASE_PATH) return url;
+        if (url === APP_BASE_PATH || url.startsWith(APP_BASE_PATH + '/') || url.startsWith(APP_BASE_PATH + '?')) return url;
+        if (url.startsWith('/')) return prefixPath(url);
+        return prefixPath('/' + url);
+      }
+
+      function prefixPath(path) {
+        if (!APP_BASE_PATH) return path;
+        return path === '/' ? APP_BASE_PATH : APP_BASE_PATH + path;
+      }
+
+      function isAppPath(pathname, innerPath) {
+        const expected = appUrl(innerPath);
+        return pathname === expected || pathname.startsWith(expected);
       }
 
       function cookieValue(name) {

@@ -3,6 +3,7 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { Context, MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { appAbsoluteUrl, withAppBasePath } from './app-url.ts';
 import { dataRoot } from './storage.ts';
 
 export const SESSION_COOKIE_NAME = 'ooxml_session';
@@ -245,8 +246,8 @@ export function signInHtml(input: { returnTo?: string | null } = {}): string {
       <h1>OOXML Workbench</h1>
       <p>Sign in to use your private file library and agent threads.</p>
       <div class="stack">
-        ${microsoftConfigured ? `<a class="button" href="/api/auth/oauth/microsoft/start?returnTo=${encodeURIComponent(returnTo)}">Continue with Microsoft</a>` : ''}
-        ${googleConfigured ? `<a class="button secondary" href="/api/auth/oauth/google/start?returnTo=${encodeURIComponent(returnTo)}">Continue with Google</a>` : ''}
+        ${microsoftConfigured ? `<a class="button" href="${escapeHtml(withAppBasePath(`/api/auth/oauth/microsoft/start?returnTo=${encodeURIComponent(returnTo)}`))}">Continue with Microsoft</a>` : ''}
+        ${googleConfigured ? `<a class="button secondary" href="${escapeHtml(withAppBasePath(`/api/auth/oauth/google/start?returnTo=${encodeURIComponent(returnTo)}`))}">Continue with Google</a>` : ''}
       </div>
       <div class="divider"></div>
       <form id="magicForm">
@@ -254,7 +255,7 @@ export function signInHtml(input: { returnTo?: string | null } = {}): string {
         <input name="returnTo" type="hidden" value="${escapeHtml(returnTo)}" />
         <button type="submit">Send sign-in link</button>
       </form>
-      ${devEnabled ? `<form method="post" action="/api/auth/dev-session" style="margin-top:10px"><input name="returnTo" type="hidden" value="${escapeHtml(returnTo)}" /><button class="secondary" type="submit">Use development session</button></form>` : ''}
+      ${devEnabled ? `<form method="post" action="${escapeHtml(withAppBasePath('/api/auth/dev-session'))}" style="margin-top:10px"><input name="returnTo" type="hidden" value="${escapeHtml(returnTo)}" /><button class="secondary" type="submit">Use development session</button></form>` : ''}
       <div id="message" class="message"></div>
     </main>
     <script>
@@ -263,7 +264,7 @@ export function signInHtml(input: { returnTo?: string | null } = {}): string {
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         message.textContent = 'Sending sign-in link...';
-        const response = await fetch('/api/auth/magic-link/request', {
+        const response = await fetch(${JSON.stringify(withAppBasePath('/api/auth/magic-link/request'))}, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -334,7 +335,7 @@ export async function requestMagicLinkRoute(c: Context): Promise<Response> {
 
   await sendMagicLink({
     email,
-    magicLinkUrl: new URL(`/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`, appBaseUrl(c)).toString(),
+    magicLinkUrl: appAbsoluteUrl(c, `/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`),
     expiresAt: new Date(now.getTime() + magicLinkTtlMs),
   });
 
@@ -349,7 +350,7 @@ export function confirmMagicLinkHtml(token: string): string {
   <main>
     <h1>Sign in to OOXML Workbench</h1>
     <p>Confirm this browser should be signed in.</p>
-    <form method="post" action="/api/auth/magic-link/verify">
+    <form method="post" action="${escapeHtml(withAppBasePath('/api/auth/magic-link/verify'))}">
       <input type="hidden" name="token" value="${escapeHtml(token)}" />
       <button type="submit">Sign in</button>
     </form>
@@ -454,7 +455,7 @@ export async function oauthCallbackRoute(c: Context, provider: string): Promise<
   deleteCookie(c, cookieName, { path: '/' });
 
   if (!stateCookie || stateCookie.provider !== provider || stateCookie.state !== stateParam || providerError || !code) {
-    return c.redirect(`/signin?oauth=${encodeURIComponent(providerError || 'oauth_failed')}`, 303);
+    return c.redirect(withAppBasePath(`/signin?oauth=${encodeURIComponent(providerError || 'oauth_failed')}`), 303);
   }
 
   try {
@@ -464,7 +465,7 @@ export async function oauthCallbackRoute(c: Context, provider: string): Promise<
     const email = extractVerifiedOAuthEmail(provider, claims);
     const subject = extractOAuthSubject(provider, claims);
     if (!email || !subject) {
-      return c.redirect('/signin?oauth=oauth_email', 303);
+      return c.redirect(withAppBasePath('/signin?oauth=oauth_email'), 303);
     }
     const user = await mutateAuthState(async (state) => {
       const now = new Date();
@@ -484,7 +485,7 @@ export async function oauthCallbackRoute(c: Context, provider: string): Promise<
     return c.redirect(stateCookie.returnTo, 303);
   } catch (error) {
     console.warn('OAuth sign-in failed.', { provider, reason: error instanceof Error ? error.message : String(error) });
-    return c.redirect('/signin?oauth=oauth_failed', 303);
+    return c.redirect(withAppBasePath('/signin?oauth=oauth_failed'), 303);
   }
 }
 
@@ -609,9 +610,10 @@ function unauthenticatedResponse(c: Context): Response {
   if (pathname.startsWith('/api/') || pathname.startsWith('/flue/')) {
     return c.json({ error: 'Authentication required.' }, 401);
   }
-  const signInUrl = new URL('/signin', c.req.url);
-  signInUrl.searchParams.set('returnTo', `${pathname}${new URL(c.req.url).search}`);
-  return c.redirect(signInUrl.toString(), 303);
+  const params = new URLSearchParams({
+    returnTo: withAppBasePath(`${pathname}${new URL(c.req.url).search}`),
+  });
+  return c.redirect(`${withAppBasePath('/signin')}?${params.toString()}`, 303);
 }
 
 async function checkMagicLinkRateLimit(
@@ -837,7 +839,7 @@ async function fetchOAuthUserInfo(provider: OAuthProvider, accessToken: string):
 
 function extractVerifiedOAuthEmail(provider: OAuthProvider, claims: Record<string, unknown>): string | null {
   if (provider === 'google' && !isTruthy(claims.email_verified)) return null;
-  if (provider === 'microsoft' && !isTruthy(claims.xms_edov)) return null;
+  if (provider === 'microsoft' && microsoftRequiresEdov() && !isTruthy(claims.xms_edov)) return null;
   return normalizeEmail(typeof claims.email === 'string' ? claims.email : '');
 }
 
@@ -856,7 +858,7 @@ function oauthRedirectUri(c: Context, provider: OAuthProvider): string {
       ? process.env.MICROSOFT_OAUTH_REDIRECT_URI || process.env.AZURE_AD_REDIRECT_URI
       : process.env.GOOGLE_OAUTH_REDIRECT_URI || process.env.GOOGLE_REDIRECT_URI;
   if (explicit?.trim()) return explicit.trim();
-  return new URL(`/api/auth/oauth/${provider}/callback`, appBaseUrl(c)).toString();
+  return appAbsoluteUrl(c, `/api/auth/oauth/${provider}/callback`);
 }
 
 function oauthStateCookieName(provider: OAuthProvider): string {
@@ -980,10 +982,6 @@ function pruneExpired(state: AuthState, now: Date): void {
   state.magicLinks = state.magicLinks.filter((token) => Date.parse(token.expiresAt) > nowMs);
 }
 
-function appBaseUrl(c: Context): string {
-  return process.env.APP_BASE_URL?.trim() || new URL(c.req.url).origin;
-}
-
 function clientIp(headers: Headers): string | undefined {
   return headers.get('x-forwarded-for')?.split(',')[0]?.trim() || headers.get('cf-connecting-ip')?.trim() || headers.get('x-real-ip')?.trim() || undefined;
 }
@@ -1037,6 +1035,11 @@ function isDevSessionEnabled(): boolean {
 
 function isTruthy(value: unknown): boolean {
   return value === true || value === 'true';
+}
+
+function microsoftRequiresEdov(): boolean {
+  const value = process.env.OOXML_MICROSOFT_REQUIRE_EDOV;
+  return value === undefined ? true : isTruthy(value);
 }
 
 function requiredEnv(name: string, context: string): string {

@@ -20,6 +20,7 @@ OOXML_FLUE_MODEL=openai/gpt-5.5
 OOXML_BIN=ooxml
 OOXML_WEB_DATA_DIR=../.flue-ooxml-web-data
 APP_BASE_URL=http://localhost:3583
+OOXML_WEB_BASE_PATH=
 EMAIL_TRANSPORT=dev
 ```
 
@@ -36,6 +37,10 @@ GOOGLE_OAUTH_CLIENT_ID=...
 GOOGLE_OAUTH_CLIENT_SECRET=...
 GOOGLE_OAUTH_REDIRECT_URI=https://your-host/api/auth/oauth/google/callback
 ```
+
+When deploying below a path prefix, set `APP_BASE_URL` to the public URL with
+that path, for example `https://ss.odc.pw/ooxml`. `OOXML_WEB_BASE_PATH` can be
+set explicitly, but defaults to the pathname from `APP_BASE_URL`.
 
 For local smoke testing only, `OOXML_AUTH_DEV_SESSIONS=1` enables
 `POST /api/auth/dev-session`. `OOXML_AUTH_DEV_BYPASS=1` auto-signs local

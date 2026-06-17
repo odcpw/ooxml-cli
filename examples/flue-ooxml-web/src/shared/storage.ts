@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { basename, extname, join, relative, resolve } from 'node:path';
+import { withAppBasePath } from './app-url.ts';
 import { runtimeDataRoot } from './runtime-paths.ts';
 
 export type FileVersion = {
@@ -301,11 +302,11 @@ export function safeJoin(base: string, unsafePath: string): string {
 }
 
 export function fileUrlFor(threadId: string, documentId: string, versionId: string): string {
-  return `/api/threads/${encodeURIComponent(threadId)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/download`;
+  return withAppBasePath(`/api/threads/${encodeURIComponent(threadId)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/download`);
 }
 
 export function artifactUrl(threadId: string, documentId: string, versionId: string, artifactPath: string): string {
-  return `/api/threads/${encodeURIComponent(threadId)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/artifact?path=${encodeURIComponent(artifactPath)}`;
+  return withAppBasePath(`/api/threads/${encodeURIComponent(threadId)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/artifact?path=${encodeURIComponent(artifactPath)}`);
 }
 
 function normalizeThread(thread: ThreadRecord): ThreadRecord {
