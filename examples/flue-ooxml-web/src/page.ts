@@ -377,7 +377,7 @@ export function workbenchHtml(): string {
     </div>
     <script>
       const APP_BASE_PATH = ${JSON.stringify(basePath)};
-		      const state = { threads: [], thread: null, thumbWidth: 280, busy: false, busyLabel: 'Working', stopStream: null };
+		      const state = { threads: [], thread: null, thumbWidth: 280, busy: false, busyLabel: 'Working', stopStream: null, csrfToken: '' };
       const threadList = document.getElementById('threadList');
       const newThreadBtn = document.getElementById('newThreadBtn');
       const uploadForm = document.getElementById('uploadForm');
@@ -514,6 +514,7 @@ export function workbenchHtml(): string {
       async function loadAccount() {
         const response = await apiFetch('/api/auth/me');
         const data = await readApiJson(response, 'Current user');
+        if (data.csrfToken) state.csrfToken = data.csrfToken;
         if (response.ok && data.user?.email) {
           accountLine.textContent = data.user.email;
         }
@@ -985,7 +986,7 @@ export function workbenchHtml(): string {
         const headers = new Headers(init.headers || {});
         if (!headers.has('accept')) headers.set('accept', 'application/json');
         if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-          const csrf = cookieValue('ooxml_csrf');
+          const csrf = cookieValue('ooxml_csrf') || state.csrfToken || await refreshCsrfToken();
           if (csrf) headers.set('x-ooxml-csrf', csrf);
         }
         init.headers = headers;
@@ -994,6 +995,20 @@ export function workbenchHtml(): string {
           window.location.href = appUrl('/signin?returnTo=' + encodeURIComponent(window.location.pathname + window.location.search));
         }
         return response;
+      }
+
+      async function refreshCsrfToken() {
+        try {
+          const response = await fetch(appUrl('/api/auth/me'), {
+            headers: { accept: 'application/json' }
+          });
+          if (!response.ok) return '';
+          const data = await response.json().catch(() => ({}));
+          if (data?.csrfToken) state.csrfToken = data.csrfToken;
+          return state.csrfToken || cookieValue('ooxml_csrf');
+        } catch {
+          return '';
+        }
       }
 
       function appUrl(value) {

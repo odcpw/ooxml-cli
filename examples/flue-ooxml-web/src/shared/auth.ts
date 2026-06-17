@@ -101,7 +101,9 @@ export const authMiddleware: MiddlewareHandler = async (c, next) => {
     return unauthenticatedResponse(c);
   }
 
-  if (isStateChangingMethod(c.req.method) && !hasValidCsrf(c)) {
+  refreshCsrfCookie(c, auth.session.csrfToken);
+
+  if (isStateChangingMethod(c.req.method) && !hasValidCsrf(c, auth)) {
     return c.json({ error: 'CSRF token required.' }, 403);
   }
 
@@ -291,6 +293,7 @@ export async function currentUserResponse(c: AppContext): Promise<Response> {
       email: auth.user.email,
     },
     csrfHeader: CSRF_HEADER_NAME,
+    csrfToken: auth.session.csrfToken,
   });
 }
 
@@ -583,24 +586,59 @@ async function issueSession(c: Context, user: AuthUser): Promise<void> {
   });
 }
 
-function hasValidCsrf(c: Context): boolean {
+function refreshCsrfCookie(c: Context, csrfToken: string): void {
+  setCookie(c, CSRF_COOKIE_NAME, csrfToken, {
+    httpOnly: false,
+    maxAge: csrfCookieMaxAgeSeconds,
+    path: '/',
+    sameSite: 'Lax',
+    secure: isSecureCookie(),
+  });
+}
+
+function hasValidCsrf(c: Context, auth: AuthContext): boolean {
   if (!hasAllowedOrigin(c)) return false;
   const csrfCookie = getCookie(c, CSRF_COOKIE_NAME);
   const csrfHeader = c.req.header(CSRF_HEADER_NAME);
-  return Boolean(csrfCookie && csrfHeader && csrfCookie === csrfHeader);
+  if (!csrfHeader || csrfHeader !== auth.session.csrfToken) return false;
+  return !csrfCookie || csrfCookie === csrfHeader;
 }
 
 function hasAllowedOrigin(c: Context): boolean {
-  const expected = new URL(c.req.url).origin;
+  const allowed = allowedOrigins(c);
   const origin = c.req.header('Origin');
-  if (origin) return origin === expected;
+  if (origin) return allowed.has(origin);
   const referer = c.req.header('Referer');
   if (!referer) return true;
   try {
-    return new URL(referer).origin === expected;
+    return allowed.has(new URL(referer).origin);
   } catch {
     return false;
   }
+}
+
+function allowedOrigins(c: Context): Set<string> {
+  const origins = new Set<string>([new URL(c.req.url).origin]);
+  const configured = process.env.APP_BASE_URL?.trim();
+  if (configured) {
+    try {
+      origins.add(new URL(configured).origin);
+    } catch {
+      // Ignore invalid deployment config here; URL construction fails elsewhere too.
+    }
+  }
+  if (isTruthy(process.env.OOXML_TRUST_PROXY_HEADERS)) {
+    const forwardedHost = firstHeaderValue(c.req.header('x-forwarded-host')) || firstHeaderValue(c.req.header('host'));
+    const forwardedProto = firstHeaderValue(c.req.header('x-forwarded-proto')) || new URL(c.req.url).protocol.replace(/:$/, '');
+    if (forwardedHost && forwardedProto) {
+      origins.add(`${forwardedProto}://${forwardedHost}`);
+    }
+  }
+  return origins;
+}
+
+function firstHeaderValue(value: string | undefined): string {
+  return value?.split(',')[0]?.trim() || '';
 }
 
 function hasAllowedVerificationOrigin(c: Context): boolean {
