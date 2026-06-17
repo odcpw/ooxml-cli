@@ -20,6 +20,7 @@ import {
   type AuthEnv,
   verifyMagicLinkRoute,
 } from './shared/auth.ts';
+import { withAppBasePath } from './shared/app-url.ts';
 import {
   absoluteVersionPath,
   addDocumentsToThread,
@@ -41,6 +42,12 @@ const app = new Hono<AuthEnv>();
 app.get('/signin', (c) => c.html(authSignInHtml({ returnTo: c.req.query('returnTo') })));
 
 app.get('/health', (c) => c.json({ ok: true }));
+
+app.get('/about', (c) => c.html(legalPageHtml('About', aboutSections)));
+
+app.get('/privacy', (c) => c.html(legalPageHtml('Privacy', privacySections)));
+
+app.get('/terms', (c) => c.html(legalPageHtml('Terms', termsSections)));
 
 app.post('/api/auth/magic-link/request', (c) => requestMagicLinkRoute(c));
 
@@ -259,6 +266,115 @@ function contentTypeFor(ext: string): string {
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+const aboutSections = [
+  {
+    title: 'Purpose',
+    body: 'OOXML Workbench helps signed-in users upload Office Open XML documents, inspect and render them, prompt an agent to make document edits, and download the edited files.',
+  },
+  {
+    title: 'Supported files',
+    body: 'The workbench is designed for PowerPoint, Word, and Excel files that use Office Open XML formats such as PPTX, DOCX, and XLSX.',
+  },
+  {
+    title: 'Private workspaces',
+    body: 'Each signed-in user gets isolated document threads and a private file library, so uploaded files and generated versions are not shared with other users.',
+  },
+  {
+    title: 'Sign in',
+    body: 'Google, Microsoft, and magic-link sign-in options are used only to identify the user and keep their workbench files separate.',
+  },
+];
+
+const privacySections = [
+  {
+    title: 'What the app stores',
+    body: 'OOXML Workbench stores your sign-in email address, session records, uploaded Office documents, generated previews, edited versions, and agent thread history so you can continue work across sessions.',
+  },
+  {
+    title: 'How files are used',
+    body: 'Uploaded files are used only to inspect, render, validate, and edit documents you submit in the workbench. Agent requests may send the relevant prompt and document-derived context to the configured model provider.',
+  },
+  {
+    title: 'Account data',
+    body: 'Google and Microsoft sign-in are used only to identify your account email and keep your private workbench data separate from other users.',
+  },
+  {
+    title: 'Contact',
+    body: 'For access or deletion requests, contact the app operator at oliver@decaro.ch.',
+  },
+];
+
+const termsSections = [
+  {
+    title: 'Use',
+    body: 'Use OOXML Workbench only with documents you are allowed to upload and process. Review generated edits before relying on them.',
+  },
+  {
+    title: 'Availability',
+    body: 'The service is provided as a small private workbench and may change, pause, or lose availability during maintenance.',
+  },
+  {
+    title: 'Responsibility',
+    body: 'You remain responsible for the content of uploaded files, prompts, generated outputs, and downloaded documents.',
+  },
+  {
+    title: 'Contact',
+    body: 'Questions about these terms can be sent to oliver@decaro.ch.',
+  },
+];
+
+function legalPageHtml(title: string, sections: readonly { title: string; body: string }[]): string {
+  return `<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)} - OOXML Workbench</title>
+    <style>
+      :root { color-scheme: dark; --bg: #0e0e10; --surface: #16161a; --border: #2a2a32; --text: #e4e4e8; --muted: #9b9ba5; --accent: #7b83ff; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+      main { width: min(760px, calc(100vw - 32px)); margin: 0 auto; padding: 48px 0; }
+      a { color: var(--accent); }
+      header { border-bottom: 1px solid var(--border); margin-bottom: 26px; padding-bottom: 18px; }
+      h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: 0; }
+      h2 { margin: 24px 0 8px; font-size: 16px; letter-spacing: 0; }
+      p { color: var(--muted); line-height: 1.6; margin: 0 0 12px; }
+      nav { display: flex; gap: 14px; margin-top: 14px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>${escapeHtml(title)}</h1>
+        <p>OOXML Workbench is a private document editing workbench for Office Open XML files.</p>
+        <nav><a href="${escapeHtml(withAppBasePath('/'))}">Workbench</a><a href="${escapeHtml(withAppBasePath('/about'))}">About</a><a href="${escapeHtml(withAppBasePath('/privacy'))}">Privacy</a><a href="${escapeHtml(withAppBasePath('/terms'))}">Terms</a></nav>
+      </header>
+      ${sections.map((section) => `<section><h2>${escapeHtml(section.title)}</h2><p>${escapeHtml(section.body)}</p></section>`).join('')}
+    </main>
+  </body>
+</html>`;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      case "'":
+        return '&#39;';
+      default:
+        return char;
+    }
+  });
 }
 
 function uniqueVersionMatch(

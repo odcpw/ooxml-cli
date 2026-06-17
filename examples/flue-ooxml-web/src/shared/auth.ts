@@ -239,6 +239,8 @@ export function signInHtml(input: { returnTo?: string | null } = {}): string {
         border-top: 1px solid var(--border);
       }
       .message { margin-top: 12px; color: var(--muted); min-height: 18px; font-size: 13px; }
+      .legal { display: flex; gap: 12px; margin-top: 14px; font-size: 13px; }
+      .legal a { color: var(--muted); }
     </style>
   </head>
   <body>
@@ -257,6 +259,7 @@ export function signInHtml(input: { returnTo?: string | null } = {}): string {
       </form>
       ${devEnabled ? `<form method="post" action="${escapeHtml(withAppBasePath('/api/auth/dev-session'))}" style="margin-top:10px"><input name="returnTo" type="hidden" value="${escapeHtml(returnTo)}" /><button class="secondary" type="submit">Use development session</button></form>` : ''}
       <div id="message" class="message"></div>
+      <div class="legal"><a href="${escapeHtml(withAppBasePath('/about'))}">About</a><a href="${escapeHtml(withAppBasePath('/privacy'))}">Privacy</a><a href="${escapeHtml(withAppBasePath('/terms'))}">Terms</a></div>
     </main>
     <script>
       const form = document.getElementById('magicForm');
