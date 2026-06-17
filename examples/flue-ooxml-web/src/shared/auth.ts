@@ -460,8 +460,7 @@ export async function oauthCallbackRoute(c: Context, provider: string): Promise<
 
   try {
     const token = await exchangeOAuthCode(c, provider, code, stateCookie.codeVerifier);
-    const userInfo = await fetchOAuthUserInfo(provider, token.accessToken);
-    const claims = token.idTokenClaims ?? userInfo;
+    const claims = await oauthIdentityClaims(provider, token);
     const email = extractVerifiedOAuthEmail(provider, claims);
     const subject = extractOAuthSubject(provider, claims);
     if (!email || !subject) {
@@ -770,7 +769,7 @@ function oauthProviderConfig(provider: OAuthProvider): {
       authorizationEndpoint: `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/authorize`,
       clientId: process.env.MICROSOFT_OAUTH_CLIENT_ID || process.env.AZURE_AD_CLIENT_ID || '',
       clientSecret: process.env.MICROSOFT_OAUTH_CLIENT_SECRET || process.env.AZURE_AD_CLIENT_SECRET || '',
-      scopes: ['openid', 'email', 'profile'],
+      scopes: ['openid', 'email'],
       tokenEndpoint: `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,
       userInfoEndpoint: 'https://graph.microsoft.com/oidc/userinfo',
     };
@@ -779,7 +778,7 @@ function oauthProviderConfig(provider: OAuthProvider): {
     authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
     clientId: process.env.GOOGLE_OAUTH_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '',
     clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '',
-    scopes: ['openid', 'email', 'profile'],
+    scopes: ['openid', 'email'],
     tokenEndpoint: 'https://oauth2.googleapis.com/token',
     userInfoEndpoint: 'https://openidconnect.googleapis.com/v1/userinfo',
   };
@@ -835,6 +834,18 @@ async function fetchOAuthUserInfo(provider: OAuthProvider, accessToken: string):
   });
   if (!response.ok) throw new Error(`${provider} OAuth userinfo request failed with status ${response.status}.`);
   return (await response.json()) as Record<string, unknown>;
+}
+
+async function oauthIdentityClaims(
+  provider: OAuthProvider,
+  token: { accessToken: string; idTokenClaims: Record<string, unknown> | null },
+): Promise<Record<string, unknown>> {
+  if (token.idTokenClaims) {
+    const email = extractVerifiedOAuthEmail(provider, token.idTokenClaims);
+    const subject = extractOAuthSubject(provider, token.idTokenClaims);
+    if (email && subject) return token.idTokenClaims;
+  }
+  return fetchOAuthUserInfo(provider, token.accessToken);
 }
 
 function extractVerifiedOAuthEmail(provider: OAuthProvider, claims: Record<string, unknown>): string | null {
