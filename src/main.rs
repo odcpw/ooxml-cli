@@ -408,10 +408,39 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "ranges" && verb == "export" =>
         {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--range",
+                    "--data-format",
+                    "--data-out",
+                    "--max-cells",
+                ],
+                &["--include-types", "--include-formulas", "--include-formats"],
+            )?;
             let sheet = parse_string_flag(rest, "--sheet")?.unwrap_or_else(|| "1".to_string());
             let range = parse_string_flag(rest, "--range")?
                 .ok_or_else(|| CliError::invalid_args("--range is required"))?;
-            xlsx_range_export(file, &sheet, &range)
+            let data_format = parse_string_flag(rest, "--data-format")?;
+            require_json_data_format(data_format.as_deref())?;
+            let data_out = parse_string_flag(rest, "--data-out")?;
+            let max_cells = parse_i64_flag(rest, "--max-cells")?.unwrap_or(100000);
+            let include_types = has_flag(rest, "--include-types");
+            let include_formulas = has_flag(rest, "--include-formulas");
+            let include_formats = has_flag(rest, "--include-formats");
+            xlsx_range_export_with_options(
+                file,
+                &sheet,
+                &range,
+                XlsxRangeExportOptions {
+                    include_types,
+                    include_formulas,
+                    include_formats,
+                    data_out: data_out.as_deref(),
+                    max_cells,
+                },
+            )
         }
         [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "cells" && verb == "extract" =>
@@ -453,6 +482,40 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             xlsx_tables_show(file, sheet.as_deref(), table.as_deref())
         }
         [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "tables" && verb == "export" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--table",
+                    "--data-format",
+                    "--data-out",
+                    "--max-cells",
+                ],
+                &["--include-types", "--include-formulas"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let table = parse_string_flag(rest, "--table")?;
+            let data_format = parse_string_flag(rest, "--data-format")?;
+            let data_out = parse_string_flag(rest, "--data-out")?;
+            let max_cells = parse_i64_flag(rest, "--max-cells")?.unwrap_or(100000);
+            let include_types = has_flag(rest, "--include-types");
+            let include_formulas = has_flag(rest, "--include-formulas");
+            xlsx_tables_export(
+                file,
+                sheet.as_deref(),
+                table.as_deref(),
+                XlsxTableExportOptions {
+                    data_format: data_format.as_deref(),
+                    data_out: data_out.as_deref(),
+                    max_cells,
+                    include_types,
+                    include_formulas,
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "replace" && verb == "text" =>
         {
             pptx_replace_text(file, rest)
@@ -481,6 +544,34 @@ fn parse_string_flag(args: &[String], name: &str) -> CliResult<Option<String>> {
         i += 1;
     }
     Ok(None)
+}
+
+fn reject_unknown_flags(
+    args: &[String],
+    value_flags: &[&str],
+    bool_flags: &[&str],
+) -> CliResult<()> {
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
+        if !arg.starts_with("--") {
+            i += 1;
+            continue;
+        }
+        if bool_flags.iter().any(|flag| flag == arg) {
+            i += 1;
+            continue;
+        }
+        if value_flags.iter().any(|flag| flag == arg) {
+            if args.get(i + 1).is_none() {
+                return Err(CliError::invalid_args(format!("{arg} requires a value")));
+            }
+            i += 2;
+            continue;
+        }
+        return Err(CliError::invalid_args(format!("unknown flag: {arg}")));
+    }
+    Ok(())
 }
 
 fn has_flag(args: &[String], name: &str) -> bool {
@@ -522,10 +613,10 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
             "package": ["ooxml inspect", "ooxml validate", "ooxml verify"],
             "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text", "ooxml pptx render"],
             "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text"],
-            "sheet": ["ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx ranges export", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx tables list", "ooxml xlsx tables show"],
-            "range": ["ooxml xlsx ranges export", "ooxml xlsx cells extract", "ooxml xlsx tables list", "ooxml xlsx tables show"],
+            "sheet": ["ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx ranges export", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
+            "range": ["ooxml xlsx ranges export", "ooxml xlsx cells extract", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "cell": ["ooxml xlsx cells set"],
-            "table": ["ooxml xlsx tables list", "ooxml xlsx tables show"],
+            "table": ["ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "style": []
         },
         "exitCodes": [
@@ -782,6 +873,52 @@ fn capability_commands() -> Vec<Value> {
             ],
         ),
         capability_command(
+            "ooxml xlsx tables export",
+            "export <file>",
+            "Export a table as a rectangular JSON matrix.",
+            &["table", "range", "sheet"],
+            false,
+            Some("read-only command; generated by xlsx tables list/show"),
+            vec![
+                flag(
+                    "--sheet",
+                    "sheet",
+                    "string",
+                    "sheet number (1-based) or exact sheet name",
+                ),
+                flag(
+                    "--table",
+                    "table",
+                    "string",
+                    "table number, name, or displayName",
+                ),
+                flag(
+                    "--include-types",
+                    "includeTypes",
+                    "bool",
+                    "include cell types",
+                ),
+                flag(
+                    "--include-formulas",
+                    "includeFormulas",
+                    "bool",
+                    "include formulas",
+                ),
+                flag(
+                    "--data-out",
+                    "dataOut",
+                    "string",
+                    "write JSON matrix data to this file",
+                ),
+                flag(
+                    "--max-cells",
+                    "maxCells",
+                    "number",
+                    "maximum cells to export",
+                ),
+            ],
+        ),
+        capability_command(
             "ooxml xlsx ranges export",
             "export <file>",
             "Export decoded worksheet cells from a range.",
@@ -796,6 +933,30 @@ fn capability_commands() -> Vec<Value> {
                     "includeTypes",
                     "bool",
                     "include cell types",
+                ),
+                flag(
+                    "--include-formulas",
+                    "includeFormulas",
+                    "bool",
+                    "include formulas",
+                ),
+                flag(
+                    "--include-formats",
+                    "includeFormats",
+                    "bool",
+                    "include style and number-format matrices",
+                ),
+                flag(
+                    "--data-out",
+                    "dataOut",
+                    "string",
+                    "write JSON matrix data to this file",
+                ),
+                flag(
+                    "--max-cells",
+                    "maxCells",
+                    "number",
+                    "maximum cells to export",
                 ),
             ],
         ),
@@ -898,6 +1059,16 @@ fn parse_u32_flag(args: &[String], name: &str) -> CliResult<Option<u32>> {
         .map(|value| {
             value
                 .parse::<u32>()
+                .map_err(|_| CliError::invalid_args(format!("{name} must be an integer")))
+        })
+        .transpose()
+}
+
+fn parse_i64_flag(args: &[String], name: &str) -> CliResult<Option<i64>> {
+    parse_string_flag(args, name)?
+        .map(|value| {
+            value
+                .parse::<i64>()
                 .map_err(|_| CliError::invalid_args(format!("{name} must be an integer")))
         })
         .transpose()
@@ -1746,7 +1917,35 @@ fn pptx_shapes_show(
     Ok(Value::Object(output))
 }
 
+struct XlsxRangeExportOptions<'a> {
+    include_types: bool,
+    include_formulas: bool,
+    include_formats: bool,
+    data_out: Option<&'a str>,
+    max_cells: i64,
+}
+
 fn xlsx_range_export(file: &str, sheet_selector: &str, range: &str) -> CliResult<Value> {
+    xlsx_range_export_with_options(
+        file,
+        sheet_selector,
+        range,
+        XlsxRangeExportOptions {
+            include_types: true,
+            include_formulas: false,
+            include_formats: false,
+            data_out: None,
+            max_cells: 100000,
+        },
+    )
+}
+
+fn xlsx_range_export_with_options(
+    file: &str,
+    sheet_selector: &str,
+    range: &str,
+    options: XlsxRangeExportOptions<'_>,
+) -> CliResult<Value> {
     let workbook = zip_text(file, "xl/workbook.xml")?;
     let sheets = workbook_sheets(&workbook)?;
     let sheet = resolve_sheet(&sheets, sheet_selector)?;
@@ -1760,12 +1959,22 @@ fn xlsx_range_export(file: &str, sheet_selector: &str, range: &str) -> CliResult
     let sheet_xml = zip_text(file, &sheet_part)?;
     let cells = sheet_cells(&sheet_xml, &shared_strings, &styles);
     let bounds = parse_range(range)?;
+    check_range_max_cells(range, bounds, options.max_cells)?;
     let mut values = Vec::new();
     let mut types = Vec::new();
+    let mut formulas = Vec::new();
+    let mut style_indexes = Vec::new();
+    let mut number_format_ids = Vec::new();
+    let mut number_format_codes = Vec::new();
     let mut formula_count = 0;
+    let mut has_format_readback = false;
     for row in bounds.start_row..=bounds.end_row {
         let mut row_values = Vec::new();
         let mut row_types = Vec::new();
+        let mut row_formulas = Vec::new();
+        let mut row_style_indexes = Vec::new();
+        let mut row_number_format_ids = Vec::new();
+        let mut row_number_format_codes = Vec::new();
         for col in bounds.start_col..=bounds.end_col {
             let addr = format!("{}{}", col_name(col), row);
             if let Some(cell) = cells.get(&addr) {
@@ -1774,59 +1983,162 @@ fn xlsx_range_export(file: &str, sheet_selector: &str, range: &str) -> CliResult
                 }
                 row_values.push(cell.matrix_value.clone());
                 row_types.push(Value::String(cell.kind.clone()));
+                if cell.formula.is_empty() {
+                    row_formulas.push(Value::Null);
+                } else {
+                    row_formulas.push(Value::String(cell.formula.clone()));
+                }
+                let style_index = cell.style_index.unwrap_or(0);
+                let number_format_id = cell.number_format_id.unwrap_or(0);
+                let number_format_code = cell.number_format_code.clone().unwrap_or_default();
+                let has_cell_format =
+                    style_index != 0 || number_format_id != 0 || !number_format_code.is_empty();
+                if has_cell_format {
+                    has_format_readback = true;
+                    row_style_indexes.push(json!(style_index));
+                    row_number_format_ids.push(json!(number_format_id));
+                    if number_format_code.is_empty() {
+                        row_number_format_codes.push(Value::Null);
+                    } else {
+                        row_number_format_codes.push(Value::String(number_format_code));
+                    }
+                } else {
+                    row_style_indexes.push(Value::Null);
+                    row_number_format_ids.push(Value::Null);
+                    row_number_format_codes.push(Value::Null);
+                }
             } else {
                 row_values.push(Value::Null);
                 row_types.push(Value::String("empty".to_string()));
+                row_formulas.push(Value::Null);
+                row_style_indexes.push(Value::Null);
+                row_number_format_ids.push(Value::Null);
+                row_number_format_codes.push(Value::Null);
             }
         }
         values.push(Value::Array(row_values));
         types.push(Value::Array(row_types));
+        formulas.push(Value::Array(row_formulas));
+        style_indexes.push(Value::Array(row_style_indexes));
+        number_format_ids.push(Value::Array(row_number_format_ids));
+        number_format_codes.push(Value::Array(row_number_format_codes));
     }
     let rows = bounds.end_row - bounds.start_row + 1;
     let cols = bounds.end_col - bounds.start_col + 1;
-    Ok(json!({
-        "cellsExtractCommand": format!(
+    let mut output = Map::new();
+    output.insert(
+        "cellsExtractCommand".to_string(),
+        json!(format!(
             "ooxml --json xlsx cells extract {} --sheet {} --range {}",
             command_arg(file),
             command_arg(&sheet.name),
             command_arg(range)
-        ),
-        "cols": cols,
-        "dataFormat": "json",
-        "file": file,
-        "formulaCount": formula_count,
-        "majorDimension": "rows",
-        "pptxPlaceTableCommandTemplate": format!(
+        )),
+    );
+    output.insert("cols".to_string(), json!(cols));
+    output.insert("dataFormat".to_string(), json!("json"));
+    output.insert("file".to_string(), json!(file));
+    output.insert("formulaCount".to_string(), json!(formula_count));
+    output.insert("majorDimension".to_string(), json!("rows"));
+    output.insert(
+        "pptxPlaceTableCommandTemplate".to_string(),
+        json!(format!(
             "ooxml --json pptx place table-from-xlsx deck.pptx --workbook {} --sheet {} --range {} --expect-source-range {} --slide 1 --x 0 --y 0 --cx 4000000 --out out.pptx",
             command_arg(file),
             command_arg(&sheet.name),
             command_arg(range),
             command_arg(range)
-        ),
-        "pptxReplaceTextCommandTemplate": format!(
+        )),
+    );
+    output.insert(
+        "pptxReplaceTextCommandTemplate".to_string(),
+        json!(format!(
             "ooxml --json pptx replace text-from-xlsx deck.pptx --workbook {} --sheet {} --range {} --slide 1 --target title --out out.pptx",
             command_arg(file),
             command_arg(&sheet.name),
             command_arg(range)
-        ),
-        "pptxUpdateTableCommandTemplate": format!(
+        )),
+    );
+    output.insert(
+        "pptxUpdateTableCommandTemplate".to_string(),
+        json!(format!(
             "ooxml --json pptx tables update-from-xlsx deck.pptx --workbook {} --sheet {} --range {} --expect-source-range {} --slide 1 --target table:1 --out out.pptx",
             command_arg(file),
             command_arg(&sheet.name),
             command_arg(range),
             command_arg(range)
-        ),
-        "primarySelector": range,
-        "range": range,
-        "rows": rows,
-        "selectors": [range],
-        "sheet": sheet.name,
-        "sheetNumber": sheet.position,
-        "truncated": false,
-        "types": types,
-        "validateCommand": format!("ooxml validate --strict {}", command_arg(file)),
-        "values": values,
-    }))
+        )),
+    );
+    output.insert("primarySelector".to_string(), json!(range));
+    output.insert("range".to_string(), json!(range));
+    output.insert("rows".to_string(), json!(rows));
+    output.insert("selectors".to_string(), json!([range]));
+    output.insert("sheet".to_string(), json!(sheet.name));
+    output.insert("sheetNumber".to_string(), json!(sheet.position));
+    output.insert("truncated".to_string(), json!(false));
+    if options.include_types {
+        output.insert("types".to_string(), Value::Array(types));
+    }
+    if options.include_formulas {
+        output.insert("formulas".to_string(), Value::Array(formulas));
+    }
+    if options.include_formats && has_format_readback {
+        output.insert("styleIndexes".to_string(), Value::Array(style_indexes));
+        output.insert(
+            "numberFormatIds".to_string(),
+            Value::Array(number_format_ids),
+        );
+        output.insert(
+            "numberFormatCodes".to_string(),
+            Value::Array(number_format_codes),
+        );
+    }
+    output.insert(
+        "validateCommand".to_string(),
+        json!(format!("ooxml validate --strict {}", command_arg(file))),
+    );
+    output.insert("values".to_string(), Value::Array(values));
+    if let Some(data_out) = options.data_out.filter(|data_out| !data_out.is_empty()) {
+        output.insert("dataOut".to_string(), json!(data_out));
+        let mut data = serde_json::to_vec(&Value::Object(output.clone()))
+            .map_err(|err| CliError::unexpected(format!("failed to marshal range JSON: {err}")))?;
+        data.push(b'\n');
+        fs::write(data_out, data)
+            .map_err(|err| CliError::unexpected(format!("failed to write --data-out: {err}")))?;
+        output.remove("values");
+        output.remove("types");
+        output.remove("formulas");
+        output.remove("styleIndexes");
+        output.remove("numberFormatIds");
+        output.remove("numberFormatCodes");
+    }
+    Ok(Value::Object(output))
+}
+
+fn require_json_data_format(data_format: Option<&str>) -> CliResult<()> {
+    let data_format = data_format.unwrap_or("json").trim().to_ascii_lowercase();
+    if data_format.is_empty() || data_format == "json" {
+        Ok(())
+    } else {
+        Err(CliError::invalid_args(format!(
+            "unsupported Rust-port data format {data_format:?}; only json is implemented"
+        )))
+    }
+}
+
+fn check_range_max_cells(range: &str, bounds: RangeBounds, max_cells: i64) -> CliResult<()> {
+    if max_cells < 0 {
+        return Err(CliError::invalid_args("--max-cells must be >= 0"));
+    }
+    let rows = i64::from(bounds.end_row.saturating_sub(bounds.start_row) + 1);
+    let cols = i64::from(bounds.end_col.saturating_sub(bounds.start_col) + 1);
+    let cell_count = rows.saturating_mul(cols);
+    if max_cells > 0 && cell_count > max_cells {
+        return Err(CliError::invalid_args(format!(
+            "range {range} contains {cell_count} cells, above --max-cells {max_cells}"
+        )));
+    }
+    Ok(())
 }
 
 fn xlsx_cells_extract(
@@ -2099,6 +2411,37 @@ fn xlsx_tables_show(
         "validateCommand": format!("ooxml validate --strict {}", command_arg(file)),
         "tables": [xlsx_table_item_json(file, &table)],
     }))
+}
+
+struct XlsxTableExportOptions<'a> {
+    data_format: Option<&'a str>,
+    data_out: Option<&'a str>,
+    max_cells: i64,
+    include_types: bool,
+    include_formulas: bool,
+}
+
+fn xlsx_tables_export(
+    file: &str,
+    sheet_selector: Option<&str>,
+    table_selector: Option<&str>,
+    options: XlsxTableExportOptions<'_>,
+) -> CliResult<Value> {
+    require_json_data_format(options.data_format)?;
+    let tables = xlsx_tables(file, sheet_selector)?;
+    let table = select_xlsx_table(&tables, table_selector.unwrap_or_default())?;
+    xlsx_range_export_with_options(
+        file,
+        &table.sheet,
+        &table.range,
+        XlsxRangeExportOptions {
+            include_types: options.include_types,
+            include_formulas: options.include_formulas,
+            include_formats: false,
+            data_out: options.data_out,
+            max_cells: options.max_cells,
+        },
+    )
 }
 
 fn xlsx_tables(file: &str, sheet_selector: Option<&str>) -> CliResult<Vec<XlsxTableRef>> {
@@ -2942,7 +3285,35 @@ impl ServeState {
             "xlsx ranges export" => {
                 let sheet = json_string(args, "sheet")?;
                 let range = json_string(args, "range")?;
-                xlsx_range_export(&session.working, &sheet, &range)
+                let data_format = json_optional_string(args, "data-format")
+                    .or_else(|| json_optional_string(args, "dataFormat"));
+                require_json_data_format(data_format.as_deref())?;
+                let data_out = json_optional_string(args, "data-out")
+                    .or_else(|| json_optional_string(args, "dataOut"));
+                let max_cells = json_i64(args, "max-cells")?
+                    .or(json_i64(args, "maxCells")?)
+                    .unwrap_or(100000);
+                let include_types = json_bool(args, "include-types")
+                    .or_else(|| json_bool(args, "includeTypes"))
+                    .unwrap_or(false);
+                let include_formulas = json_bool(args, "include-formulas")
+                    .or_else(|| json_bool(args, "includeFormulas"))
+                    .unwrap_or(false);
+                let include_formats = json_bool(args, "include-formats")
+                    .or_else(|| json_bool(args, "includeFormats"))
+                    .unwrap_or(false);
+                xlsx_range_export_with_options(
+                    &session.working,
+                    &sheet,
+                    &range,
+                    XlsxRangeExportOptions {
+                        include_types,
+                        include_formulas,
+                        include_formats,
+                        data_out: data_out.as_deref(),
+                        max_cells,
+                    },
+                )
             }
             "xlsx cells extract" => {
                 let sheet = json_optional_string(args, "sheet").unwrap_or_else(|| "1".to_string());
@@ -2978,6 +3349,35 @@ impl ServeState {
                 let sheet = json_optional_string(args, "sheet");
                 let table = json_optional_string(args, "table");
                 xlsx_tables_show(&session.working, sheet.as_deref(), table.as_deref())
+            }
+            "xlsx tables export" => {
+                let sheet = json_optional_string(args, "sheet");
+                let table = json_optional_string(args, "table");
+                let data_format = json_optional_string(args, "data-format")
+                    .or_else(|| json_optional_string(args, "dataFormat"));
+                let data_out = json_optional_string(args, "data-out")
+                    .or_else(|| json_optional_string(args, "dataOut"));
+                let max_cells = json_i64(args, "max-cells")?
+                    .or(json_i64(args, "maxCells")?)
+                    .unwrap_or(100000);
+                let include_types = json_bool(args, "include-types")
+                    .or_else(|| json_bool(args, "includeTypes"))
+                    .unwrap_or(false);
+                let include_formulas = json_bool(args, "include-formulas")
+                    .or_else(|| json_bool(args, "includeFormulas"))
+                    .unwrap_or(false);
+                xlsx_tables_export(
+                    &session.working,
+                    sheet.as_deref(),
+                    table.as_deref(),
+                    XlsxTableExportOptions {
+                        data_format: data_format.as_deref(),
+                        data_out: data_out.as_deref(),
+                        max_cells,
+                        include_types,
+                        include_formulas,
+                    },
+                )
             }
             "pptx slides list" => pptx_slides_list(&session.working),
             "pptx slides selectors" => {
@@ -3209,6 +3609,24 @@ fn json_u32(value: &Value, key: &str) -> CliResult<Option<u32>> {
     if let Some(text) = raw.as_str() {
         return text
             .parse::<u32>()
+            .map(Some)
+            .map_err(|_| CliError::invalid_args(format!("{key} must be an integer")));
+    }
+    Err(CliError::invalid_args(format!(
+        "{key} must be an integer or integer string"
+    )))
+}
+
+fn json_i64(value: &Value, key: &str) -> CliResult<Option<i64>> {
+    let Some(raw) = value.get(key) else {
+        return Ok(None);
+    };
+    if let Some(number) = raw.as_i64() {
+        return Ok(Some(number));
+    }
+    if let Some(text) = raw.as_str() {
+        return text
+            .parse::<i64>()
             .map(Some)
             .map_err(|_| CliError::invalid_args(format!("{key} must be an integer")));
     }

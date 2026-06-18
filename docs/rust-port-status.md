@@ -16,7 +16,8 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   XLSX/DOCX main parts, malformed main XML failure paths, and unsupported OOXML
   package detection
 - `--json pptx slides show ... --include-text`
-- `--json xlsx ranges export ... --include-types`
+- `--json xlsx ranges export ...` with Go-oracle comparison for default JSON
+  export, typed export, formula/format matrices, and `--max-cells` guardrails
 - `--json docx text <docx>` with Go-oracle comparison across the committed
   positive DOCX fixture corpus: paragraphs, styles, preserved whitespace,
   hyperlinks, field/instruction text omission, tables, merged tables, headers,
@@ -48,7 +49,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 18, and the harness pins the 272-command gap until
+  paths, Rust advertises 19, and the harness pins the 271-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -70,6 +71,10 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   bridge command templates, `capabilities --for table`, and stable table
   selectors (`tableId`, `id`, `table`, `#`, part, relationship, display/name,
   and bare names)
+- `--json xlsx tables export <xlsx>` with Go-oracle comparison for default JSON
+  export, typed export, formula matrices, `--data-out`, `--max-cells`, missing
+  selectors, paths/sheet names with spaces, `capabilities --for table`, and
+  serve inspect routing
 - `serve` JSON-RPC generic PPTX inspect/op/commit path for
   `pptx slides show` plus `pptx replace text`, matching the Flue workbench's
   generic `apply_ooxml_ops_to_current` smoke route

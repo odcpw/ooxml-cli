@@ -283,7 +283,7 @@ fn write_table_xlsx_with_sheet(dest: &Path, sheet_name: &str) {
   <sheetData>
     <row r="1"><c r="A1" t="inlineStr"><is><t>Region</t></is></c><c r="B1" t="inlineStr"><is><t>Amount</t></is></c></row>
     <row r="2"><c r="A2" t="inlineStr"><is><t>East</t></is></c><c r="B2"><v>10</v></c></row>
-    <row r="3"><c r="A3" t="inlineStr"><is><t>West</t></is></c><c r="B3"><v>20</v></c></row>
+    <row r="3"><c r="A3" t="inlineStr"><is><t>West</t></is></c><c r="B3"><f>SUM(B2:B2)*2</f><v>20</v></c></row>
   </sheetData>
   <tableParts count="1"><tablePart r:id="rId1"/></tableParts>
 </worksheet>"#,
@@ -427,6 +427,66 @@ fn frozen_cli_slice_matches_go_baseline() {
             "stderr for {:?}",
             args
         );
+    }
+}
+
+#[test]
+fn xlsx_ranges_export_matches_go_oracle() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "xlsx",
+            "ranges",
+            "export",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--sheet",
+            "1",
+            "--range",
+            "A1:B2",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "ranges",
+            "export",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--sheet",
+            "1",
+            "--range",
+            "A1:B2",
+            "--include-types",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "ranges",
+            "export",
+            "testdata/xlsx/types-and-formulas/workbook.xlsx",
+            "--sheet",
+            "Types",
+            "--range",
+            "A1:H2",
+            "--include-types",
+            "--include-formulas",
+            "--include-formats",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "ranges",
+            "export",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--sheet",
+            "1",
+            "--range",
+            "A1:B2",
+            "--max-cells",
+            "1",
+        ],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
     }
 }
 
@@ -579,6 +639,122 @@ fn xlsx_tables_list_show_matches_go_oracle() {
         "Data Sheet",
         "--table",
         "Sales",
+    ]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_tables_export_matches_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-table-export-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let workbook = temp_dir.join("table-workbook.xlsx");
+    write_table_xlsx(&workbook);
+    let workbook = workbook.to_string_lossy().to_string();
+
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json", "xlsx", "tables", "export", &workbook, "--table", "Sales",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "tables",
+            "export",
+            &workbook,
+            "--table",
+            "Sales",
+            "--include-types",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "tables",
+            "export",
+            &workbook,
+            "--sheet",
+            "Data",
+            "--table",
+            "tableId:1",
+            "--include-types",
+            "--include-formulas",
+        ],
+        vec![
+            "--json", "xlsx", "tables", "export", &workbook, "--table", "Missing",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "tables",
+            "export",
+            &workbook,
+            "--table",
+            "Sales",
+            "--max-cells",
+            "1",
+        ],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+
+    let data_out = temp_dir.join("table-export.json");
+    let data_out = data_out.to_string_lossy().to_string();
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "tables",
+        "export",
+        &workbook,
+        "--table",
+        "Sales",
+        "--include-types",
+        "--include-formulas",
+        "--data-out",
+        &data_out,
+    ]);
+    let saved: Value =
+        serde_json::from_str(fs::read_to_string(&data_out).expect("data-out file").trim())
+            .expect("data-out JSON");
+    let (code, expected_full, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "tables",
+        "export",
+        &workbook,
+        "--table",
+        "Sales",
+        "--include-types",
+        "--include-formulas",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    let mut expected_full = expected_full.expect("full table export");
+    expected_full["dataOut"] = Value::String(data_out);
+    assert_eq!(saved, expected_full);
+
+    let spaced_dir = temp_dir.join("dir with spaces");
+    fs::create_dir_all(&spaced_dir).expect("spaced temp dir");
+    let spaced_workbook = spaced_dir.join("table workbook.xlsx");
+    write_table_xlsx_with_sheet(&spaced_workbook, "Data Sheet");
+    let spaced_workbook = spaced_workbook.to_string_lossy().to_string();
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "tables",
+        "export",
+        &spaced_workbook,
+        "--sheet",
+        "Data Sheet",
+        "--table",
+        "Sales",
+        "--include-types",
+        "--include-formulas",
     ]);
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -1166,6 +1342,36 @@ fn serve_inspect_supports_xlsx_tables_show() {
     assert_eq!(code, 0);
     assert_eq!(stderr, None);
     assert_eq!(inspect_response["result"], expected.expect("show stdout"));
+
+    let export = rpc_request(
+        4,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx tables export",
+            "args": {"sheet": "Data", "table": "Sales", "includeTypes": true, "includeFormulas": true},
+        }),
+    );
+    let export_response = serve_roundtrip(&mut stdin, &mut reader, &export);
+    let working = export_response["result"]["file"]
+        .as_str()
+        .expect("working file");
+    let (code, expected, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "tables",
+        "export",
+        working,
+        "--sheet",
+        "Data",
+        "--table",
+        "Sales",
+        "--include-types",
+        "--include-formulas",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    assert_eq!(export_response["result"], expected.expect("export stdout"));
 
     drop(stdin);
     let status = child.wait().expect("serve exit");
@@ -1858,6 +2064,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx cells set", true);
     assert_command(&xlsx_caps, "ooxml xlsx tables list", false);
     assert_command(&xlsx_caps, "ooxml xlsx tables show", false);
+    assert_command(&xlsx_caps, "ooxml xlsx tables export", false);
 
     let (table_code, table_stdout, table_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "table"]);
@@ -1866,6 +2073,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let table_caps = table_stdout.expect("table capabilities");
     assert_command(&table_caps, "ooxml xlsx tables list", false);
     assert_command(&table_caps, "ooxml xlsx tables show", false);
+    assert_command(&table_caps, "ooxml xlsx tables export", false);
 }
 
 #[test]
@@ -1883,10 +2091,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 18, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 19, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        272,
+        271,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
