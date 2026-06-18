@@ -1,90 +1,93 @@
-# Goal: Practical Codex-Native OOXML Workbench
+# Goal: Rust Port With Go Oracle Parity
 
-Build `ooxml-cli` into a practical agent-facing Office workbench for ordinary business files:
+Build a Rust implementation of `ooxml-cli` while preserving the current Go
+implementation as the reference oracle. The final state is:
 
-- PPTX/PPTM decks: inspect, find targets, edit text/images/tables/charts/layouts, validate, render, and read back.
-- XLSX/XLSM workbooks: inspect sheets/ranges/tables/charts/pivots, edit structured data, validate, and export typed readback.
-- VBA projects: create Office-authored macro-enabled files from source modules on Windows, safely move Office-authored macro projects, inspect/extract source modules, and replace existing modules with guards.
-- DOCX/DOCM documents: support common business reports, tables, headers/footers, images, comments, and find/replace.
+1. A pushed Go reference branch at the frozen baseline.
+2. A pushed Rust branch with proven parity against the Go reference.
 
-Do not chase rare OOXML corners unless a real user file needs them. The main value is: an agent can inspect a file, discover stable handles, make semantic edits, validate/read back the result, and return a usable Office file with minimal guessing.
+Do not claim parity from intention, partial tests, or similar-looking output.
+Parity means current evidence proves the Rust subject matches the Go oracle for
+the relevant command surface.
 
-## Current Truth
+## Required Skills
 
-Working and useful today:
+Use these skills explicitly:
 
-- `capabilities --json`, `doctor`, `find`, `apply`, `serve`, and `mcp` exist as agent-facing surfaces.
-- PPTX and XLSX have broad practical inspection and mutation coverage.
-- DOCX covers common business-document edits.
-- VBA package-level `vbaProject.bin` inspect/extract/attach/remove works for PPTX/PPTM and XLSX/XLSM.
-- `ooxml vba create` creates fresh Office-authored `.xlsm` and `.pptm` files from `.bas` / `.cls` sources on Windows desktop Office and can extract a reusable seed `vbaProject.bin`.
-- VBA source `list`/`extract` works for parseable projects.
-- VBA `replace-module` works for existing parseable modules with stale-source guards.
-- Windows VBA smoke creates Office-native `.xlsm` and `.pptm` seeds, proves attach/remove and existing-module replacement, validates with strict/Open XML SDK checks, and opens macro-enabled outputs through Excel/PowerPoint COM.
+- `$codebase-archaeology`: map the Go CLI architecture, command dispatch,
+  package structure, serve mode, MCP mode, web hooks, tests, fixtures, and
+  frozen contract artifacts.
+- `$ooxml`: keep behavior grounded in semantic OOXML workflows, stable handles,
+  validation, render/readback evidence, and the existing `ooxml` CLI contract.
+- `$testing-golden-artifacts`: use the frozen Go baseline in
+  `testdata/golden/rust-port-contract/` as the initial observable contract.
+- `$testing-conformance-harnesses`: build and maintain the Go-vs-Rust
+  differential harness.
+- `$running-the-gauntlet-on-your-rust-port`: use subject/oracle/comparator
+  discipline, surface parity inventory, negative ledgers, and repeated hardening
+  rounds once the Rust binary exists.
+- `$testing-metamorphic`: add OOXML invariants such as validate-after-edit,
+  render-after-edit, unzip/rezip stability, relationship integrity, content-type
+  integrity, and idempotent operations.
+- `$testing-fuzzing`: fuzz malformed Office files, ZIP/package boundaries, XML
+  edges, relationships, content types, and corrupted slides/sheets/docs.
+- `$profiling-software-performance`: profile only after correctness parity for a
+  surface is established.
+- `$extreme-software-optimization`: optimize only from measured hotspots, one
+  behavior-preserving lever at a time.
+- `$multi-pass-bug-hunting`: run fresh-eyes audit/fix/rescan passes against both
+  the Rust implementation and the parity harness.
+- `$agent-ergonomics-and-intuitiveness-maximization-for-cli-tools`: keep the
+  Rust CLI agent-friendly: stable JSON, stdout-as-data, stderr-as-diagnostics,
+  useful errors, documented exit codes, discoverable help, `capabilities --json`,
+  and no surprise interactivity.
 
-Important accepted limits:
+## Dependency Rule
 
-- Real Office-shaped `add-module` and `remove-module` are intentionally refused because Office stores version-dependent `VBA/_VBA_PROJECT` module-set metadata.
-- To change the module set for Office-facing files, use `ooxml vba create` for a fresh `.xlsm`/`.pptm`, or create/obtain an Office-authored `vbaProject.bin` and use `ooxml vba attach`.
-- `tools/windows-office-vba-create.ps1` is the Windows Office-backed helper behind `ooxml vba create`; agents should use the CLI command first.
-- Macro execution, VBE compile proof, signatures/resigning, forms, password/protection editing, and procedure-level helpers are out of scope for now.
+For Rust libraries and reusable infrastructure, first inspect and prioritize
+usable repos from `https://github.com/Dicklesworthstone`. If no suitable repo
+exists for a needed domain, such as ZIP, XML, OOXML parsing/writing, CLI parsing,
+JSON, MCP, async/runtime, testing, fuzzing, or conformance, use mainstream Rust
+crates and document why.
 
-## Operating Rules
+## Non-Negotiables
 
-- `ooxml capabilities --json` is the finite command contract.
-- Every mutation must require `--out`, `--in-place`, or `--dry-run`.
-- Every changed package must validate by default.
-- JSON mutation output should include `file`, `output`, `dryRun`, changed-object readback where useful, and generated follow-up commands.
-- Errors should return useful candidates or exact discovery/repair commands.
-- For compatibility-sensitive work, proof strength is:
-  1. `ooxml validate --strict`
-  2. Microsoft Open XML SDK schema validation
-  3. LibreOffice/render/open checks
-  4. desktop Microsoft Office COM open proof
+- Go is the oracle. Rust is the subject.
+- Port by command surface, not vague module mirroring.
+- Every implemented Rust surface must be compared against Go for stdout, stderr,
+  exit code, JSON shape, mutation result, validation result, and any relevant
+  serve/MCP/web behavior.
+- Every mismatch is fixed or documented in
+  `testdata/golden/rust-port-contract/DISCREPANCIES.md` with impact, affected
+  tests, review date, and status.
+- Correctness comes before performance.
+- Commit and push stable milestones.
+- Keep this goal active until full parity is actually proven.
 
-## Useful Next Work
+## Phases
 
-Do these only when they remove real operational friction:
+1. Preserve and push the Go reference branch at the frozen baseline.
+2. Map the Go architecture and command surfaces.
+3. Create the Rust branch and Rust crate/binary.
+4. Build the Go-vs-Rust differential harness.
+5. Port the frozen CLI baseline first: `version`, `inspect`,
+   `pptx slides show`, `xlsx ranges export`, `docx text`, invalid JSON error,
+   `pptx replace text`, and `validate`.
+6. Add parity for `pptx render`, `verify --baseline`, `serve` JSON-RPC, MCP
+   discovery/session flows, and the web `OOXML_BIN` smoke path.
+7. Expand coverage from `capabilities --json` until every Go command is present,
+   intentionally excluded, or tracked as open.
+8. Add metamorphic tests and fuzzing.
+9. Run fresh-eyes review, `cargo fmt`, `cargo clippy`, `cargo test`, Go tests,
+   differential parity gates, and relevant web smoke checks.
+10. Repeat until the Rust branch is at proven full parity and pushed.
 
-1. Keep `ooxml vba create` first-class in README, the agent skill, capabilities, and smoke gates.
-2. Add small deterministic fixtures only if they let CI cover current supported behavior without requiring desktop Office.
-3. Improve structured `dir`/PROJECT reference parsing when it helps diagnostics or safe replacement.
-4. Harden code-page reporting/conversion only when a real file proves the need.
-5. Keep the guard messages for unsupported real Office-shaped add/remove explicit and actionable.
+## Short Prompt
 
-Do not build inline procedure/function editing yet. Do not build macro execution. Do not do broad refactors without a green baseline and a scored isomorphism case.
+Use this when character budget is tight:
 
-## Verification Commands
-
-Fast local gate:
-
-```powershell
-go vet ./...
-go test ./...
+```text
+Read and follow GOAL.md. Use the named `$` skills there. Continue the Rust port
+until Go is preserved as the oracle branch and the Rust branch reaches proven
+full parity through the frozen contract and Go-vs-Rust conformance harness.
 ```
-
-If `make` is installed, `make verify` runs the same local gate. `make verify-strict` also enforces repo-wide gofmt.
-
-Windows Office gates:
-
-```powershell
-make check-office-schema
-make check-office-com
-make check-office-vba-schema
-make check-office-vba-com
-make check-release-fast
-make check-release-slow
-```
-
-Without `make`, run the PowerShell scripts directly:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -SkipOffice -EnableVbaObjectModelAccess
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
-```
-
-## Rust Port Direction
-
-Do not port now. The compatibility proof is the asset, and Go is currently good for this CLI. Revisit Rust only after the command contract and fixture/oracle harness are stable enough to run a strangler/parity port one operation at a time.
