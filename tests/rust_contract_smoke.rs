@@ -355,6 +355,24 @@ fn serve_pptx_generic_web_agent_edit_path_works() {
         Value::String("Minimal Title Slide".to_string())
     );
 
+    let shapes_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            31,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx shapes show",
+                "args": {"slide": 1, "include-text": true, "include-bounds": true},
+            }),
+        ),
+    );
+    assert_eq!(
+        shapes_response["result"]["shapes"][0]["primarySelector"],
+        Value::String("title".to_string())
+    );
+
     let op_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
@@ -674,6 +692,80 @@ fn web_smoke_binary_readback_checks_are_supported() {
         "pptx slides selectors stdout"
     );
 
+    for args in [
+        [
+            "--json",
+            "pptx",
+            "shapes",
+            "show",
+            pptx,
+            "--slide",
+            "1",
+            "--include-text",
+            "--include-bounds",
+        ],
+        [
+            "--json",
+            "pptx",
+            "shapes",
+            "show",
+            "testdata/pptx/table-slide/presentation.pptx",
+            "--slide",
+            "2",
+            "--include-text",
+            "--include-bounds",
+        ],
+        [
+            "--json",
+            "pptx",
+            "shapes",
+            "show",
+            "testdata/pptx/picture-placeholder/presentation.pptx",
+            "--slide",
+            "2",
+            "--include-text",
+            "--include-bounds",
+        ],
+    ] {
+        let (go_shapes_code, go_shapes_stdout, go_shapes_stderr) = run_go_ooxml(&args);
+        let (rust_shapes_code, rust_shapes_stdout, rust_shapes_stderr) = run_ooxml(&args);
+        assert_eq!(rust_shapes_code, go_shapes_code, "pptx shapes show exit");
+        assert_eq!(
+            rust_shapes_stderr, go_shapes_stderr,
+            "pptx shapes show stderr for {args:?}"
+        );
+        assert_eq!(
+            rust_shapes_stdout, go_shapes_stdout,
+            "pptx shapes show stdout for {args:?}"
+        );
+    }
+
+    let table_selectors_args = [
+        "--json",
+        "pptx",
+        "slides",
+        "selectors",
+        "testdata/pptx/table-slide/presentation.pptx",
+        "--slide",
+        "2",
+    ];
+    let (go_table_selectors_code, go_table_selectors_stdout, go_table_selectors_stderr) =
+        run_go_ooxml(&table_selectors_args);
+    let (rust_table_selectors_code, rust_table_selectors_stdout, rust_table_selectors_stderr) =
+        run_ooxml(&table_selectors_args);
+    assert_eq!(
+        rust_table_selectors_code, go_table_selectors_code,
+        "pptx table selectors exit"
+    );
+    assert_eq!(
+        rust_table_selectors_stderr, go_table_selectors_stderr,
+        "pptx table selectors stderr"
+    );
+    assert_eq!(
+        rust_table_selectors_stdout, go_table_selectors_stdout,
+        "pptx table selectors stdout"
+    );
+
     let (docx_code, docx_stdout, docx_stderr) = run_ooxml(&["--json", "docx", "text", docx]);
     assert_eq!(docx_code, 0);
     assert_eq!(docx_stderr, None);
@@ -710,6 +802,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx slides list", false);
     assert_command(&pptx_caps, "ooxml pptx slides selectors", false);
     assert_command(&pptx_caps, "ooxml pptx slides show", false);
+    assert_command(&pptx_caps, "ooxml pptx shapes show", false);
     assert_command(&pptx_caps, "ooxml pptx replace text", true);
 
     let (xlsx_code, xlsx_stdout, xlsx_stderr) =

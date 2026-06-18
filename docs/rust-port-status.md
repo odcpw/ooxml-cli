@@ -32,6 +32,9 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   minimal, notes, table, and dangling-layout PPTX fixtures
 - `--json pptx slides selectors <pptx> --slide <n>` for the generated minimal
   slide selector readback path
+- `--json pptx shapes show <pptx> --slide <n> --include-text --include-bounds`
+  for generated shape readback commands, with Go-oracle comparison on text-shape
+  and table/graphicFrame fixtures
 - `serve` JSON-RPC generic PPTX inspect/op/commit path for
   `pptx slides show` plus `pptx replace text`, matching the Flue workbench's
   generic `apply_ooxml_ops_to_current` smoke route
