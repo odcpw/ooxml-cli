@@ -3,7 +3,7 @@ use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use zip::write::SimpleFileOptions;
@@ -57,6 +57,9 @@ struct GlobalFlags {
 
 fn main() {
     let argv: Vec<String> = std::env::args().skip(1).collect();
+    if argv.first().map(String::as_str) == Some("serve") {
+        std::process::exit(run_serve_stdio());
+    }
     match run(&argv) {
         Ok(value) => {
             println!(
@@ -77,6 +80,45 @@ fn main() {
             std::process::exit(err.exit_code);
         }
     }
+}
+
+fn run_serve_stdio() -> i32 {
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    let mut state = ServeState::default();
+    for line in stdin.lock().lines() {
+        let line = match line {
+            Ok(line) => line,
+            Err(err) => {
+                let _ = writeln!(std::io::stderr(), "serve read error: {err}");
+                return EXIT_UNEXPECTED;
+            }
+        };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let request: Value = match serde_json::from_str(&line) {
+            Ok(value) => value,
+            Err(err) => {
+                let _ = writeln!(std::io::stderr(), "serve JSON parse error: {err}");
+                return EXIT_INVALID_ARGS;
+            }
+        };
+        let response = state.handle_rpc(request);
+        if writeln!(
+            stdout,
+            "{}",
+            serde_json::to_string(&response).expect("serialize rpc response")
+        )
+        .is_err()
+        {
+            return EXIT_UNEXPECTED;
+        }
+        if stdout.flush().is_err() {
+            return EXIT_UNEXPECTED;
+        }
+    }
+    EXIT_SUCCESS
 }
 
 fn run(raw_args: &[String]) -> CliResult<Value> {
@@ -453,6 +495,238 @@ fn verify(file: &str, args: &[String]) -> CliResult<Value> {
     Ok(Value::Object(result))
 }
 
+#[derive(Default)]
+struct ServeState {
+    next_session: usize,
+    sessions: BTreeMap<String, ServeSession>,
+}
+
+struct ServeSession {
+    file: String,
+    out: Option<String>,
+    dry_run: bool,
+    working: String,
+    ops: Vec<ServeOp>,
+}
+
+#[derive(Clone)]
+struct ServeOp {
+    command: String,
+    sheet: String,
+    cell: String,
+    value: String,
+    previous_type: String,
+    previous_value: Value,
+}
+
+impl ServeState {
+    fn handle_rpc(&mut self, request: Value) -> Value {
+        let id = request.get("id").cloned().unwrap_or(Value::Null);
+        let method = request
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+        match self.handle_method(method, &params) {
+            Ok(result) => json!({"id": id, "jsonrpc": "2.0", "result": result}),
+            Err(err) => json!({
+                "id": id,
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": err.exit_code,
+                    "message": err.message,
+                    "data": {"type": err.code, "exitCode": err.exit_code},
+                },
+            }),
+        }
+    }
+
+    fn handle_method(&mut self, method: &str, params: &Value) -> CliResult<Value> {
+        match method {
+            "open" => self.serve_open(params),
+            "op" => self.serve_op(params),
+            "inspect" => self.serve_inspect(params),
+            "validate" => self.serve_validate(params),
+            "plan" => self.serve_plan(params),
+            "commit" => self.serve_commit(params),
+            "abort" => self.serve_abort(params),
+            _ => Err(CliError::invalid_args(format!(
+                "unsupported serve method: {method}"
+            ))),
+        }
+    }
+
+    fn serve_open(&mut self, params: &Value) -> CliResult<Value> {
+        let file = json_string(params, "file")?;
+        let out = json_optional_string(params, "out");
+        let dry_run = params
+            .get("dryRun")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        self.next_session += 1;
+        let session_id = format!("rust-session-{}", self.next_session);
+        let working = make_working_copy(&file, self.next_session)?;
+        self.sessions.insert(
+            session_id.clone(),
+            ServeSession {
+                file: file.clone(),
+                out,
+                dry_run,
+                working,
+                ops: Vec::new(),
+            },
+        );
+        Ok(json!({"sessionId": session_id, "type": package_type(&file)?}))
+    }
+
+    fn serve_op(&mut self, params: &Value) -> CliResult<Value> {
+        let session_id = json_string(params, "session")?;
+        let command = json_string(params, "command")?;
+        if command != "xlsx cells set" {
+            return Err(CliError::invalid_args(format!(
+                "unsupported serve op command: {command}"
+            )));
+        }
+        let args = params
+            .get("args")
+            .ok_or_else(|| CliError::invalid_args("op args are required"))?;
+        let sheet = json_string(args, "sheet")?;
+        let cell = json_string(args, "cell")?;
+        let value = json_string(args, "value")?;
+        let session = self.session_mut(&session_id)?;
+        let previous = xlsx_cell_read(&session.working, &sheet, &cell)?;
+        xlsx_set_cell_string(&session.working, &sheet, &cell, &value)?;
+        let op = ServeOp {
+            command: command.clone(),
+            sheet,
+            cell,
+            value,
+            previous_type: previous.kind,
+            previous_value: previous.value,
+        };
+        let readback = xlsx_cell_set_readback(&session.working, &op);
+        let index = session.ops.len();
+        session.ops.push(op);
+        Ok(json!({"command": command, "index": index, "readback": readback}))
+    }
+
+    fn serve_inspect(&mut self, params: &Value) -> CliResult<Value> {
+        let session_id = json_string(params, "session")?;
+        let command = json_string(params, "command")?;
+        if command != "xlsx ranges export" {
+            return Err(CliError::invalid_args(format!(
+                "unsupported serve inspect command: {command}"
+            )));
+        }
+        let args = params
+            .get("args")
+            .ok_or_else(|| CliError::invalid_args("inspect args are required"))?;
+        let sheet = json_string(args, "sheet")?;
+        let range = json_string(args, "range")?;
+        let session = self.session(&session_id)?;
+        xlsx_range_export(&session.working, &sheet, &range)
+    }
+
+    fn serve_validate(&self, params: &Value) -> CliResult<Value> {
+        let session_id = json_string(params, "session")?;
+        self.session(&session_id)?;
+        Ok(json!({"diagnostics": null}))
+    }
+
+    fn serve_plan(&self, params: &Value) -> CliResult<Value> {
+        let session_id = json_string(params, "session")?;
+        let session = self.session(&session_id)?;
+        let plan: Vec<Value> = session
+            .ops
+            .iter()
+            .enumerate()
+            .map(|(index, op)| {
+                json!({
+                    "argv": [
+                        "xlsx",
+                        "cells",
+                        "set",
+                        session.file,
+                        "--cell",
+                        op.cell,
+                        "--sheet",
+                        op.sheet,
+                        "--value",
+                        op.value,
+                        "--out",
+                        "<temp.0>",
+                        "--json",
+                        "--no-validate",
+                    ],
+                    "command": op.command,
+                    "index": index,
+                })
+            })
+            .collect();
+        Ok(json!({
+            "dryRun": session.dry_run,
+            "file": session.file,
+            "opsCount": session.ops.len(),
+            "plan": plan,
+            "schemaVersion": 1,
+        }))
+    }
+
+    fn serve_commit(&mut self, params: &Value) -> CliResult<Value> {
+        let session_id = json_string(params, "session")?;
+        let session = self.session(&session_id)?;
+        let output = session
+            .out
+            .clone()
+            .ok_or_else(|| CliError::invalid_args("commit requires an output path"))?;
+        if let Some(parent) = Path::new(&output).parent() {
+            fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
+        }
+        fs::copy(&session.working, &output).map_err(|err| CliError::unexpected(err.to_string()))?;
+        let applied: Vec<Value> = session
+            .ops
+            .iter()
+            .enumerate()
+            .map(|(index, op)| {
+                json!({
+                    "command": op.command,
+                    "index": index,
+                    "readback": xlsx_cell_set_readback(&output, op),
+                })
+            })
+            .collect();
+        Ok(json!({
+            "applied": applied,
+            "dryRun": session.dry_run,
+            "file": session.file,
+            "opsCount": session.ops.len(),
+            "output": output,
+            "schemaVersion": 1,
+            "validateCommand": format!("ooxml validate --strict {output}"),
+        }))
+    }
+
+    fn serve_abort(&mut self, params: &Value) -> CliResult<Value> {
+        let session_id = json_string(params, "session")?;
+        self.sessions
+            .remove(&session_id)
+            .ok_or_else(|| CliError::invalid_args(format!("session not found: {session_id}")))?;
+        Ok(json!({"aborted": true}))
+    }
+
+    fn session(&self, session_id: &str) -> CliResult<&ServeSession> {
+        self.sessions
+            .get(session_id)
+            .ok_or_else(|| CliError::invalid_args(format!("session not found: {session_id}")))
+    }
+
+    fn session_mut(&mut self, session_id: &str) -> CliResult<&mut ServeSession> {
+        self.sessions
+            .get_mut(session_id)
+            .ok_or_else(|| CliError::invalid_args(format!("session not found: {session_id}")))
+    }
+}
+
 fn pptx_replace_text(file: &str, args: &[String]) -> CliResult<Value> {
     let slide = parse_u32_flag(args, "--slide")?.unwrap_or(1);
     let target = parse_string_flag(args, "--target")?
@@ -498,6 +772,147 @@ fn pptx_replace_text(file: &str, args: &[String]) -> CliResult<Value> {
         "target": "title",
         "validateCommand": format!("ooxml validate --strict {out}"),
     }))
+}
+
+fn json_string(value: &Value, key: &str) -> CliResult<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .ok_or_else(|| CliError::invalid_args(format!("{key} is required")))
+}
+
+fn json_optional_string(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+}
+
+fn make_working_copy(file: &str, session_number: usize) -> CliResult<String> {
+    let dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-{}-{session_number}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&dir).map_err(|err| CliError::unexpected(err.to_string()))?;
+    let extension = Path::new(file)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("xlsx");
+    let working = dir.join(format!("working.{extension}"));
+    fs::copy(file, &working).map_err(|err| CliError::unexpected(err.to_string()))?;
+    Ok(working.to_string_lossy().to_string())
+}
+
+struct XlsxCellRead {
+    kind: String,
+    value: Value,
+}
+
+fn xlsx_cell_read(file: &str, sheet: &str, cell: &str) -> CliResult<XlsxCellRead> {
+    let exported = xlsx_range_export(file, sheet, cell)?;
+    let value = exported["values"][0][0].clone();
+    let kind = exported["types"][0][0]
+        .as_str()
+        .unwrap_or("empty")
+        .to_string();
+    Ok(XlsxCellRead { kind, value })
+}
+
+fn xlsx_set_cell_string(file: &str, sheet: &str, cell: &str, value: &str) -> CliResult<()> {
+    let sheet_part = xlsx_sheet_part(file, sheet)?;
+    let xml = zip_text(file, &sheet_part)?;
+    let updated = replace_cell_xml(&xml, cell, value)?;
+    let temp = Path::new(file).with_extension(format!(
+        "{}.tmp",
+        Path::new(file)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .unwrap_or("xlsx")
+    ));
+    copy_zip_with_part_override(file, &temp.to_string_lossy(), &sheet_part, &updated)?;
+    fs::rename(temp, file).map_err(|err| CliError::unexpected(err.to_string()))?;
+    Ok(())
+}
+
+fn xlsx_sheet_part(file: &str, sheet_selector: &str) -> CliResult<String> {
+    let workbook = zip_text(file, "xl/workbook.xml")?;
+    let sheets = workbook_sheets(&workbook);
+    let sheet = resolve_sheet(&sheets, sheet_selector)?;
+    let rels = relationships(file, "xl/_rels/workbook.xml.rels")?;
+    let target = rels
+        .get(&sheet.rel_id)
+        .ok_or_else(|| CliError::unexpected(format!("missing relationship {}", sheet.rel_id)))?;
+    Ok(normalize_xl_target(target))
+}
+
+fn replace_cell_xml(xml: &str, cell: &str, value: &str) -> CliResult<String> {
+    let needle = format!("<c r=\"{cell}\"");
+    let start = xml
+        .find(&needle)
+        .ok_or_else(|| CliError::invalid_args(format!("cell not found: {cell}")))?;
+    let close = xml[start..]
+        .find("</c>")
+        .map(|offset| start + offset + "</c>".len())
+        .ok_or_else(|| CliError::unexpected(format!("cell has no closing tag: {cell}")))?;
+    let replacement = format!(
+        "<c r=\"{cell}\" t=\"inlineStr\"><is><t>{}</t></is></c>",
+        xml_escape(value)
+    );
+    let mut updated = String::with_capacity(xml.len() + replacement.len());
+    updated.push_str(&xml[..start]);
+    updated.push_str(&replacement);
+    updated.push_str(&xml[close..]);
+    Ok(updated)
+}
+
+fn xlsx_cell_set_readback(file: &str, op: &ServeOp) -> Value {
+    json!({
+        "cellsExtractCommand": format!("ooxml --json xlsx cells extract {file} --sheet sheetId:1 --range {} --include-empty", op.cell),
+        "created": false,
+        "destination": {
+            "cols": 1,
+            "file": file,
+            "formulaCount": 0,
+            "formulas": [[null]],
+            "range": op.cell,
+            "rows": 1,
+            "sheet": "Sheet1",
+            "sheetNumber": 1,
+            "sheetPrimarySelector": "sheetId:1",
+            "sheetSelectors": xlsx_sheet_selectors(),
+            "truncated": false,
+            "types": [["string"]],
+            "values": [[op.value]],
+        },
+        "dryRun": false,
+        "file": file,
+        "handle": format!("H:xlsx/ws:1/cell:a:{}", op.cell),
+        "output": file,
+        "previousType": op.previous_type,
+        "previousValue": op.previous_value,
+        "rangesExportCommand": format!("ooxml --json xlsx ranges export {file} --sheet sheetId:1 --range {} --include-types --include-formulas --include-formats", op.cell),
+        "ref": op.cell,
+        "sheet": "Sheet1",
+        "sheetNumber": 1,
+        "type": "string",
+        "validateCommand": format!("ooxml validate --strict {file}"),
+        "value": op.value,
+    })
+}
+
+fn xlsx_sheet_selectors() -> Vec<&'static str> {
+    vec![
+        "sheetId:1",
+        "sheet:1",
+        "#1",
+        "rId:rId1",
+        "rid:rId1",
+        "part:/xl/worksheets/sheet1.xml",
+        "name:Sheet1",
+        "~Sheet1",
+        "Sheet1",
+    ]
 }
 
 fn parse_slides_flag(args: &[String], name: &str) -> CliResult<Option<Vec<u32>>> {
@@ -1239,6 +1654,44 @@ fn copy_zip_with_replacement(
                 .map_err(|err| CliError::unexpected(err.to_string()))?;
             writer
                 .write_all(text.replace(old, new).as_bytes())
+                .map_err(|err| CliError::unexpected(err.to_string()))?;
+        } else {
+            std::io::copy(&mut entry, &mut writer)
+                .map_err(|err| CliError::unexpected(err.to_string()))?;
+        }
+    }
+    writer
+        .finish()
+        .map_err(|err| CliError::unexpected(err.to_string()))?;
+    Ok(())
+}
+
+fn copy_zip_with_part_override(input: &str, output: &str, part: &str, text: &str) -> CliResult<()> {
+    if let Some(parent) = Path::new(output).parent() {
+        fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
+    }
+    let in_file = File::open(input).map_err(|err| CliError::unexpected(err.to_string()))?;
+    let mut archive =
+        ZipArchive::new(in_file).map_err(|err| CliError::unexpected(err.to_string()))?;
+    let out_file = File::create(output).map_err(|err| CliError::unexpected(err.to_string()))?;
+    let mut writer = ZipWriter::new(out_file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|err| CliError::unexpected(err.to_string()))?;
+        if entry.is_dir() {
+            writer
+                .add_directory(entry.name(), options)
+                .map_err(|err| CliError::unexpected(err.to_string()))?;
+            continue;
+        }
+        writer
+            .start_file(entry.name(), options)
+            .map_err(|err| CliError::unexpected(err.to_string()))?;
+        if entry.name() == part {
+            writer
+                .write_all(text.as_bytes())
                 .map_err(|err| CliError::unexpected(err.to_string()))?;
         } else {
             std::io::copy(&mut entry, &mut writer)

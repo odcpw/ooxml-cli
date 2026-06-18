@@ -1,5 +1,6 @@
 use serde_json::Value;
-use std::process::Command;
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Command, Stdio};
 
 fn baseline() -> Value {
     serde_json::from_str(include_str!(
@@ -164,6 +165,149 @@ fn frozen_pptx_mutation_and_validate_match_go_baseline() {
     );
 }
 
+#[test]
+fn frozen_serve_flow_matches_go_baseline() {
+    let baseline = baseline();
+    let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-serve-{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("serve-out.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+    let mut replacements = vec![
+        (input_str.clone(), "[SERVE_INPUT_XLSX]".to_string()),
+        (output_str.clone(), "[SERVE_OUT_XLSX]".to_string()),
+    ];
+    let mut flow = Vec::new();
+
+    let open = rpc_request(
+        1,
+        "open",
+        serde_json::json!({"file": input_str, "out": output_str}),
+    );
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+    replacements.push((session.clone(), "[SESSION]".to_string()));
+    flow.push(flow_item("open", open, open_response, &replacements));
+
+    let op = rpc_request(
+        2,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx cells set",
+            "args": {"sheet": "1", "cell": "A1", "value": "serve-contract"},
+        }),
+    );
+    let op_response = serve_roundtrip(&mut stdin, &mut reader, &op);
+    let working = op_response["result"]["readback"]["file"]
+        .as_str()
+        .expect("working package")
+        .to_string();
+    replacements.push((working, "[SESSION_WORKING_PACKAGE]".to_string()));
+    flow.push(flow_item("op", op, op_response, &replacements));
+
+    let inspect = rpc_request(
+        3,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx ranges export",
+            "args": {"sheet": "1", "range": "A1", "include-types": true},
+        }),
+    );
+    let inspect_response = serve_roundtrip(&mut stdin, &mut reader, &inspect);
+    flow.push(flow_item(
+        "inspect",
+        inspect,
+        inspect_response,
+        &replacements,
+    ));
+
+    for (id, method) in [(4, "validate"), (5, "plan"), (6, "commit")] {
+        let request = rpc_request(id, method, serde_json::json!({"session": session}));
+        let response = serve_roundtrip(&mut stdin, &mut reader, &request);
+        flow.push(flow_item(method, request, response, &replacements));
+    }
+
+    let dry_open = rpc_request(
+        7,
+        "open",
+        serde_json::json!({"file": input_str, "dryRun": true}),
+    );
+    let dry_open_response = serve_roundtrip(&mut stdin, &mut reader, &dry_open);
+    let dry_session = dry_open_response["result"]["sessionId"]
+        .as_str()
+        .expect("dry session id")
+        .to_string();
+    replacements.push((dry_session.clone(), "[DRY_RUN_SESSION]".to_string()));
+    flow.push(flow_item(
+        "open",
+        dry_open,
+        dry_open_response,
+        &replacements,
+    ));
+
+    let abort = rpc_request(8, "abort", serde_json::json!({"session": dry_session}));
+    let abort_response = serve_roundtrip(&mut stdin, &mut reader, &abort);
+    flow.push(flow_item("abort", abort, abort_response, &replacements));
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    assert_eq!(Value::Array(flow), baseline["serve"]["flow"]);
+}
+
+fn rpc_request(id: i64, method: &str, params: Value) -> Value {
+    serde_json::json!({
+        "id": id,
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": params,
+    })
+}
+
+fn serve_roundtrip(stdin: &mut impl Write, reader: &mut impl BufRead, request: &Value) -> Value {
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::to_string(request).expect("serialize request")
+    )
+    .expect("write serve request");
+    stdin.flush().expect("flush serve request");
+    let mut line = String::new();
+    reader.read_line(&mut line).expect("read serve response");
+    assert!(!line.trim().is_empty(), "empty serve response");
+    serde_json::from_str(&line).expect("decode serve response")
+}
+
+fn flow_item(
+    method: &str,
+    request: Value,
+    response: Value,
+    replacements: &[(String, String)],
+) -> Value {
+    serde_json::json!({
+        "method": method,
+        "request": scrub_dynamic(request, replacements),
+        "response": scrub_dynamic(response, replacements),
+    })
+}
+
 fn nullable(value: &Value) -> Option<Value> {
     if value.is_null() {
         None
@@ -174,6 +318,30 @@ fn nullable(value: &Value) -> Option<Value> {
 
 fn scrub_path(value: Value, from: &str, to: &str) -> Value {
     scrub_paths(value, &[(from, to)])
+}
+
+fn scrub_dynamic(value: Value, replacements: &[(String, String)]) -> Value {
+    match value {
+        Value::String(text) => {
+            let mut text = text;
+            for (from, to) in replacements {
+                text = text.replace(from, to);
+            }
+            Value::String(text)
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .map(|item| scrub_dynamic(item, replacements))
+                .collect(),
+        ),
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(key, value)| (key, scrub_dynamic(value, replacements)))
+                .collect(),
+        ),
+        other => other,
+    }
 }
 
 fn scrub_paths(value: Value, replacements: &[(&str, &str)]) -> Value {
