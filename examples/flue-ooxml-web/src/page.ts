@@ -724,10 +724,7 @@ export function workbenchHtml(): string {
 	        let assistantText = '';
 	        let sawEvent = false;
 	        await new Promise((resolve, reject) => {
-	          const url = new URL(appUrl(streamUrl), window.location.origin);
-	          if (url.origin !== window.location.origin || !isAppPath(url.pathname, '/flue/')) {
-	            throw new Error('Agent returned an unexpected event stream URL.');
-	          }
+	          const url = normalizedEventStreamUrl(streamUrl);
 	          url.searchParams.set('offset', offset);
 	          url.searchParams.set('live', 'sse');
 	          const source = new EventSource(url.toString());
@@ -978,6 +975,28 @@ export function workbenchHtml(): string {
         } catch {
           return 'the requested endpoint';
         }
+      }
+
+      function normalizedEventStreamUrl(value) {
+        const parsed = new URL(String(value || ''), window.location.origin);
+        const unprefixedPath = removeAppBasePath(parsed.pathname);
+        let streamPath = '';
+        if (unprefixedPath.startsWith('/flue/')) {
+          streamPath = unprefixedPath;
+        } else if (unprefixedPath.startsWith('/agents/') || unprefixedPath.startsWith('/runs/')) {
+          streamPath = '/flue' + unprefixedPath;
+        }
+        if (!streamPath) {
+          throw new Error('Agent returned an unexpected event stream URL: ' + parsed.pathname);
+        }
+        return new URL(appUrl(streamPath + parsed.search + parsed.hash), window.location.origin);
+      }
+
+      function removeAppBasePath(pathname) {
+        if (!APP_BASE_PATH) return pathname;
+        if (pathname === APP_BASE_PATH) return '/';
+        if (pathname.startsWith(APP_BASE_PATH + '/')) return pathname.slice(APP_BASE_PATH.length) || '/';
+        return pathname;
       }
 
       async function apiFetch(url, options = {}) {
