@@ -416,6 +416,12 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             xlsx_sheets_list(file)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "sheets" && verb == "show" =>
+        {
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            xlsx_sheets_show(file, sheet.as_deref())
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "replace" && verb == "text" =>
         {
             pptx_replace_text(file, rest)
@@ -686,6 +692,15 @@ fn capability_commands() -> Vec<Value> {
             false,
             Some("read-only command; call via inspect in serve/MCP"),
             vec![],
+        ),
+        capability_command(
+            "ooxml xlsx sheets show",
+            "show <file>",
+            "Show worksheet metadata, used ranges, and generated readback commands.",
+            &["sheet", "range"],
+            false,
+            Some("read-only command; call via inspect in serve/MCP"),
+            vec![flag("--sheet", "sheet", "string", "sheet selector")],
         ),
         capability_command(
             "ooxml xlsx ranges export",
@@ -1260,6 +1275,123 @@ fn xlsx_cells_extract(
     }))
 }
 
+fn xlsx_sheets_show(file: &str, sheet_selector: Option<&str>) -> CliResult<Value> {
+    let workbook = zip_text(file, "xl/workbook.xml")?;
+    let sheets = workbook_sheets(&workbook);
+    let rels = relationships(file, "xl/_rels/workbook.xml.rels")?;
+    let selected = if let Some(selector) = sheet_selector.filter(|selector| !selector.is_empty()) {
+        vec![resolve_sheet(&sheets, selector)?]
+    } else {
+        sheets
+    };
+    if selected.is_empty() {
+        return Err(CliError::invalid_args("workbook has no worksheet sheets"));
+    }
+    let shared_strings = shared_strings(file).unwrap_or_default();
+    let styles = xlsx_styles(file).unwrap_or_default();
+    let mut reports = Vec::new();
+    for sheet in selected {
+        let target = rels.get(&sheet.rel_id).ok_or_else(|| {
+            CliError::unexpected(format!("missing relationship {}", sheet.rel_id))
+        })?;
+        let sheet_part = normalize_xl_target(target);
+        let sheet_xml = zip_text(file, &sheet_part)?;
+        let cells = sorted_xlsx_cells(&sheet_cells(&sheet_xml, &shared_strings, &styles), None);
+        reports.push(xlsx_sheet_show_item(
+            file,
+            &sheet,
+            &sheet_part,
+            &sheet_xml,
+            &cells,
+        ));
+    }
+    Ok(json!({
+        "file": file,
+        "validateCommand": format!("ooxml validate --strict {file}"),
+        "sheets": reports,
+    }))
+}
+
+fn xlsx_sheet_show_item(
+    file: &str,
+    sheet: &WorkbookSheet,
+    sheet_part: &str,
+    sheet_xml: &str,
+    cells: &[XlsxCellEntry],
+) -> Value {
+    let part_uri = format!("/{sheet_part}");
+    let used_range = used_range_for_cells(cells);
+    let selector = format!("sheetId:{}", sheet.sheet_id);
+    let used_range_ref = used_range_ref(used_range);
+    let row_count = cells
+        .iter()
+        .map(|cell| cell.row)
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    let mut item = Map::new();
+    item.insert("number".to_string(), json!(sheet.position));
+    item.insert("name".to_string(), json!(sheet.name));
+    item.insert("sheetId".to_string(), json!(sheet.sheet_id.to_string()));
+    item.insert("state".to_string(), json!(sheet.state));
+    item.insert("partUri".to_string(), json!(part_uri));
+    item.insert("primarySelector".to_string(), json!(selector));
+    item.insert(
+        "selectors".to_string(),
+        json!(xlsx_sheet_selectors(
+            &sheet.name,
+            sheet.sheet_id,
+            sheet.position,
+            &sheet.rel_id,
+            &format!("/{sheet_part}")
+        )),
+    );
+    if let Some(dimension_declared) =
+        xlsx_dimension_declared(sheet_xml).filter(|value| !value.is_empty())
+    {
+        item.insert("dimensionDeclared".to_string(), json!(dimension_declared));
+    }
+    item.insert("usedRange".to_string(), used_range_json(used_range));
+    item.insert("rowCount".to_string(), json!(row_count));
+    item.insert("cellCount".to_string(), json!(cells.len()));
+    item.insert(
+        "mergedCellCount".to_string(),
+        json!(xlsx_merged_cell_count(sheet_xml)),
+    );
+    item.insert(
+        "tablesListCommand".to_string(),
+        json!(format!(
+            "ooxml --json xlsx tables list {file} --sheet {selector}"
+        )),
+    );
+    item.insert(
+        "setCellCommandTemplate".to_string(),
+        json!(format!(
+            "ooxml --json xlsx cells set {file} --sheet {selector} --cell A1 --value VALUE --out out.xlsx"
+        )),
+    );
+    if let Some(range_ref) = used_range_ref {
+        item.insert(
+            "cellsExtractCommand".to_string(),
+            json!(format!(
+                "ooxml --json xlsx cells extract {file} --sheet {selector} --range {range_ref}"
+            )),
+        );
+        item.insert(
+            "rangesExportCommand".to_string(),
+            json!(format!(
+                "ooxml --json xlsx ranges export {file} --sheet {selector} --range {range_ref} --include-types"
+            )),
+        );
+        item.insert(
+            "setRangeCommandTemplate".to_string(),
+            json!(format!(
+                "ooxml --json xlsx ranges set {file} --sheet {selector} --range {range_ref} --data-format json --values-file values.json --out out.xlsx"
+            )),
+        );
+    }
+    Value::Object(item)
+}
+
 fn xlsx_sheets_list(file: &str) -> CliResult<Value> {
     let workbook = zip_text(file, "xl/workbook.xml")?;
     let sheets = workbook_sheets(&workbook);
@@ -1276,7 +1408,7 @@ fn xlsx_sheets_list(file: &str) -> CliResult<Value> {
                 "position": sheet.position,
                 "name": sheet.name,
                 "sheetId": sheet.sheet_id.to_string(),
-                "state": "visible",
+                "state": sheet.state,
                 "relationshipId": sheet.rel_id,
                 "partUri": part_uri,
                 "relationshipType": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet",
@@ -1645,6 +1777,10 @@ impl ServeState {
                 )
             }
             "xlsx sheets list" => xlsx_sheets_list(&session.working),
+            "xlsx sheets show" => {
+                let sheet = json_optional_string(args, "sheet");
+                xlsx_sheets_show(&session.working, sheet.as_deref())
+            }
             "pptx slides list" => pptx_slides_list(&session.working),
             "pptx slides selectors" => {
                 let slide = json_u32(args, "slide")?
@@ -3458,6 +3594,7 @@ struct WorkbookSheet {
     sheet_id: u32,
     position: u32,
     rel_id: String,
+    state: String,
 }
 
 fn workbook_sheets(xml: &str) -> Vec<WorkbookSheet> {
@@ -3480,6 +3617,7 @@ fn workbook_sheets(xml: &str) -> Vec<WorkbookSheet> {
                         sheet_id: number,
                         position: sheets.len() as u32 + 1,
                         rel_id,
+                        state: attr(&e, "state").unwrap_or_else(|| "visible".to_string()),
                     });
                 }
             }
@@ -3977,6 +4115,20 @@ fn used_range_json(used: UsedRangeSummary) -> Value {
         "cols": used.max_col - used.min_col + 1,
         "empty": false,
     })
+}
+
+fn used_range_ref(used: UsedRangeSummary) -> Option<String> {
+    if used.empty {
+        None
+    } else {
+        Some(format!(
+            "{}{}:{}{}",
+            col_name(used.min_col),
+            used.min_row,
+            col_name(used.max_col),
+            used.max_row
+        ))
+    }
 }
 
 fn build_sparse_xlsx_rows(
