@@ -1,4 +1,12 @@
 import { appPathPrefix } from './shared/app-url.ts';
+import {
+  previewAvailableOnlyCopy,
+  previewInspectCopy,
+  previewRenderPromptCopy,
+  previewSupportedLabel,
+  previewWiredOnlyCopy,
+  uploadAcceptAttribute,
+} from './shared/file-support.ts';
 import { themeCss } from './shared/theme.ts';
 
 export function workbenchHtml(): string {
@@ -401,7 +409,7 @@ ${themeCss()}
           <h2 class="section-title">Upload</h2>
           <form id="uploadForm" class="upload-form">
             <input id="titleInput" type="text" placeholder="Thread title" aria-label="Thread title" />
-            <input id="fileInput" type="file" accept=".pptx,.pptm,.docx,.xlsx,.xlsm" multiple required aria-label="Office files to upload" />
+            <input id="fileInput" type="file" accept="${uploadAcceptAttribute}" multiple required aria-label="Office files to upload" />
             <button id="uploadBtn" type="submit">Upload file(s)</button>
           </form>
           <div class="privacy-note">
@@ -445,7 +453,7 @@ ${themeCss()}
         <div class="preview-head">
           <div>
             <div class="preview-title">Preview</div>
-            <div id="previewMeta" class="subtle">Render PPTX/PPTM thumbnails to inspect output.</div>
+            <div id="previewMeta" class="subtle">${previewInspectCopy}</div>
           </div>
           <div class="row">
             <button id="zoomOutBtn" class="secondary" type="button">-</button>
@@ -543,7 +551,7 @@ ${themeCss()}
 	      renderBtn.addEventListener('click', async () => {
 	        if (!state.thread) return;
 	        if (!canRenderCurrent()) {
-	          addMessage('trace', 'preview skipped · PPTX/PPTM thumbnails only');
+	          addMessage('trace', 'preview skipped · ' + ${JSON.stringify(previewSupportedLabel)} + ' thumbnails only');
 	          return;
 	        }
 	        addMessage('trace', 'rendering preview');
@@ -667,12 +675,12 @@ ${themeCss()}
 	        renderBtn.disabled = !enabled || !canRenderThread(thread);
 	        documentList.innerHTML = '';
 	        downloadLink.hidden = !enabled;
-	        renderBtn.title = enabled && !canRenderThread(thread) ? 'Preview thumbnails are currently available for PPTX/PPTM only.' : '';
+	        renderBtn.title = enabled && !canRenderThread(thread) ? ${JSON.stringify(previewAvailableOnlyCopy)} : '';
 
         if (!thread) {
           threadInfo.textContent = 'No thread selected.';
           preview.innerHTML = '<div class="empty">Upload files or open a thread to begin.</div>';
-          previewMeta.textContent = 'Render PPTX/PPTM thumbnails to inspect output.';
+          previewMeta.textContent = ${JSON.stringify(previewInspectCopy)};
 	          uploadBtn.textContent = 'Upload file(s)';
 	          updateStatus();
 	          return;
@@ -732,8 +740,8 @@ ${themeCss()}
 	        if (!thumbs.length) {
 	          previewMeta.textContent = supported ? 'No rendered thumbnails yet.' : 'Preview unavailable for ' + (ext || 'this file') + '.';
 	          preview.innerHTML = supported
-	            ? '<div class="empty">Click Render preview for PPTX/PPTM files.</div>'
-	            : '<div class="empty">Preview thumbnails are currently wired for PPTX/PPTM. You can still inspect, edit, validate, and download this file.</div>';
+	            ? '<div class="empty">' + ${JSON.stringify(previewRenderPromptCopy)} + '</div>'
+	            : '<div class="empty">' + ${JSON.stringify(previewWiredOnlyCopy)} + ' You can still inspect, edit, validate, and download this file.</div>';
 	          return;
 	        }
         previewMeta.textContent = thumbs.length + ' thumbnail(s) · ' + thread.currentVersionId;

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { promisify } from 'node:util';
+import { isPreviewExtensionSupported, previewUnavailableReasonCopy } from './file-support.ts';
 import { runtimeDataRoot } from './runtime-paths.ts';
 import {
   absoluteVersionPath,
@@ -868,7 +869,7 @@ export async function renderCurrent(threadId: string): Promise<Record<string, un
   if (!previewSupportedFor(version)) {
     return {
       rendered: false,
-      reason: 'Preview rendering is currently wired for PPTX/PPTM only.',
+      reason: previewUnavailableReasonCopy,
       currentDocumentId: document.id,
       currentVersionId: document.currentVersionId,
       currentExtension: extname(version.path).toLowerCase(),
@@ -1316,8 +1317,7 @@ function normalizeServeCommand(command: string): string {
 }
 
 function previewSupportedFor(version: FileVersion): boolean {
-  const ext = extname(version.path).toLowerCase();
-  return ext === '.pptx' || ext === '.pptm';
+  return isPreviewExtensionSupported(extname(version.path));
 }
 
 function newVersionOutputPath(dir: string, documentId: string, versionId: string, label: string, ext: string): string {

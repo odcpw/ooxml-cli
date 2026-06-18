@@ -1,5 +1,6 @@
 import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
+import { previewSupportedLabel } from './file-support.ts';
 import {
   applyOoxmlOpsToCurrent,
   applyTemplateToCurrentDocument,
@@ -245,7 +246,7 @@ export function createOoxmlTools(threadId: string) {
     }),
     defineTool({
       name: 'render_current_presentation_preview',
-      description: 'Render the current PPTX/PPTM version to PDF and PNG thumbnails for the browser preview. DOCX/XLSX render is not wired yet.',
+      description: `Render the current ${previewSupportedLabel} version to PDF and PNG thumbnails for the browser preview. DOCX/XLSX render is not wired yet.`,
       parameters: emptyParameters,
       execute: async () => JSON.stringify(await renderCurrent(threadId), null, 2),
     }),

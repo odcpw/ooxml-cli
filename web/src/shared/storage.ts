@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { basename, extname, join, relative, resolve } from 'node:path';
 import { withAppBasePath } from './app-url.ts';
+import { isUploadExtensionSupported } from './file-support.ts';
 import { runtimeDataRoot } from './runtime-paths.ts';
 import { atomicWriteFile } from './fs-atomic.ts';
 
@@ -53,7 +54,6 @@ export type UploadedOfficeFile = {
   bytes: Uint8Array;
 };
 
-const allowedExtensions = new Set(['.pptx', '.pptm', '.docx', '.xlsx', '.xlsm']);
 const threadMutationQueues = new Map<string, Promise<void>>();
 
 export function dataRoot(): string {
@@ -427,7 +427,7 @@ function assertSafeOoxmlZip(bytes: Uint8Array): void {
 async function writeUploadedDocument(threadId: string, input: UploadedOfficeFile, createdAt: string): Promise<ThreadDocument> {
   const originalBase = uploadBaseName(input.originalName);
   const ext = extname(originalBase).toLowerCase();
-  if (!allowedExtensions.has(ext)) {
+  if (!isUploadExtensionSupported(ext)) {
     throw new Error(`Unsupported Office file extension: ${ext || '(none)'}`);
   }
   assertSafeOoxmlZip(input.bytes);
