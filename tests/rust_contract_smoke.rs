@@ -799,6 +799,118 @@ fn frozen_mcp_discovery_and_flow_match_go_baseline() {
 }
 
 #[test]
+fn mcp_command_resources_cover_advertised_rust_capabilities() {
+    let (cap_code, cap_stdout, cap_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(cap_code, 0);
+    assert_eq!(cap_stderr, None);
+    let capabilities = cap_stdout.expect("capabilities stdout");
+    let commands = capabilities["commands"]
+        .as_array()
+        .expect("capability commands");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn mcp");
+    let mut stdin = child.stdin.take().expect("mcp stdin");
+    let stdout = child.stdout.take().expect("mcp stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let initialize = rpc_request(
+        1,
+        "initialize",
+        serde_json::json!({
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "rust-contract", "version": "0.0.0"},
+        }),
+    );
+    let initialize_response = serve_roundtrip(&mut stdin, &mut reader, &initialize);
+    assert!(
+        initialize_response.get("error").is_none(),
+        "initialize returned error: {initialize_response:?}"
+    );
+
+    let mut id = 2;
+    for command in commands {
+        let path = command["path"].as_str().expect("command path");
+        let mut request_paths = vec![path.to_string()];
+        if let Some(shorthand) = path.strip_prefix("ooxml ") {
+            request_paths.push(shorthand.to_string());
+        }
+
+        for request_path in request_paths {
+            let uri = command_resource_uri(&request_path);
+            let response = serve_roundtrip(
+                &mut stdin,
+                &mut reader,
+                &rpc_request(id, "resources/read", serde_json::json!({"uri": uri})),
+            );
+            id += 1;
+            assert!(
+                response.get("error").is_none(),
+                "command resource for {request_path:?} returned error: {response:?}"
+            );
+            let summary = summarize_mcp_command_resource(
+                &response["result"],
+                response["result"]["contents"][0]["uri"]
+                    .as_str()
+                    .expect("resource uri"),
+            );
+            assert_eq!(summary["path"], command["path"], "path for {request_path}");
+            assert_eq!(
+                summary["opCompatible"], command["opCompatible"],
+                "opCompatible for {request_path}"
+            );
+            assert_eq!(
+                summary["flags"],
+                local_flag_field(command, "name"),
+                "flags for {request_path}"
+            );
+            assert_eq!(
+                summary["argNames"],
+                local_flag_field(command, "argName"),
+                "argNames for {request_path}"
+            );
+        }
+    }
+
+    let unknown = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            id,
+            "resources/read",
+            serde_json::json!({"uri": "resource://command/xlsx%20not%20real"}),
+        ),
+    );
+    id += 1;
+    assert!(
+        unknown.get("error").is_some(),
+        "unknown command resource should fail: {unknown:?}"
+    );
+    let bad_escape = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            id,
+            "resources/read",
+            serde_json::json!({"uri": "resource://command/xlsx%ZZbad"}),
+        ),
+    );
+    assert!(
+        bad_escape.get("error").is_some(),
+        "invalid command resource URI should fail: {bad_escape:?}"
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("mcp exit");
+    assert!(status.success());
+}
+
+#[test]
 fn web_smoke_binary_readback_checks_are_supported() {
     let baseline = baseline();
     let web_smoke = &baseline["webSmoke"];
@@ -1093,6 +1205,21 @@ fn summarize_mcp_command_resource(result: &Value, uri: &str) -> Value {
         "flags": flags,
         "argNames": arg_names,
     })
+}
+
+fn command_resource_uri(path: &str) -> String {
+    format!("resource://command/{}", path.replace(' ', "%20"))
+}
+
+fn local_flag_field(command: &Value, field: &str) -> Value {
+    Value::Array(
+        command["localFlags"]
+            .as_array()
+            .expect("local flags")
+            .iter()
+            .map(|flag| flag[field].clone())
+            .collect(),
+    )
 }
 
 fn assert_command(capabilities: &Value, path: &str, op_compatible: bool) {

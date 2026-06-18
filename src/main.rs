@@ -286,10 +286,10 @@ impl McpState {
                 "guide": "Open a session with tools/call open, apply one op at a time, inspect and validate before commit.",
             }))
             .expect("serialize agent guide"),
-            "resource://command/xlsx%20cells%20set" | "resource://command/ooxml%20xlsx%20cells%20set" => {
-                serde_json::to_string(&mcp_xlsx_cells_set_resource())
-                    .expect("serialize command resource")
-            }
+            _ if uri.starts_with("resource://command/") => serde_json::to_string(
+                &mcp_command_resource_for_uri(&uri)?,
+            )
+            .expect("serialize command resource"),
             _ => {
                 return Err(CliError::file_not_found(format!(
                     "unknown MCP resource: {uri}"
@@ -748,15 +748,27 @@ fn capability_commands() -> Vec<Value> {
             true,
             None,
             vec![
-                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag("--backup", "backup", "string", "backup path"),
                 flag("--cell", "cell", "string", "A1 cell reference"),
-                flag("--value", "value", "string", "cell value"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag("--formula", "formula", "string", "cell formula"),
+                flag("--in-place", "inPlace", "bool", "write in place"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
                 flag(
                     "--out",
                     "out",
                     "string",
                     "output file path for direct CLI use",
                 ),
+                flag("--ref", "ref", "string", "A1 cell reference alias"),
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag("--type", "type", "string", "value type"),
+                flag("--value", "value", "string", "cell value"),
             ],
         ),
         capability_command(
@@ -2316,31 +2328,87 @@ fn mcp_command_resource_template() -> Value {
 
 fn mcp_capabilities_resource() -> Value {
     json!({
-        "commands": [mcp_xlsx_cells_set_resource()],
+        "commands": capability_commands(),
         "packageTypes": ["pptx", "xlsx", "docx"],
+        "resourceTemplates": [mcp_command_resource_template()],
         "tool": "ooxml",
         "version": "0.0.1"
     })
 }
 
-fn mcp_xlsx_cells_set_resource() -> Value {
-    json!({
-        "path": "ooxml xlsx cells set",
-        "opCompatible": true,
-        "localFlags": [
-            {"name": "--backup", "argName": "backup"},
-            {"name": "--cell", "argName": "cell"},
-            {"name": "--dry-run", "argName": "dryRun"},
-            {"name": "--formula", "argName": "formula"},
-            {"name": "--in-place", "argName": "inPlace"},
-            {"name": "--no-validate", "argName": "noValidate"},
-            {"name": "--out", "argName": "out"},
-            {"name": "--ref", "argName": "ref"},
-            {"name": "--sheet", "argName": "sheet"},
-            {"name": "--type", "argName": "type"},
-            {"name": "--value", "argName": "value"}
-        ]
+fn mcp_command_resource_for_uri(uri: &str) -> CliResult<Value> {
+    let encoded = uri
+        .strip_prefix("resource://command/")
+        .ok_or_else(|| CliError::invalid_args("resource://command/{path} is required"))?;
+    let decoded = percent_decode_path(encoded)?;
+    let decoded = decoded.trim();
+    if decoded.is_empty() {
+        return Err(CliError::invalid_args(
+            "resource://command/{path} requires a command path",
+        ));
+    }
+    let normalized = normalize_command_resource_path(decoded);
+    capability_commands()
+        .into_iter()
+        .find(|command| command["path"].as_str() == Some(normalized.as_str()))
+        .ok_or_else(|| {
+            CliError::file_not_found(format!(
+                "unknown command: {decoded}; discover valid commands via resource://capabilities"
+            ))
+        })
+}
+
+fn normalize_command_resource_path(path: &str) -> String {
+    let words = path.split_whitespace().collect::<Vec<_>>().join(" ");
+    if words == "ooxml" || words.starts_with("ooxml ") {
+        words
+    } else {
+        format!("ooxml {words}")
+    }
+}
+
+fn percent_decode_path(value: &str) -> CliResult<String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            if i + 2 >= bytes.len() {
+                return Err(CliError::invalid_args(format!(
+                    "invalid percent escape in command resource URI: {value}"
+                )));
+            }
+            let hi = hex_value(bytes[i + 1]).ok_or_else(|| {
+                CliError::invalid_args(format!(
+                    "invalid percent escape in command resource URI: {value}"
+                ))
+            })?;
+            let lo = hex_value(bytes[i + 2]).ok_or_else(|| {
+                CliError::invalid_args(format!(
+                    "invalid percent escape in command resource URI: {value}"
+                ))
+            })?;
+            decoded.push((hi << 4) | lo);
+            i += 3;
+        } else {
+            decoded.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(decoded).map_err(|err| {
+        CliError::invalid_args(format!(
+            "command resource URI path is not valid UTF-8: {err}"
+        ))
     })
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 fn make_working_copy(file: &str, session_number: usize) -> CliResult<String> {

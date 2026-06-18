@@ -24,6 +24,9 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `mcp` stdio JSON-RPC initialize, tools/resources discovery, command resource
   readback, and tools/call open, op, inspect, validate, plan, commit, and abort
   flow for the frozen XLSX cell-edit session
+- `mcp` `resource://command/{path}` dynamic readback for every command
+  advertised by the Rust capability inventory, accepting both full
+  `ooxml ...` paths and op-vocabulary shorthand paths
 - `--json capabilities --for <filter>` for the Rust-supported partial command
   surface, including the web-agent-relevant PPTX and XLSX commands
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
