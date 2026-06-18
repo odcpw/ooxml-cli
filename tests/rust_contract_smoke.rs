@@ -218,6 +218,112 @@ fn write_unknown_package(dest: &Path) {
     writer.finish().expect("finish unknown package");
 }
 
+fn write_table_xlsx(dest: &Path) {
+    write_table_xlsx_with_sheet(dest, "Data");
+}
+
+fn write_table_xlsx_with_sheet(dest: &Path, sheet_name: &str) {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("fixture parent");
+    }
+    let output = File::create(dest).expect("create table xlsx");
+    let mut writer = ZipWriter::new(output);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    write_zip_string(
+        &mut writer,
+        options,
+        "[Content_Types].xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>
+</Types>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "_rels/.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/workbook.xml",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="{sheet_name}" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>"#
+        ),
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/_rels/workbook.xml.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/worksheets/sheet1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <dimension ref="A1:B3"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Region</t></is></c><c r="B1" t="inlineStr"><is><t>Amount</t></is></c></row>
+    <row r="2"><c r="A2" t="inlineStr"><is><t>East</t></is></c><c r="B2"><v>10</v></c></row>
+    <row r="3"><c r="A3" t="inlineStr"><is><t>West</t></is></c><c r="B3"><v>20</v></c></row>
+  </sheetData>
+  <tableParts count="1"><tablePart r:id="rId1"/></tableParts>
+</worksheet>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/worksheets/_rels/sheet1.xml.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/tables/table1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="Sales" displayName="Sales" ref="A1:B3" headerRowCount="1" totalsRowShown="0">
+  <autoFilter ref="A1:B3"/>
+  <tableColumns count="2">
+    <tableColumn id="1" name="Region"/>
+    <tableColumn id="2" name="Amount"/>
+  </tableColumns>
+  <tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>
+</table>"#,
+    );
+    writer.finish().expect("finish table xlsx");
+}
+
+fn write_zip_string(
+    writer: &mut ZipWriter<File>,
+    options: SimpleFileOptions,
+    name: &str,
+    body: &str,
+) {
+    writer.start_file(name, options).expect("write zip entry");
+    writer.write_all(body.as_bytes()).expect("write zip data");
+}
+
 fn replace_ascii(data: Vec<u8>, from: &str, to: &str) -> Vec<u8> {
     String::from_utf8(data)
         .expect("fixture xml utf8")
@@ -395,6 +501,87 @@ fn xlsx_sheets_show_matches_go_oracle() {
     for args in cases {
         assert_go_rust_match(&args);
     }
+}
+
+#[test]
+fn xlsx_tables_list_show_matches_go_oracle() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-tables-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let workbook = temp_dir.join("table-workbook.xlsx");
+    write_table_xlsx(&workbook);
+    let workbook = workbook.to_string_lossy().to_string();
+
+    let cases: Vec<Vec<&str>> = vec![
+        vec!["--json", "xlsx", "tables", "list", &workbook],
+        vec![
+            "--json", "xlsx", "tables", "list", &workbook, "--sheet", "Data",
+        ],
+        vec![
+            "--json", "xlsx", "tables", "show", &workbook, "--table", "Sales",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "tables",
+            "show",
+            &workbook,
+            "--sheet",
+            "sheetId:1",
+            "--table",
+            "tableId:1",
+        ],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+
+    for selector in [
+        "tableId:1",
+        "id:1",
+        "table:1",
+        "#1",
+        "part:/xl/tables/table1.xml",
+        "rid:rId1",
+        "rId:rId1",
+        "table:Sales",
+        "displayName:Sales",
+        "name:Sales",
+        "Sales",
+        "1",
+    ] {
+        assert_go_rust_match(&[
+            "--json", "xlsx", "tables", "show", &workbook, "--table", selector,
+        ]);
+    }
+
+    for missing in ["2", "Missing"] {
+        assert_go_rust_match(&[
+            "--json", "xlsx", "tables", "show", &workbook, "--table", missing,
+        ]);
+    }
+
+    let spaced_dir = temp_dir.join("dir with spaces");
+    fs::create_dir_all(&spaced_dir).expect("spaced temp dir");
+    let spaced_workbook = spaced_dir.join("table workbook.xlsx");
+    write_table_xlsx_with_sheet(&spaced_workbook, "Data Sheet");
+    let spaced_workbook = spaced_workbook.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "xlsx", "tables", "list", &spaced_workbook]);
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "tables",
+        "show",
+        &spaced_workbook,
+        "--sheet",
+        "Data Sheet",
+        "--table",
+        "Sales",
+    ]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
@@ -904,6 +1091,77 @@ fn serve_inspect_supports_xlsx_sheets_show() {
         working,
         "--sheet",
         "sheetId:1",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    assert_eq!(inspect_response["result"], expected.expect("show stdout"));
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+}
+
+#[test]
+fn serve_inspect_supports_xlsx_tables_show() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-serve-tables-{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("table-workbook.xlsx");
+    write_table_xlsx(&input);
+    let input_str = input.to_str().expect("input path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(1, "open", serde_json::json!({"file": input_str}));
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let list = rpc_request(
+        2,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx tables list",
+            "args": {"sheet": "Data"},
+        }),
+    );
+    let list_response = serve_roundtrip(&mut stdin, &mut reader, &list);
+    let working = list_response["result"]["file"]
+        .as_str()
+        .expect("working file");
+    let (code, expected, stderr) = run_ooxml(&[
+        "--json", "xlsx", "tables", "list", working, "--sheet", "Data",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    assert_eq!(list_response["result"], expected.expect("list stdout"));
+
+    let inspect = rpc_request(
+        3,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx tables show",
+            "args": {"sheet": "Data", "table": "Sales"},
+        }),
+    );
+    let inspect_response = serve_roundtrip(&mut stdin, &mut reader, &inspect);
+    let working = inspect_response["result"]["file"]
+        .as_str()
+        .expect("working file");
+    let (code, expected, stderr) = run_ooxml(&[
+        "--json", "xlsx", "tables", "show", working, "--sheet", "Data", "--table", "Sales",
     ]);
     assert_eq!(code, 0);
     assert_eq!(stderr, None);
@@ -1598,6 +1856,16 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
     assert_command(&xlsx_caps, "ooxml xlsx cells extract", false);
     assert_command(&xlsx_caps, "ooxml xlsx cells set", true);
+    assert_command(&xlsx_caps, "ooxml xlsx tables list", false);
+    assert_command(&xlsx_caps, "ooxml xlsx tables show", false);
+
+    let (table_code, table_stdout, table_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "table"]);
+    assert_eq!(table_code, 0);
+    assert_eq!(table_stderr, None);
+    let table_caps = table_stdout.expect("table capabilities");
+    assert_command(&table_caps, "ooxml xlsx tables list", false);
+    assert_command(&table_caps, "ooxml xlsx tables show", false);
 }
 
 #[test]
@@ -1615,10 +1883,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 16, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 18, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        274,
+        272,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
