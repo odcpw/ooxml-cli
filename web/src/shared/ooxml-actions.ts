@@ -27,7 +27,14 @@ import {
 } from './storage.ts';
 
 const execFileAsync = promisify(execFile);
-const maxOutputBuffer = 24 * 1024 * 1024;
+const OOXML_DEFAULT_BIN = 'ooxml';
+const OOXML_DEFAULT_SESSION_ID = 's1';
+const OOXML_DEFAULT_TIMEOUT_MS = 120_000;
+const OOXML_DEFAULT_MAX_OUTPUT_BUFFER = 24 * 1024 * 1024;
+
+function resolveOoxmlBin(): string {
+  return process.env.OOXML_BIN || OOXML_DEFAULT_BIN;
+}
 
 // Remove server filesystem layout from text before it reaches the client. The
 // data-dir prefix and any remaining absolute path collapse to a basename, so
@@ -45,12 +52,12 @@ function scrubServerPaths(text: string): string {
 }
 
 export async function runOoxml(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
-  const bin = process.env.OOXML_BIN || 'ooxml';
+  const bin = resolveOoxmlBin();
   try {
     const result = await execFileAsync(bin, args, {
       cwd,
-      maxBuffer: maxOutputBuffer,
-      timeout: 120_000,
+      maxBuffer: OOXML_DEFAULT_MAX_OUTPUT_BUFFER,
+      timeout: OOXML_DEFAULT_TIMEOUT_MS,
     });
     return {
       stdout: result.stdout.toString(),
@@ -775,11 +782,11 @@ export async function inspectCurrentWithOoxml(input: {
   const requests = [
     serveRequest(1, 'open', { file, dryRun: true }),
     serveRequest(2, 'inspect', {
-      session: 's1',
+      session: OOXML_DEFAULT_SESSION_ID,
       command: normalizeServeCommand(input.command),
       args: parseArgsJson(input.argsJson),
     }),
-    serveRequest(3, 'abort', { session: 's1' }),
+    serveRequest(3, 'abort', { session: OOXML_DEFAULT_SESSION_ID }),
   ];
   const responses = await runOoxmlServe(requests, threadDir(input.threadId));
   return JSON.stringify(
@@ -822,14 +829,14 @@ export async function applyOoxmlOpsToCurrent(input: {
   operations.forEach((operation, index) => {
     requests.push(
       serveRequest(index + 2, 'op', {
-        session: 's1',
+        session: OOXML_DEFAULT_SESSION_ID,
         command: normalizeServeCommand(operation.command),
         args: operation.args ?? {},
       }),
     );
   });
-  requests.push(serveRequest(operations.length + 2, 'validate', { session: 's1' }));
-  requests.push(serveRequest(operations.length + 3, 'commit', { session: 's1' }));
+  requests.push(serveRequest(operations.length + 2, 'validate', { session: OOXML_DEFAULT_SESSION_ID }));
+  requests.push(serveRequest(operations.length + 3, 'commit', { session: OOXML_DEFAULT_SESSION_ID }));
 
   let responses: ServeResponse[];
   try {
@@ -1139,8 +1146,8 @@ function serveRequest(id: number, method: string, params?: Record<string, unknow
 }
 
 async function runOoxmlServe(requests: ServeRequest[], cwd: string): Promise<ServeResponse[]> {
-  const bin = process.env.OOXML_BIN || 'ooxml';
-  const maxServeOutputBytes = positiveIntegerEnv('OOXML_SERVE_MAX_OUTPUT_BYTES', 24 * 1024 * 1024);
+  const bin = resolveOoxmlBin();
+  const maxServeOutputBytes = positiveIntegerEnv('OOXML_SERVE_MAX_OUTPUT_BYTES', OOXML_DEFAULT_MAX_OUTPUT_BUFFER);
   const child = spawn(bin, ['serve'], {
     cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -1154,7 +1161,7 @@ async function runOoxmlServe(requests: ServeRequest[], cwd: string): Promise<Ser
 
   const timeout = setTimeout(() => {
     if (!settled) child.kill('SIGKILL');
-  }, 120_000);
+  }, OOXML_DEFAULT_TIMEOUT_MS);
 
   child.stdout.on('data', (chunk: Buffer) => {
     stdoutBytes += chunk.length;
