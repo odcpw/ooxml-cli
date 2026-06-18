@@ -1,9 +1,12 @@
 use serde_json::Value;
 use std::collections::BTreeSet;
-use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
+use zip::write::SimpleFileOptions;
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 static GO_OOXML_BIN: OnceLock<PathBuf> = OnceLock::new();
 
@@ -42,6 +45,14 @@ fn run_go_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
     (code, stdout, stderr)
 }
 
+fn assert_go_rust_match(args: &[&str]) {
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(args);
+    assert_eq!(rust_code, go_code, "exit code for {args:?}");
+    assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
+    assert_eq!(rust_stdout, go_stdout, "stdout for {args:?}");
+}
+
 fn go_ooxml_binary() -> &'static PathBuf {
     GO_OOXML_BIN.get_or_init(|| {
         let binary = std::env::temp_dir().join(format!("ooxml-go-oracle-{}", std::process::id()));
@@ -71,6 +82,219 @@ fn parse_json(bytes: &[u8]) -> Option<Value> {
             panic!("invalid JSON {err}: {text}");
         }))
     }
+}
+
+fn write_relocated_xlsx_main_part(dest: &Path) {
+    write_relocated_xlsx_main_part_with_content_type(
+        dest,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+    );
+}
+
+fn write_relocated_xlsx_main_part_with_content_type(dest: &Path, workbook_content_type: &str) {
+    rewrite_zip_fixture(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        dest,
+        |name, data| {
+            let (name, data) = match name {
+                "xl/workbook.xml" => ("xl/books/book.xml".to_string(), data),
+                "xl/_rels/workbook.xml.rels" => (
+                    "xl/books/_rels/book.xml.rels".to_string(),
+                    replace_ascii(
+                        data,
+                        "Target=\"worksheets/sheet1.xml\"",
+                        "Target=\"../worksheets/sheet1.xml\"",
+                    ),
+                ),
+                "_rels/.rels" => (
+                    name.to_string(),
+                    replace_ascii(
+                        data,
+                        "Target=\"xl/workbook.xml\"",
+                        "Target=\"xl/books/book.xml\"",
+                    ),
+                ),
+                "[Content_Types].xml" => (
+                    name.to_string(),
+                    replace_ascii(
+                        replace_ascii(data, "/xl/workbook.xml", "/xl/books/book.xml"),
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+                        workbook_content_type,
+                    ),
+                ),
+                _ => (name.to_string(), data),
+            };
+            Some((name, data))
+        },
+    );
+}
+
+fn write_relocated_docx_main_part(dest: &Path) {
+    write_relocated_docx_main_part_with_content_type(
+        dest,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+    );
+}
+
+fn write_relocated_docx_main_part_with_content_type(dest: &Path, document_content_type: &str) {
+    rewrite_zip_fixture("testdata/docx/minimal/document.docx", dest, |name, data| {
+        let (name, data) = match name {
+            "word/document.xml" => ("word/main/document.xml".to_string(), data),
+            "_rels/.rels" => (
+                name.to_string(),
+                replace_ascii(
+                    data,
+                    "Target=\"word/document.xml\"",
+                    "Target=\"word/main/document.xml\"",
+                ),
+            ),
+            "[Content_Types].xml" => (
+                name.to_string(),
+                replace_ascii(
+                    replace_ascii(data, "/word/document.xml", "/word/main/document.xml"),
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+                    document_content_type,
+                ),
+            ),
+            _ => (name.to_string(), data),
+        };
+        Some((name, data))
+    });
+}
+
+fn rewrite_zip_fixture<F>(source: &str, dest: &Path, mut mutator: F)
+where
+    F: FnMut(&str, Vec<u8>) -> Option<(String, Vec<u8>)>,
+{
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("fixture parent");
+    }
+    let input = File::open(source).expect("open source fixture");
+    let mut archive = ZipArchive::new(input).expect("read source fixture zip");
+    let output = File::create(dest).expect("create rewritten fixture");
+    let mut writer = ZipWriter::new(output);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).expect("read source fixture entry");
+        if entry.is_dir() {
+            writer
+                .add_directory(entry.name(), options)
+                .expect("copy fixture directory");
+            continue;
+        }
+        let source_name = entry.name().to_string();
+        let mut data = Vec::new();
+        entry.read_to_end(&mut data).expect("read fixture entry");
+        if let Some((dest_name, data)) = mutator(&source_name, data) {
+            writer
+                .start_file(dest_name, options)
+                .expect("write fixture entry");
+            writer.write_all(&data).expect("write fixture data");
+        }
+    }
+    writer.finish().expect("finish rewritten fixture");
+}
+
+fn write_unknown_package(dest: &Path) {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("fixture parent");
+    }
+    let output = File::create(dest).expect("create unknown package");
+    let mut writer = ZipWriter::new(output);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    writer
+        .start_file("[Content_Types].xml", options)
+        .expect("write content types");
+    writer
+        .write_all(
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+</Types>"#,
+        )
+        .expect("write unknown content types");
+    writer.finish().expect("finish unknown package");
+}
+
+fn replace_ascii(data: Vec<u8>, from: &str, to: &str) -> Vec<u8> {
+    String::from_utf8(data)
+        .expect("fixture xml utf8")
+        .replace(from, to)
+        .into_bytes()
+}
+
+fn assert_generated_inspect_edge_cases_match_go() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-inspect-parity-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let relocated_xlsx = temp_dir.join("relocated-workbook.xlsx");
+    write_relocated_xlsx_main_part(&relocated_xlsx);
+    let relocated_xlsx = relocated_xlsx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "inspect", &relocated_xlsx]);
+
+    let relocated_docx = temp_dir.join("relocated-document.docx");
+    write_relocated_docx_main_part(&relocated_docx);
+    let relocated_docx = relocated_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "inspect", &relocated_docx]);
+
+    let relocated_macro_xlsx = temp_dir.join("relocated-macro-workbook.xlsm");
+    write_relocated_xlsx_main_part_with_content_type(
+        &relocated_macro_xlsx,
+        "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
+    );
+    let relocated_macro_xlsx = relocated_macro_xlsx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "inspect", &relocated_macro_xlsx]);
+
+    let relocated_macro_docx = temp_dir.join("relocated-macro-document.docm");
+    write_relocated_docx_main_part_with_content_type(
+        &relocated_macro_docx,
+        "application/vnd.ms-word.document.macroEnabled.main+xml",
+    );
+    let relocated_macro_docx = relocated_macro_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "inspect", &relocated_macro_docx]);
+
+    let malformed_xlsx = temp_dir.join("malformed-workbook.xlsx");
+    rewrite_zip_fixture(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &malformed_xlsx,
+        |name, data| {
+            let data = if name == "xl/workbook.xml" {
+                b"<workbook><sheets><sheet".to_vec()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let malformed_xlsx = malformed_xlsx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "inspect", &malformed_xlsx]);
+
+    let malformed_docx = temp_dir.join("malformed-document.docx");
+    rewrite_zip_fixture(
+        "testdata/docx/minimal/document.docx",
+        &malformed_docx,
+        |name, data| {
+            let data = if name == "word/document.xml" {
+                br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>"#.to_vec()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let malformed_docx = malformed_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "inspect", &malformed_docx]);
+
+    let unknown_package = temp_dir.join("unknown-package.zip");
+    write_unknown_package(&unknown_package);
+    let unknown_package = unknown_package.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "inspect", &unknown_package]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
@@ -136,11 +360,7 @@ fn xlsx_cells_extract_matches_go_oracle() {
     ];
 
     for args in cases {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
-        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-        assert_eq!(rust_code, go_code, "exit code for {args:?}");
-        assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
-        assert_eq!(rust_stdout, go_stdout, "stdout for {args:?}");
+        assert_go_rust_match(&args);
     }
 }
 
@@ -173,12 +393,66 @@ fn xlsx_sheets_show_matches_go_oracle() {
     ];
 
     for args in cases {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
-        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-        assert_eq!(rust_code, go_code, "exit code for {args:?}");
-        assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
-        assert_eq!(rust_stdout, go_stdout, "stdout for {args:?}");
+        assert_go_rust_match(&args);
     }
+}
+
+#[test]
+fn inspect_matches_go_oracle_for_supported_families() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "inspect",
+            "testdata/pptx/minimal-title/presentation.pptx",
+        ],
+        vec![
+            "--json",
+            "inspect",
+            "testdata/pptx/table-slide/presentation.pptx",
+        ],
+        vec![
+            "--json",
+            "inspect",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+        vec![
+            "--json",
+            "inspect",
+            "testdata/xlsx/types-and-formulas/workbook.xlsx",
+        ],
+        vec![
+            "--json",
+            "inspect",
+            "testdata/xlsx/chart-workbook/workbook.xlsx",
+        ],
+        vec!["--json", "inspect", "testdata/docx/minimal/document.docx"],
+        vec![
+            "--json",
+            "inspect",
+            "testdata/docx/mixed-blocks/document.docx",
+        ],
+        vec!["--json", "inspect", "testdata/docx/headers/document.docx"],
+        vec![
+            "--json",
+            "inspect",
+            "testdata/docx/with-comments/document.docx",
+        ],
+        vec![
+            "--json",
+            "inspect",
+            "testdata/docx/with-image/document.docx",
+        ],
+        vec![
+            "--json",
+            "inspect",
+            "testdata/docx/corrupted-missing-document/document.docx",
+        ],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+    assert_generated_inspect_edge_cases_match_go();
 }
 
 #[test]

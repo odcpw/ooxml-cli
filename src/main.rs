@@ -843,30 +843,555 @@ fn parse_u32_flag(args: &[String], name: &str) -> CliResult<Option<u32>> {
         .transpose()
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum InspectPackageKind {
+    Pptx,
+    Xlsx,
+    Docx,
+    Unknown,
+}
+
 fn inspect(file: &str) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
-    if entries.iter().any(|name| name == "ppt/presentation.xml") {
-        let presentation = zip_text(file, "ppt/presentation.xml")?;
-        let (cx, cy) = pptx_slide_size(&presentation)?;
-        return Ok(json!({
-            "file": file,
-            "summary": {
-                "customXmlParts": count_entries(&entries, "customXml/item", ".xml"),
-                "handoutMasters": count_entries(&entries, "ppt/handoutMasters/handoutMaster", ".xml"),
-                "layouts": count_entries(&entries, "ppt/slideLayouts/slideLayout", ".xml"),
-                "masters": count_entries(&entries, "ppt/slideMasters/slideMaster", ".xml"),
-                "mediaAssets": entries.iter().filter(|name| name.starts_with("ppt/media/")).count(),
-                "notesMasters": count_entries(&entries, "ppt/notesMasters/notesMaster", ".xml"),
-                "slideSize": {"cx": cx, "cy": cy, "unit": "emu"},
-                "slides": count_entries(&entries, "ppt/slides/slide", ".xml"),
-                "themes": count_entries(&entries, "ppt/theme/theme", ".xml"),
-            },
-            "type": "pptx",
-        }));
+    match detect_inspect_package_type(file, &entries) {
+        InspectPackageKind::Pptx => {
+            let presentation = zip_text(file, "ppt/presentation.xml")?;
+            let (cx, cy) = pptx_slide_size(&presentation)?;
+            Ok(json!({
+                "file": file,
+                "summary": {
+                    "customXmlParts": count_entries(&entries, "customXml/item", ".xml"),
+                    "handoutMasters": count_entries(&entries, "ppt/handoutMasters/handoutMaster", ".xml"),
+                    "layouts": count_entries(&entries, "ppt/slideLayouts/slideLayout", ".xml"),
+                    "masters": count_entries(&entries, "ppt/slideMasters/slideMaster", ".xml"),
+                    "mediaAssets": entries.iter().filter(|name| name.starts_with("ppt/media/")).count(),
+                    "notesMasters": count_entries(&entries, "ppt/notesMasters/notesMaster", ".xml"),
+                    "slideSize": {"cx": cx, "cy": cy, "unit": "emu"},
+                    "slides": count_entries(&entries, "ppt/slides/slide", ".xml"),
+                    "themes": count_entries(&entries, "ppt/theme/theme", ".xml"),
+                },
+                "type": "pptx",
+            }))
+        }
+        InspectPackageKind::Xlsx => inspect_xlsx(file, &entries),
+        InspectPackageKind::Docx => inspect_docx(file, &entries),
+        InspectPackageKind::Unknown => Err(CliError::unsupported_type("unsupported type: unknown")),
     }
-    Err(CliError::invalid_args(format!(
-        "unsupported file type for inspect: {file}"
-    )))
+}
+
+fn inspect_xlsx(file: &str, entries: &[String]) -> CliResult<Value> {
+    let workbook_part = find_xlsx_workbook_part(file, entries)?;
+    let workbook = zip_text(file, &workbook_part).map_err(|err| {
+        CliError::unexpected(format!(
+            "failed to inspect workbook: failed to read workbook part /{}: {}",
+            workbook_part, err.message
+        ))
+    })?;
+    let sheets = workbook_sheets(&workbook).map_err(|err| {
+        if is_xml_parse_error(&err.message) {
+            CliError::unexpected(format!(
+                "failed to inspect workbook: failed to read workbook part /{}: failed to parse XML part /{}: {}",
+                workbook_part,
+                workbook_part,
+                go_like_xml_parse_message(&err.message)
+            ))
+        } else {
+            CliError::unexpected(format!(
+                "failed to inspect workbook: workbook part /{} {}",
+                workbook_part, err.message
+            ))
+        }
+    })?;
+    let workbook_rels =
+        relationship_entries(file, &relationships_part_for(&workbook_part)).unwrap_or_default();
+    let shared_strings_uri = workbook_rels
+        .iter()
+        .find(|rel| rel.rel_type.ends_with("/sharedStrings"))
+        .map(|rel| resolve_relationship_target(&format!("/{workbook_part}"), &rel.target));
+    let mut summary = Map::new();
+    summary.insert("sheets".to_string(), json!(sheets.len()));
+    summary.insert("worksheets".to_string(), json!(0));
+    summary.insert("sharedStrings".to_string(), json!(false));
+    summary.insert("styles".to_string(), json!(false));
+    summary.insert("themes".to_string(), json!(0));
+    summary.insert("tables".to_string(), json!(0));
+    summary.insert("pivots".to_string(), json!(0));
+    summary.insert("pivotCaches".to_string(), json!(0));
+    summary.insert("charts".to_string(), json!(0));
+    summary.insert("mediaAssets".to_string(), json!(0));
+    summary.insert("customXmlParts".to_string(), json!(0));
+
+    for entry in entries {
+        let uri = format!("/{entry}");
+        let content_type = content_type_for_part(file, entry).unwrap_or_default();
+        if is_xlsx_worksheet_part(&uri, &content_type) {
+            increment_json_count(&mut summary, "worksheets");
+        } else if is_xlsx_shared_strings_part(&uri, &content_type) {
+            summary.insert("sharedStrings".to_string(), json!(true));
+        } else if is_xlsx_styles_part(&uri, &content_type) {
+            summary.insert("styles".to_string(), json!(true));
+        } else if is_xlsx_theme_part(&uri, &content_type) {
+            increment_json_count(&mut summary, "themes");
+        } else if is_xlsx_table_part(&uri, &content_type) {
+            increment_json_count(&mut summary, "tables");
+        } else if is_xlsx_pivot_table_part(&uri, &content_type) {
+            increment_json_count(&mut summary, "pivots");
+        } else if is_xlsx_pivot_cache_part(&uri, &content_type) {
+            increment_json_count(&mut summary, "pivotCaches");
+        } else if is_xlsx_chart_part(&uri, &content_type) {
+            increment_json_count(&mut summary, "charts");
+        } else if is_xlsx_media_part(&uri) {
+            increment_json_count(&mut summary, "mediaAssets");
+        } else if is_custom_xml_part(&uri) {
+            increment_json_count(&mut summary, "customXmlParts");
+        }
+    }
+    if let Some(shared_strings_uri) = shared_strings_uri {
+        let count = shared_string_count(file, &shared_strings_uri).unwrap_or_default();
+        if count > 0 {
+            summary.insert("sharedStringCount".to_string(), json!(count));
+        }
+    }
+    Ok(json!({
+        "file": file,
+        "summary": Value::Object(summary),
+        "type": "xlsx",
+    }))
+}
+
+fn inspect_docx(file: &str, entries: &[String]) -> CliResult<Value> {
+    let document_part = find_docx_document_part(file, entries)?;
+    let document = zip_text(file, &document_part).map_err(|_| {
+        CliError::unexpected(format!(
+            "failed to inspect document: failed to read document part /{}: part /{} not found",
+            document_part, document_part
+        ))
+    })?;
+    let counts = docx_body_summary_counts(&document).map_err(|err| {
+        if is_xml_parse_error(&err) {
+            CliError::unexpected(format!(
+                "failed to inspect document: failed to read document part /{}: failed to parse XML part /{}: {}",
+                document_part,
+                document_part,
+                go_like_docx_xml_parse_message(&err)
+            ))
+        } else {
+            CliError::unexpected(format!(
+                "failed to inspect document: document part /{} {}",
+                document_part, err
+            ))
+        }
+    })?;
+    let mut summary = Map::new();
+    summary.insert("paragraphs".to_string(), json!(counts.paragraphs));
+    summary.insert("tables".to_string(), json!(counts.tables));
+    summary.insert("hyperlinks".to_string(), json!(counts.hyperlinks));
+    summary.insert("headers".to_string(), json!(0));
+    summary.insert("footers".to_string(), json!(0));
+    summary.insert("footnotes".to_string(), json!(false));
+    summary.insert("endnotes".to_string(), json!(false));
+    summary.insert("comments".to_string(), json!(false));
+    summary.insert("sections".to_string(), json!(counts.sections));
+    summary.insert("styles".to_string(), json!(false));
+    summary.insert("numbering".to_string(), json!(false));
+    summary.insert("mediaAssets".to_string(), json!(0));
+    summary.insert("customXmlParts".to_string(), json!(0));
+
+    for entry in entries {
+        let uri = format!("/{entry}");
+        let content_type = content_type_for_part(file, entry).unwrap_or_default();
+        if is_docx_styles_part(&uri, &content_type) {
+            summary.insert("styles".to_string(), json!(true));
+        } else if is_docx_numbering_part(&uri, &content_type) {
+            summary.insert("numbering".to_string(), json!(true));
+        } else if is_docx_header_part(&uri, &content_type) {
+            increment_json_count(&mut summary, "headers");
+        } else if is_docx_footer_part(&uri, &content_type) {
+            increment_json_count(&mut summary, "footers");
+        } else if is_docx_footnotes_part(&uri, &content_type) {
+            summary.insert("footnotes".to_string(), json!(true));
+        } else if is_docx_endnotes_part(&uri, &content_type) {
+            summary.insert("endnotes".to_string(), json!(true));
+        } else if is_docx_comments_part(&uri, &content_type) {
+            summary.insert("comments".to_string(), json!(true));
+        } else if is_docx_media_part(&uri) {
+            increment_json_count(&mut summary, "mediaAssets");
+        } else if is_custom_xml_part(&uri) {
+            increment_json_count(&mut summary, "customXmlParts");
+        }
+    }
+
+    Ok(json!({
+        "file": file,
+        "summary": Value::Object(summary),
+        "type": "docx",
+    }))
+}
+
+fn detect_inspect_package_type(file: &str, entries: &[String]) -> InspectPackageKind {
+    for rel in relationship_entries(file, "_rels/.rels").unwrap_or_default() {
+        let target_uri = resolve_relationship_target("/", &rel.target);
+        let target_content_type = content_type_for_part(file, &target_uri).unwrap_or_default();
+
+        if rel.rel_type.contains("presentationml.presentation") {
+            return InspectPackageKind::Pptx;
+        }
+        if target_content_type.contains("presentationml.presentation")
+            || target_uri.starts_with("/ppt/")
+        {
+            return InspectPackageKind::Pptx;
+        }
+
+        if rel.rel_type.contains("wordprocessingml.document") {
+            return InspectPackageKind::Docx;
+        }
+        if target_content_type.contains("wordprocessingml.document")
+            || target_uri.starts_with("/word/")
+        {
+            return InspectPackageKind::Docx;
+        }
+
+        if rel.rel_type.contains("spreadsheetml.sheet") {
+            return InspectPackageKind::Xlsx;
+        }
+        if target_content_type.contains("spreadsheetml.sheet") || target_uri.starts_with("/xl/") {
+            return InspectPackageKind::Xlsx;
+        }
+    }
+
+    for entry in entries {
+        let content_type = content_type_for_part(file, entry).unwrap_or_default();
+        if content_type.contains("presentationml") {
+            return InspectPackageKind::Pptx;
+        }
+        if content_type.contains("wordprocessingml") {
+            return InspectPackageKind::Docx;
+        }
+        if content_type.contains("spreadsheetml") {
+            return InspectPackageKind::Xlsx;
+        }
+    }
+
+    InspectPackageKind::Unknown
+}
+
+fn find_xlsx_workbook_part(file: &str, entries: &[String]) -> CliResult<String> {
+    for rel in relationship_entries(file, "_rels/.rels").unwrap_or_default() {
+        if rel.target_mode == "External" {
+            continue;
+        }
+        let target = resolve_relationship_target("/", &rel.target);
+        if is_xlsx_workbook_candidate(file, &target) {
+            return Ok(target.trim_start_matches('/').to_string());
+        }
+    }
+    for entry in entries {
+        let content_type = content_type_for_part(file, entry).unwrap_or_default();
+        if is_xlsx_workbook_content_type(&content_type) {
+            return Ok(entry.clone());
+        }
+    }
+    Err(CliError::unexpected("xlsx workbook part not found"))
+}
+
+fn is_xlsx_workbook_candidate(file: &str, uri: &str) -> bool {
+    if uri.is_empty() || uri == "/" {
+        return false;
+    }
+    let content_type = content_type_for_part(file, uri).unwrap_or_default();
+    is_xlsx_workbook_content_type(&content_type) || uri == "/xl/workbook.xml"
+}
+
+fn is_xlsx_workbook_content_type(content_type: &str) -> bool {
+    matches!(
+        content_type,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"
+            | "application/vnd.ms-excel.sheet.macroEnabled.main+xml"
+            | "application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml"
+            | "application/vnd.ms-excel.addin.macroEnabled.main+xml"
+    ) || content_type.contains("spreadsheetml.sheet.main+xml")
+        || content_type.contains("spreadsheetml.template.main+xml")
+        || content_type.contains("ms-excel.sheet.macroEnabled.main+xml")
+        || content_type.contains("ms-excel.addin.macroEnabled.main+xml")
+}
+
+fn find_docx_document_part(file: &str, entries: &[String]) -> CliResult<String> {
+    for rel in relationship_entries(file, "_rels/.rels").unwrap_or_default() {
+        if rel.target_mode == "External" {
+            continue;
+        }
+        let target = resolve_relationship_target("/", &rel.target);
+        if rel.rel_type.ends_with("/officeDocument") || is_docx_document_candidate(file, &target) {
+            return Ok(target.trim_start_matches('/').to_string());
+        }
+    }
+    for entry in entries {
+        let content_type = content_type_for_part(file, entry).unwrap_or_default();
+        if is_docx_document_content_type(&content_type) {
+            return Ok(entry.clone());
+        }
+    }
+    Err(CliError::unexpected("docx main document part not found"))
+}
+
+fn is_docx_document_candidate(file: &str, uri: &str) -> bool {
+    if uri.is_empty() || uri == "/" {
+        return false;
+    }
+    let content_type = content_type_for_part(file, uri).unwrap_or_default();
+    is_docx_document_content_type(&content_type) || uri == "/word/document.xml"
+}
+
+fn is_docx_document_content_type(content_type: &str) -> bool {
+    content_type
+        == "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+        || content_type.contains("wordprocessingml.document.main+xml")
+}
+
+fn relationships_part_for(part: &str) -> String {
+    let normalized = part.trim_start_matches('/');
+    if let Some((dir, name)) = normalized.rsplit_once('/') {
+        format!("{dir}/_rels/{name}.rels")
+    } else {
+        format!("_rels/{normalized}.rels")
+    }
+}
+
+fn is_xml_parse_error(message: &str) -> bool {
+    message.contains("syntax error")
+        || message.contains("unexpected EOF")
+        || message.contains("not found before end of input")
+}
+
+fn go_like_xml_parse_message(message: &str) -> &'static str {
+    if message.contains("unexpected EOF") || message.contains("not found before end of input") {
+        "XML syntax error on line 1: unexpected EOF"
+    } else {
+        "XML syntax error"
+    }
+}
+
+fn go_like_docx_xml_parse_message(message: &str) -> &'static str {
+    if message.contains("unexpected EOF") {
+        "etree: invalid XML format"
+    } else {
+        go_like_xml_parse_message(message)
+    }
+}
+
+fn increment_json_count(summary: &mut Map<String, Value>, key: &str) {
+    let next = summary.get(key).and_then(Value::as_u64).unwrap_or_default() + 1;
+    summary.insert(key.to_string(), json!(next));
+}
+
+fn is_xlsx_worksheet_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"
+        || is_xml_data_part(uri) && uri.starts_with("/xl/worksheets/")
+}
+
+fn is_xlsx_shared_strings_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"
+        || uri == "/xl/sharedStrings.xml"
+}
+
+fn is_xlsx_styles_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"
+        || uri == "/xl/styles.xml"
+}
+
+fn is_xlsx_theme_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.theme+xml"
+        || is_xml_data_part(uri) && uri.starts_with("/xl/theme/")
+}
+
+fn is_xlsx_table_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"
+        || is_xml_data_part(uri) && uri.starts_with("/xl/tables/")
+}
+
+fn is_xlsx_pivot_table_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml"
+        || is_xml_data_part(uri) && uri.starts_with("/xl/pivotTables/")
+}
+
+fn is_xlsx_pivot_cache_part(uri: &str, content_type: &str) -> bool {
+    content_type
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml"
+        || is_xml_data_part(uri)
+            && uri.starts_with("/xl/pivotCache/")
+            && file_name(uri).starts_with("pivotCacheDefinition")
+}
+
+fn is_xlsx_chart_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+        || is_xml_data_part(uri)
+            && uri.starts_with("/xl/charts/")
+            && file_name(uri).starts_with("chart")
+}
+
+fn is_xlsx_media_part(uri: &str) -> bool {
+    uri.starts_with("/xl/media/") && !uri.contains("/_rels/")
+}
+
+fn is_docx_styles_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"
+        || uri == "/word/styles.xml"
+}
+
+fn is_docx_numbering_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"
+        || uri == "/word/numbering.xml"
+}
+
+fn is_docx_header_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"
+        || is_xml_data_part(uri) && uri.starts_with("/word/header")
+}
+
+fn is_docx_footer_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"
+        || is_xml_data_part(uri) && uri.starts_with("/word/footer")
+}
+
+fn is_docx_footnotes_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"
+        || uri == "/word/footnotes.xml"
+}
+
+fn is_docx_endnotes_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml"
+        || uri == "/word/endnotes.xml"
+}
+
+fn is_docx_comments_part(uri: &str, content_type: &str) -> bool {
+    content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"
+        || uri == "/word/comments.xml"
+}
+
+fn is_docx_media_part(uri: &str) -> bool {
+    uri.starts_with("/word/media/") && !uri.contains("/_rels/")
+}
+
+fn is_custom_xml_part(uri: &str) -> bool {
+    is_xml_data_part(uri) && uri.starts_with("/customXml/")
+}
+
+fn is_xml_data_part(uri: &str) -> bool {
+    uri.ends_with(".xml") && !uri.contains("/_rels/") && !uri.ends_with(".rels")
+}
+
+fn file_name(uri: &str) -> &str {
+    uri.rsplit('/').next().unwrap_or(uri)
+}
+
+#[derive(Default)]
+struct DocxBodySummaryCounts {
+    paragraphs: usize,
+    tables: usize,
+    hyperlinks: usize,
+    sections: usize,
+}
+
+fn docx_body_summary_counts(xml: &str) -> Result<DocxBodySummaryCounts, String> {
+    let mut reader = Reader::from_str(xml);
+    let mut stack: Vec<String> = Vec::new();
+    let mut counts = DocxBodySummaryCounts::default();
+    let mut direct_sections = 0usize;
+    let mut descendant_sections = 0usize;
+    let mut block_depth: Option<usize> = None;
+    let mut saw_document = false;
+    let mut saw_body = false;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if stack.is_empty() && name != "document" {
+                    return Err(format!("root is {name:?}, expected document"));
+                }
+                if stack.is_empty() {
+                    saw_document = true;
+                }
+                let parent = stack.last().map(String::as_str);
+                if parent == Some("document") && name == "body" {
+                    saw_body = true;
+                }
+                if parent == Some("body") && name == "p" {
+                    counts.paragraphs += 1;
+                    block_depth = Some(1);
+                } else if parent == Some("body") && name == "tbl" {
+                    counts.tables += 1;
+                    block_depth = Some(1);
+                } else if let Some(depth) = block_depth.as_mut() {
+                    *depth += 1;
+                }
+                if name == "hyperlink" && block_depth.is_some() {
+                    counts.hyperlinks += 1;
+                }
+                if name == "sectPr" && stack_contains(&stack, "body") {
+                    descendant_sections += 1;
+                    if parent == Some("body") {
+                        direct_sections += 1;
+                    }
+                }
+                stack.push(name);
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if stack.is_empty() && name != "document" {
+                    return Err(format!("root is {name:?}, expected document"));
+                }
+                if stack.is_empty() {
+                    saw_document = true;
+                }
+                let parent = stack.last().map(String::as_str);
+                if parent == Some("document") && name == "body" {
+                    saw_body = true;
+                }
+                if parent == Some("body") && name == "p" {
+                    counts.paragraphs += 1;
+                } else if parent == Some("body") && name == "tbl" {
+                    counts.tables += 1;
+                }
+                if name == "hyperlink" && block_depth.is_some() {
+                    counts.hyperlinks += 1;
+                }
+                if name == "sectPr" && stack_contains(&stack, "body") {
+                    descendant_sections += 1;
+                    if parent == Some("body") {
+                        direct_sections += 1;
+                    }
+                }
+            }
+            Ok(Event::End(_)) => {
+                if let Some(depth) = block_depth.as_mut() {
+                    *depth = depth.saturating_sub(1);
+                    if *depth == 0 {
+                        block_depth = None;
+                    }
+                }
+                stack.pop();
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(err.to_string()),
+            _ => {}
+        }
+    }
+    if !stack.is_empty() {
+        return Err("unexpected EOF".to_string());
+    }
+    if !saw_document {
+        return Err("has no root element".to_string());
+    }
+    if !saw_body {
+        return Err("body element not found".to_string());
+    }
+    counts.sections = if direct_sections > 0 {
+        direct_sections
+    } else {
+        descendant_sections
+    };
+    Ok(counts)
 }
 
 fn validate(file: &str, _strict: bool) -> CliResult<Value> {
@@ -1163,7 +1688,7 @@ fn pptx_shapes_show(
 
 fn xlsx_range_export(file: &str, sheet_selector: &str, range: &str) -> CliResult<Value> {
     let workbook = zip_text(file, "xl/workbook.xml")?;
-    let sheets = workbook_sheets(&workbook);
+    let sheets = workbook_sheets(&workbook)?;
     let sheet = resolve_sheet(&sheets, sheet_selector)?;
     let rels = relationships(file, "xl/_rels/workbook.xml.rels")?;
     let target = rels
@@ -1231,7 +1756,7 @@ fn xlsx_cells_extract(
     include_empty: bool,
 ) -> CliResult<Value> {
     let workbook = zip_text(file, "xl/workbook.xml")?;
-    let sheets = workbook_sheets(&workbook);
+    let sheets = workbook_sheets(&workbook)?;
     let sheet = resolve_sheet(&sheets, sheet_selector)?;
     let rels = relationships(file, "xl/_rels/workbook.xml.rels")?;
     let target = rels
@@ -1308,7 +1833,7 @@ fn xlsx_cells_extract(
 
 fn xlsx_sheets_show(file: &str, sheet_selector: Option<&str>) -> CliResult<Value> {
     let workbook = zip_text(file, "xl/workbook.xml")?;
-    let sheets = workbook_sheets(&workbook);
+    let sheets = workbook_sheets(&workbook)?;
     let rels = relationships(file, "xl/_rels/workbook.xml.rels")?;
     let selected = if let Some(selector) = sheet_selector.filter(|selector| !selector.is_empty()) {
         vec![resolve_sheet(&sheets, selector)?]
@@ -1425,7 +1950,7 @@ fn xlsx_sheet_show_item(
 
 fn xlsx_sheets_list(file: &str) -> CliResult<Value> {
     let workbook = zip_text(file, "xl/workbook.xml")?;
-    let sheets = workbook_sheets(&workbook);
+    let sheets = workbook_sheets(&workbook)?;
     let rels = relationships(file, "xl/_rels/workbook.xml.rels")?;
     let values: Vec<Value> = sheets
         .iter()
@@ -2474,7 +2999,7 @@ fn xlsx_set_cell_string(file: &str, sheet: &str, cell: &str, value: &str) -> Cli
 
 fn xlsx_sheet_part(file: &str, sheet_selector: &str) -> CliResult<String> {
     let workbook = zip_text(file, "xl/workbook.xml")?;
-    let sheets = workbook_sheets(&workbook);
+    let sheets = workbook_sheets(&workbook)?;
     let sheet = resolve_sheet(&sheets, sheet_selector)?;
     let rels = relationships(file, "xl/_rels/workbook.xml.rels")?;
     let target = rels
@@ -2879,6 +3404,7 @@ struct RelationshipEntry {
     id: String,
     rel_type: String,
     target: String,
+    target_mode: String,
 }
 
 fn relationships(file: &str, part: &str) -> CliResult<BTreeMap<String, String>> {
@@ -2911,6 +3437,7 @@ fn relationship_entries(file: &str, part: &str) -> CliResult<Vec<RelationshipEnt
                         id,
                         rel_type: attr_exact(&e, "Type").unwrap_or_default(),
                         target,
+                        target_mode: attr_exact(&e, "TargetMode").unwrap_or_default(),
                     });
                 }
             }
@@ -2980,6 +3507,37 @@ fn normalize_xl_target(target: &str) -> String {
     } else {
         format!("xl/{}", target.trim_start_matches("../"))
     }
+}
+
+fn resolve_relationship_target(source_uri: &str, target: &str) -> String {
+    if target.starts_with('/') {
+        return format!("/{}", target.trim_start_matches('/'));
+    }
+    let source = source_uri.trim_start_matches('/');
+    let base = if source.is_empty() {
+        String::new()
+    } else if source.ends_with('/') {
+        source.to_string()
+    } else if let Some((dir, _)) = source.rsplit_once('/') {
+        format!("{dir}/")
+    } else {
+        String::new()
+    };
+    normalize_package_uri(&format!("{base}{target}"))
+}
+
+fn normalize_package_uri(uri: &str) -> String {
+    let mut parts = Vec::new();
+    for part in uri.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            other => parts.push(other),
+        }
+    }
+    format!("/{}", parts.join("/"))
 }
 
 fn slide_layout_part(file: &str, slide_part: &str) -> CliResult<Option<String>> {
@@ -3680,36 +4238,131 @@ struct WorkbookSheet {
     state: String,
 }
 
-fn workbook_sheets(xml: &str) -> Vec<WorkbookSheet> {
+fn workbook_sheets(xml: &str) -> CliResult<Vec<WorkbookSheet>> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut sheets = Vec::new();
+    let mut stack: Vec<String> = Vec::new();
+    let mut saw_workbook = false;
     loop {
         match reader.read_event() {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e))
-                if local_name(e.name().as_ref()) == "sheet" =>
-            {
-                if let (Some(name), Some(number), Some(rel_id)) = (
-                    attr(&e, "name"),
-                    attr(&e, "sheetId"),
-                    attr_exact(&e, "r:id"),
-                ) && let Ok(number) = number.parse::<u32>()
-                {
-                    sheets.push(WorkbookSheet {
-                        name,
-                        sheet_id: number,
-                        position: sheets.len() as u32 + 1,
-                        rel_id,
-                        state: attr(&e, "state").unwrap_or_else(|| "visible".to_string()),
-                    });
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if stack.is_empty() && name != "workbook" {
+                    return Err(CliError::unexpected(format!(
+                        "workbook root is {name:?}, expected workbook"
+                    )));
+                }
+                if stack.is_empty() {
+                    saw_workbook = true;
+                }
+                let parent = stack.last().map(String::as_str);
+                if parent == Some("sheets") && name == "sheet" {
+                    parse_workbook_sheet(&e, &mut sheets)?;
+                }
+                stack.push(name);
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if stack.is_empty() && name != "workbook" {
+                    return Err(CliError::unexpected(format!(
+                        "workbook root is {name:?}, expected workbook"
+                    )));
+                }
+                if stack.is_empty() {
+                    saw_workbook = true;
+                }
+                let parent = stack.last().map(String::as_str);
+                if parent == Some("sheets") && name == "sheet" {
+                    parse_workbook_sheet(&e, &mut sheets)?;
                 }
             }
+            Ok(Event::End(_)) => {
+                stack.pop();
+            }
             Ok(Event::Eof) => break,
-            Err(_) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
             _ => {}
         }
     }
-    sheets
+    if !stack.is_empty() {
+        return Err(CliError::unexpected("unexpected EOF"));
+    }
+    if !saw_workbook {
+        return Err(CliError::unexpected("workbook part has no root element"));
+    }
+    Ok(sheets)
+}
+
+fn parse_workbook_sheet(e: &BytesStart<'_>, sheets: &mut Vec<WorkbookSheet>) -> CliResult<()> {
+    let position = sheets.len() as u32 + 1;
+    if let (Some(name), Some(number), Some(rel_id)) =
+        (attr(e, "name"), attr(e, "sheetId"), attr_exact(e, "r:id"))
+    {
+        let number = number.parse::<u32>().map_err(|_| {
+            CliError::unexpected(format!("sheet at position {position} has invalid sheetId"))
+        })?;
+        sheets.push(WorkbookSheet {
+            name,
+            sheet_id: number,
+            position,
+            rel_id,
+            state: attr(e, "state").unwrap_or_else(|| "visible".to_string()),
+        });
+        Ok(())
+    } else {
+        Err(CliError::unexpected(format!(
+            "sheet at position {position} is missing name, sheetId, or r:id"
+        )))
+    }
+}
+
+fn shared_string_count(file: &str, part_uri: &str) -> CliResult<usize> {
+    let xml = zip_text(file, part_uri.trim_start_matches('/'))?;
+    let mut reader = Reader::from_str(&xml);
+    reader.config_mut().trim_text(true);
+    let mut saw_root = false;
+    let mut count = 0usize;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if !saw_root {
+                    if name != "sst" {
+                        return Err(CliError::unexpected(
+                            "shared string table root element not found",
+                        ));
+                    }
+                    saw_root = true;
+                } else if name == "si" {
+                    count += 1;
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if !saw_root {
+                    if name != "sst" {
+                        return Err(CliError::unexpected(
+                            "shared string table root element not found",
+                        ));
+                    }
+                    saw_root = true;
+                } else if name == "si" {
+                    count += 1;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    if saw_root {
+        Ok(count)
+    } else {
+        Err(CliError::unexpected(
+            "shared string table root element not found",
+        ))
+    }
 }
 
 fn resolve_sheet(sheets: &[WorkbookSheet], selector: &str) -> CliResult<WorkbookSheet> {

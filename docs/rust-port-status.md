@@ -9,7 +9,12 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json version`
 - `--json capabilities` advertises the Rust-supported `ooxml version` command
   and checks the advertised path against the Go oracle capability inventory
-- `--json inspect <pptx>`
+- `--json inspect <pptx|xlsx|docx>` with Go-oracle comparison for PPTX deck
+  structure, XLSX workbook summaries including shared strings/styles/charts, and
+  DOCX document summaries including body counts, headers/footers, comments, and
+  media assets; generated parity cases also cover relocated standard and macro
+  XLSX/DOCX main parts, malformed main XML failure paths, and unsupported OOXML
+  package detection
 - `--json pptx slides show ... --include-text`
 - `--json xlsx ranges export ... --include-types`
 - `--json docx text <docx>` with Go-oracle comparison across the committed
