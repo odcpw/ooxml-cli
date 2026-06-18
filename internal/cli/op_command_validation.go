@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -39,6 +40,23 @@ func validateKnownOperationCommand(command string) *CLIError {
 	}
 	if reason := operationCommandIncompatibility(cmd); reason != "" {
 		return InvalidArgsError(fmt.Sprintf("command %q cannot be used as an apply/serve/MCP op: %s; use a mutation command whose only positional argument is the package file, and supply every other value through args", command, reason))
+	}
+	return nil
+}
+
+// validateOperationShape runs the op through apply.ParseOps (the single
+// canonical op validator) so a malformed op is rejected the same way `ooxml
+// apply` would.
+func validateOperationShape(op apply.Operation) *CLIError {
+	encoded, err := json.Marshal([]apply.Operation{op})
+	if err != nil {
+		return InvalidArgsError(err.Error())
+	}
+	if _, err := apply.ParseOps(encoded); err != nil {
+		return InvalidArgsError(err.Error())
+	}
+	if err := validateKnownOperationCommand(op.Command); err != nil {
+		return err
 	}
 	return nil
 }

@@ -329,9 +329,9 @@ func (l *mcpLoop) callOp(args json.RawMessage) (interface{}, *rpcError) {
 	op := apply.Operation{Command: apply.NormalizeCommand(p.Command), Args: p.Args}
 	// Validate the op shape through the single canonical validator (apply.ParseOps),
 	// surfaced as a recoverable isError result rather than a protocol error.
-	if rerr := parseOpShape(op); rerr != nil {
+	if err := validateOperationShape(op); err != nil {
 		command := apply.NormalizeCommand(p.Command)
-		return toolErrorFromCLIWithNextActions(rerr, map[string]interface{}{
+		return toolErrorFromCLIWithNextActions(err, map[string]interface{}{
 			"fix_hint": "see resource://command/{path} for this command's argument schema",
 		}, []string{
 			"read resource://command/" + url.PathEscape(command) + " for accepted args and examples",
@@ -464,23 +464,6 @@ func decodeToolArgs(args json.RawMessage, dst interface{}) *rpcError {
 				Code: "invalid_args", ExitCode: ExitInvalidArgs, Message: err.Error(),
 			},
 		}
-	}
-	return nil
-}
-
-// parseOpShape runs the op through apply.ParseOps (the single canonical op
-// validator) so a malformed op is rejected the same way `ooxml apply` would,
-// returning a *CLIError (mapped by the caller into a recoverable isError result).
-func parseOpShape(op apply.Operation) *CLIError {
-	encoded, err := json.Marshal([]apply.Operation{op})
-	if err != nil {
-		return InvalidArgsError(err.Error())
-	}
-	if _, err := apply.ParseOps(encoded); err != nil {
-		return InvalidArgsError(err.Error())
-	}
-	if err := validateKnownOperationCommand(op.Command); err != nil {
-		return err
 	}
 	return nil
 }

@@ -417,8 +417,8 @@ func (l *serveLoop) handleOp(params json.RawMessage) (interface{}, *rpcError) {
 	}
 	op := apply.Operation{Command: apply.NormalizeCommand(p.Command), Args: p.Args}
 	// Validate the op shape through the single canonical validator.
-	if rerr := validateOpShape(op); rerr != nil {
-		return nil, rerr
+	if err := validateOperationShape(op); err != nil {
+		return nil, rpcErrorFromCLI(err)
 	}
 	ao, err := l.engine.Op(p.Session, op)
 	if err != nil {
@@ -499,22 +499,6 @@ func (l *serveLoop) handleAbort(params json.RawMessage) (interface{}, *rpcError)
 		return nil, rpcErrorFromEngine(err)
 	}
 	return map[string]interface{}{"aborted": true}, nil
-}
-
-// validateOpShape runs the op through apply.ParseOps (the single canonical op
-// validator) so a malformed op is rejected the same way `ooxml apply` would.
-func validateOpShape(op apply.Operation) *rpcError {
-	encoded, err := json.Marshal([]apply.Operation{op})
-	if err != nil {
-		return rpcErrorFromCLI(InvalidArgsError(err.Error()))
-	}
-	if _, err := apply.ParseOps(encoded); err != nil {
-		return rpcErrorFromCLI(InvalidArgsError(err.Error()))
-	}
-	if err := validateKnownOperationCommand(op.Command); err != nil {
-		return rpcErrorFromCLI(err)
-	}
-	return nil
 }
 
 func decodeParams(params json.RawMessage, dst interface{}) *rpcError {
