@@ -50,6 +50,16 @@ Set `OOXML_TRUST_PROXY_HEADERS=1` only when the app is behind a trusted reverse
 proxy that overwrites forwarding headers. Otherwise the magic-link IP limiter
 ignores client-supplied forwarding headers and relies on global limits.
 
+PPTX/PPTM browser previews require the Office renderer stack on the host. On
+Ubuntu, install:
+
+```bash
+sudo apt-get install -y libreoffice-impress libreoffice-java-common default-jre-headless poppler-utils fonts-dejavu
+```
+
+`libreoffice-impress` provides the PPTX import/render filter and
+`poppler-utils` provides `pdftoppm` for PNG thumbnails.
+
 ## Architecture
 
 - `src/app.ts` owns the Hono app, upload/download/render APIs, and mounts Flue

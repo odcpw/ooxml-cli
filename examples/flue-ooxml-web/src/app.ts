@@ -144,7 +144,7 @@ app.post('/api/threads/:id/render', async (c) => {
     if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
     return c.json(await renderCurrent(c.req.param('id')));
   } catch (error) {
-    return errorResponse(c, error, 500);
+    return renderErrorResponse(c, error);
   }
 });
 
@@ -438,6 +438,29 @@ function errorResponse(c: Context, error: unknown, status: 400 | 404 | 500, opti
   const errorId = randomUUID();
   console.error('[ooxml-web] request failed', { errorId, error: message });
   return c.json({ error: 'Request failed.', errorId }, effectiveStatus);
+}
+
+function renderErrorResponse(c: Context, error: unknown): Response {
+  const message = errorMessage(error);
+  const errorId = randomUUID();
+  console.error('[ooxml-web] render failed', { errorId, error: message });
+  return c.json({ error: publicRenderErrorMessage(message), errorId }, 500);
+}
+
+function publicRenderErrorMessage(message: string): string {
+  if (/required render tool not available:\s*pdftoppm/i.test(message)) {
+    return 'Preview render failed: the server is missing pdftoppm/poppler-utils for thumbnail generation.';
+  }
+  if (/source file could not be loaded/i.test(message)) {
+    return 'Preview render failed: LibreOffice could not load the presentation. The server may be missing LibreOffice Impress, or the file may use unsupported content.';
+  }
+  if (/soffice failed/i.test(message)) {
+    return 'Preview render failed inside LibreOffice.';
+  }
+  if (/timed out|timeout/i.test(message)) {
+    return 'Preview render timed out on the server.';
+  }
+  return 'Preview render failed on the server.';
 }
 
 function errorMessage(error: unknown): string {
