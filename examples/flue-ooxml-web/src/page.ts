@@ -159,6 +159,50 @@ export function workbenchHtml(): string {
 	      .upload-form { display: grid; gap: 9px; }
 	      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 	      .composer-row { justify-content: space-between; }
+      .activity-console {
+        margin-top: 8px;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        background: #0d1117;
+        overflow: hidden;
+      }
+      .activity-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 6px 9px;
+        border-bottom: 1px solid #242a33;
+      }
+      .activity-title {
+        color: var(--color-muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+      .activity-log {
+        height: 72px;
+        overflow: auto;
+        padding: 7px 9px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        line-height: 1.45;
+      }
+      .activity-line {
+        display: grid;
+        grid-template-columns: 54px minmax(0, 1fr);
+        gap: 8px;
+        min-height: 16px;
+        color: #a6adbb;
+      }
+      .activity-line.error { color: #fecaca; }
+      .activity-time { color: #626a78; }
+      .activity-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
 	      .status-line {
 	        display: inline-flex;
 	        align-items: center;
@@ -347,6 +391,12 @@ export function workbenchHtml(): string {
         <div id="chat" class="chat-log"></div>
         <form id="chatForm" class="composer">
 	          <textarea id="promptInput" placeholder="Ask the agent to translate slides, inspect, validate, render, search, or make exact text changes..." disabled></textarea>
+          <div class="activity-console" aria-label="Agent activity">
+            <div class="activity-head">
+              <div class="activity-title">Agent activity</div>
+            </div>
+            <div id="activityLog" class="activity-log" role="log" aria-live="polite" aria-relevant="additions"></div>
+          </div>
 	          <div class="row composer-row" style="margin-top:8px">
 	            <div class="row">
 	              <button id="sendBtn" type="submit" disabled>Send</button>
@@ -377,7 +427,7 @@ export function workbenchHtml(): string {
     </div>
     <script>
       const APP_BASE_PATH = ${JSON.stringify(basePath)};
-		      const state = { threads: [], thread: null, thumbWidth: 280, busy: false, busyLabel: 'Working', stopStream: null, csrfToken: '' };
+		      const state = { threads: [], thread: null, thumbWidth: 280, busy: false, busyLabel: 'Working', stopStream: null, csrfToken: '', activityLines: [] };
       const threadList = document.getElementById('threadList');
       const newThreadBtn = document.getElementById('newThreadBtn');
       const uploadForm = document.getElementById('uploadForm');
@@ -396,6 +446,7 @@ export function workbenchHtml(): string {
       const preview = document.getElementById('preview');
       const threadInfo = document.getElementById('threadInfo');
       const documentList = document.getElementById('documentList');
+      const activityLog = document.getElementById('activityLog');
       const previewMeta = document.getElementById('previewMeta');
       const downloadLink = document.getElementById('downloadLink');
 	      const zoomRange = document.getElementById('zoomRange');
@@ -404,6 +455,7 @@ export function workbenchHtml(): string {
 	      const statusDot = document.getElementById('statusDot');
 	      const statusText = document.getElementById('statusText');
 
+      resetActivity('Idle');
 	      loadAccount().catch(() => undefined);
 	      loadThreads().catch((error) => {
 	        addMessage('error', error.message || String(error));
@@ -487,6 +539,7 @@ export function workbenchHtml(): string {
         const message = promptInput.value.trim();
         if (!message) return;
         promptInput.value = '';
+        resetActivity('Request queued');
         addMessage('user', message);
 	        setBusy(true, 'Agent working');
 	        try {
@@ -700,6 +753,9 @@ export function workbenchHtml(): string {
       }
 
       function addMessage(role, text) {
+        if (role === 'trace') {
+          return logActivity(text);
+        }
         const node = document.createElement('div');
         node.className = 'message ' + role;
         if (role === 'assistant') {
@@ -709,7 +765,35 @@ export function workbenchHtml(): string {
         }
         chat.append(node);
         chat.scrollTop = chat.scrollHeight;
+        if (role === 'error') logActivity(text, 'error');
         return node;
+      }
+
+      function resetActivity(text) {
+        state.activityLines = [];
+        logActivity(text);
+      }
+
+      function logActivity(text, level = 'info') {
+        const item = {
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          text: String(text || ''),
+          level,
+        };
+        state.activityLines.push(item);
+        if (state.activityLines.length > 80) state.activityLines.shift();
+        renderActivity();
+        return activityLog.lastElementChild;
+      }
+
+      function renderActivity() {
+        activityLog.innerHTML = state.activityLines.map((item) => (
+          '<div class="activity-line ' + (item.level === 'error' ? 'error' : '') + '">' +
+            '<span class="activity-time">' + escapeHtml(item.time) + '</span>' +
+            '<span class="activity-text" title="' + escapeHtml(item.text) + '">' + escapeHtml(item.text) + '</span>' +
+          '</div>'
+        )).join('');
+        activityLog.scrollTop = activityLog.scrollHeight;
       }
 
 	      async function streamAgentEvents(admission) {
@@ -728,6 +812,7 @@ export function workbenchHtml(): string {
 	          url.searchParams.set('offset', offset);
 	          url.searchParams.set('live', 'sse');
 	          const source = new EventSource(url.toString());
+          source.onopen = () => addMessage('trace', 'event stream connected');
 	          let settled = false;
 	          let lastEventAt = Date.now();
 	          const watchdog = setInterval(() => {
