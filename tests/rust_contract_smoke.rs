@@ -21,6 +21,27 @@ fn run_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
     run_ooxml_with_env(args, &[])
 }
 
+fn run_ooxml_with_input(args: &[&str], input: &str) -> (i32, Option<Value>, Option<Value>) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run Rust ooxml with stdin");
+    child
+        .stdin
+        .take()
+        .expect("Rust ooxml stdin")
+        .write_all(input.as_bytes())
+        .expect("write Rust ooxml stdin");
+    let output = child.wait_with_output().expect("wait Rust ooxml");
+    let code = output.status.code().unwrap_or(-1);
+    let stdout = parse_json(&output.stdout);
+    let stderr = parse_json(&output.stderr);
+    (code, stdout, stderr)
+}
+
 fn run_ooxml_with_env(args: &[&str], envs: &[(&str, &str)]) -> (i32, Option<Value>, Option<Value>) {
     let output = Command::new(env!("CARGO_BIN_EXE_ooxml"))
         .args(args)
@@ -39,6 +60,28 @@ fn run_go_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
         .env("GOCACHE", "/tmp/ooxml-go-build")
         .output()
         .expect("run Go ooxml oracle");
+    let code = output.status.code().unwrap_or(-1);
+    let stdout = parse_json(&output.stdout);
+    let stderr = parse_json(&output.stderr);
+    (code, stdout, stderr)
+}
+
+fn run_go_ooxml_with_input(args: &[&str], input: &str) -> (i32, Option<Value>, Option<Value>) {
+    let mut child = Command::new(go_ooxml_binary())
+        .args(args)
+        .env("GOCACHE", "/tmp/ooxml-go-build")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run Go ooxml oracle with stdin");
+    child
+        .stdin
+        .take()
+        .expect("Go ooxml stdin")
+        .write_all(input.as_bytes())
+        .expect("write Go ooxml stdin");
+    let output = child.wait_with_output().expect("wait Go ooxml oracle");
     let code = output.status.code().unwrap_or(-1);
     let stdout = parse_json(&output.stdout);
     let stderr = parse_json(&output.stderr);
@@ -747,6 +790,160 @@ fn xlsx_ranges_set_matches_go_oracle_and_saved_output() {
         "ranges set dry-run stdout"
     );
 
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_ranges_set_delimited_and_stdin_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-ranges-delimited-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in = temp_dir.join("go-csv-in.xlsx");
+    let rust_in = temp_dir.join("rust-csv-in.xlsx");
+    let go_out = temp_dir.join("go-csv-out.xlsx");
+    let rust_out = temp_dir.join("rust-csv-out.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in).expect("stage go input");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &rust_in).expect("stage rust input");
+    let go_in = go_in.to_string_lossy().to_string();
+    let rust_in = rust_in.to_string_lossy().to_string();
+    let go_out = go_out.to_string_lossy().to_string();
+    let rust_out = rust_out.to_string_lossy().to_string();
+    let csv = "Name,Value\nAlpha,\"two, too\"\nBeta,\"multi\nline\"\n";
+    let go_args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &go_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B3",
+        "--data-format",
+        "csv",
+        "--values-file",
+        "-",
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &rust_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B3",
+        "--data-format",
+        "csv",
+        "--values-file",
+        "-",
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml_with_input(&go_args, csv);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml_with_input(&rust_args, csv);
+    assert_eq!(rust_code, go_code, "CSV stdin ranges set exit");
+    assert_eq!(rust_stderr, go_stderr, "CSV stdin ranges set stderr");
+    assert_eq!(
+        scrub_paths(
+            rust_stdout.expect("rust CSV stdin stdout"),
+            &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go CSV stdin stdout"),
+            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+        ),
+        "CSV stdin ranges set stdout"
+    );
+
+    let export_go = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &go_out,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B3",
+        "--include-types",
+        "--include-formulas",
+    ];
+    let export_rust = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &rust_out,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B3",
+        "--include-types",
+        "--include-formulas",
+    ];
+    let (go_code, go_export, go_stderr) = run_go_ooxml(&export_go);
+    let (rust_code, rust_export, rust_stderr) = run_go_ooxml(&export_rust);
+    assert_eq!(rust_code, go_code, "CSV stdin saved export exit");
+    assert_eq!(rust_stderr, go_stderr, "CSV stdin saved export stderr");
+    assert_eq!(
+        scrub_path(
+            rust_export.expect("rust CSV saved export"),
+            &rust_out,
+            "[OUT]"
+        ),
+        scrub_path(go_export.expect("go CSV saved export"), &go_out, "[OUT]"),
+        "CSV stdin saved readback"
+    );
+
+    let tsv = "Name\tValue\nAlpha\ttwo\n";
+    let go_tsv_args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &go_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--data-format",
+        "tsv",
+        "--values",
+        tsv,
+        "--dry-run",
+    ];
+    let rust_tsv_args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &rust_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--data-format",
+        "tsv",
+        "--values",
+        tsv,
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_tsv_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_tsv_args);
+    assert_eq!(rust_code, go_code, "TSV ranges set exit");
+    assert_eq!(rust_stderr, go_stderr, "TSV ranges set stderr");
+    assert_eq!(
+        scrub_path(rust_stdout.expect("rust TSV stdout"), &rust_in, "[IN]"),
+        scrub_path(go_stdout.expect("go TSV stdout"), &go_in, "[IN]"),
+        "TSV ranges set stdout"
+    );
     let _ = fs::remove_dir_all(&temp_dir);
 }
 

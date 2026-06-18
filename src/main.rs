@@ -1026,7 +1026,7 @@ fn capability_commands() -> Vec<Value> {
         capability_command(
             "ooxml xlsx ranges set",
             "set <file>",
-            "Set a worksheet range from a rectangular JSON matrix.",
+            "Set a worksheet range from a rectangular JSON, CSV, or TSV matrix.",
             &["sheet", "range", "cell"],
             false,
             Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
@@ -1034,18 +1034,18 @@ fn capability_commands() -> Vec<Value> {
                 flag("--sheet", "sheet", "string", "sheet selector"),
                 flag("--range", "range", "string", "A1 range"),
                 flag("--anchor", "anchor", "string", "top-left A1 cell"),
-                flag("--values", "values", "string", "inline JSON matrix data"),
+                flag("--values", "values", "string", "inline matrix data"),
                 flag(
                     "--values-file",
                     "valuesFile",
                     "string",
-                    "path to JSON matrix data",
+                    "path to matrix data, or - for stdin",
                 ),
                 flag(
                     "--data-format",
                     "dataFormat",
                     "string",
-                    "matrix data format; Rust currently implements json",
+                    "matrix data format: json, csv, or tsv",
                 ),
                 flag(
                     "--null-policy",
@@ -2249,6 +2249,18 @@ fn require_json_data_format(data_format: Option<&str>) -> CliResult<()> {
     }
 }
 
+fn normalize_xlsx_ranges_set_data_format(data_format: Option<&str>) -> CliResult<String> {
+    let normalized = data_format.unwrap_or("json").trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "" | "json" => Ok("json".to_string()),
+        "csv" => Ok("csv".to_string()),
+        "tsv" => Ok("tsv".to_string()),
+        _ => Err(CliError::invalid_args(format!(
+            "invalid data format {data_format:?} (must be json, csv, or tsv)",
+        ))),
+    }
+}
+
 fn check_range_max_cells(range: &str, bounds: RangeBounds, max_cells: i64) -> CliResult<()> {
     if max_cells < 0 {
         return Err(CliError::invalid_args("--max-cells must be >= 0"));
@@ -2310,9 +2322,9 @@ fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> CliResult<V
     if !Path::new(file).exists() {
         return Err(CliError::file_not_found(format!("file not found: {file}")));
     }
-    require_json_data_format(options.data_format)?;
+    let data_format = normalize_xlsx_ranges_set_data_format(options.data_format)?;
     let data = resolve_xlsx_ranges_set_values(options.values, options.values_file)?;
-    let mut matrix = parse_xlsx_range_set_matrix(&data)?;
+    let mut matrix = parse_xlsx_range_set_matrix(&data, &data_format)?;
     rectangularize_xlsx_matrix(&mut matrix.rows, options.ragged.unwrap_or("reject"))?;
     let null_policy = options
         .null_policy
@@ -2406,7 +2418,7 @@ fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> CliResult<V
     result.insert("cleared".to_string(), json!(stats.cleared));
     result.insert("skipped".to_string(), json!(stats.skipped));
     result.insert("formulaCount".to_string(), json!(stats.formula_count));
-    result.insert("dataFormat".to_string(), json!("json"));
+    result.insert("dataFormat".to_string(), json!(data_format));
     result.insert("nullPolicy".to_string(), json!(null_policy));
     result.insert("majorDimension".to_string(), json!(matrix.major_dimension));
     if let Some(commit_path) = commit_path {
@@ -2454,15 +2466,30 @@ fn resolve_xlsx_ranges_set_values(
             "must specify exactly one of --values or --values-file",
         )),
         (Some(values), None) => Ok(values.to_string()),
-        (None, Some("-")) => Err(CliError::invalid_args(
-            "--values-file - is not implemented in the Rust port; use --values or a file path",
-        )),
+        (None, Some("-")) => {
+            let mut data = String::new();
+            std::io::stdin()
+                .read_to_string(&mut data)
+                .map_err(|err| CliError::unexpected(format!("failed to read stdin: {err}")))?;
+            Ok(data)
+        }
         (None, Some(path)) => fs::read_to_string(path)
             .map_err(|_| CliError::file_not_found(format!("file not found: {path}"))),
     }
 }
 
-fn parse_xlsx_range_set_matrix(data: &str) -> CliResult<XlsxRangeSetMatrix> {
+fn parse_xlsx_range_set_matrix(data: &str, data_format: &str) -> CliResult<XlsxRangeSetMatrix> {
+    match data_format {
+        "json" => parse_xlsx_range_set_json_matrix(data),
+        "csv" => parse_xlsx_delimited_matrix(data, ','),
+        "tsv" => parse_xlsx_delimited_matrix(data, '\t'),
+        _ => Err(CliError::invalid_args(format!(
+            "invalid data format {data_format:?} (must be json, csv, or tsv)",
+        ))),
+    }
+}
+
+fn parse_xlsx_range_set_json_matrix(data: &str) -> CliResult<XlsxRangeSetMatrix> {
     let raw: Value = serde_json::from_str(data)
         .map_err(|err| CliError::invalid_args(format!("invalid json values: {err}")))?;
     let (range, null_policy, major_dimension, values) = if let Some(object) = raw.as_object() {
@@ -2511,6 +2538,105 @@ fn parse_xlsx_range_set_matrix(data: &str) -> CliResult<XlsxRangeSetMatrix> {
         major_dimension,
         rows,
     })
+}
+
+fn parse_xlsx_delimited_matrix(data: &str, delimiter: char) -> CliResult<XlsxRangeSetMatrix> {
+    let records = parse_delimited_records(data, delimiter)?;
+    let rows = records
+        .into_iter()
+        .map(|record| {
+            record
+                .into_iter()
+                .map(|value| XlsxMatrixCell {
+                    kind: "string".to_string(),
+                    value,
+                    formula: String::new(),
+                    null: false,
+                })
+                .collect()
+        })
+        .collect();
+    Ok(XlsxRangeSetMatrix {
+        range: None,
+        null_policy: None,
+        major_dimension: "rows".to_string(),
+        rows,
+    })
+}
+
+fn parse_delimited_records(data: &str, delimiter: char) -> CliResult<Vec<Vec<String>>> {
+    let mut records = Vec::new();
+    let mut record = Vec::new();
+    let mut field = String::new();
+    let mut chars = data.chars().peekable();
+    let mut in_quotes = false;
+    let mut field_started = false;
+    let mut just_closed_quote = false;
+
+    while let Some(ch) = chars.next() {
+        if in_quotes {
+            if ch == '"' {
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    field.push('"');
+                } else {
+                    in_quotes = false;
+                    just_closed_quote = true;
+                }
+            } else {
+                field.push(ch);
+            }
+            continue;
+        }
+
+        if ch == '"' {
+            if !field_started {
+                in_quotes = true;
+                field_started = true;
+                continue;
+            }
+            return Err(CliError::invalid_args(
+                "parse error on line 1, column 1: bare \" in non-quoted-field",
+            ));
+        }
+
+        if ch == delimiter {
+            record.push(std::mem::take(&mut field));
+            field_started = false;
+            just_closed_quote = false;
+            continue;
+        }
+
+        if ch == '\n' || ch == '\r' {
+            if ch == '\r' && chars.peek() == Some(&'\n') {
+                chars.next();
+            }
+            record.push(std::mem::take(&mut field));
+            records.push(std::mem::take(&mut record));
+            field_started = false;
+            just_closed_quote = false;
+            continue;
+        }
+
+        if just_closed_quote {
+            return Err(CliError::invalid_args(
+                "parse error on line 1, column 1: extraneous or missing \" in quoted-field",
+            ));
+        }
+        field_started = true;
+        field.push(ch);
+    }
+
+    if in_quotes {
+        return Err(CliError::invalid_args(
+            "parse error on line 1, column 1: extraneous or missing \" in quoted-field",
+        ));
+    }
+    if field_started || !field.is_empty() || !record.is_empty() {
+        record.push(field);
+        records.push(record);
+    }
+    Ok(records)
 }
 
 fn parse_xlsx_matrix_rows(value: &Value) -> CliResult<Vec<Vec<XlsxMatrixCell>>> {

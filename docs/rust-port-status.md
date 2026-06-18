@@ -19,12 +19,12 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json xlsx ranges export ...` with Go-oracle comparison for default JSON
   export, typed export, formula/format matrices, and `--max-cells` guardrails
 - `--json xlsx ranges set ...` with Go-oracle comparison for inline JSON
-  matrices, saved output readback, formula cells, null skipping, dry-run
-  templates, generated mutation readback commands, formula-overwrite rejection,
-  merged-cell rejection, and preservation of untouched shared-string/style/
-  formula-cache cell XML; this is direct CLI subset support, with CSV/TSV,
-  stdin, full formula recalculation/calc-chain parity, and serve `op` routing
-  still open in `DISC-001`
+  matrices, CSV/TSV matrix input, `--values-file -` stdin, saved output
+  readback, formula cells, null skipping, dry-run templates, generated mutation
+  readback commands, formula-overwrite rejection, merged-cell rejection, and
+  preservation of untouched shared-string/style/formula-cache cell XML; this is
+  direct CLI subset support, with full formula recalculation/calc-chain parity
+  and serve `op` routing still open in `DISC-001`
 - `--json docx text <docx>` with Go-oracle comparison across the committed
   positive DOCX fixture corpus: paragraphs, styles, preserved whitespace,
   hyperlinks, field/instruction text omission, tables, merged tables, headers,
