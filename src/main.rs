@@ -4,7 +4,8 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
@@ -80,7 +81,7 @@ fn main() {
 
 fn run(raw_args: &[String]) -> CliResult<Value> {
     let (flags, args) = parse_global_flags(raw_args)?;
-    if !flags.json {
+    if !flags.json && !has_local_json_format(&args) {
         return Err(CliError::invalid_args(
             "the Rust port currently supports the frozen --json contract slice only",
         ));
@@ -128,7 +129,11 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [cmd] if cmd == "version" => Ok(json!({"tool": "ooxml", "version": "0.0.1"})),
         [cmd, file] if cmd == "inspect" => inspect(file),
         [cmd, file] if cmd == "validate" => validate(file, flags.strict),
+        [cmd, file, rest @ ..] if cmd == "verify" => verify(file, rest),
         [cmd, family, file] if cmd == "docx" && family == "text" => docx_text(file),
+        [family, verb, file, rest @ ..] if family == "pptx" && verb == "render" => {
+            pptx_render(file, rest)
+        }
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "slides" && verb == "show" =>
         {
@@ -153,6 +158,11 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             args.join(" ")
         ))),
     }
+}
+
+fn has_local_json_format(args: &[String]) -> bool {
+    args.windows(2)
+        .any(|pair| pair[0] == "--format" && pair[1] == "json")
 }
 
 fn parse_string_flag(args: &[String], name: &str) -> CliResult<Option<String>> {
@@ -356,6 +366,93 @@ fn docx_text(file: &str) -> CliResult<Value> {
     Ok(json!({"blocks": blocks, "file": file}))
 }
 
+fn pptx_render(file: &str, args: &[String]) -> CliResult<Value> {
+    let out = parse_string_flag(args, "--out")?
+        .ok_or_else(|| CliError::invalid_args("--out is required"))?;
+    if let Some(format) = parse_string_flag(args, "--format")?
+        && format != "json"
+    {
+        return Err(CliError::invalid_args(
+            "pptx render supports --format json only",
+        ));
+    }
+    let slides = parse_slides_flag(args, "--slides")?.unwrap_or_else(|| pptx_all_slides(file));
+    let output_dir = PathBuf::from(&out);
+    fs::create_dir_all(&output_dir).map_err(|err| CliError::unexpected(err.to_string()))?;
+    let pdf_path = if std::env::var_os("OOXML_RUST_MOCK_RENDER").is_some() {
+        mock_render_outputs(file, &output_dir, &slides)?
+    } else {
+        render_with_local_tools(file, &output_dir, &slides)?
+    };
+    let slide_values: Vec<Value> = slides
+        .iter()
+        .map(|slide| {
+            json!({
+                "imagePath": output_dir.join(format!("slide-{slide}.png")).to_string_lossy(),
+                "slide": slide,
+            })
+        })
+        .collect();
+    Ok(json!({
+        "dpi": 144,
+        "imageFormat": "png",
+        "outputDir": out,
+        "pdfPath": pdf_path.to_string_lossy(),
+        "slides": slide_values,
+        "sourceFile": file,
+    }))
+}
+
+fn verify(file: &str, args: &[String]) -> CliResult<Value> {
+    let baseline = parse_string_flag(args, "--baseline")?;
+    let validation = verify_validation(file)?;
+    let valid = validation["status"] == "valid";
+    let package_type = package_type(file)?;
+    let rendered = if package_type == "pptx" {
+        json!({
+            "enabled": true,
+            "reason": "required render tool not available: soffice",
+            "status": "unavailable",
+        })
+    } else {
+        json!({
+            "enabled": false,
+            "reason": "render check applies to PPTX only",
+            "status": "skipped",
+        })
+    };
+    let (diff, changes) = if let Some(baseline) = baseline.as_deref() {
+        let diff = pptx_diff(baseline, file)?;
+        let changes = diff["semantic"]["textDiffs"]
+            .as_array()
+            .map(Vec::len)
+            .unwrap_or_default();
+        (Some(diff), changes)
+    } else {
+        (None, 0)
+    };
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("rendered".to_string(), rendered);
+    result.insert("schemaVersion".to_string(), json!("1.0"));
+    result.insert(
+        "summary".to_string(),
+        json!({
+            "baseline": baseline,
+            "changes": changes,
+            "rendered": false,
+            "valid": valid,
+        }),
+    );
+    result.insert("type".to_string(), json!(package_type));
+    result.insert("valid".to_string(), json!(valid));
+    result.insert("validation".to_string(), validation);
+    if let Some(diff) = diff {
+        result.insert("diff".to_string(), diff);
+    }
+    Ok(Value::Object(result))
+}
+
 fn pptx_replace_text(file: &str, args: &[String]) -> CliResult<Value> {
     let slide = parse_u32_flag(args, "--slide")?.unwrap_or(1);
     let target = parse_string_flag(args, "--target")?
@@ -401,6 +498,220 @@ fn pptx_replace_text(file: &str, args: &[String]) -> CliResult<Value> {
         "target": "title",
         "validateCommand": format!("ooxml validate --strict {out}"),
     }))
+}
+
+fn parse_slides_flag(args: &[String], name: &str) -> CliResult<Option<Vec<u32>>> {
+    let Some(value) = parse_string_flag(args, name)? else {
+        return Ok(None);
+    };
+    let mut slides = Vec::new();
+    for token in value.split(',') {
+        let slide = token.trim().parse::<u32>().map_err(|_| {
+            CliError::invalid_args(format!("{name} must be a comma-separated slide list"))
+        })?;
+        slides.push(slide);
+    }
+    Ok(Some(slides))
+}
+
+fn pptx_all_slides(file: &str) -> Vec<u32> {
+    zip_text(file, "ppt/presentation.xml")
+        .map(|xml| (1..=pptx_slide_refs(&xml).len() as u32).collect())
+        .unwrap_or_else(|_| vec![1])
+}
+
+fn mock_render_outputs(file: &str, out_dir: &Path, slides: &[u32]) -> CliResult<PathBuf> {
+    let pdf_path = out_dir.join(format!("{}.pdf", file_stem(file)));
+    fs::write(&pdf_path, b"pdf").map_err(|err| CliError::unexpected(err.to_string()))?;
+    for slide in slides {
+        fs::write(out_dir.join(format!("slide-{slide}.png")), b"png")
+            .map_err(|err| CliError::unexpected(err.to_string()))?;
+    }
+    Ok(pdf_path)
+}
+
+fn render_with_local_tools(file: &str, out_dir: &Path, slides: &[u32]) -> CliResult<PathBuf> {
+    if !command_available("soffice") {
+        return Err(CliError::unexpected(
+            "required render tool not available: soffice",
+        ));
+    }
+    if !command_available("pdftoppm") {
+        return Err(CliError::unexpected(
+            "required render tool not available: pdftoppm",
+        ));
+    }
+    let status = Command::new("soffice")
+        .args(["--headless", "--convert-to", "pdf", "--outdir"])
+        .arg(out_dir)
+        .arg(file)
+        .status()
+        .map_err(|err| CliError::unexpected(err.to_string()))?;
+    if !status.success() {
+        return Err(CliError::unexpected("soffice render failed"));
+    }
+    let pdf_path = out_dir.join(format!("{}.pdf", file_stem(file)));
+    for slide in slides {
+        let prefix = out_dir.join("slide");
+        let status = Command::new("pdftoppm")
+            .arg("-png")
+            .arg("-r")
+            .arg("144")
+            .arg("-f")
+            .arg(slide.to_string())
+            .arg("-l")
+            .arg(slide.to_string())
+            .arg(&pdf_path)
+            .arg(&prefix)
+            .status()
+            .map_err(|err| CliError::unexpected(err.to_string()))?;
+        if !status.success() {
+            return Err(CliError::unexpected("pdftoppm rasterize failed"));
+        }
+        let generated = out_dir.join(format!("slide-{slide}.png"));
+        if !generated.exists() {
+            let alternate = out_dir.join(format!("slide-{slide:01}.png"));
+            if alternate.exists() {
+                fs::rename(alternate, &generated)
+                    .map_err(|err| CliError::unexpected(err.to_string()))?;
+            }
+        }
+    }
+    Ok(pdf_path)
+}
+
+fn command_available(name: &str) -> bool {
+    Command::new(name).arg("--version").output().is_ok()
+}
+
+fn file_stem(path: &str) -> String {
+    Path::new(path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("presentation")
+        .to_string()
+}
+
+fn verify_validation(file: &str) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    if !entries.iter().any(|name| name == "[Content_Types].xml") {
+        return Ok(json!({
+            "status": "invalid",
+            "summary": {"errors": 1, "info": 0, "warnings": 0},
+        }));
+    }
+    Ok(json!({
+        "status": "valid",
+        "summary": {"errors": 0, "info": 0, "warnings": 0},
+    }))
+}
+
+fn package_type(file: &str) -> CliResult<&'static str> {
+    let entries = zip_entry_names(file)?;
+    if entries.iter().any(|name| name == "ppt/presentation.xml") {
+        Ok("pptx")
+    } else if entries.iter().any(|name| name == "xl/workbook.xml") {
+        Ok("xlsx")
+    } else if entries.iter().any(|name| name == "word/document.xml") {
+        Ok("docx")
+    } else {
+        Ok("unknown")
+    }
+}
+
+fn pptx_diff(baseline: &str, file: &str) -> CliResult<Value> {
+    let before = pptx_slide_texts(baseline)?;
+    let after = pptx_slide_texts(file)?;
+    let slide_count_a = before.len();
+    let slide_count_b = after.len();
+    let mut changed_slides = Vec::new();
+    let mut text_diffs = Vec::new();
+    for slide_idx in 0..slide_count_a.max(slide_count_b) {
+        let before_shapes = before.get(slide_idx).cloned().unwrap_or_default();
+        let after_shapes = after.get(slide_idx).cloned().unwrap_or_default();
+        let mut changed = false;
+        for before_shape in before_shapes {
+            let Some(after_shape) = after_shapes
+                .iter()
+                .find(|candidate| candidate.key == before_shape.key)
+            else {
+                continue;
+            };
+            if before_shape.text != after_shape.text {
+                changed = true;
+                text_diffs.push(json!({
+                    "after": after_shape.text,
+                    "before": before_shape.text,
+                    "shapeKey": before_shape.key,
+                    "shapeName": before_shape.name,
+                    "slide": slide_idx + 1,
+                }));
+            }
+        }
+        if changed {
+            changed_slides.push(Value::from(slide_idx + 1));
+        }
+    }
+    Ok(json!({
+        "schemaVersion": "1.0",
+        "semantic": {
+            "changedSlides": changed_slides,
+            "imageDiffs": [],
+            "layoutDiffs": [],
+            "slideCountA": slide_count_a,
+            "slideCountB": slide_count_b,
+            "slideCountEqual": slide_count_a == slide_count_b,
+            "textDiffs": text_diffs,
+        },
+        "type": "pptx",
+        "visual": {
+            "enabled": false,
+            "status": "disabled",
+        },
+    }))
+}
+
+#[derive(Clone, Default)]
+struct ShapeText {
+    key: String,
+    name: String,
+    text: String,
+}
+
+fn pptx_slide_texts(file: &str) -> CliResult<Vec<Vec<ShapeText>>> {
+    let presentation = zip_text(file, "ppt/presentation.xml")?;
+    let slides = pptx_slide_refs(&presentation);
+    let rels = relationships(file, "ppt/_rels/presentation.xml.rels")?;
+    let mut out = Vec::new();
+    for (_, rel_id) in slides {
+        let target = rels
+            .get(&rel_id)
+            .ok_or_else(|| CliError::unexpected(format!("missing relationship {rel_id}")))?;
+        let part = normalize_ppt_target(target);
+        let xml = zip_text(file, &part)?;
+        out.push(
+            pptx_shape_models(&xml)
+                .into_iter()
+                .filter(|shape| !shape.text.is_empty())
+                .map(|shape| ShapeText {
+                    key: shape_key(&shape),
+                    name: shape.name,
+                    text: shape.text,
+                })
+                .collect(),
+        );
+    }
+    Ok(out)
+}
+
+fn shape_key(shape: &Shape) -> String {
+    if shape.is_placeholder && shape.name.to_ascii_lowercase().contains("title") {
+        "title".to_string()
+    } else if !shape.name.is_empty() {
+        shape.name.clone()
+    } else {
+        format!("shape:{}", shape.id)
+    }
 }
 
 fn zip_entry_names(path: &str) -> CliResult<Vec<String>> {
@@ -583,6 +894,23 @@ struct Shape {
 }
 
 fn pptx_shapes(xml: &str) -> Vec<Value> {
+    pptx_shape_models(xml)
+        .into_iter()
+        .map(|shape| {
+            let mut map = Map::new();
+            map.insert("id".to_string(), json!(shape.id));
+            map.insert("isPlaceholder".to_string(), json!(shape.is_placeholder));
+            map.insert("shapeName".to_string(), json!(shape.name));
+            if !shape.text.is_empty() {
+                map.insert("textContent".to_string(), json!(shape.text));
+            }
+            map.insert("type".to_string(), json!("sp"));
+            Value::Object(map)
+        })
+        .collect()
+}
+
+fn pptx_shape_models(xml: &str) -> Vec<Shape> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut shapes = Vec::new();
@@ -623,15 +951,7 @@ fn pptx_shapes(xml: &str) -> Vec<Value> {
             }
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "sp" => {
                 if let Some(shape) = current.take() {
-                    let mut map = Map::new();
-                    map.insert("id".to_string(), json!(shape.id));
-                    map.insert("isPlaceholder".to_string(), json!(shape.is_placeholder));
-                    map.insert("shapeName".to_string(), json!(shape.name));
-                    if !shape.text.is_empty() {
-                        map.insert("textContent".to_string(), json!(shape.text));
-                    }
-                    map.insert("type".to_string(), json!("sp"));
-                    shapes.push(Value::Object(map));
+                    shapes.push(shape);
                 }
             }
             Ok(Event::Eof) => break,

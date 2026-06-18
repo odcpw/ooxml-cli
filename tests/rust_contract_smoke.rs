@@ -9,8 +9,13 @@ fn baseline() -> Value {
 }
 
 fn run_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
+    run_ooxml_with_env(args, &[])
+}
+
+fn run_ooxml_with_env(args: &[&str], envs: &[(&str, &str)]) -> (i32, Option<Value>, Option<Value>) {
     let output = Command::new(env!("CARGO_BIN_EXE_ooxml"))
         .args(args)
+        .envs(envs.iter().copied())
         .output()
         .expect("run Rust ooxml");
     let code = output.status.code().unwrap_or(-1);
@@ -63,7 +68,9 @@ fn frozen_pptx_mutation_and_validate_match_go_baseline() {
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-contract-{}", std::process::id()));
     std::fs::create_dir_all(&temp_dir).expect("temp dir");
     let edited = temp_dir.join("edited.pptx");
+    let render_dir = temp_dir.join("rendered");
     let edited_str = edited.to_str().expect("temp path");
+    let render_dir_str = render_dir.to_str().expect("render path");
 
     let edit_args = [
         "--json",
@@ -107,6 +114,54 @@ fn frozen_pptx_mutation_and_validate_match_go_baseline() {
         ),
         validate_expected
     );
+
+    let render_args = [
+        "pptx",
+        "render",
+        edited_str,
+        "--out",
+        render_dir_str,
+        "--slides",
+        "1",
+        "--format",
+        "json",
+    ];
+    let (render_code, render_stdout, render_stderr) =
+        run_ooxml_with_env(&render_args, &[("OOXML_RUST_MOCK_RENDER", "1")]);
+    assert_eq!(render_code, 0);
+    assert_eq!(render_stderr, None);
+    let render_expected = baseline["mutation"]["render"]["stdoutJson"].clone();
+    assert_eq!(
+        scrub_paths(
+            render_stdout.expect("render stdout"),
+            &[
+                (edited_str, "[EDITED_PPTX]"),
+                (render_dir_str, "[RENDER_DIR]")
+            ]
+        ),
+        render_expected
+    );
+
+    let verify_args = [
+        "--format",
+        "json",
+        "verify",
+        edited_str,
+        "--baseline",
+        "testdata/pptx/minimal-title/presentation.pptx",
+    ];
+    let (verify_code, verify_stdout, verify_stderr) = run_ooxml(&verify_args);
+    assert_eq!(verify_code, 0);
+    assert_eq!(verify_stderr, None);
+    let verify_expected = baseline["mutation"]["verify"]["stdoutJson"].clone();
+    assert_eq!(
+        scrub_path(
+            verify_stdout.expect("verify stdout"),
+            edited_str,
+            "[EDITED_PPTX]"
+        ),
+        verify_expected
+    );
 }
 
 fn nullable(value: &Value) -> Option<Value> {
@@ -118,17 +173,27 @@ fn nullable(value: &Value) -> Option<Value> {
 }
 
 fn scrub_path(value: Value, from: &str, to: &str) -> Value {
+    scrub_paths(value, &[(from, to)])
+}
+
+fn scrub_paths(value: Value, replacements: &[(&str, &str)]) -> Value {
     match value {
-        Value::String(text) => Value::String(text.replace(from, to)),
+        Value::String(text) => {
+            let mut text = text;
+            for (from, to) in replacements {
+                text = text.replace(from, to);
+            }
+            Value::String(text)
+        }
         Value::Array(items) => Value::Array(
             items
                 .into_iter()
-                .map(|item| scrub_path(item, from, to))
+                .map(|item| scrub_paths(item, replacements))
                 .collect(),
         ),
         Value::Object(map) => Value::Object(
             map.into_iter()
-                .map(|(key, value)| (key, scrub_path(value, from, to)))
+                .map(|(key, value)| (key, scrub_paths(value, replacements)))
                 .collect(),
         ),
         other => other,

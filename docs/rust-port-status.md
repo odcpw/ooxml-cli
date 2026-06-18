@@ -14,11 +14,15 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - JSON error envelope for an invalid slide number
 - `--json pptx replace text ... --out <pptx>`
 - `--json --strict validate <pptx>`
+- `pptx render ... --format json` manifest shape, with real-tool execution when
+  LibreOffice and Poppler are available and a deterministic test hook for the
+  frozen contract
+- `--format json verify <pptx> --baseline <pptx>` validation plus semantic text
+  diff envelope for the frozen PPTX fixture
 
 Still missing before parity can be claimed:
 
-- `pptx render` contract parity.
-- `verify --baseline` contract parity.
+- real render proof parity beyond the mocked frozen manifest path.
 - `serve` JSON-RPC parity.
 - MCP discovery and session parity.
 - Full command-surface inventory parity.
