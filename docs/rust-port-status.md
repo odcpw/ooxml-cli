@@ -31,6 +31,9 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   contract metadata, with the MCP command-resource template included
 - `--json capabilities --for <filter>` for the Rust-supported partial command
   surface, including the web-agent-relevant PPTX and XLSX commands
+- Rust capability inventory is checked as a strict subset of the Go oracle
+  capability inventory, so Rust cannot advertise non-oracle command paths while
+  the partial surface grows
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
 - `--json pptx slides list <pptx>` with direct Go-oracle comparison for

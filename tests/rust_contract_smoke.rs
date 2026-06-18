@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 
@@ -1168,6 +1169,30 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx cells set", true);
 }
 
+#[test]
+fn rust_capability_inventory_is_go_oracle_subset() {
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
+    assert_eq!(go_code, 0);
+    assert_eq!(go_stderr, None);
+    let go_caps = go_stdout.expect("go capabilities");
+
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(rust_code, 0);
+    assert_eq!(rust_stderr, None);
+    let rust_caps = rust_stdout.expect("rust capabilities");
+
+    let go_paths = capability_paths(&go_caps);
+    let rust_paths = capability_paths(&rust_caps);
+    let invented = rust_paths
+        .difference(&go_paths)
+        .cloned()
+        .collect::<Vec<_>>();
+    assert!(
+        invented.is_empty(),
+        "Rust capabilities must be a Go-oracle command subset; invented paths: {invented:?}"
+    );
+}
+
 fn rpc_request(id: i64, method: &str, params: Value) -> Value {
     serde_json::json!({
         "id": id,
@@ -1256,6 +1281,15 @@ fn local_flag_field(command: &Value, field: &str) -> Value {
             .map(|flag| flag[field].clone())
             .collect(),
     )
+}
+
+fn capability_paths(capabilities: &Value) -> BTreeSet<String> {
+    capabilities["commands"]
+        .as_array()
+        .expect("commands array")
+        .iter()
+        .map(|command| command["path"].as_str().expect("command path").to_string())
+        .collect()
 }
 
 fn assert_command(capabilities: &Value, path: &str, op_compatible: bool) {
