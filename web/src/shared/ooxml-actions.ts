@@ -837,30 +837,25 @@ export async function applyOoxmlOpsToCurrent(input: {
   const outPath = newVersionOutputPath(dir, document.id, newVersionId, 'ooxml', ext);
   await mkdir(join(dir, 'documents', document.id, 'versions'), { recursive: true });
 
-  let responses: ServeResponse[];
-  try {
-    responses = await runOoxmlServe(
-      serveRequest(1, 'open', { file, out: outPath }),
-      (sessionId) => {
-        const requests: ServeRequest[] = [];
-        operations.forEach((operation, index) => {
-          requests.push(
-            serveRequest(index + 2, 'op', {
-              session: sessionId,
-              command: normalizeServeCommand(operation.command),
-              args: operation.args ?? {},
-            }),
-          );
-        });
-        requests.push(serveRequest(operations.length + 2, 'validate', { session: sessionId }));
-        requests.push(serveRequest(operations.length + 3, 'commit', { session: sessionId }));
-        return requests;
-      },
-      dir,
-    );
-  } catch (error) {
-    throw error;
-  }
+  const responses = await runOoxmlServe(
+    serveRequest(1, 'open', { file, out: outPath }),
+    (sessionId) => {
+      const requests: ServeRequest[] = [];
+      operations.forEach((operation, index) => {
+        requests.push(
+          serveRequest(index + 2, 'op', {
+            session: sessionId,
+            command: normalizeServeCommand(operation.command),
+            args: operation.args ?? {},
+          }),
+        );
+      });
+      requests.push(serveRequest(operations.length + 2, 'validate', { session: sessionId }));
+      requests.push(serveRequest(operations.length + 3, 'commit', { session: sessionId }));
+      return requests;
+    },
+    dir,
+  );
 
   const opResults = responses.slice(1, 1 + operations.length).map((response) => resultOrThrow(response, 'op'));
   const validate = resultOrThrow(responses[1 + operations.length], 'validate');
