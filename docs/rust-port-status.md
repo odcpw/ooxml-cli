@@ -7,6 +7,8 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 The first Rust slice implements and tests the CLI cases from that baseline:
 
 - `--json version`
+- `--json capabilities` advertises the Rust-supported `ooxml version` command
+  and checks the advertised path against the Go oracle capability inventory
 - `--json inspect <pptx>`
 - `--json pptx slides show ... --include-text`
 - `--json xlsx ranges export ... --include-types`

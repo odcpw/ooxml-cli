@@ -552,6 +552,15 @@ fn capability_matches_filter(command: &Value, filter: &str) -> bool {
 fn capability_commands() -> Vec<Value> {
     vec![
         capability_command(
+            "ooxml version",
+            "version",
+            "Print the version of ooxml.",
+            &["package"],
+            false,
+            Some("read-only metadata command"),
+            vec![],
+        ),
+        capability_command(
             "ooxml inspect",
             "inspect <file>",
             "Inspect a supported OOXML package.",

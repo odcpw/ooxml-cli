@@ -1142,6 +1142,12 @@ fn web_smoke_binary_readback_checks_are_supported() {
 
 #[test]
 fn capabilities_advertise_supported_web_agent_surface() {
+    let (all_code, all_stdout, all_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(all_code, 0);
+    assert_eq!(all_stderr, None);
+    let all_caps = all_stdout.expect("all capabilities");
+    assert_command(&all_caps, "ooxml version", false);
+
     let (pptx_code, pptx_stdout, pptx_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "pptx"]);
     assert_eq!(pptx_code, 0);
