@@ -1132,9 +1132,11 @@ type ServeRequest = {
   params?: Record<string, unknown>;
 };
 
+type ServeResponseId = number | string;
+
 type ServeResponse = {
   jsonrpc: '2.0';
-  id: number;
+  id: ServeResponseId;
   result?: unknown;
   error?: {
     code: number;
@@ -1157,6 +1159,10 @@ function serveRequest(id: number, method: string, params?: Record<string, unknow
   return { jsonrpc: '2.0', id, method, params };
 }
 
+function serveResponseKey(id: ServeResponseId): string {
+  return String(id);
+}
+
 async function runOoxmlServe(
   openRequest: ServeRequest,
   buildFollowUpRequests: (sessionId: string) => ServeRequest[],
@@ -1170,8 +1176,8 @@ async function runOoxmlServe(
   });
   const stdout: Buffer[] = [];
   const stderr: Buffer[] = [];
-  const responsesById = new Map<number, ServeResponse>();
-  const pendingResponses = new Map<number, (response: ServeResponse) => void>();
+  const responsesById = new Map<string, ServeResponse>();
+  const pendingResponses = new Map<string, (response: ServeResponse) => void>();
   const ignoredLines: string[] = [];
   let stdoutBytes = 0;
   let stderrBytes = 0;
@@ -1198,10 +1204,11 @@ async function runOoxmlServe(
       ignoredLines.push(trimmed);
       return;
     }
-    responsesById.set(parsed.id, parsed);
-    const resolvePending = pendingResponses.get(parsed.id);
+    const responseKey = serveResponseKey(parsed.id);
+    responsesById.set(responseKey, parsed);
+    const resolvePending = pendingResponses.get(responseKey);
     if (resolvePending) {
-      pendingResponses.delete(parsed.id);
+      pendingResponses.delete(responseKey);
       resolvePending(parsed);
     }
   });
@@ -1276,7 +1283,7 @@ async function runOoxmlServe(
     );
   }
   return allRequests.map((request) => {
-    const response = responsesById.get(request.id);
+    const response = responsesById.get(serveResponseKey(request.id));
     if (!response) {
       throw new Error(
         [
@@ -1295,20 +1302,21 @@ async function runOoxmlServe(
 
 function waitForServeResponse(
   request: ServeRequest,
-  responsesById: Map<number, ServeResponse>,
-  pendingResponses: Map<number, (response: ServeResponse) => void>,
+  responsesById: Map<string, ServeResponse>,
+  pendingResponses: Map<string, (response: ServeResponse) => void>,
 ): Promise<ServeResponse> {
-  const existing = responsesById.get(request.id);
+  const requestKey = serveResponseKey(request.id);
+  const existing = responsesById.get(requestKey);
   if (existing) return Promise.resolve(existing);
   return new Promise<ServeResponse>((resolve) => {
-    pendingResponses.set(request.id, resolve);
+    pendingResponses.set(requestKey, resolve);
   });
 }
 
 function isServeResponse(value: unknown): value is ServeResponse {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const candidate = value as Partial<ServeResponse>;
-  return candidate.jsonrpc === '2.0' && typeof candidate.id === 'number';
+  return candidate.jsonrpc === '2.0' && (typeof candidate.id === 'number' || typeof candidate.id === 'string');
 }
 
 function resultOrThrow(response: ServeResponse | undefined, label: string): unknown {
