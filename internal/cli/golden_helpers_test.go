@@ -17,6 +17,9 @@ func assertGoldenJSONValue(t *testing.T, name string, actual any) {
 	}
 	actualJSON = append(actualJSON, '\n')
 	if os.Getenv("UPDATE_GOLDENS") == "1" {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("create golden dir %s: %v", filepath.Dir(path), err)
+		}
 		if err := os.WriteFile(path, actualJSON, 0o644); err != nil {
 			t.Fatalf("update golden %s: %v", path, err)
 		}
@@ -26,7 +29,11 @@ func assertGoldenJSONValue(t *testing.T, name string, actual any) {
 		t.Fatalf("read golden %s: %v", path, err)
 	}
 	if !bytes.Equal(normalizeGoldenLineEndings(expected), normalizeGoldenLineEndings(actualJSON)) {
-		t.Fatalf("golden mismatch for %s\nexpected:\n%s\nactual:\n%s", path, expected, actualJSON)
+		actualPath := path + ".actual"
+		if err := os.WriteFile(actualPath, actualJSON, 0o644); err != nil {
+			t.Fatalf("golden mismatch for %s; failed to write actual %s: %v", path, actualPath, err)
+		}
+		t.Fatalf("golden mismatch for %s\nactual written to %s", path, actualPath)
 	}
 }
 

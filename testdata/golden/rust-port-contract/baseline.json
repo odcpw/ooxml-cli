@@ -1,0 +1,1364 @@
+{
+  "schemaVersion": "1.0",
+  "referenceImplementation": "go-ooxml-cli-current",
+  "generator": "UPDATE_GOLDENS=1 go test ./internal/cli -run TestRustPortContractGolden -count=1",
+  "fixtures": [
+    "testdata/pptx/minimal-title/presentation.pptx",
+    "testdata/xlsx/minimal-workbook/workbook.xlsx",
+    "testdata/docx/minimal/document.docx"
+  ],
+  "cli": [
+    {
+      "name": "version-json",
+      "args": [
+        "--json",
+        "version"
+      ],
+      "exitCode": 0,
+      "stdoutJson": {
+        "tool": "ooxml",
+        "version": "0.0.1"
+      }
+    },
+    {
+      "name": "inspect-pptx-json",
+      "args": [
+        "--json",
+        "inspect",
+        "testdata/pptx/minimal-title/presentation.pptx"
+      ],
+      "exitCode": 0,
+      "stdoutJson": {
+        "file": "testdata/pptx/minimal-title/presentation.pptx",
+        "summary": {
+          "customXmlParts": 0,
+          "handoutMasters": 0,
+          "layouts": 11,
+          "masters": 1,
+          "mediaAssets": 0,
+          "notesMasters": 0,
+          "slideSize": {
+            "cx": 9144000,
+            "cy": 6858000,
+            "unit": "emu"
+          },
+          "slides": 1,
+          "themes": 1
+        },
+        "type": "pptx"
+      }
+    },
+    {
+      "name": "pptx-slide-show-json",
+      "args": [
+        "--json",
+        "pptx",
+        "slides",
+        "show",
+        "testdata/pptx/minimal-title/presentation.pptx",
+        "--slide",
+        "1",
+        "--include-text"
+      ],
+      "exitCode": 0,
+      "stdoutJson": {
+        "file": "testdata/pptx/minimal-title/presentation.pptx",
+        "slides": [
+          {
+            "id": "slide1",
+            "layoutNumber": 1,
+            "layoutPartUri": "/ppt/slideLayouts/slideLayout1.xml",
+            "layoutReadbackCommand": "ooxml --json pptx layouts show testdata/pptx/minimal-title/presentation.pptx --layout 1",
+            "layoutRef": "Title Slide",
+            "partUri": "/ppt/slides/slide1.xml",
+            "primarySelector": "1",
+            "readbackCommand": "ooxml --json pptx slides show testdata/pptx/minimal-title/presentation.pptx --slide 1 --include-text --include-bounds",
+            "relationshipId": "rId7",
+            "selectors": [
+              "1",
+              "part:/ppt/slides/slide1.xml",
+              "slideId:256",
+              "rId:rId7"
+            ],
+            "selectorsCommand": "ooxml --json pptx slides selectors testdata/pptx/minimal-title/presentation.pptx --slide 1",
+            "shapes": [
+              {
+                "id": 2,
+                "isPlaceholder": true,
+                "shapeName": "Title 1",
+                "textContent": "Minimal Title Slide",
+                "type": "sp"
+              },
+              {
+                "id": 3,
+                "isPlaceholder": true,
+                "shapeName": "Subtitle 2",
+                "type": "sp"
+              }
+            ],
+            "shapesCommand": "ooxml --json pptx shapes show testdata/pptx/minimal-title/presentation.pptx --slide 1 --include-text --include-bounds",
+            "slide": 1,
+            "slideId": 256
+          }
+        ]
+      }
+    },
+    {
+      "name": "xlsx-range-export-json",
+      "args": [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "1",
+        "--range",
+        "A1:B2",
+        "--include-types"
+      ],
+      "exitCode": 0,
+      "stdoutJson": {
+        "cellsExtractCommand": "ooxml --json xlsx cells extract testdata/xlsx/minimal-workbook/workbook.xlsx --sheet Sheet1 --range A1:B2",
+        "cols": 2,
+        "dataFormat": "json",
+        "file": "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "formulaCount": 0,
+        "majorDimension": "rows",
+        "pptxPlaceTableCommandTemplate": "ooxml --json pptx place table-from-xlsx deck.pptx --workbook testdata/xlsx/minimal-workbook/workbook.xlsx --sheet Sheet1 --range A1:B2 --expect-source-range A1:B2 --slide 1 --x 0 --y 0 --cx 4000000 --out out.pptx",
+        "pptxReplaceTextCommandTemplate": "ooxml --json pptx replace text-from-xlsx deck.pptx --workbook testdata/xlsx/minimal-workbook/workbook.xlsx --sheet Sheet1 --range A1:B2 --slide 1 --target title --out out.pptx",
+        "pptxUpdateTableCommandTemplate": "ooxml --json pptx tables update-from-xlsx deck.pptx --workbook testdata/xlsx/minimal-workbook/workbook.xlsx --sheet Sheet1 --range A1:B2 --expect-source-range A1:B2 --slide 1 --target table:1 --out out.pptx",
+        "primarySelector": "A1:B2",
+        "range": "A1:B2",
+        "rows": 2,
+        "selectors": [
+          "A1:B2"
+        ],
+        "sheet": "Sheet1",
+        "sheetNumber": 1,
+        "truncated": false,
+        "types": [
+          [
+            "string",
+            "number"
+          ],
+          [
+            "empty",
+            "empty"
+          ]
+        ],
+        "validateCommand": "ooxml validate --strict testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "values": [
+          [
+            "Hello",
+            42
+          ],
+          [
+            null,
+            null
+          ]
+        ]
+      }
+    },
+    {
+      "name": "docx-text-json",
+      "args": [
+        "--json",
+        "docx",
+        "text",
+        "testdata/docx/minimal/document.docx"
+      ],
+      "exitCode": 0,
+      "stdoutJson": {
+        "blocks": [
+          {
+            "index": 1,
+            "kind": "paragraph",
+            "text": "Hello world"
+          }
+        ],
+        "file": "testdata/docx/minimal/document.docx"
+      }
+    },
+    {
+      "name": "invalid-slide-json-error",
+      "args": [
+        "--json",
+        "pptx",
+        "slides",
+        "show",
+        "testdata/pptx/minimal-title/presentation.pptx",
+        "--slide",
+        "99"
+      ],
+      "exitCode": 2,
+      "stderrJson": {
+        "error": {
+          "code": "invalid_args",
+          "exitCode": 2,
+          "message": "slide number 99 is out of range (1-1)"
+        }
+      }
+    }
+  ],
+  "mutation": {
+    "editedFilePublished": true,
+    "edit": {
+      "name": "pptx-replace-text",
+      "args": [
+        "--json",
+        "pptx",
+        "replace",
+        "text",
+        "testdata/pptx/minimal-title/presentation.pptx",
+        "--slide",
+        "1",
+        "--target",
+        "title",
+        "--text",
+        "Rust Port Contract",
+        "--out",
+        "[EDITED_PPTX]"
+      ],
+      "exitCode": 0,
+      "stdoutJson": {
+        "destination": {
+          "file": "[EDITED_PPTX]",
+          "handle": "H:pptx/s:256/shape:n:2",
+          "primarySelector": "title",
+          "selectors": [
+            "title",
+            "@title",
+            "shape:2",
+            "~Title 1"
+          ],
+          "shapeId": 2,
+          "shapeName": "Title 1",
+          "slide": 1,
+          "target": "title",
+          "targetKind": "title",
+          "textPreview": "Rust Port Contract"
+        },
+        "dryRun": false,
+        "file": "testdata/pptx/minimal-title/presentation.pptx",
+        "mode": "plain-text",
+        "newText": "Rust Port Contract",
+        "output": "[EDITED_PPTX]",
+        "readbackCommand": "ooxml --json pptx shapes get [EDITED_PPTX] --slide 1 --target title --include-text --include-bounds",
+        "renderCommand": "ooxml pptx render [EDITED_PPTX] --out render-check",
+        "slideNumber": 1,
+        "slideReadbackCommand": "ooxml --json pptx slides show [EDITED_PPTX] --slide 1 --include-text --include-bounds",
+        "target": "title",
+        "validateCommand": "ooxml validate --strict [EDITED_PPTX]"
+      }
+    },
+    "validate": {
+      "name": "validate-edited-pptx-strict",
+      "args": [
+        "--json",
+        "--strict",
+        "validate",
+        "[EDITED_PPTX]"
+      ],
+      "exitCode": 0,
+      "stdoutJson": {
+        "file": "[EDITED_PPTX]",
+        "status": "valid",
+        "summary": {
+          "errors": 0,
+          "info": 0,
+          "warnings": 0
+        },
+        "valid": true
+      }
+    },
+    "render": {
+      "name": "render-edited-pptx-mocked",
+      "args": [
+        "pptx",
+        "render",
+        "[EDITED_PPTX]",
+        "--out",
+        "[RENDER_DIR]",
+        "--slides",
+        "1",
+        "--format",
+        "json"
+      ],
+      "exitCode": 0,
+      "stdoutJson": {
+        "dpi": 144,
+        "imageFormat": "png",
+        "outputDir": "[RENDER_DIR]",
+        "pdfPath": "[RENDER_DIR]/edited.pdf",
+        "slides": [
+          {
+            "imagePath": "[RENDER_DIR]/slide-1.png",
+            "slide": 1
+          }
+        ],
+        "sourceFile": "[EDITED_PPTX]"
+      }
+    },
+    "verify": {
+      "name": "verify-edited-pptx-with-render-gate",
+      "args": [
+        "--format",
+        "json",
+        "verify",
+        "[EDITED_PPTX]",
+        "--baseline",
+        "testdata/pptx/minimal-title/presentation.pptx"
+      ],
+      "exitCode": 0,
+      "stdoutJson": {
+        "diff": {
+          "schemaVersion": "1.0",
+          "semantic": {
+            "changedSlides": [
+              1
+            ],
+            "imageDiffs": [],
+            "layoutDiffs": [],
+            "slideCountA": 1,
+            "slideCountB": 1,
+            "slideCountEqual": true,
+            "textDiffs": [
+              {
+                "after": "Rust Port Contract",
+                "before": "Minimal Title Slide",
+                "shapeKey": "title",
+                "shapeName": "Title 1",
+                "slide": 1
+              }
+            ]
+          },
+          "type": "pptx",
+          "visual": {
+            "enabled": false,
+            "status": "disabled"
+          }
+        },
+        "file": "[EDITED_PPTX]",
+        "rendered": {
+          "enabled": true,
+          "reason": "required render tool not available: soffice",
+          "status": "unavailable"
+        },
+        "schemaVersion": "1.0",
+        "summary": {
+          "baseline": "testdata/pptx/minimal-title/presentation.pptx",
+          "changes": 1,
+          "rendered": false,
+          "valid": true
+        },
+        "type": "pptx",
+        "valid": true,
+        "validation": {
+          "status": "valid",
+          "summary": {
+            "errors": 0,
+            "info": 0,
+            "warnings": 0
+          }
+        }
+      }
+    }
+  },
+  "serve": {
+    "transport": "json-rpc-2.0-stdio",
+    "flow": [
+      {
+        "method": "open",
+        "request": {
+          "id": 1,
+          "jsonrpc": "2.0",
+          "method": "open",
+          "params": {
+            "file": "[SERVE_INPUT_XLSX]",
+            "out": "[SERVE_OUT_XLSX]"
+          }
+        },
+        "response": {
+          "id": 1,
+          "jsonrpc": "2.0",
+          "result": {
+            "sessionId": "[SESSION]",
+            "type": "xlsx"
+          }
+        }
+      },
+      {
+        "method": "op",
+        "request": {
+          "id": 2,
+          "jsonrpc": "2.0",
+          "method": "op",
+          "params": {
+            "args": {
+              "cell": "A1",
+              "sheet": "1",
+              "value": "serve-contract"
+            },
+            "command": "xlsx cells set",
+            "session": "[SESSION]"
+          }
+        },
+        "response": {
+          "id": 2,
+          "jsonrpc": "2.0",
+          "result": {
+            "command": "xlsx cells set",
+            "index": 0,
+            "readback": {
+              "cellsExtractCommand": "ooxml --json xlsx cells extract [SESSION_WORKING_PACKAGE] --sheet sheetId:1 --range A1 --include-empty",
+              "created": false,
+              "destination": {
+                "cols": 1,
+                "file": "[SESSION_WORKING_PACKAGE]",
+                "formulaCount": 0,
+                "formulas": [
+                  [
+                    null
+                  ]
+                ],
+                "range": "A1",
+                "rows": 1,
+                "sheet": "Sheet1",
+                "sheetNumber": 1,
+                "sheetPrimarySelector": "sheetId:1",
+                "sheetSelectors": [
+                  "sheetId:1",
+                  "sheet:1",
+                  "#1",
+                  "rId:rId1",
+                  "rid:rId1",
+                  "part:/xl/worksheets/sheet1.xml",
+                  "name:Sheet1",
+                  "~Sheet1",
+                  "Sheet1"
+                ],
+                "truncated": false,
+                "types": [
+                  [
+                    "string"
+                  ]
+                ],
+                "values": [
+                  [
+                    "serve-contract"
+                  ]
+                ]
+              },
+              "dryRun": false,
+              "file": "[SESSION_WORKING_PACKAGE]",
+              "handle": "H:xlsx/ws:1/cell:a:A1",
+              "output": "[SESSION_WORKING_PACKAGE]",
+              "previousType": "string",
+              "previousValue": "Hello",
+              "rangesExportCommand": "ooxml --json xlsx ranges export [SESSION_WORKING_PACKAGE] --sheet sheetId:1 --range A1 --include-types --include-formulas --include-formats",
+              "ref": "A1",
+              "sheet": "Sheet1",
+              "sheetNumber": 1,
+              "type": "string",
+              "validateCommand": "ooxml validate --strict [SESSION_WORKING_PACKAGE]",
+              "value": "serve-contract"
+            }
+          }
+        }
+      },
+      {
+        "method": "inspect",
+        "request": {
+          "id": 3,
+          "jsonrpc": "2.0",
+          "method": "inspect",
+          "params": {
+            "args": {
+              "include-types": true,
+              "range": "A1",
+              "sheet": "1"
+            },
+            "command": "xlsx ranges export",
+            "session": "[SESSION]"
+          }
+        },
+        "response": {
+          "id": 3,
+          "jsonrpc": "2.0",
+          "result": {
+            "cellsExtractCommand": "ooxml --json xlsx cells extract [SESSION_WORKING_PACKAGE] --sheet Sheet1 --range A1",
+            "cols": 1,
+            "dataFormat": "json",
+            "file": "[SESSION_WORKING_PACKAGE]",
+            "formulaCount": 0,
+            "majorDimension": "rows",
+            "pptxPlaceTableCommandTemplate": "ooxml --json pptx place table-from-xlsx deck.pptx --workbook [SESSION_WORKING_PACKAGE] --sheet Sheet1 --range A1 --expect-source-range A1 --slide 1 --x 0 --y 0 --cx 4000000 --out out.pptx",
+            "pptxReplaceTextCommandTemplate": "ooxml --json pptx replace text-from-xlsx deck.pptx --workbook [SESSION_WORKING_PACKAGE] --sheet Sheet1 --range A1 --slide 1 --target title --out out.pptx",
+            "pptxUpdateTableCommandTemplate": "ooxml --json pptx tables update-from-xlsx deck.pptx --workbook [SESSION_WORKING_PACKAGE] --sheet Sheet1 --range A1 --expect-source-range A1 --slide 1 --target table:1 --out out.pptx",
+            "primarySelector": "A1",
+            "range": "A1",
+            "rows": 1,
+            "selectors": [
+              "A1"
+            ],
+            "sheet": "Sheet1",
+            "sheetNumber": 1,
+            "truncated": false,
+            "types": [
+              [
+                "string"
+              ]
+            ],
+            "validateCommand": "ooxml validate --strict [SESSION_WORKING_PACKAGE]",
+            "values": [
+              [
+                "serve-contract"
+              ]
+            ]
+          }
+        }
+      },
+      {
+        "method": "validate",
+        "request": {
+          "id": 4,
+          "jsonrpc": "2.0",
+          "method": "validate",
+          "params": {
+            "session": "[SESSION]"
+          }
+        },
+        "response": {
+          "id": 4,
+          "jsonrpc": "2.0",
+          "result": {
+            "diagnostics": null
+          }
+        }
+      },
+      {
+        "method": "plan",
+        "request": {
+          "id": 5,
+          "jsonrpc": "2.0",
+          "method": "plan",
+          "params": {
+            "session": "[SESSION]"
+          }
+        },
+        "response": {
+          "id": 5,
+          "jsonrpc": "2.0",
+          "result": {
+            "dryRun": false,
+            "file": "[SERVE_INPUT_XLSX]",
+            "opsCount": 1,
+            "plan": [
+              {
+                "argv": [
+                  "xlsx",
+                  "cells",
+                  "set",
+                  "[SERVE_INPUT_XLSX]",
+                  "--cell",
+                  "A1",
+                  "--sheet",
+                  "1",
+                  "--value",
+                  "serve-contract",
+                  "--out",
+                  "\u003ctemp.0\u003e",
+                  "--json",
+                  "--no-validate"
+                ],
+                "command": "xlsx cells set",
+                "index": 0
+              }
+            ],
+            "schemaVersion": 1
+          }
+        }
+      },
+      {
+        "method": "commit",
+        "request": {
+          "id": 6,
+          "jsonrpc": "2.0",
+          "method": "commit",
+          "params": {
+            "session": "[SESSION]"
+          }
+        },
+        "response": {
+          "id": 6,
+          "jsonrpc": "2.0",
+          "result": {
+            "applied": [
+              {
+                "command": "xlsx cells set",
+                "index": 0,
+                "readback": {
+                  "cellsExtractCommand": "ooxml --json xlsx cells extract [SERVE_OUT_XLSX] --sheet sheetId:1 --range A1 --include-empty",
+                  "created": false,
+                  "destination": {
+                    "cols": 1,
+                    "file": "[SERVE_OUT_XLSX]",
+                    "formulaCount": 0,
+                    "formulas": [
+                      [
+                        null
+                      ]
+                    ],
+                    "range": "A1",
+                    "rows": 1,
+                    "sheet": "Sheet1",
+                    "sheetNumber": 1,
+                    "sheetPrimarySelector": "sheetId:1",
+                    "sheetSelectors": [
+                      "sheetId:1",
+                      "sheet:1",
+                      "#1",
+                      "rId:rId1",
+                      "rid:rId1",
+                      "part:/xl/worksheets/sheet1.xml",
+                      "name:Sheet1",
+                      "~Sheet1",
+                      "Sheet1"
+                    ],
+                    "truncated": false,
+                    "types": [
+                      [
+                        "string"
+                      ]
+                    ],
+                    "values": [
+                      [
+                        "serve-contract"
+                      ]
+                    ]
+                  },
+                  "dryRun": false,
+                  "file": "[SERVE_OUT_XLSX]",
+                  "handle": "H:xlsx/ws:1/cell:a:A1",
+                  "output": "[SERVE_OUT_XLSX]",
+                  "previousType": "string",
+                  "previousValue": "Hello",
+                  "rangesExportCommand": "ooxml --json xlsx ranges export [SERVE_OUT_XLSX] --sheet sheetId:1 --range A1 --include-types --include-formulas --include-formats",
+                  "ref": "A1",
+                  "sheet": "Sheet1",
+                  "sheetNumber": 1,
+                  "type": "string",
+                  "validateCommand": "ooxml validate --strict [SERVE_OUT_XLSX]",
+                  "value": "serve-contract"
+                }
+              }
+            ],
+            "dryRun": false,
+            "file": "[SERVE_INPUT_XLSX]",
+            "opsCount": 1,
+            "output": "[SERVE_OUT_XLSX]",
+            "schemaVersion": 1,
+            "validateCommand": "ooxml validate --strict [SERVE_OUT_XLSX]"
+          }
+        }
+      },
+      {
+        "method": "open",
+        "request": {
+          "id": 7,
+          "jsonrpc": "2.0",
+          "method": "open",
+          "params": {
+            "dryRun": true,
+            "file": "[SERVE_INPUT_XLSX]"
+          }
+        },
+        "response": {
+          "id": 7,
+          "jsonrpc": "2.0",
+          "result": {
+            "sessionId": "[DRY_RUN_SESSION]",
+            "type": "xlsx"
+          }
+        }
+      },
+      {
+        "method": "abort",
+        "request": {
+          "id": 8,
+          "jsonrpc": "2.0",
+          "method": "abort",
+          "params": {
+            "session": "[DRY_RUN_SESSION]"
+          }
+        },
+        "response": {
+          "id": 8,
+          "jsonrpc": "2.0",
+          "result": {
+            "aborted": true
+          }
+        }
+      }
+    ]
+  },
+  "mcp": {
+    "discovery": {
+      "initialize": {
+        "capabilities": {
+          "resources": {},
+          "tools": {}
+        },
+        "protocolVersion": "2025-06-18",
+        "serverInfo": {
+          "name": "ooxml",
+          "version": "0.0.1"
+        }
+      },
+      "tools": [
+        {
+          "name": "abort",
+          "properties": [
+            "session"
+          ],
+          "required": [
+            "session"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "name": "commit",
+          "properties": [
+            "session"
+          ],
+          "required": [
+            "session"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "name": "inspect",
+          "properties": [
+            "args",
+            "command",
+            "session"
+          ],
+          "required": [
+            "command",
+            "session"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "name": "op",
+          "properties": [
+            "args",
+            "command",
+            "session"
+          ],
+          "required": [
+            "command",
+            "session"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "name": "open",
+          "properties": [
+            "backup",
+            "dryRun",
+            "file",
+            "inPlace",
+            "noValidate",
+            "out"
+          ],
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "name": "plan",
+          "properties": [
+            "session"
+          ],
+          "required": [
+            "session"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "name": "validate",
+          "properties": [
+            "session"
+          ],
+          "required": [
+            "session"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "resources": [
+        {
+          "uri": "resource://agent-guide",
+          "name": "agent-guide",
+          "description": "A compact, paste-ready guide for agent workflows across PPTX, XLSX, VBA, and DOCX. Same content as `ooxml agent guide --json`.",
+          "mimeType": "application/json"
+        },
+        {
+          "uri": "resource://capabilities",
+          "name": "capabilities",
+          "description": "The full machine-readable CLI contract: the command inventory, per-command flags, object kinds, exit codes, workflows, and the stable-handle grammar. This is the menu of valid command strings for the generic op/inspect tools.",
+          "mimeType": "application/json"
+        }
+      ],
+      "resourceTemplates": [
+        {
+          "uriTemplate": "resource://command/{path}",
+          "name": "command",
+          "description": "One command's flag schema, examples, common errors, and target object kinds. The path is the URL-encoded op-vocabulary command string (e.g. resource://command/xlsx%20cells%20set). Read the concrete URI to learn the args object to pass to the generic op/inspect tools for that command.",
+          "mimeType": "application/json"
+        }
+      ],
+      "commandResource": {
+        "uri": "resource://command/xlsx%20cells%20set",
+        "path": "ooxml xlsx cells set",
+        "opCompatible": true,
+        "flags": [
+          "--backup",
+          "--cell",
+          "--dry-run",
+          "--formula",
+          "--in-place",
+          "--no-validate",
+          "--out",
+          "--ref",
+          "--sheet",
+          "--type",
+          "--value"
+        ],
+        "argNames": [
+          "backup",
+          "cell",
+          "dryRun",
+          "formula",
+          "inPlace",
+          "noValidate",
+          "out",
+          "ref",
+          "sheet",
+          "type",
+          "value"
+        ]
+      }
+    },
+    "flow": {
+      "transport": "mcp-json-rpc-2.0-stdio",
+      "flow": [
+        {
+          "method": "tools/call",
+          "request": {
+            "id": 6,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "arguments": {
+                "file": "[MCP_INPUT_XLSX]",
+                "out": "[MCP_OUT_XLSX]"
+              },
+              "name": "open"
+            }
+          },
+          "response": {
+            "id": 6,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [
+                {
+                  "text": "{\"next_actions\":[\"call op/inspect/validate with session=\\\"[MCP_SESSION]\\\" (thread this sessionId through every subsequent call)\",\"call commit to write the output, or abort to discard the working copy\"],\"sessionId\":\"[MCP_SESSION]\",\"type\":\"xlsx\"}",
+                  "type": "text"
+                }
+              ],
+              "structuredContent": {
+                "next_actions": [
+                  "call op/inspect/validate with session=\"[MCP_SESSION]\" (thread this sessionId through every subsequent call)",
+                  "call commit to write the output, or abort to discard the working copy"
+                ],
+                "sessionId": "[MCP_SESSION]",
+                "type": "xlsx"
+              }
+            }
+          }
+        },
+        {
+          "method": "tools/call",
+          "request": {
+            "id": 7,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "arguments": {
+                "args": {
+                  "cell": "A1",
+                  "sheet": "1",
+                  "value": "mcp-contract"
+                },
+                "command": "xlsx cells set",
+                "session": "[MCP_SESSION]"
+              },
+              "name": "op"
+            }
+          },
+          "response": {
+            "id": 7,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [
+                {
+                  "text": "{\"command\":\"xlsx cells set\",\"index\":0,\"next_actions\":[\"call inspect with session=\\\"[MCP_SESSION]\\\" to confirm the change against the working copy\",\"call validate with session=\\\"[MCP_SESSION]\\\" before committing\",\"call commit with session=\\\"[MCP_SESSION]\\\" to write the output\"],\"readback\":{\"file\":\"[SESSION_WORKING_PACKAGE]\",\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"ref\":\"A1\",\"handle\":\"H:xlsx/ws:1/cell:a:A1\",\"type\":\"string\",\"value\":\"mcp-contract\",\"previousType\":\"string\",\"previousValue\":\"Hello\",\"created\":false,\"output\":\"[SESSION_WORKING_PACKAGE]\",\"dryRun\":false,\"destination\":{\"file\":\"[SESSION_WORKING_PACKAGE]\",\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"sheetPrimarySelector\":\"sheetId:1\",\"sheetSelectors\":[\"sheetId:1\",\"sheet:1\",\"#1\",\"rId:rId1\",\"rid:rId1\",\"part:/xl/worksheets/sheet1.xml\",\"name:Sheet1\",\"~Sheet1\",\"Sheet1\"],\"range\":\"A1\",\"rows\":1,\"cols\":1,\"values\":[[\"mcp-contract\"]],\"types\":[[\"string\"]],\"formulas\":[[null]],\"formulaCount\":0,\"truncated\":false},\"validateCommand\":\"ooxml validate --strict [SESSION_WORKING_PACKAGE]\",\"cellsExtractCommand\":\"ooxml --json xlsx cells extract [SESSION_WORKING_PACKAGE] --sheet sheetId:1 --range A1 --include-empty\",\"rangesExportCommand\":\"ooxml --json xlsx ranges export [SESSION_WORKING_PACKAGE] --sheet sheetId:1 --range A1 --include-types --include-formulas --include-formats\"}}",
+                  "type": "text"
+                }
+              ],
+              "structuredContent": {
+                "command": "xlsx cells set",
+                "index": 0,
+                "next_actions": [
+                  "call inspect with session=\"[MCP_SESSION]\" to confirm the change against the working copy",
+                  "call validate with session=\"[MCP_SESSION]\" before committing",
+                  "call commit with session=\"[MCP_SESSION]\" to write the output"
+                ],
+                "readback": {
+                  "cellsExtractCommand": "ooxml --json xlsx cells extract [SESSION_WORKING_PACKAGE] --sheet sheetId:1 --range A1 --include-empty",
+                  "created": false,
+                  "destination": {
+                    "cols": 1,
+                    "file": "[SESSION_WORKING_PACKAGE]",
+                    "formulaCount": 0,
+                    "formulas": [
+                      [
+                        null
+                      ]
+                    ],
+                    "range": "A1",
+                    "rows": 1,
+                    "sheet": "Sheet1",
+                    "sheetNumber": 1,
+                    "sheetPrimarySelector": "sheetId:1",
+                    "sheetSelectors": [
+                      "sheetId:1",
+                      "sheet:1",
+                      "#1",
+                      "rId:rId1",
+                      "rid:rId1",
+                      "part:/xl/worksheets/sheet1.xml",
+                      "name:Sheet1",
+                      "~Sheet1",
+                      "Sheet1"
+                    ],
+                    "truncated": false,
+                    "types": [
+                      [
+                        "string"
+                      ]
+                    ],
+                    "values": [
+                      [
+                        "mcp-contract"
+                      ]
+                    ]
+                  },
+                  "dryRun": false,
+                  "file": "[SESSION_WORKING_PACKAGE]",
+                  "handle": "H:xlsx/ws:1/cell:a:A1",
+                  "output": "[SESSION_WORKING_PACKAGE]",
+                  "previousType": "string",
+                  "previousValue": "Hello",
+                  "rangesExportCommand": "ooxml --json xlsx ranges export [SESSION_WORKING_PACKAGE] --sheet sheetId:1 --range A1 --include-types --include-formulas --include-formats",
+                  "ref": "A1",
+                  "sheet": "Sheet1",
+                  "sheetNumber": 1,
+                  "type": "string",
+                  "validateCommand": "ooxml validate --strict [SESSION_WORKING_PACKAGE]",
+                  "value": "mcp-contract"
+                }
+              }
+            }
+          }
+        },
+        {
+          "method": "tools/call",
+          "request": {
+            "id": 8,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "arguments": {
+                "args": {
+                  "include-types": true,
+                  "range": "A1",
+                  "sheet": "1"
+                },
+                "command": "xlsx ranges export",
+                "session": "[MCP_SESSION]"
+              },
+              "name": "inspect"
+            }
+          },
+          "response": {
+            "id": 8,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [
+                {
+                  "text": "{\"file\":\"[SESSION_WORKING_PACKAGE]\",\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"range\":\"A1\",\"primarySelector\":\"A1\",\"selectors\":[\"A1\"],\"rows\":1,\"cols\":1,\"values\":[[\"mcp-contract\"]],\"types\":[[\"string\"]],\"formulaCount\":0,\"dataFormat\":\"json\",\"truncated\":false,\"majorDimension\":\"rows\",\"validateCommand\":\"ooxml validate --strict [SESSION_WORKING_PACKAGE]\",\"cellsExtractCommand\":\"ooxml --json xlsx cells extract [SESSION_WORKING_PACKAGE] --sheet Sheet1 --range A1\",\"pptxUpdateTableCommandTemplate\":\"ooxml --json pptx tables update-from-xlsx deck.pptx --workbook [SESSION_WORKING_PACKAGE] --sheet Sheet1 --range A1 --expect-source-range A1 --slide 1 --target table:1 --out out.pptx\",\"pptxPlaceTableCommandTemplate\":\"ooxml --json pptx place table-from-xlsx deck.pptx --workbook [SESSION_WORKING_PACKAGE] --sheet Sheet1 --range A1 --expect-source-range A1 --slide 1 --x 0 --y 0 --cx 4000000 --out out.pptx\",\"pptxReplaceTextCommandTemplate\":\"ooxml --json pptx replace text-from-xlsx deck.pptx --workbook [SESSION_WORKING_PACKAGE] --sheet Sheet1 --range A1 --slide 1 --target title --out out.pptx\"}",
+                  "type": "text"
+                }
+              ],
+              "structuredContent": {
+                "cellsExtractCommand": "ooxml --json xlsx cells extract [SESSION_WORKING_PACKAGE] --sheet Sheet1 --range A1",
+                "cols": 1,
+                "dataFormat": "json",
+                "file": "[SESSION_WORKING_PACKAGE]",
+                "formulaCount": 0,
+                "majorDimension": "rows",
+                "pptxPlaceTableCommandTemplate": "ooxml --json pptx place table-from-xlsx deck.pptx --workbook [SESSION_WORKING_PACKAGE] --sheet Sheet1 --range A1 --expect-source-range A1 --slide 1 --x 0 --y 0 --cx 4000000 --out out.pptx",
+                "pptxReplaceTextCommandTemplate": "ooxml --json pptx replace text-from-xlsx deck.pptx --workbook [SESSION_WORKING_PACKAGE] --sheet Sheet1 --range A1 --slide 1 --target title --out out.pptx",
+                "pptxUpdateTableCommandTemplate": "ooxml --json pptx tables update-from-xlsx deck.pptx --workbook [SESSION_WORKING_PACKAGE] --sheet Sheet1 --range A1 --expect-source-range A1 --slide 1 --target table:1 --out out.pptx",
+                "primarySelector": "A1",
+                "range": "A1",
+                "rows": 1,
+                "selectors": [
+                  "A1"
+                ],
+                "sheet": "Sheet1",
+                "sheetNumber": 1,
+                "truncated": false,
+                "types": [
+                  [
+                    "string"
+                  ]
+                ],
+                "validateCommand": "ooxml validate --strict [SESSION_WORKING_PACKAGE]",
+                "values": [
+                  [
+                    "mcp-contract"
+                  ]
+                ]
+              }
+            }
+          }
+        },
+        {
+          "method": "tools/call",
+          "request": {
+            "id": 9,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "arguments": {
+                "session": "[MCP_SESSION]"
+              },
+              "name": "validate"
+            }
+          },
+          "response": {
+            "id": 9,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [
+                {
+                  "text": "{\"diagnostics\":null}",
+                  "type": "text"
+                }
+              ],
+              "structuredContent": {
+                "diagnostics": null
+              }
+            }
+          }
+        },
+        {
+          "method": "tools/call",
+          "request": {
+            "id": 10,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "arguments": {
+                "session": "[MCP_SESSION]"
+              },
+              "name": "plan"
+            }
+          },
+          "response": {
+            "id": 10,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [
+                {
+                  "text": "{\"schemaVersion\":1,\"file\":\"[MCP_INPUT_XLSX]\",\"opsCount\":1,\"dryRun\":false,\"plan\":[{\"index\":0,\"command\":\"xlsx cells set\",\"argv\":[\"xlsx\",\"cells\",\"set\",\"[MCP_INPUT_XLSX]\",\"--cell\",\"A1\",\"--sheet\",\"1\",\"--value\",\"mcp-contract\",\"--out\",\"\\u003ctemp.0\\u003e\",\"--json\",\"--no-validate\"]}]}",
+                  "type": "text"
+                }
+              ],
+              "structuredContent": {
+                "dryRun": false,
+                "file": "[MCP_INPUT_XLSX]",
+                "opsCount": 1,
+                "plan": [
+                  {
+                    "argv": [
+                      "xlsx",
+                      "cells",
+                      "set",
+                      "[MCP_INPUT_XLSX]",
+                      "--cell",
+                      "A1",
+                      "--sheet",
+                      "1",
+                      "--value",
+                      "mcp-contract",
+                      "--out",
+                      "\u003ctemp.0\u003e",
+                      "--json",
+                      "--no-validate"
+                    ],
+                    "command": "xlsx cells set",
+                    "index": 0
+                  }
+                ],
+                "schemaVersion": 1
+              }
+            }
+          }
+        },
+        {
+          "method": "tools/call",
+          "request": {
+            "id": 11,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "arguments": {
+                "session": "[MCP_SESSION]"
+              },
+              "name": "commit"
+            }
+          },
+          "response": {
+            "id": 11,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [
+                {
+                  "text": "{\"applied\":[{\"index\":0,\"command\":\"xlsx cells set\",\"readback\":{\"cellsExtractCommand\":\"ooxml --json xlsx cells extract [MCP_OUT_XLSX] --sheet sheetId:1 --range A1 --include-empty\",\"created\":false,\"destination\":{\"cols\":1,\"file\":\"[MCP_OUT_XLSX]\",\"formulaCount\":0,\"formulas\":[[null]],\"range\":\"A1\",\"rows\":1,\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"sheetPrimarySelector\":\"sheetId:1\",\"sheetSelectors\":[\"sheetId:1\",\"sheet:1\",\"#1\",\"rId:rId1\",\"rid:rId1\",\"part:/xl/worksheets/sheet1.xml\",\"name:Sheet1\",\"~Sheet1\",\"Sheet1\"],\"truncated\":false,\"types\":[[\"string\"]],\"values\":[[\"mcp-contract\"]]},\"dryRun\":false,\"file\":\"[MCP_OUT_XLSX]\",\"handle\":\"H:xlsx/ws:1/cell:a:A1\",\"output\":\"[MCP_OUT_XLSX]\",\"previousType\":\"string\",\"previousValue\":\"Hello\",\"rangesExportCommand\":\"ooxml --json xlsx ranges export [MCP_OUT_XLSX] --sheet sheetId:1 --range A1 --include-types --include-formulas --include-formats\",\"ref\":\"A1\",\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"type\":\"string\",\"validateCommand\":\"ooxml validate --strict [MCP_OUT_XLSX]\",\"value\":\"mcp-contract\"}}],\"dryRun\":false,\"file\":\"[MCP_INPUT_XLSX]\",\"next_actions\":[\"verify the output: ooxml validate --strict [MCP_OUT_XLSX]\"],\"opsCount\":1,\"output\":\"[MCP_OUT_XLSX]\",\"schemaVersion\":1,\"validateCommand\":\"ooxml validate --strict [MCP_OUT_XLSX]\"}",
+                  "type": "text"
+                }
+              ],
+              "structuredContent": {
+                "applied": [
+                  {
+                    "command": "xlsx cells set",
+                    "index": 0,
+                    "readback": {
+                      "cellsExtractCommand": "ooxml --json xlsx cells extract [MCP_OUT_XLSX] --sheet sheetId:1 --range A1 --include-empty",
+                      "created": false,
+                      "destination": {
+                        "cols": 1,
+                        "file": "[MCP_OUT_XLSX]",
+                        "formulaCount": 0,
+                        "formulas": [
+                          [
+                            null
+                          ]
+                        ],
+                        "range": "A1",
+                        "rows": 1,
+                        "sheet": "Sheet1",
+                        "sheetNumber": 1,
+                        "sheetPrimarySelector": "sheetId:1",
+                        "sheetSelectors": [
+                          "sheetId:1",
+                          "sheet:1",
+                          "#1",
+                          "rId:rId1",
+                          "rid:rId1",
+                          "part:/xl/worksheets/sheet1.xml",
+                          "name:Sheet1",
+                          "~Sheet1",
+                          "Sheet1"
+                        ],
+                        "truncated": false,
+                        "types": [
+                          [
+                            "string"
+                          ]
+                        ],
+                        "values": [
+                          [
+                            "mcp-contract"
+                          ]
+                        ]
+                      },
+                      "dryRun": false,
+                      "file": "[MCP_OUT_XLSX]",
+                      "handle": "H:xlsx/ws:1/cell:a:A1",
+                      "output": "[MCP_OUT_XLSX]",
+                      "previousType": "string",
+                      "previousValue": "Hello",
+                      "rangesExportCommand": "ooxml --json xlsx ranges export [MCP_OUT_XLSX] --sheet sheetId:1 --range A1 --include-types --include-formulas --include-formats",
+                      "ref": "A1",
+                      "sheet": "Sheet1",
+                      "sheetNumber": 1,
+                      "type": "string",
+                      "validateCommand": "ooxml validate --strict [MCP_OUT_XLSX]",
+                      "value": "mcp-contract"
+                    }
+                  }
+                ],
+                "dryRun": false,
+                "file": "[MCP_INPUT_XLSX]",
+                "next_actions": [
+                  "verify the output: ooxml validate --strict [MCP_OUT_XLSX]"
+                ],
+                "opsCount": 1,
+                "output": "[MCP_OUT_XLSX]",
+                "schemaVersion": 1,
+                "validateCommand": "ooxml validate --strict [MCP_OUT_XLSX]"
+              }
+            }
+          }
+        },
+        {
+          "method": "tools/call",
+          "request": {
+            "id": 12,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "arguments": {
+                "dryRun": true,
+                "file": "[MCP_INPUT_XLSX]"
+              },
+              "name": "open"
+            }
+          },
+          "response": {
+            "id": 12,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [
+                {
+                  "text": "{\"next_actions\":[\"call op/inspect/validate with session=\\\"[MCP_DRY_RUN_SESSION]\\\" (thread this sessionId through every subsequent call)\",\"call commit to write the output, or abort to discard the working copy\"],\"sessionId\":\"[MCP_DRY_RUN_SESSION]\",\"type\":\"xlsx\"}",
+                  "type": "text"
+                }
+              ],
+              "structuredContent": {
+                "next_actions": [
+                  "call op/inspect/validate with session=\"[MCP_DRY_RUN_SESSION]\" (thread this sessionId through every subsequent call)",
+                  "call commit to write the output, or abort to discard the working copy"
+                ],
+                "sessionId": "[MCP_DRY_RUN_SESSION]",
+                "type": "xlsx"
+              }
+            }
+          }
+        },
+        {
+          "method": "tools/call",
+          "request": {
+            "id": 13,
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+              "arguments": {
+                "session": "[MCP_DRY_RUN_SESSION]"
+              },
+              "name": "abort"
+            }
+          },
+          "response": {
+            "id": 13,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [
+                {
+                  "text": "{\"aborted\":true}",
+                  "type": "text"
+                }
+              ],
+              "structuredContent": {
+                "aborted": true
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "webSmoke": {
+    "packageScripts": {
+      "build": "flue build --target node",
+      "smoke:agent": "node scripts/smoke-agent-edit.mjs",
+      "smoke:nonpptx": "node scripts/smoke-nonpptx.mjs",
+      "typecheck": "tsc --noEmit"
+    },
+    "agentScript": "web/scripts/smoke-agent-edit.mjs",
+    "nonPptxScript": "web/scripts/smoke-nonpptx.mjs",
+    "binaryEnv": "OOXML_BIN",
+    "summaryIncludesBin": true,
+    "agentDefaultFixture": "testdata/pptx/minimal-title/presentation.pptx",
+    "docxDefaultFixture": "testdata/docx/minimal/document.docx",
+    "xlsxDefaultFixture": "testdata/xlsx/minimal-workbook/workbook.xlsx",
+    "binaryReadbackChecks": [
+      "validate --strict",
+      "pptx slides show",
+      "docx text",
+      "xlsx sheets list"
+    ]
+  },
+  "coverage": [
+    {
+      "surface": "cli",
+      "requirement": "stdout/stderr/exit codes for success and JSON errors",
+      "evidence": "CLI binary cases in rust-port-contract/baseline.json",
+      "status": "frozen"
+    },
+    {
+      "surface": "mutation",
+      "requirement": "PPTX edit publishes output and strict validation passes",
+      "evidence": "pptx replace text plus validate --strict",
+      "status": "frozen"
+    },
+    {
+      "surface": "render",
+      "requirement": "PPTX render command emits manifest deterministically",
+      "evidence": "mocked pptx render on edited output",
+      "status": "frozen"
+    },
+    {
+      "surface": "verify",
+      "requirement": "validation/render/diff envelope is stable when render dependency is unavailable",
+      "evidence": "verify --baseline with mocked missing soffice",
+      "status": "frozen"
+    },
+    {
+      "surface": "serve",
+      "requirement": "JSON-RPC open/op/inspect/validate/plan/commit/abort envelopes",
+      "evidence": "scrubbed serve flow",
+      "status": "frozen"
+    },
+    {
+      "surface": "mcp",
+      "requirement": "MCP initialize/tool/resource discovery and session tools",
+      "evidence": "scrubbed MCP discovery and tools/call flow",
+      "status": "frozen"
+    },
+    {
+      "surface": "web",
+      "requirement": "web smoke scripts use repo-selected binary through OOXML_BIN",
+      "evidence": "script/package contract checks",
+      "status": "frozen"
+    }
+  ]
+}

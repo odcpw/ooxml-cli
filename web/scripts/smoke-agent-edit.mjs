@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 const baseUrl = process.env.OOXML_WEB_BASE_URL || 'http://localhost:3583';
 const ooxmlBin = process.env.OOXML_BIN || 'ooxml';
 const scriptDir = fileURLToPath(new URL('.', import.meta.url));
-const defaultFixture = resolve(scriptDir, '../../../testdata/pptx/minimal-title/presentation.pptx');
+const defaultFixture = resolve(scriptDir, '../../testdata/pptx/minimal-title/presentation.pptx');
 const fixture = resolve(process.argv[2] || process.env.OOXML_WEB_SMOKE_FIXTURE || defaultFixture);
 const marker = `Flue smoke ${new Date().toISOString().replace(/[:.]/g, '-')}`;
 const smokeEmail = process.env.OOXML_WEB_SMOKE_EMAIL || 'smoke-ooxml@example.test';
@@ -19,6 +19,7 @@ const cookieJar = new Map();
 
 const summary = {
   baseUrl,
+  ooxmlBin,
   fixture,
   marker,
   threadId: undefined,

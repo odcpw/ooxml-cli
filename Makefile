@@ -1,4 +1,4 @@
-.PHONY: build test test-race-coverage test-short test-roundtrip fixtures install clean help render-smoke office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check vet verify verify-strict
+.PHONY: build test test-race-coverage test-short test-roundtrip fixtures install clean help render-smoke web-smoke-agent web-smoke-nonpptx office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check vet verify verify-strict
 
 # Default target
 .DEFAULT_GOAL := help
@@ -90,6 +90,14 @@ render-smoke:
 	@echo "Running render smoke test..."
 	@go test -v ./pkg/render -run TestRenderSmokeMinimalTitle
 	@echo "✓ Render smoke test passed"
+
+# web-smoke-agent: Run the web agent smoke against the freshly built local binary (requires a running web server)
+web-smoke-agent: build
+	@cd web && OOXML_BIN="$(abspath $(BINARY_NAME))" npm run smoke:agent
+
+# web-smoke-nonpptx: Run the web DOCX/XLSX smoke against the freshly built local binary (requires a running web server)
+web-smoke-nonpptx: build
+	@cd web && OOXML_BIN="$(abspath $(BINARY_NAME))" npm run smoke:nonpptx
 
 # check-fast: Run the fastest normal Go test loop
 check-fast:

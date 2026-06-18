@@ -40,6 +40,7 @@ vendor/
 # Generated test files
 *.golden
 *.golden.json
+*.actual
 
 # Python cache
 __pycache__/
