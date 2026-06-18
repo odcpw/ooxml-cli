@@ -27,6 +27,8 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `mcp` `resource://command/{path}` dynamic readback for every command
   advertised by the Rust capability inventory, accepting both full
   `ooxml ...` paths and op-vocabulary shorthand paths
+- `mcp` `resource://capabilities` mirrors the Rust CLI capability inventory and
+  contract metadata, with the MCP command-resource template included
 - `--json capabilities --for <filter>` for the Rust-supported partial command
   surface, including the web-agent-relevant PPTX and XLSX commands
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the

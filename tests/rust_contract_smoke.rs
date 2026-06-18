@@ -834,6 +834,42 @@ fn mcp_command_resources_cover_advertised_rust_capabilities() {
     );
 
     let mut id = 2;
+    let capabilities_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            id,
+            "resources/read",
+            serde_json::json!({"uri": "resource://capabilities"}),
+        ),
+    );
+    id += 1;
+    assert!(
+        capabilities_response.get("error").is_none(),
+        "capabilities resource returned error: {capabilities_response:?}"
+    );
+    let capabilities_text = capabilities_response["result"]["contents"][0]["text"]
+        .as_str()
+        .expect("capabilities resource text");
+    let mcp_capabilities: Value =
+        serde_json::from_str(capabilities_text).expect("MCP capabilities JSON");
+    assert_eq!(
+        mcp_capabilities["commands"], capabilities["commands"],
+        "MCP capabilities should expose the same command inventory as CLI capabilities"
+    );
+    assert_eq!(
+        mcp_capabilities["contractVersion"], capabilities["contractVersion"],
+        "MCP capabilities should expose CLI contract version"
+    );
+    assert_eq!(
+        mcp_capabilities["exitCodes"], capabilities["exitCodes"],
+        "MCP capabilities should expose CLI exit-code contract"
+    );
+    assert_eq!(
+        mcp_capabilities["resourceTemplates"][0]["uriTemplate"],
+        Value::String("resource://command/{path}".to_string())
+    );
+
     for command in commands {
         let path = command["path"].as_str().expect("command path");
         let mut request_paths = vec![path.to_string()];

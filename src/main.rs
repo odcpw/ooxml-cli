@@ -2327,13 +2327,14 @@ fn mcp_command_resource_template() -> Value {
 }
 
 fn mcp_capabilities_resource() -> Value {
-    json!({
-        "commands": capability_commands(),
-        "packageTypes": ["pptx", "xlsx", "docx"],
-        "resourceTemplates": [mcp_command_resource_template()],
-        "tool": "ooxml",
-        "version": "0.0.1"
-    })
+    let mut document = capabilities(&[]).expect("capabilities document");
+    if let Some(object) = document.as_object_mut() {
+        object.insert(
+            "resourceTemplates".to_string(),
+            json!([mcp_command_resource_template()]),
+        );
+    }
+    document
 }
 
 fn mcp_command_resource_for_uri(uri: &str) -> CliResult<Value> {
