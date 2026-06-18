@@ -395,6 +395,23 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
                 .ok_or_else(|| CliError::invalid_args("--range is required"))?;
             xlsx_range_export(file, &sheet, &range)
         }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "cells" && verb == "extract" =>
+        {
+            let sheet = parse_string_flag(rest, "--sheet")?.unwrap_or_else(|| "1".to_string());
+            let range = parse_string_flag(rest, "--range")?;
+            let max_rows = parse_u32_flag(rest, "--max-rows")?.unwrap_or(1000);
+            let max_cells = parse_u32_flag(rest, "--max-cells")?.unwrap_or(0);
+            let include_empty = has_flag(rest, "--include-empty");
+            xlsx_cells_extract(
+                file,
+                &sheet,
+                range.as_deref(),
+                max_rows,
+                max_cells,
+                include_empty,
+            )
+        }
         [family, group, verb, file] if family == "xlsx" && group == "sheets" && verb == "list" => {
             xlsx_sheets_list(file)
         }
@@ -468,8 +485,8 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
             "package": ["ooxml inspect", "ooxml validate", "ooxml verify"],
             "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text", "ooxml pptx render"],
             "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text"],
-            "sheet": ["ooxml xlsx sheets list", "ooxml xlsx ranges export", "ooxml xlsx cells set"],
-            "range": ["ooxml xlsx ranges export"],
+            "sheet": ["ooxml xlsx sheets list", "ooxml xlsx ranges export", "ooxml xlsx cells extract", "ooxml xlsx cells set"],
+            "range": ["ooxml xlsx ranges export", "ooxml xlsx cells extract"],
             "cell": ["ooxml xlsx cells set"],
             "style": []
         },
@@ -685,6 +702,26 @@ fn capability_commands() -> Vec<Value> {
                     "includeTypes",
                     "bool",
                     "include cell types",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml xlsx cells extract",
+            "extract <file>",
+            "Extract decoded worksheet cells with stable cell selectors.",
+            &["sheet", "range", "cell"],
+            false,
+            Some("read-only command; call via inspect in serve/MCP"),
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag("--range", "range", "string", "A1 range"),
+                flag("--max-rows", "maxRows", "number", "maximum rows to emit"),
+                flag("--max-cells", "maxCells", "number", "maximum cells to emit"),
+                flag(
+                    "--include-empty",
+                    "includeEmpty",
+                    "bool",
+                    "include empty cells inside output bounds",
                 ),
             ],
         ),
@@ -1088,8 +1125,9 @@ fn xlsx_range_export(file: &str, sheet_selector: &str, range: &str) -> CliResult
         .ok_or_else(|| CliError::unexpected(format!("missing relationship {}", sheet.rel_id)))?;
     let sheet_part = normalize_xl_target(target);
     let shared_strings = shared_strings(file).unwrap_or_default();
+    let styles = xlsx_styles(file).unwrap_or_default();
     let sheet_xml = zip_text(file, &sheet_part)?;
-    let cells = sheet_cells(&sheet_xml, &shared_strings);
+    let cells = sheet_cells(&sheet_xml, &shared_strings, &styles);
     let bounds = parse_range(range)?;
     let mut values = Vec::new();
     let mut types = Vec::new();
@@ -1103,7 +1141,7 @@ fn xlsx_range_export(file: &str, sheet_selector: &str, range: &str) -> CliResult
                 if cell.has_formula {
                     formula_count += 1;
                 }
-                row_values.push(cell.value.clone());
+                row_values.push(cell.matrix_value.clone());
                 row_types.push(Value::String(cell.kind.clone()));
             } else {
                 row_values.push(Value::Null);
@@ -1135,6 +1173,90 @@ fn xlsx_range_export(file: &str, sheet_selector: &str, range: &str) -> CliResult
         "types": types,
         "validateCommand": format!("ooxml validate --strict {file}"),
         "values": values,
+    }))
+}
+
+fn xlsx_cells_extract(
+    file: &str,
+    sheet_selector: &str,
+    range: Option<&str>,
+    max_rows: u32,
+    max_cells: u32,
+    include_empty: bool,
+) -> CliResult<Value> {
+    let workbook = zip_text(file, "xl/workbook.xml")?;
+    let sheets = workbook_sheets(&workbook);
+    let sheet = resolve_sheet(&sheets, sheet_selector)?;
+    let rels = relationships(file, "xl/_rels/workbook.xml.rels")?;
+    let target = rels
+        .get(&sheet.rel_id)
+        .ok_or_else(|| CliError::unexpected(format!("missing relationship {}", sheet.rel_id)))?;
+    let sheet_part = normalize_xl_target(target);
+    let part_uri = format!("/{sheet_part}");
+    let shared_strings = shared_strings(file).unwrap_or_default();
+    let styles = xlsx_styles(file).unwrap_or_default();
+    let sheet_xml = zip_text(file, &sheet_part)?;
+    let dimension_declared = xlsx_dimension_declared(&sheet_xml);
+    let merged_cell_count = xlsx_merged_cell_count(&sheet_xml);
+    let all_cells = sheet_cells(&sheet_xml, &shared_strings, &styles);
+    let range_bounds = range.map(parse_range).transpose()?;
+    let cells = sorted_xlsx_cells(&all_cells, range_bounds);
+    let used_range = used_range_for_cells(&cells);
+    let row_count = cells
+        .iter()
+        .map(|cell| cell.row)
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    let (rows, truncated) = if include_empty {
+        build_dense_xlsx_rows(
+            &cells,
+            range_bounds,
+            used_range,
+            max_rows,
+            max_cells,
+            &sheet,
+        )
+    } else {
+        build_sparse_xlsx_rows(&cells, max_rows, max_cells, &sheet)
+    };
+
+    let mut sheet_obj = Map::new();
+    sheet_obj.insert("number".to_string(), json!(sheet.position));
+    sheet_obj.insert("name".to_string(), json!(sheet.name));
+    sheet_obj.insert("sheetId".to_string(), json!(sheet.sheet_id.to_string()));
+    sheet_obj.insert("state".to_string(), json!("visible"));
+    sheet_obj.insert("partUri".to_string(), json!(part_uri));
+    sheet_obj.insert(
+        "primarySelector".to_string(),
+        json!(format!("sheetId:{}", sheet.sheet_id)),
+    );
+    sheet_obj.insert(
+        "selectors".to_string(),
+        json!(xlsx_sheet_selectors(
+            &sheet.name,
+            sheet.sheet_id,
+            sheet.position,
+            &sheet.rel_id,
+            &format!("/{sheet_part}")
+        )),
+    );
+    if let Some(dimension_declared) = dimension_declared.filter(|value| !value.is_empty()) {
+        sheet_obj.insert("dimensionDeclared".to_string(), json!(dimension_declared));
+    }
+    sheet_obj.insert("usedRange".to_string(), used_range_json(used_range));
+    sheet_obj.insert("rowCount".to_string(), json!(row_count));
+    sheet_obj.insert("cellCount".to_string(), json!(cells.len()));
+    sheet_obj.insert("mergedCellCount".to_string(), json!(merged_cell_count));
+    if !rows.is_empty() {
+        sheet_obj.insert("rows".to_string(), Value::Array(rows));
+    }
+    if truncated {
+        sheet_obj.insert("truncated".to_string(), json!(true));
+    }
+
+    Ok(json!({
+        "file": file,
+        "sheet": Value::Object(sheet_obj),
     }))
 }
 
@@ -1501,6 +1623,27 @@ impl ServeState {
                 let range = json_string(args, "range")?;
                 xlsx_range_export(&session.working, &sheet, &range)
             }
+            "xlsx cells extract" => {
+                let sheet = json_optional_string(args, "sheet").unwrap_or_else(|| "1".to_string());
+                let range = json_optional_string(args, "range");
+                let max_rows = json_u32(args, "max-rows")?
+                    .or(json_u32(args, "maxRows")?)
+                    .unwrap_or(1000);
+                let max_cells = json_u32(args, "max-cells")?
+                    .or(json_u32(args, "maxCells")?)
+                    .unwrap_or(0);
+                let include_empty = json_bool(args, "include-empty")
+                    .or_else(|| json_bool(args, "includeEmpty"))
+                    .unwrap_or(false);
+                xlsx_cells_extract(
+                    &session.working,
+                    &sheet,
+                    range.as_deref(),
+                    max_rows,
+                    max_cells,
+                    include_empty,
+                )
+            }
             "xlsx sheets list" => xlsx_sheets_list(&session.working),
             "pptx slides list" => pptx_slides_list(&session.working),
             "pptx slides selectors" => {
@@ -1785,6 +1928,9 @@ fn mcp_op_text(value: &Value) -> String {
 }
 
 fn mcp_inspect_text(value: &Value) -> String {
+    if value.get("range").is_none() && value.get("sheet").is_some_and(Value::is_object) {
+        return serde_json::to_string(value).expect("serialize MCP inspect payload");
+    }
     format!(
         concat!(
             "{{\"file\":{},\"sheet\":{},\"sheetNumber\":{},\"range\":{},",
@@ -3403,7 +3549,7 @@ fn shared_strings(file: &str) -> CliResult<Vec<String>> {
                 current.clear();
             }
             Ok(Event::Start(e)) if in_si && local_name(e.name().as_ref()) == "t" => in_t = true,
-            Ok(Event::Text(e)) if in_t => current.push_str(&String::from_utf8_lossy(e.as_ref())),
+            Ok(Event::Text(e)) if in_t => current.push_str(&decode_xml_text(e.as_ref())),
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "t" => in_t = false,
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "si" => {
                 strings.push(current.clone());
@@ -3420,28 +3566,67 @@ fn shared_strings(file: &str) -> CliResult<Vec<String>> {
 #[derive(Clone)]
 struct CellValue {
     kind: String,
-    value: Value,
+    matrix_value: Value,
+    display_value: String,
+    raw_value: String,
+    formula: String,
+    style_index: Option<u32>,
+    number_format_id: Option<u32>,
+    number_format_code: Option<String>,
+    date_style: bool,
     has_formula: bool,
 }
 
-fn sheet_cells(xml: &str, shared_strings: &[String]) -> BTreeMap<String, CellValue> {
+#[derive(Clone, Default)]
+struct XlsxStyle {
+    number_format_id: Option<u32>,
+    number_format_code: Option<String>,
+    date_style: bool,
+}
+
+#[derive(Clone)]
+struct XlsxCellEntry {
+    ref_name: String,
+    row: u32,
+    col: u32,
+    value: CellValue,
+}
+
+#[derive(Clone, Copy)]
+struct UsedRangeSummary {
+    min_row: u32,
+    max_row: u32,
+    min_col: u32,
+    max_col: u32,
+    empty: bool,
+}
+
+fn sheet_cells(
+    xml: &str,
+    shared_strings: &[String],
+    styles: &[XlsxStyle],
+) -> BTreeMap<String, CellValue> {
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
+    reader.config_mut().trim_text(false);
     let mut cells = BTreeMap::new();
     let mut current_ref = String::new();
     let mut current_type = String::new();
     let mut current_value = String::new();
+    let mut current_inline_text = String::new();
+    let mut current_formula = String::new();
+    let mut current_style_index: Option<u32> = None;
     let mut in_v = false;
     let mut in_t = false;
     let mut in_formula = false;
-    let mut has_formula = false;
     loop {
         match reader.read_event() {
             Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "c" => {
                 current_ref = attr(&e, "r").unwrap_or_default();
                 current_type = attr(&e, "t").unwrap_or_default();
                 current_value.clear();
-                has_formula = false;
+                current_inline_text.clear();
+                current_formula.clear();
+                current_style_index = attr(&e, "s").and_then(|value| value.parse::<u32>().ok());
             }
             Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "v" => in_v = true,
             Ok(Event::Start(e))
@@ -3451,53 +3636,528 @@ fn sheet_cells(xml: &str, shared_strings: &[String]) -> BTreeMap<String, CellVal
             }
             Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "f" => {
                 in_formula = true;
-                has_formula = true;
             }
-            Ok(Event::Text(e)) if in_v => {
-                current_value.push_str(&String::from_utf8_lossy(e.as_ref()))
-            }
+            Ok(Event::Text(e)) if in_v => current_value.push_str(&decode_xml_text(e.as_ref())),
             Ok(Event::Text(e)) if in_t => {
-                current_value.push_str(&String::from_utf8_lossy(e.as_ref()))
+                current_inline_text.push_str(&decode_xml_text(e.as_ref()))
+            }
+            Ok(Event::Text(e)) if in_formula => {
+                current_formula.push_str(&decode_xml_text(e.as_ref()))
+            }
+            Ok(Event::GeneralRef(e)) if in_v => {
+                current_value.push_str(&xml_general_ref(e.as_ref()))
+            }
+            Ok(Event::GeneralRef(e)) if in_t => {
+                current_inline_text.push_str(&xml_general_ref(e.as_ref()))
+            }
+            Ok(Event::GeneralRef(e)) if in_formula => {
+                current_formula.push_str(&xml_general_ref(e.as_ref()))
             }
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "v" => in_v = false,
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "t" => in_t = false,
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "f" => in_formula = false,
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "c" => {
                 if !current_ref.is_empty() {
-                    let (kind, value) = if current_type == "s" {
-                        let idx = current_value.parse::<usize>().unwrap_or(usize::MAX);
-                        (
-                            "string".to_string(),
-                            Value::String(shared_strings.get(idx).cloned().unwrap_or_default()),
-                        )
-                    } else if current_type == "inlineStr" {
-                        ("string".to_string(), Value::String(current_value.clone()))
-                    } else if current_value.is_empty() {
-                        ("empty".to_string(), Value::Null)
-                    } else if let Ok(number) = current_value.parse::<i64>() {
-                        ("number".to_string(), json!(number))
-                    } else if let Ok(number) = current_value.parse::<f64>() {
-                        ("number".to_string(), json!(number))
+                    let style = current_style_index
+                        .and_then(|index| styles.get(index as usize).cloned())
+                        .unwrap_or_default();
+                    let (kind, matrix_value, display_value) = decode_xlsx_cell_value(
+                        &current_type,
+                        &current_value,
+                        &current_inline_text,
+                        &current_formula,
+                        shared_strings,
+                        &style,
+                    );
+                    let raw_value = if current_type == "inlineStr" {
+                        String::new()
                     } else {
-                        ("string".to_string(), Value::String(current_value.clone()))
+                        current_value.clone()
                     };
                     cells.insert(
                         current_ref.clone(),
                         CellValue {
                             kind,
-                            value,
-                            has_formula,
+                            matrix_value,
+                            display_value,
+                            raw_value,
+                            formula: current_formula.clone(),
+                            style_index: current_style_index,
+                            number_format_id: style.number_format_id,
+                            number_format_code: style.number_format_code,
+                            date_style: style.date_style,
+                            has_formula: !current_formula.is_empty(),
                         },
                     );
                 }
             }
             Ok(Event::Eof) => break,
             Err(_) => break,
-            _ if in_formula => {}
             _ => {}
         }
     }
     cells
+}
+
+fn decode_xlsx_cell_value(
+    cell_type: &str,
+    raw: &str,
+    inline_text: &str,
+    formula: &str,
+    shared_strings: &[String],
+    style: &XlsxStyle,
+) -> (String, Value, String) {
+    match cell_type {
+        "s" => {
+            let idx = raw.parse::<usize>().unwrap_or(usize::MAX);
+            let text = shared_strings.get(idx).cloned().unwrap_or_default();
+            ("string".to_string(), Value::String(text.clone()), text)
+        }
+        "inlineStr" => (
+            "string".to_string(),
+            Value::String(inline_text.to_string()),
+            inline_text.to_string(),
+        ),
+        "str" => (
+            "string".to_string(),
+            Value::String(raw.to_string()),
+            raw.to_string(),
+        ),
+        "b" => {
+            let text = match raw.trim() {
+                "1" => "true",
+                "0" => "false",
+                _ => raw,
+            }
+            .to_string();
+            let matrix = match raw.trim() {
+                "1" => Value::Bool(true),
+                "0" => Value::Bool(false),
+                _ => Value::String(text.clone()),
+            };
+            ("boolean".to_string(), matrix, text)
+        }
+        "e" => (
+            "error".to_string(),
+            Value::String(raw.to_string()),
+            raw.to_string(),
+        ),
+        "d" => (
+            "date".to_string(),
+            Value::String(raw.to_string()),
+            raw.to_string(),
+        ),
+        "" if raw.is_empty() && formula.is_empty() => {
+            ("empty".to_string(), Value::Null, String::new())
+        }
+        "" if style.date_style => (
+            "date".to_string(),
+            Value::String(raw.to_string()),
+            raw.to_string(),
+        ),
+        "" => {
+            let matrix = if let Ok(number) = raw.parse::<i64>() {
+                json!(number)
+            } else if let Ok(number) = raw.parse::<f64>() {
+                json!(number)
+            } else {
+                Value::String(raw.to_string())
+            };
+            ("number".to_string(), matrix, raw.to_string())
+        }
+        _ => (
+            "unknown".to_string(),
+            Value::String(raw.to_string()),
+            raw.to_string(),
+        ),
+    }
+}
+
+fn xlsx_styles(file: &str) -> CliResult<Vec<XlsxStyle>> {
+    let xml = match zip_text(file, "xl/styles.xml") {
+        Ok(xml) => xml,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let mut reader = Reader::from_str(&xml);
+    reader.config_mut().trim_text(true);
+    let mut custom_formats = BTreeMap::<u32, String>::new();
+    let mut styles = Vec::new();
+    let mut in_cell_xfs = false;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "numFmt" =>
+            {
+                if let (Some(id), Some(code)) = (attr(&e, "numFmtId"), attr(&e, "formatCode"))
+                    && let Ok(id) = id.parse::<u32>()
+                {
+                    custom_formats.insert(id, code);
+                }
+            }
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "cellXfs" => {
+                in_cell_xfs = true;
+            }
+            Ok(Event::End(e)) if local_name(e.name().as_ref()) == "cellXfs" => {
+                in_cell_xfs = false;
+            }
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if in_cell_xfs && local_name(e.name().as_ref()) == "xf" =>
+            {
+                let number_format_id = attr(&e, "numFmtId").and_then(|value| value.parse().ok());
+                let number_format_code = number_format_id.and_then(|id| {
+                    custom_formats
+                        .get(&id)
+                        .cloned()
+                        .or_else(|| builtin_num_format_code(id).map(ToString::to_string))
+                });
+                let date_style = number_format_id.is_some_and(is_builtin_date_num_fmt)
+                    || number_format_code
+                        .as_deref()
+                        .is_some_and(is_date_format_code);
+                styles.push(XlsxStyle {
+                    number_format_id,
+                    number_format_code,
+                    date_style,
+                });
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Ok(styles)
+}
+
+fn builtin_num_format_code(id: u32) -> Option<&'static str> {
+    match id {
+        14 => Some("m/d/yy"),
+        15 => Some("d-mmm-yy"),
+        16 => Some("d-mmm"),
+        17 => Some("mmm-yy"),
+        18 => Some("h:mm AM/PM"),
+        19 => Some("h:mm:ss AM/PM"),
+        20 => Some("h:mm"),
+        21 => Some("h:mm:ss"),
+        22 => Some("m/d/yy h:mm"),
+        45 => Some("mm:ss"),
+        46 => Some("[h]:mm:ss"),
+        47 => Some("mmss.0"),
+        _ => None,
+    }
+}
+
+fn is_builtin_date_num_fmt(id: u32) -> bool {
+    matches!(id, 14..=22 | 45..=47)
+}
+
+fn is_date_format_code(code: &str) -> bool {
+    let mut cleaned = String::new();
+    let mut in_quote = false;
+    for ch in code.chars() {
+        match ch {
+            '"' => in_quote = !in_quote,
+            _ if !in_quote => cleaned.push(ch.to_ascii_lowercase()),
+            _ => {}
+        }
+    }
+    cleaned.contains('y')
+        || cleaned.contains('d')
+        || cleaned.contains("h:")
+        || cleaned.contains("m/")
+}
+
+fn xlsx_dimension_declared(xml: &str) -> Option<String> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "dimension" =>
+            {
+                return attr(&e, "ref");
+            }
+            Ok(Event::Eof) => return None,
+            Err(_) => return None,
+            _ => {}
+        }
+    }
+}
+
+fn xlsx_merged_cell_count(xml: &str) -> usize {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut count = 0;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "mergeCell" =>
+            {
+                count += 1;
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    count
+}
+
+fn sorted_xlsx_cells(
+    cells: &BTreeMap<String, CellValue>,
+    range: Option<RangeBounds>,
+) -> Vec<XlsxCellEntry> {
+    let mut entries: Vec<XlsxCellEntry> = cells
+        .iter()
+        .filter_map(|(ref_name, value)| {
+            let (col, row) = parse_cell_ref(ref_name).ok()?;
+            if let Some(bounds) = range
+                && !range_contains_cell(bounds, col, row)
+            {
+                return None;
+            }
+            Some(XlsxCellEntry {
+                ref_name: ref_name.clone(),
+                row,
+                col,
+                value: value.clone(),
+            })
+        })
+        .collect();
+    entries.sort_by_key(|entry| (entry.row, entry.col));
+    entries
+}
+
+fn used_range_for_cells(cells: &[XlsxCellEntry]) -> UsedRangeSummary {
+    let Some(first) = cells.first() else {
+        return UsedRangeSummary {
+            min_row: 0,
+            max_row: 0,
+            min_col: 0,
+            max_col: 0,
+            empty: true,
+        };
+    };
+    let mut used = UsedRangeSummary {
+        min_row: first.row,
+        max_row: first.row,
+        min_col: first.col,
+        max_col: first.col,
+        empty: false,
+    };
+    for cell in cells.iter().skip(1) {
+        used.min_row = used.min_row.min(cell.row);
+        used.max_row = used.max_row.max(cell.row);
+        used.min_col = used.min_col.min(cell.col);
+        used.max_col = used.max_col.max(cell.col);
+    }
+    used
+}
+
+fn used_range_json(used: UsedRangeSummary) -> Value {
+    if used.empty {
+        return json!({
+            "rows": 0,
+            "cols": 0,
+            "empty": true,
+        });
+    }
+    json!({
+        "ref": format!(
+            "{}{}:{}{}",
+            col_name(used.min_col),
+            used.min_row,
+            col_name(used.max_col),
+            used.max_row
+        ),
+        "minRow": used.min_row,
+        "maxRow": used.max_row,
+        "minCol": used.min_col,
+        "maxCol": used.max_col,
+        "rows": used.max_row - used.min_row + 1,
+        "cols": used.max_col - used.min_col + 1,
+        "empty": false,
+    })
+}
+
+fn build_sparse_xlsx_rows(
+    cells: &[XlsxCellEntry],
+    max_rows: u32,
+    max_cells: u32,
+    sheet: &WorkbookSheet,
+) -> (Vec<Value>, bool) {
+    let mut rows = Vec::<Value>::new();
+    let mut row_cells = Vec::<Value>::new();
+    let mut current_row = None::<u32>;
+    let mut truncated = false;
+
+    for (emitted_cells, cell) in cells.iter().enumerate() {
+        if max_cells > 0 && emitted_cells as u32 >= max_cells {
+            truncated = true;
+            break;
+        }
+        if current_row != Some(cell.row) {
+            if let Some(row_number) = current_row {
+                rows.push(json!({"number": row_number, "cells": row_cells}));
+                row_cells = Vec::new();
+            }
+            if max_rows > 0 && rows.len() as u32 >= max_rows {
+                truncated = true;
+                break;
+            }
+            current_row = Some(cell.row);
+        }
+        row_cells.push(xlsx_cell_json(
+            &cell.ref_name,
+            cell.row,
+            cell.col,
+            &cell.value,
+            sheet,
+        ));
+    }
+
+    if let Some(row_number) = current_row
+        && !row_cells.is_empty()
+    {
+        rows.push(json!({"number": row_number, "cells": row_cells}));
+    }
+    (rows, truncated)
+}
+
+fn build_dense_xlsx_rows(
+    cells: &[XlsxCellEntry],
+    range: Option<RangeBounds>,
+    used: UsedRangeSummary,
+    max_rows: u32,
+    max_cells: u32,
+    sheet: &WorkbookSheet,
+) -> (Vec<Value>, bool) {
+    let Some((min_col, min_row, max_col, max_row)) = output_xlsx_bounds(range, used) else {
+        return (Vec::new(), false);
+    };
+    let max_cells = if max_cells == 0 { 10_000 } else { max_cells };
+    let by_ref: BTreeMap<String, &XlsxCellEntry> = cells
+        .iter()
+        .map(|cell| (cell.ref_name.clone(), cell))
+        .collect();
+    let mut rows = Vec::new();
+    let mut emitted_cells = 0u32;
+    let mut truncated = false;
+
+    for row in min_row..=max_row {
+        if max_rows > 0 && rows.len() as u32 >= max_rows {
+            truncated = true;
+            break;
+        }
+        let mut row_cells = Vec::new();
+        for col in min_col..=max_col {
+            if max_cells > 0 && emitted_cells >= max_cells {
+                truncated = true;
+                break;
+            }
+            let ref_name = format!("{}{}", col_name(col), row);
+            let cell_value;
+            let value = if let Some(cell) = by_ref.get(&ref_name) {
+                &cell.value
+            } else {
+                cell_value = CellValue {
+                    kind: "empty".to_string(),
+                    matrix_value: Value::Null,
+                    display_value: String::new(),
+                    raw_value: String::new(),
+                    formula: String::new(),
+                    style_index: None,
+                    number_format_id: None,
+                    number_format_code: None,
+                    date_style: false,
+                    has_formula: false,
+                };
+                &cell_value
+            };
+            row_cells.push(xlsx_cell_json(&ref_name, row, col, value, sheet));
+            emitted_cells += 1;
+        }
+        rows.push(json!({"number": row, "cells": row_cells}));
+        if truncated {
+            break;
+        }
+    }
+    (rows, truncated)
+}
+
+fn output_xlsx_bounds(
+    range: Option<RangeBounds>,
+    used: UsedRangeSummary,
+) -> Option<(u32, u32, u32, u32)> {
+    if let Some(range) = range {
+        return Some((
+            range.start_col,
+            range.start_row,
+            range.end_col,
+            range.end_row,
+        ));
+    }
+    if used.empty {
+        None
+    } else {
+        Some((used.min_col, used.min_row, used.max_col, used.max_row))
+    }
+}
+
+fn xlsx_cell_json(
+    ref_name: &str,
+    row: u32,
+    col: u32,
+    value: &CellValue,
+    sheet: &WorkbookSheet,
+) -> Value {
+    let mut object = Map::new();
+    object.insert("ref".to_string(), json!(ref_name));
+    object.insert(
+        "handle".to_string(),
+        json!(format!("H:xlsx/ws:{}/cell:a:{ref_name}", sheet.sheet_id)),
+    );
+    object.insert("primarySelector".to_string(), json!(ref_name));
+    object.insert("selectors".to_string(), json!([ref_name]));
+    object.insert("row".to_string(), json!(row));
+    object.insert("col".to_string(), json!(col));
+    object.insert("column".to_string(), json!(col_name(col)));
+    object.insert("type".to_string(), json!(value.kind));
+    if !value.display_value.is_empty() {
+        object.insert("value".to_string(), json!(value.display_value));
+    }
+    if !value.raw_value.is_empty() {
+        object.insert("rawValue".to_string(), json!(value.raw_value));
+    }
+    if !value.formula.is_empty() {
+        object.insert("formula".to_string(), json!(value.formula));
+    }
+    if let Some(style_index) = value.style_index.filter(|style_index| *style_index > 0) {
+        object.insert("styleIndex".to_string(), json!(style_index));
+    }
+    if let Some(number_format_id) = value
+        .number_format_id
+        .filter(|number_format_id| *number_format_id > 0)
+    {
+        object.insert("numberFormatId".to_string(), json!(number_format_id));
+    }
+    if let Some(number_format_code) = value
+        .number_format_code
+        .as_ref()
+        .filter(|number_format_code| !number_format_code.is_empty())
+    {
+        object.insert("numberFormatCode".to_string(), json!(number_format_code));
+    }
+    if value.date_style {
+        object.insert("dateStyle".to_string(), json!(true));
+    }
+    Value::Object(object)
+}
+
+fn range_contains_cell(bounds: RangeBounds, col: u32, row: u32) -> bool {
+    col >= bounds.start_col
+        && col <= bounds.end_col
+        && row >= bounds.start_row
+        && row <= bounds.end_row
 }
 
 #[derive(Clone, Copy)]
@@ -3686,6 +4346,30 @@ fn attr_exact(e: &BytesStart<'_>, wanted: &str) -> Option<String> {
 fn local_name(name: &[u8]) -> &str {
     let raw = std::str::from_utf8(name).unwrap_or("");
     raw.rsplit_once(':').map(|(_, local)| local).unwrap_or(raw)
+}
+
+fn decode_xml_text(bytes: &[u8]) -> String {
+    xml_unescape(&String::from_utf8_lossy(bytes))
+}
+
+fn xml_general_ref(bytes: &[u8]) -> String {
+    match bytes {
+        b"quot" => "\"".to_string(),
+        b"apos" => "'".to_string(),
+        b"lt" => "<".to_string(),
+        b"gt" => ">".to_string(),
+        b"amp" => "&".to_string(),
+        _ => format!("&{};", String::from_utf8_lossy(bytes)),
+    }
+}
+
+fn xml_unescape(value: &str) -> String {
+    value
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
 }
 
 fn xml_escape(value: &str) -> String {

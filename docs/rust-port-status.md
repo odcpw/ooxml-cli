@@ -35,9 +35,14 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json pptx shapes show <pptx> --slide <n> --include-text --include-bounds`
   for generated shape readback commands, with Go-oracle comparison on text-shape
   and table/graphicFrame fixtures
+- `--json xlsx cells extract <xlsx>` with Go-oracle comparison for default
+  sparse extraction, dense `--include-empty` ranges, formulas, booleans, inline
+  strings, and date-style cell metadata
 - `serve` JSON-RPC generic PPTX inspect/op/commit path for
   `pptx slides show` plus `pptx replace text`, matching the Flue workbench's
   generic `apply_ooxml_ops_to_current` smoke route
+- `serve` JSON-RPC inspect support for `xlsx cells extract`, so generated XLSX
+  readback commands can run through the web/agent session loop
 
 Still missing before parity can be claimed:
 

@@ -77,6 +77,50 @@ fn frozen_cli_slice_matches_go_baseline() {
 }
 
 #[test]
+fn xlsx_cells_extract_matches_go_oracle() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "xlsx",
+            "cells",
+            "extract",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "cells",
+            "extract",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--range",
+            "B1:D2",
+            "--include-empty",
+            "--max-rows",
+            "2",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "cells",
+            "extract",
+            "testdata/xlsx/types-and-formulas/workbook.xlsx",
+            "--sheet",
+            "Types",
+            "--range",
+            "E2:H2",
+        ],
+    ];
+
+    for args in cases {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "exit code for {args:?}");
+        assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
+        assert_eq!(rust_stdout, go_stdout, "stdout for {args:?}");
+    }
+}
+
+#[test]
 fn frozen_pptx_mutation_and_validate_match_go_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-contract-{}", std::process::id()));
@@ -283,6 +327,71 @@ fn frozen_serve_flow_matches_go_baseline() {
     let status = child.wait().expect("serve exit");
     assert!(status.success());
     assert_eq!(Value::Array(flow), baseline["serve"]["flow"]);
+}
+
+#[test]
+fn serve_inspect_supports_xlsx_cells_extract() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-serve-cells-{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(1, "open", serde_json::json!({"file": input_str}));
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let inspect = rpc_request(
+        2,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx cells extract",
+            "args": {"sheet": "1", "range": "B1:D2", "includeEmpty": true, "maxRows": 2},
+        }),
+    );
+    let inspect_response = serve_roundtrip(&mut stdin, &mut reader, &inspect);
+    let working = inspect_response["result"]["file"]
+        .as_str()
+        .expect("working file");
+    let (code, expected, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "cells",
+        "extract",
+        working,
+        "--sheet",
+        "1",
+        "--range",
+        "B1:D2",
+        "--include-empty",
+        "--max-rows",
+        "2",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    assert_eq!(
+        inspect_response["result"],
+        expected.expect("extract stdout")
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
 }
 
 #[test]
@@ -812,6 +921,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let xlsx_caps = xlsx_stdout.expect("xlsx capabilities");
     assert_command(&xlsx_caps, "ooxml xlsx sheets list", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
+    assert_command(&xlsx_caps, "ooxml xlsx cells extract", false);
     assert_command(&xlsx_caps, "ooxml xlsx cells set", true);
 }
 
