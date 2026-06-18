@@ -481,6 +481,9 @@ func localTag(tag string) string {
 	if idx := strings.IndexByte(tag, '}'); idx >= 0 {
 		return tag[idx+1:]
 	}
+	if idx := strings.IndexByte(tag, ':'); idx >= 0 {
+		return tag[idx+1:]
+	}
 	return tag
 }
 

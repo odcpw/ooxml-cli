@@ -29,8 +29,9 @@ provided tools rather than shell commands or arbitrary file paths.
    `set_current_presentation_slide_shape_text`, and
    `apply_template_to_current_document` are fast paths, not the capability
    boundary. `apply_template_to_current_document` transfers theme colors,
-   major/minor fonts, PPTX master default text styles, and optional chart
-   styling; it does not rebuild slide layouts or copy arbitrary shape geometry.
+   major/minor fonts, representative PPTX level-1 master default text styles by
+   role, and optional chart styling; it does not rebuild slide layouts or copy
+   arbitrary shape geometry.
 6. Call `validate_current_document` after any change if the mutation result did
    not already include strict validation.
 7. For PPTX/PPTM previews, call `render_current_presentation_preview`.

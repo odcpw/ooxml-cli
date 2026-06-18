@@ -302,27 +302,12 @@ func UpdateMasterDefaultTextStyle(req *UpdateMasterDefaultTextStyleRequest) erro
 		return fmt.Errorf("unsupported style type: %s", req.StyleType)
 	}
 
-	// Remove all existing level paragraph properties
-	for {
-		removed := false
-		for _, lvlPPr := range styleElem.FindElements("a:lvl*pPr") {
-			styleElem.RemoveChild(lvlPPr)
-			removed = true
-			break
-		}
-		if !removed {
-			break
-		}
-	}
-
-	// Create level 1 paragraph properties with the provided style
-	lvl1pPr := createLevelParagraphProperties(1, req.Style)
-	styleElem.AddChild(lvl1pPr)
-
-	// If there are multiple indent levels, create placeholders for them
-	for level := 2; level <= 9; level++ {
-		lvlPPr := createLevelParagraphProperties(int32(level), req.Style)
+	lvlPPr := findLevelParagraphProperties(styleElem, 1)
+	if lvlPPr == nil {
+		lvlPPr := createLevelParagraphProperties(1, req.Style)
 		styleElem.AddChild(lvlPPr)
+	} else {
+		patchLevelParagraphProperties(lvlPPr, req.Style)
 	}
 
 	// Write the master back
@@ -330,6 +315,115 @@ func UpdateMasterDefaultTextStyle(req *UpdateMasterDefaultTextStyleRequest) erro
 		return fmt.Errorf("failed to write master: %w", err)
 	}
 
+	return nil
+}
+
+func findLevelParagraphProperties(styleElem *etree.Element, level int32) *etree.Element {
+	if styleElem == nil {
+		return nil
+	}
+	want := fmt.Sprintf("lvl%dpPr", level)
+	for _, child := range styleElem.ChildElements() {
+		if localTag(child.Tag) == want {
+			return child
+		}
+	}
+	return nil
+}
+
+func patchLevelParagraphProperties(lvlPPr *etree.Element, style *DefaultTextStyleInfo) {
+	if lvlPPr == nil || style == nil {
+		return
+	}
+	if style.Alignment != "" {
+		lvlPPr.CreateAttr("algn", style.Alignment)
+	}
+	if style.SpaceBefore > 0 {
+		replaceSpacingPct(lvlPPr, "spcBef", style.SpaceBefore)
+	}
+	if style.SpaceAfter > 0 {
+		replaceSpacingPct(lvlPPr, "spcAft", style.SpaceAfter)
+	}
+	defRPr := findDirectChildByLocal(lvlPPr, "defRPr")
+	if defRPr == nil {
+		defRPr = etree.NewElement("a:defRPr")
+		lvlPPr.AddChild(defRPr)
+	}
+	if style.FontSize > 0 {
+		defRPr.CreateAttr("sz", fmt.Sprintf("%d", style.FontSize))
+	}
+	if style.Color != "" {
+		setDefaultRunSolidFill(defRPr, style.Color)
+	}
+	if style.FontName != "" {
+		setTypeface(defRPr, "latin", style.FontName)
+	}
+}
+
+func replaceSpacingPct(lvlPPr *etree.Element, name string, emu int64) {
+	if lvlPPr == nil {
+		return
+	}
+	for _, child := range lvlPPr.ChildElements() {
+		if localTag(child.Tag) == name {
+			lvlPPr.RemoveChild(child)
+		}
+	}
+	spacing := etree.NewElement("a:" + name)
+	spcPct := etree.NewElement("a:spcPct")
+	pct := (emu * 100000) / 914400
+	if pct > 100000 {
+		pct = 100000
+	}
+	spcPct.CreateAttr("val", fmt.Sprintf("%d", pct))
+	spacing.AddChild(spcPct)
+	lvlPPr.AddChild(spacing)
+}
+
+func setDefaultRunSolidFill(defRPr *etree.Element, color string) {
+	if defRPr == nil {
+		return
+	}
+	for _, child := range defRPr.ChildElements() {
+		switch localTag(child.Tag) {
+		case "noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill":
+			defRPr.RemoveChild(child)
+		}
+	}
+	solidFill := etree.NewElement("a:solidFill")
+	if isValidHexColor(color) {
+		srgbClr := etree.NewElement("a:srgbClr")
+		srgbClr.CreateAttr("val", color)
+		solidFill.AddChild(srgbClr)
+	} else {
+		schemeClr := etree.NewElement("a:schemeClr")
+		schemeClr.CreateAttr("val", color)
+		solidFill.AddChild(schemeClr)
+	}
+	defRPr.AddChild(solidFill)
+}
+
+func setTypeface(defRPr *etree.Element, local, typeface string) {
+	if defRPr == nil || local == "" {
+		return
+	}
+	font := findDirectChildByLocal(defRPr, local)
+	if font == nil {
+		font = etree.NewElement("a:" + local)
+		defRPr.AddChild(font)
+	}
+	font.CreateAttr("typeface", typeface)
+}
+
+func findDirectChildByLocal(elem *etree.Element, local string) *etree.Element {
+	if elem == nil {
+		return nil
+	}
+	for _, child := range elem.ChildElements() {
+		if localTag(child.Tag) == local {
+			return child
+		}
+	}
 	return nil
 }
 
@@ -387,9 +481,15 @@ func createLevelParagraphProperties(level int32, style *DefaultTextStyleInfo) *e
 	// Add color if specified
 	if style.Color != "" {
 		solidFill := etree.NewElement("a:solidFill")
-		schemeClr := etree.NewElement("a:schemeClr")
-		schemeClr.CreateAttr("val", style.Color)
-		solidFill.AddChild(schemeClr)
+		if isValidHexColor(style.Color) {
+			srgbClr := etree.NewElement("a:srgbClr")
+			srgbClr.CreateAttr("val", style.Color)
+			solidFill.AddChild(srgbClr)
+		} else {
+			schemeClr := etree.NewElement("a:schemeClr")
+			schemeClr.CreateAttr("val", style.Color)
+			solidFill.AddChild(schemeClr)
+		}
 		defRPr.AddChild(solidFill)
 	}
 

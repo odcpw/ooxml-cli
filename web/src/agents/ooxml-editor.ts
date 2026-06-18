@@ -53,9 +53,9 @@ For edits:
 - when the user asks to use another uploaded file as a template or booklet,
   identify that document with get_thread_status and call
   apply_template_to_current_document after any requested content/text edits;
-  this transfers theme colors, major/minor fonts, PPTX master default text
-  styles, and optional chart styling, but it does not rebuild slide layout
-  geometry or copy arbitrary shape styling;
+  this transfers theme colors, major/minor fonts, representative PPTX level-1
+  master default text styles by role, and optional chart styling, but it does
+  not rebuild slide layout geometry or copy arbitrary shape styling;
 - after a mutation, summarize the new version id and provide the download URL;
 - for PPTX/PPTM, render a preview when the user asks to see the result.
 

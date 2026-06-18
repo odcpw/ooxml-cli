@@ -138,7 +138,7 @@ func TestTemplateProfile_ApplyWritesValidOutput(t *testing.T) {
 	require.NoError(t, err)
 	var res TemplateApplyResult
 	require.NoError(t, json.Unmarshal([]byte(applyOut), &res))
-	require.NotEmpty(t, res.Applied.Colors)
+	assert.Equal(t, len(res.Applied.Colors)+len(res.Applied.FontParts), res.TotalUpdates)
 
 	require.FileExists(t, out)
 	vout, verr := executeRootForXLSXTest(t, "validate", "--strict", out)

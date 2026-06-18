@@ -3,6 +3,7 @@ package template
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	pptxmodel "github.com/ooxml-cli/ooxml-cli/pkg/pptx/model"
 )
@@ -46,6 +47,8 @@ type ApplyPlan struct {
 	Fonts *FontPlan
 	// Chart is non-nil when a chart style token is to be applied to charts.
 	Chart *ChartTokenPlan
+	// TextStyles are PPTX master default text styles to apply by role.
+	TextStyles []DefaultTextStyle
 	// Skipped lists human-readable reasons that individual tokens were not
 	// applied (empty/unresolved color, no theme present, etc.).
 	Skipped []string
@@ -54,12 +57,21 @@ type ApplyPlan struct {
 // ApplySelection chooses which token categories to apply. When none are set
 // explicitly the caller should treat that as "all supported".
 type ApplySelection struct {
-	Colors bool
-	Fonts  bool
-	Charts bool
+	Colors     bool
+	Fonts      bool
+	Charts     bool
+	TextStyles bool
 }
 
 var hexColorRe = regexp.MustCompile(`^[0-9A-Fa-f]{6}$`)
+
+var validSchemeColorRefs = map[string]bool{
+	"tx1": true, "tx2": true, "bg1": true, "bg2": true,
+	"dk1": true, "dk2": true, "lt1": true, "lt2": true,
+	"accent1": true, "accent2": true, "accent3": true,
+	"accent4": true, "accent5": true, "accent6": true,
+	"hlink": true, "folHlink": true,
+}
 
 // DecorativeKeys are top-level JSON keys in a hand-authored --tokens profile that
 // represent decorative effects this command intentionally does not support.
@@ -119,6 +131,13 @@ func chartSummariesOf(t *TemplateTokens) []ChartStyleSummary {
 	return nil
 }
 
+func defaultTextStylesOf(t *TemplateTokens) []DefaultTextStyle {
+	if t == nil || t.PPTX == nil {
+		return nil
+	}
+	return t.PPTX.DefaultTextStyles
+}
+
 // BuildApplyPlan resolves a TemplateTokens source into a concrete, validated
 // ApplyPlan for the requested selection. It never errors on individual tokens:
 // unresolved or empty tokens are recorded in Skipped so the caller can report
@@ -174,10 +193,58 @@ func BuildApplyPlan(src *TemplateTokens, sel ApplySelection) (*ApplyPlan, error)
 		}
 	}
 
-	if len(plan.Colors) == 0 && plan.Fonts == nil && plan.Chart == nil {
+	if sel.TextStyles {
+		styles := defaultTextStylesOf(src)
+		if len(styles) == 0 {
+			plan.Skipped = append(plan.Skipped, "text styles: source has no PPTX master default text styles")
+		}
+		for _, style := range styles {
+			style.Role = strings.ToLower(strings.TrimSpace(style.Role))
+			style.FontRef = strings.ToLower(strings.TrimSpace(style.FontRef))
+			style.Color = strings.ToUpper(strings.TrimPrefix(strings.TrimSpace(style.Color), "#"))
+			style.ColorRef = strings.TrimSpace(style.ColorRef)
+			switch style.Role {
+			case "title", "body", "other":
+			default:
+				plan.Skipped = append(plan.Skipped, fmt.Sprintf("text style %q: unsupported role", style.Role))
+				continue
+			}
+			if !hasDefaultTextStylePayload(style) {
+				plan.Skipped = append(plan.Skipped, fmt.Sprintf("text style %s: no font, size, or color token present", style.Role))
+				continue
+			}
+			if style.FontRef != "" && style.FontRef != "major" && style.FontRef != "minor" {
+				plan.Skipped = append(plan.Skipped, fmt.Sprintf("text style %s: fontRef %q is not supported; use major or minor", style.Role, style.FontRef))
+				continue
+			}
+			if style.Color != "" && !IsValidHex(style.Color) {
+				plan.Skipped = append(plan.Skipped, fmt.Sprintf("text style %s: color %q is not a 6-digit hex", style.Role, style.Color))
+				continue
+			}
+			if style.ColorRef != "" && !validSchemeColorRefs[style.ColorRef] {
+				plan.Skipped = append(plan.Skipped, fmt.Sprintf("text style %s: colorRef %q is not a supported theme color reference", style.Role, style.ColorRef))
+				continue
+			}
+			if style.Color != "" && style.ColorRef != "" {
+				plan.Skipped = append(plan.Skipped, fmt.Sprintf("text style %s: specify either color or colorRef, not both", style.Role))
+				continue
+			}
+			plan.TextStyles = append(plan.TextStyles, style)
+		}
+	}
+
+	if len(plan.Colors) == 0 && plan.Fonts == nil && plan.Chart == nil && len(plan.TextStyles) == 0 {
 		return plan, fmt.Errorf("nothing to apply for the requested selection (see skipped reasons)")
 	}
 	return plan, nil
+}
+
+func hasDefaultTextStylePayload(style DefaultTextStyle) bool {
+	return style.SizePt > 0 ||
+		strings.TrimSpace(style.FontRef) != "" ||
+		strings.TrimSpace(style.FontName) != "" ||
+		strings.TrimSpace(style.Color) != "" ||
+		strings.TrimSpace(style.ColorRef) != ""
 }
 
 // representativeChart picks the first source chart summary carrying a usable

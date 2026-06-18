@@ -1591,8 +1591,13 @@ var commandMetadata = map[string]CommandMetadata{
 		Examples: []Example{
 			{
 				Command:        "ooxml --json template apply deck.pptx --from brand.potx --out branded.pptx",
-				Description:    "Apply theme colors and major/minor fonts from a source template onto an existing PPTX.",
-				ExpectedOutput: "TemplateApplyResult JSON listing applied colors/fonts and any skipped tokens.",
+				Description:    "Apply changed theme colors and major/minor fonts from a source template onto every referenced target theme part.",
+				ExpectedOutput: "TemplateApplyResult JSON listing effective color/font changes and already-up-to-date skips.",
+			},
+			{
+				Command:        "ooxml --json template apply deck.pptx --from brand.potx --target-text-styles --out styled.pptx",
+				Description:    "Apply representative PPTX level-1 master default text styles by role from a template onto every target slide master.",
+				ExpectedOutput: "TemplateApplyResult JSON listing effective master text-style changes and skipped no-ops.",
 			},
 			{
 				Command:        "ooxml --json template apply deck.pptx --tokens tokens.json --target-charts --dry-run",

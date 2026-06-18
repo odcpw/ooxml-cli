@@ -89,6 +89,50 @@ func TestBuildApplyPlan_ChartRepresentative(t *testing.T) {
 	}
 }
 
+func TestBuildApplyPlan_TextStyles(t *testing.T) {
+	src := &TemplateTokens{PPTX: &PPTXTokens{DefaultTextStyles: []DefaultTextStyle{
+		{MasterRef: "/ppt/slideMasters/slideMaster1.xml", Role: "Title", FontRef: "Major", SizePt: 24, ColorRef: "accent1"},
+		{MasterRef: "/ppt/slideMasters/slideMaster1.xml", Role: "body", FontRef: "minor", SizePt: 20, Color: "#112233"},
+		{MasterRef: "/ppt/slideMasters/slideMaster1.xml", Role: "other"},
+		{MasterRef: "/ppt/slideMasters/slideMaster1.xml", Role: "unsupported", SizePt: 12},
+	}}}
+	plan, err := BuildApplyPlan(src, ApplySelection{TextStyles: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(plan.TextStyles) != 2 {
+		t.Fatalf("expected 2 text styles, got %d: %+v", len(plan.TextStyles), plan.TextStyles)
+	}
+	if plan.TextStyles[0].Role != "title" || plan.TextStyles[0].FontRef != "major" {
+		t.Fatalf("title text style was not normalized: %+v", plan.TextStyles[0])
+	}
+	if plan.TextStyles[1].Color != "112233" {
+		t.Fatalf("literal color was not normalized: %+v", plan.TextStyles[1])
+	}
+	if len(plan.Skipped) != 2 {
+		t.Fatalf("expected 2 skipped text style reasons, got %d: %v", len(plan.Skipped), plan.Skipped)
+	}
+}
+
+func TestBuildApplyPlan_TextStylesRejectsInvalidValues(t *testing.T) {
+	src := &TemplateTokens{PPTX: &PPTXTokens{DefaultTextStyles: []DefaultTextStyle{
+		{MasterRef: "/ppt/slideMasters/slideMaster1.xml", Role: "title", FontRef: "display", SizePt: 24},
+		{MasterRef: "/ppt/slideMasters/slideMaster1.xml", Role: "body", FontRef: "minor", Color: "ZZZZZZ"},
+		{MasterRef: "/ppt/slideMasters/slideMaster1.xml", Role: "other", ColorRef: "notAThemeRef"},
+		{MasterRef: "/ppt/slideMasters/slideMaster1.xml", Role: "body", Color: "112233", ColorRef: "tx1"},
+	}}}
+	plan, err := BuildApplyPlan(src, ApplySelection{TextStyles: true})
+	if err == nil {
+		t.Fatal("expected no usable text styles")
+	}
+	if len(plan.TextStyles) != 0 {
+		t.Fatalf("invalid text styles should not be planned: %+v", plan.TextStyles)
+	}
+	if len(plan.Skipped) != 4 {
+		t.Fatalf("expected 4 skipped reasons, got %d: %v", len(plan.Skipped), plan.Skipped)
+	}
+}
+
 func TestIsValidHex(t *testing.T) {
 	cases := map[string]bool{
 		"FF0000": true, "abcdef": true, "00000": false,

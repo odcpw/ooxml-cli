@@ -336,7 +336,7 @@ export async function applyTemplateToCurrentDocument(input: {
       targetTextStyles,
       targetCharts: Boolean(input.targetCharts),
       limitation:
-        'Applies transferable design tokens: theme colors, major/minor fonts, PPTX master default text styles, plus chart styling when requested. It does not rebuild slide layouts or copy arbitrary shape geometry.',
+        'Applies transferable design tokens: theme colors, major/minor fonts, representative PPTX level-1 master default text styles by role, plus chart styling when requested. It does not rebuild slide layouts or copy arbitrary shape geometry.',
     },
   });
 }
