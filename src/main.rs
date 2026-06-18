@@ -354,6 +354,7 @@ fn parse_global_flags(raw_args: &[String]) -> CliResult<(GlobalFlags, Vec<String
 fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
     match args {
         [cmd] if cmd == "version" => Ok(json!({"tool": "ooxml", "version": "0.0.1"})),
+        [cmd, rest @ ..] if cmd == "capabilities" => capabilities(rest),
         [cmd, file] if cmd == "inspect" => inspect(file),
         [cmd, file] if cmd == "validate" => validate(file, flags.strict),
         [cmd, file, rest @ ..] if cmd == "verify" => verify(file, rest),
@@ -374,6 +375,9 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             let range = parse_string_flag(rest, "--range")?
                 .ok_or_else(|| CliError::invalid_args("--range is required"))?;
             xlsx_range_export(file, &sheet, &range)
+        }
+        [family, group, verb, file] if family == "xlsx" && group == "sheets" && verb == "list" => {
+            xlsx_sheets_list(file)
         }
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "replace" && verb == "text" =>
@@ -404,6 +408,279 @@ fn parse_string_flag(args: &[String], name: &str) -> CliResult<Option<String>> {
         i += 1;
     }
     Ok(None)
+}
+
+fn capabilities(args: &[String]) -> CliResult<Value> {
+    let filter = parse_string_flag(args, "--for")?.map(|value| value.to_ascii_lowercase());
+    let mut commands = capability_commands();
+    if let Some(filter) = filter.as_deref() {
+        commands.retain(|command| capability_matches_filter(command, filter));
+    }
+    let mut notes = vec![
+        "Rust port partial surface: only commands listed here are implemented in the Rust subject."
+            .to_string(),
+        "Use Go on codex/ooxml-go-reference as the oracle for the full command universe."
+            .to_string(),
+    ];
+    if let Some(filter) = filter.as_deref() {
+        notes.insert(
+            0,
+            format!("Filtered by Rust-supported command/object filter \"{filter}\"."),
+        );
+    }
+    Ok(json!({
+        "tool": "ooxml",
+        "version": "0.0.1",
+        "contractVersion": "ooxml-cli.agent-capabilities.v4",
+        "packageTypes": ["pptx", "xlsx", "docx"],
+        "outputModes": ["json via --json or --format json"],
+        "globalFlags": [
+            {"name": "--format", "argName": "format", "shorthand": "f", "type": "string", "default": "text", "description": "output format: \"text\" or \"json\""},
+            {"name": "--json", "argName": "json", "type": "bool", "default": "false", "description": "emit JSON output"},
+            {"name": "--strict", "argName": "strict", "type": "bool", "default": "false", "description": "enable strict validation mode"}
+        ],
+        "commands": commands,
+        "objectKinds": ["package", "slide", "shape", "sheet", "range", "cell", "style"],
+        "objectKindsIndex": {
+            "package": ["ooxml inspect", "ooxml validate", "ooxml verify"],
+            "slide": ["ooxml pptx slides show", "ooxml pptx replace text", "ooxml pptx render"],
+            "shape": ["ooxml pptx slides show", "ooxml pptx replace text"],
+            "sheet": ["ooxml xlsx sheets list", "ooxml xlsx ranges export", "ooxml xlsx cells set"],
+            "range": ["ooxml xlsx ranges export"],
+            "cell": ["ooxml xlsx cells set"],
+            "style": []
+        },
+        "exitCodes": [
+            {"code": EXIT_SUCCESS, "name": "success", "description": "command completed successfully"},
+            {"code": EXIT_UNEXPECTED, "name": "unexpected", "description": "unexpected tool or package processing error"},
+            {"code": EXIT_INVALID_ARGS, "name": "invalid_args", "description": "invalid command line arguments or incompatible options"},
+            {"code": EXIT_FILE_NOT_FOUND, "name": "file_not_found", "description": "input file was not found"}
+        ],
+        "workflows": [
+            {
+                "name": "pptx inspect then edit",
+                "commands": [
+                    "ooxml --json inspect deck.pptx",
+                    "ooxml --json pptx slides show deck.pptx --slide 1 --include-text",
+                    "ooxml --json pptx replace text deck.pptx --slide 1 --target title --text NEW --out edited.pptx",
+                    "ooxml validate --strict edited.pptx"
+                ]
+            },
+            {
+                "name": "xlsx inspect then edit",
+                "commands": [
+                    "ooxml --json xlsx sheets list workbook.xlsx",
+                    "ooxml --json xlsx ranges export workbook.xlsx --sheet sheetId:1 --range A1 --include-types",
+                    "serve op command: xlsx cells set"
+                ]
+            }
+        ],
+        "conventions": [
+            "stdout is data; diagnostics and errors go to stderr",
+            "serve/MCP operation commands use op vocabulary without the leading ooxml",
+            "mutations should be validated before handing files to users"
+        ],
+        "notes": notes,
+    }))
+}
+
+fn capability_matches_filter(command: &Value, filter: &str) -> bool {
+    let path = command
+        .get("path")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if path.contains(&format!(" {filter} ")) || path.ends_with(&format!(" {filter}")) {
+        return true;
+    }
+    command
+        .get("targetObjectKinds")
+        .and_then(Value::as_array)
+        .map(|kinds| kinds.iter().any(|kind| kind.as_str() == Some(filter)))
+        .unwrap_or(false)
+}
+
+fn capability_commands() -> Vec<Value> {
+    vec![
+        capability_command(
+            "ooxml inspect",
+            "inspect <file>",
+            "Inspect a supported OOXML package.",
+            &["package"],
+            false,
+            Some("read-only command; use inspect_current_with_ooxml through serve"),
+            vec![],
+        ),
+        capability_command(
+            "ooxml validate",
+            "validate <file>",
+            "Validate an OOXML package.",
+            &["package"],
+            false,
+            Some("read-only validation command"),
+            vec![],
+        ),
+        capability_command(
+            "ooxml verify",
+            "verify <file>",
+            "Validate and compare a package against a baseline where supported.",
+            &["package"],
+            false,
+            Some("read-only verification command"),
+            vec![flag(
+                "--baseline",
+                "baseline",
+                "string",
+                "baseline file to compare against",
+            )],
+        ),
+        capability_command(
+            "ooxml pptx slides show",
+            "show <file>",
+            "Show slide text and stable selectors.",
+            &["slide", "shape"],
+            false,
+            Some("read-only command; call via inspect in serve/MCP"),
+            vec![
+                flag("--slide", "slide", "int", "1-based slide number"),
+                flag(
+                    "--include-text",
+                    "includeText",
+                    "bool",
+                    "include visible text",
+                ),
+                flag(
+                    "--include-bounds",
+                    "includeBounds",
+                    "bool",
+                    "include shape bounds when available",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml pptx replace text",
+            "text <file>",
+            "Replace text in the supported slide target.",
+            &["slide", "shape"],
+            true,
+            None,
+            vec![
+                flag("--slide", "slide", "int", "1-based slide number"),
+                flag(
+                    "--target",
+                    "target",
+                    "string",
+                    "shape selector, title for the frozen slice",
+                ),
+                flag("--text", "text", "string", "replacement text"),
+                flag(
+                    "--out",
+                    "out",
+                    "string",
+                    "output file path for direct CLI use",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml pptx render",
+            "render <file>",
+            "Render a PPTX to PDF/thumbnails when local tools are installed.",
+            &["slide"],
+            false,
+            Some("render command is not a mutation op"),
+            vec![
+                flag("--out", "out", "string", "render output directory"),
+                flag("--slides", "slides", "string", "comma-separated slide list"),
+                flag("--format", "format", "string", "json"),
+            ],
+        ),
+        capability_command(
+            "ooxml xlsx sheets list",
+            "list <file>",
+            "List workbook sheets and selectors.",
+            &["sheet"],
+            false,
+            Some("read-only command; call via inspect in serve/MCP"),
+            vec![],
+        ),
+        capability_command(
+            "ooxml xlsx ranges export",
+            "export <file>",
+            "Export decoded worksheet cells from a range.",
+            &["sheet", "range"],
+            false,
+            Some("read-only command; call via inspect in serve/MCP"),
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag("--range", "range", "string", "A1 range"),
+                flag(
+                    "--include-types",
+                    "includeTypes",
+                    "bool",
+                    "include cell types",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml xlsx cells set",
+            "set <file>",
+            "Set a worksheet cell value.",
+            &["sheet", "cell"],
+            true,
+            None,
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag("--cell", "cell", "string", "A1 cell reference"),
+                flag("--value", "value", "string", "cell value"),
+                flag(
+                    "--out",
+                    "out",
+                    "string",
+                    "output file path for direct CLI use",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml docx text",
+            "text <file>",
+            "Extract DOCX paragraph text.",
+            &["package"],
+            false,
+            Some("read-only command"),
+            vec![],
+        ),
+    ]
+}
+
+fn capability_command(
+    path: &str,
+    use_text: &str,
+    short: &str,
+    target_kinds: &[&str],
+    op_compatible: bool,
+    op_ineligible_reason: Option<&str>,
+    local_flags: Vec<Value>,
+) -> Value {
+    let mut object = Map::new();
+    object.insert("path".to_string(), json!(path));
+    object.insert("use".to_string(), json!(use_text));
+    object.insert("short".to_string(), json!(short));
+    object.insert("targetObjectKinds".to_string(), json!(target_kinds));
+    object.insert("localFlags".to_string(), Value::Array(local_flags));
+    object.insert("opCompatible".to_string(), json!(op_compatible));
+    if let Some(reason) = op_ineligible_reason {
+        object.insert("opIneligibleReason".to_string(), json!(reason));
+    }
+    Value::Object(object)
+}
+
+fn flag(name: &str, arg_name: &str, flag_type: &str, description: &str) -> Value {
+    json!({
+        "name": name,
+        "argName": arg_name,
+        "type": flag_type,
+        "description": description,
+    })
 }
 
 fn parse_u32_flag(args: &[String], name: &str) -> CliResult<Option<u32>> {
@@ -568,11 +845,46 @@ fn xlsx_range_export(file: &str, sheet_selector: &str, range: &str) -> CliResult
         "rows": rows,
         "selectors": [range],
         "sheet": sheet.name,
-        "sheetNumber": sheet.number,
+        "sheetNumber": sheet.position,
         "truncated": false,
         "types": types,
         "validateCommand": format!("ooxml validate --strict {file}"),
         "values": values,
+    }))
+}
+
+fn xlsx_sheets_list(file: &str) -> CliResult<Value> {
+    let workbook = zip_text(file, "xl/workbook.xml")?;
+    let sheets = workbook_sheets(&workbook);
+    let rels = relationships(file, "xl/_rels/workbook.xml.rels")?;
+    let values: Vec<Value> = sheets
+        .iter()
+        .map(|sheet| {
+            let target = rels.get(&sheet.rel_id).cloned().unwrap_or_default();
+            let part = normalize_xl_target(&target);
+            let part_uri = format!("/{part}");
+            let primary_selector = format!("sheetId:{}", sheet.sheet_id);
+            json!({
+                "number": sheet.position,
+                "position": sheet.position,
+                "name": sheet.name,
+                "sheetId": sheet.sheet_id.to_string(),
+                "state": "visible",
+                "relationshipId": sheet.rel_id,
+                "partUri": part_uri,
+                "relationshipType": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet",
+                "primarySelector": primary_selector,
+                "selectors": xlsx_sheet_selectors(&sheet.name, sheet.sheet_id, sheet.position, &sheet.rel_id, &part_uri),
+                "handle": format!("H:xlsx/ws:{}", sheet.sheet_id),
+                "showCommand": format!("ooxml --json xlsx sheets show {file} --sheet {primary_selector}"),
+                "tablesListCommand": format!("ooxml --json xlsx tables list {file} --sheet {primary_selector}"),
+            })
+        })
+        .collect();
+    Ok(json!({
+        "file": file,
+        "validateCommand": format!("ooxml validate --strict {file}"),
+        "sheets": values,
     }))
 }
 
@@ -695,13 +1007,93 @@ struct ServeSession {
 }
 
 #[derive(Clone)]
-struct ServeOp {
-    command: String,
-    sheet: String,
-    cell: String,
-    value: String,
-    previous_type: String,
-    previous_value: Value,
+enum ServeOp {
+    XlsxCellSet {
+        command: String,
+        sheet: String,
+        cell: String,
+        value: String,
+        previous_type: String,
+        previous_value: Value,
+    },
+    PptxReplaceText {
+        command: String,
+        slide: u32,
+        target: String,
+        text: String,
+    },
+}
+
+impl ServeOp {
+    fn command(&self) -> &str {
+        match self {
+            ServeOp::XlsxCellSet { command, .. } | ServeOp::PptxReplaceText { command, .. } => {
+                command
+            }
+        }
+    }
+
+    fn plan_argv(&self, source_file: &str) -> Value {
+        match self {
+            ServeOp::XlsxCellSet {
+                sheet, cell, value, ..
+            } => json!([
+                "xlsx",
+                "cells",
+                "set",
+                source_file,
+                "--cell",
+                cell,
+                "--sheet",
+                sheet,
+                "--value",
+                value,
+                "--out",
+                "<temp.0>",
+                "--json",
+                "--no-validate",
+            ]),
+            ServeOp::PptxReplaceText {
+                slide,
+                target,
+                text,
+                ..
+            } => json!([
+                "pptx",
+                "replace",
+                "text",
+                source_file,
+                "--slide",
+                slide.to_string(),
+                "--target",
+                target,
+                "--text",
+                text,
+                "--out",
+                "<temp.0>",
+                "--json",
+                "--no-validate",
+            ]),
+        }
+    }
+
+    fn readback(&self, file: &str) -> Value {
+        match self {
+            ServeOp::XlsxCellSet {
+                cell,
+                value,
+                previous_type,
+                previous_value,
+                ..
+            } => xlsx_cell_set_readback(file, cell, value, previous_type, previous_value),
+            ServeOp::PptxReplaceText {
+                slide,
+                target,
+                text,
+                ..
+            } => pptx_replace_text_readback(file, file, *slide, target, text),
+        }
+    }
 }
 
 impl ServeState {
@@ -767,29 +1159,45 @@ impl ServeState {
     fn serve_op(&mut self, params: &Value) -> CliResult<Value> {
         let session_id = json_string(params, "session")?;
         let command = json_string(params, "command")?;
-        if command != "xlsx cells set" {
-            return Err(CliError::invalid_args(format!(
-                "unsupported serve op command: {command}"
-            )));
-        }
         let args = params
             .get("args")
             .ok_or_else(|| CliError::invalid_args("op args are required"))?;
-        let sheet = json_string(args, "sheet")?;
-        let cell = json_string(args, "cell")?;
-        let value = json_string(args, "value")?;
         let session = self.session_mut(&session_id)?;
-        let previous = xlsx_cell_read(&session.working, &sheet, &cell)?;
-        xlsx_set_cell_string(&session.working, &sheet, &cell, &value)?;
-        let op = ServeOp {
-            command: command.clone(),
-            sheet,
-            cell,
-            value,
-            previous_type: previous.kind,
-            previous_value: previous.value,
+        let op = match command.as_str() {
+            "xlsx cells set" => {
+                let sheet = json_string(args, "sheet")?;
+                let cell = json_string(args, "cell")?;
+                let value = json_string(args, "value")?;
+                let previous = xlsx_cell_read(&session.working, &sheet, &cell)?;
+                xlsx_set_cell_string(&session.working, &sheet, &cell, &value)?;
+                ServeOp::XlsxCellSet {
+                    command: command.clone(),
+                    sheet,
+                    cell,
+                    value,
+                    previous_type: previous.kind,
+                    previous_value: previous.value,
+                }
+            }
+            "pptx replace text" => {
+                let slide = json_u32(args, "slide")?.unwrap_or(1);
+                let target = json_string(args, "target")?;
+                let text = json_string(args, "text")?;
+                pptx_replace_text_in_place(&session.working, slide, &target, &text)?;
+                ServeOp::PptxReplaceText {
+                    command: command.clone(),
+                    slide,
+                    target,
+                    text,
+                }
+            }
+            _ => {
+                return Err(CliError::invalid_args(format!(
+                    "unsupported serve op command: {command}"
+                )));
+            }
         };
-        let readback = xlsx_cell_set_readback(&session.working, &op);
+        let readback = op.readback(&session.working);
         let index = session.ops.len();
         session.ops.push(op);
         Ok(json!({"command": command, "index": index, "readback": readback}))
@@ -798,18 +1206,25 @@ impl ServeState {
     fn serve_inspect(&mut self, params: &Value) -> CliResult<Value> {
         let session_id = json_string(params, "session")?;
         let command = json_string(params, "command")?;
-        if command != "xlsx ranges export" {
-            return Err(CliError::invalid_args(format!(
-                "unsupported serve inspect command: {command}"
-            )));
-        }
         let args = params
             .get("args")
             .ok_or_else(|| CliError::invalid_args("inspect args are required"))?;
-        let sheet = json_string(args, "sheet")?;
-        let range = json_string(args, "range")?;
         let session = self.session(&session_id)?;
-        xlsx_range_export(&session.working, &sheet, &range)
+        match command.as_str() {
+            "xlsx ranges export" => {
+                let sheet = json_string(args, "sheet")?;
+                let range = json_string(args, "range")?;
+                xlsx_range_export(&session.working, &sheet, &range)
+            }
+            "xlsx sheets list" => xlsx_sheets_list(&session.working),
+            "pptx slides show" => {
+                let slide = json_u32(args, "slide")?.unwrap_or(1);
+                pptx_slide_show(&session.working, slide)
+            }
+            _ => Err(CliError::invalid_args(format!(
+                "unsupported serve inspect command: {command}"
+            ))),
+        }
     }
 
     fn serve_validate(&self, params: &Value) -> CliResult<Value> {
@@ -827,23 +1242,8 @@ impl ServeState {
             .enumerate()
             .map(|(index, op)| {
                 json!({
-                    "argv": [
-                        "xlsx",
-                        "cells",
-                        "set",
-                        session.file,
-                        "--cell",
-                        op.cell,
-                        "--sheet",
-                        op.sheet,
-                        "--value",
-                        op.value,
-                        "--out",
-                        "<temp.0>",
-                        "--json",
-                        "--no-validate",
-                    ],
-                    "command": op.command,
+                    "argv": op.plan_argv(&session.file),
+                    "command": op.command(),
                     "index": index,
                 })
             })
@@ -874,9 +1274,9 @@ impl ServeState {
             .enumerate()
             .map(|(index, op)| {
                 json!({
-                    "command": op.command,
+                    "command": op.command(),
                     "index": index,
-                    "readback": xlsx_cell_set_readback(&output, op),
+                    "readback": op.readback(&output),
                 })
             })
             .collect();
@@ -920,6 +1320,16 @@ fn pptx_replace_text(file: &str, args: &[String]) -> CliResult<Value> {
         .ok_or_else(|| CliError::invalid_args("--text is required"))?;
     let out = parse_string_flag(args, "--out")?
         .ok_or_else(|| CliError::invalid_args("--out is required"))?;
+    pptx_replace_text_to(file, &out, slide, &target, &new_text)
+}
+
+fn pptx_replace_text_to(
+    file: &str,
+    out: &str,
+    slide: u32,
+    target: &str,
+    new_text: &str,
+) -> CliResult<Value> {
     if slide != 1 || target != "title" {
         return Err(CliError::invalid_args(
             "the Rust port currently supports pptx replace text --slide 1 --target title",
@@ -927,22 +1337,52 @@ fn pptx_replace_text(file: &str, args: &[String]) -> CliResult<Value> {
     }
     copy_zip_with_replacement(
         file,
-        &out,
+        out,
         "ppt/slides/slide1.xml",
         "Minimal Title Slide",
-        &xml_escape(&new_text),
+        &xml_escape(new_text),
     )?;
-    Ok(json!({
+    Ok(pptx_replace_text_readback(
+        file, out, slide, target, new_text,
+    ))
+}
+
+fn pptx_replace_text_in_place(
+    file: &str,
+    slide: u32,
+    target: &str,
+    new_text: &str,
+) -> CliResult<()> {
+    let temp = Path::new(file).with_extension(format!(
+        "{}.tmp",
+        Path::new(file)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .unwrap_or("pptx")
+    ));
+    pptx_replace_text_to(file, &temp.to_string_lossy(), slide, target, new_text)?;
+    fs::rename(temp, file).map_err(|err| CliError::unexpected(err.to_string()))?;
+    Ok(())
+}
+
+fn pptx_replace_text_readback(
+    file: &str,
+    out: &str,
+    slide: u32,
+    target: &str,
+    new_text: &str,
+) -> Value {
+    json!({
         "destination": {
             "file": out,
             "handle": "H:pptx/s:256/shape:n:2",
-            "primarySelector": "title",
+            "primarySelector": target,
             "selectors": ["title", "@title", "shape:2", "~Title 1"],
             "shapeId": 2,
             "shapeName": "Title 1",
-            "slide": 1,
-            "target": "title",
-            "targetKind": "title",
+            "slide": slide,
+            "target": target,
+            "targetKind": target,
             "textPreview": new_text,
         },
         "dryRun": false,
@@ -952,11 +1392,11 @@ fn pptx_replace_text(file: &str, args: &[String]) -> CliResult<Value> {
         "output": out,
         "readbackCommand": format!("ooxml --json pptx shapes get {out} --slide 1 --target title --include-text --include-bounds"),
         "renderCommand": format!("ooxml pptx render {out} --out render-check"),
-        "slideNumber": 1,
-        "slideReadbackCommand": format!("ooxml --json pptx slides show {out} --slide 1 --include-text --include-bounds"),
-        "target": "title",
+        "slideNumber": slide,
+        "slideReadbackCommand": format!("ooxml --json pptx slides show {out} --slide {slide} --include-text --include-bounds"),
+        "target": target,
         "validateCommand": format!("ooxml validate --strict {out}"),
-    }))
+    })
 }
 
 fn json_string(value: &Value, key: &str) -> CliResult<String> {
@@ -972,6 +1412,26 @@ fn json_optional_string(value: &Value, key: &str) -> Option<String> {
         .get(key)
         .and_then(Value::as_str)
         .map(ToString::to_string)
+}
+
+fn json_u32(value: &Value, key: &str) -> CliResult<Option<u32>> {
+    let Some(raw) = value.get(key) else {
+        return Ok(None);
+    };
+    if let Some(number) = raw.as_u64() {
+        return u32::try_from(number)
+            .map(Some)
+            .map_err(|_| CliError::invalid_args(format!("{key} must fit in uint32")));
+    }
+    if let Some(text) = raw.as_str() {
+        return text
+            .parse::<u32>()
+            .map(Some)
+            .map_err(|_| CliError::invalid_args(format!("{key} must be an integer")));
+    }
+    Err(CliError::invalid_args(format!(
+        "{key} must be an integer or integer string"
+    )))
 }
 
 fn mcp_tool_success(tool: &str, payload: Value, next_actions: Vec<String>) -> Value {
@@ -1372,52 +1832,64 @@ fn replace_cell_xml(xml: &str, cell: &str, value: &str) -> CliResult<String> {
     Ok(updated)
 }
 
-fn xlsx_cell_set_readback(file: &str, op: &ServeOp) -> Value {
+fn xlsx_cell_set_readback(
+    file: &str,
+    cell: &str,
+    value: &str,
+    previous_type: &str,
+    previous_value: &Value,
+) -> Value {
     json!({
-        "cellsExtractCommand": format!("ooxml --json xlsx cells extract {file} --sheet sheetId:1 --range {} --include-empty", op.cell),
+        "cellsExtractCommand": format!("ooxml --json xlsx cells extract {file} --sheet sheetId:1 --range {cell} --include-empty"),
         "created": false,
         "destination": {
             "cols": 1,
             "file": file,
             "formulaCount": 0,
             "formulas": [[null]],
-            "range": op.cell,
+            "range": cell,
             "rows": 1,
             "sheet": "Sheet1",
             "sheetNumber": 1,
             "sheetPrimarySelector": "sheetId:1",
-            "sheetSelectors": xlsx_sheet_selectors(),
+            "sheetSelectors": xlsx_sheet_selectors("Sheet1", 1, 1, "rId1", "/xl/worksheets/sheet1.xml"),
             "truncated": false,
             "types": [["string"]],
-            "values": [[op.value]],
+            "values": [[value]],
         },
         "dryRun": false,
         "file": file,
-        "handle": format!("H:xlsx/ws:1/cell:a:{}", op.cell),
+        "handle": format!("H:xlsx/ws:1/cell:a:{cell}"),
         "output": file,
-        "previousType": op.previous_type,
-        "previousValue": op.previous_value,
-        "rangesExportCommand": format!("ooxml --json xlsx ranges export {file} --sheet sheetId:1 --range {} --include-types --include-formulas --include-formats", op.cell),
-        "ref": op.cell,
+        "previousType": previous_type,
+        "previousValue": previous_value,
+        "rangesExportCommand": format!("ooxml --json xlsx ranges export {file} --sheet sheetId:1 --range {cell} --include-types --include-formulas --include-formats"),
+        "ref": cell,
         "sheet": "Sheet1",
         "sheetNumber": 1,
         "type": "string",
         "validateCommand": format!("ooxml validate --strict {file}"),
-        "value": op.value,
+        "value": value,
     })
 }
 
-fn xlsx_sheet_selectors() -> Vec<&'static str> {
+fn xlsx_sheet_selectors(
+    name: &str,
+    sheet_id: u32,
+    position: u32,
+    rel_id: &str,
+    part_uri: &str,
+) -> Vec<String> {
     vec![
-        "sheetId:1",
-        "sheet:1",
-        "#1",
-        "rId:rId1",
-        "rid:rId1",
-        "part:/xl/worksheets/sheet1.xml",
-        "name:Sheet1",
-        "~Sheet1",
-        "Sheet1",
+        format!("sheetId:{sheet_id}"),
+        format!("sheet:{position}"),
+        format!("#{position}"),
+        format!("rId:{rel_id}"),
+        format!("rid:{rel_id}"),
+        format!("part:{part_uri}"),
+        format!("name:{name}"),
+        format!("~{name}"),
+        name.to_string(),
     ]
 }
 
@@ -1886,7 +2358,8 @@ fn pptx_shape_models(xml: &str) -> Vec<Shape> {
 #[derive(Clone)]
 struct WorkbookSheet {
     name: String,
-    number: u32,
+    sheet_id: u32,
+    position: u32,
     rel_id: String,
 }
 
@@ -1907,7 +2380,8 @@ fn workbook_sheets(xml: &str) -> Vec<WorkbookSheet> {
                 {
                     sheets.push(WorkbookSheet {
                         name,
-                        number,
+                        sheet_id: number,
+                        position: sheets.len() as u32 + 1,
                         rel_id,
                     });
                 }
@@ -1921,8 +2395,36 @@ fn workbook_sheets(xml: &str) -> Vec<WorkbookSheet> {
 }
 
 fn resolve_sheet(sheets: &[WorkbookSheet], selector: &str) -> CliResult<WorkbookSheet> {
+    if let Some(sheet_id) = selector.strip_prefix("sheetId:")
+        && let Ok(sheet_id) = sheet_id.parse::<u32>()
+        && let Some(sheet) = sheets.iter().find(|sheet| sheet.sheet_id == sheet_id)
+    {
+        return Ok(sheet.clone());
+    }
+    if let Some(position) = selector
+        .strip_prefix("sheet:")
+        .or_else(|| selector.strip_prefix('#'))
+        && let Ok(position) = position.parse::<u32>()
+        && let Some(sheet) = sheets.iter().find(|sheet| sheet.position == position)
+    {
+        return Ok(sheet.clone());
+    }
+    if let Some(name) = selector
+        .strip_prefix("name:")
+        .or_else(|| selector.strip_prefix('~'))
+        && let Some(sheet) = sheets.iter().find(|sheet| sheet.name == name)
+    {
+        return Ok(sheet.clone());
+    }
+    if let Some(rel_id) = selector
+        .strip_prefix("rId:")
+        .or_else(|| selector.strip_prefix("rid:"))
+        && let Some(sheet) = sheets.iter().find(|sheet| sheet.rel_id == rel_id)
+    {
+        return Ok(sheet.clone());
+    }
     if let Ok(number) = selector.parse::<u32>()
-        && let Some(sheet) = sheets.iter().find(|sheet| sheet.number == number)
+        && let Some(sheet) = sheets.iter().find(|sheet| sheet.position == number)
     {
         return Ok(sheet.clone());
     }

@@ -24,6 +24,13 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `mcp` stdio JSON-RPC initialize, tools/resources discovery, command resource
   readback, and tools/call open, op, inspect, validate, plan, commit, and abort
   flow for the frozen XLSX cell-edit session
+- `--json capabilities --for <filter>` for the Rust-supported partial command
+  surface, including the web-agent-relevant PPTX and XLSX commands
+- `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
+  minimal workbook fixture
+- `serve` JSON-RPC generic PPTX inspect/op/commit path for
+  `pptx slides show` plus `pptx replace text`, matching the Flue workbench's
+  generic `apply_ooxml_ops_to_current` smoke route
 
 Still missing before parity can be claimed:
 

@@ -25,6 +25,19 @@ fn run_ooxml_with_env(args: &[&str], envs: &[(&str, &str)]) -> (i32, Option<Valu
     (code, stdout, stderr)
 }
 
+fn run_go_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
+    let output = Command::new("go")
+        .args(["run", "./cmd/ooxml"])
+        .args(args)
+        .env("GOCACHE", "/tmp/ooxml-go-build")
+        .output()
+        .expect("run Go ooxml oracle");
+    let code = output.status.code().unwrap_or(-1);
+    let stdout = parse_json(&output.stdout);
+    let stderr = parse_json(&output.stderr);
+    (code, stdout, stderr)
+}
+
 fn parse_json(bytes: &[u8]) -> Option<Value> {
     let text = std::str::from_utf8(bytes).expect("utf8").trim();
     if text.is_empty() {
@@ -273,6 +286,107 @@ fn frozen_serve_flow_matches_go_baseline() {
 }
 
 #[test]
+fn serve_pptx_generic_web_agent_edit_path_works() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-serve-pptx-{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = "testdata/pptx/minimal-title/presentation.pptx";
+    let output = temp_dir.join("serve-pptx-out.pptx");
+    let output_str = output.to_str().expect("output path").to_string();
+    let marker = format!("Rust serve web {}", std::process::id());
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({"file": input, "out": output_str}),
+        ),
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let inspect_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            2,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx slides show",
+                "args": {"slide": 1, "include-text": true},
+            }),
+        ),
+    );
+    assert_eq!(
+        inspect_response["result"]["slides"][0]["shapes"][0]["textContent"],
+        Value::String("Minimal Title Slide".to_string())
+    );
+
+    let op_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            3,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx replace text",
+                "args": {"slide": 1, "target": "title", "text": marker},
+            }),
+        ),
+    );
+    assert_eq!(op_response["result"]["readback"]["newText"], marker);
+
+    for (id, method) in [(4, "validate"), (5, "commit")] {
+        let response = serve_roundtrip(
+            &mut stdin,
+            &mut reader,
+            &rpc_request(id, method, serde_json::json!({"session": session})),
+        );
+        assert!(
+            response.get("error").is_none(),
+            "{method} returned error: {response:?}"
+        );
+    }
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "slides",
+        "show",
+        &output_str,
+        "--slide",
+        "1",
+        "--include-text",
+    ]);
+    assert_eq!(show_code, 0);
+    assert_eq!(show_stderr, None);
+    assert_eq!(
+        show_stdout.expect("show stdout")["slides"][0]["shapes"][0]["textContent"],
+        Value::String(marker)
+    );
+}
+
+#[test]
 fn frozen_mcp_discovery_and_flow_match_go_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-mcp-{}", std::process::id()));
@@ -445,6 +559,101 @@ fn frozen_mcp_discovery_and_flow_match_go_baseline() {
     assert_eq!(Value::Array(flow), baseline["mcp"]["flow"]["flow"]);
 }
 
+#[test]
+fn web_smoke_binary_readback_checks_are_supported() {
+    let baseline = baseline();
+    let web_smoke = &baseline["webSmoke"];
+    let checks = web_smoke["binaryReadbackChecks"]
+        .as_array()
+        .expect("web smoke readback checks")
+        .iter()
+        .map(|value| value.as_str().expect("check string"))
+        .collect::<Vec<_>>();
+    assert!(checks.contains(&"validate --strict"));
+    assert!(checks.contains(&"pptx slides show"));
+    assert!(checks.contains(&"docx text"));
+    assert!(checks.contains(&"xlsx sheets list"));
+
+    let pptx = web_smoke["agentDefaultFixture"]
+        .as_str()
+        .expect("pptx fixture");
+    let docx = web_smoke["docxDefaultFixture"]
+        .as_str()
+        .expect("docx fixture");
+    let xlsx = web_smoke["xlsxDefaultFixture"]
+        .as_str()
+        .expect("xlsx fixture");
+
+    for file in [pptx, docx, xlsx] {
+        let (code, stdout, stderr) = run_ooxml(&["--json", "--strict", "validate", file]);
+        assert_eq!(code, 0, "validate exit for {file}");
+        assert_eq!(stderr, None, "validate stderr for {file}");
+        assert_eq!(stdout.expect("validate stdout")["valid"], Value::Bool(true));
+    }
+
+    let (pptx_code, pptx_stdout, pptx_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "slides",
+        "show",
+        pptx,
+        "--slide",
+        "1",
+        "--include-text",
+    ]);
+    assert_eq!(pptx_code, 0);
+    assert_eq!(pptx_stderr, None);
+    assert_eq!(
+        pptx_stdout.expect("pptx stdout")["slides"][0]["shapes"][0]["textContent"],
+        Value::String("Minimal Title Slide".to_string())
+    );
+
+    let (docx_code, docx_stdout, docx_stderr) = run_ooxml(&["--json", "docx", "text", docx]);
+    assert_eq!(docx_code, 0);
+    assert_eq!(docx_stderr, None);
+    assert!(
+        docx_stdout.expect("docx stdout")["blocks"]
+            .as_array()
+            .expect("docx blocks")
+            .iter()
+            .any(|block| block["text"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("Hello world"))
+    );
+
+    let xlsx_args = ["--json", "xlsx", "sheets", "list", xlsx];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&xlsx_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&xlsx_args);
+    assert_eq!(rust_code, go_code, "xlsx sheets list exit");
+    assert_eq!(rust_stderr, go_stderr, "xlsx sheets list stderr");
+    assert_eq!(rust_stdout, go_stdout, "xlsx sheets list stdout");
+}
+
+#[test]
+fn capabilities_advertise_supported_web_agent_surface() {
+    let (pptx_code, pptx_stdout, pptx_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "pptx"]);
+    assert_eq!(pptx_code, 0);
+    assert_eq!(pptx_stderr, None);
+    let pptx_caps = pptx_stdout.expect("pptx capabilities");
+    assert_eq!(
+        pptx_caps["contractVersion"],
+        Value::String("ooxml-cli.agent-capabilities.v4".to_string())
+    );
+    assert_command(&pptx_caps, "ooxml pptx slides show", false);
+    assert_command(&pptx_caps, "ooxml pptx replace text", true);
+
+    let (xlsx_code, xlsx_stdout, xlsx_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "xlsx"]);
+    assert_eq!(xlsx_code, 0);
+    assert_eq!(xlsx_stderr, None);
+    let xlsx_caps = xlsx_stdout.expect("xlsx capabilities");
+    assert_command(&xlsx_caps, "ooxml xlsx sheets list", false);
+    assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
+    assert_command(&xlsx_caps, "ooxml xlsx cells set", true);
+}
+
 fn rpc_request(id: i64, method: &str, params: Value) -> Value {
     serde_json::json!({
         "id": id,
@@ -518,6 +727,19 @@ fn summarize_mcp_command_resource(result: &Value, uri: &str) -> Value {
         "flags": flags,
         "argNames": arg_names,
     })
+}
+
+fn assert_command(capabilities: &Value, path: &str, op_compatible: bool) {
+    let commands = capabilities["commands"].as_array().expect("commands array");
+    let command = commands
+        .iter()
+        .find(|command| command["path"].as_str() == Some(path))
+        .unwrap_or_else(|| panic!("missing command {path}: {commands:?}"));
+    assert_eq!(
+        command["opCompatible"],
+        Value::Bool(op_compatible),
+        "opCompatible for {path}"
+    );
 }
 
 fn sort_by_string_field(value: Value, field: &str) -> Value {
