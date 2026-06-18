@@ -328,11 +328,7 @@ export async function applyTemplateToCurrentDocument(input: {
   targetCharts?: boolean;
 }): Promise<Record<string, unknown>> {
   const { thread, document, version } = await currentSelection(input.threadId);
-  const templateDocument = documentById(thread, input.templateDocumentId);
-  if (templateDocument.id === document.id) {
-    throw new Error('Choose a different document as the template source.');
-  }
-  const templateVersion = currentVersion(thread, templateDocument);
+  const { templateDocument, templateVersion } = resolveTemplateSource(thread, document, input.templateDocumentId);
   const file = absoluteVersionPath(thread, version);
   const templateFile = absoluteVersionPath(thread, templateVersion);
   const dir = threadDir(input.threadId);
@@ -392,6 +388,19 @@ export async function applyTemplateToCurrentDocument(input: {
   });
 }
 
+function resolveTemplateSource(
+  thread: ThreadRecord,
+  document: ThreadDocument,
+  templateDocumentId: string,
+): { templateDocument: ThreadDocument; templateVersion: FileVersion } {
+  const templateDocument = documentById(thread, templateDocumentId);
+  if (templateDocument.id === document.id) {
+    throw new Error('Choose a different document as the template source.');
+  }
+  const templateVersion = currentVersion(thread, templateDocument);
+  return { templateDocument, templateVersion };
+}
+
 export async function createTemplateFormSlideFromCurrent(input: {
   threadId: string;
   templateDocumentId: string;
@@ -415,11 +424,7 @@ export async function createTemplateFormSlideFromCurrent(input: {
   }
   assertPresentation(version);
 
-  const templateDocument = documentById(thread, input.templateDocumentId);
-  if (templateDocument.id === document.id) {
-    throw new Error('Choose a different document as the template source.');
-  }
-  const templateVersion = currentVersion(thread, templateDocument);
+  const { templateDocument, templateVersion } = resolveTemplateSource(thread, document, input.templateDocumentId);
   assertPresentation(templateVersion);
 
   const sourceSlide = positiveSlideNumber(input.sourceSlide ?? 1, 'sourceSlide');
