@@ -110,6 +110,11 @@ app.post('/api/upload', async (c) => {
     const user = requireAuthUser(c);
     const limit = await checkRateLimit(`upload:${user.id}`, Number(process.env.OOXML_UPLOAD_RATE_LIMIT_PER_HOUR || 60), 60 * 60 * 1000);
     if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
+    const maxTotalBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_TOTAL_BYTES, 80 * 1024 * 1024);
+    const declaredBytes = Number(c.req.header('content-length') ?? 0);
+    if (Number.isFinite(declaredBytes) && declaredBytes > maxTotalBytes + 1024 * 1024) {
+      return c.json({ error: 'Upload is too large.' }, 413);
+    }
     const form = await c.req.formData();
     const title = String(form.get('title') ?? '');
     const threadId = String(form.get('threadId') ?? '').trim();
@@ -154,6 +159,11 @@ app.post('/api/threads/:id/upload', async (c) => {
     const user = requireAuthUser(c);
     const limit = await checkRateLimit(`upload:${user.id}`, Number(process.env.OOXML_UPLOAD_RATE_LIMIT_PER_HOUR || 60), 60 * 60 * 1000);
     if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
+    const maxTotalBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_TOTAL_BYTES, 80 * 1024 * 1024);
+    const declaredBytes = Number(c.req.header('content-length') ?? 0);
+    if (Number.isFinite(declaredBytes) && declaredBytes > maxTotalBytes + 1024 * 1024) {
+      return c.json({ error: 'Upload is too large.' }, 413);
+    }
     const form = await c.req.formData();
     const files = await officeFilesFromForm(form);
     const thread = await addDocumentsToThread(c.req.param('id'), files, user.id);
@@ -435,10 +445,18 @@ async function officeFilesFromForm(form: FormData): Promise<UploadedOfficeFile[]
 function errorResponse(c: Context, error: unknown, status: 400 | 404 | 500, options: { expose?: boolean } = {}): Response {
   const message = errorMessage(error);
   const effectiveStatus = message === 'Thread not found' ? 404 : status;
-  if (options.expose && effectiveStatus !== 500) return c.json({ error: message }, effectiveStatus);
+  // Never echo filesystem errors (a missing version/render file) to the client:
+  // Node's ENOENT message carries the absolute data-dir path. Storage's own
+  // intentional messages ("Version not found", validation text) have no path and
+  // stay exposed.
+  const looksLikeFsError = /\b(ENOENT|EACCES|EISDIR|ENOTDIR|EPERM)\b/.test(message) || /(^|\s)\/[^\s]/.test(message);
+  if (options.expose && effectiveStatus !== 500 && !looksLikeFsError) {
+    return c.json({ error: message }, effectiveStatus);
+  }
   const errorId = randomUUID();
   console.error('[ooxml-web] request failed', { errorId, error: message });
-  return c.json({ error: 'Request failed.', errorId }, effectiveStatus);
+  const publicMessage = effectiveStatus === 404 ? 'Not found or no longer available.' : 'Request failed.';
+  return c.json({ error: publicMessage, errorId }, effectiveStatus);
 }
 
 function renderErrorResponse(c: Context, error: unknown): Response {

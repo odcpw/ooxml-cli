@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { basename, extname, join, relative, resolve } from 'node:path';
 import { withAppBasePath } from './app-url.ts';
 import { runtimeDataRoot } from './runtime-paths.ts';
+import { atomicWriteFile } from './fs-atomic.ts';
 
 export type FileVersion = {
   id: string;
@@ -139,7 +140,7 @@ export async function writeThread(thread: ThreadRecord): Promise<void> {
   thread.versions = document.versions;
   thread.updatedAt = new Date().toISOString();
   await mkdir(threadDir(thread.id), { recursive: true });
-  await writeFile(threadJsonPath(thread.id), `${JSON.stringify(thread, null, 2)}\n`);
+  await atomicWriteFile(threadJsonPath(thread.id), `${JSON.stringify(thread, null, 2)}\n`);
 }
 
 export function currentDocument(thread: ThreadRecord): ThreadDocument {
@@ -347,12 +348,89 @@ function assertThreadOwner(thread: ThreadRecord, ownerUserId: string | undefined
   }
 }
 
+// ── Upload safety: refuse zip bombs ──────────────────────────────────────────
+// Office files are ZIP (OPC) packages. The upload limits cap the COMPRESSED
+// size; a small file can still inflate to many GB and OOM the shared host on the
+// first inspect/render. We read uncompressed sizes straight from the ZIP central
+// directory (no decompression) and refuse implausible packages before persisting.
+const maxUncompressedBytes = Math.max(
+  1,
+  Math.trunc(Number(process.env.OOXML_UPLOAD_MAX_UNCOMPRESSED_BYTES) || 500 * 1024 * 1024),
+);
+const maxCompressionRatio = Math.max(
+  1,
+  Math.trunc(Number(process.env.OOXML_UPLOAD_MAX_COMPRESSION_RATIO) || 300),
+);
+
+function assertSafeOoxmlZip(bytes: Uint8Array): void {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const len = bytes.byteLength;
+  if (len < 22) throw new Error('Upload is not a valid Office package.');
+
+  // Locate the End Of Central Directory record, scanning back over the optional comment.
+  let eocd = -1;
+  const lowBound = Math.max(0, len - (22 + 0xffff));
+  for (let i = len - 22; i >= lowBound; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error('Upload is not a valid Office package.');
+
+  const entryCount = view.getUint16(eocd + 10, true);
+  const cdOffset = view.getUint32(eocd + 16, true);
+  // We do not parse ZIP64; treat its sentinels as untrusted-large and refuse.
+  if (cdOffset === 0xffffffff || entryCount === 0xffff) {
+    throw new Error('Upload uses an unsupported (zip64) package format or is too large.');
+  }
+
+  let totalUncompressed = 0;
+  let totalCompressed = 0;
+  let seen = 0;
+  let p = cdOffset;
+  while (p + 46 <= len && view.getUint32(p, true) === 0x02014b50) {
+    const compressed = view.getUint32(p + 20, true);
+    const uncompressed = view.getUint32(p + 24, true);
+    const nameLen = view.getUint16(p + 28, true);
+    const extraLen = view.getUint16(p + 30, true);
+    const commentLen = view.getUint16(p + 32, true);
+    if (uncompressed === 0xffffffff || compressed === 0xffffffff) {
+      throw new Error('Upload uses an unsupported (zip64) package format or is too large.');
+    }
+    totalUncompressed += uncompressed;
+    totalCompressed += compressed;
+    if (totalUncompressed > maxUncompressedBytes) {
+      throw new Error(
+        `Upload expands to too much data (>${Math.round(maxUncompressedBytes / 1024 / 1024)} MB uncompressed) and was refused.`,
+      );
+    }
+    if (++seen > 100_000) throw new Error('Upload has too many entries and was refused.');
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+
+  // Fail closed: a bogus/out-of-bounds central-directory offset (or a forged
+  // EOCD) leaves the walk empty or short, which must NOT be accepted as safe.
+  if (seen === 0 || seen !== entryCount) {
+    throw new Error('Upload is not a valid Office package.');
+  }
+
+  if (
+    totalCompressed > 0 &&
+    totalUncompressed / totalCompressed > maxCompressionRatio &&
+    totalUncompressed > 50 * 1024 * 1024
+  ) {
+    throw new Error('Upload has an implausible compression ratio and was refused.');
+  }
+}
+
 async function writeUploadedDocument(threadId: string, input: UploadedOfficeFile, createdAt: string): Promise<ThreadDocument> {
   const originalBase = uploadBaseName(input.originalName);
   const ext = extname(originalBase).toLowerCase();
   if (!allowedExtensions.has(ext)) {
     throw new Error(`Unsupported Office file extension: ${ext || '(none)'}`);
   }
+  assertSafeOoxmlZip(input.bytes);
 
   const documentId = `doc-${randomUUID()}`;
   const dir = documentDir(threadId, documentId);

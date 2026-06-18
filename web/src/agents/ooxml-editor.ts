@@ -2,7 +2,7 @@ import { createAgent, type AgentRouteHandler } from '@flue/runtime';
 import ooxmlSkill from '../skills/ooxml/SKILL.md' with { type: 'skill' };
 import { createOoxmlTools } from '../shared/ooxml-tools.ts';
 import { requireAuthUser } from '../shared/auth.ts';
-import { threadExists } from '../shared/storage.ts';
+import { readThread } from '../shared/storage.ts';
 
 export const route: AgentRouteHandler = async (c, next) => {
   const threadId = c.req.param('id');
@@ -10,8 +10,17 @@ export const route: AgentRouteHandler = async (c, next) => {
     return c.json({ error: 'Thread id is required' }, 400);
   }
   const user = requireAuthUser(c);
-  if (!(await threadExists(threadId, user.id))) {
-    return c.json({ error: 'Thread not found' }, 404);
+  try {
+    await readThread(threadId, user.id);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Only a genuine missing thread or owner mismatch is a 404. A transient
+    // read error (e.g. a concurrent partial write) must not masquerade as
+    // "not found" for the legitimate owner — let it surface as a 500.
+    if (message === 'Thread not found' || (error as { code?: string }).code === 'ENOENT') {
+      return c.json({ error: 'Thread not found' }, 404);
+    }
+    throw error;
   }
   await next();
 };

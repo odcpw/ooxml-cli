@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { atomicWriteFile } from './fs-atomic.ts';
 import { dirname, join } from 'node:path';
 import type { Context, MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -243,7 +244,7 @@ ${themeCss()}
       </div>
       <div class="divider"></div>
       <form id="magicForm">
-        <input id="email" name="email" type="email" autocomplete="email" placeholder="name@company.com" required />
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="name@company.com" aria-label="Email address" required />
         <input name="returnTo" type="hidden" value="${escapeHtml(returnTo)}" />
         <button type="submit">Send sign-in link</button>
       </form>
@@ -1022,7 +1023,7 @@ async function loadAuthState(): Promise<AuthState> {
 async function saveAuthState(state: AuthState): Promise<void> {
   const path = authJsonPath();
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+  await atomicWriteFile(path, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
 }
 
 function authJsonPath(): string {

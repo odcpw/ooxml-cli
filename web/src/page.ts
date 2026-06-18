@@ -212,7 +212,7 @@ ${themeCss()}
         color: var(--color-muted);
       }
       .activity-line.error { color: var(--color-danger); }
-      .activity-time { color: color-mix(in srgb, var(--color-muted) 70%, var(--color-surface)); }
+      .activity-time { color: var(--color-muted); }
       .activity-text {
         overflow: hidden;
         text-overflow: ellipsis;
@@ -351,6 +351,22 @@ ${themeCss()}
         background: var(--color-surface);
         padding: var(--space-4);
       }
+      a#downloadLink {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: var(--control-h-sm);
+        padding: 0 0.625rem;
+        border: var(--border-width) solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-surface);
+        color: var(--color-text);
+        font-size: var(--text-sm);
+        font-weight: var(--font-weight-medium);
+        text-decoration: none;
+      }
+      a#downloadLink:hover { border-color: var(--color-accent); background: var(--color-surface-elev); }
+      a#downloadLink[hidden] { display: none; }
       @media (max-width: 1180px) {
         .app { grid-template-columns: 240px minmax(340px, 460px) minmax(0, 1fr); }
       }
@@ -384,8 +400,8 @@ ${themeCss()}
         <div class="section">
           <h2 class="section-title">Upload</h2>
           <form id="uploadForm" class="upload-form">
-            <input id="titleInput" type="text" placeholder="Thread title" />
-            <input id="fileInput" type="file" accept=".pptx,.pptm,.docx,.xlsx,.xlsm" multiple required />
+            <input id="titleInput" type="text" placeholder="Thread title" aria-label="Thread title" />
+            <input id="fileInput" type="file" accept=".pptx,.pptm,.docx,.xlsx,.xlsm" multiple required aria-label="Office files to upload" />
             <button id="uploadBtn" type="submit">Upload file(s)</button>
           </form>
           <div class="privacy-note">
@@ -400,12 +416,12 @@ ${themeCss()}
           <div class="row" style="margin-top:var(--space-2)">
             <button id="refreshBtn" class="secondary" disabled>Refresh</button>
             <button id="renderBtn" class="secondary" disabled>Render preview</button>
-            <a id="downloadLink" href="#" hidden>Download current</a>
+            <a id="downloadLink" class="secondary" href="#" hidden>Download current</a>
           </div>
         </div>
         <div id="chat" class="chat-log"></div>
         <form id="chatForm" class="composer">
-	          <textarea id="promptInput" placeholder="Ask the agent to translate slides, inspect, validate, render, search, or make exact text changes..." disabled></textarea>
+	          <textarea id="promptInput" placeholder="Ask the agent to translate slides, inspect, validate, render, search, or make exact text changes..." aria-label="Message the agent" disabled></textarea>
           <div class="activity-console" aria-label="Agent activity">
             <div class="activity-head">
               <div class="activity-title">Agent activity</div>
@@ -433,7 +449,7 @@ ${themeCss()}
           </div>
           <div class="row">
             <button id="zoomOutBtn" class="secondary" type="button">-</button>
-            <input id="zoomRange" type="range" min="180" max="720" step="20" value="280" />
+            <input id="zoomRange" type="range" min="180" max="720" step="20" value="280" aria-label="Preview zoom" />
             <button id="zoomInBtn" class="secondary" type="button">+</button>
           </div>
         </div>
@@ -553,12 +569,13 @@ ${themeCss()}
         if (!state.thread) return;
         const message = promptInput.value.trim();
         if (!message) return;
+        const threadId = state.thread.id;
         promptInput.value = '';
         resetActivity('Request queued');
         addMessage('user', message);
 	        setBusy(true, 'Agent working');
 	        try {
-          const response = await apiFetch('/flue/agents/ooxml-editor/' + encodeURIComponent(state.thread.id), {
+          const response = await apiFetch('/flue/agents/ooxml-editor/' + encodeURIComponent(threadId), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message })
@@ -566,11 +583,16 @@ ${themeCss()}
           const data = await readApiJson(response, 'Agent request', agentErrorMessage);
           if (data.submissionId) addMessage('trace', 'submission accepted · ' + String(data.submissionId).slice(0, 8));
           await streamAgentEvents(data);
-          await refreshThread();
-          await loadThreads(state.thread.id, false);
         } catch (error) {
           addMessage('error', error.message || String(error));
         } finally {
+          // Reconcile with server state after ANY outcome: the submission may
+          // have published a new version even if the live stream dropped, and
+          // the user may have cleared/switched the thread mid-turn.
+          if (state.thread && state.thread.id === threadId) {
+            await refreshThread().catch(() => undefined);
+          }
+          await loadThreads(threadId, false).catch(() => undefined);
           setBusy(false);
         }
       });
@@ -684,13 +706,15 @@ ${themeCss()}
           select.type = 'button';
           select.className = 'secondary';
           select.textContent = doc.id === currentDocumentId ? 'Selected' : 'Select';
-          select.disabled = doc.id === currentDocumentId;
+          select.dataset.baseDisabled = String(doc.id === currentDocumentId);
+          select.disabled = state.busy || doc.id === currentDocumentId;
           select.addEventListener('click', () => selectDocument(doc.id));
           const remove = document.createElement('button');
           remove.type = 'button';
           remove.className = 'danger';
           remove.textContent = 'Remove';
-          remove.disabled = documents.length <= 1;
+          remove.dataset.baseDisabled = String(documents.length <= 1);
+          remove.disabled = state.busy || documents.length <= 1;
           remove.addEventListener('click', () => removeDocument(doc.id, doc.originalName || doc.title));
           actions.append(select, remove);
           card.append(text, actions);
@@ -786,6 +810,7 @@ ${themeCss()}
 
       function resetActivity(text) {
         state.activityLines = [];
+        activityLog.innerHTML = '';
         logActivity(text);
       }
 
@@ -796,19 +821,26 @@ ${themeCss()}
           level,
         };
         state.activityLines.push(item);
-        if (state.activityLines.length > 80) state.activityLines.shift();
-        renderActivity();
-        return activityLog.lastElementChild;
-      }
-
-      function renderActivity() {
-        activityLog.innerHTML = state.activityLines.map((item) => (
-          '<div class="activity-line ' + (item.level === 'error' ? 'error' : '') + '">' +
-            '<span class="activity-time">' + escapeHtml(item.time) + '</span>' +
-            '<span class="activity-text" title="' + escapeHtml(item.text) + '">' + escapeHtml(item.text) + '</span>' +
-          '</div>'
-        )).join('');
+        // Append a single new line so the role=log / aria-live=polite /
+        // aria-relevant=additions region announces only the new entry, instead
+        // of re-reading the whole buffer (which the full innerHTML rebuild caused).
+        const line = document.createElement('div');
+        line.className = 'activity-line' + (item.level === 'error' ? ' error' : '');
+        const time = document.createElement('span');
+        time.className = 'activity-time';
+        time.textContent = item.time;
+        const body = document.createElement('span');
+        body.className = 'activity-text';
+        body.title = item.text;
+        body.textContent = item.text;
+        line.append(time, body);
+        activityLog.append(line);
+        while (state.activityLines.length > 80) {
+          state.activityLines.shift();
+          if (activityLog.firstChild) activityLog.removeChild(activityLog.firstChild);
+        }
         activityLog.scrollTop = activityLog.scrollHeight;
+        return line;
       }
 
 	      async function streamAgentEvents(admission) {
@@ -914,6 +946,7 @@ ${themeCss()}
             case 'operation':
               if (event.isError || event.error) {
                 addMessage('trace', 'operation failed · ' + readableError(event.error));
+                addMessage('error', 'Agent operation failed · ' + readableError(event.error));
               } else {
                 if (typeof event.result?.text === 'string') {
                   assistantText = event.result.text;
@@ -989,6 +1022,10 @@ ${themeCss()}
 		        stopBtn.hidden = !isBusy;
 		        refreshBtn.disabled = isBusy || !state.thread;
 	        renderBtn.disabled = isBusy || !state.thread || !canRenderCurrent();
+        newThreadBtn.disabled = isBusy;
+        documentList.querySelectorAll('button').forEach((button) => {
+          button.disabled = isBusy || button.dataset.baseDisabled === 'true';
+        });
 	        updateStatus();
 	      }
 

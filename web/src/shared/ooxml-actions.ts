@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { promisify } from 'node:util';
+import { runtimeDataRoot } from './runtime-paths.ts';
 import {
   absoluteVersionPath,
   artifactUrl,
@@ -27,6 +28,21 @@ import {
 const execFileAsync = promisify(execFile);
 const maxOutputBuffer = 24 * 1024 * 1024;
 
+// Remove server filesystem layout from text before it reaches the client. The
+// data-dir prefix and any remaining absolute path collapse to a basename, so
+// tool diagnostics stay useful without leaking thread/document paths or UUIDs.
+function scrubServerPaths(text: string): string {
+  if (!text) return text;
+  let out = text;
+  try {
+    const root = runtimeDataRoot();
+    if (root) out = out.split(root).join('<data>');
+  } catch {
+    /* data root unavailable — fall through to the generic path collapse */
+  }
+  return out.replace(/(?:\/[^\s'"]+)+\/([\w.\-]+)/g, '$1');
+}
+
 export async function runOoxml(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
   const bin = process.env.OOXML_BIN || 'ooxml';
   try {
@@ -43,12 +59,20 @@ export async function runOoxml(args: string[], cwd: string): Promise<{ stdout: s
     const err = error as Error & { stdout?: Buffer | string; stderr?: Buffer | string; code?: number };
     const stdout = typeof err.stdout === 'string' ? err.stdout : err.stdout?.toString() ?? '';
     const stderr = typeof err.stderr === 'string' ? err.stderr : err.stderr?.toString() ?? '';
+    const errorId = randomUUID().slice(0, 8);
+    // Full, unscrubbed detail (including absolute paths) stays server-side only.
+    console.error('[ooxml-web] ooxml command failed', {
+      errorId,
+      args: args.join(' '),
+      exitCode: err.code,
+      stderr: stderr.trim().slice(0, 4000),
+    });
     throw new Error(
       [
-        `ooxml failed${typeof err.code === 'number' ? ` with exit ${err.code}` : ''}: ${args.join(' ')}`,
-        stdout.trim() ? `stdout:\n${stdout.trim()}` : '',
-        stderr.trim() ? `stderr:\n${stderr.trim()}` : '',
-        err.message,
+        `ooxml failed${typeof err.code === 'number' ? ` with exit ${err.code}` : ''} [ref ${errorId}]`,
+        scrubServerPaths(stdout.trim()) ? `stdout:\n${scrubServerPaths(stdout.trim())}` : '',
+        scrubServerPaths(stderr.trim()) ? `stderr:\n${scrubServerPaths(stderr.trim())}` : '',
+        scrubServerPaths(err.message ?? ''),
       ]
         .filter(Boolean)
         .join('\n\n'),
@@ -183,8 +207,11 @@ export async function searchCurrent(input: {
 }): Promise<string> {
   const { thread, version } = await currentSelection(input.threadId);
   const file = absoluteVersionPath(thread, version);
-  const args = ['--json', 'find', input.query, file, '--max', '20'];
+  // Flags first, then `--`, then the user-controlled positionals, so a query
+  // beginning with '-' is treated as literal text rather than parsed as a flag.
+  const args = ['--json', 'find', '--max', '20'];
   if (input.ignoreCase) args.push('--ignore-case');
+  args.push('--', input.query, file);
   const result = await runOoxml(args, threadDir(input.threadId));
   return result.stdout;
 }
@@ -219,8 +246,11 @@ export async function replaceTextCurrent(input: {
   await mkdir(join(dir, 'documents', document.id, 'versions'), { recursive: true });
   await mkdir(join(dir, 'documents', document.id, 'tmp'), { recursive: true });
 
-  const findArgs = ['--json', 'find', input.query, file, '--replace', input.replacement, '--to-ops'];
+  // Flags first, then `--`, then the user-controlled positionals (query, file),
+  // so a query beginning with '-' is treated as literal text, not a flag.
+  const findArgs = ['--json', 'find', '--replace', input.replacement, '--to-ops'];
   if (input.ignoreCase) findArgs.push('--ignore-case');
+  findArgs.push('--', input.query, file);
   const ops = await runOoxml(findArgs, dir);
   const parsedOps = JSON.parse(ops.stdout) as unknown[];
   if (!Array.isArray(parsedOps) || parsedOps.length === 0) {
@@ -822,6 +852,17 @@ export async function applyOoxmlOpsToCurrent(input: {
   });
 }
 
+async function countSlidesSafe(file: string, cwd: string): Promise<number> {
+  try {
+    const listed = await runOoxmlJson<{ slides?: unknown[] }>(['--json', 'pptx', 'slides', 'list', file], cwd);
+    return Array.isArray(listed.slides) ? listed.slides.length : 0;
+  } catch {
+    // Cannot determine the count -> render all (pre-existing behavior). The
+    // upload zip-bomb guard already bounds total package size.
+    return 0;
+  }
+}
+
 export async function renderCurrent(threadId: string): Promise<Record<string, unknown>> {
   const { thread, document, version } = await currentSelection(threadId);
   if (!previewSupportedFor(version)) {
@@ -839,7 +880,13 @@ export async function renderCurrent(threadId: string): Promise<Record<string, un
   const renderDir = join(dir, 'documents', document.id, 'renders', `${version.id}-${randomUUID().slice(0, 8)}`);
   await mkdir(renderDir, { recursive: true });
 
-  const rendered = await runOoxml(['--json', 'pptx', 'render', file, '--out', renderDir, '--thumbnails'], dir);
+  // Cap how many slides we rasterize so one attacker-controlled many-slide deck
+  // (slides compress heavily) cannot fill the shared data volume with PNGs.
+  // Normal decks (<= cap) render exactly as before; only oversize decks get a
+  // 1..cap range, which pdftoppm rejects unless we know the deck is larger.
+  const maxRenderSlides = Math.max(1, Math.trunc(Number(process.env.OOXML_RENDER_MAX_SLIDES) || 200));
+  const slideArgs = (await countSlidesSafe(file, dir)) > maxRenderSlides ? ['--slides', `1-${maxRenderSlides}`] : [];
+  const rendered = await runOoxml(['--json', 'pptx', 'render', file, '--out', renderDir, '--thumbnails', ...slideArgs], dir);
   const parsed = JSON.parse(rendered.stdout) as {
     pdfPath?: string;
     thumbnails?: Array<{ index?: number; slide?: number; path?: string; imagePath?: string; width?: number; height?: number }>;
@@ -1146,11 +1193,13 @@ async function runOoxmlServe(requests: ServeRequest[], cwd: string): Promise<Ser
   }
 
   if (code !== 0) {
+    const errorId = randomUUID().slice(0, 8);
+    console.error('[ooxml-web] ooxml serve failed', { errorId, exitCode: code, stderr: stderrText.trim().slice(0, 4000) });
     throw new Error(
       [
-        `ooxml serve failed${typeof code === 'number' ? ` with exit ${code}` : ''}`,
-        stderrText.trim() ? `stderr:\n${stderrText.trim()}` : '',
-        stdoutText.trim() ? `stdout:\n${stdoutText.trim()}` : '',
+        `ooxml serve failed${typeof code === 'number' ? ` with exit ${code}` : ''} [ref ${errorId}]`,
+        scrubServerPaths(stderrText.trim()) ? `stderr:\n${scrubServerPaths(stderrText.trim())}` : '',
+        scrubServerPaths(stdoutText.trim()) ? `stdout:\n${scrubServerPaths(stdoutText.trim())}` : '',
       ]
         .filter(Boolean)
         .join('\n\n'),
@@ -1162,9 +1211,9 @@ async function runOoxmlServe(requests: ServeRequest[], cwd: string): Promise<Ser
       throw new Error(
         [
           `Missing ooxml serve response for request ${request.id} (${request.method})`,
-          parsed.ignoredLines.length ? `ignored stdout lines:\n${parsed.ignoredLines.join('\n')}` : '',
-          stdoutText.trim() ? `stdout:\n${stdoutText.trim()}` : '',
-          stderrText.trim() ? `stderr:\n${stderrText.trim()}` : '',
+          parsed.ignoredLines.length ? `ignored stdout lines:\n${scrubServerPaths(parsed.ignoredLines.join('\n'))}` : '',
+          scrubServerPaths(stdoutText.trim()) ? `stdout:\n${scrubServerPaths(stdoutText.trim())}` : '',
+          scrubServerPaths(stderrText.trim()) ? `stderr:\n${scrubServerPaths(stderrText.trim())}` : '',
         ]
           .filter(Boolean)
           .join('\n\n'),
