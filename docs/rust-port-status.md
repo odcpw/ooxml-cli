@@ -28,6 +28,10 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   surface, including the web-agent-relevant PPTX and XLSX commands
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
+- `--json pptx slides list <pptx>` with direct Go-oracle comparison for
+  minimal, notes, table, and dangling-layout PPTX fixtures
+- `--json pptx slides selectors <pptx> --slide <n>` for the generated minimal
+  slide selector readback path
 - `serve` JSON-RPC generic PPTX inspect/op/commit path for
   `pptx slides show` plus `pptx replace text`, matching the Flue workbench's
   generic `apply_ooxml_ops_to_current` smoke route

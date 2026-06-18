@@ -319,11 +319,29 @@ fn serve_pptx_generic_web_agent_edit_path_works() {
         .expect("session id")
         .to_string();
 
-    let inspect_response = serve_roundtrip(
+    let list_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
         &rpc_request(
             2,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx slides list",
+                "args": {},
+            }),
+        ),
+    );
+    assert_eq!(
+        list_response["result"]["slides"][0]["number"],
+        Value::from(1)
+    );
+
+    let inspect_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            3,
             "inspect",
             serde_json::json!({
                 "session": session,
@@ -341,7 +359,7 @@ fn serve_pptx_generic_web_agent_edit_path_works() {
         &mut stdin,
         &mut reader,
         &rpc_request(
-            3,
+            4,
             "op",
             serde_json::json!({
                 "session": session,
@@ -352,7 +370,7 @@ fn serve_pptx_generic_web_agent_edit_path_works() {
     );
     assert_eq!(op_response["result"]["readback"]["newText"], marker);
 
-    for (id, method) in [(4, "validate"), (5, "commit")] {
+    for (id, method) in [(5, "validate"), (6, "commit")] {
         let response = serve_roundtrip(
             &mut stdin,
             &mut reader,
@@ -607,6 +625,54 @@ fn web_smoke_binary_readback_checks_are_supported() {
         pptx_stdout.expect("pptx stdout")["slides"][0]["shapes"][0]["textContent"],
         Value::String("Minimal Title Slide".to_string())
     );
+    for fixture in [
+        pptx,
+        "testdata/pptx/notes-slide/presentation.pptx",
+        "testdata/pptx/table-slide/presentation.pptx",
+        "testdata/pptx/corrupted-dangling-layout/presentation.pptx",
+    ] {
+        let pptx_list_args = ["--json", "pptx", "slides", "list", fixture];
+        let (go_list_code, go_list_stdout, go_list_stderr) = run_go_ooxml(&pptx_list_args);
+        let (rust_list_code, rust_list_stdout, rust_list_stderr) = run_ooxml(&pptx_list_args);
+        assert_eq!(
+            rust_list_code, go_list_code,
+            "pptx slides list exit for {fixture}"
+        );
+        assert_eq!(
+            rust_list_stderr, go_list_stderr,
+            "pptx slides list stderr for {fixture}"
+        );
+        assert_eq!(
+            rust_list_stdout, go_list_stdout,
+            "pptx slides list stdout for {fixture}"
+        );
+    }
+
+    let pptx_selectors_args = [
+        "--json",
+        "pptx",
+        "slides",
+        "selectors",
+        pptx,
+        "--slide",
+        "1",
+    ];
+    let (go_selectors_code, go_selectors_stdout, go_selectors_stderr) =
+        run_go_ooxml(&pptx_selectors_args);
+    let (rust_selectors_code, rust_selectors_stdout, rust_selectors_stderr) =
+        run_ooxml(&pptx_selectors_args);
+    assert_eq!(
+        rust_selectors_code, go_selectors_code,
+        "pptx slides selectors exit"
+    );
+    assert_eq!(
+        rust_selectors_stderr, go_selectors_stderr,
+        "pptx slides selectors stderr"
+    );
+    assert_eq!(
+        rust_selectors_stdout, go_selectors_stdout,
+        "pptx slides selectors stdout"
+    );
 
     let (docx_code, docx_stdout, docx_stderr) = run_ooxml(&["--json", "docx", "text", docx]);
     assert_eq!(docx_code, 0);
@@ -641,6 +707,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
         pptx_caps["contractVersion"],
         Value::String("ooxml-cli.agent-capabilities.v4".to_string())
     );
+    assert_command(&pptx_caps, "ooxml pptx slides list", false);
+    assert_command(&pptx_caps, "ooxml pptx slides selectors", false);
     assert_command(&pptx_caps, "ooxml pptx slides show", false);
     assert_command(&pptx_caps, "ooxml pptx replace text", true);
 
