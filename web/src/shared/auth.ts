@@ -5,6 +5,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { appAbsoluteUrl, withAppBasePath } from './app-url.ts';
 import { dataRoot } from './storage.ts';
+import { themeCss } from './theme.ts';
 
 export const SESSION_COOKIE_NAME = 'ooxml_session';
 export const CSRF_COOKIE_NAME = 'ooxml_csrf';
@@ -177,72 +178,59 @@ export function signInHtml(input: { returnTo?: string | null } = {}): string {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sign in - OOXML Workbench</title>
     <style>
-      :root {
-        color-scheme: dark;
-        --bg: #0e0e10;
-        --surface: #16161a;
-        --surface-2: #1c1c21;
-        --border: #2a2a32;
-        --text: #e4e4e8;
-        --muted: #8e8e9a;
-        --accent: #7b83ff;
-      }
-      * { box-sizing: border-box; }
+${themeCss()}
+      /* Sign-in card layer */
       body {
-        margin: 0;
         min-height: 100vh;
         display: grid;
         place-items: center;
-        background: var(--bg);
-        color: var(--text);
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        padding: var(--space-4);
       }
       main {
-        width: min(420px, calc(100vw - 32px));
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        background: var(--surface);
-        padding: 24px;
+        width: min(420px, calc(100vw - 2 * var(--space-4)));
+        border: var(--border);
+        border-radius: var(--radius-lg);
+        background: var(--color-surface);
+        box-shadow: var(--shadow-sm);
+        padding: var(--space-6);
       }
-      h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: 0; }
-      p { margin: 0 0 18px; color: var(--muted); line-height: 1.45; }
-      form, .stack { display: grid; gap: 10px; }
-      input {
-        width: 100%;
-        border: 1px solid var(--border);
-        border-radius: 7px;
-        background: #111115;
-        color: var(--text);
-        padding: 10px 11px;
-        font: inherit;
+      h1 { margin: 0 0 var(--space-2); font-size: var(--text-xl); font-weight: var(--font-weight-semibold); letter-spacing: var(--tracking-tight); }
+      p { margin: 0 0 var(--space-5); color: var(--color-muted); line-height: var(--leading-snug); }
+      form, .stack { display: grid; gap: var(--space-3); }
+      /* Email field — .ss-input */
+      input[type="email"] {
+        display: block; width: 100%;
+        border: var(--border-width) solid var(--color-border); border-radius: var(--radius-md);
+        background: var(--color-surface); color: var(--color-text);
+        font-family: var(--font-sans); font-size: var(--text-sm);
+        padding: 0 0.75rem; min-height: var(--control-h-md); box-shadow: var(--shadow-sm); outline: none;
+        transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
       }
+      input[type="email"]::placeholder { color: var(--color-muted); }
+      input[type="email"]:hover { border-color: var(--color-accent); }
+      input[type="email"]:focus { border-color: var(--color-accent); box-shadow: 0 0 0 var(--ring-width) color-mix(in srgb, var(--color-accent) 35%, transparent); }
+      /* Buttons / OAuth links — .ss-btn */
       button, a.button {
-        display: inline-flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 40px;
-        border: 1px solid transparent;
-        border-radius: 7px;
-        background: var(--accent);
-        color: #fff;
-        font: inherit;
-        font-weight: 700;
-        text-decoration: none;
-        cursor: pointer;
-        padding: 9px 12px;
+        display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+        min-height: var(--control-h-md); padding: 0 0.75rem;
+        border: var(--border-width) solid var(--color-accent); border-radius: var(--radius-md);
+        background: var(--color-accent); color: var(--color-bg);
+        font-family: var(--font-sans); font-size: var(--text-sm); font-weight: var(--font-weight-medium); line-height: 1;
+        text-decoration: none; white-space: nowrap; cursor: pointer; outline: none;
+        transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), opacity var(--duration-fast) var(--ease-standard);
       }
+      button:hover, a.button:hover { opacity: 0.9; }
       a.button.secondary, button.secondary {
-        background: var(--surface-2);
-        border-color: var(--border);
-        color: var(--text);
+        background: var(--color-surface); border-color: var(--color-border); color: var(--color-text); opacity: 1;
       }
-      .divider {
-        margin: 18px 0;
-        border-top: 1px solid var(--border);
+      a.button.secondary:hover, button.secondary:hover {
+        opacity: 1; border-color: var(--color-accent); background: var(--color-surface-elev);
       }
-      .message { margin-top: 12px; color: var(--muted); min-height: 18px; font-size: 13px; }
-      .legal { display: flex; gap: 12px; margin-top: 14px; font-size: 13px; }
-      .legal a { color: var(--muted); }
+      .divider { margin: var(--space-5) 0; border-top: var(--border); }
+      .message { margin-top: var(--space-3); color: var(--color-muted); min-height: 18px; font-size: var(--text-sm); }
+      .legal { display: flex; gap: var(--space-3); margin-top: var(--space-4); font-size: var(--text-sm); }
+      .legal a { color: var(--color-muted); }
+      .legal a:hover { color: var(--color-text); }
     </style>
   </head>
   <body>
@@ -259,7 +247,7 @@ export function signInHtml(input: { returnTo?: string | null } = {}): string {
         <input name="returnTo" type="hidden" value="${escapeHtml(returnTo)}" />
         <button type="submit">Send sign-in link</button>
       </form>
-      ${devEnabled ? `<form method="post" action="${escapeHtml(withAppBasePath('/api/auth/dev-session'))}" style="margin-top:10px"><input name="returnTo" type="hidden" value="${escapeHtml(returnTo)}" /><button class="secondary" type="submit">Use development session</button></form>` : ''}
+      ${devEnabled ? `<form method="post" action="${escapeHtml(withAppBasePath('/api/auth/dev-session'))}" style="margin-top:var(--space-2)"><input name="returnTo" type="hidden" value="${escapeHtml(returnTo)}" /><button class="secondary" type="submit">Use development session</button></form>` : ''}
       <div id="message" class="message"></div>
       <div class="legal"><a href="${escapeHtml(withAppBasePath('/about'))}">About</a><a href="${escapeHtml(withAppBasePath('/privacy'))}">Privacy</a><a href="${escapeHtml(withAppBasePath('/terms'))}">Terms</a></div>
     </main>
@@ -350,8 +338,38 @@ export async function requestMagicLinkRoute(c: Context): Promise<Response> {
 
 export function confirmMagicLinkHtml(token: string): string {
   return `<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Sign in</title></head>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in - OOXML Workbench</title>
+  <style>
+${themeCss()}
+    /* Confirm card layer */
+    body { min-height: 100vh; display: grid; place-items: center; padding: var(--space-4); }
+    main {
+      width: min(420px, calc(100vw - 2 * var(--space-4)));
+      border: var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--color-surface);
+      box-shadow: var(--shadow-sm);
+      padding: var(--space-6);
+      text-align: center;
+    }
+    h1 { margin: 0 0 var(--space-2); font-size: var(--text-xl); font-weight: var(--font-weight-semibold); letter-spacing: var(--tracking-tight); }
+    p { margin: 0 0 var(--space-5); color: var(--color-muted); line-height: var(--leading-snug); }
+    button {
+      display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+      min-height: var(--control-h-md); padding: 0 1rem;
+      border: var(--border-width) solid var(--color-accent); border-radius: var(--radius-md);
+      background: var(--color-accent); color: var(--color-bg);
+      font-family: var(--font-sans); font-size: var(--text-sm); font-weight: var(--font-weight-medium); line-height: 1;
+      cursor: pointer; outline: none;
+      transition: opacity var(--duration-fast) var(--ease-standard);
+    }
+    button:hover { opacity: 0.9; }
+  </style>
+</head>
 <body>
   <main>
     <h1>Sign in to OOXML Workbench</h1>

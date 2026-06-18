@@ -35,6 +35,7 @@ import {
   versionById,
 } from './shared/storage.ts';
 import { publicThreadSummary, readVersionRenderArtifact, renderCurrent } from './shared/ooxml-actions.ts';
+import { themeCss } from './shared/theme.ts';
 import { workbenchHtml } from './page.ts';
 
 const app = new Hono<AuthEnv>();
@@ -340,16 +341,16 @@ function legalPageHtml(title: string, sections: readonly { title: string; body: 
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(title)} - OOXML Workbench</title>
     <style>
-      :root { color-scheme: dark; --bg: #0e0e10; --surface: #16161a; --border: #2a2a32; --text: #e4e4e8; --muted: #9b9ba5; --accent: #7b83ff; }
-      * { box-sizing: border-box; }
-      body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-      main { width: min(760px, calc(100vw - 32px)); margin: 0 auto; padding: 48px 0; }
-      a { color: var(--accent); }
-      header { border-bottom: 1px solid var(--border); margin-bottom: 26px; padding-bottom: 18px; }
-      h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: 0; }
-      h2 { margin: 24px 0 8px; font-size: 16px; letter-spacing: 0; }
-      p { color: var(--muted); line-height: 1.6; margin: 0 0 12px; }
-      nav { display: flex; gap: 14px; margin-top: 14px; }
+${themeCss()}
+      /* Legal page layer (About / Privacy / Terms) */
+      body { min-height: 100vh; }
+      main { width: min(760px, calc(100vw - var(--space-8))); margin: 0 auto; padding: var(--space-10) 0; }
+      a { color: var(--color-accent); }
+      header { border-bottom: var(--border); margin-bottom: var(--space-6); padding-bottom: var(--space-5); }
+      h1 { margin: 0 0 var(--space-2); font-size: var(--text-2xl); font-weight: var(--font-weight-semibold); letter-spacing: var(--tracking-tight); line-height: var(--leading-tight); }
+      h2 { margin: var(--space-6) 0 var(--space-2); font-size: var(--text-lg); font-weight: var(--font-weight-medium); letter-spacing: var(--tracking-tight); line-height: var(--leading-snug); }
+      p { color: var(--color-muted); font-size: var(--text-base); line-height: var(--leading-relaxed); margin: 0 0 var(--space-3); }
+      nav { display: flex; gap: var(--space-4); margin-top: var(--space-4); }
     </style>
   </head>
   <body>

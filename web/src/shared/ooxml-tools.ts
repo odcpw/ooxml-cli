@@ -191,16 +191,18 @@ export function createOoxmlTools(threadId: string) {
     defineTool({
       name: 'apply_template_to_current_document',
       description:
-        'Apply transferable design tokens from another uploaded document in this thread to the selected document. This uses ooxml template apply for theme colors and major/minor fonts; chart styling is optional. It does not rebuild slide layouts or copy arbitrary shape geometry.',
+        'Apply transferable design tokens from another uploaded document in this thread to the selected document. This uses ooxml template apply for theme colors, major/minor fonts, and PPTX master default text styles; chart styling is optional. It does not rebuild slide layouts or copy arbitrary shape geometry.',
       parameters: v.object({
         templateDocumentId: describedString('Document id of the uploaded template or booklet from get_thread_status.'),
+        targetTextStyles: v.optional(describedBoolean('Apply PPTX master default text styles by role. Defaults to true.')),
         targetCharts: v.optional(describedBoolean('Also apply chart styling when the document contains charts.')),
       }),
-      execute: async ({ templateDocumentId, targetCharts }) =>
+      execute: async ({ templateDocumentId, targetTextStyles, targetCharts }) =>
         JSON.stringify(
           await applyTemplateToCurrentDocument({
             threadId,
             templateDocumentId: String(templateDocumentId),
+            targetTextStyles: targetTextStyles === undefined ? undefined : Boolean(targetTextStyles),
             targetCharts: Boolean(targetCharts),
           }),
           null,

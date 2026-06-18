@@ -288,6 +288,7 @@ export async function setSlideShapeTextCurrent(input: {
 export async function applyTemplateToCurrentDocument(input: {
   threadId: string;
   templateDocumentId: string;
+  targetTextStyles?: boolean;
   targetCharts?: boolean;
 }): Promise<Record<string, unknown>> {
   const { thread, document, version } = await currentSelection(input.threadId);
@@ -316,6 +317,8 @@ export async function applyTemplateToCurrentDocument(input: {
     '--out',
     outPath,
   ];
+  const targetTextStyles = input.targetTextStyles ?? true;
+  if (targetTextStyles) args.push('--target-text-styles');
   if (input.targetCharts) args.push('--target-charts');
   const applied = await runOoxml(args, dir);
 
@@ -325,14 +328,15 @@ export async function applyTemplateToCurrentDocument(input: {
     sourceVersion: version,
     versionId: newVersionId,
     outPath,
-    note: `Applied template colors and fonts from ${templateDocument.title}`,
+    note: `Applied transferable template styling from ${templateDocument.title}`,
     apply: JSON.parse(applied.stdout),
     extra: {
       templateDocumentId: templateDocument.id,
       templateVersionId: templateVersion.id,
+      targetTextStyles,
       targetCharts: Boolean(input.targetCharts),
       limitation:
-        'Applies transferable design tokens: theme colors and major/minor fonts, plus chart styling when requested. It does not rebuild slide layouts or copy arbitrary shape geometry.',
+        'Applies transferable design tokens: theme colors, major/minor fonts, PPTX master default text styles, plus chart styling when requested. It does not rebuild slide layouts or copy arbitrary shape geometry.',
     },
   });
 }
