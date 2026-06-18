@@ -21,11 +21,13 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   diff envelope for the frozen PPTX fixture
 - `serve` JSON-RPC open, op, inspect, validate, plan, commit, and abort flow for
   the frozen XLSX cell-edit session
+- `mcp` stdio JSON-RPC initialize, tools/resources discovery, command resource
+  readback, and tools/call open, op, inspect, validate, plan, commit, and abort
+  flow for the frozen XLSX cell-edit session
 
 Still missing before parity can be claimed:
 
 - real render proof parity beyond the mocked frozen manifest path.
-- MCP discovery and session parity.
 - Full command-surface inventory parity.
 - Metamorphic and fuzz harnesses for OOXML package invariants.
 - Office/Open XML SDK/COM proof gates.

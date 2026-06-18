@@ -272,6 +272,179 @@ fn frozen_serve_flow_matches_go_baseline() {
     assert_eq!(Value::Array(flow), baseline["serve"]["flow"]);
 }
 
+#[test]
+fn frozen_mcp_discovery_and_flow_match_go_baseline() {
+    let baseline = baseline();
+    let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-mcp-{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("mcp-out.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn mcp");
+    let mut stdin = child.stdin.take().expect("mcp stdin");
+    let stdout = child.stdout.take().expect("mcp stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let initialize = rpc_request(
+        1,
+        "initialize",
+        serde_json::json!({
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "rust-contract", "version": "0.0.0"},
+        }),
+    );
+    let initialize_response = serve_roundtrip(&mut stdin, &mut reader, &initialize);
+    let tools_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(2, "tools/list", serde_json::json!({})),
+    );
+    let resources_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(3, "resources/list", serde_json::json!({})),
+    );
+    let templates_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(4, "resources/templates/list", serde_json::json!({})),
+    );
+    let command_uri = "resource://command/xlsx%20cells%20set";
+    let command_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(5, "resources/read", serde_json::json!({"uri": command_uri})),
+    );
+    let discovery = serde_json::json!({
+        "initialize": initialize_response["result"].clone(),
+        "tools": summarize_mcp_tools(&tools_response["result"]),
+        "resources": sort_by_string_field(resources_response["result"]["resources"].clone(), "uri"),
+        "resourceTemplates": templates_response["result"]["resourceTemplates"].clone(),
+        "commandResource": summarize_mcp_command_resource(&command_response["result"], command_uri),
+    });
+    assert_eq!(discovery, baseline["mcp"]["discovery"]);
+
+    let mut replacements = vec![
+        (input_str.clone(), "[MCP_INPUT_XLSX]".to_string()),
+        (output_str.clone(), "[MCP_OUT_XLSX]".to_string()),
+    ];
+    let mut flow = Vec::new();
+
+    let open = rpc_request(
+        6,
+        "tools/call",
+        serde_json::json!({
+            "name": "open",
+            "arguments": {"file": input_str, "out": output_str},
+        }),
+    );
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["structuredContent"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+    replacements.push((session.clone(), "[MCP_SESSION]".to_string()));
+    flow.push(flow_item("tools/call", open, open_response, &replacements));
+
+    let op = rpc_request(
+        7,
+        "tools/call",
+        serde_json::json!({
+            "name": "op",
+            "arguments": {
+                "session": session,
+                "command": "xlsx cells set",
+                "args": {"sheet": "1", "cell": "A1", "value": "mcp-contract"},
+            },
+        }),
+    );
+    let op_response = serve_roundtrip(&mut stdin, &mut reader, &op);
+    let working = op_response["result"]["structuredContent"]["readback"]["file"]
+        .as_str()
+        .expect("working package")
+        .to_string();
+    replacements.push((working, "[SESSION_WORKING_PACKAGE]".to_string()));
+    flow.push(flow_item("tools/call", op, op_response, &replacements));
+
+    let inspect = rpc_request(
+        8,
+        "tools/call",
+        serde_json::json!({
+            "name": "inspect",
+            "arguments": {
+                "session": session,
+                "command": "xlsx ranges export",
+                "args": {"sheet": "1", "range": "A1", "include-types": true},
+            },
+        }),
+    );
+    let inspect_response = serve_roundtrip(&mut stdin, &mut reader, &inspect);
+    flow.push(flow_item(
+        "tools/call",
+        inspect,
+        inspect_response,
+        &replacements,
+    ));
+
+    for (id, name) in [(9, "validate"), (10, "plan"), (11, "commit")] {
+        let request = rpc_request(
+            id,
+            "tools/call",
+            serde_json::json!({"name": name, "arguments": {"session": session}}),
+        );
+        let response = serve_roundtrip(&mut stdin, &mut reader, &request);
+        flow.push(flow_item("tools/call", request, response, &replacements));
+    }
+
+    let dry_open = rpc_request(
+        12,
+        "tools/call",
+        serde_json::json!({
+            "name": "open",
+            "arguments": {"file": input_str, "dryRun": true},
+        }),
+    );
+    let dry_open_response = serve_roundtrip(&mut stdin, &mut reader, &dry_open);
+    let dry_session = dry_open_response["result"]["structuredContent"]["sessionId"]
+        .as_str()
+        .expect("dry session id")
+        .to_string();
+    replacements.push((dry_session.clone(), "[MCP_DRY_RUN_SESSION]".to_string()));
+    flow.push(flow_item(
+        "tools/call",
+        dry_open,
+        dry_open_response,
+        &replacements,
+    ));
+
+    let abort = rpc_request(
+        13,
+        "tools/call",
+        serde_json::json!({"name": "abort", "arguments": {"session": dry_session}}),
+    );
+    let abort_response = serve_roundtrip(&mut stdin, &mut reader, &abort);
+    flow.push(flow_item(
+        "tools/call",
+        abort,
+        abort_response,
+        &replacements,
+    ));
+
+    drop(stdin);
+    let status = child.wait().expect("mcp exit");
+    assert!(status.success());
+    assert_eq!(Value::Array(flow), baseline["mcp"]["flow"]["flow"]);
+}
+
 fn rpc_request(id: i64, method: &str, params: Value) -> Value {
     serde_json::json!({
         "id": id,
@@ -293,6 +466,64 @@ fn serve_roundtrip(stdin: &mut impl Write, reader: &mut impl BufRead, request: &
     reader.read_line(&mut line).expect("read serve response");
     assert!(!line.trim().is_empty(), "empty serve response");
     serde_json::from_str(&line).expect("decode serve response")
+}
+
+fn summarize_mcp_tools(result: &Value) -> Value {
+    let mut tools: Vec<Value> = result["tools"]
+        .as_array()
+        .expect("tools array")
+        .iter()
+        .map(|tool| {
+            let schema = &tool["inputSchema"];
+            let properties = schema["properties"]
+                .as_object()
+                .expect("properties object")
+                .keys()
+                .cloned()
+                .map(Value::String)
+                .collect::<Vec<_>>();
+            serde_json::json!({
+                "name": tool["name"],
+                "properties": properties,
+                "required": schema["required"],
+                "additionalProperties": schema["additionalProperties"],
+            })
+        })
+        .collect();
+    tools.sort_by(|a, b| a["name"].as_str().unwrap().cmp(b["name"].as_str().unwrap()));
+    Value::Array(tools)
+}
+
+fn summarize_mcp_command_resource(result: &Value, uri: &str) -> Value {
+    let text = result["contents"][0]["text"]
+        .as_str()
+        .expect("resource text");
+    let body: Value = serde_json::from_str(text).expect("command resource JSON");
+    let flags = body["localFlags"]
+        .as_array()
+        .expect("local flags")
+        .iter()
+        .map(|flag| flag["name"].clone())
+        .collect::<Vec<_>>();
+    let arg_names = body["localFlags"]
+        .as_array()
+        .expect("local flags")
+        .iter()
+        .map(|flag| flag["argName"].clone())
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "uri": uri,
+        "path": body["path"],
+        "opCompatible": body["opCompatible"],
+        "flags": flags,
+        "argNames": arg_names,
+    })
+}
+
+fn sort_by_string_field(value: Value, field: &str) -> Value {
+    let mut items = value.as_array().expect("array").clone();
+    items.sort_by(|a, b| a[field].as_str().unwrap().cmp(b[field].as_str().unwrap()));
+    Value::Array(items)
 }
 
 fn flow_item(

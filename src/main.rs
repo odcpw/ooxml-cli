@@ -60,6 +60,9 @@ fn main() {
     if argv.first().map(String::as_str) == Some("serve") {
         std::process::exit(run_serve_stdio());
     }
+    if argv.first().map(String::as_str) == Some("mcp") {
+        std::process::exit(run_mcp_stdio());
+    }
     match run(&argv) {
         Ok(value) => {
             println!(
@@ -119,6 +122,188 @@ fn run_serve_stdio() -> i32 {
         }
     }
     EXIT_SUCCESS
+}
+
+fn run_mcp_stdio() -> i32 {
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    let mut state = McpState::default();
+    for line in stdin.lock().lines() {
+        let line = match line {
+            Ok(line) => line,
+            Err(err) => {
+                let _ = writeln!(std::io::stderr(), "mcp read error: {err}");
+                return EXIT_UNEXPECTED;
+            }
+        };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let request: Value = match serde_json::from_str(&line) {
+            Ok(value) => value,
+            Err(err) => {
+                let _ = writeln!(std::io::stderr(), "mcp JSON parse error: {err}");
+                return EXIT_INVALID_ARGS;
+            }
+        };
+        let response = state.handle_rpc(request);
+        if writeln!(
+            stdout,
+            "{}",
+            serde_json::to_string(&response).expect("serialize rpc response")
+        )
+        .is_err()
+        {
+            return EXIT_UNEXPECTED;
+        }
+        if stdout.flush().is_err() {
+            return EXIT_UNEXPECTED;
+        }
+    }
+    EXIT_SUCCESS
+}
+
+#[derive(Default)]
+struct McpState {
+    engine: ServeState,
+}
+
+impl McpState {
+    fn handle_rpc(&mut self, request: Value) -> Value {
+        let id = request.get("id").cloned().unwrap_or(Value::Null);
+        let method = request
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+        match self.handle_method(method, &params) {
+            Ok(result) => json!({"id": id, "jsonrpc": "2.0", "result": result}),
+            Err(err) => json!({
+                "id": id,
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": err.exit_code,
+                    "message": err.message,
+                    "data": {"type": err.code, "exitCode": err.exit_code},
+                },
+            }),
+        }
+    }
+
+    fn handle_method(&mut self, method: &str, params: &Value) -> CliResult<Value> {
+        match method {
+            "initialize" => Ok(json!({
+                "capabilities": {"resources": {}, "tools": {}},
+                "protocolVersion": "2025-06-18",
+                "serverInfo": {"name": "ooxml", "version": "0.0.1"},
+            })),
+            "tools/list" => Ok(json!({"tools": mcp_tools()})),
+            "tools/call" => self.handle_tools_call(params),
+            "resources/list" => Ok(json!({"resources": mcp_resources()})),
+            "resources/templates/list" => {
+                Ok(json!({"resourceTemplates": [mcp_command_resource_template()]}))
+            }
+            "resources/read" => self.handle_resource_read(params),
+            _ => Err(CliError::invalid_args(format!(
+                "unsupported MCP method: {method}"
+            ))),
+        }
+    }
+
+    fn handle_tools_call(&mut self, params: &Value) -> CliResult<Value> {
+        let name = json_string(params, "name")?;
+        let arguments = params
+            .get("arguments")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        match name.as_str() {
+            "open" => self.call_open(&arguments),
+            "op" => self.call_op(&arguments),
+            "inspect" => self.call_engine("inspect", &arguments, Vec::new()),
+            "validate" => self.call_engine("validate", &arguments, Vec::new()),
+            "plan" => self.call_engine("plan", &arguments, Vec::new()),
+            "commit" => self.call_commit(&arguments),
+            "abort" => self.call_engine("abort", &arguments, Vec::new()),
+            _ => Err(CliError::invalid_args(format!("unknown tool: {name}"))),
+        }
+    }
+
+    fn call_open(&mut self, arguments: &Value) -> CliResult<Value> {
+        let payload = self.engine.handle_method("open", arguments)?;
+        let session = payload
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| CliError::unexpected("open returned no sessionId"))?;
+        let next_actions = vec![
+            format!(
+                "call op/inspect/validate with session=\"{session}\" (thread this sessionId through every subsequent call)"
+            ),
+            "call commit to write the output, or abort to discard the working copy".to_string(),
+        ];
+        Ok(mcp_tool_success("open", payload, next_actions))
+    }
+
+    fn call_op(&mut self, arguments: &Value) -> CliResult<Value> {
+        let session = json_string(arguments, "session")?;
+        let payload = self.engine.handle_method("op", arguments)?;
+        let next_actions = vec![
+            format!(
+                "call inspect with session=\"{session}\" to confirm the change against the working copy"
+            ),
+            format!("call validate with session=\"{session}\" before committing"),
+            format!("call commit with session=\"{session}\" to write the output"),
+        ];
+        Ok(mcp_tool_success("op", payload, next_actions))
+    }
+
+    fn call_commit(&mut self, arguments: &Value) -> CliResult<Value> {
+        let payload = self.engine.handle_method("commit", arguments)?;
+        let next_actions = payload
+            .get("validateCommand")
+            .and_then(Value::as_str)
+            .map(|command| vec![format!("verify the output: {command}")])
+            .unwrap_or_default();
+        Ok(mcp_tool_success("commit", payload, next_actions))
+    }
+
+    fn call_engine(
+        &mut self,
+        method: &str,
+        arguments: &Value,
+        next_actions: Vec<String>,
+    ) -> CliResult<Value> {
+        let payload = self.engine.handle_method(method, arguments)?;
+        Ok(mcp_tool_success(method, payload, next_actions))
+    }
+
+    fn handle_resource_read(&self, params: &Value) -> CliResult<Value> {
+        let uri = json_string(params, "uri")?;
+        let text = match uri.as_str() {
+            "resource://capabilities" => serde_json::to_string(&mcp_capabilities_resource())
+                .expect("serialize capabilities resource"),
+            "resource://agent-guide" => serde_json::to_string(&json!({
+                "tool": "ooxml",
+                "guide": "Open a session with tools/call open, apply one op at a time, inspect and validate before commit.",
+            }))
+            .expect("serialize agent guide"),
+            "resource://command/xlsx%20cells%20set" | "resource://command/ooxml%20xlsx%20cells%20set" => {
+                serde_json::to_string(&mcp_xlsx_cells_set_resource())
+                    .expect("serialize command resource")
+            }
+            _ => {
+                return Err(CliError::file_not_found(format!(
+                    "unknown MCP resource: {uri}"
+                )));
+            }
+        };
+        Ok(json!({
+            "contents": [{
+                "mimeType": "application/json",
+                "text": text,
+                "uri": uri,
+            }]
+        }))
+    }
 }
 
 fn run(raw_args: &[String]) -> CliResult<Value> {
@@ -787,6 +972,327 @@ fn json_optional_string(value: &Value, key: &str) -> Option<String> {
         .get(key)
         .and_then(Value::as_str)
         .map(ToString::to_string)
+}
+
+fn mcp_tool_success(tool: &str, payload: Value, next_actions: Vec<String>) -> Value {
+    let structured = merge_next_actions(payload.clone(), &next_actions);
+    let text = match tool {
+        "open" => mcp_open_text(&structured),
+        "op" => mcp_op_text(&structured),
+        "inspect" => mcp_inspect_text(&structured),
+        "plan" => mcp_plan_text(&structured),
+        "commit" => mcp_commit_text(&structured),
+        _ => serde_json::to_string(&structured).expect("serialize MCP tool payload"),
+    };
+    json!({
+        "content": [{"text": text, "type": "text"}],
+        "structuredContent": structured,
+    })
+}
+
+fn merge_next_actions(mut payload: Value, next_actions: &[String]) -> Value {
+    if !next_actions.is_empty()
+        && let Value::Object(ref mut object) = payload
+    {
+        object.insert("next_actions".to_string(), json!(next_actions));
+    }
+    payload
+}
+
+fn mcp_open_text(value: &Value) -> String {
+    format!(
+        "{{\"next_actions\":{},\"sessionId\":{},\"type\":{}}}",
+        json_field(value, "next_actions"),
+        json_field(value, "sessionId"),
+        json_field(value, "type")
+    )
+}
+
+fn mcp_op_text(value: &Value) -> String {
+    format!(
+        "{{\"command\":{},\"index\":{},\"next_actions\":{},\"readback\":{}}}",
+        json_field(value, "command"),
+        json_field(value, "index"),
+        json_field(value, "next_actions"),
+        mcp_readback_text_for_op(&value["readback"])
+    )
+}
+
+fn mcp_inspect_text(value: &Value) -> String {
+    format!(
+        concat!(
+            "{{\"file\":{},\"sheet\":{},\"sheetNumber\":{},\"range\":{},",
+            "\"primarySelector\":{},\"selectors\":{},\"rows\":{},\"cols\":{},",
+            "\"values\":{},\"types\":{},\"formulaCount\":{},\"dataFormat\":{},",
+            "\"truncated\":{},\"majorDimension\":{},\"validateCommand\":{},",
+            "\"cellsExtractCommand\":{},\"pptxUpdateTableCommandTemplate\":{},",
+            "\"pptxPlaceTableCommandTemplate\":{},\"pptxReplaceTextCommandTemplate\":{}}}"
+        ),
+        json_field(value, "file"),
+        json_field(value, "sheet"),
+        json_field(value, "sheetNumber"),
+        json_field(value, "range"),
+        json_field(value, "primarySelector"),
+        json_field(value, "selectors"),
+        json_field(value, "rows"),
+        json_field(value, "cols"),
+        json_field(value, "values"),
+        json_field(value, "types"),
+        json_field(value, "formulaCount"),
+        json_field(value, "dataFormat"),
+        json_field(value, "truncated"),
+        json_field(value, "majorDimension"),
+        json_field(value, "validateCommand"),
+        json_field(value, "cellsExtractCommand"),
+        json_field(value, "pptxUpdateTableCommandTemplate"),
+        json_field(value, "pptxPlaceTableCommandTemplate"),
+        json_field(value, "pptxReplaceTextCommandTemplate"),
+    )
+}
+
+fn mcp_plan_text(value: &Value) -> String {
+    let plans = value["plan"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| {
+                    format!(
+                        "{{\"index\":{},\"command\":{},\"argv\":{}}}",
+                        json_field(item, "index"),
+                        json_field(item, "command"),
+                        json_field(item, "argv")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .unwrap_or_default();
+    format!(
+        "{{\"schemaVersion\":{},\"file\":{},\"opsCount\":{},\"dryRun\":{},\"plan\":[{}]}}",
+        json_field(value, "schemaVersion"),
+        json_field(value, "file"),
+        json_field(value, "opsCount"),
+        json_field(value, "dryRun"),
+        plans
+    )
+}
+
+fn mcp_commit_text(value: &Value) -> String {
+    let applied = value["applied"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| {
+                    format!(
+                        "{{\"index\":{},\"command\":{},\"readback\":{}}}",
+                        json_field(item, "index"),
+                        json_field(item, "command"),
+                        json_field(item, "readback")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .unwrap_or_default();
+    format!(
+        concat!(
+            "{{\"applied\":[{}],\"dryRun\":{},\"file\":{},\"next_actions\":{},",
+            "\"opsCount\":{},\"output\":{},\"schemaVersion\":{},\"validateCommand\":{}}}"
+        ),
+        applied,
+        json_field(value, "dryRun"),
+        json_field(value, "file"),
+        json_field(value, "next_actions"),
+        json_field(value, "opsCount"),
+        json_field(value, "output"),
+        json_field(value, "schemaVersion"),
+        json_field(value, "validateCommand")
+    )
+}
+
+fn mcp_readback_text_for_op(value: &Value) -> String {
+    let destination = &value["destination"];
+    format!(
+        concat!(
+            "{{\"file\":{},\"sheet\":{},\"sheetNumber\":{},\"ref\":{},",
+            "\"handle\":{},\"type\":{},\"value\":{},\"previousType\":{},",
+            "\"previousValue\":{},\"created\":{},\"output\":{},\"dryRun\":{},",
+            "\"destination\":{{\"file\":{},\"sheet\":{},\"sheetNumber\":{},",
+            "\"sheetPrimarySelector\":{},\"sheetSelectors\":{},\"range\":{},",
+            "\"rows\":{},\"cols\":{},\"values\":{},\"types\":{},\"formulas\":{},",
+            "\"formulaCount\":{},\"truncated\":{}}},\"validateCommand\":{},",
+            "\"cellsExtractCommand\":{},\"rangesExportCommand\":{}}}"
+        ),
+        json_field(value, "file"),
+        json_field(value, "sheet"),
+        json_field(value, "sheetNumber"),
+        json_field(value, "ref"),
+        json_field(value, "handle"),
+        json_field(value, "type"),
+        json_field(value, "value"),
+        json_field(value, "previousType"),
+        json_field(value, "previousValue"),
+        json_field(value, "created"),
+        json_field(value, "output"),
+        json_field(value, "dryRun"),
+        json_field(destination, "file"),
+        json_field(destination, "sheet"),
+        json_field(destination, "sheetNumber"),
+        json_field(destination, "sheetPrimarySelector"),
+        json_field(destination, "sheetSelectors"),
+        json_field(destination, "range"),
+        json_field(destination, "rows"),
+        json_field(destination, "cols"),
+        json_field(destination, "values"),
+        json_field(destination, "types"),
+        json_field(destination, "formulas"),
+        json_field(destination, "formulaCount"),
+        json_field(destination, "truncated"),
+        json_field(value, "validateCommand"),
+        json_field(value, "cellsExtractCommand"),
+        json_field(value, "rangesExportCommand")
+    )
+}
+
+fn json_field(value: &Value, key: &str) -> String {
+    serde_json::to_string(&value[key])
+        .expect("serialize JSON field")
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026")
+}
+
+fn mcp_tools() -> Value {
+    json!([
+        {
+            "name": "open",
+            "description": "Open a working copy of an OOXML file and start a session.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string"},
+                    "out": {"type": "string"},
+                    "inPlace": {"type": "boolean"},
+                    "backup": {"type": "string"},
+                    "noValidate": {"type": "boolean"},
+                    "dryRun": {"type": "boolean"}
+                },
+                "required": ["file"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "op",
+            "description": "Apply one mutation operation to the session working copy.",
+            "inputSchema": mcp_command_tool_schema()
+        },
+        {
+            "name": "inspect",
+            "description": "Run one read-only command against the session working copy.",
+            "inputSchema": mcp_command_tool_schema()
+        },
+        {
+            "name": "validate",
+            "description": "Validate the current working copy.",
+            "inputSchema": mcp_session_tool_schema()
+        },
+        {
+            "name": "plan",
+            "description": "Return the buffered operation plan.",
+            "inputSchema": mcp_session_tool_schema()
+        },
+        {
+            "name": "commit",
+            "description": "Write the working copy to the output target.",
+            "inputSchema": mcp_session_tool_schema()
+        },
+        {
+            "name": "abort",
+            "description": "Discard the working copy.",
+            "inputSchema": mcp_session_tool_schema()
+        }
+    ])
+}
+
+fn mcp_command_tool_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "session": {"type": "string"},
+            "command": {"type": "string"},
+            "args": {"type": "object"}
+        },
+        "required": ["command", "session"],
+        "additionalProperties": false
+    })
+}
+
+fn mcp_session_tool_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "session": {"type": "string"}
+        },
+        "required": ["session"],
+        "additionalProperties": false
+    })
+}
+
+fn mcp_resources() -> Value {
+    json!([
+        {
+            "uri": "resource://agent-guide",
+            "name": "agent-guide",
+            "description": "A compact, paste-ready guide for agent workflows across PPTX, XLSX, VBA, and DOCX. Same content as `ooxml agent guide --json`.",
+            "mimeType": "application/json"
+        },
+        {
+            "uri": "resource://capabilities",
+            "name": "capabilities",
+            "description": "The full machine-readable CLI contract: the command inventory, per-command flags, object kinds, exit codes, workflows, and the stable-handle grammar. This is the menu of valid command strings for the generic op/inspect tools.",
+            "mimeType": "application/json"
+        }
+    ])
+}
+
+fn mcp_command_resource_template() -> Value {
+    json!({
+        "uriTemplate": "resource://command/{path}",
+        "name": "command",
+        "description": "One command's flag schema, examples, common errors, and target object kinds. The path is the URL-encoded op-vocabulary command string (e.g. resource://command/xlsx%20cells%20set). Read the concrete URI to learn the args object to pass to the generic op/inspect tools for that command.",
+        "mimeType": "application/json"
+    })
+}
+
+fn mcp_capabilities_resource() -> Value {
+    json!({
+        "commands": [mcp_xlsx_cells_set_resource()],
+        "packageTypes": ["pptx", "xlsx", "docx"],
+        "tool": "ooxml",
+        "version": "0.0.1"
+    })
+}
+
+fn mcp_xlsx_cells_set_resource() -> Value {
+    json!({
+        "path": "ooxml xlsx cells set",
+        "opCompatible": true,
+        "localFlags": [
+            {"name": "--backup", "argName": "backup"},
+            {"name": "--cell", "argName": "cell"},
+            {"name": "--dry-run", "argName": "dryRun"},
+            {"name": "--formula", "argName": "formula"},
+            {"name": "--in-place", "argName": "inPlace"},
+            {"name": "--no-validate", "argName": "noValidate"},
+            {"name": "--out", "argName": "out"},
+            {"name": "--ref", "argName": "ref"},
+            {"name": "--sheet", "argName": "sheet"},
+            {"name": "--type", "argName": "type"},
+            {"name": "--value", "argName": "value"}
+        ]
+    })
 }
 
 fn make_working_copy(file: &str, session_number: usize) -> CliResult<String> {
