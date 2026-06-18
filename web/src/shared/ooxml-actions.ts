@@ -408,6 +408,19 @@ function resolveTemplateSource(
   return { templateDocument, templateVersion };
 }
 
+function requireExpectedSelectionForMultiFileMutation(
+  thread: ThreadRecord,
+  expectedDocumentId: string | undefined,
+  expectedVersionId: string | undefined,
+  action: string,
+): void {
+  if (thread.documents.length > 1 && (!expectedDocumentId || !expectedVersionId)) {
+    throw new Error(
+      `Multi-file threads require expectedDocumentId and expectedVersionId for ${action}. Call get_thread_status or inspect_current_with_ooxml, then retry with those guards.`,
+    );
+  }
+}
+
 export async function createTemplateFormSlideFromCurrent(input: {
   threadId: string;
   templateDocumentId: string;
@@ -424,11 +437,12 @@ export async function createTemplateFormSlideFromCurrent(input: {
     documentId: input.expectedDocumentId,
     versionId: input.expectedVersionId,
   });
-  if (thread.documents.length > 1 && (!input.expectedDocumentId || !input.expectedVersionId)) {
-    throw new Error(
-      'Multi-file threads require expectedDocumentId and expectedVersionId for template-form slide creation. Call get_thread_status or inspect_current_with_ooxml, then retry with those guards.',
-    );
-  }
+  requireExpectedSelectionForMultiFileMutation(
+    thread,
+    input.expectedDocumentId,
+    input.expectedVersionId,
+    'template-form slide creation',
+  );
   assertPresentation(version);
 
   const { templateDocument, templateVersion } = resolveTemplateSource(thread, document, input.templateDocumentId);
@@ -814,11 +828,7 @@ export async function applyOoxmlOpsToCurrent(input: {
     documentId: input.expectedDocumentId,
     versionId: input.expectedVersionId,
   });
-  if (thread.documents.length > 1 && (!input.expectedDocumentId || !input.expectedVersionId)) {
-    throw new Error(
-      'Multi-file threads require expectedDocumentId and expectedVersionId for generic mutations. Call get_thread_status or inspect_current_with_ooxml, then retry with those guards.',
-    );
-  }
+  requireExpectedSelectionForMultiFileMutation(thread, input.expectedDocumentId, input.expectedVersionId, 'generic mutations');
   const operations = parseOperationsJson(input.opsJson);
   const dir = threadDir(input.threadId);
   const file = absoluteVersionPath(thread, version);
