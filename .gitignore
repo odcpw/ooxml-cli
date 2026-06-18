@@ -19,6 +19,7 @@ go.work
 # Build artifacts
 /ooxml
 /ooxml-*
+/target/
 /tools/openxml-validator/bin/
 /tools/openxml-validator/obj/
 

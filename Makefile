@@ -1,4 +1,4 @@
-.PHONY: build test test-race-coverage test-short test-roundtrip fixtures install clean help render-smoke web-smoke-agent web-smoke-nonpptx office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check vet verify verify-strict
+.PHONY: build test test-race-coverage test-short test-roundtrip rust-test rust-contract fixtures install clean help render-smoke web-smoke-agent web-smoke-nonpptx office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check vet verify verify-strict
 
 # Default target
 .DEFAULT_GOAL := help
@@ -41,6 +41,14 @@ test-roundtrip:
 	@echo "Running roundtrip preservation tests..."
 	@go test -v -run TestRoundtrip ./pkg/opc/...
 	@echo "✓ Roundtrip tests passed"
+
+# rust-test: Run the Rust port tests
+rust-test:
+	@cargo test
+
+# rust-contract: Run the Rust port frozen Go-baseline contract smoke
+rust-contract:
+	@cargo test --test rust_contract_smoke
 
 # fixtures: Generate test fixtures using python-pptx
 fixtures:
