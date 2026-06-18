@@ -57,6 +57,8 @@ type rpcError struct {
 	Data    *ErrorBody `json:"data,omitempty"`
 }
 
+type rpcDispatchFunc func(method string, params json.RawMessage) (interface{}, *rpcError)
+
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Run a long-lived session engine over newline-delimited JSON-RPC 2.0",
@@ -97,6 +99,10 @@ type serveLoop struct {
 }
 
 func (l *serveLoop) run(in io.Reader, out io.Writer) error {
+	return runRPCTransport(in, out, l.dispatch)
+}
+
+func runRPCTransport(in io.Reader, out io.Writer, dispatch rpcDispatchFunc) error {
 	reader := bufio.NewReader(in)
 	enc := json.NewEncoder(out)
 	for {
@@ -109,7 +115,7 @@ func (l *serveLoop) run(in io.Reader, out io.Writer) error {
 				return NewCLIErrorf(ExitUnexpected, "failed to write response: %v", encErr)
 			}
 		} else if trimmed := strings.TrimSpace(string(line)); trimmed != "" {
-			resp := l.handleLine([]byte(trimmed))
+			resp := handleRPCLine([]byte(trimmed), dispatch)
 			if resp != nil {
 				if encErr := enc.Encode(resp); encErr != nil {
 					return NewCLIErrorf(ExitUnexpected, "failed to write response: %v", encErr)
@@ -176,13 +182,13 @@ func oversizedLineResponse() *rpcResponse {
 	})
 }
 
-func (l *serveLoop) handleLine(line []byte) *rpcResponse {
+func handleRPCLine(line []byte, dispatch rpcDispatchFunc) *rpcResponse {
 	req, invalid := parseRPCRequest(line)
 	if invalid != nil {
 		return invalid
 	}
 
-	result, rerr := l.dispatch(req.Method, req.Params)
+	result, rerr := dispatch(req.Method, req.Params)
 	if rerr != nil {
 		// A request with no id is a notification; it gets no response even on error.
 		if len(req.ID) == 0 {
@@ -194,6 +200,10 @@ func (l *serveLoop) handleLine(line []byte) *rpcResponse {
 		return nil
 	}
 	return &rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: result}
+}
+
+func (l *serveLoop) handleLine(line []byte) *rpcResponse {
+	return handleRPCLine(line, l.dispatch)
 }
 
 func parseRPCRequest(line []byte) (rpcRequest, *rpcResponse) {

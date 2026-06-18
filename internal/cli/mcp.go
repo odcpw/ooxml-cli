@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -87,53 +86,11 @@ type mcpLoop struct {
 }
 
 func (l *mcpLoop) run(in io.Reader, out io.Writer) error {
-	// Bounded, reap-safe framing shared with serveLoop.run (see readRPCLine): an
-	// over-cap or malformed line fails per-request and the loop — and every open
-	// session — stays alive, instead of the old 16MB bufio.Scanner whose ErrTooLong
-	// unwound to runMCP's defer engine.Close() and reaped all sessions.
-	reader := bufio.NewReader(in)
-	enc := json.NewEncoder(out)
-	for {
-		line, tooLong, err := readRPCLine(reader)
-		if tooLong {
-			if encErr := enc.Encode(oversizedLineResponse()); encErr != nil {
-				return NewCLIErrorf(ExitUnexpected, "failed to write response: %v", encErr)
-			}
-		} else if trimmed := strings.TrimSpace(string(line)); trimmed != "" {
-			resp := l.handleLine([]byte(trimmed))
-			if resp != nil {
-				if encErr := enc.Encode(resp); encErr != nil {
-					return NewCLIErrorf(ExitUnexpected, "failed to write response: %v", encErr)
-				}
-			}
-		}
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return NewCLIErrorf(ExitUnexpected, "failed to read input: %v", err)
-		}
-	}
+	return runRPCTransport(in, out, l.dispatch)
 }
 
 func (l *mcpLoop) handleLine(line []byte) *rpcResponse {
-	req, invalid := parseRPCRequest(line)
-	if invalid != nil {
-		return invalid
-	}
-
-	result, rerr := l.dispatch(req.Method, req.Params)
-	if rerr != nil {
-		// A request with no id is a notification; it gets no response even on error.
-		if len(req.ID) == 0 {
-			return nil
-		}
-		return &rpcResponse{JSONRPC: "2.0", ID: req.ID, Error: rerr}
-	}
-	if len(req.ID) == 0 {
-		return nil
-	}
-	return &rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: result}
+	return handleRPCLine(line, l.dispatch)
 }
 
 // dispatch routes an MCP method. Protocol-level failures (unknown method, bad
