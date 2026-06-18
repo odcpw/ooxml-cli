@@ -18,6 +18,13 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json pptx slides show ... --include-text`
 - `--json xlsx ranges export ...` with Go-oracle comparison for default JSON
   export, typed export, formula/format matrices, and `--max-cells` guardrails
+- `--json xlsx ranges set ...` with Go-oracle comparison for inline JSON
+  matrices, saved output readback, formula cells, null skipping, dry-run
+  templates, generated mutation readback commands, formula-overwrite rejection,
+  merged-cell rejection, and preservation of untouched shared-string/style/
+  formula-cache cell XML; this is direct CLI subset support, with CSV/TSV,
+  stdin, full formula recalculation/calc-chain parity, and serve `op` routing
+  still open in `DISC-001`
 - `--json docx text <docx>` with Go-oracle comparison across the committed
   positive DOCX fixture corpus: paragraphs, styles, preserved whitespace,
   hyperlinks, field/instruction text omission, tables, merged tables, headers,
@@ -49,7 +56,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 19, and the harness pins the 271-command gap until
+  paths, Rust advertises 20, and the harness pins the 270-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

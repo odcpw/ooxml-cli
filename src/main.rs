@@ -1,7 +1,7 @@
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -443,6 +443,68 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             )
         }
         [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "ranges" && verb == "set" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--range",
+                    "--anchor",
+                    "--values",
+                    "--values-file",
+                    "--data-format",
+                    "--null-policy",
+                    "--ragged",
+                    "--max-cells",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--dry-run",
+                    "--no-validate",
+                    "--in-place",
+                    "--overwrite-formulas",
+                ],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?
+                .ok_or_else(|| CliError::invalid_args("--sheet is required for range commands"))?;
+            let range = parse_string_flag(rest, "--range")?;
+            let anchor = parse_string_flag(rest, "--anchor")?;
+            let values = parse_string_flag(rest, "--values")?;
+            let values_file = parse_string_flag(rest, "--values-file")?;
+            let data_format = parse_string_flag(rest, "--data-format")?;
+            let null_policy = parse_string_flag(rest, "--null-policy")?;
+            let ragged = parse_string_flag(rest, "--ragged")?;
+            let max_cells = parse_i64_flag(rest, "--max-cells")?.unwrap_or(100000);
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let no_validate = has_flag(rest, "--no-validate");
+            let in_place = has_flag(rest, "--in-place");
+            let overwrite_formulas = has_flag(rest, "--overwrite-formulas");
+            xlsx_ranges_set(
+                file,
+                XlsxRangesSetOptions {
+                    sheet: &sheet,
+                    range: range.as_deref(),
+                    anchor: anchor.as_deref(),
+                    values: values.as_deref(),
+                    values_file: values_file.as_deref(),
+                    data_format: data_format.as_deref(),
+                    null_policy: null_policy.as_deref(),
+                    ragged: ragged.as_deref(),
+                    max_cells,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    no_validate,
+                    in_place,
+                    overwrite_formulas,
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "cells" && verb == "extract" =>
         {
             let sheet = parse_string_flag(rest, "--sheet")?.unwrap_or_else(|| "1".to_string());
@@ -613,9 +675,9 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
             "package": ["ooxml inspect", "ooxml validate", "ooxml verify"],
             "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text", "ooxml pptx render"],
             "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text"],
-            "sheet": ["ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx ranges export", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
-            "range": ["ooxml xlsx ranges export", "ooxml xlsx cells extract", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
-            "cell": ["ooxml xlsx cells set"],
+            "sheet": ["ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
+            "range": ["ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx cells extract", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
+            "cell": ["ooxml xlsx ranges set", "ooxml xlsx cells set"],
             "table": ["ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "style": []
         },
@@ -645,6 +707,7 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
                 "commands": [
                     "ooxml --json xlsx sheets list workbook.xlsx",
                     "ooxml --json xlsx ranges export workbook.xlsx --sheet sheetId:1 --range A1 --include-types",
+                    "ooxml --json xlsx ranges set workbook.xlsx --sheet sheetId:1 --range A1:B2 --values '[[\"A\",\"B\"],[1,2]]' --out edited.xlsx",
                     "serve op command: xlsx cells set"
                 ]
             }
@@ -957,6 +1020,66 @@ fn capability_commands() -> Vec<Value> {
                     "maxCells",
                     "number",
                     "maximum cells to export",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml xlsx ranges set",
+            "set <file>",
+            "Set a worksheet range from a rectangular JSON matrix.",
+            &["sheet", "range", "cell"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag("--range", "range", "string", "A1 range"),
+                flag("--anchor", "anchor", "string", "top-left A1 cell"),
+                flag("--values", "values", "string", "inline JSON matrix data"),
+                flag(
+                    "--values-file",
+                    "valuesFile",
+                    "string",
+                    "path to JSON matrix data",
+                ),
+                flag(
+                    "--data-format",
+                    "dataFormat",
+                    "string",
+                    "matrix data format; Rust currently implements json",
+                ),
+                flag(
+                    "--null-policy",
+                    "nullPolicy",
+                    "string",
+                    "null handling: skip, clear, or empty-string",
+                ),
+                flag(
+                    "--ragged",
+                    "ragged",
+                    "string",
+                    "ragged handling: reject or fill-empty",
+                ),
+                flag("--max-cells", "maxCells", "number", "maximum cells to set"),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--overwrite-formulas",
+                    "overwriteFormulas",
+                    "bool",
+                    "allow replacing existing formula cells",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "accepted for CLI compatibility",
                 ),
             ],
         ),
@@ -2139,6 +2262,1307 @@ fn check_range_max_cells(range: &str, bounds: RangeBounds, max_cells: i64) -> Cl
         )));
     }
     Ok(())
+}
+
+struct XlsxRangesSetOptions<'a> {
+    sheet: &'a str,
+    range: Option<&'a str>,
+    anchor: Option<&'a str>,
+    values: Option<&'a str>,
+    values_file: Option<&'a str>,
+    data_format: Option<&'a str>,
+    null_policy: Option<&'a str>,
+    ragged: Option<&'a str>,
+    max_cells: i64,
+    out: Option<&'a str>,
+    backup: Option<&'a str>,
+    dry_run: bool,
+    no_validate: bool,
+    in_place: bool,
+    overwrite_formulas: bool,
+}
+
+#[derive(Clone)]
+struct XlsxMatrixCell {
+    kind: String,
+    value: String,
+    formula: String,
+    null: bool,
+}
+
+struct XlsxRangeSetMatrix {
+    range: Option<String>,
+    null_policy: Option<String>,
+    major_dimension: String,
+    rows: Vec<Vec<XlsxMatrixCell>>,
+}
+
+#[derive(Default)]
+struct XlsxRangeSetStats {
+    updated: usize,
+    created: usize,
+    cleared: usize,
+    skipped: usize,
+    formula_count: usize,
+}
+
+fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> CliResult<Value> {
+    if !Path::new(file).exists() {
+        return Err(CliError::file_not_found(format!("file not found: {file}")));
+    }
+    require_json_data_format(options.data_format)?;
+    let data = resolve_xlsx_ranges_set_values(options.values, options.values_file)?;
+    let mut matrix = parse_xlsx_range_set_matrix(&data)?;
+    rectangularize_xlsx_matrix(&mut matrix.rows, options.ragged.unwrap_or("reject"))?;
+    let null_policy = options
+        .null_policy
+        .map(ToString::to_string)
+        .or_else(|| matrix.null_policy.clone())
+        .unwrap_or_else(|| "skip".to_string());
+    validate_xlsx_null_policy(&null_policy)?;
+    let bounds = resolve_xlsx_ranges_set_bounds(
+        options.range,
+        options.anchor,
+        matrix.range.as_deref(),
+        matrix.rows.len(),
+        matrix.rows.first().map_or(0, Vec::len),
+    )?;
+    let range = range_bounds_ref(bounds);
+    check_range_max_cells(&range, bounds, options.max_cells)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+
+    let (sheet, sheet_part) = resolve_xlsx_sheet_context(file, options.sheet)?;
+    let sheet_xml = zip_text(file, &sheet_part)?;
+    let (updated_xml, stats) = set_xlsx_range_in_sheet_xml(
+        &sheet_xml,
+        bounds,
+        &matrix.rows,
+        &null_policy,
+        options.overwrite_formulas,
+    )?;
+
+    let output_path = options.out.filter(|value| !value.is_empty());
+    let commit_path = if options.in_place {
+        Some(file)
+    } else {
+        output_path
+    };
+    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
+        xlsx_ranges_set_temp_path(file)
+    } else {
+        output_path
+            .ok_or_else(|| {
+                CliError::invalid_args(
+                    "must specify exactly one of --out, --in-place, or --dry-run",
+                )
+            })?
+            .to_string()
+    };
+    copy_zip_with_part_override(file, &readback_path, &sheet_part, &updated_xml)?;
+    if !options.no_validate {
+        validate(&readback_path, true)?;
+    }
+    let destination =
+        xlsx_range_destination_json(&readback_path, commit_path, &sheet, &sheet_part, &range)?;
+    if options.dry_run {
+        let _ = fs::remove_file(&readback_path);
+    } else if options.in_place || output_path == Some(file) {
+        if let Some(backup_path) = options.backup.filter(|value| !value.is_empty()) {
+            fs::copy(file, backup_path)
+                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+        }
+        fs::rename(&readback_path, file)
+            .or_else(|_| {
+                fs::copy(&readback_path, file)?;
+                fs::remove_file(&readback_path)
+            })
+            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    }
+
+    let rows = bounds.end_row - bounds.start_row + 1;
+    let cols = bounds.end_col - bounds.start_col + 1;
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("sheet".to_string(), json!(sheet.name));
+    result.insert("sheetNumber".to_string(), json!(sheet.position));
+    result.insert(
+        "anchor".to_string(),
+        json!(format!(
+            "{}{}",
+            col_name(bounds.start_col),
+            bounds.start_row
+        )),
+    );
+    result.insert("range".to_string(), json!(range));
+    result.insert("rows".to_string(), json!(rows));
+    result.insert("cols".to_string(), json!(cols));
+    result.insert("updated".to_string(), json!(stats.updated));
+    result.insert("created".to_string(), json!(stats.created));
+    result.insert("cleared".to_string(), json!(stats.cleared));
+    result.insert("skipped".to_string(), json!(stats.skipped));
+    result.insert("formulaCount".to_string(), json!(stats.formula_count));
+    result.insert("dataFormat".to_string(), json!("json"));
+    result.insert("nullPolicy".to_string(), json!(null_policy));
+    result.insert("majorDimension".to_string(), json!(matrix.major_dimension));
+    if let Some(commit_path) = commit_path {
+        result.insert("output".to_string(), json!(commit_path));
+    }
+    result.insert("dryRun".to_string(), json!(options.dry_run));
+    result.insert("destination".to_string(), destination);
+    add_xlsx_range_mutation_commands(
+        &mut result,
+        commit_path,
+        &format!("sheetId:{}", sheet.sheet_id),
+        &range,
+    );
+    Ok(Value::Object(result))
+}
+
+fn chrono_like_counter() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0)
+}
+
+fn xlsx_ranges_set_temp_path(file: &str) -> String {
+    let parent = Path::new(file)
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    parent
+        .join(format!(
+            ".ooxml-rust-ranges-set-{}-{}.xlsx",
+            std::process::id(),
+            chrono_like_counter()
+        ))
+        .to_string_lossy()
+        .to_string()
+}
+
+fn resolve_xlsx_ranges_set_values(
+    values: Option<&str>,
+    values_file: Option<&str>,
+) -> CliResult<String> {
+    match (values, values_file) {
+        (Some(_), Some(_)) | (None, None) => Err(CliError::invalid_args(
+            "must specify exactly one of --values or --values-file",
+        )),
+        (Some(values), None) => Ok(values.to_string()),
+        (None, Some("-")) => Err(CliError::invalid_args(
+            "--values-file - is not implemented in the Rust port; use --values or a file path",
+        )),
+        (None, Some(path)) => fs::read_to_string(path)
+            .map_err(|_| CliError::file_not_found(format!("file not found: {path}"))),
+    }
+}
+
+fn parse_xlsx_range_set_matrix(data: &str) -> CliResult<XlsxRangeSetMatrix> {
+    let raw: Value = serde_json::from_str(data)
+        .map_err(|err| CliError::invalid_args(format!("invalid json values: {err}")))?;
+    let (range, null_policy, major_dimension, values) = if let Some(object) = raw.as_object() {
+        if object.contains_key("values") {
+            (
+                object
+                    .get("range")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                object
+                    .get("nullPolicy")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                object
+                    .get("majorDimension")
+                    .and_then(Value::as_str)
+                    .unwrap_or("rows")
+                    .to_string(),
+                object
+                    .get("values")
+                    .cloned()
+                    .ok_or_else(|| CliError::invalid_args("JSON object must contain values"))?,
+            )
+        } else {
+            (None, None, "rows".to_string(), raw)
+        }
+    } else {
+        (None, None, "rows".to_string(), raw)
+    };
+    let mut rows = parse_xlsx_matrix_rows(&values)?;
+    let major_dimension = match major_dimension.trim().to_ascii_lowercase().as_str() {
+        "" | "rows" => "rows".to_string(),
+        "columns" => {
+            rows = transpose_xlsx_matrix(rows)?;
+            "columns".to_string()
+        }
+        _ => {
+            return Err(CliError::invalid_args(
+                "majorDimension must be rows or columns",
+            ));
+        }
+    };
+    Ok(XlsxRangeSetMatrix {
+        range,
+        null_policy,
+        major_dimension,
+        rows,
+    })
+}
+
+fn parse_xlsx_matrix_rows(value: &Value) -> CliResult<Vec<Vec<XlsxMatrixCell>>> {
+    let rows = value
+        .as_array()
+        .ok_or_else(|| CliError::invalid_args("values must be an array of arrays"))?;
+    rows.iter()
+        .enumerate()
+        .map(|(row_idx, row)| {
+            let cells = row.as_array().ok_or_else(|| {
+                CliError::invalid_args(format!("values[{row_idx}] must be an array"))
+            })?;
+            cells
+                .iter()
+                .enumerate()
+                .map(|(col_idx, cell)| {
+                    parse_xlsx_matrix_cell(cell).map_err(|err| {
+                        CliError::invalid_args(format!(
+                            "values[{row_idx}][{col_idx}]: {}",
+                            err.message
+                        ))
+                    })
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn parse_xlsx_matrix_cell(value: &Value) -> CliResult<XlsxMatrixCell> {
+    if value.is_null() {
+        return Ok(XlsxMatrixCell {
+            kind: "empty".to_string(),
+            value: String::new(),
+            formula: String::new(),
+            null: true,
+        });
+    }
+    if let Some(text) = value.as_str() {
+        return Ok(XlsxMatrixCell {
+            kind: "string".to_string(),
+            value: text.to_string(),
+            formula: String::new(),
+            null: false,
+        });
+    }
+    if let Some(number) = value.as_number() {
+        return Ok(XlsxMatrixCell {
+            kind: "number".to_string(),
+            value: number.to_string(),
+            formula: String::new(),
+            null: false,
+        });
+    }
+    if let Some(boolean) = value.as_bool() {
+        return Ok(XlsxMatrixCell {
+            kind: "boolean".to_string(),
+            value: boolean.to_string(),
+            formula: String::new(),
+            null: false,
+        });
+    }
+    let object = value
+        .as_object()
+        .ok_or_else(|| CliError::invalid_args("unsupported JSON cell type"))?;
+    if let Some(formula) = object.get("formula") {
+        let formula = formula
+            .as_str()
+            .ok_or_else(|| CliError::invalid_args("formula must be a string"))?;
+        if formula.trim().is_empty() {
+            return Err(CliError::invalid_args("formula cannot be empty"));
+        }
+        return Ok(XlsxMatrixCell {
+            kind: "formula".to_string(),
+            value: formula.to_string(),
+            formula: formula.to_string(),
+            null: false,
+        });
+    }
+    let raw_value = object
+        .get("value")
+        .ok_or_else(|| CliError::invalid_args("object cell must contain value or formula"))?;
+    let mut cell = parse_xlsx_matrix_cell(raw_value)?;
+    if let Some(kind) = object.get("type").and_then(Value::as_str) {
+        cell.kind = kind.trim().to_ascii_lowercase();
+        if cell.kind == "formula" {
+            cell.formula = cell.value.clone();
+        }
+    }
+    Ok(cell)
+}
+
+fn transpose_xlsx_matrix(rows: Vec<Vec<XlsxMatrixCell>>) -> CliResult<Vec<Vec<XlsxMatrixCell>>> {
+    if rows.is_empty() {
+        return Ok(rows);
+    }
+    let cols = rows[0].len();
+    if rows.iter().any(|row| row.len() != cols) {
+        return Err(CliError::invalid_args(
+            "ragged columns matrix cannot be transposed",
+        ));
+    }
+    let mut out = vec![Vec::with_capacity(rows.len()); cols];
+    for row in rows {
+        for (col_idx, cell) in row.into_iter().enumerate() {
+            out[col_idx].push(cell);
+        }
+    }
+    Ok(out)
+}
+
+fn rectangularize_xlsx_matrix(rows: &mut Vec<Vec<XlsxMatrixCell>>, ragged: &str) -> CliResult<()> {
+    if rows.is_empty() {
+        return Err(CliError::invalid_args("values matrix cannot be empty"));
+    }
+    let cols = rows[0].len();
+    let max_cols = rows.iter().map(Vec::len).max().unwrap_or(cols);
+    if max_cols == 0 {
+        return Err(CliError::invalid_args(
+            "values matrix must contain at least one column",
+        ));
+    }
+    match ragged.trim().to_ascii_lowercase().as_str() {
+        "" | "reject" => {
+            for (idx, row) in rows.iter().enumerate().skip(1) {
+                if row.len() != cols {
+                    return Err(CliError::invalid_args(format!(
+                        "ragged matrix row {} has {} columns, want {}",
+                        idx + 1,
+                        row.len(),
+                        cols
+                    )));
+                }
+            }
+        }
+        "fill-empty" => {
+            for row in rows {
+                while row.len() < max_cols {
+                    row.push(XlsxMatrixCell {
+                        kind: "string".to_string(),
+                        value: String::new(),
+                        formula: String::new(),
+                        null: false,
+                    });
+                }
+            }
+        }
+        _ => {
+            return Err(CliError::invalid_args(
+                "invalid ragged mode (must be reject or fill-empty)",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_xlsx_null_policy(policy: &str) -> CliResult<()> {
+    match policy.trim().to_ascii_lowercase().as_str() {
+        "skip" | "clear" | "empty-string" => Ok(()),
+        _ => Err(CliError::invalid_args(
+            "invalid null policy (must be skip, clear, or empty-string)",
+        )),
+    }
+}
+
+fn resolve_xlsx_ranges_set_bounds(
+    range: Option<&str>,
+    anchor: Option<&str>,
+    input_range: Option<&str>,
+    rows: usize,
+    cols: usize,
+) -> CliResult<RangeBounds> {
+    let mut sources = 0;
+    if range.is_some_and(|value| !value.trim().is_empty()) {
+        sources += 1;
+    }
+    if anchor.is_some_and(|value| !value.trim().is_empty()) {
+        sources += 1;
+    }
+    if input_range.is_some_and(|value| !value.trim().is_empty()) {
+        sources += 1;
+    }
+    if sources != 1 {
+        return Err(CliError::invalid_args(
+            "must specify exactly one of --anchor, --range, or JSON input range",
+        ));
+    }
+    if let Some(anchor) = anchor.filter(|value| !value.trim().is_empty()) {
+        let (start_col, start_row) = parse_cell_ref(anchor)?;
+        let end_col = start_col + cols as u32 - 1;
+        let end_row = start_row + rows as u32 - 1;
+        return Ok(RangeBounds {
+            start_col,
+            start_row,
+            end_col,
+            end_row,
+        });
+    }
+    let range_text = input_range
+        .filter(|value| !value.trim().is_empty())
+        .or(range)
+        .unwrap_or_default();
+    let bounds = parse_range(range_text)?;
+    let range_rows = bounds.end_row - bounds.start_row + 1;
+    let range_cols = bounds.end_col - bounds.start_col + 1;
+    if range_rows as usize != rows || range_cols as usize != cols {
+        return Err(CliError::invalid_args(format!(
+            "range {} is {}x{} but values matrix is {}x{}",
+            range_text, range_rows, range_cols, rows, cols
+        )));
+    }
+    Ok(bounds)
+}
+
+fn validate_xlsx_mutation_output_flags(
+    out: Option<&str>,
+    in_place: bool,
+    backup: Option<&str>,
+    dry_run: bool,
+) -> CliResult<()> {
+    let has_out = out.is_some_and(|value| !value.trim().is_empty());
+    let has_backup = backup.is_some_and(|value| !value.trim().is_empty());
+    if dry_run && (has_out || in_place) {
+        return Err(CliError::invalid_args(
+            "--dry-run cannot be combined with --out or --in-place",
+        ));
+    }
+    if dry_run && has_backup {
+        return Err(CliError::invalid_args(
+            "--backup cannot be used with --dry-run",
+        ));
+    }
+    if !dry_run && !has_out && !in_place {
+        return Err(CliError::invalid_args(
+            "must specify exactly one of --out, --in-place, or --dry-run",
+        ));
+    }
+    if has_out && in_place {
+        return Err(CliError::invalid_args(
+            "cannot specify both --out and --in-place",
+        ));
+    }
+    if has_backup && !in_place {
+        return Err(CliError::invalid_args(
+            "--backup can only be used with --in-place",
+        ));
+    }
+    Ok(())
+}
+
+fn resolve_xlsx_sheet_context(
+    file: &str,
+    sheet_selector: &str,
+) -> CliResult<(WorkbookSheet, String)> {
+    let workbook = zip_text(file, "xl/workbook.xml")?;
+    let sheets = workbook_sheets(&workbook)?;
+    let sheet = resolve_sheet(&sheets, sheet_selector)?;
+    let rels = relationships(file, "xl/_rels/workbook.xml.rels")?;
+    let target = rels
+        .get(&sheet.rel_id)
+        .ok_or_else(|| CliError::unexpected(format!("missing relationship {}", sheet.rel_id)))?;
+    let sheet_part = normalize_xl_target(target);
+    Ok((sheet, sheet_part))
+}
+
+fn set_xlsx_range_in_sheet_xml(
+    xml: &str,
+    bounds: RangeBounds,
+    rows: &[Vec<XlsxMatrixCell>],
+    null_policy: &str,
+    overwrite_formulas: bool,
+) -> CliResult<(String, XlsxRangeSetStats)> {
+    reject_xlsx_merged_cell_intersection(xml, bounds)?;
+    let sheet_data = xlsx_sheet_data_span(xml)?;
+    let row_spans = parse_xlsx_row_spans(xml, sheet_data.as_ref())?;
+
+    let mut stats = XlsxRangeSetStats::default();
+    let mut changed_rows = BTreeMap::<u32, String>::new();
+    for (row_offset, row) in rows.iter().enumerate() {
+        let row_number = bounds.start_row + row_offset as u32;
+        let existing_row = row_spans.get(&row_number);
+        let mut rendered_cells = existing_row
+            .map(|span| {
+                span.cells
+                    .iter()
+                    .map(|(col, cell)| (*col, cell.xml.clone()))
+                    .collect::<BTreeMap<u32, String>>()
+            })
+            .unwrap_or_default();
+        let mut row_changed = false;
+        for (col_offset, cell) in row.iter().enumerate() {
+            let col_number = bounds.start_col + col_offset as u32;
+            let addr = format!("{}{}", col_name(col_number), row_number);
+            let existing_cell = existing_row.and_then(|span| span.cells.get(&col_number));
+            if !overwrite_formulas
+                && existing_cell.is_some_and(|span| span.has_formula)
+                && xlsx_range_cell_touches_existing(cell, null_policy)
+            {
+                return Err(CliError::invalid_args(format!(
+                    "range write would overwrite existing formula: {addr}"
+                )));
+            }
+            if cell.null {
+                match null_policy.trim().to_ascii_lowercase().as_str() {
+                    "skip" => {
+                        stats.skipped += 1;
+                    }
+                    "clear" => {
+                        if let Some(existing_cell) = existing_cell {
+                            stats.cleared += 1;
+                            row_changed = true;
+                            if existing_cell
+                                .attrs
+                                .get("s")
+                                .is_some_and(|value| !value.is_empty())
+                            {
+                                rendered_cells.insert(
+                                    col_number,
+                                    render_empty_xlsx_cell_with_attrs(
+                                        &addr,
+                                        Some(&existing_cell.attrs),
+                                    ),
+                                );
+                            } else {
+                                rendered_cells.remove(&col_number);
+                            }
+                        } else {
+                            rendered_cells.remove(&col_number);
+                        }
+                    }
+                    "empty-string" => {
+                        let empty = XlsxMatrixCell {
+                            kind: "string".to_string(),
+                            value: String::new(),
+                            formula: String::new(),
+                            null: false,
+                        };
+                        let (rendered, wrote_formula) = render_xlsx_cell_with_attrs(
+                            &addr,
+                            &empty,
+                            existing_cell.map(|span| &span.attrs),
+                        )?;
+                        rendered_cells.insert(col_number, rendered);
+                        row_changed = true;
+                        stats.updated += 1;
+                        if existing_cell.is_none() {
+                            stats.created += 1;
+                        }
+                        if wrote_formula {
+                            stats.formula_count += 1;
+                        }
+                    }
+                    _ => unreachable!("null policy validated earlier"),
+                }
+                continue;
+            }
+            let (rendered, wrote_formula) =
+                render_xlsx_cell_with_attrs(&addr, cell, existing_cell.map(|span| &span.attrs))?;
+            rendered_cells.insert(col_number, rendered);
+            row_changed = true;
+            if existing_cell.is_none() {
+                stats.created += 1;
+            }
+            if wrote_formula {
+                stats.formula_count += 1;
+            }
+            stats.updated += 1;
+        }
+        if row_changed {
+            changed_rows.insert(
+                row_number,
+                render_xlsx_row(row_number, existing_row, rendered_cells),
+            );
+        }
+    }
+    let updated = rebuild_xlsx_sheet_data(xml, sheet_data.as_ref(), &row_spans, &changed_rows)?;
+    let used_range = xlsx_used_range_from_cell_refs(&updated);
+    Ok((
+        replace_xlsx_dimension(&updated, used_range.as_deref()),
+        stats,
+    ))
+}
+
+fn xlsx_range_cell_touches_existing(cell: &XlsxMatrixCell, null_policy: &str) -> bool {
+    !(cell.null && null_policy.trim().eq_ignore_ascii_case("skip"))
+}
+
+fn render_xlsx_cell_with_attrs(
+    addr: &str,
+    cell: &XlsxMatrixCell,
+    attrs: Option<&BTreeMap<String, String>>,
+) -> CliResult<(String, bool)> {
+    let mut attrs = attrs.cloned().unwrap_or_default();
+    attrs.insert("r".to_string(), addr.to_string());
+    attrs.remove("t");
+    let (kind, value) = normalize_xlsx_write_cell(cell)?;
+    let (content, wrote_formula) = match kind.as_str() {
+        "string" => {
+            attrs.insert("t".to_string(), "inlineStr".to_string());
+            let space_attr = if needs_xml_space_preserve(&value) {
+                " xml:space=\"preserve\""
+            } else {
+                ""
+            };
+            (
+                format!("<is><t{space_attr}>{}</t></is>", xml_escape(&value)),
+                false,
+            )
+        }
+        "number" => (format!("<v>{}</v>", xml_escape(&value)), false),
+        "bool" | "boolean" => {
+            let value = match cell.value.trim().to_ascii_lowercase().as_str() {
+                "true" | "1" => "1",
+                _ => "0",
+            };
+            attrs.insert("t".to_string(), "b".to_string());
+            (format!("<v>{value}</v>"), false)
+        }
+        "formula" => (format!("<f>{}</f>", xml_escape(&value)), true),
+        _ => unreachable!("cell kind normalized earlier"),
+    };
+    Ok((
+        format!("<c{}>{content}</c>", render_xml_attrs(&attrs)),
+        wrote_formula,
+    ))
+}
+
+fn normalize_xlsx_write_cell(cell: &XlsxMatrixCell) -> CliResult<(String, String)> {
+    let kind = if !cell.formula.is_empty() {
+        "formula".to_string()
+    } else {
+        cell.kind.trim().to_ascii_lowercase()
+    };
+    match kind.as_str() {
+        "" | "string" => Ok(("string".to_string(), cell.value.clone())),
+        "number" => {
+            let literal = cell.value.trim();
+            let parsed = literal.parse::<f64>().map_err(|_| {
+                CliError::invalid_args(format!("invalid number value {:?}", cell.value))
+            })?;
+            if !parsed.is_finite() || literal.is_empty() {
+                return Err(CliError::invalid_args(format!(
+                    "invalid number value {:?}",
+                    cell.value
+                )));
+            }
+            Ok(("number".to_string(), literal.to_string()))
+        }
+        "bool" | "boolean" => match cell.value.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" => Ok(("bool".to_string(), "1".to_string())),
+            "false" | "0" => Ok(("bool".to_string(), "0".to_string())),
+            _ => Err(CliError::invalid_args(format!(
+                "invalid bool value {:?}",
+                cell.value
+            ))),
+        },
+        "formula" => {
+            let formula = if cell.formula.is_empty() {
+                &cell.value
+            } else {
+                &cell.formula
+            };
+            let formula = formula.trim().trim_start_matches('=').to_string();
+            if formula.is_empty() {
+                return Err(CliError::invalid_args("formula value cannot be empty"));
+            }
+            Ok(("formula".to_string(), formula))
+        }
+        "auto" => {
+            let trimmed = cell.value.trim();
+            if trimmed.starts_with('=') {
+                return normalize_xlsx_write_cell(&XlsxMatrixCell {
+                    kind: "formula".to_string(),
+                    value: trimmed.to_string(),
+                    formula: trimmed.to_string(),
+                    null: false,
+                });
+            }
+            if matches!(trimmed.to_ascii_lowercase().as_str(), "true" | "false") {
+                return normalize_xlsx_write_cell(&XlsxMatrixCell {
+                    kind: "bool".to_string(),
+                    value: trimmed.to_string(),
+                    formula: String::new(),
+                    null: false,
+                });
+            }
+            if let Ok(parsed) = trimmed.parse::<f64>()
+                && parsed.is_finite()
+            {
+                return normalize_xlsx_write_cell(&XlsxMatrixCell {
+                    kind: "number".to_string(),
+                    value: trimmed.to_string(),
+                    formula: String::new(),
+                    null: false,
+                });
+            }
+            Ok(("string".to_string(), cell.value.clone()))
+        }
+        _ => Err(CliError::invalid_args(format!(
+            "invalid cell value type {:?} (must be string, number, bool, formula, or auto)",
+            cell.kind
+        ))),
+    }
+}
+
+fn render_empty_xlsx_cell_with_attrs(
+    addr: &str,
+    attrs: Option<&BTreeMap<String, String>>,
+) -> String {
+    let mut attrs = attrs.cloned().unwrap_or_default();
+    attrs.insert("r".to_string(), addr.to_string());
+    attrs.remove("t");
+    format!("<c{}/>", render_xml_attrs(&attrs))
+}
+
+fn needs_xml_space_preserve(value: &str) -> bool {
+    value != value.trim_matches([' ', '\t', '\r', '\n'])
+}
+
+fn replace_xlsx_dimension(xml: &str, range: Option<&str>) -> String {
+    let dimension = range.map(|range| format!("<dimension ref=\"{range}\"/>"));
+    if let Some(start) = xml.find("<dimension")
+        && let Some(end) = xml[start..]
+            .find("/>")
+            .map(|offset| start + offset + "/>".len())
+            .or_else(|| xml[start..].find('>').map(|offset| start + offset + 1))
+    {
+        let mut updated =
+            String::with_capacity(xml.len() + dimension.as_ref().map_or(0, String::len));
+        updated.push_str(&xml[..start]);
+        if let Some(dimension) = dimension.as_deref() {
+            updated.push_str(dimension);
+        }
+        updated.push_str(&xml[end..]);
+        return updated;
+    }
+    if let Some(dimension) = dimension
+        && let Some(sheet_data_start) = xml.find("<sheetData")
+    {
+        let mut updated = String::with_capacity(xml.len() + dimension.len());
+        updated.push_str(&xml[..sheet_data_start]);
+        updated.push_str(&dimension);
+        updated.push_str(&xml[sheet_data_start..]);
+        return updated;
+    }
+    xml.to_string()
+}
+
+#[derive(Clone)]
+struct XlsxSheetDataSpan {
+    start: usize,
+    open_end: usize,
+    close_start: usize,
+    end: usize,
+    empty: bool,
+}
+
+#[derive(Clone)]
+struct XlsxRowSpan {
+    row: u32,
+    start: usize,
+    end: usize,
+    attrs: BTreeMap<String, String>,
+    cells: BTreeMap<u32, XlsxCellSpan>,
+}
+
+#[derive(Clone)]
+struct XlsxCellSpan {
+    xml: String,
+    attrs: BTreeMap<String, String>,
+    has_formula: bool,
+}
+
+fn xlsx_sheet_data_span(xml: &str) -> CliResult<Option<XlsxSheetDataSpan>> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        let before = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "sheetData" => {
+                let open_end = reader.buffer_position() as usize;
+                loop {
+                    let inner_before = reader.buffer_position() as usize;
+                    match reader.read_event() {
+                        Ok(Event::End(e)) if local_name(e.name().as_ref()) == "sheetData" => {
+                            return Ok(Some(XlsxSheetDataSpan {
+                                start: before,
+                                open_end,
+                                close_start: inner_before,
+                                end: reader.buffer_position() as usize,
+                                empty: false,
+                            }));
+                        }
+                        Ok(Event::Eof) => {
+                            return Err(CliError::unexpected("sheetData has no closing tag"));
+                        }
+                        Err(err) => return Err(CliError::unexpected(err.to_string())),
+                        _ => {}
+                    }
+                }
+            }
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "sheetData" => {
+                let end = reader.buffer_position() as usize;
+                return Ok(Some(XlsxSheetDataSpan {
+                    start: before,
+                    open_end: end,
+                    close_start: end,
+                    end,
+                    empty: true,
+                }));
+            }
+            Ok(Event::Eof) => return Ok(None),
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+}
+
+fn parse_xlsx_row_spans(
+    xml: &str,
+    sheet_data: Option<&XlsxSheetDataSpan>,
+) -> CliResult<BTreeMap<u32, XlsxRowSpan>> {
+    let Some(sheet_data) = sheet_data.filter(|span| !span.empty) else {
+        return Ok(BTreeMap::new());
+    };
+    let fragment = &xml[sheet_data.open_end..sheet_data.close_start];
+    let base = sheet_data.open_end;
+    let mut reader = Reader::from_str(fragment);
+    reader.config_mut().trim_text(false);
+    let mut rows = BTreeMap::new();
+    loop {
+        let before = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "row" => {
+                let Some(row) = attr(&e, "r").and_then(|value| value.parse::<u32>().ok()) else {
+                    continue;
+                };
+                let attrs = xml_attrs(&e);
+                loop {
+                    match reader.read_event() {
+                        Ok(Event::End(e)) if local_name(e.name().as_ref()) == "row" => {
+                            let start = base + before;
+                            let end = base + reader.buffer_position() as usize;
+                            let row_xml = &xml[start..end];
+                            rows.insert(
+                                row,
+                                XlsxRowSpan {
+                                    row,
+                                    start,
+                                    end,
+                                    attrs,
+                                    cells: parse_xlsx_cell_spans(row_xml, start)?,
+                                },
+                            );
+                            break;
+                        }
+                        Ok(Event::Eof) => {
+                            return Err(CliError::unexpected("row has no closing tag"));
+                        }
+                        Err(err) => return Err(CliError::unexpected(err.to_string())),
+                        _ => {}
+                    }
+                }
+            }
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "row" => {
+                if let Some(row) = attr(&e, "r").and_then(|value| value.parse::<u32>().ok()) {
+                    let start = base + before;
+                    let end = base + reader.buffer_position() as usize;
+                    rows.insert(
+                        row,
+                        XlsxRowSpan {
+                            row,
+                            start,
+                            end,
+                            attrs: xml_attrs(&e),
+                            cells: BTreeMap::new(),
+                        },
+                    );
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Ok(rows)
+}
+
+fn parse_xlsx_cell_spans(row_xml: &str, base: usize) -> CliResult<BTreeMap<u32, XlsxCellSpan>> {
+    let mut reader = Reader::from_str(row_xml);
+    reader.config_mut().trim_text(false);
+    let mut cells = BTreeMap::new();
+    loop {
+        let before = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "c" => {
+                let Some(addr) = attr(&e, "r") else {
+                    continue;
+                };
+                let (col, _) = parse_cell_ref(&addr)?;
+                let attrs = xml_attrs(&e);
+                loop {
+                    match reader.read_event() {
+                        Ok(Event::End(e)) if local_name(e.name().as_ref()) == "c" => {
+                            let end = reader.buffer_position() as usize;
+                            let xml = row_xml[before..end].to_string();
+                            cells.insert(
+                                col,
+                                XlsxCellSpan {
+                                    has_formula: xlsx_cell_xml_has_formula(&xml),
+                                    xml,
+                                    attrs,
+                                },
+                            );
+                            break;
+                        }
+                        Ok(Event::Eof) => {
+                            return Err(CliError::unexpected("cell has no closing tag"));
+                        }
+                        Err(err) => return Err(CliError::unexpected(err.to_string())),
+                        _ => {}
+                    }
+                }
+            }
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "c" => {
+                if let Some(addr) = attr(&e, "r") {
+                    let (col, _) = parse_cell_ref(&addr)?;
+                    let end = reader.buffer_position() as usize;
+                    let xml = row_xml[before..end].to_string();
+                    cells.insert(
+                        col,
+                        XlsxCellSpan {
+                            has_formula: false,
+                            xml,
+                            attrs: xml_attrs(&e),
+                        },
+                    );
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    let _ = base;
+    Ok(cells)
+}
+
+fn xlsx_cell_xml_has_formula(cell_xml: &str) -> bool {
+    let mut reader = Reader::from_str(cell_xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "f" => {
+                return true;
+            }
+            Ok(Event::Eof) => return false,
+            Err(_) => return false,
+            _ => {}
+        }
+    }
+}
+
+fn render_xlsx_row(
+    row_number: u32,
+    row_span: Option<&XlsxRowSpan>,
+    cells: BTreeMap<u32, String>,
+) -> String {
+    let mut attrs = row_span.map(|span| span.attrs.clone()).unwrap_or_default();
+    attrs.insert("r".to_string(), row_number.to_string());
+    attrs.remove("spans");
+    let mut out = format!("<row{}>", render_xml_attrs(&attrs));
+    for cell_xml in cells.into_values() {
+        out.push_str(&cell_xml);
+    }
+    out.push_str("</row>");
+    out
+}
+
+fn rebuild_xlsx_sheet_data(
+    xml: &str,
+    sheet_data: Option<&XlsxSheetDataSpan>,
+    row_spans: &BTreeMap<u32, XlsxRowSpan>,
+    changed_rows: &BTreeMap<u32, String>,
+) -> CliResult<String> {
+    if changed_rows.is_empty() {
+        return Ok(xml.to_string());
+    }
+    let new_sheet_data = if let Some(sheet_data) = sheet_data.filter(|span| !span.empty) {
+        let mut out = String::new();
+        out.push_str(&xml[sheet_data.start..sheet_data.open_end]);
+        let mut last = sheet_data.open_end;
+        let mut emitted = BTreeSet::new();
+        let mut rows_by_start = row_spans.values().collect::<Vec<_>>();
+        rows_by_start.sort_by_key(|span| span.start);
+        for row_span in rows_by_start {
+            for (row, row_xml) in changed_rows.range(..row_span.row) {
+                if !row_spans.contains_key(row) && emitted.insert(*row) {
+                    out.push_str(row_xml);
+                }
+            }
+            out.push_str(&xml[last..row_span.start]);
+            if let Some(row_xml) = changed_rows.get(&row_span.row) {
+                out.push_str(row_xml);
+                emitted.insert(row_span.row);
+            } else {
+                out.push_str(&xml[row_span.start..row_span.end]);
+            }
+            last = row_span.end;
+        }
+        out.push_str(&xml[last..sheet_data.close_start]);
+        for (row, row_xml) in changed_rows {
+            if emitted.insert(*row) {
+                out.push_str(row_xml);
+            }
+        }
+        out.push_str(&xml[sheet_data.close_start..sheet_data.end]);
+        out
+    } else {
+        let mut out = String::from("<sheetData>");
+        for row_xml in changed_rows.values() {
+            out.push_str(row_xml);
+        }
+        out.push_str("</sheetData>");
+        out
+    };
+    if let Some(sheet_data) = sheet_data {
+        let mut updated = String::with_capacity(xml.len() + new_sheet_data.len());
+        updated.push_str(&xml[..sheet_data.start]);
+        updated.push_str(&new_sheet_data);
+        updated.push_str(&xml[sheet_data.end..]);
+        return Ok(updated);
+    }
+    let insert_at = xml
+        .find("</worksheet>")
+        .ok_or_else(|| CliError::unexpected("worksheet has no closing tag"))?;
+    let mut updated = String::with_capacity(xml.len() + new_sheet_data.len());
+    updated.push_str(&xml[..insert_at]);
+    updated.push_str(&new_sheet_data);
+    updated.push_str(&xml[insert_at..]);
+    Ok(updated)
+}
+
+fn reject_xlsx_merged_cell_intersection(xml: &str, bounds: RangeBounds) -> CliResult<()> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "mergeCell" =>
+            {
+                if let Some(merge_ref) = attr(&e, "ref") {
+                    let merged = parse_range(&merge_ref)?;
+                    if ranges_intersect(bounds, merged) {
+                        return Err(CliError::invalid_args(format!(
+                            "range write intersects merged cells: {} intersects {}",
+                            range_bounds_ref(bounds),
+                            range_bounds_ref(merged)
+                        )));
+                    }
+                }
+            }
+            Ok(Event::Eof) => return Ok(()),
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+}
+
+fn ranges_intersect(a: RangeBounds, b: RangeBounds) -> bool {
+    a.start_col <= b.end_col
+        && a.end_col >= b.start_col
+        && a.start_row <= b.end_row
+        && a.end_row >= b.start_row
+}
+
+fn range_bounds_ref(bounds: RangeBounds) -> String {
+    let start = format!("{}{}", col_name(bounds.start_col), bounds.start_row);
+    let end = format!("{}{}", col_name(bounds.end_col), bounds.end_row);
+    if start == end {
+        start
+    } else {
+        format!("{start}:{end}")
+    }
+}
+
+fn xlsx_used_range_from_cell_refs(xml: &str) -> Option<String> {
+    let mut min_row = u32::MAX;
+    let mut max_row = 0;
+    let mut min_col = u32::MAX;
+    let mut max_col = 0;
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "c" => {
+                if let Some(addr) = attr(&e, "r")
+                    && let Ok((col, row)) = parse_cell_ref(&addr)
+                {
+                    min_row = min_row.min(row);
+                    max_row = max_row.max(row);
+                    min_col = min_col.min(col);
+                    max_col = max_col.max(col);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    if max_row == 0 {
+        None
+    } else {
+        Some(format!(
+            "{}{}:{}{}",
+            col_name(min_col),
+            min_row,
+            col_name(max_col),
+            max_row
+        ))
+    }
+}
+
+fn xml_attrs(e: &BytesStart<'_>) -> BTreeMap<String, String> {
+    let mut attrs = BTreeMap::new();
+    for attr in e.attributes().with_checks(false).flatten() {
+        attrs.insert(
+            local_name(attr.key.as_ref()).to_string(),
+            decode_xml_text(attr.value.as_ref()),
+        );
+    }
+    attrs
+}
+
+fn render_xml_attrs(attrs: &BTreeMap<String, String>) -> String {
+    let mut out = String::new();
+    for (key, value) in attrs {
+        out.push(' ');
+        out.push_str(key);
+        out.push_str("=\"");
+        out.push_str(&xml_attr_escape(value));
+        out.push('"');
+    }
+    out
+}
+
+fn xml_attr_escape(value: &str) -> String {
+    xml_escape(value).replace('"', "&quot;")
+}
+
+fn xlsx_range_destination_json(
+    readback_file: &str,
+    destination_file: Option<&str>,
+    sheet: &WorkbookSheet,
+    sheet_part: &str,
+    range: &str,
+) -> CliResult<Value> {
+    let exported = xlsx_range_export_with_options(
+        readback_file,
+        &sheet.name,
+        range,
+        XlsxRangeExportOptions {
+            include_types: true,
+            include_formulas: true,
+            include_formats: true,
+            data_out: None,
+            max_cells: 0,
+        },
+    )?;
+    let mut destination = Map::new();
+    if let Some(file) = destination_file {
+        destination.insert("file".to_string(), json!(file));
+    }
+    destination.insert("sheet".to_string(), json!(sheet.name));
+    destination.insert("sheetNumber".to_string(), json!(sheet.position));
+    destination.insert(
+        "sheetPrimarySelector".to_string(),
+        json!(format!("sheetId:{}", sheet.sheet_id)),
+    );
+    destination.insert(
+        "sheetSelectors".to_string(),
+        json!(xlsx_sheet_selectors(
+            &sheet.name,
+            sheet.sheet_id,
+            sheet.position,
+            &sheet.rel_id,
+            &format!("/{sheet_part}")
+        )),
+    );
+    for key in [
+        "range",
+        "rows",
+        "cols",
+        "values",
+        "types",
+        "formulas",
+        "styleIndexes",
+        "numberFormatIds",
+        "numberFormatCodes",
+        "formulaCount",
+        "truncated",
+    ] {
+        if let Some(value) = exported.get(key) {
+            destination.insert(key.to_string(), value.clone());
+        }
+    }
+    Ok(Value::Object(destination))
+}
+
+fn add_xlsx_range_mutation_commands(
+    result: &mut Map<String, Value>,
+    output_path: Option<&str>,
+    sheet_selector: &str,
+    range: &str,
+) {
+    let target = output_path.unwrap_or("<out.xlsx>");
+    let validate_key = if output_path.is_some() {
+        "validateCommand"
+    } else {
+        "validateCommandTemplate"
+    };
+    let cells_key = if output_path.is_some() {
+        "cellsExtractCommand"
+    } else {
+        "cellsExtractCommandTemplate"
+    };
+    let ranges_key = if output_path.is_some() {
+        "rangesExportCommand"
+    } else {
+        "rangesExportCommandTemplate"
+    };
+    result.insert(
+        validate_key.to_string(),
+        json!(format!("ooxml validate --strict {}", command_arg(target))),
+    );
+    result.insert(
+        cells_key.to_string(),
+        json!(format!(
+            "ooxml --json xlsx cells extract {} --sheet {} --range {} --include-empty",
+            command_arg(target),
+            command_arg(sheet_selector),
+            command_arg(range)
+        )),
+    );
+    result.insert(
+        ranges_key.to_string(),
+        json!(format!(
+            "ooxml --json xlsx ranges export {} --sheet {} --range {} --include-types --include-formulas --include-formats",
+            command_arg(target),
+            command_arg(sheet_selector),
+            command_arg(range)
+        )),
+    );
 }
 
 fn xlsx_cells_extract(
@@ -5800,6 +7224,9 @@ fn decode_xlsx_cell_value(
         ),
         "" if raw.is_empty() && formula.is_empty() => {
             ("empty".to_string(), Value::Null, String::new())
+        }
+        "" if raw.is_empty() && !formula.is_empty() => {
+            ("number".to_string(), Value::Null, String::new())
         }
         "" if style.date_style => (
             "date".to_string(),

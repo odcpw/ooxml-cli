@@ -324,6 +324,149 @@ fn write_zip_string(
     writer.write_all(body.as_bytes()).expect("write zip data");
 }
 
+fn read_zip_string(path: &Path, name: &str) -> String {
+    let input = File::open(path).expect("open xlsx");
+    let mut archive = ZipArchive::new(input).expect("read xlsx");
+    let mut entry = archive.by_name(name).expect("read zip entry");
+    let mut body = String::new();
+    entry.read_to_string(&mut body).expect("zip entry utf8");
+    body
+}
+
+fn write_simple_xlsx_with_sheet_xml(dest: &Path, sheet_xml: &str) {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("fixture parent");
+    }
+    let output = File::create(dest).expect("create xlsx");
+    let mut writer = ZipWriter::new(output);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    write_zip_string(
+        &mut writer,
+        options,
+        "[Content_Types].xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "_rels/.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/workbook.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/_rels/workbook.xml.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(&mut writer, options, "xl/worksheets/sheet1.xml", sheet_xml);
+    writer.finish().expect("finish xlsx");
+}
+
+fn write_preservation_xlsx(dest: &Path) {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("fixture parent");
+    }
+    let output = File::create(dest).expect("create xlsx");
+    let mut writer = ZipWriter::new(output);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    write_zip_string(
+        &mut writer,
+        options,
+        "[Content_Types].xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "_rels/.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/workbook.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/_rels/workbook.xml.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/sharedStrings.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="1" uniqueCount="1"><si><t>Preserve me</t></si></sst>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/styles.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd"/></numFmts>
+  <fonts count="1"><font/></fonts><fills count="1"><fill/></fills><borders count="1"><border/></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/></cellXfs>
+</styleSheet>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/worksheets/sheet1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:C1"/>
+  <sheetData>
+    <row r="1" spans="1:3"><c r="A1" t="s"><v>0</v></c><c r="B1" s="1"><v>45123</v></c><c r="C1"><f>B1*2</f><v>90246</v></c></row>
+  </sheetData>
+</worksheet>"#,
+    );
+    writer.finish().expect("finish preservation xlsx");
+}
+
 fn replace_ascii(data: Vec<u8>, from: &str, to: &str) -> Vec<u8> {
     String::from_utf8(data)
         .expect("fixture xml utf8")
@@ -488,6 +631,340 @@ fn xlsx_ranges_export_matches_go_oracle() {
     for args in cases {
         assert_go_rust_match(&args);
     }
+}
+
+#[test]
+fn xlsx_ranges_set_matches_go_oracle_and_saved_output() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-ranges-set-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in = temp_dir.join("go-in.xlsx");
+    let rust_in = temp_dir.join("rust-in.xlsx");
+    let go_out = temp_dir.join("go-out.xlsx");
+    let rust_out = temp_dir.join("rust-out.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in).expect("stage go input");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &rust_in).expect("stage rust input");
+    let go_in = go_in.to_string_lossy().to_string();
+    let rust_in = rust_in.to_string_lossy().to_string();
+    let go_out = go_out.to_string_lossy().to_string();
+    let rust_out = rust_out.to_string_lossy().to_string();
+    let values = r#"[["Name",{"value":"42.5","type":"number"},{"formula":"SUM(B1:B1)"}],[null,true,"tail"]]"#;
+
+    let go_args = [
+        "--json", "xlsx", "ranges", "set", &go_in, "--sheet", "Sheet1", "--range", "A1:C2",
+        "--values", values, "--out", &go_out,
+    ];
+    let rust_args = [
+        "--json", "xlsx", "ranges", "set", &rust_in, "--sheet", "Sheet1", "--range", "A1:C2",
+        "--values", values, "--out", &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "ranges set exit");
+    assert_eq!(rust_stderr, go_stderr, "ranges set stderr");
+    let go_json = scrub_paths(
+        go_stdout.expect("go ranges set stdout"),
+        &[(&go_in, "[IN]"), (&go_out, "[OUT]")],
+    );
+    let rust_json = scrub_paths(
+        rust_stdout.expect("rust ranges set stdout"),
+        &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")],
+    );
+    assert_eq!(rust_json, go_json, "ranges set stdout");
+
+    let export_args_go = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &go_out,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:C2",
+        "--include-types",
+        "--include-formulas",
+    ];
+    let export_args_rust = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &rust_out,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:C2",
+        "--include-types",
+        "--include-formulas",
+    ];
+    let (go_code, go_export, go_stderr) = run_go_ooxml(&export_args_go);
+    let (rust_code, rust_export, rust_stderr) = run_go_ooxml(&export_args_rust);
+    assert_eq!(rust_code, go_code, "saved output export exit");
+    assert_eq!(rust_stderr, go_stderr, "saved output export stderr");
+    assert_eq!(
+        scrub_path(rust_export.expect("rust saved export"), &rust_out, "[OUT]"),
+        scrub_path(go_export.expect("go saved export"), &go_out, "[OUT]"),
+        "saved output readback"
+    );
+
+    let dry_go = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &go_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B1",
+        "--values",
+        r#"[["Dry",1]]"#,
+        "--dry-run",
+    ];
+    let dry_rust = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &rust_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B1",
+        "--values",
+        r#"[["Dry",1]]"#,
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
+    assert_eq!(rust_code, go_code, "ranges set dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "ranges set dry-run stderr");
+    assert_eq!(
+        scrub_path(rust_stdout.expect("rust dry-run stdout"), &rust_in, "[IN]"),
+        scrub_path(go_stdout.expect("go dry-run stdout"), &go_in, "[IN]"),
+        "ranges set dry-run stdout"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_ranges_set_preserves_untouched_cell_xml() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-ranges-preserve-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("output.xlsx");
+    write_preservation_xlsx(&input);
+    let input_s = input.to_string_lossy().to_string();
+    let output_s = output.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &input_s,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "D1:D1",
+        "--values",
+        r#"[["new"]]"#,
+        "--out",
+        &output_s,
+    ]);
+    assert_eq!(code, 0, "preservation edit stderr={stderr:?}");
+    assert!(stdout.is_some(), "preservation edit stdout");
+    let sheet_xml = read_zip_string(&output, "xl/worksheets/sheet1.xml");
+    assert!(
+        sheet_xml.contains(r#"<c r="A1" t="s"><v>0</v></c>"#),
+        "shared-string cell changed:\n{sheet_xml}"
+    );
+    assert!(
+        sheet_xml.contains(r#"<c r="B1" s="1"><v>45123</v></c>"#),
+        "styled/date cell changed:\n{sheet_xml}"
+    );
+    assert!(
+        sheet_xml.contains(r#"<c r="C1"><f>B1*2</f><v>90246</v></c>"#),
+        "formula cache cell changed:\n{sheet_xml}"
+    );
+    assert!(
+        sheet_xml.contains(r#"<c r="D1" t="inlineStr"><is><t>new</t></is></c>"#),
+        "new cell missing:\n{sheet_xml}"
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_ranges_set_in_place_backup_matches_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-ranges-in-place-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in = temp_dir.join("go.xlsx");
+    let rust_in = temp_dir.join("rust.xlsx");
+    let go_backup = temp_dir.join("go.xlsx.bak");
+    let rust_backup = temp_dir.join("rust.xlsx.bak");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in).expect("stage go input");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &rust_in).expect("stage rust input");
+    let go_in = go_in.to_string_lossy().to_string();
+    let rust_in = rust_in.to_string_lossy().to_string();
+    let go_backup = go_backup.to_string_lossy().to_string();
+    let rust_backup = rust_backup.to_string_lossy().to_string();
+    let go_args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &go_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:A1",
+        "--values",
+        r#"[["In place"]]"#,
+        "--in-place",
+        "--backup",
+        &go_backup,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &rust_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:A1",
+        "--values",
+        r#"[["In place"]]"#,
+        "--in-place",
+        "--backup",
+        &rust_backup,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "in-place exit");
+    assert_eq!(rust_stderr, go_stderr, "in-place stderr");
+    assert_eq!(
+        scrub_path(rust_stdout.expect("rust in-place stdout"), &rust_in, "[IN]"),
+        scrub_path(go_stdout.expect("go in-place stdout"), &go_in, "[IN]"),
+        "in-place stdout"
+    );
+    assert!(Path::new(&go_backup).exists(), "go backup missing");
+    assert!(Path::new(&rust_backup).exists(), "rust backup missing");
+
+    let export_go = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &go_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:A1",
+        "--include-types",
+    ];
+    let export_rust = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &rust_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:A1",
+        "--include-types",
+    ];
+    let (go_code, go_export, go_stderr) = run_go_ooxml(&export_go);
+    let (rust_code, rust_export, rust_stderr) = run_go_ooxml(&export_rust);
+    assert_eq!(rust_code, go_code, "in-place readback exit");
+    assert_eq!(rust_stderr, go_stderr, "in-place readback stderr");
+    assert_eq!(
+        scrub_path(rust_export.expect("rust in-place export"), &rust_in, "[IN]"),
+        scrub_path(go_export.expect("go in-place export"), &go_in, "[IN]"),
+        "in-place saved readback"
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_ranges_set_rejects_formula_and_merged_cells_like_go() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-ranges-guards-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let formula = temp_dir.join("formula.xlsx");
+    let merged = temp_dir.join("merged.xlsx");
+    write_simple_xlsx_with_sheet_xml(
+        &formula,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1"/>
+  <sheetData><row r="1"><c r="A1"><f>SUM(B1:B1)</f><v>1</v></c></row></sheetData>
+</worksheet>"#,
+    );
+    write_simple_xlsx_with_sheet_xml(
+        &merged,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:B1"/>
+  <sheetData><row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c></row></sheetData>
+  <mergeCells count="1"><mergeCell ref="A1:B1"/></mergeCells>
+</worksheet>"#,
+    );
+    let formula_s = formula.to_string_lossy().to_string();
+    let merged_s = merged.to_string_lossy().to_string();
+    for args in [
+        vec![
+            "--json",
+            "xlsx",
+            "ranges",
+            "set",
+            &formula_s,
+            "--sheet",
+            "Sheet1",
+            "--anchor",
+            "A1",
+            "--values",
+            r#"[["replace"]]"#,
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "ranges",
+            "set",
+            &merged_s,
+            "--sheet",
+            "Sheet1",
+            "--range",
+            "A1:B1",
+            "--values",
+            r#"[["x","y"]]"#,
+            "--dry-run",
+        ],
+    ] {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "guard exit for {args:?}");
+        assert_eq!(rust_stdout, go_stdout, "guard stdout for {args:?}");
+        assert_eq!(rust_stderr, go_stderr, "guard stderr for {args:?}");
+    }
+    let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
@@ -2060,6 +2537,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx sheets list", false);
     assert_command(&xlsx_caps, "ooxml xlsx sheets show", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
+    assert_command(&xlsx_caps, "ooxml xlsx ranges set", false);
     assert_command(&xlsx_caps, "ooxml xlsx cells extract", false);
     assert_command(&xlsx_caps, "ooxml xlsx cells set", true);
     assert_command(&xlsx_caps, "ooxml xlsx tables list", false);
@@ -2091,10 +2569,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 19, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 20, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        271,
+        270,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
