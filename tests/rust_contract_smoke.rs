@@ -1,7 +1,11 @@
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Write};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
+
+static GO_OOXML_BIN: OnceLock<PathBuf> = OnceLock::new();
 
 fn baseline() -> Value {
     serde_json::from_str(include_str!(
@@ -27,8 +31,7 @@ fn run_ooxml_with_env(args: &[&str], envs: &[(&str, &str)]) -> (i32, Option<Valu
 }
 
 fn run_go_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
-    let output = Command::new("go")
-        .args(["run", "./cmd/ooxml"])
+    let output = Command::new(go_ooxml_binary())
         .args(args)
         .env("GOCACHE", "/tmp/ooxml-go-build")
         .output()
@@ -37,6 +40,26 @@ fn run_go_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
     let stdout = parse_json(&output.stdout);
     let stderr = parse_json(&output.stderr);
     (code, stdout, stderr)
+}
+
+fn go_ooxml_binary() -> &'static PathBuf {
+    GO_OOXML_BIN.get_or_init(|| {
+        let binary = std::env::temp_dir().join(format!("ooxml-go-oracle-{}", std::process::id()));
+        let output = Command::new("go")
+            .args(["build", "-o"])
+            .arg(&binary)
+            .arg("./cmd/ooxml")
+            .env("GOCACHE", "/tmp/ooxml-go-build")
+            .output()
+            .expect("build Go ooxml oracle");
+        assert!(
+            output.status.success(),
+            "build Go ooxml oracle failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        binary
+    })
 }
 
 fn parse_json(bytes: &[u8]) -> Option<Value> {
@@ -146,6 +169,134 @@ fn xlsx_sheets_show_matches_go_oracle() {
             "sheets",
             "show",
             "testdata/xlsx/used-range/workbook.xlsx",
+        ],
+    ];
+
+    for args in cases {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "exit code for {args:?}");
+        assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
+        assert_eq!(rust_stdout, go_stdout, "stdout for {args:?}");
+    }
+}
+
+#[test]
+fn docx_text_matches_go_oracle() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/table/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/space-preserve/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/styled-headings/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/split-runs/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/styles-catalog/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/hyperlink/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/mixed-blocks/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/with-fields/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/headers/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/paraid/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/paraid-dup/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/default-ns/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/minimal/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/merged-table/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/with-comments/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/with-media/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/with-image/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/docx/apply-styles/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "text",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
         ],
     ];
 

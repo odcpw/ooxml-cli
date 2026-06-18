@@ -12,7 +12,13 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json inspect <pptx>`
 - `--json pptx slides show ... --include-text`
 - `--json xlsx ranges export ... --include-types`
-- `--json docx text <docx>`
+- `--json docx text <docx>` with Go-oracle comparison across the committed
+  positive DOCX fixture corpus: paragraphs, styles, preserved whitespace,
+  hyperlinks, field/instruction text omission, tables, merged tables, headers,
+  comments/media/image fixtures, default namespace handling, and unique/duplicate
+  `w14:paraId` marker handling
+- `--json docx text <xlsx>` unsupported-type rejection with direct Go-oracle
+  comparison for exit code, stderr JSON, and empty stdout
 - JSON error envelope for an invalid slide number
 - `--json pptx replace text ... --out <pptx>`
 - `--json --strict validate <pptx>`

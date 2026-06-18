@@ -13,6 +13,7 @@ const EXIT_SUCCESS: i32 = 0;
 const EXIT_UNEXPECTED: i32 = 1;
 const EXIT_INVALID_ARGS: i32 = 2;
 const EXIT_FILE_NOT_FOUND: i32 = 3;
+const EXIT_UNSUPPORTED_TYPE: i32 = 4;
 
 #[derive(Debug)]
 struct CliError {
@@ -42,6 +43,14 @@ impl CliError {
         Self {
             code: "unexpected",
             exit_code: EXIT_UNEXPECTED,
+            message: message.into(),
+        }
+    }
+
+    fn unsupported_type(message: impl Into<String>) -> Self {
+        Self {
+            code: "unsupported_type",
+            exit_code: EXIT_UNSUPPORTED_TYPE,
             message: message.into(),
         }
     }
@@ -500,7 +509,8 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
             {"code": EXIT_SUCCESS, "name": "success", "description": "command completed successfully"},
             {"code": EXIT_UNEXPECTED, "name": "unexpected", "description": "unexpected tool or package processing error"},
             {"code": EXIT_INVALID_ARGS, "name": "invalid_args", "description": "invalid command line arguments or incompatible options"},
-            {"code": EXIT_FILE_NOT_FOUND, "name": "file_not_found", "description": "input file was not found"}
+            {"code": EXIT_FILE_NOT_FOUND, "name": "file_not_found", "description": "input file was not found"},
+            {"code": EXIT_UNSUPPORTED_TYPE, "name": "unsupported_type", "description": "input package type is unsupported for the requested command"}
         ],
         "workflows": [
             {
@@ -1449,19 +1459,14 @@ fn xlsx_sheets_list(file: &str) -> CliResult<Value> {
 }
 
 fn docx_text(file: &str) -> CliResult<Value> {
+    let detected = package_type(file)?;
+    if detected != "docx" {
+        return Err(CliError::unsupported_type(format!(
+            "file is not a DOCX document (detected: {detected})"
+        )));
+    }
     let xml = zip_text(file, "word/document.xml")?;
-    let paragraphs = docx_paragraphs(&xml);
-    let blocks: Vec<Value> = paragraphs
-        .into_iter()
-        .enumerate()
-        .filter_map(|(idx, text)| {
-            if text.is_empty() {
-                None
-            } else {
-                Some(json!({"index": idx + 1, "kind": "paragraph", "text": text}))
-            }
-        })
-        .collect();
+    let blocks = docx_blocks(&xml);
     Ok(json!({"blocks": blocks, "file": file}))
 }
 
@@ -4440,31 +4445,237 @@ fn col_name(mut col: u32) -> String {
     chars.iter().rev().collect()
 }
 
-fn docx_paragraphs(xml: &str) -> Vec<String> {
+#[derive(Default)]
+struct DocxParagraphState {
+    text: String,
+    style: Option<String>,
+    para_id: Option<String>,
+}
+
+enum DocxParagraphContext {
+    Body,
+    TableCell,
+}
+
+#[derive(Default)]
+struct DocxTableState {
+    rows: Vec<Vec<String>>,
+    current_row: Option<Vec<String>>,
+    current_cell: Option<Vec<String>>,
+}
+
+fn docx_blocks(xml: &str) -> Vec<Value> {
     let mut reader = Reader::from_str(xml);
-    let mut paragraphs = Vec::new();
-    let mut current = String::new();
-    let mut in_p = false;
+    let para_id_counts = docx_para_id_counts(xml);
+    let mut stack: Vec<String> = Vec::new();
+    let mut blocks = Vec::new();
+    let mut current_paragraph: Option<DocxParagraphState> = None;
+    let mut paragraph_context: Option<DocxParagraphContext> = None;
+    let mut current_table: Option<DocxTableState> = None;
     let mut in_t = false;
+    let mut skip_text_depth = 0usize;
     loop {
         match reader.read_event() {
-            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "p" => {
-                in_p = true;
-                current.clear();
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if stack.last().is_some_and(|parent| parent == "body") && name == "tbl" {
+                    current_table = Some(DocxTableState::default());
+                } else if current_table.is_some() && name == "tr" {
+                    if let Some(table) = current_table.as_mut() {
+                        table.current_row = Some(Vec::new());
+                    }
+                } else if current_table.is_some() && name == "tc" {
+                    if let Some(table) = current_table.as_mut() {
+                        table.current_cell = Some(Vec::new());
+                    }
+                } else if stack.last().is_some_and(|parent| parent == "body") && name == "p" {
+                    current_paragraph = Some(DocxParagraphState {
+                        para_id: docx_para_id(&e),
+                        ..DocxParagraphState::default()
+                    });
+                    paragraph_context = Some(DocxParagraphContext::Body);
+                } else if current_table.is_some() && name == "p" && stack_contains(&stack, "tc") {
+                    current_paragraph = Some(DocxParagraphState {
+                        para_id: docx_para_id(&e),
+                        ..DocxParagraphState::default()
+                    });
+                    paragraph_context = Some(DocxParagraphContext::TableCell);
+                }
+
+                docx_note_empty_or_start(&e, &name, &mut current_paragraph);
+                if name == "t" {
+                    in_t = true;
+                }
+                if name == "delText" || name == "instrText" {
+                    skip_text_depth += 1;
+                }
+                stack.push(name);
             }
-            Ok(Event::Start(e)) if in_p && local_name(e.name().as_ref()) == "t" => in_t = true,
-            Ok(Event::Text(e)) if in_t => current.push_str(&String::from_utf8_lossy(e.as_ref())),
-            Ok(Event::End(e)) if local_name(e.name().as_ref()) == "t" => in_t = false,
-            Ok(Event::End(e)) if local_name(e.name().as_ref()) == "p" => {
-                paragraphs.push(current.clone());
-                in_p = false;
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                docx_note_empty_or_start(&e, &name, &mut current_paragraph);
+            }
+            Ok(Event::Text(e)) if in_t && skip_text_depth == 0 => {
+                if let Some(paragraph) = current_paragraph.as_mut() {
+                    paragraph.text.push_str(&decode_xml_text(e.as_ref()));
+                }
+            }
+            Ok(Event::CData(e)) if in_t && skip_text_depth == 0 => {
+                if let Some(paragraph) = current_paragraph.as_mut() {
+                    paragraph
+                        .text
+                        .push_str(&String::from_utf8_lossy(e.as_ref()));
+                }
+            }
+            Ok(Event::End(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                match name.as_str() {
+                    "t" => in_t = false,
+                    "delText" | "instrText" => {
+                        skip_text_depth = skip_text_depth.saturating_sub(1);
+                    }
+                    "p" => {
+                        if let (Some(paragraph), Some(context)) =
+                            (current_paragraph.take(), paragraph_context.take())
+                        {
+                            match context {
+                                DocxParagraphContext::Body => {
+                                    blocks.push(docx_paragraph_block(
+                                        blocks.len() + 1,
+                                        paragraph,
+                                        &para_id_counts,
+                                    ));
+                                }
+                                DocxParagraphContext::TableCell => {
+                                    if let Some(cell) = current_table
+                                        .as_mut()
+                                        .and_then(|table| table.current_cell.as_mut())
+                                    {
+                                        cell.push(paragraph.text);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    "tc" => {
+                        if let Some(table) = current_table.as_mut()
+                            && let Some(cell) = table.current_cell.take()
+                            && let Some(row) = table.current_row.as_mut()
+                        {
+                            row.push(cell.join("\n"));
+                        }
+                    }
+                    "tr" => {
+                        if let Some(table) = current_table.as_mut()
+                            && let Some(row) = table.current_row.take()
+                        {
+                            table.rows.push(row);
+                        }
+                    }
+                    "tbl" => {
+                        if let Some(table) = current_table.take() {
+                            blocks.push(docx_table_block(blocks.len() + 1, table.rows));
+                        }
+                    }
+                    _ => {}
+                }
+                stack.pop();
             }
             Ok(Event::Eof) => break,
             Err(_) => break,
             _ => {}
         }
     }
-    paragraphs
+    blocks
+}
+
+fn docx_note_empty_or_start(
+    element: &BytesStart<'_>,
+    name: &str,
+    current_paragraph: &mut Option<DocxParagraphState>,
+) {
+    let Some(paragraph) = current_paragraph.as_mut() else {
+        return;
+    };
+    match name {
+        "pStyle" => {
+            if let Some(style) = attr(element, "val").filter(|style| !style.is_empty()) {
+                paragraph.style = Some(style);
+            }
+        }
+        "tab" => paragraph.text.push('\t'),
+        "br" | "cr" => paragraph.text.push('\n'),
+        "noBreakHyphen" => paragraph.text.push('-'),
+        _ => {}
+    }
+}
+
+fn docx_paragraph_block(
+    index: usize,
+    paragraph: DocxParagraphState,
+    para_id_counts: &BTreeMap<String, usize>,
+) -> Value {
+    let mut block = Map::new();
+    block.insert("index".to_string(), json!(index));
+    block.insert("kind".to_string(), json!("paragraph"));
+    if let Some(style) = paragraph.style {
+        block.insert("style".to_string(), json!(style));
+    }
+    block.insert("text".to_string(), json!(paragraph.text));
+    if let Some(para_id) = paragraph.para_id.filter(|para_id| !para_id.is_empty()) {
+        let normalized = para_id.trim().to_ascii_uppercase();
+        block.insert("paraId".to_string(), json!(para_id));
+        if para_id_counts.get(&normalized).copied().unwrap_or_default() == 1 {
+            block.insert(
+                "handle".to_string(),
+                json!(format!("H:docx/pt:doc/para:m:{para_id}")),
+            );
+        }
+    }
+    Value::Object(block)
+}
+
+fn docx_table_block(index: usize, rows: Vec<Vec<String>>) -> Value {
+    let table_rows: Vec<Value> = rows.iter().map(|row| json!({"cells": row})).collect();
+    let text = rows
+        .iter()
+        .map(|row| row.join("\t"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    json!({
+        "index": index,
+        "kind": "table",
+        "table": {"rows": table_rows},
+        "text": text,
+    })
+}
+
+fn stack_contains(stack: &[String], name: &str) -> bool {
+    stack.iter().any(|item| item == name)
+}
+
+fn docx_para_id_counts(xml: &str) -> BTreeMap<String, usize> {
+    let mut reader = Reader::from_str(xml);
+    let mut counts = BTreeMap::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "p" => {
+                if let Some(para_id) = docx_para_id(&e) {
+                    *counts.entry(para_id.to_ascii_uppercase()).or_insert(0) += 1;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    counts
+}
+
+fn docx_para_id(element: &BytesStart<'_>) -> Option<String> {
+    attr(element, "paraId")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn copy_zip_with_replacement(
