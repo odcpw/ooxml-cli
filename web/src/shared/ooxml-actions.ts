@@ -2,6 +2,7 @@ import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { isPreviewExtensionSupported, previewUnavailableReasonCopy } from './file-support.ts';
 import { runtimeDataRoot } from './runtime-paths.ts';
@@ -28,7 +29,6 @@ import {
 
 const execFileAsync = promisify(execFile);
 const OOXML_DEFAULT_BIN = 'ooxml';
-const OOXML_DEFAULT_SESSION_ID = 's1';
 const OOXML_DEFAULT_TIMEOUT_MS = 120_000;
 const OOXML_DEFAULT_MAX_OUTPUT_BUFFER = 24 * 1024 * 1024;
 
@@ -779,16 +779,18 @@ export async function inspectCurrentWithOoxml(input: {
 }): Promise<string> {
   const { thread, document, version } = await currentSelection(input.threadId);
   const file = absoluteVersionPath(thread, version);
-  const requests = [
+  const responses = await runOoxmlServe(
     serveRequest(1, 'open', { file, dryRun: true }),
-    serveRequest(2, 'inspect', {
-      session: OOXML_DEFAULT_SESSION_ID,
-      command: normalizeServeCommand(input.command),
-      args: parseArgsJson(input.argsJson),
-    }),
-    serveRequest(3, 'abort', { session: OOXML_DEFAULT_SESSION_ID }),
-  ];
-  const responses = await runOoxmlServe(requests, threadDir(input.threadId));
+    (sessionId) => [
+      serveRequest(2, 'inspect', {
+        session: sessionId,
+        command: normalizeServeCommand(input.command),
+        args: parseArgsJson(input.argsJson),
+      }),
+      serveRequest(3, 'abort', { session: sessionId }),
+    ],
+    threadDir(input.threadId),
+  );
   return JSON.stringify(
     {
       currentDocumentId: document.id,
@@ -825,22 +827,27 @@ export async function applyOoxmlOpsToCurrent(input: {
   const outPath = newVersionOutputPath(dir, document.id, newVersionId, 'ooxml', ext);
   await mkdir(join(dir, 'documents', document.id, 'versions'), { recursive: true });
 
-  const requests: ServeRequest[] = [serveRequest(1, 'open', { file, out: outPath })];
-  operations.forEach((operation, index) => {
-    requests.push(
-      serveRequest(index + 2, 'op', {
-        session: OOXML_DEFAULT_SESSION_ID,
-        command: normalizeServeCommand(operation.command),
-        args: operation.args ?? {},
-      }),
-    );
-  });
-  requests.push(serveRequest(operations.length + 2, 'validate', { session: OOXML_DEFAULT_SESSION_ID }));
-  requests.push(serveRequest(operations.length + 3, 'commit', { session: OOXML_DEFAULT_SESSION_ID }));
-
   let responses: ServeResponse[];
   try {
-    responses = await runOoxmlServe(requests, dir);
+    responses = await runOoxmlServe(
+      serveRequest(1, 'open', { file, out: outPath }),
+      (sessionId) => {
+        const requests: ServeRequest[] = [];
+        operations.forEach((operation, index) => {
+          requests.push(
+            serveRequest(index + 2, 'op', {
+              session: sessionId,
+              command: normalizeServeCommand(operation.command),
+              args: operation.args ?? {},
+            }),
+          );
+        });
+        requests.push(serveRequest(operations.length + 2, 'validate', { session: sessionId }));
+        requests.push(serveRequest(operations.length + 3, 'commit', { session: sessionId }));
+        return requests;
+      },
+      dir,
+    );
   } catch (error) {
     throw error;
   }
@@ -1141,11 +1148,20 @@ type OoxmlOperation = {
   args?: Record<string, unknown>;
 };
 
+type ServeOpenResult = {
+  sessionId: string;
+  type?: string;
+};
+
 function serveRequest(id: number, method: string, params?: Record<string, unknown>): ServeRequest {
   return { jsonrpc: '2.0', id, method, params };
 }
 
-async function runOoxmlServe(requests: ServeRequest[], cwd: string): Promise<ServeResponse[]> {
+async function runOoxmlServe(
+  openRequest: ServeRequest,
+  buildFollowUpRequests: (sessionId: string) => ServeRequest[],
+  cwd: string,
+): Promise<ServeResponse[]> {
   const bin = resolveOoxmlBin();
   const maxServeOutputBytes = positiveIntegerEnv('OOXML_SERVE_MAX_OUTPUT_BYTES', OOXML_DEFAULT_MAX_OUTPUT_BUFFER);
   const child = spawn(bin, ['serve'], {
@@ -1154,14 +1170,41 @@ async function runOoxmlServe(requests: ServeRequest[], cwd: string): Promise<Ser
   });
   const stdout: Buffer[] = [];
   const stderr: Buffer[] = [];
+  const responsesById = new Map<number, ServeResponse>();
+  const pendingResponses = new Map<number, (response: ServeResponse) => void>();
+  const ignoredLines: string[] = [];
   let stdoutBytes = 0;
   let stderrBytes = 0;
   let outputLimitError: string | null = null;
   let settled = false;
+  let followUpRequests: ServeRequest[] = [];
 
   const timeout = setTimeout(() => {
     if (!settled) child.kill('SIGKILL');
   }, OOXML_DEFAULT_TIMEOUT_MS);
+
+  const stdoutLines = createInterface({ input: child.stdout });
+  stdoutLines.on('line', (line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      ignoredLines.push(trimmed);
+      return;
+    }
+    if (!isServeResponse(parsed)) {
+      ignoredLines.push(trimmed);
+      return;
+    }
+    responsesById.set(parsed.id, parsed);
+    const resolvePending = pendingResponses.get(parsed.id);
+    if (resolvePending) {
+      pendingResponses.delete(parsed.id);
+      resolvePending(parsed);
+    }
+  });
 
   child.stdout.on('data', (chunk: Buffer) => {
     stdoutBytes += chunk.length;
@@ -1181,25 +1224,39 @@ async function runOoxmlServe(requests: ServeRequest[], cwd: string): Promise<Ser
     }
     stderr.push(chunk);
   });
-  for (const request of requests) {
-    child.stdin.write(`${JSON.stringify(request)}\n`);
-  }
-  child.stdin.end();
+
+  const closePromise = new Promise<number | null>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', resolve);
+  });
 
   let code: number | null;
   try {
-    code = await new Promise<number | null>((resolve, reject) => {
-      child.on('error', reject);
-      child.on('close', resolve);
-    });
+    child.stdin.write(`${JSON.stringify(openRequest)}\n`);
+    const openResponse = await Promise.race([
+      waitForServeResponse(openRequest, responsesById, pendingResponses),
+      closePromise.then(() => undefined),
+    ]);
+    if (openResponse) {
+      const sessionId = sessionIdFromOpenResponse(openResponse);
+      followUpRequests = buildFollowUpRequests(sessionId);
+      for (const request of followUpRequests) {
+        child.stdin.write(`${JSON.stringify(request)}\n`);
+      }
+      child.stdin.end();
+    }
+    code = await closePromise;
   } finally {
     settled = true;
     clearTimeout(timeout);
+    if (!child.stdin.destroyed && !child.stdin.writableEnded) child.stdin.end();
+    if (!child.killed && child.exitCode === null) child.kill('SIGKILL');
+    stdoutLines.close();
   }
 
   const stdoutText = Buffer.concat(stdout).toString();
   const stderrText = Buffer.concat(stderr).toString();
-  const parsed = parseServeResponses(stdoutText);
+  const allRequests = [openRequest, ...followUpRequests];
 
   if (outputLimitError) {
     throw new Error(outputLimitError);
@@ -1218,13 +1275,13 @@ async function runOoxmlServe(requests: ServeRequest[], cwd: string): Promise<Ser
         .join('\n\n'),
     );
   }
-  return requests.map((request) => {
-    const response = parsed.byId.get(request.id);
+  return allRequests.map((request) => {
+    const response = responsesById.get(request.id);
     if (!response) {
       throw new Error(
         [
           `Missing ooxml serve response for request ${request.id} (${request.method})`,
-          parsed.ignoredLines.length ? `ignored stdout lines:\n${scrubServerPaths(parsed.ignoredLines.join('\n'))}` : '',
+          ignoredLines.length ? `ignored stdout lines:\n${scrubServerPaths(ignoredLines.join('\n'))}` : '',
           scrubServerPaths(stdoutText.trim()) ? `stdout:\n${scrubServerPaths(stdoutText.trim())}` : '',
           scrubServerPaths(stderrText.trim()) ? `stderr:\n${scrubServerPaths(stderrText.trim())}` : '',
         ]
@@ -1236,29 +1293,16 @@ async function runOoxmlServe(requests: ServeRequest[], cwd: string): Promise<Ser
   });
 }
 
-function parseServeResponses(stdoutText: string): {
-  byId: Map<number, ServeResponse>;
-  ignoredLines: string[];
-} {
-  const byId = new Map<number, ServeResponse>();
-  const ignoredLines: string[] = [];
-  for (const line of stdoutText.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch {
-      ignoredLines.push(trimmed);
-      continue;
-    }
-    if (!isServeResponse(parsed)) {
-      ignoredLines.push(trimmed);
-      continue;
-    }
-    byId.set(parsed.id, parsed);
-  }
-  return { byId, ignoredLines };
+function waitForServeResponse(
+  request: ServeRequest,
+  responsesById: Map<number, ServeResponse>,
+  pendingResponses: Map<number, (response: ServeResponse) => void>,
+): Promise<ServeResponse> {
+  const existing = responsesById.get(request.id);
+  if (existing) return Promise.resolve(existing);
+  return new Promise<ServeResponse>((resolve) => {
+    pendingResponses.set(request.id, resolve);
+  });
 }
 
 function isServeResponse(value: unknown): value is ServeResponse {
@@ -1283,6 +1327,18 @@ function resultOrThrow(response: ServeResponse | undefined, label: string): unkn
     );
   }
   return response.result;
+}
+
+function sessionIdFromOpenResponse(response: ServeResponse): string {
+  const result = resultOrThrow(response, 'open');
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    throw new Error('Invalid ooxml serve open response: missing sessionId');
+  }
+  const { sessionId } = result as Partial<ServeOpenResult>;
+  if (typeof sessionId !== 'string' || !sessionId.trim()) {
+    throw new Error('Invalid ooxml serve open response: missing sessionId');
+  }
+  return sessionId;
 }
 
 function parseArgsJson(raw: string | undefined): Record<string, unknown> {
