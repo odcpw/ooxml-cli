@@ -147,7 +147,16 @@ func openZipReader(zipReader *zip.Reader) (*Package, error) {
 }
 
 // loadParts loads all parts from the zip archive.
+const (
+	// Guards against decompression ("zip bomb") attacks: a small compressed
+	// entry can inflate to many GB and exhaust memory. These ceilings are far
+	// above any legitimate Office part/package.
+	maxPartUncompressedBytes  = 256 << 20 // 256 MiB per part
+	maxTotalUncompressedBytes = 512 << 20 // 512 MiB per package
+)
+
 func (p *Package) loadParts() error {
+	var totalBytes int64
 	for _, file := range p.reader.File {
 		uri := NormalizeURI("/" + file.Name)
 
@@ -156,16 +165,30 @@ func (p *Package) loadParts() error {
 			continue
 		}
 
-		// Read raw bytes
+		// Reject parts whose declared uncompressed size already blows the cap,
+		// before spending any work decompressing them.
+		if file.UncompressedSize64 > maxPartUncompressedBytes {
+			return fmt.Errorf("zip entry %s is too large (%d bytes uncompressed)", file.Name, file.UncompressedSize64)
+		}
+
+		// Read raw bytes with a hard ceiling, in case the central-directory size
+		// (attacker-controlled) understates the real decompressed length.
 		rc, err := file.Open()
 		if err != nil {
 			return fmt.Errorf("failed to open zip entry %s: %w", file.Name, err)
 		}
 
-		data, err := io.ReadAll(rc)
+		data, err := io.ReadAll(io.LimitReader(rc, maxPartUncompressedBytes+1))
 		rc.Close()
 		if err != nil {
 			return fmt.Errorf("failed to read zip entry %s: %w", file.Name, err)
+		}
+		if int64(len(data)) > maxPartUncompressedBytes {
+			return fmt.Errorf("zip entry %s exceeds the %d byte uncompressed limit", file.Name, int64(maxPartUncompressedBytes))
+		}
+		totalBytes += int64(len(data))
+		if totalBytes > maxTotalUncompressedBytes {
+			return fmt.Errorf("package exceeds the %d byte total uncompressed limit", int64(maxTotalUncompressedBytes))
 		}
 
 		p.parts[uri] = cloneBytes(data)
