@@ -93,6 +93,7 @@ func TestTemplateApply_FromTokens_ColorsAndFonts(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(output), &res))
 	assert.Equal(t, "pptx", res.TargetType)
 	assert.False(t, res.DryRun)
+	assert.True(t, res.Changed)
 	assert.Len(t, res.Applied.Colors, 12)
 	require.NotNil(t, res.Applied.Fonts)
 	assert.Equal(t, "Arial", res.Applied.Fonts.MajorFont)
@@ -161,6 +162,7 @@ func TestTemplateApply_IdempotentReapplyReportsNoUpdates(t *testing.T) {
 
 	var res TemplateApplyResult
 	require.NoError(t, json.Unmarshal([]byte(output), &res))
+	assert.False(t, res.Changed)
 	assert.Equal(t, 0, res.TotalUpdates)
 	assert.Empty(t, res.Applied.Colors)
 	assert.Nil(t, res.Applied.Fonts)
@@ -195,6 +197,7 @@ func TestTemplateApply_PPTXTextStyles(t *testing.T) {
 
 	var res TemplateApplyResult
 	require.NoError(t, json.Unmarshal([]byte(output), &res))
+	assert.True(t, res.Changed)
 	assert.Equal(t, 2, res.TotalUpdates)
 	assert.Len(t, res.Applied.TextStyles, 2)
 
@@ -224,6 +227,7 @@ func TestTemplateApply_PPTXTextStyles(t *testing.T) {
 	require.NoError(t, err)
 	var reapplyRes TemplateApplyResult
 	require.NoError(t, json.Unmarshal([]byte(reapply), &reapplyRes))
+	assert.False(t, reapplyRes.Changed)
 	assert.Equal(t, 0, reapplyRes.TotalUpdates)
 	assert.Empty(t, reapplyRes.Applied.TextStyles)
 }
@@ -436,6 +440,26 @@ func TestTemplateApply_RangesReportedSkipped(t *testing.T) {
 	assert.True(t, found, "expected a skipped reason for ranges, got %v", res.Skipped)
 	// --target-ranges alone with --target-colors still applies colors.
 	assert.NotEmpty(t, res.Applied.Colors)
+}
+
+func TestTemplateApply_RangesOnlyReportsNoop(t *testing.T) {
+	tgtFixture := "../../testdata/pptx/minimal-title/presentation.pptx"
+	target := copyFixture(t, tgtFixture)
+	out := filepath.Join(t.TempDir(), "out.pptx")
+	profile := writeTemplateTokensProfile(t, `{"schemaVersion":"1.0","type":"pptx","source":"prof","pptx":{"theme":{"colorScheme":{"accent1":"FF0000"}},"defaultTextStyles":[],"tableStyles":[],"chartStyles":[]}}`)
+
+	output, err := runTemplateApply(t, "--json", "template", "apply", target,
+		"--tokens", profile, "--target-ranges", "--out", out)
+	require.NoError(t, err)
+
+	var res TemplateApplyResult
+	require.NoError(t, json.Unmarshal([]byte(output), &res))
+	assert.False(t, res.Changed)
+	assert.Equal(t, 0, res.TotalUpdates)
+	assert.Empty(t, res.Output)
+	assert.NoFileExists(t, out)
+	require.Len(t, res.Skipped, 1)
+	assert.Contains(t, res.Skipped[0], "ranges")
 }
 
 func TestTemplateApply_DryRunCannotCombineWithOut(t *testing.T) {

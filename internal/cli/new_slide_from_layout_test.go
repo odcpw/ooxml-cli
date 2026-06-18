@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -127,6 +128,42 @@ func TestNewSlideFromLayout_JSONOutput(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(listOutput), &list))
 	require.Len(t, list.Slides, 3)
 	assert.Equal(t, result.NewSlideURI, list.Slides[2].PartURI)
+}
+
+func TestNewSlideFromLayout_InsertAfter(t *testing.T) {
+	fixturePath, err := filepath.Abs("../../testdata/pptx/title-content/presentation.pptx")
+	require.NoError(t, err)
+	outPath := filepath.Join(t.TempDir(), "new-slide-inserted.pptx")
+
+	cmd := newTestRootCmd(t)
+	cmd.SetArgs([]string{
+		"pptx", "new-slide-from-layout", fixturePath,
+		"--layout", "2",
+		"--insert-after", "1",
+		"--set-text", "title=Inserted Template Slide",
+		"--set-text", "body=Inserted body",
+		"--out", outPath,
+		"--format", "json",
+	})
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	require.NoError(t, cmd.Execute())
+
+	var result newSlideResult
+	require.NoError(t, json.Unmarshal(output.Bytes(), &result))
+	assert.Equal(t, 1, result.InsertAfter)
+	assert.Equal(t, 2, result.NewSlideNumber)
+
+	pkg, err := opc.Open(outPath)
+	require.NoError(t, err)
+	defer pkg.Close()
+	graph, err := inspect.ParsePresentation(pkg)
+	require.NoError(t, err)
+	text, err := extract.ExtractText(&extract.ExtractTextRequest{Session: pkg, Graph: graph, SlideNumbers: []int{2}})
+	require.NoError(t, err)
+	require.Len(t, text.Slides, 1)
+	assert.Equal(t, "Inserted Template Slide", text.Slides[0].Shapes[0].Text.PlainText)
+	assert.Equal(t, "Inserted body", text.Slides[0].Shapes[1].Text.PlainText)
 }
 
 func TestNewSlideFromLayout_DryRunJSONIncludesReadbackTemplates(t *testing.T) {

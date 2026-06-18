@@ -357,6 +357,8 @@ func patchLevelParagraphProperties(lvlPPr *etree.Element, style *DefaultTextStyl
 	}
 	if style.FontName != "" {
 		setTypeface(defRPr, "latin", style.FontName)
+		setTypeface(defRPr, "ea", scriptTypeface(style.FontName, "lt", "ea"))
+		setTypeface(defRPr, "cs", scriptTypeface(style.FontName, "lt", "cs"))
 	}
 }
 
@@ -413,6 +415,17 @@ func setTypeface(defRPr *etree.Element, local, typeface string) {
 		defRPr.AddChild(font)
 	}
 	font.CreateAttr("typeface", typeface)
+}
+
+func scriptTypeface(typeface string, latinSuffix string, scriptSuffix string) string {
+	switch typeface {
+	case "+mj-" + latinSuffix:
+		return "+mj-" + scriptSuffix
+	case "+mn-" + latinSuffix:
+		return "+mn-" + scriptSuffix
+	default:
+		return typeface
+	}
 }
 
 func findDirectChildByLocal(elem *etree.Element, local string) *etree.Element {

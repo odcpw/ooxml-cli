@@ -23,6 +23,7 @@ var (
 	newSlideSetImageCoords   []string
 	newSlideSetImageSlotKeys []string
 	newSlideImageFitMode     string
+	newSlideInsertAfter      int
 	// Paragraph/bullet mutation flags
 	newSlideLevel       int
 	newSlideAlignment   string
@@ -109,6 +110,7 @@ type newSlideResult struct {
 	Output                    string                 `json:"output,omitempty"`
 	DryRun                    bool                   `json:"dryRun"`
 	Layout                    string                 `json:"layout"`
+	InsertAfter               int                    `json:"insertAfter,omitempty"`
 	NewSlideNumber            int                    `json:"newSlideNumber"`
 	NewSlideID                uint32                 `json:"newSlideId"`
 	NewSlideURI               string                 `json:"newSlideUri"`
@@ -212,6 +214,7 @@ func performNewSlideFromLayout(inputPath string, mutOpts *MutationOptions) (*new
 		created, err := mutate.NewSlideFromLayout(&mutate.NewSlideFromLayoutRequest{
 			Package:          pkg,
 			LayoutPartURI:    layoutURI,
+			InsertAfter:      newSlideInsertAfter,
 			SetTexts:         setTexts,
 			SetRichTexts:     setRichTexts,
 			SetImages:        setImages,
@@ -234,6 +237,7 @@ func performNewSlideFromLayout(inputPath string, mutOpts *MutationOptions) (*new
 			Output:         destinationFile,
 			DryRun:         mutOpts.DryRun,
 			Layout:         newSlideLayout,
+			InsertAfter:    newSlideInsertAfter,
 			NewSlideNumber: created.NewSlideNumber,
 			NewSlideID:     created.NewSlideID,
 			NewSlideURI:    created.NewSlideURI,
@@ -466,6 +470,7 @@ func init() {
 	newSlideFromLayoutCmd.Flags().StringArrayVar(&newSlideSetImageCoords, "set-image-coords", nil, "coordinate-based image insertion (repeatable x,y,cx,cy=path)")
 	newSlideFromLayoutCmd.Flags().StringArrayVar(&newSlideSetImageSlotKeys, "set-image-slot", nil, "layout/master slot-based image insertion, including authored picture placeholders (repeatable slotKey=path)")
 	newSlideFromLayoutCmd.Flags().StringVar(&newSlideImageFitMode, "image-fit", "contain", "image fit mode: contain or cover")
+	newSlideFromLayoutCmd.Flags().IntVar(&newSlideInsertAfter, "insert-after", 0, "insert after this 1-based slide number (default: append at end)")
 
 	// Paragraph/bullet mutation flags
 	newSlideFromLayoutCmd.Flags().IntVar(&newSlideLevel, "level", -1, "paragraph indent level (0-8, -1 to skip)")

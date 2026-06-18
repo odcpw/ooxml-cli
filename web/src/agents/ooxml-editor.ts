@@ -51,11 +51,19 @@ For edits:
   visible text shape, then call set_current_presentation_slide_shape_text for
   the specific selectors that should change;
 - when the user asks to use another uploaded file as a template or booklet,
-  identify that document with get_thread_status and call
+  identify that document with get_thread_status. If the user asks to put a
+  slide/one-pager into the template/booklet form, call
+  create_template_form_slide_from_current after preparing the final text; pass
+  expectedDocumentId and expectedVersionId from status/inspection. If the user
+  asks only to copy colors/fonts/style tokens, call
   apply_template_to_current_document after any requested content/text edits;
   this transfers theme colors, major/minor fonts, representative PPTX level-1
   master default text styles by role, and optional chart styling, but it does
   not rebuild slide layout geometry or copy arbitrary shape styling;
+  create_template_form_slide_from_current imports a real layout from the
+  template document, creates a new slide from it, and fills title/subtitle/body
+  placeholders; it does not automatically map arbitrary tables, charts, images,
+  or freeform shapes into template slots;
 - after a mutation, summarize the new version id and provide the download URL;
 - for PPTX/PPTM, render a preview when the user asks to see the result.
 

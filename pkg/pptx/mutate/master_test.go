@@ -540,6 +540,65 @@ func TestUpdateMasterDefaultTextStyleCreatesTxStylesBeforeExtLst(t *testing.T) {
 	assert.Less(t, txStylesIdx, extLstIdx, "txStyles must precede extLst in slide master child order")
 }
 
+func TestUpdateMasterDefaultTextStyleUpdatesAllScriptFonts(t *testing.T) {
+	const masterURI = "/ppt/slideMasters/slideMaster1.xml"
+	session := newMockPackageSession()
+	session.xmlParts[masterURI] = []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld name="Office Theme">
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr/>
+    </p:spTree>
+  </p:cSld>
+  <p:txStyles>
+    <p:bodyStyle>
+      <a:lvl1pPr>
+        <a:defRPr sz="1800">
+          <a:latin typeface="+mj-lt"/>
+          <a:ea typeface="+mj-ea"/>
+          <a:cs typeface="+mj-cs"/>
+        </a:defRPr>
+      </a:lvl1pPr>
+    </p:bodyStyle>
+  </p:txStyles>
+</p:sldMaster>`)
+	session.contentTypes[masterURI] = "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"
+
+	err := UpdateMasterDefaultTextStyle(&UpdateMasterDefaultTextStyleRequest{
+		Package:       session,
+		MasterPartURI: masterURI,
+		StyleType:     "body",
+		Style: &DefaultTextStyleInfo{
+			FontName: "+mn-lt",
+		},
+	})
+	require.NoError(t, err)
+
+	masterDoc, err := session.ReadXMLPart(masterURI)
+	require.NoError(t, err)
+	defRPr := findDescendantByLocal(masterDoc.Root(), "defRPr")
+	require.NotNil(t, defRPr)
+	assert.Equal(t, "+mn-lt", findDirectChildByLocal(defRPr, "latin").SelectAttrValue("typeface", ""))
+	assert.Equal(t, "+mn-ea", findDirectChildByLocal(defRPr, "ea").SelectAttrValue("typeface", ""))
+	assert.Equal(t, "+mn-cs", findDirectChildByLocal(defRPr, "cs").SelectAttrValue("typeface", ""))
+}
+
+func findDescendantByLocal(elem *etree.Element, local string) *etree.Element {
+	if elem == nil {
+		return nil
+	}
+	if localTag(elem.Tag) == local {
+		return elem
+	}
+	for _, child := range elem.ChildElements() {
+		if found := findDescendantByLocal(child, local); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
 // TestMasterPlaceholderInheritance tests that placeholders on masters are inherited by layouts
 func TestMasterPlaceholderInheritance(t *testing.T) {
 	// This test verifies that when a placeholder is added to a master,

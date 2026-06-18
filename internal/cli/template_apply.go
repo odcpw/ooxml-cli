@@ -42,6 +42,7 @@ type TemplateApplyResult struct {
 	File          string                  `json:"file"`
 	Output        string                  `json:"output,omitempty"`
 	DryRun        bool                    `json:"dryRun"`
+	Changed       bool                    `json:"changed"`
 	TargetType    string                  `json:"targetType"`
 	ProfileSource string                  `json:"profileSource"`
 	ProfileName   string                  `json:"profileName,omitempty"`
@@ -281,6 +282,23 @@ func performTemplateApply(targetPath string, targetKind opc.PackageType, src *tm
 	// planErr means nothing to apply; we still surface skipped reasons unless the
 	// caller also passed no usable selection. Treat it as a clear failure.
 	if planErr != nil {
+		if rangesRequested && !sel.Colors && !sel.Fonts && !sel.Charts && !sel.TextStyles {
+			return &TemplateApplyResult{
+				File:       targetPath,
+				DryRun:     mutOpts.DryRun,
+				Changed:    false,
+				TargetType: targetKind.String(),
+				Applied: TemplateApplyAppliedSet{
+					Colors:     []TemplateAppliedColor{},
+					Charts:     []TemplateAppliedChart{},
+					TextStyles: []TemplateAppliedTextStyle{},
+				},
+				Skipped: []string{
+					"ranges: range/cell style transfer is not supported (no per-range style in the token model)",
+				},
+				TotalUpdates: 0,
+			}, nil
+		}
 		// Build a helpful message listing skipped reasons.
 		reasons := ""
 		if plan != nil && len(plan.Skipped) > 0 {
@@ -466,6 +484,7 @@ func performTemplateApply(targetPath string, targetKind opc.PackageType, src *tm
 	}
 	result.TotalUpdates = len(result.Applied.Colors) + len(result.Applied.Charts)
 	result.TotalUpdates += len(result.Applied.FontParts) + len(result.Applied.TextStyles)
+	result.Changed = result.TotalUpdates > 0
 	sort.Strings(result.Skipped)
 	sort.Strings(result.Warnings)
 	return result, nil

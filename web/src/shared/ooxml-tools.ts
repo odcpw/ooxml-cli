@@ -3,6 +3,7 @@ import * as v from 'valibot';
 import {
   applyOoxmlOpsToCurrent,
   applyTemplateToCurrentDocument,
+  createTemplateFormSlideFromCurrent,
   getOoxmlCapabilities,
   getOoxmlCommandHelp,
   inspectCurrent,
@@ -204,6 +205,39 @@ export function createOoxmlTools(threadId: string) {
             templateDocumentId: String(templateDocumentId),
             targetTextStyles: targetTextStyles === undefined ? undefined : Boolean(targetTextStyles),
             targetCharts: Boolean(targetCharts),
+          }),
+          null,
+          2,
+        ),
+    }),
+    defineTool({
+      name: 'create_template_form_slide_from_current',
+      description:
+        'Create a template-form version of one PPTX/PPTM slide using another uploaded presentation as the booklet/template source. It imports the chosen template layout, creates a new slide from that layout, fills title/subtitle/body text placeholders, and by default replaces the source slide position with the new template-form slide.',
+      parameters: v.object({
+        templateDocumentId: describedString('Document id of the uploaded template or booklet from get_thread_status.'),
+        sourceSlide: v.optional(describedNumber('One-based source slide number to rebuild. Defaults to 1.')),
+        templateLayout: v.optional(describedString('Optional exact template layout number or name. Omit to pick the best title/body layout.')),
+        title: v.optional(describedString('Optional final title text to place in the template layout. If omitted, extracted from the source slide.')),
+        subtitle: v.optional(describedString('Optional final subtitle text to place in the template layout. If omitted, extracted when present.')),
+        body: v.optional(describedString('Optional final body text to place in the template layout. If omitted, extracted from non-title source text.')),
+        replaceSourceSlide: v.optional(describedBoolean('Replace the source slide position with the template-form slide. Defaults to true.')),
+        expectedDocumentId: v.optional(describedString('Current document id from inspect_current_with_ooxml or get_thread_status. Guards against editing the wrong file if selection changes.')),
+        expectedVersionId: v.optional(describedString('Current version id from inspect_current_with_ooxml or get_thread_status. Guards against stale edits.')),
+      }),
+      execute: async ({ templateDocumentId, sourceSlide, templateLayout, title, subtitle, body, replaceSourceSlide, expectedDocumentId, expectedVersionId }) =>
+        JSON.stringify(
+          await createTemplateFormSlideFromCurrent({
+            threadId,
+            templateDocumentId: String(templateDocumentId),
+            sourceSlide: sourceSlide === undefined ? undefined : Number(sourceSlide),
+            templateLayout: typeof templateLayout === 'string' ? templateLayout : undefined,
+            title: typeof title === 'string' ? title : undefined,
+            subtitle: typeof subtitle === 'string' ? subtitle : undefined,
+            body: typeof body === 'string' ? body : undefined,
+            replaceSourceSlide: replaceSourceSlide === undefined ? undefined : Boolean(replaceSourceSlide),
+            expectedDocumentId: typeof expectedDocumentId === 'string' ? expectedDocumentId : undefined,
+            expectedVersionId: typeof expectedVersionId === 'string' ? expectedVersionId : undefined,
           }),
           null,
           2,

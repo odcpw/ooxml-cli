@@ -56,6 +56,11 @@ export async function runOoxml(args: string[], cwd: string): Promise<{ stdout: s
   }
 }
 
+async function runOoxmlJson<T>(args: string[], cwd: string): Promise<T> {
+  const result = await runOoxml(args, cwd);
+  return JSON.parse(result.stdout) as T;
+}
+
 type OoxmlCapabilityCommand = {
   path?: string;
   use?: string;
@@ -321,6 +326,21 @@ export async function applyTemplateToCurrentDocument(input: {
   if (targetTextStyles) args.push('--target-text-styles');
   if (input.targetCharts) args.push('--target-charts');
   const applied = await runOoxml(args, dir);
+  const apply = JSON.parse(applied.stdout) as TemplateApplyCliResult;
+  if (Number(apply.totalUpdates ?? 0) === 0) {
+    await rm(outPath, { force: true }).catch(() => undefined);
+    return {
+      changed: false,
+      reason: 'Template styling produced no transferable updates for the selected document.',
+      documentId: document.id,
+      currentVersionId: document.currentVersionId,
+      apply,
+      templateDocumentId: templateDocument.id,
+      templateVersionId: templateVersion.id,
+      targetTextStyles,
+      targetCharts: Boolean(input.targetCharts),
+    };
+  }
 
   return publishNewVersion({
     thread,
@@ -329,7 +349,7 @@ export async function applyTemplateToCurrentDocument(input: {
     versionId: newVersionId,
     outPath,
     note: `Applied transferable template styling from ${templateDocument.title}`,
-    apply: JSON.parse(applied.stdout),
+    apply,
     extra: {
       templateDocumentId: templateDocument.id,
       templateVersionId: templateVersion.id,
@@ -339,6 +359,374 @@ export async function applyTemplateToCurrentDocument(input: {
         'Applies transferable design tokens: theme colors, major/minor fonts, representative PPTX level-1 master default text styles by role, plus chart styling when requested. It does not rebuild slide layouts or copy arbitrary shape geometry.',
     },
   });
+}
+
+export async function createTemplateFormSlideFromCurrent(input: {
+  threadId: string;
+  templateDocumentId: string;
+  sourceSlide?: number;
+  templateLayout?: string;
+  title?: string;
+  subtitle?: string;
+  body?: string;
+  replaceSourceSlide?: boolean;
+  expectedDocumentId?: string;
+  expectedVersionId?: string;
+}): Promise<Record<string, unknown>> {
+  const { thread, document, version } = await currentSelection(input.threadId, {
+    documentId: input.expectedDocumentId,
+    versionId: input.expectedVersionId,
+  });
+  if (thread.documents.length > 1 && (!input.expectedDocumentId || !input.expectedVersionId)) {
+    throw new Error(
+      'Multi-file threads require expectedDocumentId and expectedVersionId for template-form slide creation. Call get_thread_status or inspect_current_with_ooxml, then retry with those guards.',
+    );
+  }
+  assertPresentation(version);
+
+  const templateDocument = documentById(thread, input.templateDocumentId);
+  if (templateDocument.id === document.id) {
+    throw new Error('Choose a different document as the template source.');
+  }
+  const templateVersion = currentVersion(thread, templateDocument);
+  assertPresentation(templateVersion);
+
+  const sourceSlide = positiveSlideNumber(input.sourceSlide ?? 1, 'sourceSlide');
+  const replaceSourceSlide = input.replaceSourceSlide ?? true;
+  const dir = threadDir(input.threadId);
+  const file = absoluteVersionPath(thread, version);
+  const templateFile = absoluteVersionPath(thread, templateVersion);
+  const newVersionId = nextVersionId(document);
+  const ext = extname(version.path);
+  const outPath = newVersionOutputPath(dir, document.id, newVersionId, 'template-form', ext);
+  const tmpDir = join(dir, 'documents', document.id, 'tmp');
+  await mkdir(join(dir, 'documents', document.id, 'versions'), { recursive: true });
+  await mkdir(tmpDir, { recursive: true });
+
+  const importedPath = join(tmpDir, `${newVersionId}-layout-${randomUUID().slice(0, 8)}${ext}`);
+  const insertedPath = replaceSourceSlide ? join(tmpDir, `${newVersionId}-inserted-${randomUUID().slice(0, 8)}${ext}`) : outPath;
+  const intermediatePaths = replaceSourceSlide ? [importedPath, insertedPath] : [importedPath];
+
+  try {
+    const sourceShapeReadback = await runOoxmlJson<PptxShapesShowOutput>(
+      ['--json', 'pptx', 'shapes', 'show', file, '--slide', String(sourceSlide), '--include-text', '--include-bounds'],
+      dir,
+    );
+    const extractedText = extractTemplateText(sourceShapeReadback, input);
+
+    const templateLayouts = await runOoxmlJson<PptxLayoutListOutput>(['--json', 'pptx', 'layouts', 'list', templateFile], dir);
+    const selectedTemplateLayout = selectTemplateLayout(templateLayouts.layouts ?? [], extractedText, input.templateLayout);
+    const targetAssignments = buildTemplateTextAssignments(selectedTemplateLayout, extractedText);
+
+    const imported = await runOoxmlJson<ImportLayoutCliResult>(
+      [
+        '--json',
+        'pptx',
+        'layouts',
+        'import',
+        file,
+        '--source',
+        templateFile,
+        '--layout',
+        String(selectedTemplateLayout.number ?? selectedTemplateLayout.name),
+        '--theme-policy',
+        'import',
+        '--out',
+        importedPath,
+      ],
+      dir,
+    );
+    const importedLayouts = await runOoxmlJson<PptxLayoutListOutput>(['--json', 'pptx', 'layouts', 'list', importedPath], dir);
+    const importedLayout = findImportedLayout(importedLayouts.layouts ?? [], imported);
+    const newSlideArgs = [
+      '--json',
+      'pptx',
+      'new-slide-from-layout',
+      importedPath,
+      '--layout',
+      String(importedLayout.number),
+      '--insert-after',
+      String(sourceSlide),
+      '--out',
+      insertedPath,
+    ];
+    for (const assignment of targetAssignments) {
+      newSlideArgs.push('--set-text', `${assignment.target}=${assignment.text}`);
+    }
+    const inserted = await runOoxmlJson<NewSlideCliResult>(newSlideArgs, dir);
+
+    let deleted: SlidesDeleteCliResult | undefined;
+    if (replaceSourceSlide) {
+      deleted = await runOoxmlJson<SlidesDeleteCliResult>(
+        ['--json', 'pptx', 'slides', 'delete', insertedPath, String(sourceSlide), '--out', outPath],
+        dir,
+      );
+    }
+
+    return publishNewVersion({
+      thread,
+      document,
+      sourceVersion: version,
+      versionId: newVersionId,
+      outPath,
+      note: `Created template-form slide from slide ${sourceSlide} using ${templateDocument.title}`,
+      apply: {
+        workflow: 'template-form-slide',
+        sourceSlide,
+        replaceSourceSlide,
+        selectedTemplateLayout,
+        importedLayout,
+        assignments: targetAssignments.map((assignment) => ({ target: assignment.target, textLength: assignment.text.length })),
+        import: imported,
+        newSlide: inserted,
+        delete: deleted,
+      },
+      extra: {
+        templateDocumentId: templateDocument.id,
+        templateVersionId: templateVersion.id,
+        sourceSlide,
+        newSlideNumber: replaceSourceSlide ? sourceSlide : inserted.newSlideNumber,
+        selectedTemplateLayout: {
+          number: selectedTemplateLayout.number,
+          name: selectedTemplateLayout.name,
+          placeholders: selectedTemplateLayout.placeholders,
+        },
+        textMapping: targetAssignments.map((assignment) => ({
+          target: assignment.target,
+          textLength: assignment.text.length,
+        })),
+        limitation:
+          'Creates a new slide from an imported template layout and fills text placeholders. It preserves the template layout/master/theme chain for that slide, but it does not automatically map arbitrary freeform shapes, tables, charts, or images into template-specific slots.',
+      },
+    });
+  } catch (error) {
+    await rm(outPath, { force: true }).catch(() => undefined);
+    throw error;
+  } finally {
+    await Promise.all(intermediatePaths.map((path) => rm(path, { force: true }).catch(() => undefined)));
+  }
+}
+
+type TemplateApplyCliResult = {
+  changed?: boolean;
+  totalUpdates?: number;
+  skipped?: string[];
+  warnings?: string[];
+  output?: string;
+};
+
+type PptxShapeInfo = {
+  order?: number;
+  shapeName?: string;
+  targetKind?: string;
+  primarySelector?: string;
+  textCapable?: boolean;
+  textPreview?: string;
+  placeholder?: {
+    key?: string;
+    role?: string;
+    index?: number;
+  };
+};
+
+type PptxShapesShowOutput = {
+  shapes?: PptxShapeInfo[];
+};
+
+type PptxLayoutEntry = {
+  number?: number;
+  name?: string;
+  partUri?: string;
+  placeholderCount?: number;
+  placeholders?: string[];
+};
+
+type PptxLayoutListOutput = {
+  layouts?: PptxLayoutEntry[];
+};
+
+type ImportLayoutCliResult = {
+  targetLayoutUri?: string;
+  targetMasterUri?: string;
+  themeUri?: string;
+  name?: string;
+  imported?: boolean;
+  masterImported?: boolean;
+};
+
+type NewSlideCliResult = {
+  output?: string;
+  layout?: string;
+  insertAfter?: number;
+  newSlideNumber?: number;
+  newSlideId?: number;
+  newSlideUri?: string;
+};
+
+type SlidesDeleteCliResult = {
+  output?: string;
+  deletedSlide?: number;
+  remainingSlides?: number;
+};
+
+type TemplateText = {
+  title?: string;
+  subtitle?: string;
+  body?: string;
+};
+
+type TemplateTextAssignment = {
+  target: string;
+  text: string;
+};
+
+function positiveSlideNumber(value: number, label: string): number {
+  if (!Number.isFinite(value)) {
+    throw new Error(`${label} must be a finite slide number.`);
+  }
+  const normalized = Math.trunc(value);
+  if (normalized < 1) {
+    throw new Error(`${label} must be 1 or greater.`);
+  }
+  return normalized;
+}
+
+function extractTemplateText(show: PptxShapesShowOutput, overrides: Partial<TemplateText>): TemplateText {
+  const sortedShapes = (show.shapes ?? [])
+    .filter((shape) => shape.textCapable !== false)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const textShapes = sortedShapes
+    .map((shape) => ({ shape, text: cleanSlideText(shape.textPreview ?? '') }))
+    .filter((entry) => entry.text);
+
+  const findByRole = (role: string): string | undefined => {
+    const found = textShapes.find(({ shape }) => shapeRole(shape) === role);
+    return found?.text;
+  };
+
+  const title = cleanSlideText(overrides.title ?? '') || findByRole('title') || textShapes[0]?.text;
+  const subtitle = cleanSlideText(overrides.subtitle ?? '') || findByRole('subtitle');
+  const explicitBody = cleanSlideText(overrides.body ?? '');
+  const body =
+    explicitBody ||
+    textShapes
+      .filter(({ text }) => text !== title && text !== subtitle)
+      .map(({ text }) => text)
+      .join('\n\n');
+
+  if (!title && !subtitle && !body) {
+    throw new Error('No source slide text was found to map into the template layout.');
+  }
+  return {
+    title: title || undefined,
+    subtitle: subtitle || undefined,
+    body: body || undefined,
+  };
+}
+
+function shapeRole(shape: PptxShapeInfo): string {
+  const values = [shape.primarySelector, shape.targetKind, shape.placeholder?.role, shape.placeholder?.key]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toLowerCase());
+  if (values.some((value) => value === 'title' || value.includes('title'))) return 'title';
+  if (values.some((value) => value === 'subtitle' || value.includes('subtitle'))) return 'subtitle';
+  if (values.some((value) => value === 'body' || value.startsWith('body'))) return 'body';
+  return '';
+}
+
+function cleanSlideText(text: string): string {
+  return text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function selectTemplateLayout(layouts: PptxLayoutEntry[], text: TemplateText, requestedLayout?: string): PptxLayoutEntry {
+  if (layouts.length === 0) {
+    throw new Error('The template document has no slide layouts to use.');
+  }
+  const requested = requestedLayout?.trim();
+  if (requested) {
+    const match = layouts.find((layout) => String(layout.number) === requested || layout.name === requested);
+    if (!match) {
+      throw new Error(`Template layout not found: ${requested}`);
+    }
+    return requireLayoutNumber(match);
+  }
+
+  const scored = layouts
+    .map((layout) => ({ layout, score: scoreTemplateLayout(layout, text) }))
+    .sort((a, b) => b.score - a.score || (a.layout.number ?? Number.MAX_SAFE_INTEGER) - (b.layout.number ?? Number.MAX_SAFE_INTEGER));
+  const best = scored[0];
+  if (!best || best.score <= 0) {
+    throw new Error('Could not find a template layout with usable text placeholders.');
+  }
+  return requireLayoutNumber(best.layout);
+}
+
+function scoreTemplateLayout(layout: PptxLayoutEntry, text: TemplateText): number {
+  const placeholders = layoutPlaceholders(layout);
+  let score = 0;
+  if (text.title && firstPlaceholderForRole(placeholders, 'title')) score += 20;
+  if (text.body && firstPlaceholderForRole(placeholders, 'body')) score += 30;
+  if (text.subtitle && firstPlaceholderForRole(placeholders, 'subtitle')) score += 8;
+  if (firstPlaceholderForRole(placeholders, 'body')) score += 3;
+  if (firstPlaceholderForRole(placeholders, 'title')) score += 2;
+  if ((layout.placeholderCount ?? placeholders.length) === 0) score -= 100;
+  return score;
+}
+
+function buildTemplateTextAssignments(layout: PptxLayoutEntry, text: TemplateText): TemplateTextAssignment[] {
+  const placeholders = layoutPlaceholders(layout);
+  const titleTarget = firstPlaceholderForRole(placeholders, 'title');
+  const subtitleTarget = firstPlaceholderForRole(placeholders, 'subtitle');
+  const bodyTarget = firstPlaceholderForRole(placeholders, 'body');
+  const assignments: TemplateTextAssignment[] = [];
+
+  if (titleTarget && text.title) assignments.push({ target: titleTarget, text: text.title });
+  if (subtitleTarget && text.subtitle) assignments.push({ target: subtitleTarget, text: text.subtitle });
+
+  const bodyParts = [!subtitleTarget ? text.subtitle : undefined, text.body].filter((part): part is string => Boolean(part));
+  if (bodyTarget && bodyParts.length > 0) {
+    assignments.push({ target: bodyTarget, text: bodyParts.join('\n\n') });
+  }
+  if (assignments.length === 0) {
+    const fallback = placeholders[0];
+    const fallbackText = [text.title, text.subtitle, text.body].filter((part): part is string => Boolean(part)).join('\n\n');
+    if (!fallback || !fallbackText) {
+      throw new Error('Could not map source slide text into the selected template layout placeholders.');
+    }
+    assignments.push({ target: fallback, text: fallbackText });
+  }
+  return assignments;
+}
+
+function layoutPlaceholders(layout: PptxLayoutEntry): string[] {
+  return (layout.placeholders ?? []).map((placeholder) => placeholder.trim()).filter(Boolean);
+}
+
+function firstPlaceholderForRole(placeholders: string[], role: 'title' | 'subtitle' | 'body'): string | undefined {
+  if (role === 'title') {
+    return placeholders.find((placeholder) => placeholder === 'title' || placeholder.startsWith('title:'));
+  }
+  if (role === 'subtitle') {
+    return placeholders.find((placeholder) => placeholder === 'subtitle' || placeholder.startsWith('subtitle:'));
+  }
+  return placeholders.find((placeholder) => placeholder === 'body' || placeholder.startsWith('body:'));
+}
+
+function findImportedLayout(layouts: PptxLayoutEntry[], imported: ImportLayoutCliResult): PptxLayoutEntry {
+  const byUri = imported.targetLayoutUri ? layouts.find((layout) => layout.partUri === imported.targetLayoutUri) : undefined;
+  const byName = imported.name ? layouts.find((layout) => layout.name === imported.name) : undefined;
+  const found = byUri ?? byName;
+  if (!found) {
+    throw new Error('Imported template layout was not discoverable after import.');
+  }
+  return requireLayoutNumber(found);
+}
+
+function requireLayoutNumber(layout: PptxLayoutEntry): PptxLayoutEntry {
+  if (!layout.number || layout.number < 1) {
+    throw new Error(`Template layout ${layout.name || layout.partUri || '(unnamed)'} did not include a usable layout number.`);
+  }
+  return layout;
 }
 
 export async function inspectCurrentWithOoxml(input: {

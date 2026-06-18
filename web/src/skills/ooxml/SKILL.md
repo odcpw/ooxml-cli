@@ -31,7 +31,12 @@ provided tools rather than shell commands or arbitrary file paths.
    boundary. `apply_template_to_current_document` transfers theme colors,
    major/minor fonts, representative PPTX level-1 master default text styles by
    role, and optional chart styling; it does not rebuild slide layouts or copy
-   arbitrary shape geometry.
+   arbitrary shape geometry. For "put this one-pager/slide into the booklet or
+   template form", use `create_template_form_slide_from_current`: it imports a
+   real layout from the selected template document, creates a new slide from
+   that layout, fills title/subtitle/body placeholders, and publishes a new
+   version. It does not automatically map arbitrary freeform shapes, images,
+   charts, or tables into template-specific slots.
 6. Call `validate_current_document` after any change if the mutation result did
    not already include strict validation.
 7. For PPTX/PPTM previews, call `render_current_presentation_preview`.

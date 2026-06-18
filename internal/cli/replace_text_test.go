@@ -233,6 +233,7 @@ var resetTestGlobals = func() {
 	newSlideSetImageCoords = nil
 	newSlideSetImageSlotKeys = nil
 	newSlideImageFitMode = "contain"
+	newSlideInsertAfter = 0
 	newSlideLevel = -1
 	newSlideAlignment = ""
 	newSlideBulletMode = ""
