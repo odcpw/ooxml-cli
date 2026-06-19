@@ -40,6 +40,8 @@ Latest milestone, 2026-06-19:
 - Runtime timestamp/counter and mutation temp-path helpers moved from
   `src/main.rs` into `src/runtime_util.rs`, keeping generated dates and
   mutation scratch paths in one shared utility module.
+- Shared selector de-duplication and candidate suggestion helpers moved from
+  `src/main.rs` into `src/selector_util.rs`.
 - OPC package mutation helpers for root relationships, content-type overrides,
   relationship XML insertion, and relative relationship targets moved from
   `src/main.rs` into `src/opc.rs`.
@@ -52,6 +54,10 @@ Latest milestone, 2026-06-19:
 - The `inspect` command and its DOCX/XLSX/PPTX summary helpers moved from
   `src/main.rs` into `src/inspect.rs`, separating package summary reporting from
   the remaining command-family implementations.
+- PPTX slide, shape, text, comments, masters, layouts, notes, table, and diff
+  readback/reporting helpers moved from `src/main.rs` into
+  `src/pptx_readback.rs`, leaving mutation/render orchestration at the crate
+  root.
 - MCP tool response shaping, resource schemas, capability resources, command
   resource lookup, and URI decoding moved from `src/main.rs` into
   `src/mcp_support.rs`, leaving MCP state logic separate from protocol support
