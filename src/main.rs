@@ -534,6 +534,98 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             )
         }
         [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "comments" && verb == "edit" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--comment-id",
+                    "--handle",
+                    "--text",
+                    "--text-file",
+                    "--author",
+                    "--date",
+                    "--expect-hash",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let comment_id_set = flag_present(rest, "--comment-id");
+            let handle_set = flag_present(rest, "--handle");
+            if handle_set && comment_id_set {
+                return Err(CliError::invalid_args(
+                    "cannot specify both --comment-id and --handle",
+                ));
+            }
+            if !handle_set && !comment_id_set {
+                return Err(CliError::invalid_args(
+                    "--comment-id is required (or pass --handle)",
+                ));
+            }
+            let comment_id = parse_i64_flag(rest, "--comment-id")?.unwrap_or(0);
+            if !handle_set && comment_id < 0 {
+                return Err(CliError::invalid_args("--comment-id must be >= 0"));
+            }
+            let text_set = flag_present(rest, "--text");
+            let text_file_set = flag_present(rest, "--text-file");
+            let author_set = flag_present(rest, "--author");
+            let date_set = flag_present(rest, "--date");
+            if text_set && text_file_set {
+                return Err(CliError::invalid_args(
+                    "cannot specify both --text and --text-file",
+                ));
+            }
+            if !text_set && !text_file_set && !author_set && !date_set {
+                return Err(CliError::invalid_args(
+                    "specify at least one of --text, --text-file, --author, or --date",
+                ));
+            }
+            let text = parse_string_flag(rest, "--text")?;
+            let text_file = parse_string_flag(rest, "--text-file")?;
+            let resolved_text = if text_file_set {
+                let path = text_file.as_deref().unwrap_or_default();
+                fs::read(path)
+                    .map(|data| String::from_utf8_lossy(&data).to_string())
+                    .map_err(|_| CliError::file_not_found(format!("file not found: {path}")))?
+            } else {
+                text.unwrap_or_default()
+            };
+            let handle = parse_string_flag(rest, "--handle")?;
+            let author = parse_string_flag(rest, "--author")?.unwrap_or_default();
+            let date = parse_string_flag(rest, "--date")?.unwrap_or_default();
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_comments_edit(
+                file,
+                comment_id,
+                handle.as_deref(),
+                DocxCommentEditSpec {
+                    expect_hash: &expect_hash,
+                    text: &resolved_text,
+                    text_set: text_set || text_file_set,
+                    author: &author,
+                    author_set,
+                    date: &date,
+                    date_set,
+                },
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && group == "fields" && verb == "list" =>
         {
             reject_unknown_flags(rest, &["--type"], &[])?;
@@ -1932,6 +2024,53 @@ fn capability_commands() -> Vec<Value> {
                 ),
                 flag("--text", "text", "string", "comment text"),
                 flag("--text-file", "textFile", "string", "path to comment text"),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml docx comments edit",
+            "edit <file>",
+            "Edit an existing DOCX comment by id or stable handle.",
+            &["comment"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag(
+                    "--comment-id",
+                    "commentId",
+                    "int",
+                    "comment id from comments list",
+                ),
+                flag("--handle", "handle", "string", "stable DOCX comment handle"),
+                flag("--text", "text", "string", "new comment text"),
+                flag(
+                    "--text-file",
+                    "textFile",
+                    "string",
+                    "path to new comment text",
+                ),
+                flag("--author", "author", "string", "new author"),
+                flag("--date", "date", "string", "new RFC3339 timestamp"),
+                flag(
+                    "--expect-hash",
+                    "expectHash",
+                    "string",
+                    "expected sha256 content hash from comments list",
+                ),
                 flag("--out", "out", "string", "output file path"),
                 flag(
                     "--in-place",
@@ -7021,6 +7160,105 @@ fn docx_comments_add(
     Ok(Value::Object(result))
 }
 
+struct DocxCommentEditSpec<'a> {
+    expect_hash: &'a str,
+    text: &'a str,
+    text_set: bool,
+    author: &'a str,
+    author_set: bool,
+    date: &'a str,
+    date_set: bool,
+}
+
+fn docx_comments_edit(
+    file: &str,
+    comment_id: i64,
+    handle: Option<&str>,
+    edit: DocxCommentEditSpec<'_>,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    if detect_inspect_package_type(file, &entries) != InspectPackageKind::Docx {
+        let detected = match detect_inspect_package_type(file, &entries) {
+            InspectPackageKind::Pptx => "pptx",
+            InspectPackageKind::Xlsx => "xlsx",
+            InspectPackageKind::Docx => "docx",
+            InspectPackageKind::Unknown => package_type(file)?,
+        };
+        return Err(CliError::unsupported_type(format!(
+            "file is not a DOCX document (detected: {detected})"
+        )));
+    }
+
+    let document_part = find_docx_document_part(file, &entries)?;
+    let comments_part = docx_comments_part_uri(file, &entries, &document_part)?;
+    if !zip_entry_exists(&entries, &comments_part) {
+        if let Some(handle) = handle.filter(|value| !value.trim().is_empty()) {
+            return Err(docx_handle_error(
+                EXIT_TARGET_NOT_FOUND,
+                HANDLE_SCOPE_STALE,
+                "document has no comments part",
+                handle,
+            ));
+        }
+        return Err(CliError::target_not_found("target not found: comment"));
+    }
+    let comments_part_key = comments_part.trim_start_matches('/').to_string();
+    let comments_xml = zip_text(file, &comments_part_key)?;
+    let target_id = if let Some(handle) = handle.filter(|value| !value.trim().is_empty()) {
+        resolve_docx_comment_handle_id(&comments_xml, handle)? as i64
+    } else {
+        comment_id
+    };
+    let (updated_comments_xml, before, edited) =
+        edit_docx_comment_xml(&comments_xml, target_id, edit)?;
+
+    let mut overrides = BTreeMap::new();
+    overrides.insert(comments_part_key, updated_comments_xml);
+    write_docx_mutation_overrides_output(file, &overrides, options)?;
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("commentId".to_string(), json!(target_id));
+    result.insert("author".to_string(), json!(edited.author));
+    if !edited.date.is_empty() {
+        result.insert("date".to_string(), json!(edited.date));
+    }
+    if !edited.initials.is_empty() {
+        result.insert("initials".to_string(), json!(edited.initials));
+    }
+    result.insert("text".to_string(), json!(edited.text));
+    result.insert(
+        "contentHash".to_string(),
+        json!(docx_comment_content_hash(
+            &edited.author,
+            &edited.date,
+            &edited.text
+        )),
+    );
+    result.insert("previousText".to_string(), json!(before.text));
+    result.insert(
+        "previousHash".to_string(),
+        json!(docx_comment_content_hash(
+            &before.author,
+            &before.date,
+            &before.text
+        )),
+    );
+    result.insert("operation".to_string(), json!("edited"));
+    result.insert(
+        "handle".to_string(),
+        json!(format!("H:docx/pt:doc/comment:n:{target_id}")),
+    );
+    Ok(Value::Object(result))
+}
+
 fn docx_fields_list(file: &str, type_filter: Option<&str>) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
     let package_kind = detect_inspect_package_type(file, &entries);
@@ -9267,6 +9505,133 @@ fn resolve_docx_paragraph_handle_index(xml: &str, handle: &str) -> CliResult<usi
     }
 }
 
+fn resolve_docx_comment_handle_id(comments_xml: &str, handle: &str) -> CliResult<i64> {
+    let comment_id = parse_docx_comment_handle_id(handle)?;
+    let spans = docx_comment_element_spans_by_id(comments_xml, comment_id)?;
+    match spans.len() {
+        0 => Err(docx_handle_error(
+            EXIT_TARGET_NOT_FOUND,
+            HANDLE_STALE,
+            format!("no comment with w:id {comment_id} in document"),
+            handle,
+        )),
+        1 => Ok(comment_id),
+        count => Err(docx_handle_error(
+            EXIT_TARGET_NOT_FOUND,
+            HANDLE_AMBIGUOUS,
+            format!(
+                "w:id {comment_id} is not unique ({count} comments share it); cannot resolve to a single comment"
+            ),
+            handle,
+        )),
+    }
+}
+
+fn parse_docx_comment_handle_id(handle: &str) -> CliResult<i64> {
+    let trimmed = handle.trim();
+    let Some(body) = trimmed.strip_prefix("H:") else {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            "missing handle version prefix \"H:\"",
+            handle,
+        ));
+    };
+    let segments: Vec<&str> = body.split('/').collect();
+    if segments.len() != 3 {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            "handle must be H:docx/<scope>/<class>:<objref>",
+            handle,
+        ));
+    }
+    if segments[0].is_empty() {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            "empty format tag",
+            handle,
+        ));
+    }
+    if segments[0] != "docx" {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_FORMAT_MISMATCH,
+            format!(
+                "handle format tag {:?} does not match package format {:?}",
+                segments[0], "docx"
+            ),
+            handle,
+        ));
+    }
+    let Some((class, objref)) = segments[2].split_once(':') else {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            format!("object segment {:?} must be <class>:<objref>", segments[2]),
+            handle,
+        ));
+    };
+    if segments[1] != "pt:doc" {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            format!(
+                "comment handle scope must be {:?}, got {:?}",
+                "pt:doc", segments[1]
+            ),
+            handle,
+        ));
+    }
+    if class != "comment" {
+        return Err(CliError::invalid_args(
+            "--handle must be a comment handle (H:docx/pt:doc/comment:n:<id>)",
+        ));
+    }
+    let Some((tag, value)) = objref.split_once(':') else {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            format!("comment objref: objref {objref:?} must be n:<id>"),
+            handle,
+        ));
+    };
+    if tag != "n" {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            format!("comment objref: unsupported objref tag {tag:?} (expected native id \"n\")"),
+            handle,
+        ));
+    }
+    if value.is_empty() {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            "comment objref: empty native id",
+            handle,
+        ));
+    }
+    let id = value.parse::<i64>().map_err(|err| {
+        docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            format!("comment objref: invalid native id {value:?}: {err}"),
+            handle,
+        )
+    })?;
+    if id < 0 {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            format!("comment objref: native id must be non-negative, got {id}"),
+            handle,
+        ));
+    }
+    Ok(id)
+}
+
 fn parse_docx_paragraph_handle_para_id(handle: &str) -> CliResult<String> {
     let trimmed = handle.trim();
     let Some(body) = trimmed.strip_prefix("H:") else {
@@ -11048,6 +11413,235 @@ fn docx_comment_content_hash(author: &str, date: &str, text: &str) -> String {
     hash.update([0]);
     hash.update(text.as_bytes());
     format!("sha256:{:x}", hash.finalize())
+}
+
+#[derive(Clone, Copy)]
+struct XmlFullElementSpan {
+    start: usize,
+    end: usize,
+    open_end: usize,
+}
+
+fn edit_docx_comment_xml(
+    comments_xml: &str,
+    target_id: i64,
+    edit: DocxCommentEditSpec<'_>,
+) -> CliResult<(String, DocxCommentInfo, DocxCommentInfo)> {
+    let spans = docx_comment_element_spans_by_id(comments_xml, target_id)?;
+    let Some(span) = spans.first().copied() else {
+        return Err(CliError::target_not_found("target not found: comment"));
+    };
+    let fragment = &comments_xml[span.start..span.end];
+    let (before, paragraph_count) = docx_comment_info_from_fragment(fragment)?;
+    let before_hash = docx_comment_content_hash(&before.author, &before.date, &before.text);
+    if !edit.expect_hash.is_empty() && edit.expect_hash != before_hash {
+        return Err(CliError::invalid_args(format!(
+            "comment hash mismatch: comment {target_id} expected {} but found {before_hash}",
+            edit.expect_hash
+        )));
+    }
+    if edit.text_set && paragraph_count > 1 {
+        return Err(CliError::unexpected(format!(
+            "failed to mutate comments: comment {target_id} has {paragraph_count} paragraphs; editing its text would discard structure (remove and re-add the comment instead)"
+        )));
+    }
+
+    let mut edited = before.clone();
+    if edit.author_set {
+        edited.author = edit.author.to_string();
+    }
+    if edit.date_set {
+        edited.date = edit.date.to_string();
+    }
+    if edit.text_set {
+        edited.text = edit.text.to_string();
+    }
+
+    let tag_name = xml_token_name(&fragment[1..span.open_end - span.start - 1])
+        .ok_or_else(|| CliError::unexpected("invalid comment XML"))?;
+    let prefix = xml_tag_prefix(tag_name);
+    let rendered = render_docx_comment(
+        &prefix,
+        target_id,
+        &edited.author,
+        &edited.date,
+        &edited.initials,
+        &edited.text,
+    );
+    let mut out = String::with_capacity(comments_xml.len() + rendered.len());
+    out.push_str(&comments_xml[..span.start]);
+    out.push_str(&rendered);
+    out.push_str(&comments_xml[span.end..]);
+    Ok((out, before, edited))
+}
+
+fn docx_comment_element_spans_by_id(
+    comments_xml: &str,
+    target_id: i64,
+) -> CliResult<Vec<XmlFullElementSpan>> {
+    let target = target_id.to_string();
+    let mut reader = Reader::from_str(comments_xml);
+    reader.config_mut().trim_text(false);
+    let mut spans = Vec::new();
+    loop {
+        let before = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "comment" => {
+                let open_end = reader.buffer_position() as usize;
+                let matches = attr(&e, "id").is_some_and(|id| id == target);
+                let mut depth = 1usize;
+                loop {
+                    match reader.read_event() {
+                        Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "comment" => {
+                            depth += 1;
+                        }
+                        Ok(Event::End(e)) if local_name(e.name().as_ref()) == "comment" => {
+                            depth -= 1;
+                            if depth == 0 {
+                                if matches {
+                                    spans.push(XmlFullElementSpan {
+                                        start: before,
+                                        end: reader.buffer_position() as usize,
+                                        open_end,
+                                    });
+                                }
+                                break;
+                            }
+                        }
+                        Ok(Event::Eof) => {
+                            return Err(CliError::unexpected("invalid comments XML"));
+                        }
+                        Err(err) => return Err(CliError::unexpected(err.to_string())),
+                        _ => {}
+                    }
+                }
+            }
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "comment" => {
+                if attr(&e, "id").is_some_and(|id| id == target) {
+                    spans.push(XmlFullElementSpan {
+                        start: before,
+                        end: reader.buffer_position() as usize,
+                        open_end: reader.buffer_position() as usize,
+                    });
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Ok(spans)
+}
+
+fn docx_comment_info_from_fragment(fragment: &str) -> CliResult<(DocxCommentInfo, usize)> {
+    let mut reader = Reader::from_str(fragment);
+    reader.config_mut().trim_text(false);
+    let mut stack = Vec::<String>::new();
+    let mut info = DocxCommentInfo::default();
+    let mut paragraphs = Vec::<String>::new();
+    let mut current_paragraph: Option<String> = None;
+    let mut paragraph_count = 0usize;
+    let mut in_t = false;
+    let mut skip_text_depth = 0usize;
+    let mut saw_comment = false;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if !saw_comment {
+                    if name != "comment" {
+                        return Err(CliError::unexpected("invalid comment XML"));
+                    }
+                    saw_comment = true;
+                    info = docx_comment_from_element(&e).info;
+                } else {
+                    if name == "p" && stack.last().is_some_and(|parent| parent == "comment") {
+                        current_paragraph = Some(String::new());
+                        paragraph_count += 1;
+                    }
+                    if name == "br"
+                        && let Some(paragraph) = current_paragraph.as_mut()
+                    {
+                        paragraph.push('\n');
+                    }
+                    if name == "tab"
+                        && let Some(paragraph) = current_paragraph.as_mut()
+                    {
+                        paragraph.push('\t');
+                    }
+                    if name == "t" {
+                        in_t = true;
+                    }
+                    if matches!(name.as_str(), "delText" | "instrText") {
+                        skip_text_depth += 1;
+                    }
+                }
+                stack.push(name);
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if !saw_comment {
+                    if name != "comment" {
+                        return Err(CliError::unexpected("invalid comment XML"));
+                    }
+                    saw_comment = true;
+                    info = docx_comment_from_element(&e).info;
+                } else if name == "p" && stack.last().is_some_and(|parent| parent == "comment") {
+                    paragraphs.push(String::new());
+                    paragraph_count += 1;
+                } else if name == "br" {
+                    if let Some(paragraph) = current_paragraph.as_mut() {
+                        paragraph.push('\n');
+                    }
+                } else if name == "tab"
+                    && let Some(paragraph) = current_paragraph.as_mut()
+                {
+                    paragraph.push('\t');
+                }
+            }
+            Ok(Event::Text(e)) => {
+                if in_t
+                    && skip_text_depth == 0
+                    && let Some(paragraph) = current_paragraph.as_mut()
+                {
+                    paragraph.push_str(&decode_xml_text(e.as_ref()));
+                }
+            }
+            Ok(Event::CData(e)) => {
+                if in_t
+                    && skip_text_depth == 0
+                    && let Some(paragraph) = current_paragraph.as_mut()
+                {
+                    paragraph.push_str(&String::from_utf8_lossy(e.as_ref()));
+                }
+            }
+            Ok(Event::End(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                match name.as_str() {
+                    "t" => in_t = false,
+                    "delText" | "instrText" => {
+                        skip_text_depth = skip_text_depth.saturating_sub(1);
+                    }
+                    "p" => {
+                        if let Some(paragraph) = current_paragraph.take() {
+                            paragraphs.push(paragraph);
+                        }
+                    }
+                    _ => {}
+                }
+                stack.pop();
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    if !saw_comment {
+        return Err(CliError::unexpected("invalid comment XML"));
+    }
+    info.text = paragraphs.join("\n");
+    Ok((info, paragraph_count))
 }
 
 fn docx_comments_template() -> String {

@@ -4035,6 +4035,179 @@ fn docx_comments_add_matches_go_oracle() {
 }
 
 #[test]
+fn docx_comments_edit_matches_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-docx-comments-edit-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx comments temp dir");
+    let go_out = temp_dir.join("comments-edit-go.docx");
+    let rust_out = temp_dir.join("comments-edit-rust.docx");
+    let go_out = go_out.to_string_lossy().to_string();
+    let rust_out = rust_out.to_string_lossy().to_string();
+
+    let (hash_code, hash_stdout, hash_stderr) = run_go_ooxml(&[
+        "--json",
+        "docx",
+        "comments",
+        "list",
+        "testdata/docx/with-comments/document.docx",
+        "--comment-id",
+        "0",
+    ]);
+    assert_eq!(hash_code, 0, "hash list exit");
+    assert_eq!(hash_stderr, None, "hash list stderr");
+    let hash_json = hash_stdout.expect("hash list JSON");
+    let hash = hash_json["comments"][0]["contentHash"]
+        .as_str()
+        .expect("comment content hash");
+
+    let go_args = [
+        "--json",
+        "docx",
+        "comments",
+        "edit",
+        "testdata/docx/with-comments/document.docx",
+        "--comment-id",
+        "0",
+        "--text",
+        "Updated comment",
+        "--author",
+        "Carol",
+        "--date",
+        "2030-01-02T03:04:05Z",
+        "--expect-hash",
+        hash,
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "docx",
+        "comments",
+        "edit",
+        "testdata/docx/with-comments/document.docx",
+        "--comment-id",
+        "0",
+        "--text",
+        "Updated comment",
+        "--author",
+        "Carol",
+        "--date",
+        "2030-01-02T03:04:05Z",
+        "--expect-hash",
+        hash,
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "comments edit exit");
+    assert_eq!(rust_stderr, go_stderr, "comments edit stderr");
+    assert_eq!(rust_stdout, go_stdout, "comments edit stdout");
+    assert!(Path::new(&rust_out).exists(), "Rust edit output missing");
+
+    let (validate_code, validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_out]);
+    assert_eq!(validate_code, 0, "validate exit");
+    assert_eq!(validate_stderr, None, "validate stderr");
+    assert!(validate_stdout.is_some(), "validate stdout");
+
+    let (go_list_code, go_list_stdout, go_list_stderr) = run_go_ooxml(&[
+        "--json",
+        "docx",
+        "comments",
+        "list",
+        &go_out,
+        "--comment-id",
+        "0",
+    ]);
+    let (rust_list_code, rust_list_stdout, rust_list_stderr) = run_ooxml(&[
+        "--json",
+        "docx",
+        "comments",
+        "list",
+        &rust_out,
+        "--comment-id",
+        "0",
+    ]);
+    assert_eq!(rust_list_code, go_list_code, "comments edit readback exit");
+    assert_eq!(
+        rust_list_stderr, go_list_stderr,
+        "comments edit readback stderr"
+    );
+    let go_list = go_list_stdout.expect("Go comments edit readback JSON");
+    let rust_list = rust_list_stdout.expect("Rust comments edit readback JSON");
+    assert_eq!(
+        rust_list["comments"], go_list["comments"],
+        "comments edit readback"
+    );
+
+    let wrong_hash = [
+        "--json",
+        "docx",
+        "comments",
+        "edit",
+        "testdata/docx/with-comments/document.docx",
+        "--comment-id",
+        "0",
+        "--text",
+        "x",
+        "--expect-hash",
+        "sha256:bogus",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&wrong_hash);
+
+    let by_handle = [
+        "--json",
+        "docx",
+        "comments",
+        "edit",
+        "testdata/docx/with-comments/document.docx",
+        "--handle",
+        "H:docx/pt:doc/comment:n:0",
+        "--text",
+        "Edited by handle",
+        "--date",
+        "2031-02-03T04:05:06Z",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&by_handle);
+
+    let stale_handle = [
+        "--json",
+        "docx",
+        "comments",
+        "edit",
+        "testdata/docx/with-comments/document.docx",
+        "--handle",
+        "H:docx/pt:doc/comment:n:9999",
+        "--text",
+        "x",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&stale_handle);
+
+    let unsupported_type = [
+        "--json",
+        "docx",
+        "comments",
+        "edit",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--comment-id",
+        "0",
+        "--text",
+        "Wrong package",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&unsupported_type);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_fields_list_matches_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
@@ -5455,6 +5628,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let comment_caps = comment_stdout.expect("comment capabilities");
     assert_command(&comment_caps, "ooxml docx comments list", false);
     assert_command(&comment_caps, "ooxml docx comments add", false);
+    assert_command(&comment_caps, "ooxml docx comments edit", false);
 
     let (field_code, field_stdout, field_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "field"]);
@@ -5520,10 +5694,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 38, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 39, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        252,
+        251,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
