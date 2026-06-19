@@ -98,6 +98,10 @@ Latest milestone, 2026-06-20:
   flow, and working-copy management moved from `src/main.rs` into
   `src/serve.rs`; stored-operation modeling, planned argv rendering, and
   committed readback rewriting now live in `src/serve/op.rs`.
+- Serve inspect command dispatch for XLSX, DOCX, and PPTX read-only session
+  commands moved from `src/serve.rs` into `src/serve/inspect.rs`, leaving
+  session lookup, RPC response framing, and mutation operations in the serve
+  facade.
 - XLSX workbook metadata inspect/update types, XML readers, property renderers,
   and calc-setting mutation helpers moved from `src/main.rs` into
   `src/xlsx_metadata.rs`, keeping CLI and serve call sites stable through the
@@ -192,10 +196,11 @@ Latest milestone, 2026-06-20:
 - Serve `xlsx cells set` now delegates to the shared `xlsx_cells_set`
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
-- Proof after the latest split: focused DOCX header/footer list/show/set-text
-  Go-oracle tests, `serve_op_supports_docx_headers_set_text`, `cargo fmt
-  --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test
-  --all-targets` all pass with 77 Rust contract tests.
+- Proof after the latest split: `cargo test --test rust_contract_smoke
+  serve_inspect`, `cargo test --test rust_contract_smoke
+  frozen_serve_flow_matches_go_baseline -- --exact`, `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
+  all pass with 77 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
