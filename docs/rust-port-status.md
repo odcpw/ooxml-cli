@@ -149,6 +149,10 @@ Latest milestone, 2026-06-20:
   and readback command generation moved from `src/main.rs` into
   `src/docx_headers.rs`, using shared paragraph-fragment text extraction from
   `src/docx_xml.rs` through the crate facade.
+- DOCX header/footer selector parsing, reference-info JSON reconstruction, and
+  paragraph-selector generation moved from `src/docx_headers.rs` into
+  `src/docx_headers/selectors.rs`, leaving the command facade and mutation
+  orchestration in `src/docx_headers.rs`.
 - DOCX table show/set-cell/clear-cell commands, table summary rendering,
   table-cell XML rewrites, and table readback command generation moved from
   `src/main.rs` into `src/docx_tables.rs`.
@@ -188,10 +192,10 @@ Latest milestone, 2026-06-20:
 - Serve `xlsx cells set` now delegates to the shared `xlsx_cells_set`
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
-- Proof after the latest split: `cargo test --test rust_contract_smoke
-  frozen_cli_slice_matches_go_baseline -- --exact`, capability resource checks,
-  `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
-  `cargo test --all-targets` all pass with 77 Rust contract tests.
+- Proof after the latest split: focused DOCX header/footer list/show/set-text
+  Go-oracle tests, `serve_op_supports_docx_headers_set_text`, `cargo fmt
+  --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test
+  --all-targets` all pass with 77 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
