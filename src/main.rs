@@ -12,82 +12,16 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 mod capabilities;
+mod cli_core;
 
-const EXIT_SUCCESS: i32 = 0;
-const EXIT_UNEXPECTED: i32 = 1;
-const EXIT_INVALID_ARGS: i32 = 2;
-const EXIT_FILE_NOT_FOUND: i32 = 3;
-const EXIT_UNSUPPORTED_TYPE: i32 = 4;
-const EXIT_VALIDATION_FAILED: i32 = 5;
-const EXIT_TARGET_NOT_FOUND: i32 = 6;
-const EXIT_PARTIAL_SUCCESS: i32 = 9;
+pub(crate) use cli_core::{
+    CliError, CliResult, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS, EXIT_PARTIAL_SUCCESS,
+    EXIT_SUCCESS, EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED, EXIT_UNSUPPORTED_TYPE,
+    EXIT_VALIDATION_FAILED, GlobalFlags,
+};
+
 const DOCX_W_NS: &[u8] = b"http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const DOCX_W14_NS: &[u8] = b"http://schemas.microsoft.com/office/word/2010/wordml";
-
-#[derive(Debug)]
-struct CliError {
-    code: &'static str,
-    exit_code: i32,
-    message: String,
-}
-
-impl CliError {
-    fn invalid_args(message: impl Into<String>) -> Self {
-        Self {
-            code: "invalid_args",
-            exit_code: EXIT_INVALID_ARGS,
-            message: message.into(),
-        }
-    }
-
-    fn file_not_found(message: impl Into<String>) -> Self {
-        Self {
-            code: "file_not_found",
-            exit_code: EXIT_FILE_NOT_FOUND,
-            message: message.into(),
-        }
-    }
-
-    fn unexpected(message: impl Into<String>) -> Self {
-        Self {
-            code: "unexpected",
-            exit_code: EXIT_UNEXPECTED,
-            message: message.into(),
-        }
-    }
-
-    fn unsupported_type(message: impl Into<String>) -> Self {
-        Self {
-            code: "unsupported_type",
-            exit_code: EXIT_UNSUPPORTED_TYPE,
-            message: message.into(),
-        }
-    }
-
-    fn validation_failed(message: impl Into<String>) -> Self {
-        Self {
-            code: "validation_failed",
-            exit_code: EXIT_VALIDATION_FAILED,
-            message: message.into(),
-        }
-    }
-
-    fn target_not_found(message: impl Into<String>) -> Self {
-        Self {
-            code: "target_not_found",
-            exit_code: EXIT_TARGET_NOT_FOUND,
-            message: message.into(),
-        }
-    }
-}
-
-type CliResult<T> = Result<T, CliError>;
-
-#[derive(Default)]
-struct GlobalFlags {
-    json: bool,
-    strict: bool,
-}
 
 fn main() {
     let argv: Vec<String> = std::env::args().skip(1).collect();

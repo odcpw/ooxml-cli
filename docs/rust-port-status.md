@@ -15,6 +15,8 @@ Latest milestone, 2026-06-19:
   temp paths after the merge, keeping the frozen Go contract stable on Windows.
 - First de-monolithization seam landed: the Rust capability inventory moved from
   `src/main.rs` into `src/capabilities.rs` with no behavior changes.
+- Foundational CLI core types moved from `src/main.rs` into `src/cli_core.rs`,
+  giving future command-family modules a small shared error/result/flag surface.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
