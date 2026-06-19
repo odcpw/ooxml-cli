@@ -516,6 +516,108 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
                 },
             )
         }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "paragraphs" && verb == "set" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--index",
+                    "--handle",
+                    "--text",
+                    "--text-file",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let index = parse_i64_flag(rest, "--index")?.unwrap_or(0);
+            let handle = parse_string_flag(rest, "--handle")?;
+            let handle_set = flag_present(rest, "--handle");
+            let index_set = flag_present(rest, "--index");
+            if !handle_set && index < 1 {
+                return Err(CliError::invalid_args(
+                    "--index must be >= 1 (or pass --handle)",
+                ));
+            }
+            if handle_set && index_set {
+                return Err(CliError::invalid_args(
+                    "cannot specify both --index and --handle",
+                ));
+            }
+            let text = parse_string_flag(rest, "--text")?;
+            let text_file = parse_string_flag(rest, "--text-file")?;
+            let replacement = resolve_required_docx_paragraph_set_text(
+                text.as_deref(),
+                text_file.as_deref(),
+                flag_present(rest, "--text"),
+                flag_present(rest, "--text-file"),
+            )?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_paragraphs_set(
+                file,
+                index,
+                handle.as_deref(),
+                &replacement,
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "paragraphs" && verb == "clear" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--index", "--handle", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let index = parse_i64_flag(rest, "--index")?.unwrap_or(0);
+            let handle = parse_string_flag(rest, "--handle")?;
+            let handle_set = flag_present(rest, "--handle");
+            let index_set = flag_present(rest, "--index");
+            if !handle_set && index < 1 {
+                return Err(CliError::invalid_args(
+                    "--index must be >= 1 (or pass --handle)",
+                ));
+            }
+            if handle_set && index_set {
+                return Err(CliError::invalid_args(
+                    "cannot specify both --index and --handle",
+                ));
+            }
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_paragraphs_clear(
+                file,
+                index,
+                handle.as_deref(),
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
         [family, verb, file, rest @ ..] if family == "pptx" && verb == "render" => {
             pptx_render(file, rest)
         }
@@ -827,6 +929,10 @@ fn reject_unknown_flags(
 
 fn has_flag(args: &[String], name: &str) -> bool {
     args.iter().any(|arg| arg == name)
+}
+
+fn flag_present(args: &[String], name: &str) -> bool {
+    has_flag(args, name)
 }
 
 fn capabilities(args: &[String]) -> CliResult<Value> {
@@ -1468,6 +1574,77 @@ fn capability_commands() -> Vec<Value> {
                     "path to paragraph text",
                 ),
                 flag("--style", "style", "string", "optional paragraph style ID"),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml docx paragraphs set",
+            "set <file>",
+            "Replace one main document body paragraph's plain text.",
+            &["paragraph"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag("--index", "index", "int", "1-based body block index"),
+                flag(
+                    "--handle",
+                    "handle",
+                    "string",
+                    "stable DOCX paragraph handle",
+                ),
+                flag("--text", "text", "string", "replacement paragraph text"),
+                flag(
+                    "--text-file",
+                    "textFile",
+                    "string",
+                    "path to replacement paragraph text",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml docx paragraphs clear",
+            "clear <file>",
+            "Clear one main document body paragraph's text while retaining paragraph metadata.",
+            &["paragraph"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag("--index", "index", "int", "1-based body block index"),
+                flag(
+                    "--handle",
+                    "handle",
+                    "string",
+                    "stable DOCX paragraph handle",
+                ),
                 flag("--out", "out", "string", "output file path"),
                 flag(
                     "--in-place",
@@ -8152,6 +8329,85 @@ fn docx_paragraphs_insert(
     Ok(Value::Object(result))
 }
 
+fn docx_paragraphs_set(
+    file: &str,
+    index: i64,
+    handle: Option<&str>,
+    replacement: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    ensure_docx_package_kind(file, &entries)?;
+
+    let document_part = find_docx_document_part(file, &entries)?;
+    let xml = zip_text(file, &document_part)?;
+    let target_index = if let Some(handle_arg) = handle.filter(|value| !value.is_empty()) {
+        resolve_docx_paragraph_handle_index(&xml, handle_arg)?
+    } else {
+        index as usize
+    };
+    let mutation = set_or_clear_docx_body_paragraph_xml(&xml, target_index, Some(replacement))?;
+    write_docx_mutation_output(file, &document_part, &mutation.xml, options)?;
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("index".to_string(), json!(mutation.index));
+    if !mutation.style.is_empty() {
+        result.insert("style".to_string(), json!(mutation.style));
+    }
+    result.insert("text".to_string(), json!(replacement));
+    result.insert("previousText".to_string(), json!(mutation.previous_text));
+    result.insert("flattened".to_string(), json!(mutation.flattened));
+    if !mutation.handle.is_empty() {
+        result.insert("handle".to_string(), json!(mutation.handle));
+    }
+    Ok(Value::Object(result))
+}
+
+fn docx_paragraphs_clear(
+    file: &str,
+    index: i64,
+    handle: Option<&str>,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    ensure_docx_package_kind(file, &entries)?;
+
+    let document_part = find_docx_document_part(file, &entries)?;
+    let xml = zip_text(file, &document_part)?;
+    let target_index = if let Some(handle_arg) = handle.filter(|value| !value.is_empty()) {
+        resolve_docx_paragraph_handle_index(&xml, handle_arg)?
+    } else {
+        index as usize
+    };
+    let mutation = set_or_clear_docx_body_paragraph_xml(&xml, target_index, None)?;
+    write_docx_mutation_output(file, &document_part, &mutation.xml, options)?;
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("index".to_string(), json!(mutation.index));
+    if !mutation.style.is_empty() {
+        result.insert("style".to_string(), json!(mutation.style));
+    }
+    result.insert("previousText".to_string(), json!(mutation.previous_text));
+    if !mutation.handle.is_empty() {
+        result.insert("handle".to_string(), json!(mutation.handle));
+    }
+    Ok(Value::Object(result))
+}
+
 fn resolve_optional_docx_paragraph_text(
     text: Option<&str>,
     text_file: Option<&str>,
@@ -8165,6 +8421,301 @@ fn resolve_optional_docx_paragraph_text(
             .map(|data| String::from_utf8_lossy(&data).to_string())
             .map_err(|_| CliError::file_not_found(format!("file not found: {path}"))),
         (None, None) => Ok(String::new()),
+    }
+}
+
+fn resolve_required_docx_paragraph_set_text(
+    text: Option<&str>,
+    text_file: Option<&str>,
+    text_changed: bool,
+    text_file_changed: bool,
+) -> CliResult<String> {
+    if text_changed == text_file_changed {
+        return Err(CliError::invalid_args(
+            "must specify exactly one of --text or --text-file",
+        ));
+    }
+    if text_changed {
+        let value = text.unwrap_or_default();
+        if value.is_empty() {
+            return Err(CliError::invalid_args(
+                "--text cannot be empty; use docx paragraphs clear",
+            ));
+        }
+        return Ok(value.to_string());
+    }
+    let path = text_file.unwrap_or_default();
+    let data =
+        fs::read(path).map_err(|_| CliError::file_not_found(format!("file not found: {path}")))?;
+    if data.is_empty() {
+        return Err(CliError::invalid_args(
+            "--text-file cannot be empty; use docx paragraphs clear",
+        ));
+    }
+    Ok(String::from_utf8_lossy(&data).to_string())
+}
+
+fn ensure_docx_package_kind(file: &str, entries: &[String]) -> CliResult<()> {
+    let package_kind = detect_inspect_package_type(file, entries);
+    if package_kind == InspectPackageKind::Docx {
+        return Ok(());
+    }
+    let detected = match package_kind {
+        InspectPackageKind::Pptx => "pptx",
+        InspectPackageKind::Xlsx => "xlsx",
+        InspectPackageKind::Docx => "docx",
+        InspectPackageKind::Unknown => package_type(file)?,
+    };
+    Err(CliError::unsupported_type(format!(
+        "file is not a DOCX document (detected: {detected})"
+    )))
+}
+
+fn write_docx_mutation_output(
+    file: &str,
+    document_part: &str,
+    updated_xml: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<()> {
+    let output_path = options.out.filter(|value| !value.trim().is_empty());
+    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
+        docx_mutation_temp_path(file)
+    } else {
+        output_path
+            .ok_or_else(|| {
+                CliError::invalid_args(
+                    "must specify exactly one of --out, --in-place, or --dry-run",
+                )
+            })?
+            .to_string()
+    };
+    copy_zip_with_part_override(file, &readback_path, document_part, updated_xml)?;
+    if !options.no_validate {
+        validate(&readback_path, true)?;
+    }
+    if options.dry_run {
+        let _ = fs::remove_file(&readback_path);
+    } else if options.in_place || output_path == Some(file) {
+        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
+            fs::copy(file, backup_path)
+                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+        }
+        fs::rename(&readback_path, file)
+            .or_else(|_| {
+                fs::copy(&readback_path, file)?;
+                fs::remove_file(&readback_path)
+            })
+            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    }
+    Ok(())
+}
+
+struct DocxParagraphXmlMutation {
+    xml: String,
+    index: usize,
+    style: String,
+    previous_text: String,
+    flattened: bool,
+    handle: String,
+}
+
+fn set_or_clear_docx_body_paragraph_xml(
+    xml: &str,
+    target_index: usize,
+    replacement: Option<&str>,
+) -> CliResult<DocxParagraphXmlMutation> {
+    if target_index == 0 {
+        return Err(CliError::target_not_found(
+            "target not found: paragraph index 0",
+        ));
+    }
+    let reports = docx_rich_block_reports(xml, false).map_err(|err| {
+        CliError::unexpected(format!("failed to read main document: {}", err.message))
+    })?;
+    let report = reports.get(target_index - 1).ok_or_else(|| {
+        CliError::target_not_found(format!("target not found: paragraph index {target_index}"))
+    })?;
+    if report.kind != "paragraph" {
+        return Err(CliError::invalid_args(format!(
+            "block {target_index} is a table, not a paragraph"
+        )));
+    }
+
+    let mut working = xml.to_string();
+    let mut para_id = report.para_id.trim().to_string();
+    if para_id.is_empty() {
+        working = ensure_docx_w14_namespace(&working)?;
+        let existing = docx_all_para_ids(&working)?;
+        para_id = mint_docx_para_id(&existing);
+    }
+
+    let body_tag = docx_body_tag(&working)?;
+    let blocks = docx_body_block_ranges(&working, &body_tag)?;
+    let block = blocks.get(target_index - 1).ok_or_else(|| {
+        CliError::target_not_found(format!("target not found: paragraph index {target_index}"))
+    })?;
+    if block.kind != "p" {
+        return Err(CliError::invalid_args(format!(
+            "block {target_index} is a table, not a paragraph"
+        )));
+    }
+    let fragment = &working[block.start..block.end];
+    let (paragraph, flattened) = replace_docx_paragraph_fragment(fragment, &para_id, replacement)?;
+    let mut out = String::with_capacity(working.len() + paragraph.len());
+    out.push_str(&working[..block.start]);
+    out.push_str(&paragraph);
+    out.push_str(&working[block.end..]);
+
+    Ok(DocxParagraphXmlMutation {
+        xml: out,
+        index: target_index,
+        style: report.style.clone(),
+        previous_text: report.text.clone(),
+        flattened,
+        handle: format!("H:docx/pt:doc/para:m:{para_id}"),
+    })
+}
+
+const HANDLE_MALFORMED: &str = "HANDLE_MALFORMED";
+const HANDLE_FORMAT_MISMATCH: &str = "HANDLE_FORMAT_MISMATCH";
+const HANDLE_STALE: &str = "HANDLE_STALE";
+const HANDLE_AMBIGUOUS: &str = "HANDLE_AMBIGUOUS";
+
+fn resolve_docx_paragraph_handle_index(xml: &str, handle: &str) -> CliResult<usize> {
+    let para_id = parse_docx_paragraph_handle_para_id(handle)?;
+    let reports = docx_rich_block_reports(xml, false).map_err(|err| {
+        CliError::unexpected(format!("failed to read main document: {}", err.message))
+    })?;
+    let wanted = para_id.trim().to_ascii_uppercase();
+    let matches: Vec<&DocxRichBlockReport> = reports
+        .iter()
+        .filter(|report| {
+            report.kind == "paragraph" && report.para_id.trim().eq_ignore_ascii_case(&wanted)
+        })
+        .collect();
+    match matches.len() {
+        0 => Err(docx_handle_error(
+            EXIT_TARGET_NOT_FOUND,
+            HANDLE_STALE,
+            format!("no paragraph with w14:paraId {para_id:?} in document body"),
+            handle,
+        )),
+        1 => Ok(matches[0].index),
+        count => Err(docx_handle_error(
+            EXIT_TARGET_NOT_FOUND,
+            HANDLE_AMBIGUOUS,
+            format!(
+                "w14:paraId {para_id:?} is not unique ({count} paragraphs share it); cannot resolve to a single paragraph"
+            ),
+            handle,
+        )),
+    }
+}
+
+fn parse_docx_paragraph_handle_para_id(handle: &str) -> CliResult<String> {
+    let trimmed = handle.trim();
+    let Some(body) = trimmed.strip_prefix("H:") else {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            "missing handle version prefix \"H:\"",
+            handle,
+        ));
+    };
+    let segments: Vec<&str> = body.split('/').collect();
+    if segments.len() != 3 {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            "handle must be H:docx/<scope>/<class>:<objref>",
+            handle,
+        ));
+    }
+    if segments[0].is_empty() {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            "empty format tag",
+            handle,
+        ));
+    }
+    if segments[0] != "docx" {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_FORMAT_MISMATCH,
+            format!(
+                "handle format tag {:?} does not match package format {:?}",
+                segments[0], "docx"
+            ),
+            handle,
+        ));
+    }
+    let Some((class, objref)) = segments[2].split_once(':') else {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            format!("object segment {:?} must be <class>:<objref>", segments[2]),
+            handle,
+        ));
+    };
+    if segments[1] != "pt:doc" {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            format!(
+                "paragraph handle scope must be {:?}, got {:?}",
+                "pt:doc", segments[1]
+            ),
+            handle,
+        ));
+    }
+    if class != "para" {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            "expected a paragraph handle",
+            handle,
+        ));
+    }
+    let Some((tag, value)) = objref.split_once(':') else {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            format!("paragraph objref: objref {objref:?} must be m:<paraId>"),
+            handle,
+        ));
+    };
+    if tag != "m" {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            format!(
+                "paragraph objref: unsupported objref tag {tag:?} (expected paragraph marker \"m\")"
+            ),
+            handle,
+        ));
+    }
+    if value.is_empty() {
+        return Err(docx_handle_error(
+            EXIT_INVALID_ARGS,
+            HANDLE_MALFORMED,
+            "paragraph objref: empty paragraph marker",
+            handle,
+        ));
+    }
+    Ok(value.to_string())
+}
+
+fn docx_handle_error(
+    exit_code: i32,
+    code: &'static str,
+    message: impl Into<String>,
+    handle: &str,
+) -> CliError {
+    CliError {
+        code,
+        exit_code,
+        message: format!("{}: {} (handle {:?})", code, message.into(), handle),
     }
 }
 
@@ -8238,6 +8789,7 @@ fn insert_docx_body_paragraph_xml(
 struct XmlRange {
     start: usize,
     end: usize,
+    kind: &'static str,
 }
 
 fn docx_body_block_ranges(xml: &str, body_tag: &str) -> CliResult<Vec<XmlRange>> {
@@ -8245,6 +8797,7 @@ fn docx_body_block_ranges(xml: &str, body_tag: &str) -> CliResult<Vec<XmlRange>>
     let mut cursor = content_start;
     let mut depth = 0usize;
     let mut active_block_start: Option<usize> = None;
+    let mut active_block_kind: &'static str = "";
     let mut blocks = Vec::new();
     while cursor < content_end {
         let Some(relative_start) = xml[cursor..content_end].find('<') else {
@@ -8271,7 +8824,9 @@ fn docx_body_block_ranges(xml: &str, body_tag: &str) -> CliResult<Vec<XmlRange>>
                     blocks.push(XmlRange {
                         start,
                         end: tag_end + 1,
+                        kind: active_block_kind,
                     });
+                    active_block_kind = "";
                 }
             }
             cursor = tag_end + 1;
@@ -8280,17 +8835,25 @@ fn docx_body_block_ranges(xml: &str, body_tag: &str) -> CliResult<Vec<XmlRange>>
 
         let self_closing = trimmed.trim_end().ends_with('/');
         let name = xml_token_name(trimmed).unwrap_or_default();
-        let is_body_block = depth == 0 && matches!(local_name(name.as_bytes()), "p" | "tbl");
+        let kind = match local_name(name.as_bytes()) {
+            "p" => "p",
+            "tbl" => "tbl",
+            _ => "",
+        };
+        let is_body_block = depth == 0 && !kind.is_empty();
         if is_body_block {
             active_block_start = Some(tag_start);
+            active_block_kind = kind;
         }
         if self_closing {
             if is_body_block {
                 blocks.push(XmlRange {
                     start: tag_start,
                     end: tag_end + 1,
+                    kind,
                 });
                 active_block_start = None;
+                active_block_kind = "";
             }
         } else {
             depth += 1;
@@ -8298,6 +8861,257 @@ fn docx_body_block_ranges(xml: &str, body_tag: &str) -> CliResult<Vec<XmlRange>>
         cursor = tag_end + 1;
     }
     Ok(blocks)
+}
+
+#[derive(Clone)]
+struct XmlNamedRange {
+    start: usize,
+    end: usize,
+    kind: String,
+}
+
+fn replace_docx_paragraph_fragment(
+    fragment: &str,
+    para_id: &str,
+    replacement: Option<&str>,
+) -> CliResult<(String, bool)> {
+    let open_end = fragment
+        .find('>')
+        .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?;
+    let start_tag = &fragment[..=open_end];
+    let tag_name = xml_token_name(&fragment[1..open_end])
+        .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?
+        .to_string();
+    let prefix = tag_name
+        .split_once(':')
+        .map(|(prefix, _)| prefix.to_string())
+        .unwrap_or_default();
+    let self_closing = start_tag.trim_end().ends_with("/>");
+
+    let mut paragraph_properties = String::new();
+    let mut run_properties = String::new();
+    let mut flattened = false;
+    if !self_closing {
+        let close_tag = format!("</{tag_name}>");
+        let close_start = fragment
+            .rfind(&close_tag)
+            .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?;
+        for child in xml_direct_child_ranges(fragment, open_end + 1, close_start)? {
+            match child.kind.as_str() {
+                "pPr" => {
+                    if paragraph_properties.is_empty() {
+                        paragraph_properties.push_str(&fragment[child.start..child.end]);
+                    }
+                }
+                "r" => {
+                    if run_properties.is_empty()
+                        && let Some(r_pr) = first_direct_xml_child_by_kind(
+                            &fragment[child.start..child.end],
+                            "rPr",
+                        )?
+                    {
+                        run_properties.push_str(&r_pr);
+                    }
+                }
+                _ => flattened = true,
+            }
+        }
+    }
+
+    let mut paragraph = docx_open_tag_with_para_id(start_tag, para_id);
+    paragraph.push_str(&paragraph_properties);
+    if let Some(text) = replacement {
+        let r = word_xml_tag(&prefix, "r");
+        paragraph.push('<');
+        paragraph.push_str(&r);
+        paragraph.push('>');
+        paragraph.push_str(&run_properties);
+        append_docx_text_children(&mut paragraph, &prefix, text);
+        paragraph.push_str("</");
+        paragraph.push_str(&r);
+        paragraph.push('>');
+    }
+    paragraph.push_str("</");
+    paragraph.push_str(&tag_name);
+    paragraph.push('>');
+    Ok((paragraph, flattened))
+}
+
+fn first_direct_xml_child_by_kind(fragment: &str, wanted: &str) -> CliResult<Option<String>> {
+    let open_end = fragment
+        .find('>')
+        .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?;
+    let start_tag = &fragment[..=open_end];
+    if start_tag.trim_end().ends_with("/>") {
+        return Ok(None);
+    }
+    let tag_name = xml_token_name(&fragment[1..open_end])
+        .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?;
+    let close_tag = format!("</{tag_name}>");
+    let close_start = fragment
+        .rfind(&close_tag)
+        .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?;
+    Ok(
+        xml_direct_child_ranges(fragment, open_end + 1, close_start)?
+            .into_iter()
+            .find(|child| child.kind == wanted)
+            .map(|child| fragment[child.start..child.end].to_string()),
+    )
+}
+
+fn xml_direct_child_ranges(
+    xml: &str,
+    content_start: usize,
+    content_end: usize,
+) -> CliResult<Vec<XmlNamedRange>> {
+    let mut cursor = content_start;
+    let mut depth = 0usize;
+    let mut active_start: Option<usize> = None;
+    let mut active_kind = String::new();
+    let mut ranges = Vec::new();
+    while cursor < content_end {
+        let Some(relative_start) = xml[cursor..content_end].find('<') else {
+            break;
+        };
+        let tag_start = cursor + relative_start;
+        let Some(relative_end) = xml[tag_start..content_end].find('>') else {
+            return Err(CliError::unexpected("invalid DOCX XML"));
+        };
+        let tag_end = tag_start + relative_end;
+        let token = &xml[tag_start + 1..tag_end];
+        let trimmed = token.trim_start();
+        if trimmed.starts_with("!--") || trimmed.starts_with('?') || trimmed.starts_with('!') {
+            cursor = tag_end + 1;
+            continue;
+        }
+        if trimmed.starts_with('/') {
+            if depth > 0 {
+                depth -= 1;
+                if depth == 0
+                    && let Some(start) = active_start.take()
+                {
+                    ranges.push(XmlNamedRange {
+                        start,
+                        end: tag_end + 1,
+                        kind: active_kind.clone(),
+                    });
+                    active_kind.clear();
+                }
+            }
+            cursor = tag_end + 1;
+            continue;
+        }
+
+        let self_closing = trimmed.trim_end().ends_with('/');
+        let name = xml_token_name(trimmed).unwrap_or_default();
+        if depth == 0 {
+            active_start = Some(tag_start);
+            active_kind = local_name(name.as_bytes()).to_string();
+        }
+        if self_closing {
+            if depth == 0 {
+                ranges.push(XmlNamedRange {
+                    start: tag_start,
+                    end: tag_end + 1,
+                    kind: active_kind.clone(),
+                });
+                active_start = None;
+                active_kind.clear();
+            }
+        } else {
+            depth += 1;
+        }
+        cursor = tag_end + 1;
+    }
+    Ok(ranges)
+}
+
+fn docx_open_tag_with_para_id(start_tag: &str, para_id: &str) -> String {
+    let mut out = if start_tag.trim_end().ends_with("/>") {
+        let slash = start_tag
+            .rfind('/')
+            .unwrap_or_else(|| start_tag.len().saturating_sub(1));
+        let mut open = String::with_capacity(start_tag.len());
+        open.push_str(&start_tag[..slash]);
+        open.push('>');
+        open
+    } else {
+        start_tag.to_string()
+    };
+    if !xml_start_tag_has_para_id(&out) {
+        insert_xml_start_tag_attr(
+            &mut out,
+            &format!("w14:paraId=\"{}\"", xml_attr_escape(para_id)),
+        );
+    }
+    out
+}
+
+fn xml_start_tag_has_para_id(tag: &str) -> bool {
+    tag.contains(":paraId=")
+        || tag.contains(" paraId=")
+        || tag.contains("\tparaId=")
+        || tag.contains("\nparaId=")
+}
+
+fn insert_xml_start_tag_attr(tag: &mut String, attr: &str) {
+    if let Some(insert_at) = tag.rfind('>') {
+        tag.insert_str(insert_at, &format!(" {attr}"));
+    }
+}
+
+fn ensure_docx_w14_namespace(xml: &str) -> CliResult<String> {
+    if xml.contains("xmlns:w14=") {
+        return Ok(xml.to_string());
+    }
+    let document_start = xml
+        .find("<w:document")
+        .or_else(|| xml.find("<document"))
+        .ok_or_else(|| CliError::unexpected("document root element not found"))?;
+    let start_end = xml[document_start..]
+        .find('>')
+        .map(|offset| document_start + offset)
+        .ok_or_else(|| CliError::unexpected("document root element not found"))?;
+    let mut out = String::with_capacity(xml.len() + 72);
+    out.push_str(&xml[..start_end]);
+    out.push_str(" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"");
+    out.push_str(&xml[start_end..]);
+    Ok(out)
+}
+
+fn docx_all_para_ids(xml: &str) -> CliResult<BTreeSet<String>> {
+    let mut reader = NsReader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut ids = BTreeSet::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "p"
+                    && element_in_ns(reader.resolver(), &e, DOCX_W_NS) =>
+            {
+                if let Some(para_id) = docx_para_id_ns(&e, reader.resolver()) {
+                    ids.insert(para_id.to_ascii_uppercase());
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Ok(ids)
+}
+
+fn mint_docx_para_id(existing: &BTreeSet<String>) -> String {
+    for attempt in 0..10_000u32 {
+        let raw =
+            ((chrono_like_counter() as u64) ^ ((std::process::id() as u64) << 17) ^ attempt as u64)
+                & 0x7fff_ffff;
+        let candidate = format!("{:08X}", raw as u32);
+        if !existing.contains(&candidate) {
+            return candidate;
+        }
+    }
+    "00000000".to_string()
 }
 
 fn docx_body_content_bounds(xml: &str, body_tag: &str) -> CliResult<(usize, usize)> {
