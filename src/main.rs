@@ -2967,8 +2967,8 @@ fn capability_commands() -> Vec<Value> {
             "add <file>",
             "Add a DOCX comment anchored to a body paragraph.",
             &["comment"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag(
                     "--anchor-block",
@@ -3013,8 +3013,8 @@ fn capability_commands() -> Vec<Value> {
             "edit <file>",
             "Edit an existing DOCX comment by id or stable handle.",
             &["comment"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag(
                     "--comment-id",
@@ -3060,8 +3060,8 @@ fn capability_commands() -> Vec<Value> {
             "remove <file>",
             "Remove an existing DOCX comment and its range/reference markers.",
             &["comment"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag(
                     "--comment-id",
@@ -17886,6 +17886,12 @@ enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    DocxCommentsOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
 }
 
 fn push_serve_plan_string_flag(flags: &mut Vec<Value>, name: &str, value: Option<&str>) {
@@ -17914,7 +17920,8 @@ impl ServeOp {
             | ServeOp::DocxHeaderFooterSetText { command, .. }
             | ServeOp::DocxFieldsOp { command, .. }
             | ServeOp::DocxBlocksOp { command, .. }
-            | ServeOp::DocxTablesOp { command, .. } => command,
+            | ServeOp::DocxTablesOp { command, .. }
+            | ServeOp::DocxCommentsOp { command, .. } => command,
         }
     }
 
@@ -18150,6 +18157,27 @@ impl ServeOp {
                 ]);
                 Value::Array(argv)
             }
+            ServeOp::DocxCommentsOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command.split_whitespace().nth(2).unwrap_or("add");
+                let mut argv = vec![
+                    json!("docx"),
+                    json!("comments"),
+                    json!(verb),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
             ServeOp::PptxReplaceText {
                 slide,
                 target,
@@ -18215,6 +18243,11 @@ impl ServeOp {
                 ..
             }
             | ServeOp::DocxBlocksOp {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::DocxCommentsOp {
                 readback_file,
                 readback,
                 ..
@@ -18890,6 +18923,239 @@ impl ServeState {
                     readback,
                 }
             }
+            "docx comments add" => {
+                let anchor_block = match json_i64(args, "anchor-block")? {
+                    Some(value) => value,
+                    None => json_i64(args, "anchorBlock")?.unwrap_or(0),
+                };
+                if (args.get("anchor-block").is_some() || args.get("anchorBlock").is_some())
+                    && anchor_block < 1
+                {
+                    return Err(CliError::invalid_args("--anchor-block must be >= 1"));
+                }
+                let author = json_optional_string(args, "author").unwrap_or_default();
+                if author.is_empty() {
+                    return Err(CliError::invalid_args("--author is required"));
+                }
+                let initials = json_optional_string(args, "initials").unwrap_or_default();
+                let date = json_optional_string(args, "date").unwrap_or_else(current_utc_rfc3339);
+                let text = json_optional_string(args, "text");
+                let text_file = json_optional_string(args, "text-file")
+                    .or_else(|| json_optional_string(args, "textFile"));
+                let readback = docx_comments_add(
+                    &session.working,
+                    anchor_block,
+                    &author,
+                    &initials,
+                    &date,
+                    DocxParagraphMutationOptions {
+                        text: text.as_deref(),
+                        text_file: text_file.as_deref(),
+                        style: "",
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                if anchor_block > 0 {
+                    plan_flags.push(json!("--anchor-block"));
+                    plan_flags.push(json!(anchor_block.to_string()));
+                }
+                push_serve_plan_string_flag(&mut plan_flags, "--author", Some(&author));
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--initials",
+                    (!initials.is_empty()).then_some(initials.as_str()),
+                );
+                push_serve_plan_string_flag(&mut plan_flags, "--date", Some(&date));
+                push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
+                push_serve_plan_string_flag(&mut plan_flags, "--text-file", text_file.as_deref());
+                ServeOp::DocxCommentsOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
+            "docx comments edit" => {
+                let comment_id_set =
+                    args.get("comment-id").is_some() || args.get("commentId").is_some();
+                let handle_set = args.get("handle").is_some();
+                if handle_set && comment_id_set {
+                    return Err(CliError::invalid_args(
+                        "cannot specify both --comment-id and --handle",
+                    ));
+                }
+                if !handle_set && !comment_id_set {
+                    return Err(CliError::invalid_args(
+                        "--comment-id is required (or pass --handle)",
+                    ));
+                }
+                let comment_id = match json_i64(args, "comment-id")? {
+                    Some(value) => value,
+                    None => json_i64(args, "commentId")?.unwrap_or(0),
+                };
+                if !handle_set && comment_id < 0 {
+                    return Err(CliError::invalid_args("--comment-id must be >= 0"));
+                }
+                let text_set = args.get("text").is_some();
+                let text_file_set =
+                    args.get("text-file").is_some() || args.get("textFile").is_some();
+                let author_set = args.get("author").is_some();
+                let date_set = args.get("date").is_some();
+                if text_set && text_file_set {
+                    return Err(CliError::invalid_args(
+                        "cannot specify both --text and --text-file",
+                    ));
+                }
+                if !text_set && !text_file_set && !author_set && !date_set {
+                    return Err(CliError::invalid_args(
+                        "specify at least one of --text, --text-file, --author, or --date",
+                    ));
+                }
+                let text = json_optional_string(args, "text");
+                let text_file = json_optional_string(args, "text-file")
+                    .or_else(|| json_optional_string(args, "textFile"));
+                let resolved_text = if text_file_set {
+                    let path = text_file.as_deref().unwrap_or_default();
+                    fs::read(path)
+                        .map(|data| String::from_utf8_lossy(&data).to_string())
+                        .map_err(|_| CliError::file_not_found(format!("file not found: {path}")))?
+                } else {
+                    text.clone().unwrap_or_default()
+                };
+                let handle = json_optional_string(args, "handle");
+                let author = json_optional_string(args, "author").unwrap_or_default();
+                let date = json_optional_string(args, "date").unwrap_or_default();
+                let expect_hash = json_optional_string(args, "expect-hash")
+                    .or_else(|| json_optional_string(args, "expectHash"))
+                    .unwrap_or_default();
+                let readback = docx_comments_edit(
+                    &session.working,
+                    comment_id,
+                    handle.as_deref(),
+                    DocxCommentEditSpec {
+                        expect_hash: &expect_hash,
+                        text: &resolved_text,
+                        text_set: text_set || text_file_set,
+                        author: &author,
+                        author_set,
+                        date: &date,
+                        date_set,
+                    },
+                    DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                if handle_set {
+                    push_serve_plan_string_flag(&mut plan_flags, "--handle", handle.as_deref());
+                } else {
+                    plan_flags.push(json!("--comment-id"));
+                    plan_flags.push(json!(comment_id.to_string()));
+                }
+                if text_set {
+                    push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
+                }
+                if text_file_set {
+                    push_serve_plan_string_flag(
+                        &mut plan_flags,
+                        "--text-file",
+                        text_file.as_deref(),
+                    );
+                }
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--author",
+                    author_set.then_some(author.as_str()),
+                );
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--date",
+                    date_set.then_some(date.as_str()),
+                );
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-hash",
+                    (!expect_hash.is_empty()).then_some(expect_hash.as_str()),
+                );
+                ServeOp::DocxCommentsOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
+            "docx comments remove" => {
+                let comment_id_set =
+                    args.get("comment-id").is_some() || args.get("commentId").is_some();
+                let handle_set = args.get("handle").is_some();
+                if handle_set && comment_id_set {
+                    return Err(CliError::invalid_args(
+                        "cannot specify both --comment-id and --handle",
+                    ));
+                }
+                if !handle_set && !comment_id_set {
+                    return Err(CliError::invalid_args(
+                        "--comment-id is required (or pass --handle)",
+                    ));
+                }
+                let comment_id = match json_i64(args, "comment-id")? {
+                    Some(value) => value,
+                    None => json_i64(args, "commentId")?.unwrap_or(0),
+                };
+                if !handle_set && comment_id < 0 {
+                    return Err(CliError::invalid_args("--comment-id must be >= 0"));
+                }
+                let handle = json_optional_string(args, "handle");
+                let expect_hash = json_optional_string(args, "expect-hash")
+                    .or_else(|| json_optional_string(args, "expectHash"))
+                    .unwrap_or_default();
+                let readback = docx_comments_remove(
+                    &session.working,
+                    comment_id,
+                    handle.as_deref(),
+                    &expect_hash,
+                    DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                if handle_set {
+                    push_serve_plan_string_flag(&mut plan_flags, "--handle", handle.as_deref());
+                } else {
+                    plan_flags.push(json!("--comment-id"));
+                    plan_flags.push(json!(comment_id.to_string()));
+                }
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-hash",
+                    (!expect_hash.is_empty()).then_some(expect_hash.as_str()),
+                );
+                ServeOp::DocxCommentsOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
             "docx tables set-cell" => {
                 let table = json_i64(args, "table")?
                     .ok_or_else(|| CliError::invalid_args("table is required"))?;
@@ -19152,6 +19418,18 @@ impl ServeState {
             "docx fields list" => {
                 let field_type = json_optional_string(args, "type");
                 docx_fields_list(&session.working, field_type.as_deref())
+            }
+            "docx comments list" => {
+                let comment_id = match json_i64(args, "comment-id")? {
+                    Some(value) => Some(value),
+                    None => json_i64(args, "commentId")?,
+                };
+                if let Some(comment_id) = comment_id
+                    && comment_id < 0
+                {
+                    return Err(CliError::invalid_args("--comment-id must be >= 0"));
+                }
+                docx_comments_list(&session.working, comment_id)
             }
             "docx blocks" => {
                 let block = json_i64(args, "block")?.unwrap_or(0);

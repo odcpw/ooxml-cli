@@ -93,22 +93,23 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json docx comments list <docx>` with Go-oracle comparison for comment
   enumeration, `--comment-id` filtering, missing-id errors, empty documents
   without a comments part, semantic content hashes, body-block anchors, stable
-  selectors, and comment handles
+  selectors, comment handles, and serve inspect routing through the session path
 - `--json docx comments add <docx>` with Go-oracle comparison for direct CLI
   comment insertion, comments part/content-type/relationship creation, body
   range marker insertion, deterministic `--date` readback, strict validation,
   `comments list` readback, dry-run non-mutation, required author validation,
-  and unsupported package-type rejection
+  unsupported package-type rejection, and serve operation/readback routing
 - `--json docx comments edit <docx>` with Go-oracle comparison for direct CLI
   comment text/date/author mutation, `--expect-hash` guard failures, stable
   comment-handle targeting and stale-handle rejection, strict validation,
-  `comments list` readback, dry-run non-mutation, and unsupported package-type
-  rejection
+  `comments list` readback, dry-run non-mutation, unsupported package-type
+  rejection, and serve operation/readback routing
 - `--json docx comments remove <docx>` with Go-oracle comparison for direct CLI
   comment deletion, body range/reference marker cleanup, `--expect-hash` guard
   failures, stable comment-handle targeting and stale-handle rejection, no-comment
   target errors, strict validation, `comments list` readback, dry-run
-  non-mutation, and unsupported package-type rejection
+  non-mutation, unsupported package-type rejection, and serve operation/readback
+  routing
 - `--json docx fields list <docx>` with Go-oracle comparison for simple and
   complex fields, body plus header field ordering, cached result readback,
   leading-instruction `--type` filtering, empty documents, unsupported package
