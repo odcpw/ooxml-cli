@@ -1714,6 +1714,12 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             )
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "extract" && verb == "text" =>
+        {
+            reject_unknown_flags(rest, &["--slide"], &[])?;
+            pptx_extract_text(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "replace" && verb == "text" =>
         {
             pptx_replace_text(file, rest)
@@ -1907,8 +1913,8 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
         "objectKinds": ["package", "slide", "shape", "sheet", "range", "cell", "table", "block", "paragraph", "style", "comment", "field", "header", "footer", "image"],
         "objectKindsIndex": {
             "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml docx text", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update"],
-            "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text", "ooxml pptx render"],
-            "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text"],
+            "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx extract text", "ooxml pptx replace text", "ooxml pptx render"],
+            "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx extract text", "ooxml pptx replace text"],
             "sheet": ["ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "range": ["ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "cell": ["ooxml xlsx ranges set", "ooxml xlsx cells set"],
@@ -2117,6 +2123,20 @@ fn capability_commands() -> Vec<Value> {
                     "include explicit shape bounds where available",
                 ),
             ],
+        ),
+        capability_command(
+            "ooxml pptx extract text",
+            "text <file>",
+            "Extract slide text grouped by shape.",
+            &["slide", "shape"],
+            false,
+            Some("read-only command; call via inspect in serve/MCP"),
+            vec![flag(
+                "--slide",
+                "slide",
+                "int",
+                "1-based slide number; repeatable",
+            )],
         ),
         capability_command(
             "ooxml pptx replace text",
@@ -3512,6 +3532,27 @@ fn parse_u32_flag(args: &[String], name: &str) -> CliResult<Option<u32>> {
                 .map_err(|_| CliError::invalid_args(format!("{name} must be an integer")))
         })
         .transpose()
+}
+
+fn parse_u32_flags(args: &[String], name: &str) -> CliResult<Vec<u32>> {
+    let mut values = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == name {
+            let Some(value) = args.get(i + 1) else {
+                return Err(CliError::invalid_args(format!("{name} requires a value")));
+            };
+            values.push(
+                value
+                    .parse::<u32>()
+                    .map_err(|_| CliError::invalid_args(format!("{name} must be an integer")))?,
+            );
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    Ok(values)
 }
 
 fn parse_i64_flag(args: &[String], name: &str) -> CliResult<Option<i64>> {
@@ -19857,6 +19898,10 @@ impl ServeState {
                 let slide = json_u32(args, "slide")?.unwrap_or(1);
                 pptx_slide_show(&session.working, slide)
             }
+            "pptx extract text" => {
+                let rest = pptx_extract_text_json_args(args)?;
+                pptx_extract_text(&session.working, &rest)
+            }
             "pptx shapes show" => {
                 let slide = json_u32(args, "slide")?
                     .ok_or_else(|| CliError::invalid_args("slide is required"))?;
@@ -20188,6 +20233,36 @@ fn docx_header_footer_show_json_args(args: &Value) -> CliResult<Vec<String>> {
     if let Some(section) = json_i64(args, "section")? {
         rest.push("--section".to_string());
         rest.push(section.to_string());
+    }
+    Ok(rest)
+}
+
+fn pptx_extract_text_json_args(args: &Value) -> CliResult<Vec<String>> {
+    let mut rest = Vec::new();
+    if let Some(slide) = json_u32(args, "slide")? {
+        rest.push("--slide".to_string());
+        rest.push(slide.to_string());
+    }
+    if let Some(slides) = args.get("slides") {
+        let values = slides
+            .as_array()
+            .ok_or_else(|| CliError::invalid_args("slides must be an array"))?;
+        for value in values {
+            let slide = if let Some(number) = value.as_u64() {
+                u32::try_from(number)
+                    .map_err(|_| CliError::invalid_args("slides entries must fit in uint32"))?
+            } else if let Some(text) = value.as_str() {
+                text.parse::<u32>().map_err(|_| {
+                    CliError::invalid_args("slides entries must be integers or integer strings")
+                })?
+            } else {
+                return Err(CliError::invalid_args(
+                    "slides entries must be integers or integer strings",
+                ));
+            };
+            rest.push("--slide".to_string());
+            rest.push(slide.to_string());
+        }
     }
     Ok(rest)
 }
@@ -20882,6 +20957,107 @@ fn pptx_diff(baseline: &str, file: &str) -> CliResult<Value> {
     }))
 }
 
+fn pptx_extract_text(file: &str, args: &[String]) -> CliResult<Value> {
+    if package_type(file)? != "pptx" {
+        return Err(CliError::unsupported_type(format!(
+            "file is not a PPTX document (detected: {})",
+            package_type(file)?
+        )));
+    }
+
+    let selected_slides = parse_u32_flags(args, "--slide")?;
+    let presentation = zip_text(file, "ppt/presentation.xml")?;
+    let slides = pptx_slide_refs(&presentation);
+    let rels = relationships(file, "ppt/_rels/presentation.xml.rels")?;
+    let mut values = Vec::new();
+    for (index, (_slide_id, rel_id)) in slides.iter().enumerate() {
+        let slide_number = index as u32 + 1;
+        if !selected_slides.is_empty() && !selected_slides.contains(&slide_number) {
+            continue;
+        }
+        let target = rels
+            .get(rel_id)
+            .ok_or_else(|| CliError::unexpected(format!("missing relationship {rel_id}")))?;
+        let part = normalize_ppt_target(target);
+        let xml = zip_text(file, &part)?;
+        values.push(json!({
+            "slide": slide_number,
+            "shapes": pptx_extract_text_shapes(&xml),
+        }));
+    }
+    Ok(json!({
+        "file": file,
+        "slides": values,
+    }))
+}
+
+fn pptx_extract_text_shapes(xml: &str) -> Vec<Value> {
+    let shapes = pptx_shape_models(xml);
+    let targets = pptx_selector_targets_from_shapes(&shapes);
+    shapes
+        .iter()
+        .zip(targets)
+        .filter(|(shape, _target)| shape.kind == "sp" && shape.has_text_body)
+        .map(|(shape, target)| {
+            let key = pptx_extract_text_shape_key(shape, &target);
+            json!({
+                "id": shape.id,
+                "name": shape.name,
+                "type": shape.kind,
+                "key": key,
+                "text": pptx_extract_text_body(shape),
+            })
+        })
+        .collect()
+}
+
+fn pptx_extract_text_shape_key(shape: &Shape, target: &Value) -> String {
+    let lower_name = shape.name.to_ascii_lowercase();
+    if lower_name.contains("content placeholder")
+        && let Some(index) = shape.placeholder.as_ref().and_then(|ph| ph.index)
+    {
+        return format!("body:{index}");
+    }
+    target
+        .get("primarySelector")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn pptx_extract_text_body(shape: &Shape) -> Value {
+    let paragraphs = if shape.paragraphs.is_empty() {
+        vec![Vec::<String>::new()]
+    } else {
+        shape.paragraphs.clone()
+    };
+    let paragraph_values = paragraphs
+        .iter()
+        .map(|runs| {
+            let text = runs.join("");
+            let mut paragraph = Map::new();
+            if !runs.is_empty() {
+                paragraph.insert(
+                    "runs".to_string(),
+                    Value::Array(runs.iter().map(|run| json!({"text": run})).collect()),
+                );
+            }
+            paragraph.insert("text".to_string(), json!(text));
+            Value::Object(paragraph)
+        })
+        .collect::<Vec<_>>();
+    let plain_text = paragraphs
+        .iter()
+        .map(|runs| runs.join(""))
+        .collect::<Vec<_>>()
+        .join("\n");
+    json!({
+        "paragraphs": paragraph_values,
+        "plainText": plain_text,
+        "bodyProperties": {},
+    })
+}
+
 #[derive(Clone, Default)]
 struct ShapeText {
     key: String,
@@ -21222,6 +21398,7 @@ struct Shape {
     is_placeholder: bool,
     has_text_body: bool,
     text: String,
+    paragraphs: Vec<Vec<String>>,
     bounds: Option<Bounds>,
     placeholder: Option<Placeholder>,
     image_rel_id: String,
@@ -21680,9 +21857,11 @@ fn pptx_shape_models(xml: &str) -> Vec<Shape> {
     let mut current: Option<Shape> = None;
     let mut current_end = String::new();
     let mut in_text = false;
+    let mut in_shape_text_body = false;
     let mut in_table = false;
     let mut current_row: Option<TableRow> = None;
     let mut current_cell: Option<TableCell> = None;
+    let mut current_paragraph: Option<Vec<String>> = None;
     loop {
         match reader.read_event() {
             Ok(Event::Start(e))
@@ -21717,12 +21896,29 @@ fn pptx_shape_models(xml: &str) -> Vec<Shape> {
                     });
                 }
             }
-            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+            Ok(Event::Start(e))
                 if current.as_ref().is_some_and(|shape| shape.kind == "sp")
                     && local_name(e.name().as_ref()) == "txBody" =>
             {
                 if let Some(shape) = current.as_mut() {
                     shape.has_text_body = true;
+                }
+                in_shape_text_body = true;
+            }
+            Ok(Event::Empty(e))
+                if current.as_ref().is_some_and(|shape| shape.kind == "sp")
+                    && local_name(e.name().as_ref()) == "txBody" =>
+            {
+                if let Some(shape) = current.as_mut() {
+                    shape.has_text_body = true;
+                }
+            }
+            Ok(Event::Start(e)) if in_shape_text_body && local_name(e.name().as_ref()) == "p" => {
+                current_paragraph = Some(Vec::new());
+            }
+            Ok(Event::Empty(e)) if in_shape_text_body && local_name(e.name().as_ref()) == "p" => {
+                if let Some(shape) = current.as_mut() {
+                    shape.paragraphs.push(Vec::new());
                 }
             }
             Ok(Event::Start(e)) | Ok(Event::Empty(e))
@@ -21807,16 +22003,32 @@ fn pptx_shape_models(xml: &str) -> Vec<Shape> {
                 in_text = true;
             }
             Ok(Event::Text(e)) if in_text => {
+                let text = String::from_utf8_lossy(e.as_ref()).to_string();
                 if let Some(cell) = current_cell.as_mut() {
-                    cell.text.push_str(&String::from_utf8_lossy(e.as_ref()));
+                    cell.text.push_str(&text);
                 } else if let Some(shape) = current.as_mut()
                     && shape.kind == "sp"
                 {
-                    shape.text.push_str(&String::from_utf8_lossy(e.as_ref()));
+                    shape.text.push_str(&text);
+                    if in_shape_text_body && let Some(paragraph) = current_paragraph.as_mut() {
+                        paragraph.push(text);
+                    }
                 }
             }
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "t" => {
                 in_text = false;
+            }
+            Ok(Event::End(e)) if in_shape_text_body && local_name(e.name().as_ref()) == "p" => {
+                if let Some(paragraph) = current_paragraph.take()
+                    && let Some(shape) = current.as_mut()
+                {
+                    shape.paragraphs.push(paragraph);
+                }
+            }
+            Ok(Event::End(e))
+                if in_shape_text_body && local_name(e.name().as_ref()) == "txBody" =>
+            {
+                in_shape_text_body = false;
             }
             Ok(Event::End(e)) if in_table && local_name(e.name().as_ref()) == "tc" => {
                 if let Some(cell) = current_cell.take()

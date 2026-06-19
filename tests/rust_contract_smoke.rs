@@ -9559,6 +9559,24 @@ fn serve_pptx_generic_web_agent_edit_path_works() {
         Value::String("Minimal Title Slide".to_string())
     );
 
+    let extract_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            30,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx extract text",
+                "args": {"slide": 1},
+            }),
+        ),
+    );
+    assert_eq!(
+        extract_response["result"]["slides"][0]["shapes"][0]["text"]["plainText"],
+        Value::String("Minimal Title Slide".to_string())
+    );
+
     let shapes_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
@@ -10054,6 +10072,44 @@ fn web_smoke_binary_readback_checks_are_supported() {
     );
 
     for args in [
+        vec!["--json", "pptx", "extract", "text", pptx],
+        vec![
+            "--json",
+            "pptx",
+            "extract",
+            "text",
+            "testdata/pptx/title-content/presentation.pptx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "extract",
+            "text",
+            "testdata/pptx/title-content/presentation.pptx",
+            "--slide",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "extract",
+            "text",
+            "testdata/pptx/title-content/presentation.pptx",
+            "--slide",
+            "3",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "extract",
+            "text",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+    ] {
+        assert_go_rust_match(&args);
+    }
+
+    for args in [
         [
             "--json",
             "pptx",
@@ -10159,6 +10215,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml capabilities", false);
     assert_command(&all_caps, "ooxml serve", false);
     assert_command(&all_caps, "ooxml mcp", false);
+    assert_command(&all_caps, "ooxml pptx extract text", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx fields insert", true);
     assert_command(&all_caps, "ooxml docx fields set-result", true);
@@ -10230,6 +10287,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx slides selectors", false);
     assert_command(&pptx_caps, "ooxml pptx slides show", false);
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
+    assert_command(&pptx_caps, "ooxml pptx extract text", false);
     assert_command(&pptx_caps, "ooxml pptx replace text", true);
 
     let (package_code, package_stdout, package_stderr) =
@@ -10411,10 +10469,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 54, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 55, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        236,
+        235,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
