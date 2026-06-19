@@ -169,7 +169,16 @@ func (f *File) collectFATSectors(numFATSectors, firstDIFATSector, numDIFATSector
 		}
 	}
 	current := firstDIFATSector
+	// The DIFAT sector chain is attacker-controlled; a self-referential or
+	// looping `current` pointer would otherwise spin unbounded (numDIFATSectors
+	// and numFATSectors are also attacker-controlled), growing `sectors` until
+	// OOM. Detect revisited sectors and stop, mirroring walkTree's cycle guard.
+	visited := make(map[uint32]bool)
 	for i := uint32(0); i < numDIFATSectors && current != sectorEnd && uint32(len(sectors)) < numFATSectors; i++ {
+		if visited[current] {
+			return nil, fmt.Errorf("CFB DIFAT sector chain cycle at sector %d", current)
+		}
+		visited[current] = true
 		sectorData, err := f.sector(current)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read DIFAT sector %d: %w", current, err)
@@ -203,7 +212,11 @@ func (f *File) readFAT(fatSectors []uint32) error {
 }
 
 func (f *File) readMiniFAT(firstSector, numSectors uint32) error {
-	chain, err := f.regularSectorChain(firstSector, uint64(numSectors)*uint64(f.sectorSize), int(numSectors)+1)
+	maxSectors := int(numSectors) + 1
+	if maxSectors <= 0 || maxSectors > maxRegularSectorChain {
+		maxSectors = maxRegularSectorChain
+	}
+	chain, err := f.regularSectorChain(firstSector, uint64(numSectors)*uint64(f.sectorSize), maxSectors)
 	if err != nil {
 		return fmt.Errorf("failed to read mini FAT chain: %w", err)
 	}
