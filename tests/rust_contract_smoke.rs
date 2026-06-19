@@ -8646,6 +8646,267 @@ fn serve_op_supports_docx_paragraph_editing() {
 }
 
 #[test]
+fn serve_op_supports_docx_styles_apply() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-docx-styles-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.docx");
+    let output = temp_dir.join("serve-docx-styles-out.docx");
+    fs::copy("testdata/docx/apply-styles/document.docx", &input).expect("stage docx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({"file": input_str, "out": output_str}),
+        ),
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let styles_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            2,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "docx styles list",
+                "args": {"type": "paragraph"},
+            }),
+        ),
+    );
+    assert!(
+        styles_response.get("error").is_none(),
+        "docx styles list inspect failed: {styles_response:?}"
+    );
+    let heading2_handle = styles_response["result"]["styles"]
+        .as_array()
+        .expect("styles")
+        .iter()
+        .find(|style| style["styleId"] == Value::String("Heading2".to_string()))
+        .and_then(|style| style["handle"].as_str())
+        .expect("Heading2 handle")
+        .to_string();
+
+    let show_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            3,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "docx styles show",
+                "args": {"style": "Heading2"},
+            }),
+        ),
+    );
+    assert!(
+        show_response.get("error").is_none(),
+        "docx styles show inspect failed: {show_response:?}"
+    );
+    assert_eq!(show_response["result"]["found"], Value::Bool(true));
+    assert_eq!(
+        show_response["result"]["style"]["handle"],
+        Value::String(heading2_handle.clone())
+    );
+
+    let first_block_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            4,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "docx blocks",
+                "args": {"block": 1},
+            }),
+        ),
+    );
+    assert!(
+        first_block_response.get("error").is_none(),
+        "docx blocks inspect failed: {first_block_response:?}"
+    );
+    let first_hash = first_block_response["result"]["blocks"][0]["contentHash"]
+        .as_str()
+        .expect("first block hash")
+        .to_string();
+
+    let paragraph_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            5,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx styles apply",
+                "args": {
+                    "index": 1,
+                    "target": "paragraph",
+                    "style": heading2_handle,
+                    "expectHash": first_hash
+                },
+            }),
+        ),
+    );
+    assert!(
+        paragraph_response.get("error").is_none(),
+        "docx paragraph style apply op failed: {paragraph_response:?}"
+    );
+    assert_eq!(
+        paragraph_response["result"]["readback"]["style"],
+        Value::String("Heading2".to_string())
+    );
+    assert_eq!(
+        paragraph_response["result"]["readback"]["target"],
+        Value::String("paragraph".to_string())
+    );
+
+    let run_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            6,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx styles apply",
+                "args": {"index": 2, "target": "run", "style": "Emphasis"},
+            }),
+        ),
+    );
+    assert!(
+        run_response.get("error").is_none(),
+        "docx run style apply op failed: {run_response:?}"
+    );
+    assert_eq!(
+        run_response["result"]["readback"]["target"],
+        Value::String("run".to_string())
+    );
+    assert_eq!(
+        run_response["result"]["readback"]["style"],
+        Value::String("Emphasis".to_string())
+    );
+
+    let table_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            7,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx styles apply",
+                "args": {"index": 1, "target": "table", "style": "TableGrid"},
+            }),
+        ),
+    );
+    assert!(
+        table_response.get("error").is_none(),
+        "docx table style apply op failed: {table_response:?}"
+    );
+    assert_eq!(
+        table_response["result"]["readback"]["target"],
+        Value::String("table".to_string())
+    );
+    assert_eq!(
+        table_response["result"]["readback"]["style"],
+        Value::String("TableGrid".to_string())
+    );
+    assert_eq!(
+        table_response["result"]["readback"]["blockKind"],
+        Value::String("table".to_string())
+    );
+
+    let plan_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(8, "plan", serde_json::json!({"session": session})),
+    );
+    for index in 0..3 {
+        assert_eq!(
+            plan_response["result"]["plan"][index]["argv"][1],
+            Value::String("styles".to_string())
+        );
+        assert_eq!(
+            plan_response["result"]["plan"][index]["argv"][2],
+            Value::String("apply".to_string())
+        );
+        assert!(
+            !plan_response["result"]["plan"][index]["argv"]
+                .as_array()
+                .expect("plan argv")
+                .contains(&Value::String("--no-validate".to_string())),
+            "style apply plan should not silently skip style validation"
+        );
+    }
+
+    let commit_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(9, "commit", serde_json::json!({"session": session})),
+    );
+    assert!(
+        commit_response.get("error").is_none(),
+        "docx styles commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "docx styles serve validate exit");
+    assert_eq!(validate_stderr, None, "docx styles serve validate stderr");
+
+    let (blocks_code, blocks_stdout, blocks_stderr) =
+        run_ooxml(&["--json", "docx", "blocks", &output_str, "--block", "1"]);
+    assert_eq!(blocks_code, 0, "docx styles output blocks exit");
+    assert_eq!(blocks_stderr, None, "docx styles output blocks stderr");
+    let blocks = blocks_stdout.expect("docx styles output blocks");
+    assert_eq!(
+        blocks["blocks"][0]["paragraph"]["style"],
+        Value::String("Heading2".to_string())
+    );
+
+    let document_xml = read_zip_string(Path::new(&output_str), "word/document.xml");
+    assert!(
+        document_xml.contains("w:rStyle w:val=\"Emphasis\""),
+        "run style was not written to document.xml"
+    );
+    assert!(
+        document_xml.contains("w:tblStyle w:val=\"TableGrid\""),
+        "table style was not written to document.xml"
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_op_supports_docx_tables_editing() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-docx-tables-{}",
@@ -9769,6 +10030,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx paragraphs insert", true);
     assert_command(&all_caps, "ooxml docx paragraphs set", true);
     assert_command(&all_caps, "ooxml docx paragraphs clear", true);
+    assert_command(&all_caps, "ooxml docx styles apply", true);
     assert_command(&all_caps, "ooxml docx comments list", false);
     assert_command(&all_caps, "ooxml docx comments add", true);
     assert_command(&all_caps, "ooxml docx comments edit", true);
@@ -9780,6 +10042,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "header",
         "footer",
         "image",
+        "table",
+        "style",
         "comment",
     ] {
         assert_object_kind(&all_caps, kind);
@@ -9791,6 +10055,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "paragraph", "ooxml docx paragraphs insert");
     assert_object_kind_command(&all_caps, "paragraph", "ooxml docx paragraphs set");
     assert_object_kind_command(&all_caps, "paragraph", "ooxml docx paragraphs clear");
+    assert_object_kind_command(&all_caps, "paragraph", "ooxml docx styles apply");
+    assert_object_kind_command(&all_caps, "table", "ooxml docx styles apply");
+    assert_object_kind_command(&all_caps, "style", "ooxml docx styles list");
+    assert_object_kind_command(&all_caps, "style", "ooxml docx styles show");
+    assert_object_kind_command(&all_caps, "style", "ooxml docx styles apply");
     assert_object_kind_command(&all_caps, "header", "ooxml docx headers set-text");
     assert_object_kind_command(&all_caps, "footer", "ooxml docx footers set-text");
     assert_object_kind_command(&all_caps, "image", "ooxml docx images list");
@@ -9875,7 +10144,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&style_caps, "ooxml xlsx ranges set-format", true);
     assert_command(&style_caps, "ooxml docx styles list", false);
     assert_command(&style_caps, "ooxml docx styles show", false);
-    assert_command(&style_caps, "ooxml docx styles apply", false);
+    assert_command(&style_caps, "ooxml docx styles apply", true);
 
     let (comment_code, comment_stdout, comment_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "comment"]);
@@ -9948,7 +10217,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx paragraphs insert", true);
     assert_command(&docx_caps, "ooxml docx paragraphs set", true);
     assert_command(&docx_caps, "ooxml docx paragraphs clear", true);
-    assert_command(&docx_caps, "ooxml docx styles apply", false);
+    assert_command(&docx_caps, "ooxml docx styles apply", true);
     assert_command(&docx_caps, "ooxml docx comments list", false);
     assert_command(&docx_caps, "ooxml docx comments add", true);
     assert_command(&docx_caps, "ooxml docx comments edit", true);

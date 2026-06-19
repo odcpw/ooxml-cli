@@ -91,7 +91,8 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   run, and table style mutation, style-handle resolution, hash guards, dry-run
   non-mutation, strict validation, paragraph handle stamping, style type
   mismatch rejection, missing-style candidate errors, output-flag validation,
-  table-target rejection, and unsupported package-type rejection
+  table-target rejection, unsupported package-type rejection, and serve
+  inspect/operation/readback routing
 - `--json docx comments list <docx>` with Go-oracle comparison for comment
   enumeration, `--comment-id` filtering, missing-id errors, empty documents
   without a comments part, semantic content hashes, body-block anchors, stable

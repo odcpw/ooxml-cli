@@ -620,20 +620,23 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             let no_validate = has_flag(rest, "--no-validate");
             docx_styles_apply(
                 file,
-                index,
-                handle.as_deref(),
-                target,
-                &style,
-                &expect_hash,
-                DocxParagraphMutationOptions {
-                    text: None,
-                    text_file: None,
-                    style: "",
-                    out: out.as_deref(),
-                    backup: backup.as_deref(),
-                    dry_run,
-                    in_place,
-                    no_validate,
+                DocxStyleApplyOptions {
+                    index,
+                    handle: handle.as_deref(),
+                    target,
+                    style: &style,
+                    expected_hash: &expect_hash,
+                    validate_style: !no_validate,
+                    mutation: DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: out.as_deref(),
+                        backup: backup.as_deref(),
+                        dry_run,
+                        in_place,
+                        no_validate,
+                    },
                 },
             )
         }
@@ -1909,7 +1912,7 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
             "sheet": ["ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "range": ["ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "cell": ["ooxml xlsx ranges set", "ooxml xlsx cells set"],
-            "table": ["ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export", "ooxml docx tables show", "ooxml docx tables set-cell", "ooxml docx tables clear-cell"],
+            "table": ["ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export", "ooxml docx tables show", "ooxml docx tables set-cell", "ooxml docx tables clear-cell", "ooxml docx styles apply"],
             "block": ["ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx tables show"],
             "paragraph": ["ooxml docx text", "ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx paragraphs append", "ooxml docx paragraphs insert", "ooxml docx paragraphs set", "ooxml docx paragraphs clear", "ooxml docx styles apply", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx images list"],
             "style": ["ooxml xlsx ranges set-format", "ooxml docx styles list", "ooxml docx styles show", "ooxml docx styles apply"],
@@ -2898,8 +2901,8 @@ fn capability_commands() -> Vec<Value> {
             "apply <file>",
             "Apply a paragraph, run, or table style to DOCX body content.",
             &["style", "paragraph", "table"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag(
                     "--index",
@@ -10032,15 +10035,26 @@ fn docx_styles_show(file: &str, style_id: &str) -> CliResult<Value> {
     }))
 }
 
-fn docx_styles_apply(
-    file: &str,
+struct DocxStyleApplyOptions<'a> {
     index: i64,
-    handle: Option<&str>,
+    handle: Option<&'a str>,
     target: DocxStyleTarget,
-    style: &str,
-    expected_hash: &str,
-    options: DocxParagraphMutationOptions<'_>,
-) -> CliResult<Value> {
+    style: &'a str,
+    expected_hash: &'a str,
+    validate_style: bool,
+    mutation: DocxParagraphMutationOptions<'a>,
+}
+
+fn docx_styles_apply(file: &str, request: DocxStyleApplyOptions<'_>) -> CliResult<Value> {
+    let DocxStyleApplyOptions {
+        index,
+        handle,
+        target,
+        style,
+        expected_hash,
+        validate_style,
+        mutation: options,
+    } = request;
     let entries = zip_entry_names(file)?;
     validate_xlsx_mutation_output_flags(
         options.out,
@@ -10064,7 +10078,7 @@ fn docx_styles_apply(
         style_handle = style_id.clone();
         style_id = resolve_docx_style_handle_id(&styles, styles_part.as_deref(), &style_id)?;
     }
-    if !options.no_validate {
+    if validate_style {
         validate_docx_style_for_target(&styles, &style_id, target)?;
     }
 
@@ -17886,6 +17900,12 @@ enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    DocxStylesOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
     DocxTablesOp {
         command: String,
         plan_flags: Vec<Value>,
@@ -17927,6 +17947,7 @@ impl ServeOp {
             | ServeOp::DocxFieldsOp { command, .. }
             | ServeOp::DocxBlocksOp { command, .. }
             | ServeOp::DocxParagraphsOp { command, .. }
+            | ServeOp::DocxStylesOp { command, .. }
             | ServeOp::DocxTablesOp { command, .. }
             | ServeOp::DocxCommentsOp { command, .. } => command,
         }
@@ -18164,6 +18185,22 @@ impl ServeOp {
                 ]);
                 Value::Array(argv)
             }
+            ServeOp::DocxStylesOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command.split_whitespace().nth(2).unwrap_or("apply");
+                let mut argv = vec![
+                    json!("docx"),
+                    json!("styles"),
+                    json!(verb),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([json!("--out"), json!("<temp.0>"), json!("--json")]);
+                Value::Array(argv)
+            }
             ServeOp::DocxTablesOp {
                 command,
                 plan_flags,
@@ -18281,6 +18318,11 @@ impl ServeOp {
                 ..
             }
             | ServeOp::DocxParagraphsOp {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::DocxStylesOp {
                 readback_file,
                 readback,
                 ..
@@ -18992,6 +19034,88 @@ impl ServeState {
                     readback,
                 }
             }
+            "docx styles apply" => {
+                let handle_set = args.get("handle").is_some();
+                let index_set = args.get("index").is_some();
+                if handle_set && index_set {
+                    return Err(CliError::invalid_args(
+                        "cannot specify both --index and --handle",
+                    ));
+                }
+                let index = json_i64(args, "index")?.unwrap_or(0);
+                if !handle_set && index < 1 {
+                    return Err(CliError::invalid_args(
+                        "--index must be >= 1 (or pass --handle)",
+                    ));
+                }
+                let handle = json_optional_string(args, "handle");
+                let target_arg = json_optional_string(args, "target").unwrap_or_default();
+                let target = normalize_docx_style_target(&target_arg)?;
+                if handle_set && target == DocxStyleTarget::Table {
+                    return Err(CliError::invalid_args(
+                        "--handle is a paragraph handle; use --index with --target table",
+                    ));
+                }
+                let style = json_optional_string(args, "style").unwrap_or_default();
+                if style.trim().is_empty() {
+                    return Err(CliError::invalid_args("--style is required"));
+                }
+                let expect_hash = json_optional_string(args, "expect-hash")
+                    .or_else(|| json_optional_string(args, "expectHash"))
+                    .unwrap_or_default();
+                if !expect_hash.is_empty() {
+                    require_docx_block_hash(&expect_hash)?;
+                }
+                let skip_style_validation = json_bool(args, "no-validate")
+                    .or_else(|| json_bool(args, "noValidate"))
+                    .unwrap_or(false);
+                let readback = docx_styles_apply(
+                    &session.working,
+                    DocxStyleApplyOptions {
+                        index,
+                        handle: handle.as_deref(),
+                        target,
+                        style: &style,
+                        expected_hash: &expect_hash,
+                        validate_style: !skip_style_validation,
+                        mutation: DocxParagraphMutationOptions {
+                            text: None,
+                            text_file: None,
+                            style: "",
+                            out: None,
+                            backup: None,
+                            dry_run: false,
+                            in_place: true,
+                            no_validate: true,
+                        },
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                if handle_set {
+                    push_serve_plan_string_flag(&mut plan_flags, "--handle", handle.as_deref());
+                } else {
+                    plan_flags.push(json!("--index"));
+                    plan_flags.push(json!(index.to_string()));
+                }
+                push_serve_plan_string_flag(&mut plan_flags, "--target", Some(target.as_str()));
+                push_serve_plan_string_flag(&mut plan_flags, "--style", Some(style.as_str()));
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-hash",
+                    (!expect_hash.is_empty()).then_some(expect_hash.as_str()),
+                );
+                push_serve_plan_bool_flag(
+                    &mut plan_flags,
+                    "--no-validate",
+                    skip_style_validation.then_some(true),
+                );
+                ServeOp::DocxStylesOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
             "docx blocks replace" => {
                 let block = json_i64(args, "block")?
                     .ok_or_else(|| CliError::invalid_args("block is required"))?;
@@ -19658,6 +19782,14 @@ impl ServeState {
                     .or_else(|| json_bool(args, "includeRuns"))
                     .unwrap_or(false);
                 docx_blocks_show(&session.working, block as usize, include_runs)
+            }
+            "docx styles list" => {
+                let style_type = json_optional_string(args, "type");
+                docx_styles_list(&session.working, style_type.as_deref())
+            }
+            "docx styles show" => {
+                let style_id = json_string(args, "style")?;
+                docx_styles_show(&session.working, &style_id)
             }
             "docx tables show" => {
                 let table = json_i64(args, "table")?.unwrap_or(0);
