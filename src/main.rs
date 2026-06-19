@@ -482,6 +482,58 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             docx_comments_list(file, comment_id)
         }
         [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "comments" && verb == "add" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--anchor-block",
+                    "--author",
+                    "--initials",
+                    "--date",
+                    "--text",
+                    "--text-file",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let anchor_block = parse_i64_flag(rest, "--anchor-block")?.unwrap_or(0);
+            if flag_present(rest, "--anchor-block") && anchor_block < 1 {
+                return Err(CliError::invalid_args("--anchor-block must be >= 1"));
+            }
+            let author = parse_string_flag(rest, "--author")?.unwrap_or_default();
+            if author.is_empty() {
+                return Err(CliError::invalid_args("--author is required"));
+            }
+            let initials = parse_string_flag(rest, "--initials")?.unwrap_or_default();
+            let date = parse_string_flag(rest, "--date")?.unwrap_or_else(current_utc_rfc3339);
+            let text = parse_string_flag(rest, "--text")?;
+            let text_file = parse_string_flag(rest, "--text-file")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_comments_add(
+                file,
+                anchor_block,
+                &author,
+                &initials,
+                &date,
+                DocxParagraphMutationOptions {
+                    text: text.as_deref(),
+                    text_file: text_file.as_deref(),
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && group == "fields" && verb == "list" =>
         {
             reject_unknown_flags(rest, &["--type"], &[])?;
@@ -1002,6 +1054,34 @@ fn has_flag(args: &[String], name: &str) -> bool {
 
 fn flag_present(args: &[String], name: &str) -> bool {
     has_flag(args, name)
+}
+
+fn current_utc_rfc3339() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let days = secs.div_euclid(86_400);
+    let seconds_of_day = secs.rem_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    let hour = seconds_of_day / 3_600;
+    let minute = (seconds_of_day % 3_600) / 60;
+    let second = seconds_of_day % 60;
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
+}
+
+fn civil_from_days(days_since_unix_epoch: i64) -> (i64, i64, i64) {
+    let z = days_since_unix_epoch + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 }.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096).div_euclid(365);
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2).div_euclid(153);
+    let day = doy - (153 * mp + 2).div_euclid(5) + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    let year = y + if month <= 2 { 1 } else { 0 };
+    (year, month, day)
 }
 
 fn capabilities(args: &[String]) -> CliResult<Value> {
@@ -1822,6 +1902,52 @@ fn capability_commands() -> Vec<Value> {
                 "int",
                 "show only the comment with this numeric w:id",
             )],
+        ),
+        capability_command(
+            "ooxml docx comments add",
+            "add <file>",
+            "Add a DOCX comment anchored to a body paragraph.",
+            &["comment"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag(
+                    "--anchor-block",
+                    "anchorBlock",
+                    "int",
+                    "1-based body block index to anchor to (default: first block)",
+                ),
+                flag("--author", "author", "string", "comment author name"),
+                flag(
+                    "--initials",
+                    "initials",
+                    "string",
+                    "optional comment author initials",
+                ),
+                flag(
+                    "--date",
+                    "date",
+                    "string",
+                    "RFC3339 timestamp (default: now)",
+                ),
+                flag("--text", "text", "string", "comment text"),
+                flag("--text-file", "textFile", "string", "path to comment text"),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
         ),
         capability_command(
             "ooxml docx fields list",
@@ -6789,6 +6915,112 @@ fn docx_comments_list(file: &str, comment_id: Option<i64>) -> CliResult<Value> {
     Ok(Value::Object(result))
 }
 
+fn docx_comments_add(
+    file: &str,
+    anchor_block: i64,
+    author: &str,
+    initials: &str,
+    date: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    let text = resolve_optional_docx_paragraph_text(options.text, options.text_file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    if detect_inspect_package_type(file, &entries) != InspectPackageKind::Docx {
+        let detected = match detect_inspect_package_type(file, &entries) {
+            InspectPackageKind::Pptx => "pptx",
+            InspectPackageKind::Xlsx => "xlsx",
+            InspectPackageKind::Docx => "docx",
+            InspectPackageKind::Unknown => package_type(file)?,
+        };
+        return Err(CliError::unsupported_type(format!(
+            "file is not a DOCX document (detected: {detected})"
+        )));
+    }
+
+    let document_part = find_docx_document_part(file, &entries)?;
+    let document_uri = format!("/{}", document_part.trim_start_matches('/'));
+    let document_xml = zip_text(file, &document_part)?;
+    let anchor_index = if anchor_block == 0 {
+        1
+    } else {
+        anchor_block as usize
+    };
+    let reports = docx_rich_block_reports(&document_xml, false).map_err(|err| {
+        CliError::unexpected(format!("failed to read main document: {}", err.message))
+    })?;
+    if reports.is_empty() {
+        return Err(CliError::unexpected(
+            "failed to mutate comments: document has no body blocks to anchor a comment to",
+        ));
+    }
+    let report = reports.get(anchor_index.saturating_sub(1)).ok_or_else(|| {
+        CliError::invalid_args(format!("comment anchor block out of range: {anchor_index}"))
+    })?;
+    if report.kind != "paragraph" {
+        return Err(CliError::invalid_args(format!(
+            "comment anchor block is not a paragraph: block {anchor_index} is {}",
+            report.kind
+        )));
+    }
+
+    let comments_part = docx_comments_part_uri(file, &entries, &document_part)?;
+    let comments_part_key = comments_part.trim_start_matches('/').to_string();
+    let created_part = !zip_entry_exists(&entries, &comments_part);
+    let comments_xml = if created_part {
+        docx_comments_template()
+    } else {
+        zip_text(file, &comments_part_key)?
+    };
+    let comment_id = docx_next_comment_id(&comments_xml);
+    let updated_document_xml =
+        insert_docx_comment_markers_xml(&document_xml, anchor_index, comment_id)?;
+    let updated_comments_xml =
+        append_docx_comment_xml(&comments_xml, comment_id, author, date, initials, &text)?;
+    let (rels_part, rels_xml, created_ref) =
+        ensure_docx_comments_relationship_xml(file, &document_part, &document_uri, &comments_part)?;
+    let content_types_xml = ensure_content_type_override(
+        zip_text(file, "[Content_Types].xml")?,
+        &comments_part,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
+    );
+
+    let mut overrides = BTreeMap::new();
+    overrides.insert(document_part.clone(), updated_document_xml);
+    overrides.insert(comments_part_key, updated_comments_xml);
+    overrides.insert("[Content_Types].xml".to_string(), content_types_xml);
+    if let Some(rels_xml) = rels_xml {
+        overrides.insert(rels_part, rels_xml);
+    }
+    write_docx_mutation_overrides_output(file, &overrides, options)?;
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("commentId".to_string(), json!(comment_id));
+    result.insert("author".to_string(), json!(author));
+    if !date.is_empty() {
+        result.insert("date".to_string(), json!(date));
+    }
+    if !initials.is_empty() {
+        result.insert("initials".to_string(), json!(initials));
+    }
+    result.insert("text".to_string(), json!(text));
+    result.insert(
+        "contentHash".to_string(),
+        json!(docx_comment_content_hash(author, date, &text)),
+    );
+    result.insert("anchoredToBlock".to_string(), json!(anchor_index));
+    result.insert("createdPart".to_string(), json!(created_part));
+    result.insert("createdRef".to_string(), json!(created_ref));
+    result.insert("operation".to_string(), json!("added"));
+    Ok(Value::Object(result))
+}
+
 fn docx_fields_list(file: &str, type_filter: Option<&str>) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
     let package_kind = detect_inspect_package_type(file, &entries);
@@ -10343,11 +10575,141 @@ fn find_docx_comments_part(
     Ok(zip_entry_exists(entries, conventional).then(|| conventional.to_string()))
 }
 
+fn docx_comments_part_uri(
+    file: &str,
+    entries: &[String],
+    document_part: &str,
+) -> CliResult<String> {
+    let document_uri = format!("/{}", document_part.trim_start_matches('/'));
+    for rel in
+        relationship_entries(file, &relationships_part_for(document_part)).unwrap_or_default()
+    {
+        if rel.target_mode == "External" {
+            continue;
+        }
+        if rel.rel_type
+            == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+        {
+            return Ok(resolve_relationship_target(&document_uri, &rel.target));
+        }
+    }
+    let conventional = "/word/comments.xml";
+    if zip_entry_exists(entries, conventional) {
+        return Ok(conventional.to_string());
+    }
+    Ok(conventional.to_string())
+}
+
 fn zip_entry_exists(entries: &[String], uri: &str) -> bool {
     let wanted = format!("/{}", uri.trim_start_matches('/'));
     entries
         .iter()
         .any(|entry| format!("/{}", entry.trim_start_matches('/')) == wanted)
+}
+
+fn ensure_docx_comments_relationship_xml(
+    file: &str,
+    document_part: &str,
+    document_uri: &str,
+    comments_part: &str,
+) -> CliResult<(String, Option<String>, bool)> {
+    let rels_part = relationships_part_for(document_part);
+    let rels = relationship_entries(file, &rels_part).unwrap_or_default();
+    if rels.iter().any(|rel| {
+        rel.target_mode != "External"
+            && rel.rel_type
+                == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+    }) {
+        return Ok((rels_part, None, false));
+    }
+
+    let next_id = allocate_relationship_id(&rels);
+    let target = relationship_target_from_source_to_target(document_uri, comments_part);
+    let rel = format!(
+        r#"<Relationship Id="{next_id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="{}"/>"#,
+        xml_attr_escape(&target)
+    );
+    let rels_xml = zip_text(file, &rels_part).unwrap_or_else(|_| {
+        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#
+            .to_string()
+    });
+    let updated = if let Some(pos) = rels_xml.rfind("</Relationships>") {
+        let mut out = String::with_capacity(rels_xml.len() + rel.len());
+        out.push_str(&rels_xml[..pos]);
+        out.push_str(&rel);
+        out.push_str(&rels_xml[pos..]);
+        out
+    } else {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
+        )
+    };
+    Ok((rels_part, Some(updated), true))
+}
+
+fn relationship_target_from_source_to_target(source_uri: &str, target_uri: &str) -> String {
+    let source = source_uri.trim_start_matches('/');
+    let target = target_uri.trim_start_matches('/');
+    let source_dirs: Vec<&str> = source
+        .rsplit_once('/')
+        .map(|(dir, _)| dir.split('/').filter(|part| !part.is_empty()).collect())
+        .unwrap_or_default();
+    let target_parts: Vec<&str> = target.split('/').filter(|part| !part.is_empty()).collect();
+    let common = source_dirs
+        .iter()
+        .zip(target_parts.iter())
+        .take_while(|(left, right)| left == right)
+        .count();
+    let mut parts = Vec::new();
+    for _ in common..source_dirs.len() {
+        parts.push("..".to_string());
+    }
+    for part in target_parts.iter().skip(common) {
+        parts.push((*part).to_string());
+    }
+    if parts.is_empty() {
+        target.rsplit('/').next().unwrap_or(target).to_string()
+    } else {
+        parts.join("/")
+    }
+}
+
+fn write_docx_mutation_overrides_output(
+    file: &str,
+    overrides: &BTreeMap<String, String>,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<()> {
+    let output_path = options.out.filter(|value| !value.trim().is_empty());
+    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
+        docx_mutation_temp_path(file)
+    } else {
+        output_path
+            .ok_or_else(|| {
+                CliError::invalid_args(
+                    "must specify exactly one of --out, --in-place, or --dry-run",
+                )
+            })?
+            .to_string()
+    };
+    copy_zip_with_part_overrides(file, &readback_path, overrides)?;
+    if !options.no_validate {
+        validate(&readback_path, true)?;
+    }
+    if options.dry_run {
+        let _ = fs::remove_file(&readback_path);
+    } else if options.in_place || output_path == Some(file) {
+        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
+            fs::copy(file, backup_path)
+                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+        }
+        fs::rename(&readback_path, file)
+            .or_else(|_| {
+                fs::copy(&readback_path, file)?;
+                fs::remove_file(&readback_path)
+            })
+            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    }
+    Ok(())
 }
 
 #[derive(Clone, Default)]
@@ -10686,6 +11048,266 @@ fn docx_comment_content_hash(author: &str, date: &str, text: &str) -> String {
     hash.update([0]);
     hash.update(text.as_bytes());
     format!("sha256:{:x}", hash.finalize())
+}
+
+fn docx_comments_template() -> String {
+    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"></w:comments>"#
+        .to_string()
+}
+
+fn docx_next_comment_id(comments_xml: &str) -> i64 {
+    let mut reader = Reader::from_str(comments_xml);
+    let mut max_id = -1_i64;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "comment" =>
+            {
+                if let Some(id) = attr(&e, "id").and_then(|value| value.parse::<i64>().ok())
+                    && id > max_id
+                {
+                    max_id = id;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    max_id + 1
+}
+
+fn append_docx_comment_xml(
+    comments_xml: &str,
+    comment_id: i64,
+    author: &str,
+    date: &str,
+    initials: &str,
+    text: &str,
+) -> CliResult<String> {
+    let root_tag = docx_comments_root_tag(comments_xml)?;
+    let prefix = xml_tag_prefix(&root_tag);
+    let comment = render_docx_comment(&prefix, comment_id, author, date, initials, text);
+    let close_tag = format!("</{root_tag}>");
+    if let Some(pos) = comments_xml.rfind(&close_tag) {
+        let mut out = String::with_capacity(comments_xml.len() + comment.len());
+        out.push_str(&comments_xml[..pos]);
+        out.push_str(&comment);
+        out.push_str(&comments_xml[pos..]);
+        return Ok(out);
+    }
+
+    let start = comments_xml
+        .find(&format!("<{root_tag}"))
+        .ok_or_else(|| CliError::unexpected("comments part has no w:comments root"))?;
+    let open_end = comments_xml[start..]
+        .find('>')
+        .map(|offset| start + offset)
+        .ok_or_else(|| CliError::unexpected("comments part has no w:comments root"))?;
+    let start_tag = &comments_xml[start..=open_end];
+    if !start_tag.trim_end().ends_with("/>") {
+        return Err(CliError::unexpected(
+            "comments part has no closing w:comments tag",
+        ));
+    }
+    let mut out = String::with_capacity(comments_xml.len() + comment.len() + close_tag.len());
+    out.push_str(&comments_xml[..start]);
+    out.push_str(&xml_open_tag_from_start(start_tag));
+    out.push_str(&comment);
+    out.push_str(&close_tag);
+    out.push_str(&comments_xml[open_end + 1..]);
+    Ok(out)
+}
+
+fn docx_comments_root_tag(comments_xml: &str) -> CliResult<String> {
+    let mut reader = Reader::from_str(comments_xml);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                if local_name(e.name().as_ref()) == "comments" {
+                    return Ok(String::from_utf8_lossy(e.name().as_ref()).to_string());
+                }
+                return Err(CliError::unexpected("comments part has no w:comments root"));
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Err(CliError::unexpected("comments part has no w:comments root"))
+}
+
+fn render_docx_comment(
+    prefix: &str,
+    comment_id: i64,
+    author: &str,
+    date: &str,
+    initials: &str,
+    text: &str,
+) -> String {
+    let comment = word_xml_tag(prefix, "comment");
+    let p = word_xml_tag(prefix, "p");
+    let r = word_xml_tag(prefix, "r");
+    let mut out = String::new();
+    out.push('<');
+    out.push_str(&comment);
+    out.push(' ');
+    out.push_str(&word_attr_name(prefix, "id"));
+    out.push_str("=\"");
+    out.push_str(&comment_id.to_string());
+    out.push_str("\" ");
+    out.push_str(&word_attr_name(prefix, "author"));
+    out.push_str("=\"");
+    out.push_str(&xml_attr_escape(author));
+    out.push('"');
+    if !date.is_empty() {
+        out.push(' ');
+        out.push_str(&word_attr_name(prefix, "date"));
+        out.push_str("=\"");
+        out.push_str(&xml_attr_escape(date));
+        out.push('"');
+    }
+    if !initials.is_empty() {
+        out.push(' ');
+        out.push_str(&word_attr_name(prefix, "initials"));
+        out.push_str("=\"");
+        out.push_str(&xml_attr_escape(initials));
+        out.push('"');
+    }
+    out.push('>');
+    out.push('<');
+    out.push_str(&p);
+    out.push('>');
+    if !text.is_empty() {
+        out.push('<');
+        out.push_str(&r);
+        out.push('>');
+        append_docx_text_children(&mut out, prefix, text);
+        out.push_str("</");
+        out.push_str(&r);
+        out.push('>');
+    }
+    out.push_str("</");
+    out.push_str(&p);
+    out.push('>');
+    out.push_str("</");
+    out.push_str(&comment);
+    out.push('>');
+    out
+}
+
+fn insert_docx_comment_markers_xml(
+    document_xml: &str,
+    anchor_index: usize,
+    comment_id: i64,
+) -> CliResult<String> {
+    let body_tag = docx_body_tag(document_xml)?;
+    let prefix = xml_tag_prefix(&body_tag);
+    let working = if prefix.is_empty() {
+        ensure_docx_word_prefix(document_xml)?
+    } else {
+        document_xml.to_string()
+    };
+    let body_tag = docx_body_tag(&working)?;
+    let prefix = xml_tag_prefix(&body_tag);
+    let blocks = docx_body_block_ranges(&working, &body_tag)?;
+    let block = blocks.get(anchor_index - 1).ok_or_else(|| {
+        CliError::invalid_args(format!("comment anchor block out of range: {anchor_index}"))
+    })?;
+    if block.kind != "p" {
+        return Err(CliError::invalid_args(format!(
+            "comment anchor block is not a paragraph: block {anchor_index} is table"
+        )));
+    }
+    let fragment = &working[block.start..block.end];
+    let updated = insert_docx_comment_markers_in_paragraph(fragment, &prefix, comment_id)?;
+    let mut out = String::with_capacity(working.len() + updated.len());
+    out.push_str(&working[..block.start]);
+    out.push_str(&updated);
+    out.push_str(&working[block.end..]);
+    Ok(out)
+}
+
+fn insert_docx_comment_markers_in_paragraph(
+    paragraph: &str,
+    prefix: &str,
+    comment_id: i64,
+) -> CliResult<String> {
+    let (open_end, tag_name, close_start, self_closing) = xml_fragment_bounds(paragraph)?;
+    let start_tag = &paragraph[..=open_end];
+    let open_tag = xml_open_tag_from_start(start_tag);
+    let close_tag = format!("</{tag_name}>");
+    let content_start = open_tag.len();
+    let normalized = if self_closing {
+        format!("{open_tag}{close_tag}")
+    } else {
+        paragraph.to_string()
+    };
+    let content_end = if self_closing {
+        content_start
+    } else {
+        close_start
+    };
+    let children = xml_direct_child_ranges(&normalized, content_start, content_end)?;
+    let start_marker = render_docx_comment_range_marker(prefix, "commentRangeStart", comment_id);
+    let end_marker = render_docx_comment_range_marker(prefix, "commentRangeEnd", comment_id);
+    let reference = render_docx_comment_reference_run(prefix, comment_id);
+    let run_children: Vec<&XmlNamedRange> =
+        children.iter().filter(|child| child.kind == "r").collect();
+    if let (Some(first_run), Some(last_run)) = (run_children.first(), run_children.last()) {
+        let mut out = String::with_capacity(
+            normalized.len() + start_marker.len() + end_marker.len() + reference.len(),
+        );
+        out.push_str(&normalized[..first_run.start]);
+        out.push_str(&start_marker);
+        out.push_str(&normalized[first_run.start..last_run.end]);
+        out.push_str(&end_marker);
+        out.push_str(&reference);
+        out.push_str(&normalized[last_run.end..]);
+        return Ok(out);
+    }
+
+    let insert_at = children
+        .iter()
+        .find(|child| child.kind == "pPr")
+        .map(|child| child.end)
+        .unwrap_or(content_start);
+    let mut out = String::with_capacity(
+        normalized.len() + start_marker.len() + end_marker.len() + reference.len(),
+    );
+    out.push_str(&normalized[..insert_at]);
+    out.push_str(&start_marker);
+    out.push_str(&end_marker);
+    out.push_str(&reference);
+    out.push_str(&normalized[insert_at..]);
+    Ok(out)
+}
+
+fn render_docx_comment_range_marker(prefix: &str, local: &str, comment_id: i64) -> String {
+    let tag = word_xml_tag(prefix, local);
+    format!(
+        r#"<{tag} {}="{}"/>"#,
+        word_attr_name(prefix, "id"),
+        comment_id
+    )
+}
+
+fn render_docx_comment_reference_run(prefix: &str, comment_id: i64) -> String {
+    let r = word_xml_tag(prefix, "r");
+    let reference = word_xml_tag(prefix, "commentReference");
+    format!(
+        r#"<{r}><{reference} {}="{}"/></{r}>"#,
+        word_attr_name(prefix, "id"),
+        comment_id
+    )
+}
+
+fn word_attr_name(prefix: &str, local: &str) -> String {
+    if prefix.is_empty() {
+        format!("w:{local}")
+    } else {
+        format!("{prefix}:{local}")
+    }
 }
 
 fn pptx_render(file: &str, args: &[String]) -> CliResult<Value> {

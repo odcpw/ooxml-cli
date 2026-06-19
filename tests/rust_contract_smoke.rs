@@ -3897,6 +3897,144 @@ fn docx_comments_list_matches_go_oracle() {
 }
 
 #[test]
+fn docx_comments_add_matches_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-docx-comments-add-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx comments temp dir");
+    let go_out = temp_dir.join("comments-go.docx");
+    let rust_out = temp_dir.join("comments-rust.docx");
+    let go_out = go_out.to_string_lossy().to_string();
+    let rust_out = rust_out.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json",
+        "docx",
+        "comments",
+        "add",
+        "testdata/docx/minimal/document.docx",
+        "--anchor-block",
+        "1",
+        "--author",
+        "Bob",
+        "--initials",
+        "BB",
+        "--text",
+        "Brand new",
+        "--date",
+        "2025-06-06T10:30:00Z",
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "docx",
+        "comments",
+        "add",
+        "testdata/docx/minimal/document.docx",
+        "--anchor-block",
+        "1",
+        "--author",
+        "Bob",
+        "--initials",
+        "BB",
+        "--text",
+        "Brand new",
+        "--date",
+        "2025-06-06T10:30:00Z",
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "comments add exit");
+    assert_eq!(rust_stderr, go_stderr, "comments add stderr");
+    assert_eq!(rust_stdout, go_stdout, "comments add stdout");
+    assert!(
+        Path::new(&rust_out).exists(),
+        "Rust comments output missing"
+    );
+
+    let (validate_code, validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_out]);
+    assert_eq!(validate_code, 0, "validate exit");
+    assert_eq!(validate_stderr, None, "validate stderr");
+    assert!(validate_stdout.is_some(), "validate stdout");
+
+    let (go_list_code, go_list_stdout, go_list_stderr) =
+        run_go_ooxml(&["--json", "docx", "comments", "list", &go_out]);
+    let (rust_list_code, rust_list_stdout, rust_list_stderr) =
+        run_ooxml(&["--json", "docx", "comments", "list", &rust_out]);
+    assert_eq!(rust_list_code, go_list_code, "comments list readback exit");
+    assert_eq!(
+        rust_list_stderr, go_list_stderr,
+        "comments list readback stderr"
+    );
+    let go_list = go_list_stdout.expect("Go comments list JSON");
+    let rust_list = rust_list_stdout.expect("Rust comments list JSON");
+    assert_eq!(
+        rust_list["comments"], go_list["comments"],
+        "comments list readback"
+    );
+    assert_eq!(
+        rust_list["comments"][0]["text"],
+        Value::String("Brand new".to_string())
+    );
+    assert_eq!(
+        rust_list["comments"][0]["author"],
+        Value::String("Bob".to_string())
+    );
+
+    let dry_run = [
+        "--json",
+        "docx",
+        "comments",
+        "add",
+        "testdata/docx/minimal/document.docx",
+        "--author",
+        "Bob",
+        "--text",
+        "Dry run",
+        "--date",
+        "2025-06-06T10:30:00Z",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&dry_run);
+
+    let missing_author = [
+        "--json",
+        "docx",
+        "comments",
+        "add",
+        "testdata/docx/minimal/document.docx",
+        "--text",
+        "No author",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&missing_author);
+
+    let unsupported_type = [
+        "--json",
+        "docx",
+        "comments",
+        "add",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--author",
+        "Bob",
+        "--text",
+        "Wrong package",
+        "--date",
+        "2025-06-06T10:30:00Z",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&unsupported_type);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_fields_list_matches_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
@@ -5316,6 +5454,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(comment_stderr, None);
     let comment_caps = comment_stdout.expect("comment capabilities");
     assert_command(&comment_caps, "ooxml docx comments list", false);
+    assert_command(&comment_caps, "ooxml docx comments add", false);
 
     let (field_code, field_stdout, field_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "field"]);
@@ -5381,10 +5520,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 37, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 38, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        253,
+        252,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
