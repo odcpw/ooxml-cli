@@ -91,6 +91,10 @@ Latest milestone, 2026-06-19:
   and delete moved from `src/main.rs` into `src/docx_block_commands.rs`, with
   shared paragraph mutation helpers left at the crate root until the remaining
   paragraph/style seams are split.
+- DOCX paragraph append/insert/set/clear command wrappers and required
+  set-text argument validation moved from `src/main.rs` into
+  `src/docx_paragraph_commands.rs`, still sharing the crate-root body XML and
+  handle mutation helpers used by styles.
 - DOCX field listing, field insertion, cached-result mutation, field-location
   parsing, simple/complex field detection, and field XML rewrite helpers moved
   from `src/main.rs` into `src/docx_fields.rs`.
