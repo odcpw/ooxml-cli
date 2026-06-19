@@ -55,14 +55,14 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   body block replacement/deletion, paragraph style preservation, table deletion,
   destination/readback symmetry for replacement, strict validation, dry-run
   non-mutation, missing/invalid hash errors, hash mismatch errors, block-range
-  validation, text/text-file conflict rejection, delete-last rejection, and
-  unsupported package-type rejection
+  validation, text/text-file conflict rejection, delete-last rejection,
+  unsupported package-type rejection, and serve operation/readback routing
 - `--json docx blocks insert-after <docx>` with Go-oracle comparison for
   hash-guarded paragraph insertion before the first block and after table
   blocks, optional paragraph style, strict validation, `docx blocks` readback,
   dry-run non-mutation, hash-shape/hash-mismatch errors, block-range
-  validation, text/text-file conflict rejection, and unsupported package-type
-  rejection
+  validation, text/text-file conflict rejection, unsupported package-type
+  rejection, and serve operation/readback routing
 - `--json docx paragraphs append <docx>` with Go-oracle comparison for direct
   CLI paragraph append mutation, optional paragraph style, strict validation,
   DOCX text readback, dry-run non-mutation, output-flag validation, text/text-file

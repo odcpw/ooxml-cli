@@ -2589,8 +2589,8 @@ fn capability_commands() -> Vec<Value> {
             "replace <file>",
             "Replace a hash-guarded DOCX body block with a paragraph.",
             &["paragraph"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--backup", "backup", "string", "backup path for --in-place"),
                 flag(
@@ -2634,8 +2634,8 @@ fn capability_commands() -> Vec<Value> {
             "delete <file>",
             "Delete a hash-guarded DOCX body block.",
             &["paragraph", "table"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--backup", "backup", "string", "backup path for --in-place"),
                 flag(
@@ -2666,8 +2666,8 @@ fn capability_commands() -> Vec<Value> {
             "insert-after <file>",
             "Insert a paragraph after a hash-guarded DOCX body block.",
             &["paragraph"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--backup", "backup", "string", "backup path for --in-place"),
                 flag(
@@ -17588,6 +17588,12 @@ enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    DocxBlocksOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
 }
 
 fn push_serve_plan_string_flag(flags: &mut Vec<Value>, name: &str, value: Option<&str>) {
@@ -17614,7 +17620,8 @@ impl ServeOp {
             | ServeOp::XlsxRangeSetFormat { command, .. }
             | ServeOp::XlsxWorkbookMetadataUpdate { command, .. }
             | ServeOp::DocxHeaderFooterSetText { command, .. }
-            | ServeOp::DocxFieldsOp { command, .. } => command,
+            | ServeOp::DocxFieldsOp { command, .. }
+            | ServeOp::DocxBlocksOp { command, .. } => command,
         }
     }
 
@@ -17808,6 +17815,27 @@ impl ServeOp {
                 ]);
                 Value::Array(argv)
             }
+            ServeOp::DocxBlocksOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command.split_whitespace().nth(2).unwrap_or("replace");
+                let mut argv = vec![
+                    json!("docx"),
+                    json!("blocks"),
+                    json!(verb),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
             ServeOp::PptxReplaceText {
                 slide,
                 target,
@@ -17868,6 +17896,11 @@ impl ServeOp {
                 ..
             }
             | ServeOp::DocxFieldsOp {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::DocxBlocksOp {
                 readback_file,
                 readback,
                 ..
@@ -18369,6 +18402,155 @@ impl ServeState {
                     readback,
                 }
             }
+            "docx blocks replace" => {
+                let block = json_i64(args, "block")?
+                    .ok_or_else(|| CliError::invalid_args("block is required"))?;
+                if block < 1 {
+                    return Err(CliError::invalid_args("--block must be >= 1"));
+                }
+                let expect_hash = json_optional_string(args, "expect-hash")
+                    .or_else(|| json_optional_string(args, "expectHash"))
+                    .unwrap_or_default();
+                require_docx_block_hash(&expect_hash)?;
+                let text = json_optional_string(args, "text");
+                let text_file = json_optional_string(args, "text-file")
+                    .or_else(|| json_optional_string(args, "textFile"));
+                let style = json_optional_string(args, "style").unwrap_or_default();
+                let readback = docx_blocks_replace(
+                    &session.working,
+                    block as usize,
+                    &expect_hash,
+                    DocxParagraphMutationOptions {
+                        text: text.as_deref(),
+                        text_file: text_file.as_deref(),
+                        style: &style,
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                plan_flags.push(json!("--block"));
+                plan_flags.push(json!(block.to_string()));
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-hash",
+                    Some(expect_hash.as_str()),
+                );
+                push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
+                push_serve_plan_string_flag(&mut plan_flags, "--text-file", text_file.as_deref());
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--style",
+                    (!style.is_empty()).then_some(style.as_str()),
+                );
+                ServeOp::DocxBlocksOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
+            "docx blocks delete" => {
+                let block = json_i64(args, "block")?
+                    .ok_or_else(|| CliError::invalid_args("block is required"))?;
+                if block < 1 {
+                    return Err(CliError::invalid_args("--block must be >= 1"));
+                }
+                let expect_hash = json_optional_string(args, "expect-hash")
+                    .or_else(|| json_optional_string(args, "expectHash"))
+                    .unwrap_or_default();
+                require_docx_block_hash(&expect_hash)?;
+                let readback = docx_blocks_delete(
+                    &session.working,
+                    block as usize,
+                    &expect_hash,
+                    DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                plan_flags.push(json!("--block"));
+                plan_flags.push(json!(block.to_string()));
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-hash",
+                    Some(expect_hash.as_str()),
+                );
+                ServeOp::DocxBlocksOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
+            "docx blocks insert-after" => {
+                let block = json_i64(args, "block")?.unwrap_or(0);
+                if block < 0 {
+                    return Err(CliError::invalid_args("--block must be >= 0"));
+                }
+                let expect_hash_set =
+                    args.get("expect-hash").is_some() || args.get("expectHash").is_some();
+                let expect_hash = json_optional_string(args, "expect-hash")
+                    .or_else(|| json_optional_string(args, "expectHash"))
+                    .unwrap_or_default();
+                if block > 0 {
+                    require_docx_block_hash(&expect_hash)?;
+                } else if expect_hash_set {
+                    return Err(CliError::invalid_args(
+                        "--expect-hash cannot be used with --block 0",
+                    ));
+                }
+                let text = json_optional_string(args, "text");
+                let text_file = json_optional_string(args, "text-file")
+                    .or_else(|| json_optional_string(args, "textFile"));
+                let style = json_optional_string(args, "style").unwrap_or_default();
+                let readback = docx_blocks_insert_after(
+                    &session.working,
+                    block as usize,
+                    &expect_hash,
+                    DocxParagraphMutationOptions {
+                        text: text.as_deref(),
+                        text_file: text_file.as_deref(),
+                        style: &style,
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                plan_flags.push(json!("--block"));
+                plan_flags.push(json!(block.to_string()));
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-hash",
+                    (!expect_hash.is_empty()).then_some(expect_hash.as_str()),
+                );
+                push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
+                push_serve_plan_string_flag(&mut plan_flags, "--text-file", text_file.as_deref());
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--style",
+                    (!style.is_empty()).then_some(style.as_str()),
+                );
+                ServeOp::DocxBlocksOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
             "pptx replace text" => {
                 let slide = json_u32(args, "slide")?.unwrap_or(1);
                 let target = json_string(args, "target")?;
@@ -18502,6 +18684,16 @@ impl ServeState {
             "docx fields list" => {
                 let field_type = json_optional_string(args, "type");
                 docx_fields_list(&session.working, field_type.as_deref())
+            }
+            "docx blocks" => {
+                let block = json_i64(args, "block")?.unwrap_or(0);
+                if block < 0 {
+                    return Err(CliError::invalid_args("--block must be >= 0"));
+                }
+                let include_runs = json_bool(args, "include-runs")
+                    .or_else(|| json_bool(args, "includeRuns"))
+                    .unwrap_or(false);
+                docx_blocks_show(&session.working, block as usize, include_runs)
             }
             "pptx slides list" => pptx_slides_list(&session.working),
             "pptx slides selectors" => {

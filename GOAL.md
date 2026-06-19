@@ -10,6 +10,11 @@ Do not claim parity from intention, partial tests, or similar-looking output.
 Parity means current evidence proves the Rust subject matches the Go oracle for
 the relevant command surface.
 
+Goal constraint: routine Go test suites are out of scope for Rust-only slices.
+We are not changing Go, so the Go side is exercised by targeted CLI oracle
+comparisons only unless a milestone, Go-side edit, contract freeze/update, or
+specific oracle doubt makes broader Go verification necessary.
+
 Immediate execution rule: do not run Go test suites after Rust-only work. We are
 not changing Go in ordinary port slices; use targeted Go CLI oracle comparisons
 instead.

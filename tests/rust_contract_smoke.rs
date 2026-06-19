@@ -7915,6 +7915,224 @@ fn serve_op_supports_docx_fields_editing() {
 }
 
 #[test]
+fn serve_op_supports_docx_blocks_editing() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-docx-blocks-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.docx");
+    let output = temp_dir.join("serve-docx-blocks-out.docx");
+    fs::copy("testdata/docx/mixed-blocks/document.docx", &input).expect("stage docx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({"file": input_str, "out": output_str}),
+        ),
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let first_block_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            2,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "docx blocks",
+                "args": {"block": 1},
+            }),
+        ),
+    );
+    assert!(
+        first_block_response.get("error").is_none(),
+        "docx blocks inspect failed: {first_block_response:?}"
+    );
+    let first_hash = first_block_response["result"]["blocks"][0]["contentHash"]
+        .as_str()
+        .expect("first block hash")
+        .to_string();
+
+    let insert_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            3,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx blocks insert-after",
+                "args": {
+                    "block": 1,
+                    "expectHash": first_hash,
+                    "text": "Serve inserted block",
+                    "style": "Heading1"
+                },
+            }),
+        ),
+    );
+    assert!(
+        insert_response.get("error").is_none(),
+        "docx blocks insert-after op failed: {insert_response:?}"
+    );
+    assert_eq!(
+        insert_response["result"]["readback"]["text"],
+        Value::String("Serve inserted block".to_string())
+    );
+
+    let inserted_block_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            4,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "docx blocks",
+                "args": {"block": 2, "includeRuns": true},
+            }),
+        ),
+    );
+    assert!(
+        inserted_block_response.get("error").is_none(),
+        "docx blocks inserted inspect failed: {inserted_block_response:?}"
+    );
+    let inserted_hash = inserted_block_response["result"]["blocks"][0]["contentHash"]
+        .as_str()
+        .expect("inserted block hash")
+        .to_string();
+
+    let replace_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            5,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx blocks replace",
+                "args": {
+                    "block": 2,
+                    "expectHash": inserted_hash,
+                    "text": "Serve replaced block",
+                    "style": "Heading1"
+                },
+            }),
+        ),
+    );
+    assert!(
+        replace_response.get("error").is_none(),
+        "docx blocks replace op failed: {replace_response:?}"
+    );
+    assert_eq!(
+        replace_response["result"]["readback"]["destination"]["text"],
+        Value::String("Serve replaced block".to_string())
+    );
+
+    let delete_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            6,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx blocks delete",
+                "args": {"block": 1, "expectHash": first_hash},
+            }),
+        ),
+    );
+    assert!(
+        delete_response.get("error").is_none(),
+        "docx blocks delete op failed: {delete_response:?}"
+    );
+    assert_eq!(
+        delete_response["result"]["readback"]["previousKind"],
+        Value::String("table".to_string())
+    );
+
+    let plan_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(7, "plan", serde_json::json!({"session": session})),
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][1],
+        Value::String("blocks".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][2],
+        Value::String("insert-after".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][1]["argv"][2],
+        Value::String("replace".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][2]["argv"][2],
+        Value::String("delete".to_string())
+    );
+
+    let commit_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(8, "commit", serde_json::json!({"session": session})),
+    );
+    assert!(
+        commit_response.get("error").is_none(),
+        "docx blocks commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "docx blocks serve validate exit");
+    assert_eq!(validate_stderr, None, "docx blocks serve validate stderr");
+
+    let (blocks_code, blocks_stdout, blocks_stderr) =
+        run_ooxml(&["--json", "docx", "blocks", &output_str]);
+    assert_eq!(blocks_code, 0, "docx blocks output readback exit");
+    assert_eq!(blocks_stderr, None, "docx blocks output readback stderr");
+    let blocks = blocks_stdout.expect("docx blocks output readback");
+    let output_blocks = blocks["blocks"].as_array().expect("blocks");
+    assert_eq!(output_blocks.len(), 4);
+    assert_eq!(
+        output_blocks[0]["text"],
+        Value::String("Serve replaced block".to_string())
+    );
+    assert_eq!(
+        output_blocks[0]["paragraph"]["style"],
+        Value::String("Heading1".to_string())
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_pptx_generic_web_agent_edit_path_works() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-pptx-{}", std::process::id()));
@@ -8594,9 +8812,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx tables show", false);
     assert_command(&all_caps, "ooxml docx tables set-cell", false);
     assert_command(&all_caps, "ooxml docx tables clear-cell", false);
-    assert_command(&all_caps, "ooxml docx blocks replace", false);
-    assert_command(&all_caps, "ooxml docx blocks delete", false);
-    assert_command(&all_caps, "ooxml docx blocks insert-after", false);
+    assert_command(&all_caps, "ooxml docx blocks replace", true);
+    assert_command(&all_caps, "ooxml docx blocks delete", true);
+    assert_command(&all_caps, "ooxml docx blocks insert-after", true);
     for kind in ["block", "paragraph", "field", "header", "footer", "image"] {
         assert_object_kind(&all_caps, kind);
     }
@@ -8657,7 +8875,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml xlsx tables export", false);
     assert_command(&table_caps, "ooxml docx tables set-cell", false);
     assert_command(&table_caps, "ooxml docx tables clear-cell", false);
-    assert_command(&table_caps, "ooxml docx blocks delete", false);
+    assert_command(&table_caps, "ooxml docx blocks delete", true);
     assert_no_command(&table_caps, "ooxml docx blocks");
     assert_no_command(&table_caps, "ooxml docx tables show");
 
@@ -8666,9 +8884,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(paragraph_code, 0);
     assert_eq!(paragraph_stderr, None);
     let paragraph_caps = paragraph_stdout.expect("paragraph capabilities");
-    assert_command(&paragraph_caps, "ooxml docx blocks replace", false);
-    assert_command(&paragraph_caps, "ooxml docx blocks delete", false);
-    assert_command(&paragraph_caps, "ooxml docx blocks insert-after", false);
+    assert_command(&paragraph_caps, "ooxml docx blocks replace", true);
+    assert_command(&paragraph_caps, "ooxml docx blocks delete", true);
+    assert_command(&paragraph_caps, "ooxml docx blocks insert-after", true);
     assert_command(&paragraph_caps, "ooxml docx paragraphs append", false);
     assert_command(&paragraph_caps, "ooxml docx paragraphs insert", false);
     assert_no_command(&paragraph_caps, "ooxml docx blocks");
@@ -8747,9 +8965,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx tables show", false);
     assert_command(&docx_caps, "ooxml docx tables set-cell", false);
     assert_command(&docx_caps, "ooxml docx tables clear-cell", false);
-    assert_command(&docx_caps, "ooxml docx blocks replace", false);
-    assert_command(&docx_caps, "ooxml docx blocks delete", false);
-    assert_command(&docx_caps, "ooxml docx blocks insert-after", false);
+    assert_command(&docx_caps, "ooxml docx blocks replace", true);
+    assert_command(&docx_caps, "ooxml docx blocks delete", true);
+    assert_command(&docx_caps, "ooxml docx blocks insert-after", true);
     assert_command(&docx_caps, "ooxml docx paragraphs append", false);
     assert_command(&docx_caps, "ooxml docx paragraphs insert", false);
     assert_command(&docx_caps, "ooxml docx styles apply", false);
