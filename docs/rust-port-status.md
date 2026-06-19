@@ -46,6 +46,9 @@ Latest milestone, 2026-06-19:
 - Validation report and diagnostics logic moved from `src/main.rs` into
   `src/validation.rs`, separating package validation from command dispatch and
   document-family mutation code.
+- OOXML package kind detection and DOCX/XLSX part-classification helpers moved
+  from `src/main.rs` into `src/package_discovery.rs`, giving inspect,
+  validation, and document-family commands a shared discovery layer.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
