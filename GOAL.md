@@ -1,154 +1,380 @@
-# Goal: Rust Port With Go Oracle Parity
+# Goal: First-Class Rust Port of ooxml-cli
 
-Build a Rust implementation of `ooxml-cli` while preserving the current Go
-implementation as the reference oracle. The final state is:
+Build a Rust implementation of `ooxml-cli` that reaches proven parity with the
+current Go implementation while becoming easier for agents and humans to extend.
+The Go CLI is the oracle. The Rust CLI is the subject. We do not claim parity
+from intention, similar-looking output, or partial smoke tests. We claim parity
+only when the proof loop says the Rust subject behaves like the Go oracle for the
+declared command surface and produces Office files that real Office can open.
 
-1. A pushed Go reference branch at the frozen baseline.
-2. A pushed Rust branch with proven parity against the Go reference.
+This file is the operating charter for the Rust port. A fresh agent should be
+able to read this file, inspect the repo, and continue without needing the chat
+history.
 
-Do not claim parity from intention, partial tests, or similar-looking output.
-Parity means current evidence proves the Rust subject matches the Go oracle for
-the relevant command surface.
+## Current Ground Truth
 
-Current override: do not run Go test suites for routine Rust port slices. We are
-not changing Go. Use targeted Go CLI oracle comparisons for the exact command
-path being ported, then Rust-focused verification for the Rust subject.
+- Main repo path: `C:\Users\olidc\OneDrive\Desktop\Projects\ooxml-cli`.
+- Active Rust branch: `codex/ooxml-rust-port`.
+- Go reference branch: `codex/ooxml-go-reference`.
+- Current `origin/master` includes hardening commit
+  `acf3961 Fix two CFB unbounded-memory DoS bugs; harden OPC loader; add ingest fuzz harnesses`.
+- The Rust branch is divergent from `master` and must ingest that hardening before
+  future parity claims.
+- Rust toolchain is installed on this Windows box:
+  `rustc 1.96.0`, `cargo 1.96.0`, MSVC Build Tools with `link.exe`.
+- Go is installed: `go1.26.4 windows/amd64`.
+- .NET SDK is installed and the Open XML SDK validator builds.
+- GitHub CLI is authenticated as `odcpw`.
+- Current Rust crate:
+  - `Cargo.toml` package `ooxml-rs-port`, binary `ooxml`.
+  - `src/main.rs` is a large monolith and must not keep growing.
+  - `tests/rust_contract_smoke.rs` contains the Go-vs-Rust contract harness.
+- Last setup checks:
+  - `cargo check` passed.
+  - `cargo fmt --check` passed.
+  - `cargo test --no-run` passed.
+  - `cargo test -- --list` listed 77 Rust integration tests.
+  - `cargo clippy --all-targets -- -D warnings` currently fails on existing lint
+    issues and must be fixed before the branch is considered clean.
+  - The Go frozen-contract golden test exposed Windows scrubber drift around temp
+    paths and `diagnostics: null` versus `[]`; that harness drift must be fixed
+    before using the golden as a green proof on Windows.
 
-Goal constraint: routine Go test suites are out of scope for Rust-only slices.
-We are not changing Go, so the Go side is exercised by targeted CLI oracle
-comparisons only unless a milestone, Go-side edit, contract freeze/update, or
-specific oracle doubt makes broader Go verification necessary.
+## Definition of Done
 
-Immediate execution rule: do not run Go test suites after Rust-only work. We are
-not changing Go in ordinary port slices; use targeted Go CLI oracle comparisons
-instead.
+The Rust port is done when all of the following are true:
 
-Plain-English rule from Oliver: do not run Go tests each time. We are not
-changing Go. For normal Rust-only work, prove behavior with exact Go CLI oracle
-commands and Rust verification, not Go test suites.
-
-## Test Cadence Override
-
-This is a Rust port. Normal slices change Rust, not Go. Do **not** run Go tests
-after each Rust-only slice. In particular, do **not** run `go test ./...`, Go
-package tests, or Go unit tests as reflex checks while only the Rust subject is
-changing. Use the Go implementation by running its CLI as the oracle for the
-exact command path being ported or audited. Reserve Go tests for milestone
-gates, Go-side edits, frozen contract changes, or a concrete reason to distrust
-the oracle baseline. If the current slice changes only Rust code, Rust tests,
-Rust docs/status files, or the differential harness, the default loop is Rust
-verification plus focused Go CLI oracle comparisons, not Go test suites.
-
-## Parallelization Rule
-
-Parallelize evidence gathering aggressively, but serialize writes unless each
-writer has a separate worktree. The optimal loop is:
-
-- Use read-only scouts for Go CLI behavior, help text, fixtures, command-family
-  inventories, negative cases, and focused parity findings.
-- Assign distinct command-family slices so agents do not duplicate discovery or
-  produce overlapping recommendations.
-- Keep exactly one writer per checkout. If multiple writers are needed, create
-  separate worktrees and merge only after each slice has passed its local proof.
-- Keep `GOAL.md`, the capability inventory, and the parity harness as the shared
-  coordination surface; do not rely on chat state as the durable tracker.
-- A slice is mergeable only when it has targeted Go CLI oracle evidence, focused
-  Rust tests, formatting, linting where relevant, and no unexplained parity
-  mismatch.
-
-## Required Skills
-
-Use these skills explicitly:
-
-- `$codebase-archaeology`: map the Go CLI architecture, command dispatch,
-  package structure, serve mode, MCP mode, web hooks, tests, fixtures, and
-  frozen contract artifacts.
-- `$ooxml`: keep behavior grounded in semantic OOXML workflows, stable handles,
-  validation, render/readback evidence, and the existing `ooxml` CLI contract.
-- `$testing-golden-artifacts`: use the frozen Go baseline in
-  `testdata/golden/rust-port-contract/` as the initial observable contract.
-- `$testing-conformance-harnesses`: build and maintain the Go-vs-Rust
-  differential harness.
-- `$running-the-gauntlet-on-your-rust-port`: use subject/oracle/comparator
-  discipline, surface parity inventory, negative ledgers, and repeated hardening
-  rounds once the Rust binary exists.
-- `$testing-metamorphic`: add OOXML invariants such as validate-after-edit,
-  render-after-edit, unzip/rezip stability, relationship integrity, content-type
-  integrity, and idempotent operations.
-- `$testing-fuzzing`: fuzz malformed Office files, ZIP/package boundaries, XML
-  edges, relationships, content types, and corrupted slides/sheets/docs.
-- `$profiling-software-performance`: profile only after correctness parity for a
-  surface is established.
-- `$extreme-software-optimization`: optimize only from measured hotspots, one
-  behavior-preserving lever at a time.
-- `$multi-pass-bug-hunting`: run fresh-eyes audit/fix/rescan passes against both
-  the Rust implementation and the parity harness.
-- `$agent-ergonomics-and-intuitiveness-maximization-for-cli-tools`: keep the
-  Rust CLI agent-friendly: stable JSON, stdout-as-data, stderr-as-diagnostics,
-  useful errors, documented exit codes, discoverable help, `capabilities --json`,
-  and no surprise interactivity.
-
-## Dependency Rule
-
-For Rust libraries and reusable infrastructure, first inspect and prioritize
-usable repos from `https://github.com/Dicklesworthstone`. If no suitable repo
-exists for a needed domain, such as ZIP, XML, OOXML parsing/writing, CLI parsing,
-JSON, MCP, async/runtime, testing, fuzzing, or conformance, use mainstream Rust
-crates and document why.
+1. The Rust branch contains the current `master` hardening and remains current
+   with future Go safety/security fixes.
+2. Every Rust-advertised command is a strict subset of the Go oracle command
+   inventory until intentionally promoted.
+3. Every promoted Rust command matches the Go oracle for exit code, stdout JSON,
+   stderr JSON/text, error envelopes, emitted readback commands, mutation output,
+   validation behavior, serve behavior, and MCP behavior where applicable.
+4. The full supported command surface is either ported, intentionally excluded
+   with written rationale, or tracked as open debt in the status document.
+5. Rust proof gates are green:
+   - `cargo check`
+   - `cargo fmt --check`
+   - `cargo clippy --all-targets -- -D warnings`
+   - `cargo test`
+   - `cargo test --test rust_contract_smoke`
+6. Open XML proof gates are green for mutated/generated files:
+   - strict repo validation
+   - Open XML SDK schema validation
+7. Windows Office proof gates are green for relevant output files:
+   - Word opens DOCX/DOCM outputs without repair prompts.
+   - Excel opens XLSX/XLSM outputs without repair prompts.
+   - PowerPoint opens PPTX/PPTM outputs without repair prompts.
+   - Macro-enabled surfaces receive VBA-specific Office proof when touched.
+8. The Rust implementation is no longer a single-file accumulation zone. The
+   monolith is split into proven, behavior-preserving modules with clear seams,
+   no command drift, and no casual reshuffling.
+9. The agent-facing CLI remains excellent: stable JSON, stdout as data, stderr
+   as diagnostics, useful errors, deterministic handles, pasteable readback
+   commands, discoverable capabilities, and no surprise interactivity.
+10. The branch is committed and pushed at stable milestones with a concise status
+    update in `docs/rust-port-status.md`.
 
 ## Non-Negotiables
 
 - Go is the oracle. Rust is the subject.
-- Do not run Go tests after every Rust-only slice. We are not changing Go in
-  normal Rust port slices, so Go test suites do not belong in the routine
-  feedback loop.
-- In regular Rust port work, do not run `go test ./...`, package-level Go
-  tests, or Go unit tests. Run the Go CLI only as the comparison oracle for the
-  exact command path under port.
-- Do not run Go tests "just in case" after Rust-only edits. The absence of Go
-  changes is itself the reason to skip Go test suites.
-- Reserve Go tests for milestone gates, Go-side edits, frozen contract changes,
-  or a concrete reason to distrust the oracle baseline.
-- Port by command surface, not vague module mirroring.
-- Every implemented Rust surface must be compared against Go for stdout, stderr,
-  exit code, JSON shape, mutation result, validation result, and any relevant
-  serve/MCP/web behavior.
-- Every mismatch is fixed or documented in
-  `testdata/golden/rust-port-contract/DISCREPANCIES.md` with impact, affected
-  tests, review date, and status.
-- Correctness comes before performance.
-- Commit and push stable milestones.
-- Keep this goal active until full parity is actually proven.
+- Do not run broad Go test suites after every Rust-only edit. Use targeted Go CLI
+  oracle comparisons for the command paths under port. Run broader Go tests only
+  for milestone gates, Go-side edits, frozen contract changes, or concrete
+  oracle doubt.
+- Do not claim parity unless the current evidence proves it.
+- Do not add new Rust feature surface on top of a broken proof loop.
+- Do not keep piling logic into `src/main.rs`. New work must either happen after
+  de-monolithization or as part of a safe split plan.
+- Do not split the Rust monolith aesthetically. Splits must be isomorphic:
+  behavior identical, public command/API behavior identical, performance not
+  meaningfully worse, compile behavior neutral or better.
+- Do not rely on `br`, `bv`, `ntm`, or Agent Flywheel tooling in this Windows
+  workflow unless they are actually installed and verified. For now use Codex
+  subagents and normal git worktrees.
+- Treat desktop Office as a real oracle for "can users open this file?" when a
+  slice creates or mutates Office documents.
+- Prefer small, evidence-backed slices over sweeping rewrites.
 
-## Phases
+## Required Skills
 
-1. Preserve and push the Go reference branch at the frozen baseline.
-2. Map the Go architecture and command surfaces.
-3. Create the Rust branch and Rust crate/binary.
-4. Build the Go-vs-Rust differential harness.
-5. Port the frozen CLI baseline first: `version`, `inspect`,
-   `pptx slides show`, `xlsx ranges export`, `docx text`, invalid JSON error,
-   `pptx replace text`, and `validate`.
-6. Add parity for `pptx render`, `verify --baseline`, `serve` JSON-RPC, MCP
-   discovery/session flows, and the web `OOXML_BIN` smoke path.
-7. Expand coverage from `capabilities --json` until every Go command is present,
-   intentionally excluded, or tracked as open.
-8. Add metamorphic tests and fuzzing.
-9. Run fresh-eyes review, `cargo fmt`, `cargo clippy`, `cargo test`,
-   differential parity gates, and relevant web smoke checks. Do not rerun Go
-   tests for each Rust-only slice; run them only for milestones or when Go-side
-   code/contracts changed.
-10. Repeat until the Rust branch is at proven full parity and pushed.
+Use installed skills explicitly with `$` names when doing work under this goal:
 
-## Short Prompt
+- `$reality-check-for-project`: periodically compare implemented code against
+  this goal, the README, and status docs.
+- `$codebase-archaeology`: map the Go implementation, Rust subject, command
+  dispatch, fixtures, and proof harness before changing unfamiliar areas.
+- `$testing-golden-artifacts`: maintain frozen Go contract artifacts and keep
+  path/date/session scrubbing deterministic on Windows.
+- `$testing-conformance-harnesses`: keep Go-vs-Rust subject/oracle/comparator
+  tests as the main correctness loop.
+- `$running-the-gauntlet-on-your-rust-port`: use the three-pillar lens:
+  conformance, surface parity, and performance. Do not run the full gauntlet
+  unless explicitly chosen; use the discipline continuously.
+- `$de-monolithize-your-codebase-isomorphically`: split `src/main.rs` and any
+  test monoliths only through proven seams and proof gates.
+- `$simplify-and-refactor-code-isomorphically`: simplify after behavior is
+  locked by tests; no speculative rewrites.
+- `$multi-pass-bug-hunting`: run audit, fix, rescan loops on the Rust subject and
+  the harness.
+- `$agent-ergonomics-and-intuitiveness-maximization-for-cli-tools`: keep the CLI
+  excellent for agents and non-interactive automation.
+- `$testing-metamorphic`: add OOXML invariants such as validate-after-edit,
+  inspect-after-commit, unzip/rezip stability, relationship integrity,
+  content-type integrity, idempotent operations, and round-trip preservation.
+- `$testing-fuzzing`: fuzz malformed ZIP/OPC/XML edges, relationships, content
+  types, CFB/VBA, corrupted slides/sheets/docs, and known ingest boundaries.
+- `$multi-model-triangulation`: use Grok as a second-opinion reviewer for
+  architecture, de-monolithization plans, and risky parity gaps. I cannot call
+  Grok directly; generate copy-paste prompts and synthesize responses returned
+  by the user.
+- `$agent-fungibility-philosophy`: use interchangeable agents working from clear
+  slices; avoid fragile specialist bottlenecks.
 
-Use this when character budget is tight:
+## Parallel Execution Model
+
+We want maximum safe parallelization. This machine has enough RAM, so read-only
+scouting and independent implementation slices should run concurrently.
+
+Use Codex subagents for parallel work. Use Grok via `$multi-model-triangulation`
+for independent review prompts when the decision is hard to reverse.
+
+Parallelism rules:
+
+1. Split work into independent lanes: harness repair, master hardening merge,
+   de-monolithization planning, DOCX surface, XLSX surface, PPTX surface,
+   serve/MCP surface, Office proof gates, fuzz/metamorphic gates.
+2. Read-only scouting can run aggressively in parallel.
+3. Parallel writers must use separate git worktrees or disjoint files with an
+   explicit reservation note in the handoff.
+4. Shared proof resources are serialized:
+   - full Rust test suite
+   - Office COM automation
+   - Open XML SDK validator runs on shared generated outputs
+   - branch integration and pushes
+5. Each slice must leave a clear handoff: files touched, tests run, remaining
+   risks, and whether Office proof is still needed.
+6. One integration lane merges slices, resolves conflicts, reruns proof gates,
+   and pushes stable milestones.
+7. No subagent may declare full parity from its slice alone.
+
+Suggested parallel lanes:
+
+- Lane A: Windows proof loop and golden scrubber reliability.
+- Lane B: merge/rebase `master` hardening into the Rust branch and resolve
+  conflicts safely.
+- Lane C: de-monolithization census and seam plan for `src/main.rs`.
+- Lane D: Rust clippy and hygiene fixes that do not change behavior.
+- Lane E: command-surface inventory gap analysis against Go capabilities.
+- Lane F: Office/Open XML proof gate smoke commands and documentation.
+- Lane G: Grok review prompts for architecture and de-monolithization choices.
+
+## Proof Ladder
+
+Use this ladder for every slice. Later gates can be skipped only when clearly
+irrelevant and the reason is written in the handoff.
+
+1. Local compile and formatting:
+   - `cargo check`
+   - `cargo fmt --check`
+2. Lint and test build:
+   - `cargo clippy --all-targets -- -D warnings`
+   - `cargo test --no-run`
+3. Targeted Rust tests:
+   - one test or command-family subset first
+   - then `cargo test --test rust_contract_smoke` when the slice affects parity
+4. Targeted Go oracle comparison:
+   - run the Go CLI for the exact command path being ported or audited
+   - compare exit code, stdout, stderr, JSON shape, and generated file behavior
+5. Open XML proof:
+   - strict repo validation
+   - Open XML SDK validator for generated/mutated Office files
+6. Desktop Office proof on Windows:
+   - Word/Excel/PowerPoint COM/open proof for risky or milestone document edits
+   - VBA/macro proof for XLSM/PPTM/DOCM surfaces
+7. Broad milestone gate:
+   - full Rust tests
+   - relevant Office smoke
+   - status doc update
+   - commit and push
+
+## Windows Office Proof Policy
+
+This project manipulates Office documents. Schema validity is necessary but not
+sufficient. The files must open in the respective Office apps.
+
+Use the repository tools where possible:
+
+- `tools/windows-office-edit-smoke.ps1`
+- `tools/windows-office-vba-smoke.ps1`
+- `tools/windows-office-oracle.ps1`
+- `tools/openxml-validator/`
+
+Office proof cadence:
+
+- Fast inner loop: Rust tests plus repo strict validation.
+- Medium gate: Open XML SDK validator, skipping Office COM when the change is
+  purely internal and no new output files are created.
+- Milestone gate: desktop Office open proof for DOCX/XLSX/PPTX outputs.
+- Macro gate: Office-authored and Office-opened VBA proof for XLSM/PPTM/DOCM
+  when macro-enabled surfaces are touched.
+- Release gate: both Open XML SDK and Office COM proof, plus VBA smoke if macro
+  support is in scope.
+
+Office COM automation is a shared resource. Do not run multiple Office COM smoke
+suites concurrently.
+
+## De-Monolithization Direction
+
+The current Rust implementation was allowed to pile into `src/main.rs`. That is
+acceptable for bootstrapping but not for a first-class port.
+
+Use `$de-monolithize-your-codebase-isomorphically` before expanding major new
+feature surface. The goal is not to "make files prettier"; the goal is to make
+the Rust port safe for many agents to work on in parallel.
+
+Likely module seams to investigate, not blindly impose:
+
+- process entry, argument parsing, output/error envelope
+- capability inventory
+- OPC/ZIP package loading and saving
+- XML helpers
+- DOCX read/mutate operations
+- XLSX read/mutate operations
+- PPTX read/mutate operations
+- serve JSON-RPC session engine
+- MCP protocol surface
+- validation and diagnostics
+- command emission/readback helpers
+- test fixture helpers and contract scrubbers
+
+Rules for splitting:
+
+1. First map symbols, call clusters, shared state, and command ownership.
+2. Establish baseline gates before moving code.
+3. Extract one seam at a time.
+4. Keep facade/re-export behavior stable where needed.
+5. Do not mix code movement with behavior changes.
+6. Preserve blame where practical with mechanical moves.
+7. Run the proof ladder after each meaningful split.
+8. If a seam is not proven, leave it alone and record why.
+
+## Immediate Phase Plan
+
+### Phase 0: Freeze the Setup Baseline
+
+- Record the Windows setup facts in handoff/status.
+- Use the VS developer environment when invoking Cargo from this Codex process:
+  call `VsDevCmd.bat` and prepend `%USERPROFILE%\.cargo\bin` to PATH.
+- Confirm `dotnet build tools/openxml-validator/openxml-validator.csproj` stays
+  green.
+- Do not start feature work until Phase 1 is clean.
+
+### Phase 1: Make the Proof Loop Trustworthy
+
+Fix the proof loop before expanding Rust surface:
+
+- Fix Windows path scrubbing in the golden contract harness.
+- Normalize `diagnostics` empty-array behavior where the contract expects it, or
+  update the contract intentionally if the Go oracle changed.
+- Fix existing Clippy failures without behavior changes.
+- Ensure:
+  - `cargo check`
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets -- -D warnings`
+  - `cargo test --no-run`
+  - targeted golden contract checks
+
+### Phase 2: Ingest Current Go Hardening
+
+- Merge or rebase current `origin/master` into `codex/ooxml-rust-port`.
+- Preserve Go as oracle and avoid broad Go churn.
+- Resolve conflicts with priority on security and ingest hardening.
+- Re-run relevant Rust and Go-oracle checks.
+
+### Phase 3: De-Monolithize Safely
+
+- Run a monolith census of Rust files and tests.
+- Produce a seam plan for `src/main.rs`.
+- Generate Grok review prompt for the seam plan if the split strategy is not
+  obvious.
+- Extract the first proven seams with no behavior change.
+- Keep tests green after each extraction.
+
+### Phase 4: Command Surface Expansion
+
+- Compare Go and Rust capability inventories.
+- Pick the next high-value command family based on agent utility and Office risk.
+- Port by command path, not vague module mirroring.
+- For each command path, add Go-vs-Rust parity cases and status-doc updates.
+
+### Phase 5: Office and Metamorphic Hardening
+
+- Add Office proof for risky document mutations.
+- Add metamorphic tests for OOXML invariants.
+- Add fuzz targets for malformed packages and ingestion boundaries.
+- Keep fuzz and Office results as gates for release, not vague confidence.
+
+### Phase 6: Milestone Commit and Push
+
+- Update `docs/rust-port-status.md`.
+- Commit only coherent milestones.
+- Push to `origin/codex/ooxml-rust-port`.
+- Leave a concise handoff: what is proven, what remains, and which command slice
+  should be next.
+
+## How to Use Grok
+
+Use `$multi-model-triangulation` for copy-paste prompts to Grok when:
+
+- choosing the de-monolithization architecture,
+- evaluating whether a parity gap is real or harness noise,
+- reviewing a risky Office/VBA mutation strategy,
+- deciding between command-surface priorities.
+
+The prompt should include:
+
+- the relevant files and line references,
+- the Go oracle behavior,
+- the Rust subject behavior,
+- the proposed change,
+- exact proof gates,
+- a request to be critical and identify hidden risks.
+
+Paste Grok's response back into the current Codex thread. Codex synthesizes the
+recommendation and implements only the parts that survive evidence.
+
+## Handoff Format for Subagents
+
+Every subagent or parallel lane should report:
 
 ```text
-Read and follow GOAL.md. Use the named `$` skills there. Continue the Rust port
-until Go is preserved as the oracle branch and the Rust branch reaches proven
-full parity through the frozen contract and Go-vs-Rust conformance harness. Do
-not run Go tests for each Rust-only slice; Go is not being changed. Use targeted
-Go CLI oracle checks unless a milestone gate or Go/contract change requires
-broader Go verification.
+Lane:
+Files read:
+Files changed:
+Command paths affected:
+Proof run:
+Office/Open XML proof:
+Known risks:
+Next suggested action:
 ```
+
+If a lane changes code, it must also report whether it touched:
+
+- command output shape,
+- file mutation behavior,
+- validation behavior,
+- serve/MCP behavior,
+- Office-openability risk,
+- the capability inventory.
+
+## Do Not Forget
+
+- The user wants a first-class `ooxml-cli`, not endless harness churn.
+- Harness work is justified only when it makes the port safer, faster to prove,
+  or easier for agents to use.
+- The Rust port must become modular before it grows much further.
+- Windows Office is available; use it as proof for real document openability.
+- Parallelism is desired, but correctness gates decide what lands.
+- Commit and push stable milestones when the evidence is clean.
