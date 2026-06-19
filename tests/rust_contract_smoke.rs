@@ -238,6 +238,50 @@ fn write_nested_table_docx(dest: &Path) {
     });
 }
 
+fn write_docx_with_body(dest: &Path, body_inner: &str) {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("fixture parent");
+    }
+    let output = File::create(dest).expect("create docx");
+    let mut writer = ZipWriter::new(output);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    write_zip_string(
+        &mut writer,
+        options,
+        "[Content_Types].xml",
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "_rels/.rels",
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "word/document.xml",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+{body_inner}
+    <w:sectPr/>
+  </w:body>
+</w:document>"#
+        ),
+    );
+    writer.finish().expect("finish docx");
+}
+
 fn rewrite_zip_fixture<F>(source: &str, dest: &Path, mut mutator: F)
 where
     F: FnMut(&str, Vec<u8>) -> Option<(String, Vec<u8>)>,
@@ -2255,6 +2299,102 @@ fn docx_comments_list_matches_go_oracle() {
 }
 
 #[test]
+fn docx_fields_list_matches_go_oracle() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "fields",
+            "list",
+            "testdata/docx/with-fields/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "fields",
+            "list",
+            "testdata/docx/with-fields/document.docx",
+            "--type",
+            "PAGE",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "fields",
+            "list",
+            "testdata/docx/minimal/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "fields",
+            "list",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-docx-fields-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx fields temp dir");
+
+    let ordered_docx = temp_dir.join("ordered-fields.docx");
+    write_docx_with_body(
+        &ordered_docx,
+        r#"    <w:p>
+      <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+      <w:r><w:instrText xml:space="preserve"> NUMPAGES </w:instrText></w:r>
+      <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+      <w:r><w:t>3</w:t></w:r>
+      <w:r><w:fldChar w:fldCharType="end"/></w:r>
+      <w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>
+    </w:p>"#,
+    );
+    let ordered_docx = ordered_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "docx", "fields", "list", &ordered_docx]);
+
+    let switched_docx = temp_dir.join("switched-field.docx");
+    write_docx_with_body(
+        &switched_docx,
+        r#"    <w:p>
+      <w:fldSimple w:instr=" PAGE \* MERGEFORMAT "><w:r><w:t>1</w:t></w:r></w:fldSimple>
+    </w:p>"#,
+    );
+    let switched_docx = switched_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "fields",
+        "list",
+        &switched_docx,
+        "--type",
+        "PAGE",
+    ]);
+
+    let table_docx = temp_dir.join("table-field.docx");
+    write_docx_with_body(
+        &table_docx,
+        r#"    <w:tbl>
+      <w:tr>
+        <w:tc>
+          <w:p>
+            <w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>
+          </w:p>
+        </w:tc>
+      </w:tr>
+    </w:tbl>"#,
+    );
+    let table_docx = table_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "docx", "fields", "list", &table_docx]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn frozen_pptx_mutation_and_validate_match_go_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-contract-{}", std::process::id()));
@@ -3344,6 +3484,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(all_stderr, None);
     let all_caps = all_stdout.expect("all capabilities");
     assert_command(&all_caps, "ooxml version", false);
+    assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx tables show", false);
 
     let (pptx_code, pptx_stdout, pptx_stderr) =
@@ -3418,11 +3559,19 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let comment_caps = comment_stdout.expect("comment capabilities");
     assert_command(&comment_caps, "ooxml docx comments list", false);
 
+    let (field_code, field_stdout, field_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "field"]);
+    assert_eq!(field_code, 0);
+    assert_eq!(field_stderr, None);
+    let field_caps = field_stdout.expect("field capabilities");
+    assert_command(&field_caps, "ooxml docx fields list", false);
+
     let (docx_code, docx_stdout, docx_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "docx"]);
     assert_eq!(docx_code, 0);
     assert_eq!(docx_stderr, None);
     let docx_caps = docx_stdout.expect("docx capabilities");
+    assert_command(&docx_caps, "ooxml docx fields list", false);
     assert_command(&docx_caps, "ooxml docx tables show", false);
 }
 
@@ -3441,10 +3590,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 26, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 27, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        264,
+        263,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
