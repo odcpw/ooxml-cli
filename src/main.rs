@@ -16,7 +16,9 @@ const EXIT_UNEXPECTED: i32 = 1;
 const EXIT_INVALID_ARGS: i32 = 2;
 const EXIT_FILE_NOT_FOUND: i32 = 3;
 const EXIT_UNSUPPORTED_TYPE: i32 = 4;
+const EXIT_VALIDATION_FAILED: i32 = 5;
 const EXIT_TARGET_NOT_FOUND: i32 = 6;
+const EXIT_PARTIAL_SUCCESS: i32 = 9;
 const DOCX_W_NS: &[u8] = b"http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const DOCX_W14_NS: &[u8] = b"http://schemas.microsoft.com/office/word/2010/wordml";
 
@@ -86,12 +88,12 @@ fn main() {
         std::process::exit(run_mcp_stdio());
     }
     match run(&argv) {
-        Ok(value) => {
+        Ok(output) => {
             println!(
                 "{}",
-                serde_json::to_string(&value).expect("serialize output")
+                serde_json::to_string(&output.value).expect("serialize output")
             );
-            std::process::exit(EXIT_SUCCESS);
+            std::process::exit(output.exit_code);
         }
         Err(err) => {
             let body = json!({
@@ -105,6 +107,11 @@ fn main() {
             std::process::exit(err.exit_code);
         }
     }
+}
+
+struct RunOutput {
+    value: Value,
+    exit_code: i32,
 }
 
 fn run_serve_stdio() -> i32 {
@@ -328,14 +335,25 @@ impl McpState {
     }
 }
 
-fn run(raw_args: &[String]) -> CliResult<Value> {
+fn run(raw_args: &[String]) -> CliResult<RunOutput> {
     let (flags, args) = parse_global_flags(raw_args)?;
     if !flags.json && !has_local_json_format(&args) && !is_validate_command(&args) {
         return Err(CliError::invalid_args(
             "the Rust port currently supports the frozen --json contract slice only",
         ));
     }
-    dispatch(&flags, &args)
+    if let [cmd, rest @ ..] = args.as_slice()
+        && cmd == "validate"
+    {
+        let (file, strict) = parse_validate_args(rest, flags.strict)?;
+        let value = validate(file, strict)?;
+        let exit_code = validate_exit_code(&value, strict);
+        return Ok(RunOutput { value, exit_code });
+    }
+    dispatch(&flags, &args).map(|value| RunOutput {
+        value,
+        exit_code: EXIT_SUCCESS,
+    })
 }
 
 fn parse_global_flags(raw_args: &[String]) -> CliResult<(GlobalFlags, Vec<String>)> {
@@ -4021,17 +4039,274 @@ fn docx_body_summary_counts(xml: &str) -> Result<DocxBodySummaryCounts, String> 
     Ok(counts)
 }
 
-fn validate(file: &str, _strict: bool) -> CliResult<Value> {
-    let entries = zip_entry_names(file)?;
-    if !entries.iter().any(|name| name == "[Content_Types].xml") {
-        return Err(CliError::unexpected("missing [Content_Types].xml"));
+fn validate(file: &str, strict: bool) -> CliResult<Value> {
+    let diagnostics = validate_diagnostics(file)?;
+    Ok(validate_report(file, diagnostics, strict))
+}
+
+fn validate_exit_code(report: &Value, strict: bool) -> i32 {
+    let errors = report
+        .get("summary")
+        .and_then(|summary| summary.get("errors"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let warnings = report
+        .get("summary")
+        .and_then(|summary| summary.get("warnings"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    if errors > 0 || (strict && warnings > 0) {
+        EXIT_VALIDATION_FAILED
+    } else if warnings > 0 {
+        EXIT_PARTIAL_SUCCESS
+    } else {
+        EXIT_SUCCESS
     }
-    Ok(json!({
-        "file": file,
-        "status": "valid",
-        "summary": {"errors": 0, "info": 0, "warnings": 0},
-        "valid": true,
-    }))
+}
+
+fn validate_report(file: &str, diagnostics: Vec<Value>, strict: bool) -> Value {
+    let mut errors = 0usize;
+    let mut warnings = 0usize;
+    let mut info = 0usize;
+    for diagnostic in &diagnostics {
+        match diagnostic
+            .get("severity")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+        {
+            "error" => errors += 1,
+            "warning" => warnings += 1,
+            "info" => info += 1,
+            _ => {}
+        }
+    }
+    let exit_code = if errors > 0 || (strict && warnings > 0) {
+        EXIT_VALIDATION_FAILED
+    } else if warnings > 0 {
+        EXIT_PARTIAL_SUCCESS
+    } else {
+        EXIT_SUCCESS
+    };
+    let status = if exit_code == EXIT_VALIDATION_FAILED {
+        "errors"
+    } else if exit_code == EXIT_PARTIAL_SUCCESS {
+        "warnings"
+    } else {
+        "valid"
+    };
+    let mut report = Map::new();
+    report.insert("file".to_string(), json!(file));
+    report.insert("valid".to_string(), json!(exit_code == EXIT_SUCCESS));
+    report.insert("status".to_string(), json!(status));
+    if !diagnostics.is_empty() {
+        report.insert("diagnostics".to_string(), Value::Array(diagnostics));
+    }
+    report.insert(
+        "summary".to_string(),
+        json!({"errors": errors, "warnings": warnings, "info": info}),
+    );
+    Value::Object(report)
+}
+
+fn validate_diagnostics(file: &str) -> CliResult<Vec<Value>> {
+    let entries = zip_entry_names(file)?;
+    let entry_set = zip_entry_set(&entries);
+    let mut diagnostics = Vec::new();
+    if !entries.iter().any(|name| name == "[Content_Types].xml") {
+        diagnostics.push(validation_diagnostic(
+            "PKG_MISSING_CONTENT_TYPES",
+            "error",
+            "[Content_Types].xml not found in package root",
+        ));
+    }
+    if !entries.iter().any(|name| name == "_rels/.rels") {
+        diagnostics.push(validation_diagnostic(
+            "PKG_MISSING_PACKAGE_RELS",
+            "error",
+            "/_rels/.rels not found in package",
+        ));
+    }
+
+    diagnostics.extend(validate_relationship_integrity(file, &entries, &entry_set)?);
+
+    match detect_inspect_package_type(file, &entries) {
+        InspectPackageKind::Docx => {
+            diagnostics.extend(validate_docx_required_parts(file, &entries, &entry_set)?);
+        }
+        InspectPackageKind::Xlsx => {
+            diagnostics.extend(validate_xlsx_required_parts(file, &entries, &entry_set)?);
+        }
+        InspectPackageKind::Pptx | InspectPackageKind::Unknown => {}
+    }
+
+    Ok(diagnostics)
+}
+
+fn zip_entry_set(entries: &[String]) -> BTreeSet<String> {
+    entries
+        .iter()
+        .map(|entry| format!("/{}", entry.trim_start_matches('/')))
+        .collect()
+}
+
+fn validation_diagnostic(code: &str, severity: &str, message: impl Into<String>) -> Value {
+    json!({
+        "code": code,
+        "severity": severity,
+        "message": message.into(),
+    })
+}
+
+fn validate_relationship_integrity(
+    file: &str,
+    entries: &[String],
+    entry_set: &BTreeSet<String>,
+) -> CliResult<Vec<Value>> {
+    let mut diagnostics = Vec::new();
+    for rels_part in entries.iter().filter(|entry| entry.ends_with(".rels")) {
+        let source_uri = relationship_source_uri(rels_part);
+        for rel in relationship_entries(file, rels_part)? {
+            if rel.target_mode == "External" {
+                continue;
+            }
+            let target_uri = resolve_relationship_target(&source_uri, &rel.target);
+            if !entry_set.contains(&target_uri) {
+                let message = if source_uri == "/" {
+                    format!(
+                        "package-level relationship (id={}) points to missing part: {}",
+                        rel.id, target_uri
+                    )
+                } else {
+                    format!(
+                        "relationship from {} (id={}) points to missing part: {}",
+                        source_uri, rel.id, target_uri
+                    )
+                };
+                diagnostics.push(validation_diagnostic(
+                    "REL_DANGLING_TARGET",
+                    "error",
+                    message,
+                ));
+            }
+        }
+    }
+    Ok(diagnostics)
+}
+
+fn validate_docx_required_parts(
+    file: &str,
+    entries: &[String],
+    entry_set: &BTreeSet<String>,
+) -> CliResult<Vec<Value>> {
+    let mut diagnostics = Vec::new();
+    match find_docx_document_part(file, entries) {
+        Ok(document_part) => {
+            let document_uri = format!("/{}", document_part.trim_start_matches('/'));
+            if !entry_set.contains(&document_uri) {
+                diagnostics.push(validation_diagnostic(
+                    "DOCX_MISSING_DOCUMENT",
+                    "error",
+                    format!("main document part not found: {document_uri}"),
+                ));
+            }
+        }
+        Err(err) => diagnostics.push(validation_diagnostic(
+            "DOCX_PARSE_ERROR",
+            "error",
+            format!("failed to find main document part: {}", err.message),
+        )),
+    }
+    Ok(diagnostics)
+}
+
+fn validate_xlsx_required_parts(
+    file: &str,
+    entries: &[String],
+    entry_set: &BTreeSet<String>,
+) -> CliResult<Vec<Value>> {
+    let mut diagnostics = Vec::new();
+    let workbook_part = match find_xlsx_workbook_part(file, entries) {
+        Ok(workbook_part) => workbook_part,
+        Err(err) => {
+            diagnostics.push(validation_diagnostic(
+                "XLSX_PARSE_ERROR",
+                "error",
+                format!("failed to parse workbook structure: {}", err.message),
+            ));
+            return Ok(diagnostics);
+        }
+    };
+    let workbook_uri = format!("/{}", workbook_part.trim_start_matches('/'));
+    if !entry_set.contains(&workbook_uri) {
+        diagnostics.push(validation_diagnostic(
+            "XLSX_MISSING_WORKBOOK",
+            "error",
+            format!("workbook part not found: {workbook_uri}"),
+        ));
+        return Ok(diagnostics);
+    }
+
+    let workbook = zip_text(file, &workbook_part)?;
+    let sheets = match workbook_sheets(&workbook) {
+        Ok(sheets) => sheets,
+        Err(err) => {
+            diagnostics.push(validation_diagnostic(
+                "XLSX_PARSE_ERROR",
+                "error",
+                format!("failed to parse workbook structure: {}", err.message),
+            ));
+            return Ok(diagnostics);
+        }
+    };
+    if sheets.is_empty() {
+        diagnostics.push(validation_diagnostic(
+            "XLSX_NO_SHEETS",
+            "error",
+            "workbook contains no sheets",
+        ));
+        return Ok(diagnostics);
+    }
+
+    let rels_part = relationships_part_for(&workbook_part);
+    let rels = relationships(file, &rels_part).unwrap_or_default();
+    for sheet in sheets {
+        let Some(target) = rels.get(&sheet.rel_id) else {
+            diagnostics.push(validation_diagnostic(
+                "XLSX_SHEET_RELATIONSHIP_NOT_FOUND",
+                "error",
+                format!(
+                    "sheet {} ({:?}) relationship {} not found in workbook rels",
+                    sheet.position, sheet.name, sheet.rel_id
+                ),
+            ));
+            continue;
+        };
+        let target_uri = resolve_relationship_target(&workbook_uri, target);
+        if !entry_set.contains(&target_uri) {
+            diagnostics.push(validation_diagnostic(
+                "XLSX_MISSING_WORKSHEET",
+                "error",
+                format!(
+                    "sheet {} ({:?}) points to missing worksheet part: {}",
+                    sheet.position, sheet.name, target_uri
+                ),
+            ));
+        }
+    }
+    Ok(diagnostics)
+}
+
+fn relationship_source_uri(rels_part: &str) -> String {
+    if rels_part == "_rels/.rels" {
+        return "/".to_string();
+    }
+    let normalized = rels_part.trim_start_matches('/');
+    if let Some((dir, file_name)) = normalized.rsplit_once("/_rels/")
+        && let Some(source_name) = file_name.strip_suffix(".rels")
+    {
+        return format!("/{dir}/{source_name}");
+    }
+    "/".to_string()
 }
 
 fn pptx_slide_show(file: &str, slide: u32) -> CliResult<Value> {
@@ -18896,8 +19171,14 @@ impl ServeState {
 
     fn serve_validate(&self, params: &Value) -> CliResult<Value> {
         let session_id = json_string(params, "session")?;
-        self.session(&session_id)?;
-        Ok(json!({"diagnostics": null}))
+        let session = self.session(&session_id)?;
+        let report = validate(&session.working, true)?;
+        Ok(json!({
+            "diagnostics": report
+                .get("diagnostics")
+                .cloned()
+                .unwrap_or_else(|| Value::Array(Vec::new())),
+        }))
     }
 
     fn serve_plan(&self, params: &Value) -> CliResult<Value> {

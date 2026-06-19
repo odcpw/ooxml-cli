@@ -156,13 +156,17 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - JSON error envelope for an invalid slide number
 - `--json pptx replace text ... --out <pptx>`
 - `--json --strict validate <pptx>`
+- `--json --strict validate <docx|xlsx>` negative-package diagnostics for
+  dangling relationships plus missing DOCX main-document and XLSX worksheet
+  parts, with exit-code and stdout JSON parity against the Go oracle
 - `pptx render ... --format json` manifest shape, with real-tool execution when
   LibreOffice and Poppler are available and a deterministic test hook for the
   frozen contract
 - `--format json verify <pptx> --baseline <pptx>` validation plus semantic text
   diff envelope for the frozen PPTX fixture
 - `serve` JSON-RPC open, op, inspect, validate, plan, commit, and abort flow for
-  the frozen XLSX cell-edit session
+  the frozen XLSX cell-edit session, with validate returning real diagnostics
+  arrays instead of placeholder nulls
 - `mcp` stdio JSON-RPC initialize, tools/resources discovery, command resource
   readback, and tools/call open, op, inspect, validate, plan, commit, and abort
   flow for the frozen XLSX cell-edit session

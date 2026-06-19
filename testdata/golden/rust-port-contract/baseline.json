@@ -533,7 +533,7 @@
           "id": 4,
           "jsonrpc": "2.0",
           "result": {
-            "diagnostics": null
+            "diagnostics": []
           }
         }
       },
@@ -1068,12 +1068,12 @@
             "result": {
               "content": [
                 {
-                  "text": "{\"diagnostics\":null}",
+                  "text": "{\"diagnostics\":[]}",
                   "type": "text"
                 }
               ],
               "structuredContent": {
-                "diagnostics": null
+                "diagnostics": []
               }
             }
           }

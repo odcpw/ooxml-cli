@@ -2642,6 +2642,26 @@ fn inspect_matches_go_oracle_for_supported_families() {
 }
 
 #[test]
+fn validate_rejects_corrupted_docx_and_xlsx_like_go_oracle() {
+    for args in [
+        vec![
+            "--json",
+            "--strict",
+            "validate",
+            "testdata/docx/corrupted-missing-document/document.docx",
+        ],
+        vec![
+            "--json",
+            "--strict",
+            "validate",
+            "testdata/xlsx/corrupted-missing-worksheet/workbook.xlsx",
+        ],
+    ] {
+        assert_go_rust_match(&args);
+    }
+}
+
+#[test]
 fn docx_text_matches_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
@@ -7040,6 +7060,58 @@ fn serve_commit_does_not_write_dry_run_output() {
         !output.exists(),
         "dry-run commit must not create the requested output"
     );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+}
+
+#[test]
+fn serve_validate_reports_corrupted_package_diagnostics() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({
+                "file": "testdata/docx/corrupted-missing-document/document.docx",
+            }),
+        ),
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let validate_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(2, "validate", serde_json::json!({"session": session})),
+    );
+    assert!(
+        validate_response.get("error").is_none(),
+        "serve validate failed: {validate_response:?}"
+    );
+    let diagnostics = validate_response["result"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics array");
+    let codes = diagnostics
+        .iter()
+        .filter_map(|diagnostic| diagnostic["code"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert!(codes.contains("REL_DANGLING_TARGET"), "{diagnostics:?}");
+    assert!(codes.contains("DOCX_MISSING_DOCUMENT"), "{diagnostics:?}");
 
     drop(stdin);
     let status = child.wait().expect("serve exit");
