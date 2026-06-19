@@ -58,6 +58,10 @@ Latest milestone, 2026-06-19:
   helpers.
 - MCP stdio runner and protocol state moved from `src/main.rs` into
   `src/mcp.rs`, with the serve engine left in place for a later dedicated split.
+- XLSX workbook metadata inspect/update types, XML readers, property renderers,
+  and calc-setting mutation helpers moved from `src/main.rs` into
+  `src/xlsx_metadata.rs`, keeping CLI and serve call sites stable through the
+  crate facade.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
