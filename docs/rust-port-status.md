@@ -87,6 +87,10 @@ Latest milestone, 2026-06-19:
 - DOCX body block readers, rich block reports, paragraph/table text extraction,
   run formatting capture, namespace-aware paragraph handles, and block content
   hashing moved from `src/main.rs` into `src/docx_block_readers.rs`.
+- DOCX text and body block command wrappers for show, insert-after, replace,
+  and delete moved from `src/main.rs` into `src/docx_block_commands.rs`, with
+  shared paragraph mutation helpers left at the crate root until the remaining
+  paragraph/style seams are split.
 - DOCX field listing, field insertion, cached-result mutation, field-location
   parsing, simple/complex field detection, and field XML rewrite helpers moved
   from `src/main.rs` into `src/docx_fields.rs`.
