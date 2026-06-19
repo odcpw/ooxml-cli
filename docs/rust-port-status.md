@@ -40,6 +40,9 @@ Latest milestone, 2026-06-19:
 - Runtime timestamp/counter and mutation temp-path helpers moved from
   `src/main.rs` into `src/runtime_util.rs`, keeping generated dates and
   mutation scratch paths in one shared utility module.
+- OPC package mutation helpers for root relationships, content-type overrides,
+  relationship XML insertion, and relative relationship targets moved from
+  `src/main.rs` into `src/opc.rs`.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.

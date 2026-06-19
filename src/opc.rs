@@ -3,7 +3,7 @@ use quick_xml::events::Event;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::{CliError, CliResult, attr, attr_exact, local_name, zip_text};
+use crate::{CliError, CliResult, attr, attr_exact, local_name, xml_attr_escape, zip_text};
 
 #[derive(Clone)]
 pub(crate) struct RelationshipEntry {
@@ -132,6 +132,83 @@ pub(crate) fn allocate_relationship_id(rels: &[RelationshipEntry]) -> String {
     format!("rId{next}")
 }
 
+pub(crate) fn ensure_package_root_relationship_xml(
+    xml: String,
+    rel_type: &str,
+    target_uri: &str,
+) -> String {
+    let rels = relationship_entries_from_xml(&xml);
+    if rels.iter().any(|rel| rel.rel_type == rel_type) {
+        return xml;
+    }
+    let next_id = allocate_relationship_id(&rels);
+    let rel = format!(
+        r#"<Relationship Id="{next_id}" Type="{}" Target="{}"/>"#,
+        xml_attr_escape(rel_type),
+        xml_attr_escape(target_uri.trim_start_matches('/'))
+    );
+    if let Some(pos) = xml.rfind("</Relationships>") {
+        let mut out = String::with_capacity(xml.len() + rel.len());
+        out.push_str(&xml[..pos]);
+        out.push_str(&rel);
+        out.push_str(&xml[pos..]);
+        out
+    } else {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
+        )
+    }
+}
+
+pub(crate) fn ensure_content_type_override(
+    xml: String,
+    part_name: &str,
+    content_type: &str,
+) -> String {
+    let normalized = format!("/{}", part_name.trim_start_matches('/'));
+    if xml.contains(&format!(r#"PartName="{normalized}""#)) {
+        return xml;
+    }
+    let override_xml = format!(
+        r#"<Override PartName="{normalized}" ContentType="{}"/>"#,
+        xml_attr_escape(content_type)
+    );
+    if let Some(pos) = xml.rfind("</Types>") {
+        let mut out = String::with_capacity(xml.len() + override_xml.len());
+        out.push_str(&xml[..pos]);
+        out.push_str(&override_xml);
+        out.push_str(&xml[pos..]);
+        out
+    } else {
+        xml
+    }
+}
+
+pub(crate) fn add_relationship_to_xml(
+    xml: String,
+    id: &str,
+    rel_type: &str,
+    target: &str,
+) -> String {
+    let rel = format!(
+        r#"<Relationship Id="{}" Type="{}" Target="{}"/>"#,
+        xml_attr_escape(id),
+        xml_attr_escape(rel_type),
+        xml_attr_escape(target)
+    );
+    if let Some(pos) = xml.rfind("</Relationships>") {
+        let mut out = String::with_capacity(xml.len() + rel.len());
+        out.push_str(&xml[..pos]);
+        out.push_str(&rel);
+        out.push_str(&xml[pos..]);
+        out
+    } else {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
+        )
+    }
+}
+
 pub(crate) fn resolve_relationship_target(source_uri: &str, target: &str) -> String {
     if target.starts_with('/') {
         return format!("/{}", target.trim_start_matches('/'));
@@ -147,6 +224,36 @@ pub(crate) fn resolve_relationship_target(source_uri: &str, target: &str) -> Str
         String::new()
     };
     normalize_package_uri(&format!("{base}{target}"))
+}
+
+pub(crate) fn relationship_target_from_source_to_target(
+    source_uri: &str,
+    target_uri: &str,
+) -> String {
+    let source = source_uri.trim_start_matches('/');
+    let target = target_uri.trim_start_matches('/');
+    let source_dirs: Vec<&str> = source
+        .rsplit_once('/')
+        .map(|(dir, _)| dir.split('/').filter(|part| !part.is_empty()).collect())
+        .unwrap_or_default();
+    let target_parts: Vec<&str> = target.split('/').filter(|part| !part.is_empty()).collect();
+    let common = source_dirs
+        .iter()
+        .zip(target_parts.iter())
+        .take_while(|(left, right)| left == right)
+        .count();
+    let mut parts = Vec::new();
+    for _ in common..source_dirs.len() {
+        parts.push("..".to_string());
+    }
+    for part in target_parts.iter().skip(common) {
+        parts.push((*part).to_string());
+    }
+    if parts.is_empty() {
+        target.rsplit('/').next().unwrap_or(target).to_string()
+    } else {
+        parts.join("/")
+    }
 }
 
 fn normalize_package_uri(uri: &str) -> String {

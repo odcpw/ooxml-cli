@@ -35,9 +35,10 @@ pub(crate) use json_util::{
     json_u32,
 };
 pub(crate) use opc::{
-    RelationshipEntry, allocate_relationship_id, content_type_for_part, relationship_entries,
-    relationship_entries_from_xml, relationship_source_uri, relationships, relationships_part_for,
-    resolve_relationship_target,
+    RelationshipEntry, add_relationship_to_xml, allocate_relationship_id, content_type_for_part,
+    ensure_content_type_override, ensure_package_root_relationship_xml, relationship_entries,
+    relationship_source_uri, relationship_target_from_source_to_target, relationships,
+    relationships_part_for, resolve_relationship_target,
 };
 pub(crate) use runtime_util::{
     chrono_like_counter, current_utc_rfc3339, docx_mutation_temp_path, xlsx_ranges_set_temp_path,
@@ -4346,30 +4347,6 @@ fn workbook_child_order(local_name: &str) -> i32 {
     }
 }
 
-fn ensure_package_root_relationship_xml(xml: String, rel_type: &str, target_uri: &str) -> String {
-    let rels = relationship_entries_from_xml(&xml);
-    if rels.iter().any(|rel| rel.rel_type == rel_type) {
-        return xml;
-    }
-    let next_id = allocate_relationship_id(&rels);
-    let rel = format!(
-        r#"<Relationship Id="{next_id}" Type="{}" Target="{}"/>"#,
-        xml_attr_escape(rel_type),
-        xml_attr_escape(target_uri.trim_start_matches('/'))
-    );
-    if let Some(pos) = xml.rfind("</Relationships>") {
-        let mut out = String::with_capacity(xml.len() + rel.len());
-        out.push_str(&xml[..pos]);
-        out.push_str(&rel);
-        out.push_str(&xml[pos..]);
-        out
-    } else {
-        format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
-        )
-    }
-}
-
 fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> CliResult<Value> {
     if !Path::new(file).exists() {
         return Err(CliError::file_not_found(format!("file not found: {file}")));
@@ -5091,26 +5068,6 @@ fn resolve_or_add_xlsx_styles_part(file: &str) -> CliResult<(String, Option<Stri
         )
     };
     Ok(("xl/styles.xml".to_string(), Some(updated)))
-}
-
-fn ensure_content_type_override(xml: String, part_name: &str, content_type: &str) -> String {
-    let normalized = format!("/{}", part_name.trim_start_matches('/'));
-    if xml.contains(&format!(r#"PartName="{normalized}""#)) {
-        return xml;
-    }
-    let override_xml = format!(
-        r#"<Override PartName="{normalized}" ContentType="{}"/>"#,
-        xml_attr_escape(content_type)
-    );
-    if let Some(pos) = xml.rfind("</Types>") {
-        let mut out = String::with_capacity(xml.len() + override_xml.len());
-        out.push_str(&xml[..pos]);
-        out.push_str(&override_xml);
-        out.push_str(&xml[pos..]);
-        out
-    } else {
-        xml
-    }
 }
 
 fn add_xlsx_formula_recalc_package_updates(
@@ -11968,26 +11925,6 @@ fn allocate_docx_header_footer_part_uri(entries: &[String], kind: &str) -> Strin
     format!("/word/{kind}{next}.xml")
 }
 
-fn add_relationship_to_xml(xml: String, id: &str, rel_type: &str, target: &str) -> String {
-    let rel = format!(
-        r#"<Relationship Id="{}" Type="{}" Target="{}"/>"#,
-        xml_attr_escape(id),
-        xml_attr_escape(rel_type),
-        xml_attr_escape(target)
-    );
-    if let Some(pos) = xml.rfind("</Relationships>") {
-        let mut out = String::with_capacity(xml.len() + rel.len());
-        out.push_str(&xml[..pos]);
-        out.push_str(&rel);
-        out.push_str(&xml[pos..]);
-        out
-    } else {
-        format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
-        )
-    }
-}
-
 fn insert_docx_header_footer_reference(
     xml: &str,
     section: DocxSectionRange,
@@ -15162,33 +15099,6 @@ fn ensure_docx_comments_relationship_xml(
         )
     };
     Ok((rels_part, Some(updated), true))
-}
-
-fn relationship_target_from_source_to_target(source_uri: &str, target_uri: &str) -> String {
-    let source = source_uri.trim_start_matches('/');
-    let target = target_uri.trim_start_matches('/');
-    let source_dirs: Vec<&str> = source
-        .rsplit_once('/')
-        .map(|(dir, _)| dir.split('/').filter(|part| !part.is_empty()).collect())
-        .unwrap_or_default();
-    let target_parts: Vec<&str> = target.split('/').filter(|part| !part.is_empty()).collect();
-    let common = source_dirs
-        .iter()
-        .zip(target_parts.iter())
-        .take_while(|(left, right)| left == right)
-        .count();
-    let mut parts = Vec::new();
-    for _ in common..source_dirs.len() {
-        parts.push("..".to_string());
-    }
-    for part in target_parts.iter().skip(common) {
-        parts.push((*part).to_string());
-    }
-    if parts.is_empty() {
-        target.rsplit('/').next().unwrap_or(target).to_string()
-    } else {
-        parts.join("/")
-    }
 }
 
 fn write_docx_mutation_overrides_output(
