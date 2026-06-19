@@ -102,6 +102,9 @@ Latest milestone, 2026-06-19:
 - XLSX range/cell mutation commands, range formatting, calc-chain
   invalidation, style XML mutation, sheet-data rewrites, and mutation readback
   command generation moved from `src/main.rs` into `src/xlsx_mutation.rs`.
+- Serve `xlsx cells set` now delegates to the shared `xlsx_cells_set`
+  mutation path, and the old direct cell-XML replacement/readback shim was
+  removed.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.

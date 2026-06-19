@@ -113,7 +113,7 @@ pub(crate) use xlsx_mutation::{
 pub(crate) use xlsx_names::{xlsx_names_list, xlsx_names_show};
 pub(crate) use xlsx_ranges::{
     XlsxRangeExportOptions, check_range_max_cells, normalize_xlsx_ranges_set_data_format,
-    require_json_data_format, xlsx_range_export, xlsx_range_export_with_options,
+    require_json_data_format, xlsx_range_export_with_options,
 };
 pub(crate) use xlsx_sheets::{xlsx_cells_extract, xlsx_sheets_list, xlsx_sheets_show};
 pub(crate) use xlsx_tables::{
@@ -6221,11 +6221,9 @@ struct ServeSession {
 enum ServeOp {
     XlsxCellSet {
         command: String,
-        sheet: String,
-        cell: String,
-        value: String,
-        previous_type: String,
-        previous_value: Value,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
     },
     PptxReplaceText {
         command: String,
@@ -6345,24 +6343,22 @@ impl ServeOp {
 
     fn plan_argv(&self, source_file: &str) -> Value {
         match self {
-            ServeOp::XlsxCellSet {
-                sheet, cell, value, ..
-            } => json!([
-                "xlsx",
-                "cells",
-                "set",
-                source_file,
-                "--cell",
-                cell,
-                "--sheet",
-                sheet,
-                "--value",
-                value,
-                "--out",
-                "<temp.0>",
-                "--json",
-                "--no-validate",
-            ]),
+            ServeOp::XlsxCellSet { plan_flags, .. } => {
+                let mut argv = vec![
+                    json!("xlsx"),
+                    json!("cells"),
+                    json!("set"),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
             ServeOp::XlsxRangeSet {
                 sheet,
                 range,
@@ -6659,20 +6655,18 @@ impl ServeOp {
 
     fn readback(&self, file: &str) -> Value {
         match self {
-            ServeOp::XlsxCellSet {
-                cell,
-                value,
-                previous_type,
-                previous_value,
-                ..
-            } => xlsx_cell_set_readback(file, cell, value, previous_type, previous_value),
             ServeOp::PptxReplaceText {
                 slide,
                 target,
                 text,
                 ..
             } => pptx_replace_text_readback(file, file, *slide, target, text),
-            ServeOp::XlsxRangeSet {
+            ServeOp::XlsxCellSet {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::XlsxRangeSet {
                 readback_file,
                 readback,
                 ..
@@ -6836,15 +6830,35 @@ impl ServeState {
                 let sheet = json_string(args, "sheet")?;
                 let cell = json_string(args, "cell")?;
                 let value = json_string(args, "value")?;
-                let previous = xlsx_cell_read(&session.working, &sheet, &cell)?;
-                xlsx_set_cell_string(&session.working, &sheet, &cell, &value)?;
+                let readback = xlsx_cells_set(
+                    &session.working,
+                    XlsxCellsSetOptions {
+                        sheet: Some(&sheet),
+                        cell: Some(&cell),
+                        ref_: None,
+                        value: Some(&value),
+                        formula: None,
+                        value_type: None,
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        no_validate: true,
+                        in_place: true,
+                    },
+                )?;
+                let plan_flags = vec![
+                    json!("--cell"),
+                    json!(cell),
+                    json!("--sheet"),
+                    json!(sheet),
+                    json!("--value"),
+                    json!(value),
+                ];
                 ServeOp::XlsxCellSet {
                     command: command.clone(),
-                    sheet,
-                    cell,
-                    value,
-                    previous_type: previous.kind,
-                    previous_value: previous.value,
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
                 }
             }
             "xlsx ranges set" => {
@@ -8563,109 +8577,6 @@ fn make_working_copy(file: &str, session_number: usize) -> CliResult<String> {
     let working = dir.join(format!("working.{extension}"));
     fs::copy(file, &working).map_err(|err| CliError::unexpected(err.to_string()))?;
     Ok(working.to_string_lossy().to_string())
-}
-
-struct XlsxCellRead {
-    kind: String,
-    value: Value,
-}
-
-fn xlsx_cell_read(file: &str, sheet: &str, cell: &str) -> CliResult<XlsxCellRead> {
-    let exported = xlsx_range_export(file, sheet, cell)?;
-    let value = exported["values"][0][0].clone();
-    let kind = exported["types"][0][0]
-        .as_str()
-        .unwrap_or("empty")
-        .to_string();
-    Ok(XlsxCellRead { kind, value })
-}
-
-fn xlsx_set_cell_string(file: &str, sheet: &str, cell: &str, value: &str) -> CliResult<()> {
-    let sheet_part = xlsx_sheet_part(file, sheet)?;
-    let xml = zip_text(file, &sheet_part)?;
-    let updated = replace_cell_xml(&xml, cell, value)?;
-    let temp = Path::new(file).with_extension(format!(
-        "{}.tmp",
-        Path::new(file)
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .unwrap_or("xlsx")
-    ));
-    copy_zip_with_part_override(file, &temp.to_string_lossy(), &sheet_part, &updated)?;
-    fs::rename(temp, file).map_err(|err| CliError::unexpected(err.to_string()))?;
-    Ok(())
-}
-
-fn xlsx_sheet_part(file: &str, sheet_selector: &str) -> CliResult<String> {
-    let workbook = zip_text(file, "xl/workbook.xml")?;
-    let sheets = workbook_sheets(&workbook)?;
-    let sheet = resolve_sheet(&sheets, sheet_selector)?;
-    let rels = relationships(file, "xl/_rels/workbook.xml.rels")?;
-    let target = rels
-        .get(&sheet.rel_id)
-        .ok_or_else(|| CliError::unexpected(format!("missing relationship {}", sheet.rel_id)))?;
-    Ok(normalize_xl_target(target))
-}
-
-fn replace_cell_xml(xml: &str, cell: &str, value: &str) -> CliResult<String> {
-    let needle = format!("<c r=\"{cell}\"");
-    let start = xml
-        .find(&needle)
-        .ok_or_else(|| CliError::invalid_args(format!("cell not found: {cell}")))?;
-    let close = xml[start..]
-        .find("</c>")
-        .map(|offset| start + offset + "</c>".len())
-        .ok_or_else(|| CliError::unexpected(format!("cell has no closing tag: {cell}")))?;
-    let replacement = format!(
-        "<c r=\"{cell}\" t=\"inlineStr\"><is><t>{}</t></is></c>",
-        xml_escape(value)
-    );
-    let mut updated = String::with_capacity(xml.len() + replacement.len());
-    updated.push_str(&xml[..start]);
-    updated.push_str(&replacement);
-    updated.push_str(&xml[close..]);
-    Ok(updated)
-}
-
-fn xlsx_cell_set_readback(
-    file: &str,
-    cell: &str,
-    value: &str,
-    previous_type: &str,
-    previous_value: &Value,
-) -> Value {
-    json!({
-        "cellsExtractCommand": format!("ooxml --json xlsx cells extract {file} --sheet sheetId:1 --range {cell} --include-empty"),
-        "created": false,
-        "destination": {
-            "cols": 1,
-            "file": file,
-            "formulaCount": 0,
-            "formulas": [[null]],
-            "range": cell,
-            "rows": 1,
-            "sheet": "Sheet1",
-            "sheetNumber": 1,
-            "sheetPrimarySelector": "sheetId:1",
-            "sheetSelectors": xlsx_sheet_selectors("Sheet1", 1, 1, "rId1", "/xl/worksheets/sheet1.xml"),
-            "truncated": false,
-            "types": [["string"]],
-            "values": [[value]],
-        },
-        "dryRun": false,
-        "file": file,
-        "handle": format!("H:xlsx/ws:1/cell:a:{cell}"),
-        "output": file,
-        "previousType": previous_type,
-        "previousValue": previous_value,
-        "rangesExportCommand": format!("ooxml --json xlsx ranges export {file} --sheet sheetId:1 --range {cell} --include-types --include-formulas --include-formats"),
-        "ref": cell,
-        "sheet": "Sheet1",
-        "sheetNumber": 1,
-        "type": "string",
-        "validateCommand": format!("ooxml validate --strict {file}"),
-        "value": value,
-    })
 }
 
 fn xlsx_sheet_selectors(

@@ -14,21 +14,6 @@ pub(crate) struct XlsxRangeExportOptions<'a> {
     pub(crate) max_cells: i64,
 }
 
-pub(crate) fn xlsx_range_export(file: &str, sheet_selector: &str, range: &str) -> CliResult<Value> {
-    xlsx_range_export_with_options(
-        file,
-        sheet_selector,
-        range,
-        XlsxRangeExportOptions {
-            include_types: true,
-            include_formulas: false,
-            include_formats: false,
-            data_out: None,
-            max_cells: 100000,
-        },
-    )
-}
-
 pub(crate) fn xlsx_range_export_with_options(
     file: &str,
     sheet_selector: &str,
