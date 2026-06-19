@@ -4,7 +4,7 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
-use super::{PptxSlidePartRef, pptx_slide_part_refs};
+use super::slide_parts::{PptxSlidePartRef, pptx_slide_part_refs};
 use crate::{
     CliError, CliResult, attr, decode_xml_text, local_name, package_type, relationship_entries,
     relationships_part_for, resolve_relationship_target, selector_candidates, zip_entry_exists,

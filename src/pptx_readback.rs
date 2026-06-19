@@ -1,5 +1,8 @@
 mod comments;
+mod slide_parts;
+
 pub(crate) use comments::pptx_comments_list;
+use slide_parts::{PptxSlidePartRef, pptx_slide_part_refs};
 
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
@@ -412,33 +415,6 @@ pub(crate) fn pptx_extract_text(file: &str, args: &[String]) -> CliResult<Value>
         "file": file,
         "slides": values,
     }))
-}
-
-#[derive(Clone)]
-struct PptxSlidePartRef {
-    number: u32,
-    slide_id: u32,
-    part: String,
-}
-
-fn pptx_slide_part_refs(file: &str) -> CliResult<Vec<PptxSlidePartRef>> {
-    let presentation = zip_text(file, "ppt/presentation.xml")?;
-    let slides = pptx_slide_refs(&presentation);
-    let rels = relationships(file, "ppt/_rels/presentation.xml.rels")?;
-    slides
-        .iter()
-        .enumerate()
-        .map(|(index, (slide_id, rel_id))| {
-            let target = rels
-                .get(rel_id)
-                .ok_or_else(|| CliError::unexpected(format!("missing relationship {rel_id}")))?;
-            Ok(PptxSlidePartRef {
-                number: index as u32 + 1,
-                slide_id: *slide_id,
-                part: normalize_ppt_target(target),
-            })
-        })
-        .collect()
 }
 
 #[derive(Clone)]
