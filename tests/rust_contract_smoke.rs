@@ -99,6 +99,46 @@ fn assert_go_rust_match(args: &[&str]) {
     assert_eq!(rust_stdout, go_stdout, "stdout for {args:?}");
 }
 
+fn write_go_oracle_pptx_comment_fixture() -> PathBuf {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-comments-{}-{suffix}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&temp_dir).expect("comment fixture temp dir");
+    let out = temp_dir.join("commented.pptx");
+    let out_str = out.to_str().expect("comment fixture path");
+    let (code, stdout, stderr) = run_go_ooxml(&[
+        "--json",
+        "pptx",
+        "comments",
+        "add",
+        "testdata/pptx/title-content/presentation.pptx",
+        "--slide",
+        "1",
+        "--author",
+        "Alice",
+        "--initials",
+        "AB",
+        "--text",
+        "Fix the title",
+        "--date",
+        "2026-06-06T10:30:00Z",
+        "--out",
+        out_str,
+    ]);
+    assert_eq!(code, 0, "generate PPTX comment fixture exit");
+    assert_eq!(stderr, None, "generate PPTX comment fixture stderr");
+    assert_eq!(
+        stdout.expect("comment add stdout")["output"],
+        Value::String(out_str.to_string())
+    );
+    out
+}
+
 fn scrub_docx_dynamic_handles(value: Value) -> Value {
     match value {
         Value::Object(mut map) => {
@@ -9595,6 +9635,24 @@ fn serve_pptx_generic_web_agent_edit_path_works() {
         Value::String(String::new())
     );
 
+    let comments_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            38,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx comments list",
+                "args": {},
+            }),
+        ),
+    );
+    assert_eq!(
+        comments_response["result"]["slides"][0]["comments"],
+        Value::Array(Vec::new())
+    );
+
     let masters_list_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
@@ -10214,6 +10272,88 @@ fn web_smoke_binary_readback_checks_are_supported() {
         assert_go_rust_match(&args);
     }
 
+    let commented_pptx_path = write_go_oracle_pptx_comment_fixture();
+    let commented_pptx = commented_pptx_path
+        .to_str()
+        .expect("commented PPTX fixture path");
+    for args in [
+        vec![
+            "--json",
+            "pptx",
+            "comments",
+            "list",
+            "testdata/pptx/title-content/presentation.pptx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "comments",
+            "list",
+            "testdata/pptx/title-content/presentation.pptx",
+            "--slide",
+            "1",
+        ],
+        vec!["--json", "pptx", "comments", "list", commented_pptx],
+        vec![
+            "--json",
+            "pptx",
+            "comments",
+            "list",
+            commented_pptx,
+            "--slide",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "comments",
+            "list",
+            commented_pptx,
+            "--slide",
+            "1",
+            "--comment-id",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "comments",
+            "list",
+            commented_pptx,
+            "--slide",
+            "1",
+            "--comment-id",
+            "999",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "comments",
+            "list",
+            "testdata/pptx/title-content/presentation.pptx",
+            "--slide",
+            "999",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "comments",
+            "list",
+            "testdata/pptx/title-content/presentation.pptx",
+            "--comment-id",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "comments",
+            "list",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+    ] {
+        assert_go_rust_match(&args);
+    }
+
     for args in [
         vec![
             "--json",
@@ -10613,6 +10753,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx layouts list", false);
     assert_command(&all_caps, "ooxml pptx layouts show", false);
     assert_command(&all_caps, "ooxml pptx tables show", false);
+    assert_command(&all_caps, "ooxml pptx comments list", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx fields insert", true);
     assert_command(&all_caps, "ooxml docx fields set-result", true);
@@ -10671,6 +10812,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "image", "ooxml docx images list");
     assert_object_kind_command(&all_caps, "master", "ooxml pptx masters list");
     assert_object_kind_command(&all_caps, "master", "ooxml pptx masters show");
+    assert_object_kind_command(&all_caps, "comment", "ooxml pptx comments list");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments list");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments add");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments edit");
@@ -10697,6 +10839,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx extract text", false);
     assert_command(&pptx_caps, "ooxml pptx extract notes", false);
     assert_command(&pptx_caps, "ooxml pptx notes show", false);
+    assert_command(&pptx_caps, "ooxml pptx comments list", false);
     assert_command(&pptx_caps, "ooxml pptx replace text", true);
 
     let (package_code, package_stdout, package_stderr) =
@@ -10795,6 +10938,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(comment_code, 0);
     assert_eq!(comment_stderr, None);
     let comment_caps = comment_stdout.expect("comment capabilities");
+    assert_command(&comment_caps, "ooxml pptx comments list", false);
     assert_command(&comment_caps, "ooxml docx comments list", false);
     assert_command(&comment_caps, "ooxml docx comments add", true);
     assert_command(&comment_caps, "ooxml docx comments edit", true);
@@ -10906,10 +11050,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 62, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 63, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        228,
+        227,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
