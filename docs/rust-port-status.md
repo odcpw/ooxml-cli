@@ -65,6 +65,10 @@ Latest milestone, 2026-06-19:
 - XLSX defined-name model, list/show commands, selector resolution, handle
   parsing, JSON rendering, and readback-command helpers moved from `src/main.rs`
   into `src/xlsx_names.rs`.
+- XLSX table model, list/show/export commands, relationship scanning,
+  table-part parsing, selector resolution, table readback-command templates,
+  and XLSX-to-PPTX source command templates moved from `src/main.rs` into
+  `src/xlsx_tables.rs`.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
