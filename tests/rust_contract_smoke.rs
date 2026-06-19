@@ -2214,6 +2214,284 @@ fn docx_tables_show_matches_go_oracle() {
 }
 
 #[test]
+fn docx_tables_set_clear_cell_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-docx-tables-cell-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx tables cell temp dir");
+
+    let document = "testdata/docx/table/document.docx";
+    let (hash_code, hash_stdout, hash_stderr) =
+        run_go_ooxml(&["--json", "docx", "tables", "show", document, "--table", "1"]);
+    assert_eq!(hash_code, 0, "oracle table hash lookup exit");
+    assert_eq!(hash_stderr, None, "oracle table hash lookup stderr");
+    let table_hash = hash_stdout.expect("oracle table JSON")["tables"][0]["contentHash"]
+        .as_str()
+        .expect("table hash")
+        .to_string();
+
+    let go_set_out = temp_dir
+        .join("tables-set-cell-go.docx")
+        .to_string_lossy()
+        .to_string();
+    let rust_set_out = temp_dir
+        .join("tables-set-cell-rust.docx")
+        .to_string_lossy()
+        .to_string();
+    let go_set_args = [
+        "--json",
+        "docx",
+        "tables",
+        "set-cell",
+        document,
+        "--table",
+        "1",
+        "--row",
+        "1",
+        "--col",
+        "2",
+        "--expect-hash",
+        &table_hash,
+        "--text",
+        "Approved",
+        "--out",
+        &go_set_out,
+    ];
+    let rust_set_args = [
+        "--json",
+        "docx",
+        "tables",
+        "set-cell",
+        document,
+        "--table",
+        "1",
+        "--row",
+        "1",
+        "--col",
+        "2",
+        "--expect-hash",
+        &table_hash,
+        "--text",
+        "Approved",
+        "--out",
+        &rust_set_out,
+    ];
+    let (go_set_code, go_set_stdout, go_set_stderr) = run_go_ooxml(&go_set_args);
+    let (rust_set_code, rust_set_stdout, rust_set_stderr) = run_ooxml(&rust_set_args);
+    assert_eq!(rust_set_code, go_set_code, "set-cell exit");
+    assert_eq!(rust_set_stderr, go_set_stderr, "set-cell stderr");
+    let go_set_json = scrub_path(
+        go_set_stdout.expect("Go set-cell stdout"),
+        &go_set_out,
+        "[SET_OUT]",
+    );
+    let rust_set_json = scrub_path(
+        rust_set_stdout.expect("Rust set-cell stdout"),
+        &rust_set_out,
+        "[SET_OUT]",
+    );
+    assert_eq!(rust_set_json, go_set_json, "set-cell stdout");
+    assert_eq!(rust_set_json["text"], Value::String("Approved".to_string()));
+    assert_eq!(
+        rust_set_json["previousText"],
+        Value::String("B1".to_string())
+    );
+
+    let (set_validate_code, _set_validate_stdout, set_validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_set_out]);
+    assert_eq!(set_validate_code, 0, "set-cell validate exit");
+    assert_eq!(set_validate_stderr, None, "set-cell validate stderr");
+
+    let (go_set_read_code, go_set_read_stdout, go_set_read_stderr) = run_go_ooxml(&[
+        "--json",
+        "docx",
+        "tables",
+        "show",
+        &go_set_out,
+        "--table",
+        "1",
+    ]);
+    let (rust_set_read_code, rust_set_read_stdout, rust_set_read_stderr) = run_ooxml(&[
+        "--json",
+        "docx",
+        "tables",
+        "show",
+        &rust_set_out,
+        "--table",
+        "1",
+    ]);
+    assert_eq!(rust_set_read_code, go_set_read_code, "set readback exit");
+    assert_eq!(
+        rust_set_read_stderr, go_set_read_stderr,
+        "set readback stderr"
+    );
+    let go_set_table = scrub_path(
+        go_set_read_stdout.expect("Go set readback JSON")["tables"][0].clone(),
+        &go_set_out,
+        "[SET_OUT]",
+    );
+    let rust_set_table = scrub_path(
+        rust_set_read_stdout.expect("Rust set readback JSON")["tables"][0].clone(),
+        &rust_set_out,
+        "[SET_OUT]",
+    );
+    assert_eq!(rust_set_table, go_set_table, "set readback table");
+    assert_eq!(
+        rust_set_table["cells"][0][1],
+        Value::String("Approved".to_string())
+    );
+
+    let set_hash = rust_set_json["contentHash"]
+        .as_str()
+        .expect("set-cell content hash")
+        .to_string();
+    let go_clear_out = temp_dir
+        .join("tables-clear-cell-go.docx")
+        .to_string_lossy()
+        .to_string();
+    let rust_clear_out = temp_dir
+        .join("tables-clear-cell-rust.docx")
+        .to_string_lossy()
+        .to_string();
+    let go_clear_args = [
+        "--json",
+        "docx",
+        "tables",
+        "clear-cell",
+        &go_set_out,
+        "--table",
+        "1",
+        "--row",
+        "1",
+        "--col",
+        "2",
+        "--expect-hash",
+        &set_hash,
+        "--out",
+        &go_clear_out,
+    ];
+    let rust_clear_args = [
+        "--json",
+        "docx",
+        "tables",
+        "clear-cell",
+        &rust_set_out,
+        "--table",
+        "1",
+        "--row",
+        "1",
+        "--col",
+        "2",
+        "--expect-hash",
+        &set_hash,
+        "--out",
+        &rust_clear_out,
+    ];
+    let (go_clear_code, go_clear_stdout, go_clear_stderr) = run_go_ooxml(&go_clear_args);
+    let (rust_clear_code, rust_clear_stdout, rust_clear_stderr) = run_ooxml(&rust_clear_args);
+    assert_eq!(rust_clear_code, go_clear_code, "clear-cell exit");
+    assert_eq!(rust_clear_stderr, go_clear_stderr, "clear-cell stderr");
+    let go_clear_json = scrub_paths(
+        go_clear_stdout.expect("Go clear-cell stdout"),
+        &[(&go_set_out, "[SET_OUT]"), (&go_clear_out, "[CLEAR_OUT]")],
+    );
+    let rust_clear_json = scrub_paths(
+        rust_clear_stdout.expect("Rust clear-cell stdout"),
+        &[
+            (&rust_set_out, "[SET_OUT]"),
+            (&rust_clear_out, "[CLEAR_OUT]"),
+        ],
+    );
+    assert_eq!(rust_clear_json, go_clear_json, "clear-cell stdout");
+    assert_eq!(
+        rust_clear_json["previousText"],
+        Value::String("Approved".to_string())
+    );
+
+    let (clear_validate_code, _clear_validate_stdout, clear_validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_clear_out]);
+    assert_eq!(clear_validate_code, 0, "clear-cell validate exit");
+    assert_eq!(clear_validate_stderr, None, "clear-cell validate stderr");
+
+    let (go_clear_read_code, go_clear_read_stdout, go_clear_read_stderr) = run_go_ooxml(&[
+        "--json",
+        "docx",
+        "tables",
+        "show",
+        &go_clear_out,
+        "--table",
+        "1",
+    ]);
+    let (rust_clear_read_code, rust_clear_read_stdout, rust_clear_read_stderr) = run_ooxml(&[
+        "--json",
+        "docx",
+        "tables",
+        "show",
+        &rust_clear_out,
+        "--table",
+        "1",
+    ]);
+    assert_eq!(
+        rust_clear_read_code, go_clear_read_code,
+        "clear readback exit"
+    );
+    assert_eq!(
+        rust_clear_read_stderr, go_clear_read_stderr,
+        "clear readback stderr"
+    );
+    let go_clear_table = scrub_path(
+        go_clear_read_stdout.expect("Go clear readback JSON")["tables"][0].clone(),
+        &go_clear_out,
+        "[CLEAR_OUT]",
+    );
+    let rust_clear_table = scrub_path(
+        rust_clear_read_stdout.expect("Rust clear readback JSON")["tables"][0].clone(),
+        &rust_clear_out,
+        "[CLEAR_OUT]",
+    );
+    assert_eq!(rust_clear_table, go_clear_table, "clear readback table");
+    assert_eq!(
+        rust_clear_table["cells"][0][1],
+        Value::String(String::new())
+    );
+
+    let dry_args = [
+        "--json",
+        "docx",
+        "tables",
+        "set-cell",
+        document,
+        "--table",
+        "1",
+        "--row",
+        "1",
+        "--col",
+        "1",
+        "--expect-hash",
+        &table_hash,
+        "--text",
+        "",
+        "--dry-run",
+    ];
+    let (go_dry_code, go_dry_stdout, go_dry_stderr) = run_go_ooxml(&dry_args);
+    let (rust_dry_code, rust_dry_stdout, rust_dry_stderr) = run_ooxml(&dry_args);
+    assert_eq!(rust_dry_code, go_dry_code, "set-cell dry-run exit");
+    assert_eq!(rust_dry_stderr, go_dry_stderr, "set-cell dry-run stderr");
+    let dry_json = rust_dry_stdout.expect("Rust set-cell dry-run stdout");
+    assert_eq!(
+        dry_json,
+        go_dry_stdout.expect("Go set-cell dry-run stdout"),
+        "set-cell dry-run stdout"
+    );
+    assert_eq!(dry_json["dryRun"], Value::Bool(true));
+    assert!(dry_json.get("output").is_none(), "dry-run omits output");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_paragraphs_append_matches_go_oracle() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-docx-paragraphs-{}", std::process::id()));
@@ -6326,6 +6604,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx footers show", false);
     assert_command(&all_caps, "ooxml docx images list", false);
     assert_command(&all_caps, "ooxml docx tables show", false);
+    assert_command(&all_caps, "ooxml docx tables set-cell", false);
+    assert_command(&all_caps, "ooxml docx tables clear-cell", false);
     assert_command(&all_caps, "ooxml docx blocks replace", false);
     assert_command(&all_caps, "ooxml docx blocks delete", false);
     assert_command(&all_caps, "ooxml docx blocks insert-after", false);
@@ -6376,6 +6656,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml xlsx tables list", false);
     assert_command(&table_caps, "ooxml xlsx tables show", false);
     assert_command(&table_caps, "ooxml xlsx tables export", false);
+    assert_command(&table_caps, "ooxml docx tables set-cell", false);
+    assert_command(&table_caps, "ooxml docx tables clear-cell", false);
     assert_command(&table_caps, "ooxml docx blocks delete", false);
     assert_no_command(&table_caps, "ooxml docx blocks");
     assert_no_command(&table_caps, "ooxml docx tables show");
@@ -6456,6 +6738,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx footers show", false);
     assert_command(&docx_caps, "ooxml docx images list", false);
     assert_command(&docx_caps, "ooxml docx tables show", false);
+    assert_command(&docx_caps, "ooxml docx tables set-cell", false);
+    assert_command(&docx_caps, "ooxml docx tables clear-cell", false);
     assert_command(&docx_caps, "ooxml docx blocks replace", false);
     assert_command(&docx_caps, "ooxml docx blocks delete", false);
     assert_command(&docx_caps, "ooxml docx blocks insert-after", false);
@@ -6480,10 +6764,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 43, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 45, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        247,
+        245,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

@@ -849,6 +849,111 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             docx_tables_show(file, table as usize, include_details)
         }
         [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "tables" && verb == "set-cell" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--table",
+                    "--row",
+                    "--col",
+                    "--expect-hash",
+                    "--text",
+                    "--text-file",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let table = parse_i64_flag(rest, "--table")?.unwrap_or(0);
+            let row = parse_i64_flag(rest, "--row")?.unwrap_or(0);
+            let col = parse_i64_flag(rest, "--col")?.unwrap_or(0);
+            validate_positive_i64(table, "--table")?;
+            validate_positive_i64(row, "--row")?;
+            validate_positive_i64(col, "--col")?;
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            require_docx_block_hash(&expect_hash)?;
+            let text_changed = flag_present(rest, "--text");
+            let text_file_changed = flag_present(rest, "--text-file");
+            let text = parse_string_flag(rest, "--text")?;
+            let text_file = parse_string_flag(rest, "--text-file")?;
+            let text = resolve_required_docx_table_text(
+                text.as_deref(),
+                text_file.as_deref(),
+                text_changed,
+                text_file_changed,
+            )?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_tables_set_cell(
+                file,
+                table as usize,
+                row as usize,
+                col as usize,
+                &expect_hash,
+                &text,
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "tables" && verb == "clear-cell" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--table",
+                    "--row",
+                    "--col",
+                    "--expect-hash",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let table = parse_i64_flag(rest, "--table")?.unwrap_or(0);
+            let row = parse_i64_flag(rest, "--row")?.unwrap_or(0);
+            let col = parse_i64_flag(rest, "--col")?.unwrap_or(0);
+            validate_positive_i64(table, "--table")?;
+            validate_positive_i64(row, "--row")?;
+            validate_positive_i64(col, "--col")?;
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            require_docx_block_hash(&expect_hash)?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_tables_clear_cell(
+                file,
+                table as usize,
+                row as usize,
+                col as usize,
+                &expect_hash,
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && group == "paragraphs" && verb == "append" =>
         {
             reject_unknown_flags(
@@ -2562,6 +2667,81 @@ fn capability_commands() -> Vec<Value> {
                 ),
             ],
         ),
+        capability_command(
+            "ooxml docx tables set-cell",
+            "set-cell <file>",
+            "Set one main-document DOCX table cell's plain text.",
+            &["table"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag("--table", "table", "int", "1-based table number"),
+                flag("--row", "row", "int", "1-based table row"),
+                flag("--col", "col", "int", "1-based table column"),
+                flag(
+                    "--expect-hash",
+                    "expectHash",
+                    "string",
+                    "expected sha256: table block hash from docx tables show or docx blocks",
+                ),
+                flag("--text", "text", "string", "replacement cell text"),
+                flag(
+                    "--text-file",
+                    "textFile",
+                    "string",
+                    "path to replacement cell text",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml docx tables clear-cell",
+            "clear-cell <file>",
+            "Clear one main-document DOCX table cell's text.",
+            &["table"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag("--table", "table", "int", "1-based table number"),
+                flag("--row", "row", "int", "1-based table row"),
+                flag("--col", "col", "int", "1-based table column"),
+                flag(
+                    "--expect-hash",
+                    "expectHash",
+                    "string",
+                    "expected sha256: table block hash from docx tables show or docx blocks",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
+        ),
     ]
 }
 
@@ -2614,6 +2794,13 @@ fn parse_i64_flag(args: &[String], name: &str) -> CliResult<Option<i64>> {
                 .map_err(|_| CliError::invalid_args(format!("{name} must be an integer")))
         })
         .transpose()
+}
+
+fn validate_positive_i64(value: i64, name: &str) -> CliResult<()> {
+    if value < 1 {
+        return Err(CliError::invalid_args(format!("{name} must be >= 1")));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -9692,6 +9879,377 @@ fn docx_tables_show(file: &str, table: usize, include_details: bool) -> CliResul
         },
     );
     Ok(Value::Object(result))
+}
+
+fn docx_tables_set_cell(
+    file: &str,
+    table: usize,
+    row: usize,
+    col: usize,
+    expected_hash: &str,
+    text: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let mutation = docx_table_cell_text_mutation(file, table, row, col, expected_hash, text)?;
+    let output_path = docx_mutation_output_path_for_result(file, &options);
+    write_docx_mutation_output(file, &mutation.document_part, &mutation.xml, options)?;
+
+    let mut result = docx_table_cell_mutation_result(file, table, row, col, &mutation, output_path);
+    result.insert("text".to_string(), json!(text));
+    Ok(Value::Object(result))
+}
+
+fn docx_tables_clear_cell(
+    file: &str,
+    table: usize,
+    row: usize,
+    col: usize,
+    expected_hash: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let mutation = docx_table_cell_text_mutation(file, table, row, col, expected_hash, "")?;
+    let output_path = docx_mutation_output_path_for_result(file, &options);
+    write_docx_mutation_output(file, &mutation.document_part, &mutation.xml, options)?;
+
+    Ok(Value::Object(docx_table_cell_mutation_result(
+        file,
+        table,
+        row,
+        col,
+        &mutation,
+        output_path,
+    )))
+}
+
+struct DocxTableCellMutation {
+    document_part: String,
+    xml: String,
+    block: usize,
+    content_hash: String,
+    previous_hash: String,
+    previous_text: String,
+    flattened: bool,
+}
+
+fn docx_table_cell_text_mutation(
+    file: &str,
+    table: usize,
+    row: usize,
+    col: usize,
+    expected_hash: &str,
+    text: &str,
+) -> CliResult<DocxTableCellMutation> {
+    let entries = zip_entry_names(file)?;
+    ensure_docx_package_kind(file, &entries)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let xml = zip_text(file, &document_part)?;
+    let reports = docx_rich_block_reports(&xml, false).map_err(|err| {
+        CliError::unexpected(format!("failed to read main document: {}", err.message))
+    })?;
+
+    let mut table_seen = 0usize;
+    let mut selected_block = 0usize;
+    let mut previous_hash = String::new();
+    let mut previous_text = String::new();
+    for report in reports.iter().filter(|report| report.kind == "table") {
+        table_seen += 1;
+        if table_seen != table {
+            continue;
+        }
+        selected_block = report.index;
+        previous_hash = report.content_hash.clone();
+        if previous_hash != expected_hash {
+            return Err(CliError::invalid_args(format!(
+                "block hash mismatch: block {selected_block} expected {expected_hash} but found {previous_hash}"
+            )));
+        }
+        previous_text = report
+            .table_rows
+            .get(row - 1)
+            .and_then(|cells| cells.get(col - 1))
+            .cloned()
+            .ok_or_else(|| {
+                CliError::target_not_found(format!(
+                    "target not found: table {table} cell R{row}C{col}"
+                ))
+            })?;
+        break;
+    }
+    if selected_block == 0 {
+        return Err(CliError::target_not_found(format!(
+            "target not found: table {table}"
+        )));
+    }
+
+    let body_tag = docx_body_tag(&xml)?;
+    let ranges = docx_body_block_ranges(&xml, &body_tag)?;
+    let table_range = ranges
+        .get(selected_block - 1)
+        .filter(|range| range.kind == "tbl")
+        .ok_or_else(|| CliError::unexpected("selected table block readback missing"))?;
+    let table_fragment =
+        ensure_docx_table_scaffold_fragment(&xml[table_range.start..table_range.end])?;
+    let (updated_table, flattened) =
+        set_docx_table_cell_text_fragment(&table_fragment, row, col, text)?;
+
+    let mut updated_xml = String::with_capacity(xml.len() + updated_table.len());
+    updated_xml.push_str(&xml[..table_range.start]);
+    updated_xml.push_str(&updated_table);
+    updated_xml.push_str(&xml[table_range.end..]);
+
+    let updated_report = docx_rich_block_reports(&updated_xml, false)
+        .map_err(|err| {
+            CliError::unexpected(format!("failed to read main document: {}", err.message))
+        })?
+        .into_iter()
+        .find(|report| report.index == selected_block && report.kind == "table")
+        .ok_or_else(|| CliError::unexpected("updated table readback missing"))?;
+
+    Ok(DocxTableCellMutation {
+        document_part,
+        xml: updated_xml,
+        block: selected_block,
+        content_hash: updated_report.content_hash,
+        previous_hash,
+        previous_text,
+        flattened,
+    })
+}
+
+fn docx_table_cell_mutation_result(
+    file: &str,
+    table: usize,
+    row: usize,
+    col: usize,
+    mutation: &DocxTableCellMutation,
+    output_path: Option<String>,
+) -> Map<String, Value> {
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("table".to_string(), json!(table));
+    result.insert("block".to_string(), json!(mutation.block));
+    result.insert("row".to_string(), json!(row));
+    result.insert("col".to_string(), json!(col));
+    result.insert("contentHash".to_string(), json!(mutation.content_hash));
+    result.insert("previousHash".to_string(), json!(mutation.previous_hash));
+    result.insert("previousText".to_string(), json!(mutation.previous_text));
+    result.insert("flattened".to_string(), json!(mutation.flattened));
+    if let Some(output) = output_path.as_deref() {
+        result.insert("output".to_string(), json!(output));
+    }
+    result.insert("dryRun".to_string(), json!(output_path.is_none()));
+    add_docx_table_readback_commands(&mut result, output_path.as_deref(), table);
+    result
+}
+
+fn docx_mutation_output_path_for_result(
+    file: &str,
+    options: &DocxParagraphMutationOptions<'_>,
+) -> Option<String> {
+    if options.dry_run {
+        None
+    } else if options.in_place {
+        Some(file.to_string())
+    } else {
+        options
+            .out
+            .filter(|value| !value.trim().is_empty())
+            .map(ToString::to_string)
+    }
+}
+
+fn add_docx_table_readback_commands(
+    result: &mut Map<String, Value>,
+    output_path: Option<&str>,
+    table: usize,
+) {
+    let target = output_path.unwrap_or("<out.pptx>");
+    let validate = format!("ooxml validate --strict {target}");
+    let show = format!(
+        "ooxml --json docx tables show {} --table {}",
+        command_arg(target),
+        table
+    );
+    let list = format!("ooxml --json docx tables show {}", command_arg(target));
+    if output_path.is_some() {
+        result.insert("validateCommand".to_string(), json!(validate));
+        result.insert("tablesShowCommand".to_string(), json!(show));
+        result.insert("tablesListCommand".to_string(), json!(list));
+    } else {
+        result.insert("validateCommandTemplate".to_string(), json!(validate));
+        result.insert("tablesShowCommandTemplate".to_string(), json!(show));
+        result.insert("tablesListCommandTemplate".to_string(), json!(list));
+    }
+}
+
+fn set_docx_table_cell_text_fragment(
+    table_fragment: &str,
+    row: usize,
+    col: usize,
+    text: &str,
+) -> CliResult<(String, bool)> {
+    let (open_end, _tag_name, close_start, self_closing) = xml_fragment_bounds(table_fragment)?;
+    if self_closing {
+        return Err(CliError::target_not_found(format!(
+            "target not found: table cell R{row}C{col}"
+        )));
+    }
+    let rows: Vec<XmlNamedRange> =
+        xml_direct_child_ranges(table_fragment, open_end + 1, close_start)?
+            .into_iter()
+            .filter(|child| child.kind == "tr")
+            .collect();
+    let row_range = rows.get(row - 1).ok_or_else(|| {
+        CliError::target_not_found(format!("target not found: table cell R{row}C{col}"))
+    })?;
+    let row_fragment = &table_fragment[row_range.start..row_range.end];
+    let (row_open_end, _row_tag_name, row_close_start, row_self_closing) =
+        xml_fragment_bounds(row_fragment)?;
+    if row_self_closing {
+        return Err(CliError::target_not_found(format!(
+            "target not found: table cell R{row}C{col}"
+        )));
+    }
+    let cells: Vec<XmlNamedRange> =
+        xml_direct_child_ranges(row_fragment, row_open_end + 1, row_close_start)?
+            .into_iter()
+            .filter(|child| child.kind == "tc")
+            .collect();
+    let cell_range = cells.get(col - 1).ok_or_else(|| {
+        CliError::target_not_found(format!("target not found: table cell R{row}C{col}"))
+    })?;
+    let cell_fragment = &row_fragment[cell_range.start..cell_range.end];
+    let (updated_cell, flattened) = set_docx_table_cell_fragment(cell_fragment, text)?;
+
+    let mut updated_row = String::with_capacity(row_fragment.len() + updated_cell.len());
+    updated_row.push_str(&row_fragment[..cell_range.start]);
+    updated_row.push_str(&updated_cell);
+    updated_row.push_str(&row_fragment[cell_range.end..]);
+
+    let mut updated_table = String::with_capacity(table_fragment.len() + updated_row.len());
+    updated_table.push_str(&table_fragment[..row_range.start]);
+    updated_table.push_str(&updated_row);
+    updated_table.push_str(&table_fragment[row_range.end..]);
+    Ok((updated_table, flattened))
+}
+
+fn set_docx_table_cell_fragment(cell_fragment: &str, text: &str) -> CliResult<(String, bool)> {
+    let (open_end, tag_name, close_start, self_closing) = xml_fragment_bounds(cell_fragment)?;
+    let start_tag = &cell_fragment[..=open_end];
+    let prefix = xml_tag_prefix(&tag_name);
+    let children = if self_closing {
+        Vec::new()
+    } else {
+        xml_direct_child_ranges(cell_fragment, open_end + 1, close_start)?
+    };
+    let paragraphs: Vec<&XmlNamedRange> =
+        children.iter().filter(|child| child.kind == "p").collect();
+    let mut flattened = paragraphs.len() > 1;
+    for child in &children {
+        if child.kind != "tcPr" && (child.kind != "p" || paragraphs.len() > 1) {
+            flattened = true;
+        }
+    }
+
+    let mut paragraph_properties = String::new();
+    let mut run_properties = String::new();
+    if let Some(first_paragraph) = paragraphs.first() {
+        let paragraph_fragment = &cell_fragment[first_paragraph.start..first_paragraph.end];
+        if let Some(p_pr) = first_direct_xml_child_by_kind(paragraph_fragment, "pPr")? {
+            paragraph_properties = p_pr;
+        }
+        run_properties = first_docx_run_properties_in_paragraph_fragment(paragraph_fragment)?;
+    }
+
+    let mut out = xml_open_tag_from_start(start_tag);
+    for child in children.iter().filter(|child| child.kind == "tcPr") {
+        out.push_str(&cell_fragment[child.start..child.end]);
+    }
+    out.push_str(&render_docx_cell_paragraph(
+        &prefix,
+        text,
+        &paragraph_properties,
+        &run_properties,
+    ));
+    out.push_str("</");
+    out.push_str(&tag_name);
+    out.push('>');
+    Ok((out, flattened))
+}
+
+fn first_docx_run_properties_in_paragraph_fragment(fragment: &str) -> CliResult<String> {
+    let (open_end, _tag_name, close_start, self_closing) = xml_fragment_bounds(fragment)?;
+    if self_closing {
+        return Ok(String::new());
+    }
+    for child in xml_direct_child_ranges(fragment, open_end + 1, close_start)? {
+        if child.kind == "r" {
+            return first_direct_xml_child_by_kind(&fragment[child.start..child.end], "rPr")
+                .map(|value| value.unwrap_or_default());
+        }
+    }
+    Ok(String::new())
+}
+
+fn render_docx_cell_paragraph(
+    prefix: &str,
+    text: &str,
+    paragraph_properties: &str,
+    run_properties: &str,
+) -> String {
+    let p = word_xml_tag(prefix, "p");
+    let mut paragraph = String::new();
+    paragraph.push('<');
+    paragraph.push_str(&p);
+    paragraph.push('>');
+    paragraph.push_str(paragraph_properties);
+    if !text.is_empty() {
+        let r = word_xml_tag(prefix, "r");
+        paragraph.push('<');
+        paragraph.push_str(&r);
+        paragraph.push('>');
+        paragraph.push_str(run_properties);
+        append_docx_text_children(&mut paragraph, prefix, text);
+        paragraph.push_str("</");
+        paragraph.push_str(&r);
+        paragraph.push('>');
+    }
+    paragraph.push_str("</");
+    paragraph.push_str(&p);
+    paragraph.push('>');
+    paragraph
+}
+
+fn resolve_required_docx_table_text(
+    text: Option<&str>,
+    text_file: Option<&str>,
+    text_changed: bool,
+    text_file_changed: bool,
+) -> CliResult<String> {
+    if text_changed == text_file_changed {
+        return Err(CliError::invalid_args(
+            "must specify exactly one of --text or --text-file",
+        ));
+    }
+    if text_changed {
+        return Ok(text.unwrap_or_default().to_string());
+    }
+    let path = text_file.unwrap_or_default();
+    fs::read(path)
+        .map(|data| String::from_utf8_lossy(&data).to_string())
+        .map_err(|_| CliError::file_not_found(format!("file not found: {path}")))
 }
 
 struct DocxParagraphMutationOptions<'a> {

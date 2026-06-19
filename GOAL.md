@@ -57,6 +57,8 @@ crates and document why.
   Go-vs-Rust parity checks for the command being ported. We are not changing Go
   in normal Rust port slices, so reserve full Go tests for milestone gates or
   when Go code, frozen contracts, or shared oracle assumptions change.
+- In regular Rust port work, do not run `go test ./...`; run the Go CLI only as
+  the comparison oracle for the exact command path under port.
 - Port by command surface, not vague module mirroring.
 - Every implemented Rust surface must be compared against Go for stdout, stderr,
   exit code, JSON shape, mutation result, validation result, and any relevant
