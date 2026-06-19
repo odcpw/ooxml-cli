@@ -49,6 +49,9 @@ Latest milestone, 2026-06-19:
 - OOXML package kind detection and DOCX/XLSX part-classification helpers moved
   from `src/main.rs` into `src/package_discovery.rs`, giving inspect,
   validation, and document-family commands a shared discovery layer.
+- The `inspect` command and its DOCX/XLSX/PPTX summary helpers moved from
+  `src/main.rs` into `src/inspect.rs`, separating package summary reporting from
+  the remaining command-family implementations.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
