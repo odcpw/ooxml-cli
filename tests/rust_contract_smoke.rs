@@ -8412,6 +8412,240 @@ fn serve_op_supports_docx_blocks_editing() {
 }
 
 #[test]
+fn serve_op_supports_docx_paragraph_editing() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-docx-paragraphs-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.docx");
+    let output = temp_dir.join("serve-docx-paragraphs-out.docx");
+    fs::copy("testdata/docx/styled-headings/document.docx", &input).expect("stage docx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({"file": input_str, "out": output_str}),
+        ),
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let append_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            2,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx paragraphs append",
+                "args": {"text": "Serve appended paragraph", "style": "Heading1"},
+            }),
+        ),
+    );
+    assert!(
+        append_response.get("error").is_none(),
+        "docx paragraphs append op failed: {append_response:?}"
+    );
+    assert_eq!(
+        append_response["result"]["readback"]["text"],
+        Value::String("Serve appended paragraph".to_string())
+    );
+
+    let insert_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            3,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx paragraphs insert",
+                "args": {"insertAfter": 0, "text": "Serve prepended paragraph"},
+            }),
+        ),
+    );
+    assert!(
+        insert_response.get("error").is_none(),
+        "docx paragraphs insert op failed: {insert_response:?}"
+    );
+    assert_eq!(
+        insert_response["result"]["readback"]["index"],
+        Value::from(1)
+    );
+    assert_eq!(
+        insert_response["result"]["readback"]["text"],
+        Value::String("Serve prepended paragraph".to_string())
+    );
+
+    let set_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            4,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx paragraphs set",
+                "args": {"index": 2, "text": "Serve updated heading"},
+            }),
+        ),
+    );
+    assert!(
+        set_response.get("error").is_none(),
+        "docx paragraphs set op failed: {set_response:?}"
+    );
+    assert_eq!(
+        set_response["result"]["readback"]["previousText"],
+        Value::String("Heading Text".to_string())
+    );
+    assert_eq!(
+        set_response["result"]["readback"]["text"],
+        Value::String("Serve updated heading".to_string())
+    );
+    let handle = set_response["result"]["readback"]["handle"]
+        .as_str()
+        .expect("paragraph handle")
+        .to_string();
+
+    let clear_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            5,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx paragraphs clear",
+                "args": {"handle": handle},
+            }),
+        ),
+    );
+    assert!(
+        clear_response.get("error").is_none(),
+        "docx paragraphs clear op failed: {clear_response:?}"
+    );
+    assert_eq!(
+        clear_response["result"]["readback"]["previousText"],
+        Value::String("Serve updated heading".to_string())
+    );
+
+    let inspect_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            6,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "docx blocks",
+                "args": {},
+            }),
+        ),
+    );
+    assert!(
+        inspect_response.get("error").is_none(),
+        "docx paragraphs blocks inspect failed: {inspect_response:?}"
+    );
+    let session_blocks = inspect_response["result"]["blocks"]
+        .as_array()
+        .expect("session docx blocks");
+    assert_eq!(
+        session_blocks[0]["text"],
+        Value::String("Serve prepended paragraph".to_string())
+    );
+    assert_eq!(session_blocks[1]["text"], Value::String(String::new()));
+    assert_eq!(
+        session_blocks[3]["text"],
+        Value::String("Serve appended paragraph".to_string())
+    );
+
+    let plan_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(7, "plan", serde_json::json!({"session": session})),
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][1],
+        Value::String("paragraphs".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][2],
+        Value::String("append".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][1]["argv"][2],
+        Value::String("insert".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][2]["argv"][2],
+        Value::String("set".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][3]["argv"][2],
+        Value::String("clear".to_string())
+    );
+
+    let commit_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(8, "commit", serde_json::json!({"session": session})),
+    );
+    assert!(
+        commit_response.get("error").is_none(),
+        "docx paragraphs commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "docx paragraphs serve validate exit");
+    assert_eq!(
+        validate_stderr, None,
+        "docx paragraphs serve validate stderr"
+    );
+
+    let (text_code, text_stdout, text_stderr) = run_ooxml(&["--json", "docx", "text", &output_str]);
+    assert_eq!(text_code, 0, "docx paragraphs output readback exit");
+    assert_eq!(text_stderr, None, "docx paragraphs output readback stderr");
+    let output_text = text_stdout.expect("docx paragraphs output text");
+    let output_blocks = output_text["blocks"].as_array().expect("output blocks");
+    assert_eq!(
+        output_blocks[0]["text"],
+        Value::String("Serve prepended paragraph".to_string())
+    );
+    assert_eq!(output_blocks[1]["text"], Value::String(String::new()));
+    assert_eq!(
+        output_blocks[3]["text"],
+        Value::String("Serve appended paragraph".to_string())
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_op_supports_docx_tables_editing() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-docx-tables-{}",
@@ -9531,6 +9765,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx blocks replace", true);
     assert_command(&all_caps, "ooxml docx blocks delete", true);
     assert_command(&all_caps, "ooxml docx blocks insert-after", true);
+    assert_command(&all_caps, "ooxml docx paragraphs append", true);
+    assert_command(&all_caps, "ooxml docx paragraphs insert", true);
+    assert_command(&all_caps, "ooxml docx paragraphs set", true);
+    assert_command(&all_caps, "ooxml docx paragraphs clear", true);
     assert_command(&all_caps, "ooxml docx comments list", false);
     assert_command(&all_caps, "ooxml docx comments add", true);
     assert_command(&all_caps, "ooxml docx comments edit", true);
@@ -9549,6 +9787,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "field", "ooxml docx fields list");
     assert_object_kind_command(&all_caps, "field", "ooxml docx fields insert");
     assert_object_kind_command(&all_caps, "field", "ooxml docx fields set-result");
+    assert_object_kind_command(&all_caps, "paragraph", "ooxml docx paragraphs append");
+    assert_object_kind_command(&all_caps, "paragraph", "ooxml docx paragraphs insert");
+    assert_object_kind_command(&all_caps, "paragraph", "ooxml docx paragraphs set");
+    assert_object_kind_command(&all_caps, "paragraph", "ooxml docx paragraphs clear");
     assert_object_kind_command(&all_caps, "header", "ooxml docx headers set-text");
     assert_object_kind_command(&all_caps, "footer", "ooxml docx footers set-text");
     assert_object_kind_command(&all_caps, "image", "ooxml docx images list");
@@ -9619,8 +9861,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&paragraph_caps, "ooxml docx blocks replace", true);
     assert_command(&paragraph_caps, "ooxml docx blocks delete", true);
     assert_command(&paragraph_caps, "ooxml docx blocks insert-after", true);
-    assert_command(&paragraph_caps, "ooxml docx paragraphs append", false);
-    assert_command(&paragraph_caps, "ooxml docx paragraphs insert", false);
+    assert_command(&paragraph_caps, "ooxml docx paragraphs append", true);
+    assert_command(&paragraph_caps, "ooxml docx paragraphs insert", true);
+    assert_command(&paragraph_caps, "ooxml docx paragraphs set", true);
+    assert_command(&paragraph_caps, "ooxml docx paragraphs clear", true);
     assert_no_command(&paragraph_caps, "ooxml docx blocks");
 
     let (style_code, style_stdout, style_stderr) =
@@ -9700,8 +9944,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx blocks replace", true);
     assert_command(&docx_caps, "ooxml docx blocks delete", true);
     assert_command(&docx_caps, "ooxml docx blocks insert-after", true);
-    assert_command(&docx_caps, "ooxml docx paragraphs append", false);
-    assert_command(&docx_caps, "ooxml docx paragraphs insert", false);
+    assert_command(&docx_caps, "ooxml docx paragraphs append", true);
+    assert_command(&docx_caps, "ooxml docx paragraphs insert", true);
+    assert_command(&docx_caps, "ooxml docx paragraphs set", true);
+    assert_command(&docx_caps, "ooxml docx paragraphs clear", true);
     assert_command(&docx_caps, "ooxml docx styles apply", false);
     assert_command(&docx_caps, "ooxml docx comments list", false);
     assert_command(&docx_caps, "ooxml docx comments add", true);

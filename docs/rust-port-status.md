@@ -66,12 +66,14 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json docx paragraphs append <docx>` with Go-oracle comparison for direct
   CLI paragraph append mutation, optional paragraph style, strict validation,
   DOCX text readback, dry-run non-mutation, output-flag validation, text/text-file
-  conflict rejection, and unsupported package-type rejection
+  conflict rejection, unsupported package-type rejection, and serve
+  operation/readback routing
 - `--json docx paragraphs insert <docx>` with Go-oracle comparison for direct
   CLI paragraph insertion at the document start and after table blocks, text-file
   input, strict validation, DOCX text readback, dry-run non-mutation, bad index
   and missing-target errors, output-flag validation, text/text-file conflict
-  rejection, and unsupported package-type rejection
+  rejection, unsupported package-type rejection, and serve operation/readback
+  routing
 - `--json docx paragraphs set <docx>` and
   `--json docx paragraphs clear <docx>` with Go-oracle comparison for direct CLI
   paragraph replacement/clearing, style preservation, first-run property
@@ -80,7 +82,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   survival after insertion, stale/ambiguous/wrong-format handle errors,
   table-target rejection, missing-target errors, output-flag validation,
   required/non-empty replacement text validation, and unsupported package-type
-  rejection
+  rejection, plus serve operation/readback routing
 - `--json docx styles list <docx>` and `--json docx styles show <docx>` with
   Go-oracle comparison for style catalog enumeration, style-type filtering,
   nullable missing-styles-part behavior, style handles, found/not-found style

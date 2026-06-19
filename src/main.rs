@@ -2732,8 +2732,8 @@ fn capability_commands() -> Vec<Value> {
             "append <file>",
             "Append a main document body paragraph, preserving trailing section properties.",
             &["paragraph"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--text", "text", "string", "paragraph text"),
                 flag(
@@ -2765,8 +2765,8 @@ fn capability_commands() -> Vec<Value> {
             "insert <file>",
             "Insert a main document body paragraph after a body block index.",
             &["paragraph"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag(
                     "--insert-after",
@@ -2804,8 +2804,8 @@ fn capability_commands() -> Vec<Value> {
             "set <file>",
             "Replace one main document body paragraph's plain text.",
             &["paragraph"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--index", "index", "int", "1-based body block index"),
                 flag(
@@ -2843,8 +2843,8 @@ fn capability_commands() -> Vec<Value> {
             "clear <file>",
             "Clear one main document body paragraph's text while retaining paragraph metadata.",
             &["paragraph"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--index", "index", "int", "1-based body block index"),
                 flag(
@@ -17880,6 +17880,12 @@ enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    DocxParagraphsOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
     DocxTablesOp {
         command: String,
         plan_flags: Vec<Value>,
@@ -17920,6 +17926,7 @@ impl ServeOp {
             | ServeOp::DocxHeaderFooterSetText { command, .. }
             | ServeOp::DocxFieldsOp { command, .. }
             | ServeOp::DocxBlocksOp { command, .. }
+            | ServeOp::DocxParagraphsOp { command, .. }
             | ServeOp::DocxTablesOp { command, .. }
             | ServeOp::DocxCommentsOp { command, .. } => command,
         }
@@ -18136,6 +18143,27 @@ impl ServeOp {
                 ]);
                 Value::Array(argv)
             }
+            ServeOp::DocxParagraphsOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command.split_whitespace().nth(2).unwrap_or("append");
+                let mut argv = vec![
+                    json!("docx"),
+                    json!("paragraphs"),
+                    json!(verb),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
             ServeOp::DocxTablesOp {
                 command,
                 plan_flags,
@@ -18248,6 +18276,11 @@ impl ServeOp {
                 ..
             }
             | ServeOp::DocxCommentsOp {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::DocxParagraphsOp {
                 readback_file,
                 readback,
                 ..
@@ -18768,6 +18801,191 @@ impl ServeState {
                     (!expect_hash.is_empty()).then_some(expect_hash.as_str()),
                 );
                 ServeOp::DocxFieldsOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
+            "docx paragraphs append" => {
+                let text = json_optional_string(args, "text");
+                let text_file = json_optional_string(args, "text-file")
+                    .or_else(|| json_optional_string(args, "textFile"));
+                let style = json_optional_string(args, "style").unwrap_or_default();
+                let readback = docx_paragraphs_append(
+                    &session.working,
+                    DocxParagraphMutationOptions {
+                        text: text.as_deref(),
+                        text_file: text_file.as_deref(),
+                        style: &style,
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
+                push_serve_plan_string_flag(&mut plan_flags, "--text-file", text_file.as_deref());
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--style",
+                    (!style.is_empty()).then_some(style.as_str()),
+                );
+                ServeOp::DocxParagraphsOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
+            "docx paragraphs insert" => {
+                let insert_after = match json_i64(args, "insert-after")? {
+                    Some(value) => value,
+                    None => json_i64(args, "insertAfter")?.unwrap_or(0),
+                };
+                if insert_after < 0 {
+                    return Err(CliError::invalid_args("--insert-after must be >= 0"));
+                }
+                let text = json_optional_string(args, "text");
+                let text_file = json_optional_string(args, "text-file")
+                    .or_else(|| json_optional_string(args, "textFile"));
+                let style = json_optional_string(args, "style").unwrap_or_default();
+                let readback = docx_paragraphs_insert(
+                    &session.working,
+                    insert_after,
+                    DocxParagraphMutationOptions {
+                        text: text.as_deref(),
+                        text_file: text_file.as_deref(),
+                        style: &style,
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = vec![json!("--insert-after"), json!(insert_after.to_string())];
+                push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
+                push_serve_plan_string_flag(&mut plan_flags, "--text-file", text_file.as_deref());
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--style",
+                    (!style.is_empty()).then_some(style.as_str()),
+                );
+                ServeOp::DocxParagraphsOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
+            "docx paragraphs set" => {
+                let handle_set = args.get("handle").is_some();
+                let index_set = args.get("index").is_some();
+                if handle_set && index_set {
+                    return Err(CliError::invalid_args(
+                        "cannot specify both --index and --handle",
+                    ));
+                }
+                let index = json_i64(args, "index")?.unwrap_or(0);
+                if !handle_set && index < 1 {
+                    return Err(CliError::invalid_args(
+                        "--index must be >= 1 (or pass --handle)",
+                    ));
+                }
+                let text_set = args.get("text").is_some();
+                let text_file_set =
+                    args.get("text-file").is_some() || args.get("textFile").is_some();
+                let text = json_optional_string(args, "text");
+                let text_file = json_optional_string(args, "text-file")
+                    .or_else(|| json_optional_string(args, "textFile"));
+                let resolved_text = resolve_required_docx_paragraph_set_text(
+                    text.as_deref(),
+                    text_file.as_deref(),
+                    text_set,
+                    text_file_set,
+                )?;
+                let handle = json_optional_string(args, "handle");
+                let readback = docx_paragraphs_set(
+                    &session.working,
+                    index,
+                    handle.as_deref(),
+                    &resolved_text,
+                    DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                if handle_set {
+                    push_serve_plan_string_flag(&mut plan_flags, "--handle", handle.as_deref());
+                } else {
+                    plan_flags.push(json!("--index"));
+                    plan_flags.push(json!(index.to_string()));
+                }
+                if text_set {
+                    push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
+                }
+                if text_file_set {
+                    push_serve_plan_string_flag(
+                        &mut plan_flags,
+                        "--text-file",
+                        text_file.as_deref(),
+                    );
+                }
+                ServeOp::DocxParagraphsOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
+            "docx paragraphs clear" => {
+                let handle_set = args.get("handle").is_some();
+                let index_set = args.get("index").is_some();
+                if handle_set && index_set {
+                    return Err(CliError::invalid_args(
+                        "cannot specify both --index and --handle",
+                    ));
+                }
+                let index = json_i64(args, "index")?.unwrap_or(0);
+                if !handle_set && index < 1 {
+                    return Err(CliError::invalid_args(
+                        "--index must be >= 1 (or pass --handle)",
+                    ));
+                }
+                let handle = json_optional_string(args, "handle");
+                let readback = docx_paragraphs_clear(
+                    &session.working,
+                    index,
+                    handle.as_deref(),
+                    DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                if handle_set {
+                    push_serve_plan_string_flag(&mut plan_flags, "--handle", handle.as_deref());
+                } else {
+                    plan_flags.push(json!("--index"));
+                    plan_flags.push(json!(index.to_string()));
+                }
+                ServeOp::DocxParagraphsOp {
                     command: command.clone(),
                     plan_flags,
                     readback_file: session.working.clone(),
