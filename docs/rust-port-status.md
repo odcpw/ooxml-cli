@@ -52,6 +52,10 @@ Latest milestone, 2026-06-19:
 - The `inspect` command and its DOCX/XLSX/PPTX summary helpers moved from
   `src/main.rs` into `src/inspect.rs`, separating package summary reporting from
   the remaining command-family implementations.
+- MCP tool response shaping, resource schemas, capability resources, command
+  resource lookup, and URI decoding moved from `src/main.rs` into
+  `src/mcp_support.rs`, leaving MCP state logic separate from protocol support
+  helpers.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
