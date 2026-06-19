@@ -7549,6 +7549,152 @@ fn serve_inspect_supports_xlsx_tables_show() {
 }
 
 #[test]
+fn serve_inspect_supports_docx_read_commands() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-serve-docx-read-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let docx_input = temp_dir.join("headers.docx");
+    let image_input = temp_dir.join("image.docx");
+    std::fs::copy("testdata/docx/headers/document.docx", &docx_input).expect("stage docx");
+    std::fs::copy("testdata/docx/with-image/document.docx", &image_input)
+        .expect("stage image docx");
+    let docx_input_str = docx_input.to_str().expect("docx path").to_string();
+    let image_input_str = image_input.to_str().expect("image docx path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_docx = rpc_request(1, "open", serde_json::json!({"file": docx_input_str}));
+    let open_docx_response = serve_roundtrip(&mut stdin, &mut reader, &open_docx);
+    let docx_session = open_docx_response["result"]["sessionId"]
+        .as_str()
+        .expect("docx session id")
+        .to_string();
+
+    assert_serve_inspect_matches_cli(
+        &mut stdin,
+        &mut reader,
+        2,
+        &docx_session,
+        "docx text",
+        serde_json::json!({}),
+        &["docx", "text"],
+        &[],
+    );
+    assert_serve_inspect_matches_cli(
+        &mut stdin,
+        &mut reader,
+        3,
+        &docx_session,
+        "docx headers list",
+        serde_json::json!({}),
+        &["docx", "headers", "list"],
+        &[],
+    );
+    assert_serve_inspect_matches_cli(
+        &mut stdin,
+        &mut reader,
+        4,
+        &docx_session,
+        "docx headers show",
+        serde_json::json!({"selector": "header:1:default"}),
+        &["docx", "headers", "show"],
+        &["--selector", "header:1:default"],
+    );
+    assert_serve_inspect_matches_cli(
+        &mut stdin,
+        &mut reader,
+        5,
+        &docx_session,
+        "docx footers list",
+        serde_json::json!({}),
+        &["docx", "footers", "list"],
+        &[],
+    );
+    assert_serve_inspect_matches_cli(
+        &mut stdin,
+        &mut reader,
+        6,
+        &docx_session,
+        "docx footers show",
+        serde_json::json!({"id": "rId11"}),
+        &["docx", "footers", "show"],
+        &["--id", "rId11"],
+    );
+
+    let open_image_docx = rpc_request(7, "open", serde_json::json!({"file": image_input_str}));
+    let open_image_docx_response = serve_roundtrip(&mut stdin, &mut reader, &open_image_docx);
+    let image_session = open_image_docx_response["result"]["sessionId"]
+        .as_str()
+        .expect("image session id")
+        .to_string();
+    assert_serve_inspect_matches_cli(
+        &mut stdin,
+        &mut reader,
+        8,
+        &image_session,
+        "docx images list",
+        serde_json::json!({}),
+        &["docx", "images", "list"],
+        &[],
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn assert_serve_inspect_matches_cli(
+    stdin: &mut impl Write,
+    reader: &mut impl BufRead,
+    request_id: i64,
+    session: &str,
+    command: &str,
+    args: Value,
+    cli_before_file: &[&str],
+    cli_after_file: &[&str],
+) {
+    let request = rpc_request(
+        request_id,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": command,
+            "args": args,
+        }),
+    );
+    let response = serve_roundtrip(stdin, reader, &request);
+    assert!(
+        response.get("error").is_none(),
+        "serve inspect failed for {command}: {response:?}"
+    );
+    let working = response["result"]["file"]
+        .as_str()
+        .expect("serve inspect working file");
+    let mut cli_args = vec!["--json"];
+    cli_args.extend_from_slice(cli_before_file);
+    cli_args.push(working);
+    cli_args.extend_from_slice(cli_after_file);
+    let (code, expected, stderr) = run_ooxml(&cli_args);
+    assert_eq!(code, 0, "direct CLI comparison exit for {command}");
+    assert_eq!(stderr, None, "direct CLI comparison stderr for {command}");
+    assert_eq!(
+        response["result"],
+        expected.expect("direct CLI comparison stdout"),
+        "serve inspect result for {command}"
+    );
+}
+
+#[test]
 fn serve_op_supports_xlsx_ranges_set() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-ranges-set-{}",

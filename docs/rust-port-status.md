@@ -231,6 +231,10 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `serve` JSON-RPC op/inspect support for `xlsx workbook metadata
   update/inspect`, so workbook-level metadata edits can run through the same
   web/agent session loop as range and table workflows
+- `serve` JSON-RPC inspect support for `docx text`, `docx headers list/show`,
+  `docx footers list/show`, and `docx images list`, so read-only DOCX
+  discovery and readback commands can run through the same web/agent session
+  loop as direct CLI calls
 - `serve` JSON-RPC op support for `docx headers set-text`, proving the
   op-compatible DOCX header/footer mutation path used by the web/agent session
   loop

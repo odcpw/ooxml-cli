@@ -19757,10 +19757,24 @@ impl ServeState {
                 )
             }
             "xlsx workbook metadata inspect" => xlsx_workbook_metadata_inspect(&session.working),
+            "docx text" => docx_text(&session.working),
             "docx fields list" => {
                 let field_type = json_optional_string(args, "type");
                 docx_fields_list(&session.working, field_type.as_deref())
             }
+            "docx headers list" | "docx footers list" => {
+                docx_headers_footers_list(&session.working)
+            }
+            "docx headers show" | "docx footers show" => {
+                let group = if command.starts_with("docx footers") {
+                    "footers"
+                } else {
+                    "headers"
+                };
+                let rest = docx_header_footer_show_json_args(args)?;
+                docx_headers_footers_show(&session.working, docx_header_footer_kind(group), &rest)
+            }
+            "docx images list" => docx_images_list(&session.working),
             "docx comments list" => {
                 let comment_id = match json_i64(args, "comment-id")? {
                     Some(value) => Some(value),
@@ -20123,6 +20137,27 @@ fn json_i64(value: &Value, key: &str) -> CliResult<Option<i64>> {
     Err(CliError::invalid_args(format!(
         "{key} must be an integer or integer string"
     )))
+}
+
+fn docx_header_footer_show_json_args(args: &Value) -> CliResult<Vec<String>> {
+    let mut rest = Vec::new();
+    if let Some(selector) = json_optional_string(args, "selector") {
+        rest.push("--selector".to_string());
+        rest.push(selector);
+    }
+    if let Some(id) = json_optional_string(args, "id") {
+        rest.push("--id".to_string());
+        rest.push(id);
+    }
+    if let Some(ref_type) = json_optional_string(args, "type") {
+        rest.push("--type".to_string());
+        rest.push(ref_type);
+    }
+    if let Some(section) = json_i64(args, "section")? {
+        rest.push("--section".to_string());
+        rest.push(section.to_string());
+    }
+    Ok(rest)
 }
 
 fn mcp_tool_success(tool: &str, payload: Value, next_actions: Vec<String>) -> Value {
