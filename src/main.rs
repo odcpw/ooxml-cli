@@ -1,6 +1,7 @@
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::io::{BufRead, Read, Write};
@@ -392,6 +393,13 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
                 .ok_or_else(|| CliError::invalid_args("--style is required"))?;
             docx_styles_show(file, &style_id)
         }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "comments" && verb == "list" =>
+        {
+            reject_unknown_flags(rest, &["--comment-id"], &[])?;
+            let comment_id = parse_i64_flag(rest, "--comment-id")?;
+            docx_comments_list(file, comment_id)
+        }
         [family, verb, file, rest @ ..] if family == "pptx" && verb == "render" => {
             pptx_render(file, rest)
         }
@@ -735,7 +743,7 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
             {"name": "--strict", "argName": "strict", "type": "bool", "default": "false", "description": "enable strict validation mode"}
         ],
         "commands": commands,
-        "objectKinds": ["package", "slide", "shape", "sheet", "range", "cell", "table", "style"],
+        "objectKinds": ["package", "slide", "shape", "sheet", "range", "cell", "table", "style", "comment"],
         "objectKindsIndex": {
             "package": ["ooxml inspect", "ooxml validate", "ooxml verify"],
             "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text", "ooxml pptx render"],
@@ -744,7 +752,8 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
             "range": ["ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "cell": ["ooxml xlsx ranges set", "ooxml xlsx cells set"],
             "table": ["ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
-            "style": ["ooxml xlsx ranges set-format"]
+            "style": ["ooxml xlsx ranges set-format", "ooxml docx styles list", "ooxml docx styles show"],
+            "comment": ["ooxml docx comments list"]
         },
         "exitCodes": [
             {"code": EXIT_SUCCESS, "name": "success", "description": "command completed successfully"},
@@ -1288,6 +1297,20 @@ fn capability_commands() -> Vec<Value> {
             false,
             Some("read-only command; generated style handles can be used by mutation commands"),
             vec![flag("--style", "style", "string", "styleId to show")],
+        ),
+        capability_command(
+            "ooxml docx comments list",
+            "list <file>",
+            "List DOCX comments with stable selectors, hashes, and anchor blocks.",
+            &["comment"],
+            false,
+            Some("read-only command; generated comment handles can be used by mutation commands"),
+            vec![flag(
+                "--comment-id",
+                "commentId",
+                "int",
+                "show only the comment with this numeric w:id",
+            )],
         ),
     ]
 }
@@ -5731,6 +5754,416 @@ fn docx_style_json(style: &DocxStyleInfo, counts: &BTreeMap<String, usize>) -> V
         }
     }
     Value::Object(object)
+}
+
+fn docx_comments_list(file: &str, comment_id: Option<i64>) -> CliResult<Value> {
+    let (document_part, comments_part) = docx_document_and_comments_parts(file)?;
+    let mut comments = Vec::new();
+    if let Some(comments_part) = comments_part.as_deref() {
+        comments = docx_comments(file, comments_part, &document_part)?;
+    }
+    if let Some(comment_id) = comment_id {
+        comments.retain(|comment| comment.id == comment_id);
+        if comments.is_empty() {
+            return Err(CliError::target_not_found(format!(
+                "target not found: comment {comment_id}"
+            )));
+        }
+    }
+    let counts = docx_comment_id_counts(&comments);
+    let comment_values = comments
+        .iter()
+        .map(|comment| docx_comment_json(comment, &counts))
+        .collect::<Vec<_>>();
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("documentPartUri".to_string(), json!(document_part));
+    if let Some(comments_part) = comments_part {
+        result.insert("commentsPart".to_string(), json!(comments_part));
+    }
+    result.insert("comments".to_string(), Value::Array(comment_values));
+    Ok(Value::Object(result))
+}
+
+fn docx_document_and_comments_parts(file: &str) -> CliResult<(String, Option<String>)> {
+    let entries = zip_entry_names(file)?;
+    if detect_inspect_package_type(file, &entries) != InspectPackageKind::Docx {
+        return Err(CliError::unsupported_type(
+            "file is not a DOCX document (detected: unknown)",
+        ));
+    }
+    let document_part = find_docx_document_part(file, &entries)?;
+    let document_uri = format!("/{}", document_part.trim_start_matches('/'));
+    let comments_part = find_docx_comments_part(file, &entries, &document_part)?;
+    Ok((document_uri, comments_part))
+}
+
+fn find_docx_comments_part(
+    file: &str,
+    entries: &[String],
+    document_part: &str,
+) -> CliResult<Option<String>> {
+    let document_uri = format!("/{}", document_part.trim_start_matches('/'));
+    for rel in
+        relationship_entries(file, &relationships_part_for(document_part)).unwrap_or_default()
+    {
+        if rel.target_mode == "External" {
+            continue;
+        }
+        if rel.rel_type
+            == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+        {
+            let uri = resolve_relationship_target(&document_uri, &rel.target);
+            return Ok(zip_entry_exists(entries, &uri).then_some(uri));
+        }
+    }
+    let conventional = "/word/comments.xml";
+    Ok(zip_entry_exists(entries, conventional).then(|| conventional.to_string()))
+}
+
+fn zip_entry_exists(entries: &[String], uri: &str) -> bool {
+    let wanted = format!("/{}", uri.trim_start_matches('/'));
+    entries
+        .iter()
+        .any(|entry| format!("/{}", entry.trim_start_matches('/')) == wanted)
+}
+
+#[derive(Clone, Default)]
+struct DocxCommentInfo {
+    id: i64,
+    id_raw: String,
+    id_valid: bool,
+    author: String,
+    date: String,
+    initials: String,
+    text: String,
+    anchored_to_block: usize,
+    anchored_to_block_kind: String,
+}
+
+#[derive(Default)]
+struct DocxCommentBuild {
+    info: DocxCommentInfo,
+    paragraphs: Vec<String>,
+    current_paragraph: Option<String>,
+    in_t: bool,
+    skip_text_depth: usize,
+}
+
+fn docx_comments(
+    file: &str,
+    comments_part: &str,
+    document_part: &str,
+) -> CliResult<Vec<DocxCommentInfo>> {
+    let xml = zip_text(file, comments_part.trim_start_matches('/'))?;
+    let anchors = docx_comment_anchors(file, document_part)?;
+    let mut reader = Reader::from_str(&xml);
+    let mut saw_root = false;
+    let mut stack = Vec::<String>::new();
+    let mut current: Option<DocxCommentBuild> = None;
+    let mut comments = Vec::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if !saw_root {
+                    saw_root = true;
+                    if name != "comments" {
+                        return Ok(Vec::new());
+                    }
+                } else if name == "comment"
+                    && stack.last().is_some_and(|parent| parent == "comments")
+                {
+                    current = Some(docx_comment_from_element(&e));
+                } else if let Some(comment) = current.as_mut() {
+                    docx_note_comment_start(&e, &name, &stack, comment);
+                }
+                stack.push(name);
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if !saw_root {
+                    saw_root = true;
+                    if name != "comments" {
+                        return Ok(Vec::new());
+                    }
+                } else if name == "comment"
+                    && stack.last().is_some_and(|parent| parent == "comments")
+                {
+                    let mut comment = docx_comment_from_element(&e);
+                    docx_finish_comment(&mut comment, &anchors);
+                    comments.push(comment.info);
+                } else if let Some(comment) = current.as_mut() {
+                    docx_note_comment_empty(&e, &name, &stack, comment);
+                }
+            }
+            Ok(Event::Text(e)) => {
+                if let Some(comment) = current.as_mut()
+                    && comment.in_t
+                    && comment.skip_text_depth == 0
+                    && let Some(paragraph) = comment.current_paragraph.as_mut()
+                {
+                    paragraph.push_str(&decode_xml_text(e.as_ref()));
+                }
+            }
+            Ok(Event::CData(e)) => {
+                if let Some(comment) = current.as_mut()
+                    && comment.in_t
+                    && comment.skip_text_depth == 0
+                    && let Some(paragraph) = comment.current_paragraph.as_mut()
+                {
+                    paragraph.push_str(&String::from_utf8_lossy(e.as_ref()));
+                }
+            }
+            Ok(Event::End(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if let Some(comment) = current.as_mut() {
+                    match name.as_str() {
+                        "t" => comment.in_t = false,
+                        "delText" | "instrText" => {
+                            comment.skip_text_depth = comment.skip_text_depth.saturating_sub(1);
+                        }
+                        "p" => {
+                            if let Some(paragraph) = comment.current_paragraph.take() {
+                                comment.paragraphs.push(paragraph);
+                            }
+                        }
+                        "comment" => {
+                            if let Some(mut comment) = current.take() {
+                                docx_finish_comment(&mut comment, &anchors);
+                                comments.push(comment.info);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                stack.pop();
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Ok(comments)
+}
+
+fn docx_comment_from_element(element: &BytesStart<'_>) -> DocxCommentBuild {
+    let id_raw = attr(element, "id").unwrap_or_default();
+    let (id, id_valid) = parse_docx_comment_id(&id_raw);
+    DocxCommentBuild {
+        info: DocxCommentInfo {
+            id,
+            id_raw,
+            id_valid,
+            author: attr(element, "author").unwrap_or_default(),
+            date: attr(element, "date").unwrap_or_default(),
+            initials: attr(element, "initials").unwrap_or_default(),
+            ..DocxCommentInfo::default()
+        },
+        ..DocxCommentBuild::default()
+    }
+}
+
+fn docx_note_comment_start(
+    element: &BytesStart<'_>,
+    name: &str,
+    stack: &[String],
+    comment: &mut DocxCommentBuild,
+) {
+    if name == "p" && stack.last().is_some_and(|parent| parent == "comment") {
+        comment.current_paragraph = Some(String::new());
+    }
+    docx_note_comment_empty(element, name, stack, comment);
+    if name == "t" {
+        comment.in_t = true;
+    }
+    if name == "delText" || name == "instrText" {
+        comment.skip_text_depth += 1;
+    }
+}
+
+fn docx_note_comment_empty(
+    _element: &BytesStart<'_>,
+    name: &str,
+    _stack: &[String],
+    comment: &mut DocxCommentBuild,
+) {
+    let Some(paragraph) = comment.current_paragraph.as_mut() else {
+        return;
+    };
+    match name {
+        "tab" => paragraph.push('\t'),
+        "br" | "cr" => paragraph.push('\n'),
+        "noBreakHyphen" => paragraph.push('-'),
+        _ => {}
+    }
+}
+
+fn docx_finish_comment(
+    comment: &mut DocxCommentBuild,
+    anchors: &BTreeMap<String, DocxCommentAnchor>,
+) {
+    comment.info.text = comment.paragraphs.join("\n");
+    if let Some(anchor) = anchors.get(&comment.info.id_raw) {
+        comment.info.anchored_to_block = anchor.index;
+        comment.info.anchored_to_block_kind = anchor.kind.clone();
+    }
+}
+
+fn parse_docx_comment_id(value: &str) -> (i64, bool) {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return (0, false);
+    }
+    value
+        .parse::<i64>()
+        .map(|id| (id, true))
+        .unwrap_or((0, false))
+}
+
+#[derive(Clone)]
+struct DocxCommentAnchor {
+    index: usize,
+    kind: String,
+    tag: String,
+    depth: usize,
+}
+
+fn docx_comment_anchors(
+    file: &str,
+    document_part: &str,
+) -> CliResult<BTreeMap<String, DocxCommentAnchor>> {
+    let xml = zip_text(file, document_part.trim_start_matches('/'))?;
+    let mut reader = Reader::from_str(&xml);
+    reader.config_mut().trim_text(true);
+    let mut stack = Vec::<String>::new();
+    let mut anchors = BTreeMap::<String, DocxCommentAnchor>::new();
+    let mut current_block: Option<DocxCommentAnchor> = None;
+    let mut block_index = 0usize;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if stack.last().is_some_and(|parent| parent == "body")
+                    && matches!(name.as_str(), "p" | "tbl")
+                {
+                    block_index += 1;
+                    current_block = Some(DocxCommentAnchor {
+                        index: block_index,
+                        kind: if name == "p" { "paragraph" } else { "table" }.to_string(),
+                        tag: name.clone(),
+                        depth: stack.len() + 1,
+                    });
+                }
+                if name == "commentRangeStart" {
+                    docx_note_comment_anchor(&mut anchors, current_block.as_ref(), &e);
+                }
+                stack.push(name);
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if stack.last().is_some_and(|parent| parent == "body")
+                    && matches!(name.as_str(), "p" | "tbl")
+                {
+                    block_index += 1;
+                }
+                if name == "commentRangeStart" {
+                    docx_note_comment_anchor(&mut anchors, current_block.as_ref(), &e);
+                }
+            }
+            Ok(Event::End(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if current_block
+                    .as_ref()
+                    .is_some_and(|block| block.depth == stack.len() && block.tag == name)
+                {
+                    current_block = None;
+                }
+                stack.pop();
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Ok(anchors)
+}
+
+fn docx_note_comment_anchor(
+    anchors: &mut BTreeMap<String, DocxCommentAnchor>,
+    current_block: Option<&DocxCommentAnchor>,
+    element: &BytesStart<'_>,
+) {
+    let Some(block) = current_block else {
+        return;
+    };
+    if let Some(id) = attr(element, "id") {
+        anchors.entry(id).or_insert_with(|| block.clone());
+    }
+}
+
+fn docx_comment_id_counts(comments: &[DocxCommentInfo]) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for comment in comments {
+        if !comment.id_raw.is_empty() {
+            *counts.entry(comment.id_raw.clone()).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+fn docx_comment_json(comment: &DocxCommentInfo, counts: &BTreeMap<String, usize>) -> Value {
+    let mut object = Map::new();
+    object.insert("id".to_string(), json!(comment.id));
+    object.insert("author".to_string(), json!(comment.author));
+    if !comment.date.is_empty() {
+        object.insert("date".to_string(), json!(comment.date));
+    }
+    if !comment.initials.is_empty() {
+        object.insert("initials".to_string(), json!(comment.initials));
+    }
+    object.insert("text".to_string(), json!(comment.text));
+    object.insert(
+        "contentHash".to_string(),
+        json!(docx_comment_content_hash(
+            &comment.author,
+            &comment.date,
+            &comment.text
+        )),
+    );
+    if comment.anchored_to_block > 0 {
+        object.insert(
+            "anchoredToBlock".to_string(),
+            json!(comment.anchored_to_block),
+        );
+    }
+    if !comment.anchored_to_block_kind.is_empty() {
+        object.insert(
+            "anchoredToBlockKind".to_string(),
+            json!(comment.anchored_to_block_kind),
+        );
+    }
+    if comment.id_valid {
+        let selector = comment.id.to_string();
+        object.insert("primarySelector".to_string(), json!(selector));
+        object.insert("selectors".to_string(), json!([selector]));
+        if counts.get(&comment.id_raw).copied().unwrap_or_default() == 1 {
+            object.insert(
+                "handle".to_string(),
+                json!(format!("H:docx/pt:doc/comment:n:{}", comment.id)),
+            );
+        }
+    }
+    Value::Object(object)
+}
+
+fn docx_comment_content_hash(author: &str, date: &str, text: &str) -> String {
+    let mut hash = Sha256::new();
+    hash.update(author.as_bytes());
+    hash.update([0]);
+    hash.update(date.as_bytes());
+    hash.update([0]);
+    hash.update(text.as_bytes());
+    format!("sha256:{:x}", hash.finalize())
 }
 
 fn pptx_render(file: &str, args: &[String]) -> CliResult<Value> {

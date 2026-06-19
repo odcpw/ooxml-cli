@@ -1913,6 +1913,48 @@ fn docx_styles_list_and_show_match_go_oracle() {
 }
 
 #[test]
+fn docx_comments_list_matches_go_oracle() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "comments",
+            "list",
+            "testdata/docx/with-comments/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "comments",
+            "list",
+            "testdata/docx/with-comments/document.docx",
+            "--comment-id",
+            "0",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "comments",
+            "list",
+            "testdata/docx/minimal/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "comments",
+            "list",
+            "testdata/docx/with-comments/document.docx",
+            "--comment-id",
+            "99",
+        ],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+}
+
+#[test]
 fn frozen_pptx_mutation_and_validate_match_go_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-contract-{}", std::process::id()));
@@ -3051,6 +3093,13 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&style_caps, "ooxml xlsx ranges set-format", false);
     assert_command(&style_caps, "ooxml docx styles list", false);
     assert_command(&style_caps, "ooxml docx styles show", false);
+
+    let (comment_code, comment_stdout, comment_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "comment"]);
+    assert_eq!(comment_code, 0);
+    assert_eq!(comment_stderr, None);
+    let comment_caps = comment_stdout.expect("comment capabilities");
+    assert_command(&comment_caps, "ooxml docx comments list", false);
 }
 
 #[test]
@@ -3068,10 +3117,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 23, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 24, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        267,
+        266,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
