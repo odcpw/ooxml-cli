@@ -35,6 +35,23 @@ the oracle baseline. If the current slice changes only Rust code, Rust tests,
 Rust docs/status files, or the differential harness, the default loop is Rust
 verification plus focused Go CLI oracle comparisons, not Go test suites.
 
+## Parallelization Rule
+
+Parallelize evidence gathering aggressively, but serialize writes unless each
+writer has a separate worktree. The optimal loop is:
+
+- Use read-only scouts for Go CLI behavior, help text, fixtures, command-family
+  inventories, negative cases, and focused parity findings.
+- Assign distinct command-family slices so agents do not duplicate discovery or
+  produce overlapping recommendations.
+- Keep exactly one writer per checkout. If multiple writers are needed, create
+  separate worktrees and merge only after each slice has passed its local proof.
+- Keep `GOAL.md`, the capability inventory, and the parity harness as the shared
+  coordination surface; do not rely on chat state as the durable tracker.
+- A slice is mergeable only when it has targeted Go CLI oracle evidence, focused
+  Rust tests, formatting, linting where relevant, and no unexplained parity
+  mismatch.
+
 ## Required Skills
 
 Use these skills explicitly:
