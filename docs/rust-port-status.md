@@ -37,6 +37,9 @@ Latest milestone, 2026-06-19:
 - Shared XML attribute rendering, decoded attribute maps, whitespace-preserve,
   and simple span replacement helpers also moved into `src/xml_util.rs`,
   reducing duplicated XML utility coupling before command-family splits.
+- Runtime timestamp/counter and mutation temp-path helpers moved from
+  `src/main.rs` into `src/runtime_util.rs`, keeping generated dates and
+  mutation scratch paths in one shared utility module.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
