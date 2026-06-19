@@ -102,6 +102,10 @@ Latest milestone, 2026-06-19:
   set-text argument validation moved from `src/main.rs` into
   `src/docx_paragraph_commands.rs`, still sharing the crate-root body XML and
   handle mutation helpers used by styles.
+- DOCX style list/show/apply commands, style catalog parsing, style handle
+  parsing, and style-specific XML rewrite helpers moved from `src/main.rs`
+  into `src/docx_styles.rs`, while shared body/table XML helpers remain at the
+  crate root.
 - DOCX field listing, field insertion, cached-result mutation, field-location
   parsing, simple/complex field detection, and field XML rewrite helpers moved
   from `src/main.rs` into `src/docx_fields.rs`.
