@@ -34,7 +34,7 @@ Latest milestone, 2026-06-19:
   PPTX module splits.
 - ZIP package read/write helpers moved from `src/main.rs` into `src/zip_io.rs`,
   separating shared package I/O from command-family logic while preserving the
-  existing mutation copy path.
+  existing mutation copy path; ZIP entry-existence checks now live there too.
 - Core XML attribute, namespace, and escape/unescape helpers moved from
   `src/main.rs` into `src/xml_util.rs`, giving future OOXML modules a shared
   lexical XML layer.
@@ -57,7 +57,8 @@ Latest milestone, 2026-06-19:
   remains at the crate facade.
 - OOXML package kind detection and DOCX/XLSX part-classification helpers moved
   from `src/main.rs` into `src/package_discovery.rs`, giving inspect,
-  validation, and document-family commands a shared discovery layer.
+  validation, and document-family commands a shared discovery layer. The
+  lightweight package-family fallback helper also now lives in this module.
 - The `inspect` command and its DOCX/XLSX/PPTX summary helpers moved from
   `src/main.rs` into `src/inspect.rs`, separating package summary reporting from
   the remaining command-family implementations.
@@ -141,7 +142,8 @@ Latest milestone, 2026-06-19:
   `src/xlsx_ranges.rs`.
 - Shared XLSX workbook sheet resolution, cell/style decoding, used-range
   summaries, sparse/dense cell row rendering, cell/range parsing, and column
-  naming moved from `src/main.rs` into `src/xlsx_model.rs`.
+  naming moved from `src/main.rs` into `src/xlsx_model.rs`; XLSX sheet selector
+  generation and relationship-target normalization are part of that model layer.
 - XLSX range/cell mutation commands, range formatting, calc-chain
   invalidation, style XML mutation, sheet-data rewrites, and mutation readback
   command generation moved from `src/main.rs` into `src/xlsx_mutation.rs`.

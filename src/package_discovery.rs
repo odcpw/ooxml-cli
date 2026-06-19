@@ -1,5 +1,6 @@
 use crate::{
     CliError, CliResult, content_type_for_part, relationship_entries, resolve_relationship_target,
+    zip_entry_names,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -55,6 +56,19 @@ pub(crate) fn detect_inspect_package_type(file: &str, entries: &[String]) -> Ins
     }
 
     InspectPackageKind::Unknown
+}
+
+pub(crate) fn package_type(file: &str) -> CliResult<&'static str> {
+    let entries = zip_entry_names(file)?;
+    if entries.iter().any(|name| name == "ppt/presentation.xml") {
+        Ok("pptx")
+    } else if entries.iter().any(|name| name == "xl/workbook.xml") {
+        Ok("xlsx")
+    } else if entries.iter().any(|name| name == "word/document.xml") {
+        Ok("docx")
+    } else {
+        Ok("unknown")
+    }
 }
 
 pub(crate) fn find_xlsx_workbook_part(file: &str, entries: &[String]) -> CliResult<String> {

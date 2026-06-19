@@ -120,6 +120,7 @@ pub(crate) use package_discovery::{
     is_docx_numbering_part, is_docx_styles_part, is_xlsx_chart_part, is_xlsx_media_part,
     is_xlsx_pivot_cache_part, is_xlsx_pivot_table_part, is_xlsx_shared_strings_part,
     is_xlsx_styles_part, is_xlsx_table_part, is_xlsx_theme_part, is_xlsx_worksheet_part,
+    package_type,
 };
 pub(crate) use pptx_mutation::{pptx_replace_text_in_place, pptx_replace_text_readback};
 pub(crate) use pptx_readback::{
@@ -140,11 +141,11 @@ pub(crate) use xlsx_metadata::{
 };
 pub(crate) use xlsx_model::{
     CellValue, RangeBounds, WorkbookSheet, XlsxCellEntry, build_dense_xlsx_rows,
-    build_sparse_xlsx_rows, builtin_num_format_code, col_name, is_xlsx_handle,
+    build_sparse_xlsx_rows, builtin_num_format_code, col_name, is_xlsx_handle, normalize_xl_target,
     normalize_xlsx_cell_ref, parse_cell_ref, parse_cli_range, parse_range, parse_xlsx_cell_handle,
     resolve_sheet, resolve_sheet_by_sheet_id_unique, shared_strings, sheet_cells,
     sorted_xlsx_cells, used_range_for_cells, used_range_json, used_range_ref, workbook_sheets,
-    xlsx_dimension_declared, xlsx_merged_cell_count, xlsx_styles,
+    xlsx_dimension_declared, xlsx_merged_cell_count, xlsx_sheet_selectors, xlsx_styles,
 };
 pub(crate) use xlsx_mutation::{
     XlsxCellsSetOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions,
@@ -168,8 +169,8 @@ pub(crate) use xml_util::{
 };
 pub(crate) use zip_io::{
     copy_zip_with_part_override, copy_zip_with_part_overrides,
-    copy_zip_with_part_overrides_and_removals, copy_zip_with_replacement, zip_entry_names,
-    zip_entry_set, zip_text,
+    copy_zip_with_part_overrides_and_removals, copy_zip_with_replacement, zip_entry_exists,
+    zip_entry_names, zip_entry_set, zip_text,
 };
 
 fn main() {
@@ -270,53 +271,4 @@ fn has_local_json_format(args: &[String]) -> bool {
 
 fn is_validate_command(args: &[String]) -> bool {
     matches!(args, [cmd, ..] if cmd == "validate")
-}
-
-fn zip_entry_exists(entries: &[String], uri: &str) -> bool {
-    let wanted = format!("/{}", uri.trim_start_matches('/'));
-    entries
-        .iter()
-        .any(|entry| format!("/{}", entry.trim_start_matches('/')) == wanted)
-}
-
-fn xlsx_sheet_selectors(
-    name: &str,
-    sheet_id: u32,
-    position: u32,
-    rel_id: &str,
-    part_uri: &str,
-) -> Vec<String> {
-    vec![
-        format!("sheetId:{sheet_id}"),
-        format!("sheet:{position}"),
-        format!("#{position}"),
-        format!("rId:{rel_id}"),
-        format!("rid:{rel_id}"),
-        format!("part:{part_uri}"),
-        format!("name:{name}"),
-        format!("~{name}"),
-        name.to_string(),
-    ]
-}
-
-fn package_type(file: &str) -> CliResult<&'static str> {
-    let entries = zip_entry_names(file)?;
-    if entries.iter().any(|name| name == "ppt/presentation.xml") {
-        Ok("pptx")
-    } else if entries.iter().any(|name| name == "xl/workbook.xml") {
-        Ok("xlsx")
-    } else if entries.iter().any(|name| name == "word/document.xml") {
-        Ok("docx")
-    } else {
-        Ok("unknown")
-    }
-}
-
-fn normalize_xl_target(target: &str) -> String {
-    let target = target.trim_start_matches('/');
-    if target.starts_with("xl/") {
-        target.to_string()
-    } else {
-        format!("xl/{}", target.trim_start_matches("../"))
-    }
 }

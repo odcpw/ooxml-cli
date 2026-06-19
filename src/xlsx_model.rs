@@ -138,6 +138,35 @@ pub(crate) fn resolve_sheet(sheets: &[WorkbookSheet], selector: &str) -> CliResu
         .ok_or_else(|| CliError::invalid_args(format!("sheet not found: {selector}")))
 }
 
+pub(crate) fn xlsx_sheet_selectors(
+    name: &str,
+    sheet_id: u32,
+    position: u32,
+    rel_id: &str,
+    part_uri: &str,
+) -> Vec<String> {
+    vec![
+        format!("sheetId:{sheet_id}"),
+        format!("sheet:{position}"),
+        format!("#{position}"),
+        format!("rId:{rel_id}"),
+        format!("rid:{rel_id}"),
+        format!("part:{part_uri}"),
+        format!("name:{name}"),
+        format!("~{name}"),
+        name.to_string(),
+    ]
+}
+
+pub(crate) fn normalize_xl_target(target: &str) -> String {
+    let target = target.trim_start_matches('/');
+    if target.starts_with("xl/") {
+        target.to_string()
+    } else {
+        format!("xl/{}", target.trim_start_matches("../"))
+    }
+}
+
 pub(crate) fn is_xlsx_handle(value: &str) -> bool {
     value.trim().starts_with("H:")
 }

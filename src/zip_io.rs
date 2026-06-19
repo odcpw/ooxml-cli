@@ -29,6 +29,13 @@ pub(crate) fn zip_entry_set(entries: &[String]) -> BTreeSet<String> {
         .collect()
 }
 
+pub(crate) fn zip_entry_exists(entries: &[String], uri: &str) -> bool {
+    let wanted = format!("/{}", uri.trim_start_matches('/'));
+    entries
+        .iter()
+        .any(|entry| format!("/{}", entry.trim_start_matches('/')) == wanted)
+}
+
 pub(crate) fn zip_text(path: &str, name: &str) -> CliResult<String> {
     let mut archive = open_zip(path)?;
     let mut file = archive
