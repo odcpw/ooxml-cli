@@ -2395,6 +2395,44 @@ fn docx_fields_list_matches_go_oracle() {
 }
 
 #[test]
+fn docx_images_list_matches_go_oracle() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "images",
+            "list",
+            "testdata/docx/with-image/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "images",
+            "list",
+            "testdata/docx/minimal/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "images",
+            "list",
+            "testdata/docx/with-media/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "images",
+            "list",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+}
+
+#[test]
 fn frozen_pptx_mutation_and_validate_match_go_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-contract-{}", std::process::id()));
@@ -3485,6 +3523,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let all_caps = all_stdout.expect("all capabilities");
     assert_command(&all_caps, "ooxml version", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
+    assert_command(&all_caps, "ooxml docx images list", false);
     assert_command(&all_caps, "ooxml docx tables show", false);
 
     let (pptx_code, pptx_stdout, pptx_stderr) =
@@ -3566,12 +3605,20 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let field_caps = field_stdout.expect("field capabilities");
     assert_command(&field_caps, "ooxml docx fields list", false);
 
+    let (image_code, image_stdout, image_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "image"]);
+    assert_eq!(image_code, 0);
+    assert_eq!(image_stderr, None);
+    let image_caps = image_stdout.expect("image capabilities");
+    assert_command(&image_caps, "ooxml docx images list", false);
+
     let (docx_code, docx_stdout, docx_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "docx"]);
     assert_eq!(docx_code, 0);
     assert_eq!(docx_stderr, None);
     let docx_caps = docx_stdout.expect("docx capabilities");
     assert_command(&docx_caps, "ooxml docx fields list", false);
+    assert_command(&docx_caps, "ooxml docx images list", false);
     assert_command(&docx_caps, "ooxml docx tables show", false);
 }
 
@@ -3590,10 +3637,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 27, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 28, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        263,
+        262,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
