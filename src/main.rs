@@ -3995,6 +3995,8 @@ struct XlsxRangeSetStats {
     cleared: usize,
     skipped: usize,
     formula_count: usize,
+    formula_seen: bool,
+    formula_invalidated: bool,
 }
 
 struct XlsxCellsSetOptions<'a> {
@@ -4080,7 +4082,11 @@ fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> CliResult<V
             })?
             .to_string()
     };
-    copy_zip_with_part_override(file, &readback_path, &sheet_part, &updated_xml)?;
+    let mut overrides = BTreeMap::new();
+    let mut removals = BTreeSet::new();
+    overrides.insert(sheet_part.clone(), updated_xml);
+    add_xlsx_formula_recalc_package_updates(file, &stats, &mut overrides, &mut removals)?;
+    copy_zip_with_part_overrides_and_removals(file, &readback_path, &overrides, &removals)?;
     if !options.no_validate {
         validate(&readback_path, true)?;
     }
@@ -4192,7 +4198,8 @@ fn xlsx_cells_set(file: &str, options: XlsxCellsSetOptions<'_>) -> CliResult<Val
         formula,
         null: false,
     }]];
-    let (updated_xml, _) = set_xlsx_range_in_sheet_xml(&sheet_xml, bounds, &rows, "skip", true)?;
+    let (updated_xml, stats) =
+        set_xlsx_range_in_sheet_xml(&sheet_xml, bounds, &rows, "skip", true)?;
 
     let output_path = options.out.filter(|value| !value.is_empty());
     let commit_path = if options.in_place {
@@ -4211,7 +4218,11 @@ fn xlsx_cells_set(file: &str, options: XlsxCellsSetOptions<'_>) -> CliResult<Val
             })?
             .to_string()
     };
-    copy_zip_with_part_override(file, &readback_path, &sheet_part, &updated_xml)?;
+    let mut overrides = BTreeMap::new();
+    let mut removals = BTreeSet::new();
+    overrides.insert(sheet_part.clone(), updated_xml);
+    add_xlsx_formula_recalc_package_updates(file, &stats, &mut overrides, &mut removals)?;
+    copy_zip_with_part_overrides_and_removals(file, &readback_path, &overrides, &removals)?;
     if !options.no_validate {
         validate(&readback_path, true)?;
     }
@@ -4768,6 +4779,253 @@ fn ensure_content_type_override(xml: String, part_name: &str, content_type: &str
     } else {
         xml
     }
+}
+
+fn add_xlsx_formula_recalc_package_updates(
+    file: &str,
+    stats: &XlsxRangeSetStats,
+    overrides: &mut BTreeMap<String, String>,
+    removals: &mut BTreeSet<String>,
+) -> CliResult<()> {
+    if !stats.formula_seen && !stats.formula_invalidated {
+        return Ok(());
+    }
+
+    let workbook_part = "xl/workbook.xml";
+    overrides.insert(
+        workbook_part.to_string(),
+        ensure_xlsx_full_calc_on_load(zip_text(file, workbook_part)?),
+    );
+
+    if !stats.formula_invalidated {
+        return Ok(());
+    }
+
+    let content_types_xml = zip_text(file, "[Content_Types].xml")?;
+    for part in xlsx_calc_chain_parts_from_content_types(&content_types_xml) {
+        removals.insert(part.trim_start_matches('/').to_string());
+    }
+    overrides.insert(
+        "[Content_Types].xml".to_string(),
+        remove_xlsx_calc_chain_content_type_overrides(&content_types_xml),
+    );
+
+    let rels_part = relationships_part_for(workbook_part);
+    if let Ok(rels_xml) = zip_text(file, &rels_part) {
+        let (updated_rels, calc_chain_parts) =
+            remove_xlsx_calc_chain_relationships(&rels_xml, workbook_part);
+        for part in calc_chain_parts {
+            removals.insert(part.trim_start_matches('/').to_string());
+        }
+        if updated_rels != rels_xml {
+            overrides.insert(rels_part, updated_rels);
+        }
+    }
+
+    removals.insert("xl/calcChain.xml".to_string());
+    Ok(())
+}
+
+fn ensure_xlsx_full_calc_on_load(xml: String) -> String {
+    let mut reader = Reader::from_str(&xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        let start = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "calcPr" => {
+                let end = reader.buffer_position() as usize;
+                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let mut attrs = xml_attrs_map(&e);
+                attrs.insert("fullCalcOnLoad".to_string(), "1".to_string());
+                attrs.insert("forceFullCalc".to_string(), "1".to_string());
+                return replace_xml_span(
+                    &xml,
+                    start,
+                    end,
+                    &format!("<{name}{}/>", render_xml_attrs(&attrs)),
+                );
+            }
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "calcPr" => {
+                let end = reader.buffer_position() as usize;
+                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let mut attrs = xml_attrs_map(&e);
+                attrs.insert("fullCalcOnLoad".to_string(), "1".to_string());
+                attrs.insert("forceFullCalc".to_string(), "1".to_string());
+                return replace_xml_span(
+                    &xml,
+                    start,
+                    end,
+                    &format!("<{name}{}>", render_xml_attrs(&attrs)),
+                );
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+
+    let calc_pr = r#"<calcPr fullCalcOnLoad="1" forceFullCalc="1"/>"#;
+    if let Some(pos) = xml.rfind("</workbook>") {
+        let mut out = String::with_capacity(xml.len() + calc_pr.len());
+        out.push_str(&xml[..pos]);
+        out.push_str(calc_pr);
+        out.push_str(&xml[pos..]);
+        out
+    } else {
+        xml
+    }
+}
+
+fn xlsx_calc_chain_parts_from_content_types(xml: &str) -> Vec<String> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut parts = Vec::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "Override" =>
+            {
+                let attrs = xml_attrs_map(&e);
+                if attrs.get("ContentType").is_some_and(|value| {
+                    value
+                        == "application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml"
+                }) && let Some(part_name) = attrs.get("PartName")
+                {
+                    parts.push(part_name.trim_start_matches('/').to_string());
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    parts
+}
+
+fn remove_xlsx_calc_chain_content_type_overrides(xml: &str) -> String {
+    remove_xml_elements_matching(xml, "Override", |attrs| {
+        attrs.get("ContentType").is_some_and(|value| {
+            value == "application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml"
+        })
+    })
+}
+
+fn remove_xlsx_calc_chain_relationships(xml: &str, workbook_part: &str) -> (String, Vec<String>) {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut parts = Vec::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "Relationship" =>
+            {
+                let attrs = xml_attrs_map(&e);
+                if attrs.get("Type").is_some_and(|value| {
+                    value == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/calcChain"
+                }) && let Some(target) = attrs.get("Target")
+                {
+                    parts.push(
+                        resolve_relationship_target(workbook_part, target)
+                            .trim_start_matches('/')
+                            .to_string(),
+                    );
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+
+    let updated = remove_xml_elements_matching(xml, "Relationship", |attrs| {
+        attrs.get("Type").is_some_and(|value| {
+            value == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/calcChain"
+        })
+    });
+    (updated, parts)
+}
+
+fn remove_xml_elements_matching<F>(xml: &str, element_local: &str, predicate: F) -> String
+where
+    F: Fn(&BTreeMap<String, String>) -> bool,
+{
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut spans = Vec::<(usize, usize)>::new();
+    loop {
+        let start = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == element_local => {
+                if predicate(&xml_attrs_map(&e)) {
+                    spans.push((start, reader.buffer_position() as usize));
+                }
+            }
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == element_local => {
+                if predicate(&xml_attrs_map(&e)) {
+                    let mut depth = 1usize;
+                    loop {
+                        match reader.read_event() {
+                            Ok(Event::Start(inner))
+                                if local_name(inner.name().as_ref()) == element_local =>
+                            {
+                                depth += 1;
+                            }
+                            Ok(Event::End(inner))
+                                if local_name(inner.name().as_ref()) == element_local =>
+                            {
+                                depth -= 1;
+                                if depth == 0 {
+                                    spans.push((start, reader.buffer_position() as usize));
+                                    break;
+                                }
+                            }
+                            Ok(Event::Eof) | Err(_) => {
+                                spans.push((start, reader.buffer_position() as usize));
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+
+    if spans.is_empty() {
+        return xml.to_string();
+    }
+    let mut out = String::with_capacity(xml.len());
+    let mut cursor = 0usize;
+    for (start, end) in spans {
+        if start > cursor {
+            out.push_str(&xml[cursor..start]);
+        }
+        cursor = end;
+    }
+    out.push_str(&xml[cursor..]);
+    out
+}
+
+fn replace_xml_span(xml: &str, start: usize, end: usize, replacement: &str) -> String {
+    let mut out = String::with_capacity(xml.len() - (end - start) + replacement.len());
+    out.push_str(&xml[..start]);
+    out.push_str(replacement);
+    out.push_str(&xml[end..]);
+    out
+}
+
+fn xml_attrs_map(e: &BytesStart<'_>) -> BTreeMap<String, String> {
+    e.attributes()
+        .flatten()
+        .map(|attr| {
+            (
+                String::from_utf8_lossy(attr.key.as_ref()).to_string(),
+                decode_xml_text(attr.value.as_ref()),
+            )
+        })
+        .collect()
 }
 
 fn default_xlsx_styles_xml() -> String {
@@ -5797,6 +6055,9 @@ fn set_xlsx_range_in_sheet_xml(
                         if let Some(existing_cell) = existing_cell {
                             stats.cleared += 1;
                             row_changed = true;
+                            if existing_cell.has_formula {
+                                stats.formula_invalidated = true;
+                            }
                             if existing_cell
                                 .attrs
                                 .get("s")
@@ -5836,6 +6097,7 @@ fn set_xlsx_range_in_sheet_xml(
                         }
                         if wrote_formula {
                             stats.formula_count += 1;
+                            stats.formula_seen = true;
                         }
                     }
                     _ => unreachable!("null policy validated earlier"),
@@ -5846,11 +6108,15 @@ fn set_xlsx_range_in_sheet_xml(
                 render_xlsx_cell_with_attrs(&addr, cell, existing_cell.map(|span| &span.attrs))?;
             rendered_cells.insert(col_number, rendered);
             row_changed = true;
+            if existing_cell.is_some_and(|span| span.has_formula) {
+                stats.formula_invalidated = true;
+            }
             if existing_cell.is_none() {
                 stats.created += 1;
             }
             if wrote_formula {
                 stats.formula_count += 1;
+                stats.formula_seen = true;
             }
             stats.updated += 1;
         }
@@ -18442,6 +18708,15 @@ fn copy_zip_with_part_overrides(
     output: &str,
     overrides: &BTreeMap<String, String>,
 ) -> CliResult<()> {
+    copy_zip_with_part_overrides_and_removals(input, output, overrides, &BTreeSet::new())
+}
+
+fn copy_zip_with_part_overrides_and_removals(
+    input: &str,
+    output: &str,
+    overrides: &BTreeMap<String, String>,
+    removals: &BTreeSet<String>,
+) -> CliResult<()> {
     if let Some(parent) = Path::new(output).parent() {
         fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
     }
@@ -18463,6 +18738,9 @@ fn copy_zip_with_part_overrides(
             continue;
         }
         let name = entry.name().to_string();
+        if removals.contains(&name) && !overrides.contains_key(&name) {
+            continue;
+        }
         writer
             .start_file(&name, options)
             .map_err(|err| CliError::unexpected(err.to_string()))?;
@@ -18478,6 +18756,9 @@ fn copy_zip_with_part_overrides(
     }
     for (name, text) in overrides {
         if written.contains(name) {
+            continue;
+        }
+        if removals.contains(name) {
             continue;
         }
         writer

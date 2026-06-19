@@ -551,6 +551,108 @@ fn write_simple_xlsx_with_sheet_xml(dest: &Path, sheet_xml: &str) {
     writer.finish().expect("finish xlsx");
 }
 
+fn write_calc_chain_xlsx(dest: &Path) {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("fixture parent");
+    }
+    let output = File::create(dest).expect("create calc-chain xlsx");
+    let mut writer = ZipWriter::new(output);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    write_zip_string(
+        &mut writer,
+        options,
+        "[Content_Types].xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/calcChain.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml"/>
+</Types>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "_rels/.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/workbook.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/_rels/workbook.xml.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rIdCalc" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/calcChain" Target="calcChain.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/worksheets/sheet1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:B1"/>
+  <sheetData>
+    <row r="1">
+      <c r="A1"><f>SUM(B1:B1)</f><v>7</v></c>
+      <c r="B1"><v>7</v></c>
+    </row>
+  </sheetData>
+</worksheet>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/calcChain.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<calcChain xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><c r="A1" i="1"/></calcChain>"#,
+    );
+    writer.finish().expect("finish calc-chain xlsx");
+}
+
+fn assert_xlsx_full_calc_flags(path: &Path) {
+    let workbook = read_zip_string(path, "xl/workbook.xml");
+    assert!(
+        workbook.contains(r#"fullCalcOnLoad="1""#),
+        "workbook missing fullCalcOnLoad flag: {workbook}"
+    );
+    assert!(
+        workbook.contains(r#"forceFullCalc="1""#),
+        "workbook missing forceFullCalc flag: {workbook}"
+    );
+}
+
+fn assert_xlsx_calc_chain_removed(path: &Path) {
+    assert!(
+        !zip_entry_exists(path, "xl/calcChain.xml"),
+        "calcChain part still exists"
+    );
+    let content_types = read_zip_string(path, "[Content_Types].xml");
+    assert!(
+        !content_types.contains("calcChain"),
+        "content types still mention calcChain: {content_types}"
+    );
+    let rels = read_zip_string(path, "xl/_rels/workbook.xml.rels");
+    assert!(
+        !rels.contains("calcChain") && !rels.contains("rIdCalc"),
+        "workbook rels still mention calcChain: {rels}"
+    );
+}
+
 fn write_preservation_xlsx(dest: &Path) {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).expect("fixture parent");
@@ -914,6 +1016,221 @@ fn xlsx_ranges_set_matches_go_oracle_and_saved_output() {
         scrub_path(go_stdout.expect("go dry-run stdout"), &go_in, "[IN]"),
         "ranges set dry-run stdout"
     );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_ranges_set_formula_recalc_metadata_matches_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-ranges-set-formula-recalc-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    let go_out_path = temp_dir.join("go-out.xlsx");
+    let rust_out_path = temp_dir.join("rust-out.xlsx");
+    let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:B1"/>
+  <sheetData><row r="1"><c r="B1"><v>7</v></c></row></sheetData>
+</worksheet>"#;
+    write_simple_xlsx_with_sheet_xml(&go_in_path, sheet_xml);
+    write_simple_xlsx_with_sheet_xml(&rust_in_path, sheet_xml);
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let go_out = go_out_path.to_string_lossy().to_string();
+    let rust_out = rust_out_path.to_string_lossy().to_string();
+    let values = r#"[[{"formula":"SUM(B1:B1)"}]]"#;
+
+    let go_args = [
+        "--json", "xlsx", "ranges", "set", &go_in, "--sheet", "Sheet1", "--range", "C1:C1",
+        "--values", values, "--out", &go_out,
+    ];
+    let rust_args = [
+        "--json", "xlsx", "ranges", "set", &rust_in, "--sheet", "Sheet1", "--range", "C1:C1",
+        "--values", values, "--out", &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "formula recalc exit");
+    assert_eq!(rust_stderr, go_stderr, "formula recalc stderr");
+    assert_eq!(
+        scrub_paths(
+            rust_stdout.expect("rust formula recalc stdout"),
+            &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go formula recalc stdout"),
+            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+        ),
+        "formula recalc stdout"
+    );
+    assert_xlsx_full_calc_flags(&go_out_path);
+    assert_xlsx_full_calc_flags(&rust_out_path);
+    assert!(
+        !read_zip_string(&rust_out_path, "xl/worksheets/sheet1.xml")
+            .contains(r#"<c r="C1"><f>SUM(B1:B1)</f><v>"#),
+        "new Rust formula should not have a cached value"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_ranges_set_formula_overwrite_invalidates_calc_chain_like_go() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-ranges-set-calc-chain-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    let go_out_path = temp_dir.join("go-out.xlsx");
+    let rust_out_path = temp_dir.join("rust-out.xlsx");
+    write_calc_chain_xlsx(&go_in_path);
+    write_calc_chain_xlsx(&rust_in_path);
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let go_out = go_out_path.to_string_lossy().to_string();
+    let rust_out = rust_out_path.to_string_lossy().to_string();
+    let values = r#"[[{"value":"9","type":"number"}]]"#;
+
+    let go_args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &go_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:A1",
+        "--values",
+        values,
+        "--overwrite-formulas",
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &rust_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:A1",
+        "--values",
+        values,
+        "--overwrite-formulas",
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "calc-chain invalidation exit");
+    assert_eq!(rust_stderr, go_stderr, "calc-chain invalidation stderr");
+    assert_eq!(
+        scrub_paths(
+            rust_stdout.expect("rust calc-chain invalidation stdout"),
+            &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go calc-chain invalidation stdout"),
+            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+        ),
+        "calc-chain invalidation stdout"
+    );
+    assert_xlsx_full_calc_flags(&go_out_path);
+    assert_xlsx_full_calc_flags(&rust_out_path);
+    assert_xlsx_calc_chain_removed(&go_out_path);
+    assert_xlsx_calc_chain_removed(&rust_out_path);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_ranges_set_formula_clear_invalidates_calc_chain_like_go() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-ranges-set-clear-calc-chain-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    let go_out_path = temp_dir.join("go-out.xlsx");
+    let rust_out_path = temp_dir.join("rust-out.xlsx");
+    write_calc_chain_xlsx(&go_in_path);
+    write_calc_chain_xlsx(&rust_in_path);
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let go_out = go_out_path.to_string_lossy().to_string();
+    let rust_out = rust_out_path.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &go_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:A1",
+        "--values",
+        "[[null]]",
+        "--null-policy",
+        "clear",
+        "--overwrite-formulas",
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &rust_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:A1",
+        "--values",
+        "[[null]]",
+        "--null-policy",
+        "clear",
+        "--overwrite-formulas",
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "clear calc-chain invalidation exit");
+    assert_eq!(
+        rust_stderr, go_stderr,
+        "clear calc-chain invalidation stderr"
+    );
+    assert_eq!(
+        scrub_paths(
+            rust_stdout.expect("rust clear calc-chain invalidation stdout"),
+            &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go clear calc-chain invalidation stdout"),
+            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+        ),
+        "clear calc-chain invalidation stdout"
+    );
+    assert_xlsx_full_calc_flags(&go_out_path);
+    assert_xlsx_full_calc_flags(&rust_out_path);
+    assert_xlsx_calc_chain_removed(&go_out_path);
+    assert_xlsx_calc_chain_removed(&rust_out_path);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -6114,8 +6431,11 @@ fn serve_op_supports_xlsx_ranges_set() {
             "command": "xlsx ranges set",
             "args": {
                 "sheet": "Sheet1",
-                "range": "A1:B2",
-                "values": [["Agent", {"value": "12.5", "type": "number"}], ["Flag", true]]
+                "range": "A1:C2",
+                "values": [
+                    ["Agent", {"value": "12.5", "type": "number"}, {"formula": "SUM(B1:B1)"}],
+                    ["Flag", true, "tail"]
+                ]
             },
         }),
     );
@@ -6125,9 +6445,10 @@ fn serve_op_supports_xlsx_ranges_set() {
         "ranges set op failed: {op_response:?}"
     );
     let readback = &op_response["result"]["readback"];
-    assert_eq!(readback["range"], Value::String("A1:B2".to_string()));
-    assert_eq!(readback["updated"], Value::from(4));
-    assert_eq!(readback["created"], Value::from(2));
+    assert_eq!(readback["range"], Value::String("A1:C2".to_string()));
+    assert_eq!(readback["updated"], Value::from(6));
+    assert_eq!(readback["created"], Value::from(3));
+    assert_eq!(readback["formulaCount"], Value::from(1));
     assert_eq!(
         readback["destination"]["values"][0][0],
         Value::String("Agent".to_string())
@@ -6137,6 +6458,10 @@ fn serve_op_supports_xlsx_ranges_set() {
         serde_json::json!(12.5)
     );
     assert_eq!(readback["destination"]["values"][1][1], Value::Bool(true));
+    assert_eq!(
+        readback["destination"]["formulas"][0][2],
+        Value::String("SUM(B1:B1)".to_string())
+    );
 
     let plan = rpc_request(3, "plan", serde_json::json!({"session": session}));
     let plan_response = serve_roundtrip(&mut stdin, &mut reader, &plan);
@@ -6152,6 +6477,7 @@ fn serve_op_supports_xlsx_ranges_set() {
         "commit failed: {commit_response:?}"
     );
     assert!(output.exists(), "serve commit output missing");
+    assert_xlsx_full_calc_flags(&output);
     assert_eq!(
         commit_response["result"]["applied"][0]["readback"]["file"],
         Value::String(output_str.clone())
@@ -6178,7 +6504,7 @@ fn serve_op_supports_xlsx_ranges_set() {
         "--sheet",
         "Sheet1",
         "--range",
-        "A1:B2",
+        "A1:C2",
         "--include-types",
         "--include-formulas",
     ]);
@@ -6187,8 +6513,14 @@ fn serve_op_supports_xlsx_ranges_set() {
     let export = export_stdout.expect("Go export readback");
     assert_eq!(export["values"][0][0], Value::String("Agent".to_string()));
     assert_eq!(export["values"][0][1], serde_json::json!(12.5));
+    assert_eq!(export["values"][0][2], Value::Null);
+    assert_eq!(
+        export["formulas"][0][2],
+        Value::String("SUM(B1:B1)".to_string())
+    );
     assert_eq!(export["values"][1][0], Value::String("Flag".to_string()));
     assert_eq!(export["values"][1][1], Value::Bool(true));
+    assert_eq!(export["values"][1][2], Value::String("tail".to_string()));
 
     drop(stdin);
     let status = child.wait().expect("serve exit");
