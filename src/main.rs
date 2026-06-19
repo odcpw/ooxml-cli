@@ -62,6 +62,14 @@ impl CliError {
         }
     }
 
+    fn validation_failed(message: impl Into<String>) -> Self {
+        Self {
+            code: "validation_failed",
+            exit_code: EXIT_VALIDATION_FAILED,
+            message: message.into(),
+        }
+    }
+
     fn target_not_found(message: impl Into<String>) -> Self {
         Self {
             code: "target_not_found",
@@ -17797,6 +17805,9 @@ struct ServeState {
 struct ServeSession {
     file: String,
     out: Option<String>,
+    in_place: bool,
+    backup: Option<String>,
+    no_validate: bool,
     dry_run: bool,
     working: String,
     ops: Vec<ServeOp>,
@@ -18275,10 +18286,27 @@ impl ServeState {
     fn serve_open(&mut self, params: &Value) -> CliResult<Value> {
         let file = json_string(params, "file")?;
         let out = json_optional_string(params, "out");
+        let in_place = json_bool(params, "inPlace").unwrap_or(false);
+        let backup = json_optional_string(params, "backup");
+        let no_validate = json_bool(params, "noValidate").unwrap_or(false);
         let dry_run = params
             .get("dryRun")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        if out.is_some() && in_place {
+            return Err(CliError::invalid_args(
+                "cannot specify both out and inPlace",
+            ));
+        }
+        if backup
+            .as_ref()
+            .is_some_and(|value| !value.trim().is_empty())
+            && !in_place
+        {
+            return Err(CliError::invalid_args(
+                "backup can only be used with inPlace",
+            ));
+        }
         self.next_session += 1;
         let session_id = format!("rust-session-{}", self.next_session);
         let working = make_working_copy(&file, self.next_session)?;
@@ -18287,6 +18315,9 @@ impl ServeState {
             ServeSession {
                 file: file.clone(),
                 out,
+                in_place,
+                backup,
+                no_validate,
                 dry_run,
                 working,
                 ops: Vec::new(),
@@ -19208,11 +19239,38 @@ impl ServeState {
     fn serve_commit(&mut self, params: &Value) -> CliResult<Value> {
         let session_id = json_string(params, "session")?;
         let session = self.session(&session_id)?;
-        let output = session
-            .out
-            .clone()
-            .ok_or_else(|| CliError::invalid_args("commit requires an output path"))?;
+        let output = if session.in_place {
+            session.file.clone()
+        } else {
+            session
+                .out
+                .clone()
+                .ok_or_else(|| CliError::invalid_args("commit requires an output path"))?
+        };
         if !session.dry_run {
+            if !session.no_validate {
+                let validation = validate(&session.working, true)?;
+                if validate_exit_code(&validation, true) != EXIT_SUCCESS {
+                    return Err(CliError::validation_failed(format!(
+                        "validation failed for working copy: {}",
+                        serde_json::to_string(&validation).expect("serialize validation")
+                    )));
+                }
+            }
+            if session.in_place
+                && let Some(backup_path) = session
+                    .backup
+                    .as_ref()
+                    .filter(|value| !value.trim().is_empty())
+            {
+                if let Some(parent) = Path::new(backup_path).parent() {
+                    fs::create_dir_all(parent)
+                        .map_err(|err| CliError::unexpected(err.to_string()))?;
+                }
+                fs::copy(&session.file, backup_path).map_err(|err| {
+                    CliError::unexpected(format!("failed to create backup: {err}"))
+                })?;
+            }
             if let Some(parent) = Path::new(&output).parent() {
                 fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
             }

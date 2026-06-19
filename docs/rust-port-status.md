@@ -167,6 +167,9 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `serve` JSON-RPC open, op, inspect, validate, plan, commit, and abort flow for
   the frozen XLSX cell-edit session, with validate returning real diagnostics
   arrays instead of placeholder nulls
+- `serve open`/`commit` handling for advertised `inPlace`, `backup`, and
+  `noValidate` options, including commit validation-by-default and no-write
+  behavior on validation failure
 - `mcp` stdio JSON-RPC initialize, tools/resources discovery, command resource
   readback, and tools/call open, op, inspect, validate, plan, commit, and abort
   flow for the frozen XLSX cell-edit session

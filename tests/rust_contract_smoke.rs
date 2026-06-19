@@ -7067,6 +7067,213 @@ fn serve_commit_does_not_write_dry_run_output() {
 }
 
 #[test]
+fn serve_open_supports_in_place_backup_commit() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-serve-in-place-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let backup = temp_dir.join("input.xlsx.bak");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let backup_str = backup.to_str().expect("backup path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({
+                "file": input_str,
+                "inPlace": true,
+                "backup": backup_str,
+            }),
+        ),
+    );
+    assert!(
+        open_response.get("error").is_none(),
+        "in-place open failed: {open_response:?}"
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let op_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            2,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "xlsx cells set",
+                "args": {"sheet": "1", "cell": "A1", "value": "serve-in-place"},
+            }),
+        ),
+    );
+    assert!(
+        op_response.get("error").is_none(),
+        "in-place op failed: {op_response:?}"
+    );
+
+    let commit_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(3, "commit", serde_json::json!({"session": session})),
+    );
+    assert!(
+        commit_response.get("error").is_none(),
+        "in-place commit failed: {commit_response:?}"
+    );
+    assert_eq!(
+        commit_response["result"]["output"],
+        Value::String(input_str.clone())
+    );
+    assert_eq!(
+        commit_response["result"]["validateCommand"],
+        Value::String(format!("ooxml validate --strict {input_str}"))
+    );
+    assert!(backup.exists(), "in-place backup missing");
+
+    let (input_code, input_stdout, input_stderr) = run_ooxml(&[
+        "--json", "xlsx", "ranges", "export", &input_str, "--sheet", "1", "--range", "A1",
+    ]);
+    assert_eq!(input_code, 0, "in-place output readback exit");
+    assert_eq!(input_stderr, None, "in-place output readback stderr");
+    assert_eq!(
+        input_stdout.expect("in-place output readback")["values"][0][0],
+        Value::String("serve-in-place".to_string())
+    );
+
+    let (backup_code, backup_stdout, backup_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &backup_str,
+        "--sheet",
+        "1",
+        "--range",
+        "A1",
+    ]);
+    assert_eq!(backup_code, 0, "backup readback exit");
+    assert_eq!(backup_stderr, None, "backup readback stderr");
+    assert_ne!(
+        backup_stdout.expect("backup readback")["values"][0][0],
+        Value::String("serve-in-place".to_string())
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn serve_commit_honors_no_validate_open_option() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-no-validate-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("corrupted.docx");
+    let blocked_output = temp_dir.join("blocked.docx");
+    let skipped_output = temp_dir.join("skipped.docx");
+    fs::copy(
+        "testdata/docx/corrupted-missing-document/document.docx",
+        &input,
+    )
+    .expect("stage corrupted docx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let blocked_output_str = blocked_output.to_str().expect("blocked output").to_string();
+    let skipped_output_str = skipped_output.to_str().expect("skipped output").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let blocked_open = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({"file": input_str, "out": blocked_output_str}),
+        ),
+    );
+    let blocked_session = blocked_open["result"]["sessionId"]
+        .as_str()
+        .expect("blocked session id")
+        .to_string();
+    let blocked_commit = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(2, "commit", serde_json::json!({"session": blocked_session})),
+    );
+    assert_eq!(blocked_commit["error"]["code"], Value::from(5));
+    assert_eq!(
+        blocked_commit["error"]["data"]["type"],
+        Value::String("validation_failed".to_string())
+    );
+    assert!(
+        !blocked_output.exists(),
+        "default commit should not write invalid package"
+    );
+
+    let skipped_open = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            3,
+            "open",
+            serde_json::json!({
+                "file": input.to_str().expect("input path"),
+                "out": skipped_output_str,
+                "noValidate": true,
+            }),
+        ),
+    );
+    let skipped_session = skipped_open["result"]["sessionId"]
+        .as_str()
+        .expect("skipped session id")
+        .to_string();
+    let skipped_commit = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(4, "commit", serde_json::json!({"session": skipped_session})),
+    );
+    assert!(
+        skipped_commit.get("error").is_none(),
+        "noValidate commit failed: {skipped_commit:?}"
+    );
+    assert!(skipped_output.exists(), "noValidate output missing");
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_validate_reports_corrupted_package_diagnostics() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
         .arg("serve")
