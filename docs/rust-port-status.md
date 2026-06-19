@@ -43,6 +43,9 @@ Latest milestone, 2026-06-19:
 - OPC package mutation helpers for root relationships, content-type overrides,
   relationship XML insertion, and relative relationship targets moved from
   `src/main.rs` into `src/opc.rs`.
+- Validation report and diagnostics logic moved from `src/main.rs` into
+  `src/validation.rs`, separating package validation from command dispatch and
+  document-family mutation code.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
