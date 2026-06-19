@@ -1828,6 +1828,91 @@ fn docx_text_matches_go_oracle() {
 }
 
 #[test]
+fn docx_styles_list_and_show_match_go_oracle() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "list",
+            "testdata/docx/styles-catalog/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "list",
+            "testdata/docx/styles-catalog/document.docx",
+            "--type",
+            "paragraph",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "list",
+            "testdata/docx/styles-catalog/document.docx",
+            "--type",
+            "Paragraph",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "list",
+            "testdata/docx/minimal/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "show",
+            "testdata/docx/styles-catalog/document.docx",
+            "--style",
+            "Heading1",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "show",
+            "testdata/docx/styles-catalog/document.docx",
+            "--style",
+            "NonExistent",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "show",
+            "testdata/docx/minimal/document.docx",
+            "--style",
+            "Heading1",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "list",
+            "testdata/docx/styles-catalog/document.docx",
+            "--type",
+            "list",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "show",
+            "testdata/docx/styles-catalog/document.docx",
+        ],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+}
+
+#[test]
 fn frozen_pptx_mutation_and_validate_match_go_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-contract-{}", std::process::id()));
@@ -2964,6 +3049,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(style_stderr, None);
     let style_caps = style_stdout.expect("style capabilities");
     assert_command(&style_caps, "ooxml xlsx ranges set-format", false);
+    assert_command(&style_caps, "ooxml docx styles list", false);
+    assert_command(&style_caps, "ooxml docx styles show", false);
 }
 
 #[test]
@@ -2981,10 +3068,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 21, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 23, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        269,
+        267,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

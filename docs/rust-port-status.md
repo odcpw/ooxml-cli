@@ -35,6 +35,10 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   hyperlinks, field/instruction text omission, tables, merged tables, headers,
   comments/media/image fixtures, default namespace handling, and unique/duplicate
   `w14:paraId` marker handling
+- `--json docx styles list <docx>` and `--json docx styles show <docx>` with
+  Go-oracle comparison for style catalog enumeration, style-type filtering,
+  nullable missing-styles-part behavior, style handles, found/not-found style
+  show results, and invalid argument errors
 - `--json docx text <xlsx>` unsupported-type rejection with direct Go-oracle
   comparison for exit code, stderr JSON, and empty stdout
 - JSON error envelope for an invalid slide number
@@ -61,7 +65,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 21, and the harness pins the 269-command gap until
+  paths, Rust advertises 23, and the harness pins the 267-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
