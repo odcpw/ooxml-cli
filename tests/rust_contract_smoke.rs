@@ -9595,6 +9595,24 @@ fn serve_pptx_generic_web_agent_edit_path_works() {
         Value::String(String::new())
     );
 
+    let tables_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            33,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx tables show",
+                "args": {"slide": 1},
+            }),
+        ),
+    );
+    assert_eq!(
+        tables_response["result"]["tables"],
+        Value::Array(Vec::new())
+    );
+
     let shapes_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
@@ -10202,6 +10220,101 @@ fn web_smoke_binary_readback_checks_are_supported() {
     }
 
     for args in [
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "show",
+            "testdata/pptx/table-slide/presentation.pptx",
+            "--slide",
+            "2",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "show",
+            "testdata/pptx/table-slide/presentation.pptx",
+            "--slide",
+            "2",
+            "--target",
+            "table:1",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "show",
+            "testdata/pptx/table-slide/presentation.pptx",
+            "--slide",
+            "2",
+            "--target",
+            "@all-tables",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "show",
+            "testdata/pptx/table-slide/presentation.pptx",
+            "--slide",
+            "2",
+            "--details",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "show",
+            "testdata/pptx/table-slide/presentation.pptx",
+            "--slide",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "show",
+            "testdata/pptx/table-slide/presentation.pptx",
+            "--slide",
+            "99",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "show",
+            "testdata/pptx/table-slide/presentation.pptx",
+            "--slide",
+            "2",
+            "--target",
+            "title",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "show",
+            "testdata/pptx/table-slide/presentation.pptx",
+            "--slide",
+            "2",
+            "--table-id",
+            "999",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "show",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--slide",
+            "1",
+        ],
+    ] {
+        assert_go_rust_match(&args);
+    }
+
+    for args in [
         [
             "--json",
             "pptx",
@@ -10310,6 +10423,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx extract text", false);
     assert_command(&all_caps, "ooxml pptx extract notes", false);
     assert_command(&all_caps, "ooxml pptx notes show", false);
+    assert_command(&all_caps, "ooxml pptx tables show", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx fields insert", true);
     assert_command(&all_caps, "ooxml docx fields set-result", true);
@@ -10381,6 +10495,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx slides selectors", false);
     assert_command(&pptx_caps, "ooxml pptx slides show", false);
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
+    assert_command(&pptx_caps, "ooxml pptx tables show", false);
     assert_command(&pptx_caps, "ooxml pptx extract text", false);
     assert_command(&pptx_caps, "ooxml pptx extract notes", false);
     assert_command(&pptx_caps, "ooxml pptx notes show", false);
@@ -10416,6 +10531,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(table_code, 0);
     assert_eq!(table_stderr, None);
     let table_caps = table_stdout.expect("table capabilities");
+    assert_command(&table_caps, "ooxml pptx tables show", false);
     assert_command(&table_caps, "ooxml xlsx tables list", false);
     assert_command(&table_caps, "ooxml xlsx tables show", false);
     assert_command(&table_caps, "ooxml xlsx tables export", false);
@@ -10565,10 +10681,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 57, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 58, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        233,
+        232,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

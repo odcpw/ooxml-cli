@@ -1734,6 +1734,34 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             pptx_notes_show(file, slide)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "tables" && verb == "show" =>
+        {
+            reject_unknown_flags(rest, &["--slide", "--table-id", "--target"], &["--details"])?;
+            let slide = parse_i64_flag(rest, "--slide")?.unwrap_or(0);
+            if slide < 1 {
+                return Err(CliError::invalid_args("--slide must be >= 1"));
+            }
+            let table_id = parse_i64_flag(rest, "--table-id")?.unwrap_or(0);
+            if table_id < 0 {
+                return Err(CliError::invalid_args(
+                    "--table-id must be a positive integer",
+                ));
+            }
+            let target = parse_string_flag(rest, "--target")?;
+            if table_id > 0 && target.as_deref().unwrap_or_default() != "" {
+                return Err(CliError::invalid_args(
+                    "specify only one of --target or --table-id",
+                ));
+            }
+            pptx_tables_show(
+                file,
+                slide as u32,
+                table_id as u32,
+                target.as_deref(),
+                has_flag(rest, "--details"),
+            )
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "replace" && verb == "text" =>
         {
             pptx_replace_text(file, rest)
@@ -1927,12 +1955,12 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
         "objectKinds": ["package", "slide", "shape", "sheet", "range", "cell", "table", "block", "paragraph", "style", "comment", "field", "header", "footer", "image"],
         "objectKindsIndex": {
             "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml docx text", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update"],
-            "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx extract text", "ooxml pptx extract notes", "ooxml pptx notes show", "ooxml pptx replace text", "ooxml pptx render"],
+            "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx tables show", "ooxml pptx extract text", "ooxml pptx extract notes", "ooxml pptx notes show", "ooxml pptx replace text", "ooxml pptx render"],
             "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx extract text", "ooxml pptx replace text"],
             "sheet": ["ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "range": ["ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "cell": ["ooxml xlsx ranges set", "ooxml xlsx cells set"],
-            "table": ["ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export", "ooxml docx tables show", "ooxml docx tables set-cell", "ooxml docx tables clear-cell", "ooxml docx styles apply"],
+            "table": ["ooxml pptx tables show", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export", "ooxml docx tables show", "ooxml docx tables set-cell", "ooxml docx tables clear-cell", "ooxml docx styles apply"],
             "block": ["ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx tables show"],
             "paragraph": ["ooxml docx text", "ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx paragraphs append", "ooxml docx paragraphs insert", "ooxml docx paragraphs set", "ooxml docx paragraphs clear", "ooxml docx styles apply", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx images list"],
             "style": ["ooxml xlsx ranges set-format", "ooxml docx styles list", "ooxml docx styles show", "ooxml docx styles apply"],
@@ -2135,6 +2163,35 @@ fn capability_commands() -> Vec<Value> {
                     "includeBounds",
                     "bool",
                     "include explicit shape bounds where available",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml pptx tables show",
+            "show <file> --slide <n>",
+            "Show table graphic frames and cell text for one slide.",
+            &["slide", "table"],
+            false,
+            Some("read-only command; call via inspect in serve/MCP"),
+            vec![
+                flag("--slide", "slide", "int", "1-based slide number"),
+                flag(
+                    "--table-id",
+                    "tableId",
+                    "int",
+                    "optional table shape ID to show",
+                ),
+                flag(
+                    "--target",
+                    "target",
+                    "string",
+                    "optional table selector such as table:1, shape:2, or ~Table 1",
+                ),
+                flag(
+                    "--details",
+                    "details",
+                    "bool",
+                    "include enriched row, column, cell, and span details",
                 ),
             ],
         ),
@@ -19948,6 +20005,27 @@ impl ServeState {
                     .ok_or_else(|| CliError::invalid_args("slide is required"))?;
                 pptx_notes_show(&session.working, slide)
             }
+            "pptx tables show" => {
+                let slide = json_u32(args, "slide")?
+                    .ok_or_else(|| CliError::invalid_args("slide is required"))?;
+                let table_id = json_u32(args, "table-id")?
+                    .or(json_u32(args, "tableId")?)
+                    .unwrap_or(0);
+                let target = json_optional_string(args, "target");
+                let details = json_bool(args, "details").unwrap_or(false);
+                if table_id > 0 && target.as_deref().unwrap_or_default() != "" {
+                    return Err(CliError::invalid_args(
+                        "specify only one of --target or --table-id",
+                    ));
+                }
+                pptx_tables_show(
+                    &session.working,
+                    slide,
+                    table_id,
+                    target.as_deref(),
+                    details,
+                )
+            }
             "pptx shapes show" => {
                 let slide = json_u32(args, "slide")?
                     .ok_or_else(|| CliError::invalid_args("slide is required"))?;
@@ -21154,6 +21232,170 @@ fn pptx_notes_text_block(xml: &str) -> Value {
         return pptx_empty_notes_block();
     };
     pptx_text_block_from_paragraphs(&shape.paragraphs, true, false)
+}
+
+fn pptx_tables_show(
+    file: &str,
+    slide: u32,
+    table_id: u32,
+    target: Option<&str>,
+    include_details: bool,
+) -> CliResult<Value> {
+    let detected = package_type(file)?;
+    if detected != "pptx" {
+        return Err(CliError::unsupported_type(format!(
+            "file is not a PPTX document (detected: {detected})"
+        )));
+    }
+    let slides = pptx_slide_part_refs(file)?;
+    if slide == 0 || slide as usize > slides.len() {
+        return Err(CliError::invalid_args(format!(
+            "slide number {slide} out of range (1-{})",
+            slides.len()
+        )));
+    }
+    let slide_ref = &slides[slide as usize - 1];
+    let slide_xml = zip_text(file, &slide_ref.part)?;
+    let shapes = pptx_shape_models(&slide_xml);
+    let targets = pptx_selector_targets_from_shapes(&shapes);
+    let resolved_table_id = pptx_resolve_table_target(&shapes, &targets, target)?;
+    let wanted_table_id = if table_id > 0 {
+        Some(table_id)
+    } else {
+        resolved_table_id
+    };
+    let tables = pptx_table_summaries(slide, &shapes, &targets, wanted_table_id, include_details);
+    if let Some(wanted_table_id) = wanted_table_id
+        && tables.is_empty()
+    {
+        return Err(CliError::target_not_found(format!(
+            "target not found: table shape ID {wanted_table_id} on slide {slide}"
+        )));
+    }
+    Ok(json!({
+        "file": file,
+        "slide": slide,
+        "tables": tables,
+    }))
+}
+
+fn pptx_resolve_table_target(
+    shapes: &[Shape],
+    targets: &[Value],
+    target: Option<&str>,
+) -> CliResult<Option<u32>> {
+    let target = target.map(str::trim).unwrap_or_default();
+    if target.is_empty() || target == "@all-tables" {
+        return Ok(None);
+    }
+    for (shape, target_value) in shapes.iter().zip(targets) {
+        let primary = target_value
+            .get("primarySelector")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let selectors = target_value
+            .get("selectors")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str);
+        if primary == target || selectors.clone().any(|selector| selector == target) {
+            if shape.kind == "graphicFrame" && shape.table.is_some() {
+                return Ok(Some(shape.id));
+            }
+            return Err(CliError::invalid_args(format!(
+                "target {target:?} resolves to {primary}, not a table"
+            )));
+        }
+    }
+    Err(CliError::target_not_found(format!(
+        "target not found: target not found: {target} (available selectors: {})",
+        pptx_available_shape_selectors(targets).join(", ")
+    )))
+}
+
+fn pptx_available_shape_selectors(targets: &[Value]) -> Vec<String> {
+    let mut selectors = Vec::new();
+    add_selector(&mut selectors, "@all-shapes".to_string());
+    add_selector(&mut selectors, "@all-shapes-nonph".to_string());
+    add_selector(&mut selectors, "@all-tables".to_string());
+    for target in targets {
+        if let Some(items) = target.get("selectors").and_then(Value::as_array) {
+            for item in items {
+                if let Some(selector) = item.as_str() {
+                    add_selector(&mut selectors, selector.to_string());
+                }
+            }
+        }
+    }
+    selectors
+}
+
+fn pptx_table_summaries(
+    slide: u32,
+    shapes: &[Shape],
+    targets: &[Value],
+    table_id: Option<u32>,
+    include_details: bool,
+) -> Vec<Value> {
+    shapes
+        .iter()
+        .zip(targets)
+        .filter(|(shape, _target)| shape.kind == "graphicFrame" && shape.table.is_some())
+        .filter(|(shape, _target)| table_id.is_none_or(|table_id| shape.id == table_id))
+        .map(|(shape, target)| pptx_table_summary(slide, shape, target, include_details))
+        .collect()
+}
+
+fn pptx_table_summary(slide: u32, shape: &Shape, target: &Value, include_details: bool) -> Value {
+    let table = shape.table.as_ref().expect("table summary requires table");
+    let cells = table
+        .rows
+        .iter()
+        .map(|row| {
+            Value::Array(
+                row.cells
+                    .iter()
+                    .map(|cell| Value::String(cell.text.clone()))
+                    .collect(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut summary = Map::new();
+    summary.insert("slide".to_string(), json!(slide));
+    summary.insert("shapeId".to_string(), json!(shape.id));
+    summary.insert("shapeName".to_string(), json!(shape.name));
+    summary.insert(
+        "targetKind".to_string(),
+        target
+            .get("targetKind")
+            .cloned()
+            .unwrap_or_else(|| json!("table")),
+    );
+    summary.insert(
+        "primarySelector".to_string(),
+        target
+            .get("primarySelector")
+            .cloned()
+            .unwrap_or_else(|| json!(format!("shape:{}", shape.id))),
+    );
+    summary.insert(
+        "selectors".to_string(),
+        target
+            .get("selectors")
+            .cloned()
+            .unwrap_or_else(|| Value::Array(Vec::new())),
+    );
+    summary.insert("rows".to_string(), json!(table.rows.len()));
+    summary.insert("cols".to_string(), json!(table_column_count(table)));
+    summary.insert("cells".to_string(), Value::Array(cells));
+    if let Some(bounds) = shape.bounds.as_ref() {
+        summary.insert("bounds".to_string(), bounds_json(bounds));
+    }
+    if include_details {
+        summary.insert("tableInfo".to_string(), table_info_json(table));
+    }
+    Value::Object(summary)
 }
 
 fn pptx_extract_text_shapes(xml: &str) -> Vec<Value> {
