@@ -9595,6 +9595,42 @@ fn serve_pptx_generic_web_agent_edit_path_works() {
         Value::String(String::new())
     );
 
+    let layouts_list_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            34,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx layouts list",
+                "args": {},
+            }),
+        ),
+    );
+    assert_eq!(
+        layouts_list_response["result"]["layouts"][0]["primarySelector"],
+        Value::String("1".to_string())
+    );
+
+    let layouts_show_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            35,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx layouts show",
+                "args": {"layout": "1"},
+            }),
+        ),
+    );
+    assert_eq!(
+        layouts_show_response["result"]["placeholders"][0]["key"],
+        Value::String("ctrTitle".to_string())
+    );
+
     let tables_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
@@ -10223,6 +10259,65 @@ fn web_smoke_binary_readback_checks_are_supported() {
         vec![
             "--json",
             "pptx",
+            "layouts",
+            "list",
+            "testdata/pptx/minimal-title/presentation.pptx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "layouts",
+            "list",
+            "testdata/pptx/title-content/presentation.pptx",
+            "--master",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "layouts",
+            "list",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "layouts",
+            "show",
+            "testdata/pptx/minimal-title/presentation.pptx",
+            "--layout",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "layouts",
+            "show",
+            "testdata/pptx/title-content/presentation.pptx",
+            "--layout",
+            "Title and Content",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "layouts",
+            "show",
+            "testdata/pptx/title-content/presentation.pptx",
+            "--layout",
+            "NOPE",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "layouts",
+            "show",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--layout",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
             "tables",
             "show",
             "testdata/pptx/table-slide/presentation.pptx",
@@ -10423,6 +10518,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx extract text", false);
     assert_command(&all_caps, "ooxml pptx extract notes", false);
     assert_command(&all_caps, "ooxml pptx notes show", false);
+    assert_command(&all_caps, "ooxml pptx layouts list", false);
+    assert_command(&all_caps, "ooxml pptx layouts show", false);
     assert_command(&all_caps, "ooxml pptx tables show", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx fields insert", true);
@@ -10457,6 +10554,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "footer",
         "image",
         "table",
+        "layout",
+        "placeholder",
         "style",
         "comment",
     ] {
@@ -10495,6 +10594,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx slides selectors", false);
     assert_command(&pptx_caps, "ooxml pptx slides show", false);
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
+    assert_command(&pptx_caps, "ooxml pptx layouts list", false);
+    assert_command(&pptx_caps, "ooxml pptx layouts show", false);
     assert_command(&pptx_caps, "ooxml pptx tables show", false);
     assert_command(&pptx_caps, "ooxml pptx extract text", false);
     assert_command(&pptx_caps, "ooxml pptx extract notes", false);
@@ -10540,6 +10641,23 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml docx blocks delete", true);
     assert_no_command(&table_caps, "ooxml docx blocks");
     assert_no_command(&table_caps, "ooxml docx tables show");
+
+    let (layout_code, layout_stdout, layout_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "layout"]);
+    assert_eq!(layout_code, 0);
+    assert_eq!(layout_stderr, None);
+    let layout_caps = layout_stdout.expect("layout capabilities");
+    assert_command(&layout_caps, "ooxml pptx layouts list", false);
+    assert_command(&layout_caps, "ooxml pptx layouts show", false);
+    assert_no_command(&layout_caps, "ooxml pptx tables show");
+
+    let (placeholder_code, placeholder_stdout, placeholder_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "placeholder"]);
+    assert_eq!(placeholder_code, 0);
+    assert_eq!(placeholder_stderr, None);
+    let placeholder_caps = placeholder_stdout.expect("placeholder capabilities");
+    assert_command(&placeholder_caps, "ooxml pptx layouts list", false);
+    assert_command(&placeholder_caps, "ooxml pptx layouts show", false);
 
     let (paragraph_code, paragraph_stdout, paragraph_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "paragraph"]);
@@ -10681,10 +10799,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 58, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 60, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        232,
+        230,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
