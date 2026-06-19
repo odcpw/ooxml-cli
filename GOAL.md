@@ -12,12 +12,13 @@ the relevant command surface.
 
 ## Test Cadence Override
 
-This is a Rust port. Normal slices change Rust, not Go. Do **not** run the full
-Go test suite after each Rust-only slice. In particular, do **not** run
-`go test ./...` as a reflex check. Use targeted Go CLI oracle comparisons only
-for the exact command path being ported or audited. Reserve full Go tests for
-milestone gates, Go-side edits, frozen contract changes, or a concrete reason
-to distrust the oracle baseline.
+This is a Rust port. Normal slices change Rust, not Go. Do **not** run Go tests
+after each Rust-only slice. In particular, do **not** run `go test ./...`, Go
+package tests, or Go unit tests as reflex checks while only the Rust subject is
+changing. Use the Go implementation by running its CLI as the oracle for the
+exact command path being ported or audited. Reserve Go tests for milestone
+gates, Go-side edits, frozen contract changes, or a concrete reason to distrust
+the oracle baseline.
 
 ## Required Skills
 
@@ -62,12 +63,14 @@ crates and document why.
 ## Non-Negotiables
 
 - Go is the oracle. Rust is the subject.
-- Do not run the full Go test suite after every Rust-only slice. Use targeted
-  Go-vs-Rust parity checks for the command being ported. We are not changing Go
-  in normal Rust port slices, so reserve full Go tests for milestone gates or
-  when Go code, frozen contracts, or shared oracle assumptions change.
-- In regular Rust port work, do not run `go test ./...`; run the Go CLI only as
-  the comparison oracle for the exact command path under port.
+- Do not run Go tests after every Rust-only slice. We are not changing Go in
+  normal Rust port slices, so Go test suites do not belong in the routine
+  feedback loop.
+- In regular Rust port work, do not run `go test ./...`, package-level Go
+  tests, or Go unit tests. Run the Go CLI only as the comparison oracle for the
+  exact command path under port.
+- Reserve Go tests for milestone gates, Go-side edits, frozen contract changes,
+  or a concrete reason to distrust the oracle baseline.
 - Port by command surface, not vague module mirroring.
 - Every implemented Rust surface must be compared against Go for stdout, stderr,
   exit code, JSON shape, mutation result, validation result, and any relevant
@@ -94,9 +97,9 @@ crates and document why.
    intentionally excluded, or tracked as open.
 8. Add metamorphic tests and fuzzing.
 9. Run fresh-eyes review, `cargo fmt`, `cargo clippy`, `cargo test`,
-   differential parity gates, and relevant web smoke checks. Do not rerun the
-   full Go suite for each Rust-only slice; run it only for milestones or when
-   Go-side code/contracts changed.
+   differential parity gates, and relevant web smoke checks. Do not rerun Go
+   tests for each Rust-only slice; run them only for milestones or when Go-side
+   code/contracts changed.
 10. Repeat until the Rust branch is at proven full parity and pushed.
 
 ## Short Prompt
@@ -107,7 +110,7 @@ Use this when character budget is tight:
 Read and follow GOAL.md. Use the named `$` skills there. Continue the Rust port
 until Go is preserved as the oracle branch and the Rust branch reaches proven
 full parity through the frozen contract and Go-vs-Rust conformance harness. Do
-not run the full Go test suite for each Rust-only slice; Go is not being changed.
-Use targeted Go-vs-Rust checks unless a milestone gate or Go/contract change
-requires broader Go verification.
+not run Go tests for each Rust-only slice; Go is not being changed. Use targeted
+Go CLI oracle checks unless a milestone gate or Go/contract change requires
+broader Go verification.
 ```
