@@ -114,6 +114,12 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   leading-instruction `--type` filtering, empty documents, unsupported package
   rejection, document-order mixed fields, switch-bearing field instructions, and
   table-nested fields reported as non-editable
+- `--json docx fields insert <docx>` and
+  `--json docx fields set-result <docx>` with Go-oracle comparison for body
+  simple-field insertion, unknown-code warnings, simple field cached-result
+  updates, complex header field cached-result updates, hash mismatch guards,
+  selector validation, table-target rejection, strict validation, readback
+  commands, and serve `inspect`/`op` routing through the session path
 - `--json docx headers list <docx>` and `--json docx footers list <docx>` with
   Go-oracle comparison for section-scoped header/footer references, default
   header/footer refs, pasteable selectors, relationship-id aliases, part aliases,
@@ -170,7 +176,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 49, and the harness pins the 241-command gap until
+  paths, Rust advertises 51, and the harness pins the 239-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

@@ -6179,6 +6179,268 @@ fn docx_fields_list_matches_go_oracle() {
 }
 
 #[test]
+fn docx_fields_insert_and_set_result_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-docx-fields-edit-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx fields edit temp dir");
+
+    let go_insert_out = temp_dir.join("go-insert.docx");
+    let rust_insert_out = temp_dir.join("rust-insert.docx");
+    let go_insert_out = go_insert_out.to_string_lossy().to_string();
+    let rust_insert_out = rust_insert_out.to_string_lossy().to_string();
+    let insert_input = "testdata/docx/minimal/document.docx";
+    let go_insert_args = [
+        "--json",
+        "docx",
+        "fields",
+        "insert",
+        insert_input,
+        "--location",
+        "body:1",
+        "--field-code",
+        "PAGE",
+        "--result",
+        "1",
+        "--out",
+        &go_insert_out,
+    ];
+    let rust_insert_args = [
+        "--json",
+        "docx",
+        "fields",
+        "insert",
+        insert_input,
+        "--location",
+        "body:1",
+        "--field-code",
+        "PAGE",
+        "--result",
+        "1",
+        "--out",
+        &rust_insert_out,
+    ];
+    let (go_insert_code, go_insert_stdout, go_insert_stderr) = run_go_ooxml(&go_insert_args);
+    let (rust_insert_code, rust_insert_stdout, rust_insert_stderr) = run_ooxml(&rust_insert_args);
+    assert_eq!(rust_insert_code, go_insert_code, "fields insert exit");
+    assert_eq!(rust_insert_stderr, go_insert_stderr, "fields insert stderr");
+    assert_eq!(
+        scrub_path(
+            rust_insert_stdout.expect("rust fields insert stdout"),
+            &rust_insert_out,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_insert_stdout.expect("go fields insert stdout"),
+            &go_insert_out,
+            "[OUT]"
+        ),
+        "fields insert stdout"
+    );
+    let (validate_code, _, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_insert_out]);
+    assert_eq!(validate_code, 0, "inserted docx validates");
+    assert_eq!(validate_stderr, None, "inserted docx validation stderr");
+    let (go_list_code, go_list_stdout, go_list_stderr) =
+        run_go_ooxml(&["--json", "docx", "fields", "list", &go_insert_out]);
+    let (rust_list_code, rust_list_stdout, rust_list_stderr) =
+        run_ooxml(&["--json", "docx", "fields", "list", &rust_insert_out]);
+    assert_eq!(rust_list_code, go_list_code, "insert readback list exit");
+    assert_eq!(
+        rust_list_stderr, go_list_stderr,
+        "insert readback list stderr"
+    );
+    assert_eq!(
+        scrub_path(
+            rust_list_stdout.expect("rust insert readback"),
+            &rust_insert_out,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_list_stdout.expect("go insert readback"),
+            &go_insert_out,
+            "[OUT]"
+        ),
+        "insert readback list stdout"
+    );
+
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "fields",
+        "insert",
+        insert_input,
+        "--location",
+        "body:1",
+        "--field-code",
+        "STYLEREF",
+        "--dry-run",
+    ]);
+
+    let set_input = "testdata/docx/with-fields/document.docx";
+    let go_set_out = temp_dir.join("go-set.docx");
+    let rust_set_out = temp_dir.join("rust-set.docx");
+    let go_set_out = go_set_out.to_string_lossy().to_string();
+    let rust_set_out = rust_set_out.to_string_lossy().to_string();
+    let go_set_args = [
+        "--json",
+        "docx",
+        "fields",
+        "set-result",
+        set_input,
+        "--selector",
+        "body:1:0",
+        "--result",
+        "42",
+        "--out",
+        &go_set_out,
+    ];
+    let rust_set_args = [
+        "--json",
+        "docx",
+        "fields",
+        "set-result",
+        set_input,
+        "--selector",
+        "body:1:0",
+        "--result",
+        "42",
+        "--out",
+        &rust_set_out,
+    ];
+    let (go_set_code, go_set_stdout, go_set_stderr) = run_go_ooxml(&go_set_args);
+    let (rust_set_code, rust_set_stdout, rust_set_stderr) = run_ooxml(&rust_set_args);
+    assert_eq!(rust_set_code, go_set_code, "fields set-result exit");
+    assert_eq!(rust_set_stderr, go_set_stderr, "fields set-result stderr");
+    assert_eq!(
+        scrub_path(
+            rust_set_stdout.expect("rust fields set stdout"),
+            &rust_set_out,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_set_stdout.expect("go fields set stdout"),
+            &go_set_out,
+            "[OUT]"
+        ),
+        "fields set-result stdout"
+    );
+    let (validate_code, _, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_set_out]);
+    assert_eq!(validate_code, 0, "set-result docx validates");
+    assert_eq!(validate_stderr, None, "set-result validation stderr");
+
+    let go_header_out = temp_dir.join("go-header.docx");
+    let rust_header_out = temp_dir.join("rust-header.docx");
+    let go_header_out = go_header_out.to_string_lossy().to_string();
+    let rust_header_out = rust_header_out.to_string_lossy().to_string();
+    let go_header_args = [
+        "--json",
+        "docx",
+        "fields",
+        "set-result",
+        set_input,
+        "--selector",
+        "header1:1:0",
+        "--result",
+        "9",
+        "--out",
+        &go_header_out,
+    ];
+    let rust_header_args = [
+        "--json",
+        "docx",
+        "fields",
+        "set-result",
+        set_input,
+        "--selector",
+        "header1:1:0",
+        "--result",
+        "9",
+        "--out",
+        &rust_header_out,
+    ];
+    let (go_header_code, go_header_stdout, go_header_stderr) = run_go_ooxml(&go_header_args);
+    let (rust_header_code, rust_header_stdout, rust_header_stderr) = run_ooxml(&rust_header_args);
+    assert_eq!(rust_header_code, go_header_code, "header field set exit");
+    assert_eq!(
+        rust_header_stderr, go_header_stderr,
+        "header field set stderr"
+    );
+    assert_eq!(
+        scrub_path(
+            rust_header_stdout.expect("rust header field set stdout"),
+            &rust_header_out,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_header_stdout.expect("go header field set stdout"),
+            &go_header_out,
+            "[OUT]"
+        ),
+        "header field set stdout"
+    );
+
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "fields",
+        "set-result",
+        set_input,
+        "--selector",
+        "body:1",
+        "--result",
+        "42",
+        "--dry-run",
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "fields",
+        "set-result",
+        set_input,
+        "--selector",
+        "body:1:0",
+        "--result",
+        "42",
+        "--expect-hash",
+        "sha256:bogus",
+        "--dry-run",
+    ]);
+
+    let table_docx = temp_dir.join("table-field.docx");
+    write_docx_with_body(
+        &table_docx,
+        r#"    <w:tbl>
+      <w:tr>
+        <w:tc>
+          <w:p>
+            <w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>
+          </w:p>
+        </w:tc>
+      </w:tr>
+    </w:tbl>"#,
+    );
+    let table_docx = table_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "fields",
+        "set-result",
+        &table_docx,
+        "--selector",
+        "body:1:0",
+        "--result",
+        "2",
+        "--dry-run",
+    ]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_headers_and_footers_list_match_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
@@ -7488,6 +7750,171 @@ fn serve_op_supports_docx_headers_set_text() {
 }
 
 #[test]
+fn serve_op_supports_docx_fields_editing() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-docx-fields-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.docx");
+    let output = temp_dir.join("serve-docx-fields-out.docx");
+    fs::copy("testdata/docx/with-fields/document.docx", &input).expect("stage docx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({"file": input_str, "out": output_str}),
+        ),
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let inspect_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            2,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "docx fields list",
+                "args": {"type": "PAGE"},
+            }),
+        ),
+    );
+    assert!(
+        inspect_response.get("error").is_none(),
+        "docx fields inspect failed: {inspect_response:?}"
+    );
+    assert_eq!(
+        inspect_response["result"]["fields"][0]["location"],
+        Value::String("body:1".to_string())
+    );
+
+    let set_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            3,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx fields set-result",
+                "args": {"selector": "body:1:0", "result": "77"},
+            }),
+        ),
+    );
+    assert!(
+        set_response.get("error").is_none(),
+        "docx field set-result op failed: {set_response:?}"
+    );
+    assert_eq!(
+        set_response["result"]["readback"]["cachedResult"],
+        Value::String("77".to_string())
+    );
+
+    let insert_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            4,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx fields insert",
+                "args": {"location": "body:1", "fieldCode": "NUMPAGES", "result": "2"},
+            }),
+        ),
+    );
+    assert!(
+        insert_response.get("error").is_none(),
+        "docx field insert op failed: {insert_response:?}"
+    );
+    assert_eq!(
+        insert_response["result"]["readback"]["instruction"],
+        Value::String("NUMPAGES".to_string())
+    );
+
+    let plan_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(5, "plan", serde_json::json!({"session": session})),
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][1],
+        Value::String("fields".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][2],
+        Value::String("set-result".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][1]["argv"][2],
+        Value::String("insert".to_string())
+    );
+
+    let commit_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(6, "commit", serde_json::json!({"session": session})),
+    );
+    assert!(
+        commit_response.get("error").is_none(),
+        "docx fields commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+
+    let (list_code, list_stdout, list_stderr) =
+        run_ooxml(&["--json", "docx", "fields", "list", &output_str]);
+    assert_eq!(list_code, 0, "docx fields output list exit");
+    assert_eq!(list_stderr, None, "docx fields output list stderr");
+    let list = list_stdout.expect("docx fields output list");
+    assert!(
+        list["fields"]
+            .as_array()
+            .expect("fields")
+            .iter()
+            .any(|field| {
+                field["instruction"] == Value::String("PAGE".to_string())
+                    && field["cachedResult"] == Value::String("77".to_string())
+            })
+    );
+    assert!(
+        list["fields"]
+            .as_array()
+            .expect("fields")
+            .iter()
+            .any(|field| {
+                field["instruction"] == Value::String("NUMPAGES".to_string())
+                    && field["cachedResult"] == Value::String("2".to_string())
+            })
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_pptx_generic_web_agent_edit_path_works() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-pptx-{}", std::process::id()));
@@ -8155,6 +8582,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let all_caps = all_stdout.expect("all capabilities");
     assert_command(&all_caps, "ooxml version", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
+    assert_command(&all_caps, "ooxml docx fields insert", true);
+    assert_command(&all_caps, "ooxml docx fields set-result", true);
     assert_command(&all_caps, "ooxml docx headers list", false);
     assert_command(&all_caps, "ooxml docx footers list", false);
     assert_command(&all_caps, "ooxml docx headers show", false);
@@ -8172,6 +8601,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
         assert_object_kind(&all_caps, kind);
     }
     assert_object_kind_command(&all_caps, "field", "ooxml docx fields list");
+    assert_object_kind_command(&all_caps, "field", "ooxml docx fields insert");
+    assert_object_kind_command(&all_caps, "field", "ooxml docx fields set-result");
     assert_object_kind_command(&all_caps, "header", "ooxml docx headers set-text");
     assert_object_kind_command(&all_caps, "footer", "ooxml docx footers set-text");
     assert_object_kind_command(&all_caps, "image", "ooxml docx images list");
@@ -8268,6 +8699,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(field_stderr, None);
     let field_caps = field_stdout.expect("field capabilities");
     assert_command(&field_caps, "ooxml docx fields list", false);
+    assert_command(&field_caps, "ooxml docx fields insert", true);
+    assert_command(&field_caps, "ooxml docx fields set-result", true);
 
     let (header_code, header_stdout, header_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "header"]);
@@ -8302,6 +8735,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(docx_stderr, None);
     let docx_caps = docx_stdout.expect("docx capabilities");
     assert_command(&docx_caps, "ooxml docx fields list", false);
+    assert_command(&docx_caps, "ooxml docx fields insert", true);
+    assert_command(&docx_caps, "ooxml docx fields set-result", true);
     assert_command(&docx_caps, "ooxml docx headers list", false);
     assert_command(&docx_caps, "ooxml docx footers list", false);
     assert_command(&docx_caps, "ooxml docx headers show", false);
@@ -8336,10 +8771,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 49, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 51, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        241,
+        239,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

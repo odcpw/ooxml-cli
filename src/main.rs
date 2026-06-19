@@ -824,6 +824,92 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             docx_fields_list(file, field_type.as_deref())
         }
         [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "fields" && verb == "insert" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--location",
+                    "--field-code",
+                    "--result",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let location = parse_string_flag(rest, "--location")?.ok_or_else(|| {
+                CliError::invalid_args("--location is required (e.g. body:2 or header1:1)")
+            })?;
+            let field_code = parse_string_flag(rest, "--field-code")?
+                .ok_or_else(|| CliError::invalid_args("--field-code is required (e.g. PAGE)"))?;
+            let result = parse_string_flag(rest, "--result")?.unwrap_or_default();
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_fields_insert(
+                file,
+                &location,
+                &field_code,
+                &result,
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "fields" && verb == "set-result" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--selector",
+                    "--result",
+                    "--expect-hash",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let selector = parse_string_flag(rest, "--selector")?.ok_or_else(|| {
+                CliError::invalid_args("--selector is required (e.g. body:1:0 or header1:1:0)")
+            })?;
+            if !value_flag_present(rest, "--result") {
+                return Err(CliError::invalid_args("--result is required"));
+            }
+            let result = parse_string_flag(rest, "--result")?.unwrap_or_default();
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_fields_set_result(
+                file,
+                &selector,
+                &result,
+                &expect_hash,
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && (group == "headers" || group == "footers") && verb == "list" =>
         {
             reject_unknown_flags(rest, &[], &[])?;
@@ -1726,6 +1812,11 @@ fn flag_present(args: &[String], name: &str) -> bool {
     has_flag(args, name)
 }
 
+fn value_flag_present(args: &[String], name: &str) -> bool {
+    args.iter()
+        .any(|arg| arg == name || arg.starts_with(&format!("{name}=")))
+}
+
 fn current_utc_rfc3339() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1797,7 +1888,7 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
             "paragraph": ["ooxml docx text", "ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx paragraphs append", "ooxml docx paragraphs insert", "ooxml docx paragraphs set", "ooxml docx paragraphs clear", "ooxml docx styles apply", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx images list"],
             "style": ["ooxml xlsx ranges set-format", "ooxml docx styles list", "ooxml docx styles show", "ooxml docx styles apply"],
             "comment": ["ooxml docx comments list", "ooxml docx comments add", "ooxml docx comments edit", "ooxml docx comments remove"],
-            "field": ["ooxml docx fields list"],
+            "field": ["ooxml docx fields list", "ooxml docx fields insert", "ooxml docx fields set-result"],
             "header": ["ooxml docx headers list", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers list"],
             "footer": ["ooxml docx footers list", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx headers list"],
             "image": ["ooxml docx images list"]
@@ -2991,6 +3082,72 @@ fn capability_commands() -> Vec<Value> {
                 "string",
                 "show only fields whose leading instruction keyword matches",
             )],
+        ),
+        capability_command(
+            "ooxml docx fields insert",
+            "insert <file>",
+            "Insert a simple DOCX field into a body, header, or footer paragraph.",
+            &["field", "paragraph"],
+            true,
+            None,
+            vec![
+                flag(
+                    "--location",
+                    "location",
+                    "string",
+                    "target part:block location, e.g. body:2 or header1:1",
+                ),
+                flag(
+                    "--field-code",
+                    "fieldCode",
+                    "string",
+                    "field instruction, e.g. PAGE",
+                ),
+                flag("--result", "result", "string", "initial cached result text"),
+                flag("--out", "out", "string", "output file path"),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag("--in-place", "inPlace", "bool", "write in place"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml docx fields set-result",
+            "set-result <file>",
+            "Set the cached result text of a simple or complex DOCX field.",
+            &["field", "paragraph"],
+            true,
+            None,
+            vec![
+                flag(
+                    "--selector",
+                    "selector",
+                    "string",
+                    "field selector part:block:field, e.g. body:1:0",
+                ),
+                flag("--result", "result", "string", "new cached result text"),
+                flag(
+                    "--expect-hash",
+                    "expectHash",
+                    "string",
+                    "expected sha256 of instruction plus cached result",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag("--in-place", "inPlace", "bool", "write in place"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
         ),
         capability_command(
             "ooxml docx headers list",
@@ -10945,6 +11102,749 @@ fn docx_field_location(part_uri: &str, block_index: usize) -> String {
     format!("{prefix}:{block_index}")
 }
 
+struct DocxFieldLocation {
+    part: String,
+    block_index: usize,
+    field_index: usize,
+    has_field: bool,
+}
+
+struct DocxLocatedField {
+    field_type: &'static str,
+    instruction: String,
+    cached_result: String,
+    simple_range: Option<XmlNamedRange>,
+    result_removals: Vec<XmlRange>,
+    end_run_start: Option<usize>,
+    end_run_prefix: String,
+}
+
+#[derive(Default)]
+struct DocxComplexFieldBuilder {
+    instruction: String,
+    cached_result: String,
+    result_removals: Vec<XmlRange>,
+    end_run_start: Option<usize>,
+    end_run_prefix: String,
+    depth: usize,
+    after_separator: bool,
+}
+
+fn docx_fields_insert(
+    file: &str,
+    location: &str,
+    field_code: &str,
+    result: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    let loc = parse_docx_field_location(location)?;
+    if field_code.trim().is_empty() {
+        return Err(CliError::invalid_args(
+            "--field-code must be a non-empty instruction (e.g. PAGE)",
+        ));
+    }
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let entries = zip_entry_names(file)?;
+    ensure_docx_package_kind(file, &entries)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let document_uri = format!("/{}", document_part.trim_start_matches('/'));
+    let document_xml = zip_text(file, &document_part)?;
+    let part_uri =
+        docx_field_part_uri_for_location(file, &document_part, &document_uri, &document_xml, &loc)?;
+    let part_entry = part_uri.trim_start_matches('/').to_string();
+    let part_xml = if part_entry == document_part {
+        document_xml
+    } else {
+        zip_text(file, &part_entry)?
+    };
+    let mutation = insert_docx_field_xml(
+        &part_xml,
+        &part_uri,
+        &document_uri,
+        loc.block_index,
+        field_code,
+        result,
+    )?;
+    let mut overrides = BTreeMap::new();
+    overrides.insert(part_entry, mutation.xml);
+    let output_path = docx_mutation_output_path_for_result(file, &options);
+    write_docx_package_mutation_output(file, &overrides, options)?;
+
+    let target = output_path.as_deref().unwrap_or(file);
+    let mut object = Map::new();
+    object.insert("file".to_string(), json!(file));
+    object.insert("operation".to_string(), json!("inserted"));
+    object.insert("partUri".to_string(), json!(part_uri));
+    object.insert("blockIndex".to_string(), json!(mutation.block_index));
+    object.insert("fieldIndex".to_string(), json!(mutation.field_index));
+    object.insert("fieldType".to_string(), json!("simple"));
+    object.insert("instruction".to_string(), json!(mutation.instruction));
+    object.insert("cachedResult".to_string(), json!(result));
+    object.insert("location".to_string(), json!(mutation.location));
+    object.insert("paragraphText".to_string(), json!(mutation.paragraph_text));
+    object.insert("knownCode".to_string(), json!(mutation.known_code));
+    if !mutation.known_code {
+        object.insert(
+            "warning".to_string(),
+            json!(format!(
+                "field code {:?} is not a recognized instruction; inserted as-is (switches are not parsed)",
+                mutation.instruction
+            )),
+        );
+    }
+    object.insert(
+        "listCommand".to_string(),
+        json!(docx_fields_list_command(target)),
+    );
+    object.insert(
+        "validateCommand".to_string(),
+        json!(docx_validate_strict_command(target)),
+    );
+    Ok(Value::Object(object))
+}
+
+fn docx_fields_set_result(
+    file: &str,
+    selector: &str,
+    result: &str,
+    expect_hash: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    let loc = parse_docx_field_location(selector)?;
+    if !loc.has_field {
+        return Err(CliError::invalid_args(format!(
+            "invalid selector {selector:?}: a field index is required (e.g. body:1:0)"
+        )));
+    }
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let entries = zip_entry_names(file)?;
+    ensure_docx_package_kind(file, &entries)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let document_uri = format!("/{}", document_part.trim_start_matches('/'));
+    let document_xml = zip_text(file, &document_part)?;
+    let part_uri =
+        docx_field_part_uri_for_location(file, &document_part, &document_uri, &document_xml, &loc)?;
+    let part_entry = part_uri.trim_start_matches('/').to_string();
+    let part_xml = if part_entry == document_part {
+        document_xml
+    } else {
+        zip_text(file, &part_entry)?
+    };
+    let mutation = set_docx_field_result_xml(
+        &part_xml,
+        &part_uri,
+        &document_uri,
+        loc.block_index,
+        loc.field_index,
+        result,
+        expect_hash,
+    )?;
+    let mut overrides = BTreeMap::new();
+    overrides.insert(part_entry, mutation.xml);
+    let output_path = docx_mutation_output_path_for_result(file, &options);
+    write_docx_package_mutation_output(file, &overrides, options)?;
+
+    let target = output_path.as_deref().unwrap_or(file);
+    let mut object = Map::new();
+    object.insert("file".to_string(), json!(file));
+    object.insert("operation".to_string(), json!("set-result"));
+    object.insert("partUri".to_string(), json!(part_uri));
+    object.insert("blockIndex".to_string(), json!(mutation.block_index));
+    object.insert("fieldIndex".to_string(), json!(loc.field_index));
+    object.insert("fieldType".to_string(), json!(mutation.field_type));
+    object.insert("instruction".to_string(), json!(mutation.instruction));
+    object.insert(
+        "previousResult".to_string(),
+        json!(mutation.previous_result),
+    );
+    object.insert("cachedResult".to_string(), json!(result));
+    object.insert("location".to_string(), json!(mutation.location));
+    object.insert(
+        "note".to_string(),
+        json!("cachedResult is a cache; Word recomputes the live value on field recalculation"),
+    );
+    object.insert(
+        "listCommand".to_string(),
+        json!(docx_fields_list_command(target)),
+    );
+    object.insert(
+        "validateCommand".to_string(),
+        json!(docx_validate_strict_command(target)),
+    );
+    Ok(Value::Object(object))
+}
+
+fn parse_docx_field_location(value: &str) -> CliResult<DocxFieldLocation> {
+    let parts = value.trim().split(':').collect::<Vec<_>>();
+    if parts.len() < 2 || parts.len() > 3 {
+        return Err(CliError::invalid_args(format!(
+            "invalid location {value:?}: expected part:block[:field] (e.g. body:1 or header1:1:0)"
+        )));
+    }
+    let part = parts[0].trim();
+    if part.is_empty() {
+        return Err(CliError::invalid_args(format!(
+            "invalid location {value:?}: part segment is empty"
+        )));
+    }
+    let block_index = parts[1].trim().parse::<usize>().map_err(|_| {
+        CliError::invalid_args(format!(
+            "invalid location {value:?}: block index must be a positive integer"
+        ))
+    })?;
+    if block_index == 0 {
+        return Err(CliError::invalid_args(format!(
+            "invalid location {value:?}: block index must be a positive integer"
+        )));
+    }
+    let (field_index, has_field) = if parts.len() == 3 {
+        let field_index = parts[2].trim().parse::<usize>().map_err(|_| {
+            CliError::invalid_args(format!(
+                "invalid location {value:?}: field index must be a non-negative integer"
+            ))
+        })?;
+        (field_index, true)
+    } else {
+        (0, false)
+    };
+    Ok(DocxFieldLocation {
+        part: part.to_string(),
+        block_index,
+        field_index,
+        has_field,
+    })
+}
+
+fn docx_field_part_uri_for_location(
+    file: &str,
+    document_part: &str,
+    document_uri: &str,
+    document_xml: &str,
+    loc: &DocxFieldLocation,
+) -> CliResult<String> {
+    if loc.part == "body" {
+        return Ok(document_uri.to_string());
+    }
+    for part_uri in docx_header_footer_part_uris(file, document_part, document_uri, document_xml)? {
+        let label = part_uri
+            .rsplit('/')
+            .next()
+            .unwrap_or(part_uri.as_str())
+            .trim_end_matches(".xml")
+            .to_string();
+        if label == loc.part {
+            return Ok(part_uri);
+        }
+    }
+    Err(CliError::target_not_found(format!(
+        "part {:?} (use 'docx fields list' to discover locations)",
+        loc.part
+    )))
+}
+
+struct DocxFieldInsertMutation {
+    xml: String,
+    block_index: usize,
+    field_index: usize,
+    instruction: String,
+    location: String,
+    paragraph_text: String,
+    known_code: bool,
+}
+
+struct DocxFieldSetResultMutation {
+    xml: String,
+    block_index: usize,
+    field_type: String,
+    instruction: String,
+    previous_result: String,
+    location: String,
+}
+
+fn insert_docx_field_xml(
+    xml: &str,
+    part_uri: &str,
+    document_uri: &str,
+    block_index: usize,
+    field_code: &str,
+    result: &str,
+) -> CliResult<DocxFieldInsertMutation> {
+    let paragraph = docx_field_target_paragraph_range(xml, part_uri, document_uri, block_index)?;
+    let fragment = &xml[paragraph.start..paragraph.end];
+    let existing_fields = docx_locate_fields_in_paragraph_fragment(fragment)?;
+    let field_index = existing_fields.len();
+    let instruction = normalize_docx_field_instruction(field_code)?;
+    let updated_paragraph = append_docx_simple_field_to_paragraph(fragment, &instruction, result)?;
+    let paragraph_text = docx_paragraph_fragment_text(&updated_paragraph);
+    let mut updated_xml = String::with_capacity(xml.len() + updated_paragraph.len());
+    updated_xml.push_str(&xml[..paragraph.start]);
+    updated_xml.push_str(&updated_paragraph);
+    updated_xml.push_str(&xml[paragraph.end..]);
+    Ok(DocxFieldInsertMutation {
+        xml: updated_xml,
+        block_index,
+        field_index,
+        instruction: instruction.trim().to_string(),
+        location: docx_field_location(part_uri, block_index),
+        paragraph_text,
+        known_code: is_known_docx_field_code(field_code),
+    })
+}
+
+fn set_docx_field_result_xml(
+    xml: &str,
+    part_uri: &str,
+    document_uri: &str,
+    block_index: usize,
+    field_index: usize,
+    result: &str,
+    expect_hash: &str,
+) -> CliResult<DocxFieldSetResultMutation> {
+    let paragraph = docx_field_target_paragraph_range(xml, part_uri, document_uri, block_index)?;
+    let fragment = &xml[paragraph.start..paragraph.end];
+    let fields = docx_locate_fields_in_paragraph_fragment(fragment)?;
+    let field = fields
+        .get(field_index)
+        .ok_or_else(|| CliError::target_not_found("field"))?;
+    if !expect_hash.is_empty() {
+        let got = docx_field_content_hash(&field.instruction, &field.cached_result);
+        if got != expect_hash {
+            return Err(CliError::invalid_args(format!(
+                "field hash mismatch: field expected {expect_hash} but found {got}"
+            )));
+        }
+    }
+    let updated_paragraph = if let Some(simple_range) = field.simple_range.as_ref() {
+        replace_docx_simple_field_result(fragment, simple_range, result)?
+    } else {
+        replace_docx_complex_field_result(fragment, field, result)?
+    };
+    let mut updated_xml = String::with_capacity(xml.len() + updated_paragraph.len());
+    updated_xml.push_str(&xml[..paragraph.start]);
+    updated_xml.push_str(&updated_paragraph);
+    updated_xml.push_str(&xml[paragraph.end..]);
+    Ok(DocxFieldSetResultMutation {
+        xml: updated_xml,
+        block_index,
+        field_type: field.field_type.to_string(),
+        instruction: field.instruction.trim().to_string(),
+        previous_result: field.cached_result.clone(),
+        location: docx_field_location(part_uri, block_index),
+    })
+}
+
+fn docx_field_target_paragraph_range(
+    xml: &str,
+    part_uri: &str,
+    document_uri: &str,
+    block_index: usize,
+) -> CliResult<XmlRange> {
+    if block_index == 0 {
+        return Err(CliError::target_not_found("field target paragraph"));
+    }
+    if part_uri == document_uri || part_uri.ends_with("/document.xml") {
+        let body_tag = docx_body_tag(xml)?;
+        let blocks = docx_body_block_ranges(xml, &body_tag)?;
+        let block = blocks
+            .get(block_index - 1)
+            .ok_or_else(|| CliError::target_not_found("field target paragraph"))?;
+        if block.kind == "tbl" {
+            return Err(CliError::invalid_args(format!(
+                "field target is a table; table-nested fields are not addressable by the part:block:field selector (block {block_index}) (it is listed with editable=false by 'docx fields list'; editing table-nested fields is not yet supported)"
+            )));
+        }
+        if block.kind != "p" {
+            return Err(CliError::target_not_found("field target paragraph"));
+        }
+        return Ok(*block);
+    }
+
+    let root_tag = docx_header_footer_root_tag(xml, part_uri)?;
+    let root_start = xml
+        .find(&format!("<{root_tag}"))
+        .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?;
+    let root_open_end = xml[root_start..]
+        .find('>')
+        .map(|offset| root_start + offset)
+        .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?;
+    let root_self_closing = xml[root_start..=root_open_end].trim_end().ends_with("/>");
+    if root_self_closing {
+        return Err(CliError::target_not_found("field target paragraph"));
+    }
+    let root_close_start = xml
+        .rfind(&format!("</{root_tag}>"))
+        .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?;
+    let paragraphs = xml_direct_child_ranges(xml, root_open_end + 1, root_close_start)?
+        .into_iter()
+        .filter(|child| child.kind == "p")
+        .collect::<Vec<_>>();
+    let paragraph = paragraphs
+        .get(block_index - 1)
+        .ok_or_else(|| CliError::target_not_found("field target paragraph"))?;
+    Ok(XmlRange {
+        start: paragraph.start,
+        end: paragraph.end,
+        kind: "p",
+    })
+}
+
+fn docx_locate_fields_in_paragraph_fragment(fragment: &str) -> CliResult<Vec<DocxLocatedField>> {
+    let (open_end, _tag_name, close_start, self_closing) = xml_fragment_bounds(fragment)?;
+    if self_closing {
+        return Ok(Vec::new());
+    }
+    let children = xml_direct_child_ranges(fragment, open_end + 1, close_start)?;
+    let mut fields = Vec::new();
+    let mut complex: Option<DocxComplexFieldBuilder> = None;
+
+    for child in children {
+        if child.kind == "fldSimple" && complex.is_none() {
+            let field_fragment = &fragment[child.start..child.end];
+            fields.push(DocxLocatedField {
+                field_type: "simple",
+                instruction: docx_first_word_attr(field_fragment, b"instr")
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string(),
+                cached_result: docx_word_text_descendants(field_fragment, "t"),
+                simple_range: Some(child),
+                result_removals: Vec::new(),
+                end_run_start: None,
+                end_run_prefix: String::new(),
+            });
+            continue;
+        }
+        if child.kind != "r" {
+            continue;
+        }
+        let run_fragment = &fragment[child.start..child.end];
+        let (run_open_end, run_tag, run_close_start, run_self_closing) =
+            xml_fragment_bounds(run_fragment)?;
+        let run_prefix = xml_tag_prefix(&run_tag);
+        if run_self_closing {
+            continue;
+        }
+        let run_children =
+            xml_direct_child_ranges(run_fragment, run_open_end + 1, run_close_start)?;
+        let mut run_has_fld_char = false;
+        let mut run_result_spans = Vec::new();
+        let mut end_this_run = false;
+
+        for run_child in run_children {
+            match run_child.kind.as_str() {
+                "fldChar" => {
+                    run_has_fld_char = true;
+                    let field_char_type = docx_first_word_attr(
+                        &run_fragment[run_child.start..run_child.end],
+                        b"fldCharType",
+                    )
+                    .unwrap_or_default();
+                    match field_char_type.as_str() {
+                        "begin" => {
+                            if complex.is_none() {
+                                complex = Some(DocxComplexFieldBuilder {
+                                    depth: 1,
+                                    after_separator: false,
+                                    ..DocxComplexFieldBuilder::default()
+                                });
+                            } else if let Some(state) = complex.as_mut() {
+                                state.depth += 1;
+                            }
+                        }
+                        "separate" => {
+                            if let Some(state) = complex.as_mut()
+                                && state.depth == 1
+                            {
+                                state.after_separator = true;
+                            }
+                        }
+                        "end" => {
+                            if let Some(state) = complex.as_mut()
+                                && state.depth > 0
+                            {
+                                state.depth -= 1;
+                                if state.depth == 0 {
+                                    state.end_run_start = Some(child.start);
+                                    state.end_run_prefix = run_prefix.clone();
+                                    end_this_run = true;
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                "instrText" => {
+                    if let Some(state) = complex.as_mut()
+                        && state.depth == 1
+                        && !state.after_separator
+                    {
+                        state.instruction.push_str(&xml_fragment_text(
+                            &run_fragment[run_child.start..run_child.end],
+                        ));
+                    }
+                }
+                "t" => {
+                    if let Some(state) = complex.as_mut()
+                        && state.depth == 1
+                        && state.after_separator
+                    {
+                        state.cached_result.push_str(&xml_fragment_text(
+                            &run_fragment[run_child.start..run_child.end],
+                        ));
+                        run_result_spans.push(XmlRange {
+                            start: child.start + run_child.start,
+                            end: child.start + run_child.end,
+                            kind: "t",
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if !run_result_spans.is_empty()
+            && let Some(state) = complex.as_mut()
+        {
+            if run_has_fld_char {
+                state.result_removals.extend(run_result_spans);
+            } else {
+                state.result_removals.push(XmlRange {
+                    start: child.start,
+                    end: child.end,
+                    kind: "r",
+                });
+            }
+        }
+        if end_this_run && let Some(state) = complex.take() {
+            fields.push(DocxLocatedField {
+                field_type: "complex",
+                instruction: state.instruction.trim().to_string(),
+                cached_result: state.cached_result,
+                simple_range: None,
+                result_removals: state.result_removals,
+                end_run_start: state.end_run_start,
+                end_run_prefix: state.end_run_prefix,
+            });
+        }
+    }
+    Ok(fields)
+}
+
+fn append_docx_simple_field_to_paragraph(
+    fragment: &str,
+    instruction: &str,
+    result: &str,
+) -> CliResult<String> {
+    let (open_end, tag_name, close_start, self_closing) = xml_fragment_bounds(fragment)?;
+    let start_tag = &fragment[..=open_end];
+    let prefix = xml_tag_prefix(&tag_name);
+    let mut out = String::with_capacity(fragment.len() + instruction.len() + result.len() + 80);
+    out.push_str(&xml_open_tag_from_start(start_tag));
+    if !self_closing {
+        out.push_str(&fragment[open_end + 1..close_start]);
+    }
+    out.push_str(&render_docx_simple_field(&prefix, instruction, result));
+    out.push_str("</");
+    out.push_str(&tag_name);
+    out.push('>');
+    Ok(out)
+}
+
+fn replace_docx_simple_field_result(
+    paragraph_fragment: &str,
+    simple_range: &XmlNamedRange,
+    result: &str,
+) -> CliResult<String> {
+    let field_fragment = &paragraph_fragment[simple_range.start..simple_range.end];
+    let (open_end, tag_name, close_start, self_closing) = xml_fragment_bounds(field_fragment)?;
+    let start_tag = &field_fragment[..=open_end];
+    let prefix = xml_tag_prefix(&tag_name);
+    let mut updated_field = String::with_capacity(field_fragment.len() + result.len() + 40);
+    updated_field.push_str(&xml_open_tag_from_start(start_tag));
+    if !self_closing {
+        for child in xml_direct_child_ranges(field_fragment, open_end + 1, close_start)?
+            .into_iter()
+            .filter(|child| child.kind != "r")
+        {
+            updated_field.push_str(&field_fragment[child.start..child.end]);
+        }
+    }
+    updated_field.push_str(&render_docx_field_result_run(&prefix, result));
+    updated_field.push_str("</");
+    updated_field.push_str(&tag_name);
+    updated_field.push('>');
+
+    let mut out = String::with_capacity(paragraph_fragment.len() + updated_field.len());
+    out.push_str(&paragraph_fragment[..simple_range.start]);
+    out.push_str(&updated_field);
+    out.push_str(&paragraph_fragment[simple_range.end..]);
+    Ok(out)
+}
+
+fn replace_docx_complex_field_result(
+    paragraph_fragment: &str,
+    field: &DocxLocatedField,
+    result: &str,
+) -> CliResult<String> {
+    let end_run_start = field
+        .end_run_start
+        .ok_or_else(|| CliError::target_not_found("field"))?;
+    let mut removals = field.result_removals.clone();
+    removals.sort_by_key(|range| (range.start, range.end));
+    removals.dedup_by_key(|range| (range.start, range.end));
+    let removed_before_end = removals
+        .iter()
+        .filter(|range| range.start < end_run_start)
+        .map(|range| range.end.saturating_sub(range.start))
+        .sum::<usize>();
+    let insert_at = end_run_start.saturating_sub(removed_before_end);
+    let mut out = paragraph_fragment.to_string();
+    for range in removals.into_iter().rev() {
+        out.replace_range(range.start..range.end, "");
+    }
+    out.insert_str(
+        insert_at,
+        &render_docx_field_result_run(&field.end_run_prefix, result),
+    );
+    Ok(out)
+}
+
+fn render_docx_simple_field(prefix: &str, instruction: &str, result: &str) -> String {
+    let fld = word_xml_tag(prefix, "fldSimple");
+    let instr_attr = if prefix.is_empty() {
+        "w:instr".to_string()
+    } else {
+        format!("{prefix}:instr")
+    };
+    let mut out = String::new();
+    out.push('<');
+    out.push_str(&fld);
+    out.push(' ');
+    out.push_str(&instr_attr);
+    out.push_str("=\"");
+    out.push_str(&xml_attr_escape(instruction));
+    out.push_str("\">");
+    out.push_str(&render_docx_field_result_run(prefix, result));
+    out.push_str("</");
+    out.push_str(&fld);
+    out.push('>');
+    out
+}
+
+fn render_docx_field_result_run(prefix: &str, result: &str) -> String {
+    let r = word_xml_tag(prefix, "r");
+    let t = word_xml_tag(prefix, "t");
+    let mut out = String::new();
+    out.push('<');
+    out.push_str(&r);
+    out.push('>');
+    if result.is_empty() {
+        out.push('<');
+        out.push_str(&t);
+        out.push_str("/>");
+    } else {
+        append_docx_text_children(&mut out, prefix, result);
+    }
+    out.push_str("</");
+    out.push_str(&r);
+    out.push('>');
+    out
+}
+
+fn normalize_docx_field_instruction(code: &str) -> CliResult<String> {
+    let trimmed = code.trim();
+    if trimmed.is_empty() {
+        return Err(CliError::invalid_args(
+            "--field-code must be a non-empty instruction (e.g. PAGE)",
+        ));
+    }
+    Ok(format!(" {trimmed} "))
+}
+
+fn is_known_docx_field_code(code: &str) -> bool {
+    matches!(
+        docx_field_code_base(code).as_str(),
+        "PAGE" | "NUMPAGES" | "DATE" | "TIME" | "FILENAME" | "AUTHOR" | "SUBJECT" | "TITLE"
+    )
+}
+
+fn docx_field_content_hash(instruction: &str, result: &str) -> String {
+    docx_comment_content_hash(instruction.trim(), "", result)
+}
+
+fn docx_fields_list_command(file: &str) -> String {
+    format!("ooxml --json docx fields list {file}")
+}
+
+fn docx_validate_strict_command(file: &str) -> String {
+    format!("ooxml validate --strict {file}")
+}
+
+fn docx_first_word_attr(fragment: &str, name: &[u8]) -> Option<String> {
+    let mut reader = NsReader::from_str(fragment);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                return docx_word_attr_ns(&e, reader.resolver(), name)
+                    .or_else(|| attr(&e, std::str::from_utf8(name).ok()?));
+            }
+            Ok(Event::Eof) | Err(_) => return None,
+            _ => {}
+        }
+    }
+}
+
+fn docx_word_text_descendants(fragment: &str, wanted: &str) -> String {
+    let mut reader = NsReader::from_str(fragment);
+    let mut text = String::new();
+    let mut in_wanted = false;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                if local_name(e.name().as_ref()) == wanted {
+                    in_wanted = true;
+                }
+            }
+            Ok(Event::Text(e)) if in_wanted => text.push_str(&decode_xml_text(e.as_ref())),
+            Ok(Event::GeneralRef(e)) if in_wanted => text.push_str(&xml_general_ref(e.as_ref())),
+            Ok(Event::CData(e)) if in_wanted => text.push_str(&String::from_utf8_lossy(e.as_ref())),
+            Ok(Event::End(e)) => {
+                if local_name(e.name().as_ref()) == wanted {
+                    in_wanted = false;
+                }
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    text
+}
+
+fn xml_fragment_text(fragment: &str) -> String {
+    let mut reader = NsReader::from_str(fragment);
+    let mut text = String::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Text(e)) => text.push_str(&decode_xml_text(e.as_ref())),
+            Ok(Event::GeneralRef(e)) => text.push_str(&xml_general_ref(e.as_ref())),
+            Ok(Event::CData(e)) => text.push_str(&String::from_utf8_lossy(e.as_ref())),
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    text
+}
+
 fn docx_header_footer_part_uris(
     file: &str,
     document_part: &str,
@@ -16682,6 +17582,12 @@ enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    DocxFieldsOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
 }
 
 fn push_serve_plan_string_flag(flags: &mut Vec<Value>, name: &str, value: Option<&str>) {
@@ -16707,7 +17613,8 @@ impl ServeOp {
             | ServeOp::XlsxRangeSet { command, .. }
             | ServeOp::XlsxRangeSetFormat { command, .. }
             | ServeOp::XlsxWorkbookMetadataUpdate { command, .. }
-            | ServeOp::DocxHeaderFooterSetText { command, .. } => command,
+            | ServeOp::DocxHeaderFooterSetText { command, .. }
+            | ServeOp::DocxFieldsOp { command, .. } => command,
         }
     }
 
@@ -16880,6 +17787,27 @@ impl ServeOp {
                 ]);
                 Value::Array(argv)
             }
+            ServeOp::DocxFieldsOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command.split_whitespace().nth(2).unwrap_or("set-result");
+                let mut argv = vec![
+                    json!("docx"),
+                    json!("fields"),
+                    json!(verb),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
             ServeOp::PptxReplaceText {
                 slide,
                 target,
@@ -16935,6 +17863,11 @@ impl ServeOp {
                 ..
             }
             | ServeOp::DocxHeaderFooterSetText {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::DocxFieldsOp {
                 readback_file,
                 readback,
                 ..
@@ -17360,6 +18293,82 @@ impl ServeState {
                     readback,
                 }
             }
+            "docx fields insert" => {
+                let location = json_string(args, "location")?;
+                let field_code = json_optional_string(args, "field-code")
+                    .or_else(|| json_optional_string(args, "fieldCode"))
+                    .ok_or_else(|| CliError::invalid_args("field-code is required"))?;
+                let result = json_optional_string(args, "result").unwrap_or_default();
+                let result_set = args.get("result").is_some();
+                let readback = docx_fields_insert(
+                    &session.working,
+                    &location,
+                    &field_code,
+                    &result,
+                    DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                push_serve_plan_string_flag(&mut plan_flags, "--location", Some(&location));
+                push_serve_plan_string_flag(&mut plan_flags, "--field-code", Some(&field_code));
+                if result_set {
+                    push_serve_plan_string_flag(&mut plan_flags, "--result", Some(&result));
+                }
+                ServeOp::DocxFieldsOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
+            "docx fields set-result" => {
+                let selector = json_string(args, "selector")?;
+                if args.get("result").is_none() {
+                    return Err(CliError::invalid_args("result is required"));
+                }
+                let result = json_optional_string(args, "result").unwrap_or_default();
+                let expect_hash = json_optional_string(args, "expect-hash")
+                    .or_else(|| json_optional_string(args, "expectHash"))
+                    .unwrap_or_default();
+                let readback = docx_fields_set_result(
+                    &session.working,
+                    &selector,
+                    &result,
+                    &expect_hash,
+                    DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                push_serve_plan_string_flag(&mut plan_flags, "--selector", Some(&selector));
+                push_serve_plan_string_flag(&mut plan_flags, "--result", Some(&result));
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-hash",
+                    (!expect_hash.is_empty()).then_some(expect_hash.as_str()),
+                );
+                ServeOp::DocxFieldsOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
             "pptx replace text" => {
                 let slide = json_u32(args, "slide")?.unwrap_or(1);
                 let target = json_string(args, "target")?;
@@ -17490,6 +18499,10 @@ impl ServeState {
                 )
             }
             "xlsx workbook metadata inspect" => xlsx_workbook_metadata_inspect(&session.working),
+            "docx fields list" => {
+                let field_type = json_optional_string(args, "type");
+                docx_fields_list(&session.working, field_type.as_deref())
+            }
             "pptx slides list" => pptx_slides_list(&session.working),
             "pptx slides selectors" => {
                 let slide = json_u32(args, "slide")?
