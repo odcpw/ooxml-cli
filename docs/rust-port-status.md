@@ -102,6 +102,10 @@ Latest milestone, 2026-06-19:
   set-text argument validation moved from `src/main.rs` into
   `src/docx_paragraph_commands.rs`, still sharing the crate-root body XML and
   handle mutation helpers used by styles.
+- Shared DOCX mutation primitives for output path resolution, package writes,
+  text-file resolution, DOCX package guards, strict-validate command text, and
+  paragraph handle errors/resolution moved from `src/main.rs` into
+  `src/docx_mutation_core.rs`.
 - DOCX style list/show/apply commands, style catalog parsing, style handle
   parsing, and style-specific XML rewrite helpers moved from `src/main.rs`
   into `src/docx_styles.rs`, while shared body/table XML helpers remain at the
