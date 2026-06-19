@@ -62,6 +62,9 @@ Latest milestone, 2026-06-19:
   `soffice`/`pdftoppm` invocation helpers moved from `src/main.rs` into
   `src/pptx_render.rs`, leaving PPTX text mutation and serve routing at the
   crate root.
+- PPTX replace-text CLI, in-place mutation, and serve readback helpers moved
+  from `src/main.rs` into `src/pptx_mutation.rs`, while the serve operation
+  router remains at the crate root.
 - MCP tool response shaping, resource schemas, capability resources, command
   resource lookup, and URI decoding moved from `src/main.rs` into
   `src/mcp_support.rs`, leaving MCP state logic separate from protocol support
