@@ -80,6 +80,9 @@ Latest milestone, 2026-06-19:
 - XLSX range export, JSON range rendering, data-out writing, data-format
   normalization, and range max-cell guards moved from `src/main.rs` into
   `src/xlsx_ranges.rs`.
+- Shared XLSX workbook sheet resolution, cell/style decoding, used-range
+  summaries, sparse/dense cell row rendering, cell/range parsing, and column
+  naming moved from `src/main.rs` into `src/xlsx_model.rs`.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
