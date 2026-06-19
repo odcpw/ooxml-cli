@@ -29,6 +29,9 @@ Latest milestone, 2026-06-19:
 - Generated command quoting moved from `src/main.rs` into `src/command_text.rs`,
   preserving one shared readback-command quoting contract across DOCX, XLSX,
   PPTX, serve, and MCP output.
+- Capability command inventory and local flag metadata moved from
+  `src/capabilities.rs` into `src/capabilities/commands.rs`, leaving the
+  capability facade focused on filtering and top-level document assembly.
 - Shared OPC relationship/content-type helpers moved from `src/main.rs` into
   `src/opc.rs`, creating a common package substrate for future DOCX, XLSX, and
   PPTX module splits.
