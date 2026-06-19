@@ -2381,6 +2381,404 @@ fn docx_paragraphs_append_dry_run_and_errors_match_go_oracle() {
 }
 
 #[test]
+fn docx_blocks_replace_delete_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-docx-blocks-replace-delete-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx blocks replace/delete temp dir");
+
+    let heading_doc = "testdata/docx/styled-headings/document.docx";
+    let (heading_code, heading_stdout, heading_stderr) =
+        run_go_ooxml(&["--json", "docx", "blocks", heading_doc, "--block", "1"]);
+    assert_eq!(heading_code, 0, "oracle heading hash lookup exit");
+    assert_eq!(heading_stderr, None, "oracle heading hash lookup stderr");
+    let heading_hash =
+        heading_stdout.expect("oracle heading block JSON")["blocks"][0]["contentHash"]
+            .as_str()
+            .expect("heading block hash")
+            .to_string();
+
+    let go_replace_out = temp_dir
+        .join("blocks-replace-go.docx")
+        .to_string_lossy()
+        .to_string();
+    let rust_replace_out = temp_dir
+        .join("blocks-replace-rust.docx")
+        .to_string_lossy()
+        .to_string();
+    let go_replace_args = [
+        "--json",
+        "docx",
+        "blocks",
+        "replace",
+        heading_doc,
+        "--block",
+        "1",
+        "--expect-hash",
+        &heading_hash,
+        "--text",
+        "Hash-guarded heading",
+        "--out",
+        &go_replace_out,
+    ];
+    let rust_replace_args = [
+        "--json",
+        "docx",
+        "blocks",
+        "replace",
+        heading_doc,
+        "--block",
+        "1",
+        "--expect-hash",
+        &heading_hash,
+        "--text",
+        "Hash-guarded heading",
+        "--out",
+        &rust_replace_out,
+    ];
+    let (go_replace_code, go_replace_stdout, go_replace_stderr) = run_go_ooxml(&go_replace_args);
+    let (rust_replace_code, rust_replace_stdout, rust_replace_stderr) =
+        run_ooxml(&rust_replace_args);
+    assert_eq!(rust_replace_code, go_replace_code, "blocks replace exit");
+    assert_eq!(
+        rust_replace_stderr, go_replace_stderr,
+        "blocks replace stderr"
+    );
+    assert_eq!(
+        rust_replace_stdout, go_replace_stdout,
+        "blocks replace stdout"
+    );
+
+    let (replace_validate_code, _replace_validate_stdout, replace_validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_replace_out]);
+    assert_eq!(replace_validate_code, 0, "blocks replace validate exit");
+    assert_eq!(
+        replace_validate_stderr, None,
+        "blocks replace validate stderr"
+    );
+
+    let (go_replace_read_code, go_replace_read_stdout, go_replace_read_stderr) =
+        run_go_ooxml(&["--json", "docx", "blocks", &go_replace_out, "--block", "1"]);
+    let (rust_replace_read_code, rust_replace_read_stdout, rust_replace_read_stderr) =
+        run_ooxml(&[
+            "--json",
+            "docx",
+            "blocks",
+            &rust_replace_out,
+            "--block",
+            "1",
+        ]);
+    assert_eq!(
+        rust_replace_read_code, go_replace_read_code,
+        "replace readback exit"
+    );
+    assert_eq!(
+        rust_replace_read_stderr, go_replace_read_stderr,
+        "replace readback stderr"
+    );
+    let go_replace_block =
+        go_replace_read_stdout.expect("Go replace readback JSON")["blocks"][0].clone();
+    let rust_replace_block =
+        rust_replace_read_stdout.expect("Rust replace readback JSON")["blocks"][0].clone();
+    assert_eq!(
+        rust_replace_block, go_replace_block,
+        "replace readback block"
+    );
+    assert_eq!(
+        rust_replace_block["text"],
+        Value::String("Hash-guarded heading".to_string())
+    );
+    assert_eq!(
+        rust_replace_block["paragraph"]["style"],
+        Value::String("Heading1".to_string())
+    );
+
+    let mixed_doc = "testdata/docx/mixed-blocks/document.docx";
+    let (table_code, table_stdout, table_stderr) =
+        run_go_ooxml(&["--json", "docx", "blocks", mixed_doc, "--block", "1"]);
+    assert_eq!(table_code, 0, "oracle table hash lookup exit");
+    assert_eq!(table_stderr, None, "oracle table hash lookup stderr");
+    let table_hash = table_stdout.expect("oracle table block JSON")["blocks"][0]["contentHash"]
+        .as_str()
+        .expect("table block hash")
+        .to_string();
+
+    let go_delete_out = temp_dir
+        .join("blocks-delete-go.docx")
+        .to_string_lossy()
+        .to_string();
+    let rust_delete_out = temp_dir
+        .join("blocks-delete-rust.docx")
+        .to_string_lossy()
+        .to_string();
+    let go_delete_args = [
+        "--json",
+        "docx",
+        "blocks",
+        "delete",
+        mixed_doc,
+        "--block",
+        "1",
+        "--expect-hash",
+        &table_hash,
+        "--out",
+        &go_delete_out,
+    ];
+    let rust_delete_args = [
+        "--json",
+        "docx",
+        "blocks",
+        "delete",
+        mixed_doc,
+        "--block",
+        "1",
+        "--expect-hash",
+        &table_hash,
+        "--out",
+        &rust_delete_out,
+    ];
+    let (go_delete_code, go_delete_stdout, go_delete_stderr) = run_go_ooxml(&go_delete_args);
+    let (rust_delete_code, rust_delete_stdout, rust_delete_stderr) = run_ooxml(&rust_delete_args);
+    assert_eq!(rust_delete_code, go_delete_code, "blocks delete exit");
+    assert_eq!(rust_delete_stderr, go_delete_stderr, "blocks delete stderr");
+    assert_eq!(rust_delete_stdout, go_delete_stdout, "blocks delete stdout");
+
+    let (delete_validate_code, _delete_validate_stdout, delete_validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_delete_out]);
+    assert_eq!(delete_validate_code, 0, "blocks delete validate exit");
+    assert_eq!(
+        delete_validate_stderr, None,
+        "blocks delete validate stderr"
+    );
+
+    let (go_delete_read_code, go_delete_read_stdout, go_delete_read_stderr) =
+        run_go_ooxml(&["--json", "docx", "blocks", &go_delete_out]);
+    let (rust_delete_read_code, rust_delete_read_stdout, rust_delete_read_stderr) =
+        run_ooxml(&["--json", "docx", "blocks", &rust_delete_out]);
+    assert_eq!(
+        rust_delete_read_code, go_delete_read_code,
+        "delete readback exit"
+    );
+    assert_eq!(
+        rust_delete_read_stderr, go_delete_read_stderr,
+        "delete readback stderr"
+    );
+    let go_delete_blocks =
+        go_delete_read_stdout.expect("Go delete readback JSON")["blocks"].clone();
+    let rust_delete_blocks =
+        rust_delete_read_stdout.expect("Rust delete readback JSON")["blocks"].clone();
+    assert_eq!(
+        rust_delete_blocks, go_delete_blocks,
+        "delete readback blocks"
+    );
+    assert_eq!(
+        rust_delete_blocks.as_array().expect("blocks array").len(),
+        3
+    );
+
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "blocks",
+        "replace",
+        heading_doc,
+        "--block",
+        "1",
+        "--expect-hash",
+        &heading_hash,
+        "--text",
+        "Dry run heading",
+        "--dry-run",
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "blocks",
+        "delete",
+        mixed_doc,
+        "--block",
+        "1",
+        "--expect-hash",
+        &table_hash,
+        "--dry-run",
+    ]);
+
+    let text_file = temp_dir.join("text.txt");
+    fs::write(&text_file, "text").expect("write blocks replace text file");
+    let text_file = text_file.to_string_lossy().to_string();
+    let bad_hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+    let bad_cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "replace",
+            heading_doc,
+            "--block",
+            "0",
+            "--expect-hash",
+            &heading_hash,
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "replace",
+            heading_doc,
+            "--block",
+            "1",
+            "--expect-hash",
+            "sha256:nothex",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "replace",
+            heading_doc,
+            "--block",
+            "1",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "replace",
+            heading_doc,
+            "--block",
+            "99",
+            "--expect-hash",
+            bad_hash,
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "replace",
+            heading_doc,
+            "--block",
+            "1",
+            "--expect-hash",
+            bad_hash,
+            "--text",
+            "stale",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "replace",
+            heading_doc,
+            "--block",
+            "1",
+            "--expect-hash",
+            &heading_hash,
+            "--text",
+            "x",
+            "--text-file",
+            &text_file,
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "delete",
+            mixed_doc,
+            "--block",
+            "0",
+            "--expect-hash",
+            &table_hash,
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "delete",
+            mixed_doc,
+            "--block",
+            "1",
+            "--expect-hash",
+            "sha256:nothex",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "delete",
+            mixed_doc,
+            "--block",
+            "99",
+            "--expect-hash",
+            bad_hash,
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "delete",
+            mixed_doc,
+            "--block",
+            "1",
+            "--expect-hash",
+            bad_hash,
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "delete",
+            "testdata/docx/minimal/document.docx",
+            "--block",
+            "1",
+            "--expect-hash",
+            bad_hash,
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "replace",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--block",
+            "1",
+            "--expect-hash",
+            bad_hash,
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "delete",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--block",
+            "1",
+            "--expect-hash",
+            bad_hash,
+            "--dry-run",
+        ],
+    ];
+    for args in bad_cases {
+        assert_go_rust_match(&args);
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_blocks_insert_after_matches_go_oracle() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-docx-blocks-insert-after-{}",
@@ -5928,6 +6326,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx footers show", false);
     assert_command(&all_caps, "ooxml docx images list", false);
     assert_command(&all_caps, "ooxml docx tables show", false);
+    assert_command(&all_caps, "ooxml docx blocks replace", false);
+    assert_command(&all_caps, "ooxml docx blocks delete", false);
     assert_command(&all_caps, "ooxml docx blocks insert-after", false);
 
     let (pptx_code, pptx_stdout, pptx_stderr) =
@@ -5976,6 +6376,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml xlsx tables list", false);
     assert_command(&table_caps, "ooxml xlsx tables show", false);
     assert_command(&table_caps, "ooxml xlsx tables export", false);
+    assert_command(&table_caps, "ooxml docx blocks delete", false);
     assert_no_command(&table_caps, "ooxml docx blocks");
     assert_no_command(&table_caps, "ooxml docx tables show");
 
@@ -5984,6 +6385,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(paragraph_code, 0);
     assert_eq!(paragraph_stderr, None);
     let paragraph_caps = paragraph_stdout.expect("paragraph capabilities");
+    assert_command(&paragraph_caps, "ooxml docx blocks replace", false);
+    assert_command(&paragraph_caps, "ooxml docx blocks delete", false);
     assert_command(&paragraph_caps, "ooxml docx blocks insert-after", false);
     assert_command(&paragraph_caps, "ooxml docx paragraphs append", false);
     assert_command(&paragraph_caps, "ooxml docx paragraphs insert", false);
@@ -6053,6 +6456,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx footers show", false);
     assert_command(&docx_caps, "ooxml docx images list", false);
     assert_command(&docx_caps, "ooxml docx tables show", false);
+    assert_command(&docx_caps, "ooxml docx blocks replace", false);
+    assert_command(&docx_caps, "ooxml docx blocks delete", false);
     assert_command(&docx_caps, "ooxml docx blocks insert-after", false);
     assert_command(&docx_caps, "ooxml docx paragraphs append", false);
     assert_command(&docx_caps, "ooxml docx paragraphs insert", false);
@@ -6075,10 +6480,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 41, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 43, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        249,
+        247,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

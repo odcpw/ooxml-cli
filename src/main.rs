@@ -382,6 +382,87 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [cmd, file, rest @ ..] if cmd == "verify" => verify(file, rest),
         [cmd, family, file] if cmd == "docx" && family == "text" => docx_text(file),
         [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "blocks" && verb == "replace" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--block",
+                    "--expect-hash",
+                    "--text",
+                    "--text-file",
+                    "--style",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let block = parse_i64_flag(rest, "--block")?.unwrap_or(0);
+            if block < 1 {
+                return Err(CliError::invalid_args("--block must be >= 1"));
+            }
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            require_docx_block_hash(&expect_hash)?;
+            let text = parse_string_flag(rest, "--text")?;
+            let text_file = parse_string_flag(rest, "--text-file")?;
+            let style = parse_string_flag(rest, "--style")?.unwrap_or_default();
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_blocks_replace(
+                file,
+                block as usize,
+                &expect_hash,
+                DocxParagraphMutationOptions {
+                    text: text.as_deref(),
+                    text_file: text_file.as_deref(),
+                    style: &style,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "blocks" && verb == "delete" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--block", "--expect-hash", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let block = parse_i64_flag(rest, "--block")?.unwrap_or(0);
+            if block < 1 {
+                return Err(CliError::invalid_args("--block must be >= 1"));
+            }
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            require_docx_block_hash(&expect_hash)?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_blocks_delete(
+                file,
+                block as usize,
+                &expect_hash,
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && group == "blocks" && verb == "insert-after" =>
         {
             reject_unknown_flags(
@@ -1865,6 +1946,83 @@ fn capability_commands() -> Vec<Value> {
                     "bool",
                     "include paragraph run text and basic run properties",
                 ),
+            ],
+        ),
+        capability_command(
+            "ooxml docx blocks replace",
+            "replace <file>",
+            "Replace a hash-guarded DOCX body block with a paragraph.",
+            &["paragraph"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--block",
+                    "block",
+                    "int",
+                    "1-based body block index from docx blocks",
+                ),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--expect-hash",
+                    "expectHash",
+                    "string",
+                    "expected sha256: content hash from docx blocks",
+                ),
+                flag("--in-place", "inPlace", "bool", "write in place"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--style",
+                    "style",
+                    "string",
+                    "optional paragraph style ID; default preserves paragraph style when replacing a paragraph",
+                ),
+                flag("--text", "text", "string", "replacement paragraph text"),
+                flag(
+                    "--text-file",
+                    "textFile",
+                    "string",
+                    "path to replacement paragraph text",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml docx blocks delete",
+            "delete <file>",
+            "Delete a hash-guarded DOCX body block.",
+            &["paragraph", "table"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--block",
+                    "block",
+                    "int",
+                    "1-based body block index from docx blocks",
+                ),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--expect-hash",
+                    "expectHash",
+                    "string",
+                    "expected sha256: content hash from docx blocks",
+                ),
+                flag("--in-place", "inPlace", "bool", "write in place"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+                flag("--out", "out", "string", "output file path"),
             ],
         ),
         capability_command(
@@ -6726,6 +6884,156 @@ fn docx_blocks_insert_after(
     Ok(Value::Object(result))
 }
 
+fn docx_blocks_replace(
+    file: &str,
+    block: usize,
+    expected_hash: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    ensure_docx_package_kind(file, &entries)?;
+
+    let text = resolve_optional_docx_paragraph_text(options.text, options.text_file)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let xml = zip_text(file, &document_part)?;
+    let reports = docx_rich_block_reports(&xml, false).map_err(|err| {
+        CliError::unexpected(format!("failed to read main document: {}", err.message))
+    })?;
+    let previous = reports
+        .get(block - 1)
+        .ok_or_else(|| CliError::target_not_found("target not found: block"))?;
+    if previous.content_hash != expected_hash {
+        return Err(CliError::invalid_args(format!(
+            "block hash mismatch: block {block} expected {expected_hash} but found {}",
+            previous.content_hash
+        )));
+    }
+
+    let style = if options.style.is_empty() && previous.kind == "paragraph" {
+        previous.style.clone()
+    } else {
+        options.style.to_string()
+    };
+    let original_body_tag = docx_body_tag(&xml)?;
+    let original_prefix = docx_body_prefix(&original_body_tag);
+    let working = if original_prefix.is_empty() && !style.is_empty() {
+        ensure_docx_word_prefix(&xml)?
+    } else {
+        xml
+    };
+    let body_tag = docx_body_tag(&working)?;
+    let prefix = docx_body_prefix(&body_tag);
+    let ranges = docx_body_block_ranges(&working, &body_tag)?;
+    let target_range = ranges
+        .get(block - 1)
+        .ok_or_else(|| CliError::target_not_found("target not found: block"))?;
+    let target_fragment = &working[target_range.start..target_range.end];
+    if docx_block_has_section_properties(target_fragment) {
+        return Err(CliError::invalid_args(format!(
+            "block contains section properties: block {block}"
+        )));
+    }
+
+    let replacement = render_docx_paragraph(&prefix, &text, &style);
+    let mut updated_xml = String::with_capacity(working.len() + replacement.len());
+    updated_xml.push_str(&working[..target_range.start]);
+    updated_xml.push_str(&replacement);
+    updated_xml.push_str(&working[target_range.end..]);
+
+    write_docx_mutation_output(file, &document_part, &updated_xml, options)?;
+    let updated_report = docx_rich_block_reports(&updated_xml, true)
+        .map_err(|err| {
+            CliError::unexpected(format!("failed to read main document: {}", err.message))
+        })?
+        .into_iter()
+        .nth(block - 1)
+        .ok_or_else(|| CliError::unexpected("replaced block readback missing"))?;
+    let content_hash = updated_report.content_hash.clone();
+    let destination = docx_rich_block_json(updated_report);
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("index".to_string(), json!(block));
+    result.insert("blockId".to_string(), json!(format!("body.b{block}")));
+    result.insert("contentHash".to_string(), json!(content_hash));
+    result.insert("previousKind".to_string(), json!(previous.kind));
+    result.insert("previousHash".to_string(), json!(previous.content_hash));
+    result.insert("previousText".to_string(), json!(previous.text));
+    if !style.is_empty() {
+        result.insert("style".to_string(), json!(style));
+    }
+    result.insert("text".to_string(), json!(text));
+    result.insert("destination".to_string(), destination);
+    Ok(Value::Object(result))
+}
+
+fn docx_blocks_delete(
+    file: &str,
+    block: usize,
+    expected_hash: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    ensure_docx_package_kind(file, &entries)?;
+
+    let document_part = find_docx_document_part(file, &entries)?;
+    let xml = zip_text(file, &document_part)?;
+    let reports = docx_rich_block_reports(&xml, false).map_err(|err| {
+        CliError::unexpected(format!("failed to read main document: {}", err.message))
+    })?;
+    let previous = reports
+        .get(block - 1)
+        .ok_or_else(|| CliError::target_not_found("target not found: block"))?;
+    if reports.len() <= 1 {
+        return Err(CliError::invalid_args("cannot delete the last body block"));
+    }
+
+    let body_tag = docx_body_tag(&xml)?;
+    let ranges = docx_body_block_ranges(&xml, &body_tag)?;
+    let target_range = ranges
+        .get(block - 1)
+        .ok_or_else(|| CliError::target_not_found("target not found: block"))?;
+    let target_fragment = &xml[target_range.start..target_range.end];
+    if docx_block_has_section_properties(target_fragment) {
+        return Err(CliError::invalid_args(format!(
+            "block contains section properties: block {block}"
+        )));
+    }
+    if previous.content_hash != expected_hash {
+        return Err(CliError::invalid_args(format!(
+            "block hash mismatch: block {block} expected {expected_hash} but found {}",
+            previous.content_hash
+        )));
+    }
+
+    let mut updated_xml = String::with_capacity(xml.len());
+    updated_xml.push_str(&xml[..target_range.start]);
+    updated_xml.push_str(&xml[target_range.end..]);
+
+    write_docx_mutation_output(file, &document_part, &updated_xml, options)?;
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("index".to_string(), json!(block));
+    result.insert("blockId".to_string(), json!(format!("body.b{block}")));
+    result.insert("previousKind".to_string(), json!(previous.kind));
+    result.insert("previousHash".to_string(), json!(previous.content_hash));
+    result.insert("previousText".to_string(), json!(previous.text));
+    Ok(Value::Object(result))
+}
+
 fn docx_styles_list(file: &str, style_type: Option<&str>) -> CliResult<Value> {
     let style_type = normalize_docx_style_type(style_type)?;
     let (document_part, styles_part) = docx_document_and_styles_parts(file)?;
@@ -11034,6 +11342,35 @@ fn xml_token_name(token: &str) -> Option<&str> {
         .find(|ch: char| ch.is_whitespace() || ch == '/')
         .unwrap_or(token.len());
     Some(&token[..end])
+}
+
+fn docx_body_prefix(body_tag: &str) -> String {
+    body_tag
+        .split_once(':')
+        .map(|(prefix, _)| prefix.to_string())
+        .unwrap_or_default()
+}
+
+fn docx_block_has_section_properties(fragment: &str) -> bool {
+    let mut cursor = 0usize;
+    while cursor < fragment.len() {
+        let Some(relative_start) = fragment[cursor..].find('<') else {
+            break;
+        };
+        let tag_start = cursor + relative_start;
+        let Some(relative_end) = fragment[tag_start..].find('>') else {
+            break;
+        };
+        let tag_end = tag_start + relative_end;
+        let token = &fragment[tag_start + 1..tag_end];
+        if let Some(name) = xml_token_name(token)
+            && local_name(name.as_bytes()) == "sectPr"
+        {
+            return true;
+        }
+        cursor = tag_end + 1;
+    }
+    false
 }
 
 fn docx_body_tag(xml: &str) -> CliResult<String> {
