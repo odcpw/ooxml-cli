@@ -113,6 +113,11 @@ Latest milestone, 2026-06-19:
 - DOCX field listing, field insertion, cached-result mutation, field-location
   parsing, simple/complex field detection, and field XML rewrite helpers moved
   from `src/main.rs` into `src/docx_fields.rs`.
+- DOCX header/footer list/show/set-text commands, selector parsing,
+  section/reference creation, relationship/content-type wiring, part templates,
+  and readback command generation moved from `src/main.rs` into
+  `src/docx_headers.rs`, while shared paragraph-fragment text extraction stays
+  at the crate facade for `docx_fields`.
 - DOCX table show/set-cell/clear-cell commands, table summary rendering,
   table-cell XML rewrites, and table readback command generation moved from
   `src/main.rs` into `src/docx_tables.rs`.
