@@ -110,6 +110,11 @@ Latest milestone, 2026-06-20:
   mutations split from `src/serve/op_dispatch.rs` into
   `src/serve/op_dispatch/xlsx.rs`, keeping the top-level serve op dispatcher
   responsible for family routing and unsupported-command errors.
+- DOCX serve operation dispatch for header/footer, field, paragraph, style,
+  block, comment, and table session mutations split from
+  `src/serve/op_dispatch.rs` into `src/serve/op_dispatch/docx.rs`, leaving the
+  top-level serve op dispatcher as family routing plus the remaining PPTX text
+  replacement operation.
 - XLSX workbook metadata inspect/update types, XML readers, property renderers,
   and calc-setting mutation helpers moved from `src/main.rs` into
   `src/xlsx_metadata.rs`, keeping CLI and serve call sites stable through the
@@ -205,7 +210,7 @@ Latest milestone, 2026-06-20:
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
 - Proof after the latest split: `cargo test --test rust_contract_smoke
-  serve_op_supports_xlsx`, `cargo test --test rust_contract_smoke serve_op`,
+  serve_op_supports_docx`, `cargo test --test rust_contract_smoke serve_op`,
   `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
   `cargo test --all-targets` all pass with 77 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
