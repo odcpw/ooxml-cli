@@ -191,7 +191,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 55, and the harness pins the 235-command gap until
+  paths, Rust advertises 57, and the harness pins the 233-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -205,6 +205,11 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json pptx extract text <pptx>` with Go-oracle comparison for full-deck,
   slide-filtered, empty-selection, and unsupported-package cases, plus serve
   `inspect` routing through the session path
+- `--json pptx extract notes <pptx>` and
+  `--json pptx notes show <pptx>` with Go-oracle comparison for full-deck,
+  slide-filtered, empty-note, notes-body, out-of-range, and
+  unsupported-package cases, plus serve `inspect` routing through the session
+  path
 - `--json xlsx cells extract <xlsx>` with Go-oracle comparison for default
   sparse extraction, dense `--include-empty` ranges, formulas, booleans, inline
   strings, and date-style cell metadata

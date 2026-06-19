@@ -9577,6 +9577,24 @@ fn serve_pptx_generic_web_agent_edit_path_works() {
         Value::String("Minimal Title Slide".to_string())
     );
 
+    let notes_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            32,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx notes show",
+                "args": {"slide": 1},
+            }),
+        ),
+    );
+    assert_eq!(
+        notes_response["result"]["notes"]["plainText"],
+        Value::String(String::new())
+    );
+
     let shapes_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
@@ -10110,6 +10128,80 @@ fn web_smoke_binary_readback_checks_are_supported() {
     }
 
     for args in [
+        vec![
+            "--json",
+            "pptx",
+            "extract",
+            "notes",
+            "testdata/pptx/notes-slide/presentation.pptx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "extract",
+            "notes",
+            "testdata/pptx/notes-slide/presentation.pptx",
+            "--slide",
+            "2",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "extract",
+            "notes",
+            "testdata/pptx/notes-slide/presentation.pptx",
+            "--slide",
+            "99",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "extract",
+            "notes",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "notes",
+            "show",
+            "testdata/pptx/notes-slide/presentation.pptx",
+            "--slide",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "notes",
+            "show",
+            "testdata/pptx/notes-slide/presentation.pptx",
+            "--slide",
+            "2",
+        ],
+        vec!["--json", "pptx", "notes", "show", pptx, "--slide", "1"],
+        vec![
+            "--json",
+            "pptx",
+            "notes",
+            "show",
+            "testdata/pptx/notes-slide/presentation.pptx",
+            "--slide",
+            "99",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "notes",
+            "show",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--slide",
+            "1",
+        ],
+    ] {
+        assert_go_rust_match(&args);
+    }
+
+    for args in [
         [
             "--json",
             "pptx",
@@ -10216,6 +10308,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml serve", false);
     assert_command(&all_caps, "ooxml mcp", false);
     assert_command(&all_caps, "ooxml pptx extract text", false);
+    assert_command(&all_caps, "ooxml pptx extract notes", false);
+    assert_command(&all_caps, "ooxml pptx notes show", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx fields insert", true);
     assert_command(&all_caps, "ooxml docx fields set-result", true);
@@ -10288,6 +10382,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx slides show", false);
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
     assert_command(&pptx_caps, "ooxml pptx extract text", false);
+    assert_command(&pptx_caps, "ooxml pptx extract notes", false);
+    assert_command(&pptx_caps, "ooxml pptx notes show", false);
     assert_command(&pptx_caps, "ooxml pptx replace text", true);
 
     let (package_code, package_stdout, package_stderr) =
@@ -10469,10 +10565,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 55, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 57, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        235,
+        233,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

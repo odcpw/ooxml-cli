@@ -1720,6 +1720,20 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             pptx_extract_text(file, rest)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "extract" && verb == "notes" =>
+        {
+            reject_unknown_flags(rest, &["--slide"], &[])?;
+            pptx_extract_notes(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "notes" && verb == "show" =>
+        {
+            reject_unknown_flags(rest, &["--slide"], &[])?;
+            let slide = parse_u32_flag(rest, "--slide")?
+                .ok_or_else(|| CliError::invalid_args("--slide is required"))?;
+            pptx_notes_show(file, slide)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "replace" && verb == "text" =>
         {
             pptx_replace_text(file, rest)
@@ -1913,7 +1927,7 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
         "objectKinds": ["package", "slide", "shape", "sheet", "range", "cell", "table", "block", "paragraph", "style", "comment", "field", "header", "footer", "image"],
         "objectKindsIndex": {
             "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml docx text", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update"],
-            "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx extract text", "ooxml pptx replace text", "ooxml pptx render"],
+            "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx extract text", "ooxml pptx extract notes", "ooxml pptx notes show", "ooxml pptx replace text", "ooxml pptx render"],
             "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx extract text", "ooxml pptx replace text"],
             "sheet": ["ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "range": ["ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
@@ -2137,6 +2151,29 @@ fn capability_commands() -> Vec<Value> {
                 "int",
                 "1-based slide number; repeatable",
             )],
+        ),
+        capability_command(
+            "ooxml pptx extract notes",
+            "notes <file>",
+            "Extract speaker notes from slides.",
+            &["slide"],
+            false,
+            Some("read-only command; call via inspect in serve/MCP"),
+            vec![flag(
+                "--slide",
+                "slide",
+                "int",
+                "1-based slide number; repeatable",
+            )],
+        ),
+        capability_command(
+            "ooxml pptx notes show",
+            "show <file> --slide <n>",
+            "Show speaker notes for one slide.",
+            &["slide"],
+            false,
+            Some("read-only command; call via inspect in serve/MCP"),
+            vec![flag("--slide", "slide", "int", "1-based slide number")],
         ),
         capability_command(
             "ooxml pptx replace text",
@@ -19902,6 +19939,15 @@ impl ServeState {
                 let rest = pptx_extract_text_json_args(args)?;
                 pptx_extract_text(&session.working, &rest)
             }
+            "pptx extract notes" => {
+                let rest = pptx_extract_text_json_args(args)?;
+                pptx_extract_notes(&session.working, &rest)
+            }
+            "pptx notes show" => {
+                let slide = json_u32(args, "slide")?
+                    .ok_or_else(|| CliError::invalid_args("slide is required"))?;
+                pptx_notes_show(&session.working, slide)
+            }
             "pptx shapes show" => {
                 let slide = json_u32(args, "slide")?
                     .ok_or_else(|| CliError::invalid_args("slide is required"))?;
@@ -20991,6 +21037,125 @@ fn pptx_extract_text(file: &str, args: &[String]) -> CliResult<Value> {
     }))
 }
 
+#[derive(Clone)]
+struct PptxSlidePartRef {
+    number: u32,
+    part: String,
+}
+
+fn pptx_slide_part_refs(file: &str) -> CliResult<Vec<PptxSlidePartRef>> {
+    let presentation = zip_text(file, "ppt/presentation.xml")?;
+    let slides = pptx_slide_refs(&presentation);
+    let rels = relationships(file, "ppt/_rels/presentation.xml.rels")?;
+    slides
+        .iter()
+        .enumerate()
+        .map(|(index, (_slide_id, rel_id))| {
+            let target = rels
+                .get(rel_id)
+                .ok_or_else(|| CliError::unexpected(format!("missing relationship {rel_id}")))?;
+            Ok(PptxSlidePartRef {
+                number: index as u32 + 1,
+                part: normalize_ppt_target(target),
+            })
+        })
+        .collect()
+}
+
+fn pptx_extract_notes(file: &str, args: &[String]) -> CliResult<Value> {
+    let detected = package_type(file)?;
+    if detected != "pptx" {
+        return Err(CliError::unsupported_type(format!(
+            "file is not a PPTX document (detected: {detected})"
+        )));
+    }
+
+    let selected_slides = parse_u32_flags(args, "--slide")?;
+    let slides = pptx_slide_part_refs(file)?;
+    let mut notes = Vec::new();
+    if selected_slides.is_empty() {
+        for slide in &slides {
+            notes.push(pptx_notes_report(file, slide)?);
+        }
+    } else {
+        for slide_number in selected_slides {
+            if slide_number == 0 || slide_number as usize > slides.len() {
+                return Err(CliError::invalid_args(format!(
+                    "slide number {slide_number} is out of range (1-{})",
+                    slides.len()
+                )));
+            }
+            notes.push(pptx_notes_report(file, &slides[slide_number as usize - 1])?);
+        }
+    }
+    Ok(json!({
+        "file": file,
+        "notes": notes,
+    }))
+}
+
+fn pptx_notes_show(file: &str, slide: u32) -> CliResult<Value> {
+    let detected = package_type(file)?;
+    if detected != "pptx" {
+        return Err(CliError::unsupported_type(format!(
+            "file is not a PPTX document (detected: {detected})"
+        )));
+    }
+    if slide == 0 {
+        return Err(CliError::invalid_args("--slide must be >= 1"));
+    }
+    let slides = pptx_slide_part_refs(file)?;
+    let index = slide as usize - 1;
+    let slide_ref = slides.get(index).ok_or_else(|| {
+        CliError::invalid_args(format!(
+            "slide {slide} not found (presentation has {} slides)",
+            slides.len()
+        ))
+    })?;
+    pptx_notes_report(file, slide_ref)
+}
+
+fn pptx_notes_report(file: &str, slide: &PptxSlidePartRef) -> CliResult<Value> {
+    let mut report = Map::new();
+    report.insert(
+        "id".to_string(),
+        json!(format!("slide{}-notes", slide.number)),
+    );
+    report.insert("slide".to_string(), json!(slide.number));
+    let (_layout_part, notes_part) = slide_layout_and_notes_parts(file, &slide.part)?;
+    let notes = if let Some(part) = notes_part {
+        report.insert("partUri".to_string(), json!(format!("/{part}")));
+        match zip_text(file, &part) {
+            Ok(xml) => pptx_notes_text_block(&xml),
+            Err(_) => pptx_empty_notes_block(),
+        }
+    } else {
+        pptx_empty_notes_block()
+    };
+    report.insert("notes".to_string(), notes);
+    Ok(Value::Object(report))
+}
+
+fn pptx_empty_notes_block() -> Value {
+    json!({
+        "paragraphs": [],
+        "plainText": "",
+    })
+}
+
+fn pptx_notes_text_block(xml: &str) -> Value {
+    let Some(shape) = pptx_shape_models(xml).into_iter().find(|shape| {
+        shape.kind == "sp"
+            && shape
+                .placeholder
+                .as_ref()
+                .is_some_and(|placeholder| placeholder.literal_type == "body")
+    }) else {
+        return pptx_empty_notes_block();
+    };
+    pptx_text_block_from_paragraphs(&shape.paragraphs, true, false)
+}
+
 fn pptx_extract_text_shapes(xml: &str) -> Vec<Value> {
     let shapes = pptx_shape_models(xml);
     let targets = pptx_selector_targets_from_shapes(&shapes);
@@ -21026,10 +21191,18 @@ fn pptx_extract_text_shape_key(shape: &Shape, target: &Value) -> String {
 }
 
 fn pptx_extract_text_body(shape: &Shape) -> Value {
-    let paragraphs = if shape.paragraphs.is_empty() {
+    pptx_text_block_from_paragraphs(&shape.paragraphs, true, true)
+}
+
+fn pptx_text_block_from_paragraphs(
+    paragraphs: &[Vec<String>],
+    include_body_properties: bool,
+    synthesize_empty_paragraph: bool,
+) -> Value {
+    let paragraphs = if paragraphs.is_empty() && synthesize_empty_paragraph {
         vec![Vec::<String>::new()]
     } else {
-        shape.paragraphs.clone()
+        paragraphs.to_vec()
     };
     let paragraph_values = paragraphs
         .iter()
@@ -21051,11 +21224,13 @@ fn pptx_extract_text_body(shape: &Shape) -> Value {
         .map(|runs| runs.join(""))
         .collect::<Vec<_>>()
         .join("\n");
-    json!({
-        "paragraphs": paragraph_values,
-        "plainText": plain_text,
-        "bodyProperties": {},
-    })
+    let mut block = Map::new();
+    block.insert("paragraphs".to_string(), Value::Array(paragraph_values));
+    block.insert("plainText".to_string(), json!(plain_text));
+    if include_body_properties {
+        block.insert("bodyProperties".to_string(), json!({}));
+    }
+    Value::Object(block)
 }
 
 #[derive(Clone, Default)]
