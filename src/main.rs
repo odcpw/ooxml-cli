@@ -626,6 +626,60 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             )
         }
         [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "comments" && verb == "remove" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--comment-id",
+                    "--handle",
+                    "--expect-hash",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let comment_id_set = flag_present(rest, "--comment-id");
+            let handle_set = flag_present(rest, "--handle");
+            if handle_set && comment_id_set {
+                return Err(CliError::invalid_args(
+                    "cannot specify both --comment-id and --handle",
+                ));
+            }
+            if !handle_set && !comment_id_set {
+                return Err(CliError::invalid_args(
+                    "--comment-id is required (or pass --handle)",
+                ));
+            }
+            let comment_id = parse_i64_flag(rest, "--comment-id")?.unwrap_or(0);
+            if !handle_set && comment_id < 0 {
+                return Err(CliError::invalid_args("--comment-id must be >= 0"));
+            }
+            let handle = parse_string_flag(rest, "--handle")?;
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_comments_remove(
+                file,
+                comment_id,
+                handle.as_deref(),
+                &expect_hash,
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && group == "fields" && verb == "list" =>
         {
             reject_unknown_flags(rest, &["--type"], &[])?;
@@ -2065,6 +2119,44 @@ fn capability_commands() -> Vec<Value> {
                 ),
                 flag("--author", "author", "string", "new author"),
                 flag("--date", "date", "string", "new RFC3339 timestamp"),
+                flag(
+                    "--expect-hash",
+                    "expectHash",
+                    "string",
+                    "expected sha256 content hash from comments list",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml docx comments remove",
+            "remove <file>",
+            "Remove an existing DOCX comment and its range/reference markers.",
+            &["comment"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag(
+                    "--comment-id",
+                    "commentId",
+                    "int",
+                    "comment id from comments list",
+                ),
+                flag("--handle", "handle", "string", "stable DOCX comment handle"),
                 flag(
                     "--expect-hash",
                     "expectHash",
@@ -7259,6 +7351,86 @@ fn docx_comments_edit(
     Ok(Value::Object(result))
 }
 
+fn docx_comments_remove(
+    file: &str,
+    comment_id: i64,
+    handle: Option<&str>,
+    expect_hash: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    if detect_inspect_package_type(file, &entries) != InspectPackageKind::Docx {
+        let detected = match detect_inspect_package_type(file, &entries) {
+            InspectPackageKind::Pptx => "pptx",
+            InspectPackageKind::Xlsx => "xlsx",
+            InspectPackageKind::Docx => "docx",
+            InspectPackageKind::Unknown => package_type(file)?,
+        };
+        return Err(CliError::unsupported_type(format!(
+            "file is not a DOCX document (detected: {detected})"
+        )));
+    }
+
+    let document_part = find_docx_document_part(file, &entries)?;
+    let comments_part = docx_comments_part_uri(file, &entries, &document_part)?;
+    if !zip_entry_exists(&entries, &comments_part) {
+        if let Some(handle) = handle.filter(|value| !value.trim().is_empty()) {
+            return Err(docx_handle_error(
+                EXIT_TARGET_NOT_FOUND,
+                HANDLE_SCOPE_STALE,
+                "document has no comments part",
+                handle,
+            ));
+        }
+        return Err(CliError::target_not_found("target not found: comment"));
+    }
+    let comments_part_key = comments_part.trim_start_matches('/').to_string();
+    let comments_xml = zip_text(file, &comments_part_key)?;
+    let target_id = if let Some(handle) = handle.filter(|value| !value.trim().is_empty()) {
+        resolve_docx_comment_handle_id(&comments_xml, handle)? as i64
+    } else {
+        comment_id
+    };
+    let (updated_comments_xml, before) =
+        remove_docx_comment_xml(&comments_xml, target_id, expect_hash)?;
+    let document_xml = zip_text(file, &document_part)?;
+    let (updated_document_xml, range_markers_removed) =
+        remove_docx_comment_markers_xml(&document_xml, target_id)?;
+
+    let mut overrides = BTreeMap::new();
+    overrides.insert(comments_part_key, updated_comments_xml);
+    if range_markers_removed {
+        overrides.insert(document_part.clone(), updated_document_xml);
+    }
+    write_docx_mutation_overrides_output(file, &overrides, options)?;
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("commentId".to_string(), json!(target_id));
+    result.insert("previousAuthor".to_string(), json!(before.author));
+    result.insert("previousText".to_string(), json!(before.text));
+    result.insert(
+        "previousHash".to_string(),
+        json!(docx_comment_content_hash(
+            &before.author,
+            &before.date,
+            &before.text
+        )),
+    );
+    result.insert(
+        "rangeMarkersRemoved".to_string(),
+        json!(range_markers_removed),
+    );
+    result.insert("operation".to_string(), json!("removed"));
+    Ok(Value::Object(result))
+}
+
 fn docx_fields_list(file: &str, type_filter: Option<&str>) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
     let package_kind = detect_inspect_package_type(file, &entries);
@@ -11473,6 +11645,139 @@ fn edit_docx_comment_xml(
     out.push_str(&rendered);
     out.push_str(&comments_xml[span.end..]);
     Ok((out, before, edited))
+}
+
+fn remove_docx_comment_xml(
+    comments_xml: &str,
+    target_id: i64,
+    expect_hash: &str,
+) -> CliResult<(String, DocxCommentInfo)> {
+    let spans = docx_comment_element_spans_by_id(comments_xml, target_id)?;
+    let Some(span) = spans.first().copied() else {
+        return Err(CliError::target_not_found("target not found: comment"));
+    };
+    let fragment = &comments_xml[span.start..span.end];
+    let (before, _) = docx_comment_info_from_fragment(fragment)?;
+    let before_hash = docx_comment_content_hash(&before.author, &before.date, &before.text);
+    if !expect_hash.is_empty() && expect_hash != before_hash {
+        return Err(CliError::invalid_args(format!(
+            "comment hash mismatch: comment {target_id} expected {expect_hash} but found {before_hash}"
+        )));
+    }
+
+    let mut out = String::with_capacity(comments_xml.len().saturating_sub(span.end - span.start));
+    out.push_str(&comments_xml[..span.start]);
+    out.push_str(&comments_xml[span.end..]);
+    Ok((out, before))
+}
+
+struct OpenXmlDeleteElement {
+    name: String,
+    start: usize,
+    delete_self: bool,
+    contains_target_comment_reference: bool,
+}
+
+fn remove_docx_comment_markers_xml(
+    document_xml: &str,
+    target_id: i64,
+) -> CliResult<(String, bool)> {
+    let body_tag = docx_body_tag(document_xml)?;
+    let (content_start, content_end) = docx_body_content_bounds(document_xml, &body_tag)?;
+    let body_xml = &document_xml[content_start..content_end];
+    let target = target_id.to_string();
+    let mut reader = Reader::from_str(body_xml);
+    reader.config_mut().trim_text(false);
+    let mut stack = Vec::<OpenXmlDeleteElement>::new();
+    let mut ranges = Vec::<(usize, usize)>::new();
+
+    loop {
+        let before = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let is_target_marker =
+                    matches!(name.as_str(), "commentRangeStart" | "commentRangeEnd")
+                        && attr(&e, "id").is_some_and(|id| id == target);
+                let is_target_reference =
+                    name == "commentReference" && attr(&e, "id").is_some_and(|id| id == target);
+                let reference_has_run_parent =
+                    is_target_reference && mark_nearest_open_word_run(&mut stack);
+                stack.push(OpenXmlDeleteElement {
+                    name,
+                    start: content_start + before,
+                    delete_self: is_target_marker
+                        || (is_target_reference && !reference_has_run_parent),
+                    contains_target_comment_reference: false,
+                });
+            }
+            Ok(Event::Empty(e)) => {
+                let after = reader.buffer_position() as usize;
+                let name = local_name(e.name().as_ref()).to_string();
+                let is_target_marker =
+                    matches!(name.as_str(), "commentRangeStart" | "commentRangeEnd")
+                        && attr(&e, "id").is_some_and(|id| id == target);
+                if is_target_marker {
+                    ranges.push((content_start + before, content_start + after));
+                    continue;
+                }
+                let is_target_reference =
+                    name == "commentReference" && attr(&e, "id").is_some_and(|id| id == target);
+                if is_target_reference && !mark_nearest_open_word_run(&mut stack) {
+                    ranges.push((content_start + before, content_start + after));
+                }
+            }
+            Ok(Event::End(_)) => {
+                let after = reader.buffer_position() as usize;
+                let Some(element) = stack.pop() else {
+                    continue;
+                };
+                if element.delete_self || element.contains_target_comment_reference {
+                    ranges.push((element.start, content_start + after));
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+
+    if ranges.is_empty() {
+        return Ok((document_xml.to_string(), false));
+    }
+    Ok((delete_xml_ranges(document_xml, ranges)?, true))
+}
+
+fn mark_nearest_open_word_run(stack: &mut [OpenXmlDeleteElement]) -> bool {
+    if let Some(run) = stack.iter_mut().rev().find(|element| element.name == "r") {
+        run.contains_target_comment_reference = true;
+        true
+    } else {
+        false
+    }
+}
+
+fn delete_xml_ranges(xml: &str, mut ranges: Vec<(usize, usize)>) -> CliResult<String> {
+    ranges.retain(|(start, end)| start < end && *end <= xml.len());
+    if ranges.is_empty() {
+        return Ok(xml.to_string());
+    }
+    ranges.sort_by_key(|(start, end)| (*start, std::cmp::Reverse(*end)));
+    let mut merged = Vec::<(usize, usize)>::new();
+    for (start, end) in ranges {
+        if let Some((_, current_end)) = merged.last_mut()
+            && start <= *current_end
+        {
+            *current_end = (*current_end).max(end);
+            continue;
+        }
+        merged.push((start, end));
+    }
+    let mut out = xml.to_string();
+    for (start, end) in merged.into_iter().rev() {
+        out.replace_range(start..end, "");
+    }
+    Ok(out)
 }
 
 fn docx_comment_element_spans_by_id(

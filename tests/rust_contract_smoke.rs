@@ -4208,6 +4208,184 @@ fn docx_comments_edit_matches_go_oracle() {
 }
 
 #[test]
+fn docx_comments_remove_matches_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-docx-comments-remove-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx comments temp dir");
+    let go_out = temp_dir.join("comments-remove-go.docx");
+    let rust_out = temp_dir.join("comments-remove-rust.docx");
+    let go_out = go_out.to_string_lossy().to_string();
+    let rust_out = rust_out.to_string_lossy().to_string();
+
+    let (hash_code, hash_stdout, hash_stderr) = run_go_ooxml(&[
+        "--json",
+        "docx",
+        "comments",
+        "list",
+        "testdata/docx/with-comments/document.docx",
+        "--comment-id",
+        "0",
+    ]);
+    assert_eq!(hash_code, 0, "hash list exit");
+    assert_eq!(hash_stderr, None, "hash list stderr");
+    let hash_json = hash_stdout.expect("hash list JSON");
+    let hash = hash_json["comments"][0]["contentHash"]
+        .as_str()
+        .expect("comment content hash");
+
+    let go_args = [
+        "--json",
+        "docx",
+        "comments",
+        "remove",
+        "testdata/docx/with-comments/document.docx",
+        "--comment-id",
+        "0",
+        "--expect-hash",
+        hash,
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "docx",
+        "comments",
+        "remove",
+        "testdata/docx/with-comments/document.docx",
+        "--comment-id",
+        "0",
+        "--expect-hash",
+        hash,
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "comments remove exit");
+    assert_eq!(rust_stderr, go_stderr, "comments remove stderr");
+    assert_eq!(rust_stdout, go_stdout, "comments remove stdout");
+    assert!(Path::new(&rust_out).exists(), "Rust remove output missing");
+
+    let remove_json = rust_stdout.expect("Rust remove JSON");
+    assert_eq!(
+        remove_json["operation"],
+        Value::String("removed".to_string())
+    );
+    assert_eq!(remove_json["rangeMarkersRemoved"], Value::Bool(true));
+
+    let (validate_code, validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_out]);
+    assert_eq!(validate_code, 0, "validate exit");
+    assert_eq!(validate_stderr, None, "validate stderr");
+    assert!(validate_stdout.is_some(), "validate stdout");
+
+    let (go_list_code, go_list_stdout, go_list_stderr) =
+        run_go_ooxml(&["--json", "docx", "comments", "list", &go_out]);
+    let (rust_list_code, rust_list_stdout, rust_list_stderr) =
+        run_ooxml(&["--json", "docx", "comments", "list", &rust_out]);
+    assert_eq!(
+        rust_list_code, go_list_code,
+        "comments remove readback exit"
+    );
+    assert_eq!(
+        rust_list_stderr, go_list_stderr,
+        "comments remove readback stderr"
+    );
+    let go_list = go_list_stdout.expect("Go comments remove readback JSON");
+    let rust_list = rust_list_stdout.expect("Rust comments remove readback JSON");
+    assert_eq!(
+        rust_list["comments"], go_list["comments"],
+        "comments remove readback"
+    );
+    assert_eq!(rust_list["comments"], Value::Array(Vec::new()));
+
+    let rust_document_xml = read_zip_string(Path::new(&rust_out), "word/document.xml");
+    assert!(
+        !rust_document_xml.contains("commentRangeStart")
+            && !rust_document_xml.contains("commentRangeEnd")
+            && !rust_document_xml.contains("commentReference"),
+        "comment markers/reference survived removal:\n{rust_document_xml}"
+    );
+
+    let wrong_hash = [
+        "--json",
+        "docx",
+        "comments",
+        "remove",
+        "testdata/docx/with-comments/document.docx",
+        "--comment-id",
+        "0",
+        "--expect-hash",
+        "sha256:bogus",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&wrong_hash);
+
+    let by_handle = [
+        "--json",
+        "docx",
+        "comments",
+        "remove",
+        "testdata/docx/with-comments/document.docx",
+        "--handle",
+        "H:docx/pt:doc/comment:n:0",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&by_handle);
+
+    let stale_handle = [
+        "--json",
+        "docx",
+        "comments",
+        "remove",
+        "testdata/docx/with-comments/document.docx",
+        "--handle",
+        "H:docx/pt:doc/comment:n:9999",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&stale_handle);
+
+    let no_comments = [
+        "--json",
+        "docx",
+        "comments",
+        "remove",
+        "testdata/docx/minimal/document.docx",
+        "--comment-id",
+        "0",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&no_comments);
+
+    let missing_id = [
+        "--json",
+        "docx",
+        "comments",
+        "remove",
+        "testdata/docx/with-comments/document.docx",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&missing_id);
+
+    let unsupported_type = [
+        "--json",
+        "docx",
+        "comments",
+        "remove",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--comment-id",
+        "0",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&unsupported_type);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_fields_list_matches_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
@@ -5629,6 +5807,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&comment_caps, "ooxml docx comments list", false);
     assert_command(&comment_caps, "ooxml docx comments add", false);
     assert_command(&comment_caps, "ooxml docx comments edit", false);
+    assert_command(&comment_caps, "ooxml docx comments remove", false);
 
     let (field_code, field_stdout, field_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "field"]);
@@ -5677,6 +5856,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx paragraphs append", false);
     assert_command(&docx_caps, "ooxml docx paragraphs insert", false);
     assert_command(&docx_caps, "ooxml docx styles apply", false);
+    assert_command(&docx_caps, "ooxml docx comments remove", false);
 }
 
 #[test]
@@ -5694,10 +5874,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 39, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 40, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        251,
+        250,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
