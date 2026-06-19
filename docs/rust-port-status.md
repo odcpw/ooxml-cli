@@ -66,6 +66,10 @@ Latest milestone, 2026-06-19:
   readback/reporting helpers moved from `src/main.rs` into
   `src/pptx_readback.rs`, leaving mutation/render orchestration at the crate
   root.
+- PPTX comment readback, author discovery, stable selector/hash reporting, and
+  comment-target errors split from `src/pptx_readback.rs` into
+  `src/pptx_readback/comments.rs`, while the crate-facing command remains
+  re-exported through the PPTX readback facade.
 - PPTX render orchestration, slide-list parsing, mock render output, and local
   `soffice`/`pdftoppm` invocation helpers moved from `src/main.rs` into
   `src/pptx_render.rs`, leaving PPTX text mutation and serve routing at the
