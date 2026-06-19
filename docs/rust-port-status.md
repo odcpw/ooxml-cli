@@ -28,6 +28,9 @@ Latest milestone, 2026-06-19:
 - Shared OPC relationship/content-type helpers moved from `src/main.rs` into
   `src/opc.rs`, creating a common package substrate for future DOCX, XLSX, and
   PPTX module splits.
+- ZIP package read/write helpers moved from `src/main.rs` into `src/zip_io.rs`,
+  separating shared package I/O from command-family logic while preserving the
+  existing mutation copy path.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
