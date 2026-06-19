@@ -19,6 +19,9 @@ Latest milestone, 2026-06-19:
   giving future command-family modules a small shared error/result/flag surface.
 - Shared CLI argument parsing helpers moved from `src/main.rs` into
   `src/cli_args.rs`, reducing future command-family coupling.
+- JSON argument/resource helpers moved from `src/main.rs` into
+  `src/json_util.rs`, giving serve/MCP and future command modules a shared
+  typed JSON parsing and stable field-serialization surface.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
