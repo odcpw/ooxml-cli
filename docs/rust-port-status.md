@@ -41,6 +41,12 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   behavior, namespace-sensitive metadata handling, missing-block errors,
   negative block rejection, malformed main document rejection, and unsupported
   package-type rejection
+- `--json docx blocks insert-after <docx>` with Go-oracle comparison for
+  hash-guarded paragraph insertion before the first block and after table
+  blocks, optional paragraph style, strict validation, `docx blocks` readback,
+  dry-run non-mutation, hash-shape/hash-mismatch errors, block-range
+  validation, text/text-file conflict rejection, and unsupported package-type
+  rejection
 - `--json docx paragraphs append <docx>` with Go-oracle comparison for direct
   CLI paragraph append mutation, optional paragraph style, strict validation,
   DOCX text readback, dry-run non-mutation, output-flag validation, text/text-file
@@ -137,7 +143,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 40, and the harness pins the 250-command gap until
+  paths, Rust advertises 41, and the harness pins the 249-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

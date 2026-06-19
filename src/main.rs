@@ -381,6 +381,59 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [cmd, file] if cmd == "validate" => validate(file, flags.strict),
         [cmd, file, rest @ ..] if cmd == "verify" => verify(file, rest),
         [cmd, family, file] if cmd == "docx" && family == "text" => docx_text(file),
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "blocks" && verb == "insert-after" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--block",
+                    "--expect-hash",
+                    "--text",
+                    "--text-file",
+                    "--style",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let block = parse_i64_flag(rest, "--block")?.unwrap_or(0);
+            if block < 0 {
+                return Err(CliError::invalid_args("--block must be >= 0"));
+            }
+            let expect_hash_set = flag_present(rest, "--expect-hash");
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            if block > 0 {
+                require_docx_block_hash(&expect_hash)?;
+            } else if expect_hash_set {
+                return Err(CliError::invalid_args(
+                    "--expect-hash cannot be used with --block 0",
+                ));
+            }
+            let text = parse_string_flag(rest, "--text")?;
+            let text_file = parse_string_flag(rest, "--text-file")?;
+            let style = parse_string_flag(rest, "--style")?.unwrap_or_default();
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_blocks_insert_after(
+                file,
+                block as usize,
+                &expect_hash,
+                DocxParagraphMutationOptions {
+                    text: text.as_deref(),
+                    text_file: text_file.as_deref(),
+                    style: &style,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
         [cmd, group, file, rest @ ..] if cmd == "docx" && group == "blocks" => {
             reject_unknown_flags(rest, &["--block"], &["--include-runs"])?;
             let block = parse_i64_flag(rest, "--block")?.unwrap_or(0);
@@ -1811,6 +1864,46 @@ fn capability_commands() -> Vec<Value> {
                     "includeRuns",
                     "bool",
                     "include paragraph run text and basic run properties",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml docx blocks insert-after",
+            "insert-after <file>",
+            "Insert a paragraph after a hash-guarded DOCX body block.",
+            &["paragraph"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--block",
+                    "block",
+                    "int",
+                    "1-based body block index from docx blocks; 0 inserts before the first block",
+                ),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--expect-hash",
+                    "expectHash",
+                    "string",
+                    "expected sha256: content hash from docx blocks when --block is greater than 0",
+                ),
+                flag("--in-place", "inPlace", "bool", "write in place"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag("--style", "style", "string", "optional paragraph style ID"),
+                flag("--text", "text", "string", "paragraph text"),
+                flag(
+                    "--text-file",
+                    "textFile",
+                    "string",
+                    "path to paragraph text",
                 ),
             ],
         ),
@@ -6569,6 +6662,68 @@ fn docx_blocks_show(file: &str, block: usize, include_runs: bool) -> CliResult<V
         "documentPartUri": document_uri,
         "blocks": blocks,
     }))
+}
+
+fn docx_blocks_insert_after(
+    file: &str,
+    block: usize,
+    expected_hash: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    ensure_docx_package_kind(file, &entries)?;
+
+    let text = resolve_optional_docx_paragraph_text(options.text, options.text_file)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let xml = zip_text(file, &document_part)?;
+    let reports = docx_rich_block_reports(&xml, false).map_err(|err| {
+        CliError::unexpected(format!("failed to read main document: {}", err.message))
+    })?;
+    let anchor_hash = if block > 0 {
+        let anchor = reports
+            .get(block - 1)
+            .ok_or_else(|| CliError::target_not_found("target not found: block"))?;
+        if anchor.content_hash != expected_hash {
+            return Err(CliError::invalid_args(format!(
+                "block hash mismatch: block {block} expected {expected_hash} but found {}",
+                anchor.content_hash
+            )));
+        }
+        anchor.content_hash.clone()
+    } else {
+        String::new()
+    };
+
+    let style = options.style;
+    let (updated_xml, index) = insert_docx_body_paragraph_xml(&xml, block, &text, style)?;
+    write_docx_mutation_output(file, &document_part, &updated_xml, options)?;
+    let updated_reports = docx_rich_block_reports(&updated_xml, false).map_err(|err| {
+        CliError::unexpected(format!("failed to read main document: {}", err.message))
+    })?;
+    let inserted = updated_reports
+        .get(index - 1)
+        .ok_or_else(|| CliError::unexpected("inserted block readback missing"))?;
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("index".to_string(), json!(index));
+    result.insert("blockId".to_string(), json!(format!("body.b{index}")));
+    result.insert("contentHash".to_string(), json!(inserted.content_hash));
+    if !anchor_hash.is_empty() {
+        result.insert("anchorHash".to_string(), json!(anchor_hash));
+        result.insert("insertAfter".to_string(), json!(block));
+    }
+    if !style.is_empty() {
+        result.insert("style".to_string(), json!(style));
+    }
+    result.insert("text".to_string(), json!(text));
+    Ok(Value::Object(result))
 }
 
 fn docx_styles_list(file: &str, style_type: Option<&str>) -> CliResult<Value> {
