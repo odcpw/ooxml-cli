@@ -1,5 +1,6 @@
 use quick_xml::events::BytesStart;
 use quick_xml::name::{Namespace, NamespaceResolver, ResolveResult};
+use std::collections::BTreeMap;
 
 pub(crate) fn attr(e: &BytesStart<'_>, wanted_local: &str) -> Option<String> {
     e.attributes().flatten().find_map(|a| {
@@ -97,4 +98,62 @@ pub(crate) fn xml_escape(value: &str) -> String {
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+pub(crate) fn xml_attr_escape(value: &str) -> String {
+    xml_escape(value).replace('"', "&quot;")
+}
+
+pub(crate) fn decode_xml_attrs(e: &BytesStart<'_>) -> BTreeMap<String, String> {
+    e.attributes()
+        .flatten()
+        .map(|attr| {
+            (
+                String::from_utf8_lossy(attr.key.as_ref()).to_string(),
+                decode_xml_text(attr.value.as_ref()),
+            )
+        })
+        .collect()
+}
+
+pub(crate) fn decode_local_xml_attrs(e: &BytesStart<'_>) -> BTreeMap<String, String> {
+    let mut attrs = BTreeMap::new();
+    for attr in e.attributes().with_checks(false).flatten() {
+        attrs.insert(
+            local_name(attr.key.as_ref()).to_string(),
+            decode_xml_text(attr.value.as_ref()),
+        );
+    }
+    attrs
+}
+
+pub(crate) fn render_xml_attrs(attrs: &BTreeMap<String, String>) -> String {
+    let mut out = String::new();
+    for (key, value) in attrs {
+        out.push(' ');
+        out.push_str(key);
+        out.push_str("=\"");
+        out.push_str(&xml_attr_escape(value));
+        out.push('"');
+    }
+    out
+}
+
+pub(crate) fn remove_xml_span(xml: &str, start: usize, end: usize) -> String {
+    let mut out = String::with_capacity(xml.len().saturating_sub(end.saturating_sub(start)));
+    out.push_str(&xml[..start]);
+    out.push_str(&xml[end..]);
+    out
+}
+
+pub(crate) fn replace_xml_span(xml: &str, start: usize, end: usize, replacement: &str) -> String {
+    let mut out = String::with_capacity(xml.len() - (end - start) + replacement.len());
+    out.push_str(&xml[..start]);
+    out.push_str(replacement);
+    out.push_str(&xml[end..]);
+    out
+}
+
+pub(crate) fn needs_xml_space_preserve(value: &str) -> bool {
+    value != value.trim_matches([' ', '\t', '\r', '\n'])
 }

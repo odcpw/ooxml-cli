@@ -34,6 +34,9 @@ Latest milestone, 2026-06-19:
 - Core XML attribute, namespace, and escape/unescape helpers moved from
   `src/main.rs` into `src/xml_util.rs`, giving future OOXML modules a shared
   lexical XML layer.
+- Shared XML attribute rendering, decoded attribute maps, whitespace-preserve,
+  and simple span replacement helpers also moved into `src/xml_util.rs`,
+  reducing duplicated XML utility coupling before command-family splits.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.

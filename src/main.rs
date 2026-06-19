@@ -39,7 +39,9 @@ pub(crate) use opc::{
     resolve_relationship_target,
 };
 pub(crate) use xml_util::{
-    attr, attr_bound_ns, attr_exact, attr_prefixed_ns, decode_xml_text, local_name, xml_escape,
+    attr, attr_bound_ns, attr_exact, attr_prefixed_ns, decode_local_xml_attrs as xml_attrs,
+    decode_xml_attrs as xml_attrs_map, decode_xml_text, local_name, needs_xml_space_preserve,
+    remove_xml_span, render_xml_attrs, replace_xml_span, xml_attr_escape, xml_escape,
     xml_general_ref,
 };
 pub(crate) use zip_io::{
@@ -4056,13 +4058,6 @@ fn set_metadata_direct_child_xml(
     out
 }
 
-fn remove_xml_span(xml: &str, start: usize, end: usize) -> String {
-    let mut out = String::with_capacity(xml.len().saturating_sub(end.saturating_sub(start)));
-    out.push_str(&xml[..start]);
-    out.push_str(&xml[end..]);
-    out
-}
-
 fn find_direct_child_span_by_ns(
     xml: &str,
     ns: &[u8],
@@ -5369,26 +5364,6 @@ where
     out
 }
 
-fn replace_xml_span(xml: &str, start: usize, end: usize, replacement: &str) -> String {
-    let mut out = String::with_capacity(xml.len() - (end - start) + replacement.len());
-    out.push_str(&xml[..start]);
-    out.push_str(replacement);
-    out.push_str(&xml[end..]);
-    out
-}
-
-fn xml_attrs_map(e: &BytesStart<'_>) -> BTreeMap<String, String> {
-    e.attributes()
-        .flatten()
-        .map(|attr| {
-            (
-                String::from_utf8_lossy(attr.key.as_ref()).to_string(),
-                decode_xml_text(attr.value.as_ref()),
-            )
-        })
-        .collect()
-}
-
 fn default_xlsx_styles_xml() -> String {
     r#"<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font/></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>"#.to_string()
 }
@@ -6628,10 +6603,6 @@ fn render_empty_xlsx_cell_with_attrs(
     format!("<c{}/>", render_xml_attrs(&attrs))
 }
 
-fn needs_xml_space_preserve(value: &str) -> bool {
-    value != value.trim_matches([' ', '\t', '\r', '\n'])
-}
-
 fn replace_xlsx_dimension(xml: &str, range: Option<&str>) -> String {
     let dimension = range.map(|range| format!("<dimension ref=\"{range}\"/>"));
     if let Some(start) = xml.find("<dimension")
@@ -7034,33 +7005,6 @@ fn xlsx_used_range_from_cell_refs(xml: &str) -> Option<String> {
             max_row
         ))
     }
-}
-
-fn xml_attrs(e: &BytesStart<'_>) -> BTreeMap<String, String> {
-    let mut attrs = BTreeMap::new();
-    for attr in e.attributes().with_checks(false).flatten() {
-        attrs.insert(
-            local_name(attr.key.as_ref()).to_string(),
-            decode_xml_text(attr.value.as_ref()),
-        );
-    }
-    attrs
-}
-
-fn render_xml_attrs(attrs: &BTreeMap<String, String>) -> String {
-    let mut out = String::new();
-    for (key, value) in attrs {
-        out.push(' ');
-        out.push_str(key);
-        out.push_str("=\"");
-        out.push_str(&xml_attr_escape(value));
-        out.push('"');
-    }
-    out
-}
-
-fn xml_attr_escape(value: &str) -> String {
-    xml_escape(value).replace('"', "&quot;")
 }
 
 fn xlsx_range_destination_json(
