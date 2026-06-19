@@ -90,6 +90,9 @@ Latest milestone, 2026-06-19:
 - DOCX field listing, field insertion, cached-result mutation, field-location
   parsing, simple/complex field detection, and field XML rewrite helpers moved
   from `src/main.rs` into `src/docx_fields.rs`.
+- DOCX table show/set-cell/clear-cell commands, table summary rendering,
+  table-cell XML rewrites, and table readback command generation moved from
+  `src/main.rs` into `src/docx_tables.rs`.
 - XLSX range export, JSON range rendering, data-out writing, data-format
   normalization, and range max-cell guards moved from `src/main.rs` into
   `src/xlsx_ranges.rs`.
