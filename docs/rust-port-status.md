@@ -28,8 +28,8 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json xlsx ranges set-format ...` with Go-oracle comparison for direct CLI
   number-format mutation, custom styles part creation, formatted blank-cell
   creation, saved output format readback, generated mutation readback commands,
-  and dry-run non-mutation; serve/MCP operation routing is still open in
-  `DISC-002`
+  dry-run non-mutation, and serve/MCP operation routing through the session
+  `op` path
 - `--json docx text <docx>` with Go-oracle comparison across the committed
   positive DOCX fixture corpus: paragraphs, styles, preserved whitespace,
   hyperlinks, field/instruction text omission, tables, merged tables, headers,

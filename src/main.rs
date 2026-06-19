@@ -1612,7 +1612,7 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
                     "ooxml --json xlsx ranges export workbook.xlsx --sheet sheetId:1 --range A1 --include-types",
                     "ooxml --json xlsx ranges set workbook.xlsx --sheet sheetId:1 --range A1:B2 --values '[[\"A\",\"B\"],[1,2]]' --out edited.xlsx",
                     "ooxml --json xlsx ranges set-format workbook.xlsx --sheet Sheet1 --range B2:B20 --preset currency --out edited.xlsx",
-                    "serve op command: xlsx cells set"
+                    "serve op commands: xlsx cells set, xlsx ranges set-format"
                 ]
             }
         ],
@@ -1992,8 +1992,8 @@ fn capability_commands() -> Vec<Value> {
             "set-format <file>",
             "Apply a practical number format to a worksheet range.",
             &["sheet", "range", "style"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--sheet", "sheet", "string", "sheet selector"),
                 flag("--range", "range", "string", "A1 range"),
@@ -13792,14 +13792,26 @@ enum ServeOp {
         target: String,
         text: String,
     },
+    XlsxRangeSetFormat {
+        command: String,
+        sheet: String,
+        range: String,
+        preset: Option<String>,
+        format_code: Option<String>,
+        decimals: i64,
+        currency_symbol: Option<String>,
+        max_cells: i64,
+        readback_file: String,
+        readback: Value,
+    },
 }
 
 impl ServeOp {
     fn command(&self) -> &str {
         match self {
-            ServeOp::XlsxCellSet { command, .. } | ServeOp::PptxReplaceText { command, .. } => {
-                command
-            }
+            ServeOp::XlsxCellSet { command, .. }
+            | ServeOp::PptxReplaceText { command, .. }
+            | ServeOp::XlsxRangeSetFormat { command, .. } => command,
         }
     }
 
@@ -13823,6 +13835,54 @@ impl ServeOp {
                 "--json",
                 "--no-validate",
             ]),
+            ServeOp::XlsxRangeSetFormat {
+                sheet,
+                range,
+                preset,
+                format_code,
+                decimals,
+                currency_symbol,
+                max_cells,
+                ..
+            } => {
+                let mut argv = vec![
+                    json!("xlsx"),
+                    json!("ranges"),
+                    json!("set-format"),
+                    json!(source_file),
+                    json!("--sheet"),
+                    json!(sheet),
+                    json!("--range"),
+                    json!(range),
+                ];
+                if let Some(preset) = preset {
+                    argv.push(json!("--preset"));
+                    argv.push(json!(preset));
+                }
+                if let Some(format_code) = format_code {
+                    argv.push(json!("--format-code"));
+                    argv.push(json!(format_code));
+                }
+                if *decimals != 2 {
+                    argv.push(json!("--decimals"));
+                    argv.push(json!(decimals.to_string()));
+                }
+                if let Some(currency_symbol) = currency_symbol {
+                    argv.push(json!("--currency-symbol"));
+                    argv.push(json!(currency_symbol));
+                }
+                if *max_cells != 100000 {
+                    argv.push(json!("--max-cells"));
+                    argv.push(json!(max_cells.to_string()));
+                }
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
             ServeOp::PptxReplaceText {
                 slide,
                 target,
@@ -13862,7 +13922,30 @@ impl ServeOp {
                 text,
                 ..
             } => pptx_replace_text_readback(file, file, *slide, target, text),
+            ServeOp::XlsxRangeSetFormat {
+                readback_file,
+                readback,
+                ..
+            } => replace_json_string(readback.clone(), readback_file, file),
         }
+    }
+}
+
+fn replace_json_string(value: Value, from: &str, to: &str) -> Value {
+    match value {
+        Value::String(text) => Value::String(text.replace(from, to)),
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .map(|item| replace_json_string(item, from, to))
+                .collect(),
+        ),
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(key, value)| (key, replace_json_string(value, from, to)))
+                .collect(),
+        ),
+        other => other,
     }
 }
 
@@ -13947,6 +14030,48 @@ impl ServeState {
                     value,
                     previous_type: previous.kind,
                     previous_value: previous.value,
+                }
+            }
+            "xlsx ranges set-format" => {
+                let sheet = json_string(args, "sheet")?;
+                let range = json_string(args, "range")?;
+                let preset = json_optional_string(args, "preset");
+                let format_code = json_optional_string(args, "format-code")
+                    .or_else(|| json_optional_string(args, "formatCode"));
+                let decimals = json_i64(args, "decimals")?.unwrap_or(2);
+                let currency_symbol = json_optional_string(args, "currency-symbol")
+                    .or_else(|| json_optional_string(args, "currencySymbol"));
+                let max_cells = json_i64(args, "max-cells")?
+                    .or(json_i64(args, "maxCells")?)
+                    .unwrap_or(100000);
+                let readback = xlsx_ranges_set_format(
+                    &session.working,
+                    XlsxRangesSetFormatOptions {
+                        sheet: &sheet,
+                        range: &range,
+                        preset: preset.as_deref(),
+                        format_code: format_code.as_deref(),
+                        decimals,
+                        currency_symbol: currency_symbol.as_deref(),
+                        max_cells,
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        no_validate: true,
+                        in_place: true,
+                    },
+                )?;
+                ServeOp::XlsxRangeSetFormat {
+                    command: command.clone(),
+                    sheet,
+                    range,
+                    preset,
+                    format_code,
+                    decimals,
+                    currency_symbol,
+                    max_cells,
+                    readback_file: session.working.clone(),
+                    readback,
                 }
             }
             "pptx replace text" => {
@@ -14268,7 +14393,11 @@ fn pptx_replace_text_readback(
         "mode": "plain-text",
         "newText": new_text,
         "output": out,
-        "readbackCommand": format!("ooxml --json pptx shapes get {out} --slide 1 --target title --include-text --include-bounds"),
+        "readbackCommand": format!(
+            "ooxml --json pptx shapes get {} --slide {slide} --target {} --include-text --include-bounds",
+            command_arg(out),
+            command_arg(target)
+        ),
         "renderCommand": format!("ooxml pptx render {out} --out render-check"),
         "slideNumber": slide,
         "slideReadbackCommand": format!("ooxml --json pptx slides show {out} --slide {slide} --include-text --include-bounds"),
