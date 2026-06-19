@@ -53,6 +53,10 @@ crates and document why.
 ## Non-Negotiables
 
 - Go is the oracle. Rust is the subject.
+- Do not run the full Go test suite after every Rust-only slice. Use targeted
+  Go-vs-Rust parity checks for the command being ported, and reserve full Go
+  tests for milestone/before-push gates or when Go code, frozen contracts, or
+  shared oracle assumptions change.
 - Port by command surface, not vague module mirroring.
 - Every implemented Rust surface must be compared against Go for stdout, stderr,
   exit code, JSON shape, mutation result, validation result, and any relevant
@@ -78,8 +82,9 @@ crates and document why.
 7. Expand coverage from `capabilities --json` until every Go command is present,
    intentionally excluded, or tracked as open.
 8. Add metamorphic tests and fuzzing.
-9. Run fresh-eyes review, `cargo fmt`, `cargo clippy`, `cargo test`, Go tests,
-   differential parity gates, and relevant web smoke checks.
+9. Run fresh-eyes review, `cargo fmt`, `cargo clippy`, `cargo test`,
+   differential parity gates, and relevant web smoke checks. Run full Go tests
+   only for milestone/before-push gates or when Go-side code/contracts changed.
 10. Repeat until the Rust branch is at proven full parity and pushed.
 
 ## Short Prompt
