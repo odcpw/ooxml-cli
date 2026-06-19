@@ -3423,6 +3423,438 @@ fn docx_styles_list_and_show_match_go_oracle() {
 }
 
 #[test]
+fn docx_styles_apply_matches_go_oracle() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-docx-styles-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx styles temp dir");
+
+    let go_para_out = temp_dir
+        .join("apply-para-go.docx")
+        .to_string_lossy()
+        .to_string();
+    let rust_para_out = temp_dir
+        .join("apply-para-rust.docx")
+        .to_string_lossy()
+        .to_string();
+    let go_para_args = [
+        "--json",
+        "docx",
+        "styles",
+        "apply",
+        "testdata/docx/apply-styles/document.docx",
+        "--index",
+        "1",
+        "--target",
+        "paragraph",
+        "--style",
+        "Heading2",
+        "--out",
+        &go_para_out,
+    ];
+    let rust_para_args = [
+        "--json",
+        "docx",
+        "styles",
+        "apply",
+        "testdata/docx/apply-styles/document.docx",
+        "--index",
+        "1",
+        "--target",
+        "paragraph",
+        "--style",
+        "Heading2",
+        "--out",
+        &rust_para_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_para_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_para_args);
+    assert_eq!(rust_code, go_code, "paragraph apply exit");
+    assert_eq!(rust_stderr, go_stderr, "paragraph apply stderr");
+    assert_eq!(
+        scrub_file_fields(scrub_docx_dynamic_handles(
+            rust_stdout.expect("Rust paragraph style apply stdout")
+        )),
+        scrub_file_fields(scrub_docx_dynamic_handles(
+            go_stdout.expect("Go paragraph style apply stdout")
+        )),
+        "paragraph apply stdout"
+    );
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_para_out]);
+    assert_eq!(validate_code, 0, "paragraph apply validate exit");
+    assert_eq!(validate_stderr, None, "paragraph apply validate stderr");
+    let (blocks_code, blocks_stdout, blocks_stderr) =
+        run_ooxml(&["--json", "docx", "blocks", &rust_para_out, "--block", "1"]);
+    assert_eq!(blocks_code, 0, "paragraph apply readback exit");
+    assert_eq!(blocks_stderr, None, "paragraph apply readback stderr");
+    let blocks = blocks_stdout.expect("paragraph apply blocks");
+    assert_eq!(
+        blocks["blocks"][0]["paragraph"]["style"],
+        Value::String("Heading2".to_string())
+    );
+
+    let go_run_out = temp_dir
+        .join("apply-run-go.docx")
+        .to_string_lossy()
+        .to_string();
+    let rust_run_out = temp_dir
+        .join("apply-run-rust.docx")
+        .to_string_lossy()
+        .to_string();
+    let go_run_args = [
+        "--json",
+        "docx",
+        "styles",
+        "apply",
+        "testdata/docx/apply-styles/document.docx",
+        "--index",
+        "2",
+        "--target",
+        "run",
+        "--style",
+        "Emphasis",
+        "--out",
+        &go_run_out,
+    ];
+    let rust_run_args = [
+        "--json",
+        "docx",
+        "styles",
+        "apply",
+        "testdata/docx/apply-styles/document.docx",
+        "--index",
+        "2",
+        "--target",
+        "run",
+        "--style",
+        "Emphasis",
+        "--out",
+        &rust_run_out,
+    ];
+    let (go_run_code, go_run_stdout, go_run_stderr) = run_go_ooxml(&go_run_args);
+    let (rust_run_code, rust_run_stdout, rust_run_stderr) = run_ooxml(&rust_run_args);
+    assert_eq!(rust_run_code, go_run_code, "run apply exit");
+    assert_eq!(rust_run_stderr, go_run_stderr, "run apply stderr");
+    assert_eq!(
+        scrub_file_fields(scrub_docx_dynamic_handles(
+            rust_run_stdout.expect("Rust run style apply stdout")
+        )),
+        scrub_file_fields(scrub_docx_dynamic_handles(
+            go_run_stdout.expect("Go run style apply stdout")
+        )),
+        "run apply stdout"
+    );
+    assert!(
+        read_zip_string(Path::new(&rust_run_out), "word/document.xml")
+            .contains("w:rStyle w:val=\"Emphasis\""),
+        "run style was not written to document.xml"
+    );
+
+    let go_table_out = temp_dir
+        .join("apply-table-go.docx")
+        .to_string_lossy()
+        .to_string();
+    let rust_table_out = temp_dir
+        .join("apply-table-rust.docx")
+        .to_string_lossy()
+        .to_string();
+    let go_table_args = [
+        "--json",
+        "docx",
+        "styles",
+        "apply",
+        "testdata/docx/apply-styles/document.docx",
+        "--index",
+        "1",
+        "--target",
+        "table",
+        "--style",
+        "TableGrid",
+        "--out",
+        &go_table_out,
+    ];
+    let rust_table_args = [
+        "--json",
+        "docx",
+        "styles",
+        "apply",
+        "testdata/docx/apply-styles/document.docx",
+        "--index",
+        "1",
+        "--target",
+        "table",
+        "--style",
+        "TableGrid",
+        "--out",
+        &rust_table_out,
+    ];
+    let (go_table_code, go_table_stdout, go_table_stderr) = run_go_ooxml(&go_table_args);
+    let (rust_table_code, rust_table_stdout, rust_table_stderr) = run_ooxml(&rust_table_args);
+    assert_eq!(rust_table_code, go_table_code, "table apply exit");
+    assert_eq!(rust_table_stderr, go_table_stderr, "table apply stderr");
+    assert_eq!(
+        scrub_file_fields(rust_table_stdout.expect("Rust table style apply stdout")),
+        scrub_file_fields(go_table_stdout.expect("Go table style apply stdout")),
+        "table apply stdout"
+    );
+    let table_xml = read_zip_string(Path::new(&rust_table_out), "word/document.xml");
+    assert!(
+        table_xml.contains("w:tblStyle w:val=\"TableGrid\""),
+        "table style was not written to document.xml"
+    );
+
+    let (hash_code, hash_stdout, hash_stderr) = run_go_ooxml(&[
+        "--json",
+        "docx",
+        "blocks",
+        "testdata/docx/apply-styles/document.docx",
+        "--block",
+        "1",
+    ]);
+    assert_eq!(hash_code, 0, "hash readback exit");
+    assert_eq!(hash_stderr, None, "hash readback stderr");
+    let hash_json = hash_stdout.expect("hash readback");
+    let hash = hash_json["blocks"][0]["contentHash"]
+        .as_str()
+        .expect("content hash");
+    let hash_args = [
+        "--json",
+        "docx",
+        "styles",
+        "apply",
+        "testdata/docx/apply-styles/document.docx",
+        "--index",
+        "1",
+        "--target",
+        "paragraph",
+        "--style",
+        "Heading2",
+        "--expect-hash",
+        hash,
+        "--dry-run",
+    ];
+    let (go_hash_code, go_hash_stdout, go_hash_stderr) = run_go_ooxml(&hash_args);
+    let (rust_hash_code, rust_hash_stdout, rust_hash_stderr) = run_ooxml(&hash_args);
+    assert_eq!(rust_hash_code, go_hash_code, "hash guarded apply exit");
+    assert_eq!(
+        rust_hash_stderr, go_hash_stderr,
+        "hash guarded apply stderr"
+    );
+    assert_eq!(
+        scrub_docx_dynamic_handles(rust_hash_stdout.expect("Rust hash apply stdout")),
+        scrub_docx_dynamic_handles(go_hash_stdout.expect("Go hash apply stdout")),
+        "hash guarded apply stdout"
+    );
+
+    let style_handle_args = [
+        "--json",
+        "docx",
+        "styles",
+        "apply",
+        "testdata/docx/styled-headings/document.docx",
+        "--index",
+        "1",
+        "--target",
+        "paragraph",
+        "--style",
+        "H:docx/pt:styles/style:n:Heading1",
+        "--no-validate",
+        "--dry-run",
+    ];
+    let (go_handle_code, go_handle_stdout, go_handle_stderr) = run_go_ooxml(&style_handle_args);
+    let (rust_handle_code, rust_handle_stdout, rust_handle_stderr) = run_ooxml(&style_handle_args);
+    assert_eq!(rust_handle_code, go_handle_code, "style handle apply exit");
+    assert_eq!(
+        rust_handle_stderr, go_handle_stderr,
+        "style handle apply stderr"
+    );
+    assert_eq!(
+        scrub_docx_dynamic_handles(rust_handle_stdout.expect("Rust style handle stdout")),
+        scrub_docx_dynamic_handles(go_handle_stdout.expect("Go style handle stdout")),
+        "style handle apply stdout"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn docx_styles_apply_errors_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-docx-styles-errors-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx styles errors temp dir");
+    let out = temp_dir.join("bad.docx").to_string_lossy().to_string();
+    let bad_cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            "testdata/docx/apply-styles/document.docx",
+            "--index",
+            "0",
+            "--target",
+            "paragraph",
+            "--style",
+            "Heading2",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            "testdata/docx/apply-styles/document.docx",
+            "--index",
+            "1",
+            "--target",
+            "bogus",
+            "--style",
+            "Heading2",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            "testdata/docx/apply-styles/document.docx",
+            "--index",
+            "1",
+            "--target",
+            "paragraph",
+            "--style",
+            "",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            "testdata/docx/apply-styles/document.docx",
+            "--index",
+            "99",
+            "--target",
+            "paragraph",
+            "--style",
+            "Heading2",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            "testdata/docx/apply-styles/document.docx",
+            "--index",
+            "1",
+            "--target",
+            "paragraph",
+            "--style",
+            "NoSuchStyle",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            "testdata/docx/apply-styles/document.docx",
+            "--index",
+            "1",
+            "--target",
+            "paragraph",
+            "--style",
+            "Emphasis",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            "testdata/docx/apply-styles/document.docx",
+            "--index",
+            "3",
+            "--target",
+            "paragraph",
+            "--style",
+            "Heading2",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            "testdata/docx/apply-styles/document.docx",
+            "--index",
+            "1",
+            "--target",
+            "paragraph",
+            "--style",
+            "Heading2",
+            "--expect-hash",
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            "testdata/docx/apply-styles/document.docx",
+            "--index",
+            "1",
+            "--handle",
+            "H:docx/pt:doc/para:m:ABCDEF01",
+            "--target",
+            "paragraph",
+            "--style",
+            "Heading2",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            "testdata/docx/apply-styles/document.docx",
+            "--handle",
+            "H:docx/pt:doc/para:m:ABCDEF01",
+            "--target",
+            "table",
+            "--style",
+            "TableGrid",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--index",
+            "1",
+            "--target",
+            "paragraph",
+            "--style",
+            "Heading2",
+            "--out",
+            &out,
+        ],
+    ];
+    for args in bad_cases {
+        assert_go_rust_match(&args);
+    }
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_comments_list_matches_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
@@ -4876,6 +5308,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&style_caps, "ooxml xlsx ranges set-format", false);
     assert_command(&style_caps, "ooxml docx styles list", false);
     assert_command(&style_caps, "ooxml docx styles show", false);
+    assert_command(&style_caps, "ooxml docx styles apply", false);
 
     let (comment_code, comment_stdout, comment_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "comment"]);
@@ -4930,6 +5363,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx tables show", false);
     assert_command(&docx_caps, "ooxml docx paragraphs append", false);
     assert_command(&docx_caps, "ooxml docx paragraphs insert", false);
+    assert_command(&docx_caps, "ooxml docx styles apply", false);
 }
 
 #[test]
@@ -4947,10 +5381,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 36, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 37, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        254,
+        253,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
