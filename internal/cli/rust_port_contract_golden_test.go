@@ -638,18 +638,62 @@ func scrubContractArgs(args []string, replacements map[string]string) []string {
 }
 
 func scrubContractString(value string, replacements map[string]string) string {
-	out := filepath.ToSlash(value)
+	out := value
 	for _, rule := range contractScrubPatternRules {
 		out = rule.pattern.ReplaceAllString(out, rule.replacement)
 	}
-	keys := make([]string, 0, len(replacements))
-	for key := range replacements {
-		keys = append(keys, filepath.ToSlash(key))
+	for _, replacement := range contractScrubReplacements(replacements) {
+		out = strings.ReplaceAll(out, replacement.from, replacement.to)
 	}
-	sort.Slice(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
-	for _, key := range keys {
-		out = strings.ReplaceAll(out, key, replacements[key])
+	for _, placeholder := range contractScrubPlaceholderTokens(replacements) {
+		pattern := regexp.MustCompile(regexp.QuoteMeta(placeholder) + `\\+([A-Za-z0-9_.-])`)
+		out = pattern.ReplaceAllString(out, placeholder+`/$1`)
 	}
+	return out
+}
+
+type contractScrubReplacement struct {
+	from string
+	to   string
+}
+
+func contractScrubReplacements(replacements map[string]string) []contractScrubReplacement {
+	seen := make(map[string]string, len(replacements)*4)
+	add := func(from, to string) {
+		if from != "" {
+			seen[from] = to
+		}
+	}
+	for from, to := range replacements {
+		for _, variant := range []string{from, filepath.ToSlash(from)} {
+			add(variant, to)
+			add("'"+variant+"'", to)
+			escaped := strings.ReplaceAll(variant, `\`, `\\`)
+			add(escaped, to)
+			add("'"+escaped+"'", to)
+		}
+	}
+	out := make([]contractScrubReplacement, 0, len(seen))
+	for from, to := range seen {
+		out = append(out, contractScrubReplacement{from: from, to: to})
+	}
+	sort.Slice(out, func(i, j int) bool { return len(out[i].from) > len(out[j].from) })
+	return out
+}
+
+func contractScrubPlaceholderTokens(replacements map[string]string) []string {
+	seen := make(map[string]bool, len(replacements)+1)
+	for _, to := range replacements {
+		if strings.HasPrefix(to, "[") && strings.HasSuffix(to, "]") {
+			seen[to] = true
+		}
+	}
+	seen["[SESSION_WORKING_PACKAGE]"] = true
+	out := make([]string, 0, len(seen))
+	for token := range seen {
+		out = append(out, token)
+	}
+	sort.Slice(out, func(i, j int) bool { return len(out[i]) > len(out[j]) })
 	return out
 }
 
@@ -658,9 +702,73 @@ var contractScrubPatternRules = []struct {
 	replacement string
 }{
 	{
-		pattern:     regexp.MustCompile(`/tmp/[^\s"']*ooxml-serve-[^\s"']*/working-\d+\.(pptx|pptm|xlsx|xlsm|docx|docm)`),
+		pattern:     regexp.MustCompile(`'?(?:[A-Za-z]:)?[/\\]+[^\s"']*ooxml-serve-[^\s"']*[/\\]+working-\d+\.(pptx|pptm|xlsx|xlsm|docx|docm)'?`),
 		replacement: "[SESSION_WORKING_PACKAGE]",
 	},
+}
+
+func TestScrubContractStringWindowsPathVariants(t *testing.T) {
+	windowsPath := `C:\Users\olidc\AppData\Local\Temp\TestRustPortContractGolden\edited.pptx`
+	renderDir := `C:\Users\olidc\AppData\Local\Temp\TestRustPortContractGolden\render`
+	sessionID := `mcp-session-123`
+	replacements := map[string]string{
+		windowsPath: "[EDITED_PPTX]",
+		renderDir:   "[RENDER_DIR]",
+		sessionID:   "[MCP_SESSION]",
+	}
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "raw windows path",
+			in:   `file=` + windowsPath,
+			want: `file=[EDITED_PPTX]`,
+		},
+		{
+			name: "slash-normalized windows path",
+			in:   `file=` + filepath.ToSlash(windowsPath),
+			want: `file=[EDITED_PPTX]`,
+		},
+		{
+			name: "single-quoted command path",
+			in:   `ooxml validate --strict '` + filepath.ToSlash(windowsPath) + `'`,
+			want: `ooxml validate --strict [EDITED_PPTX]`,
+		},
+		{
+			name: "json escaped windows path keeps escaped json text",
+			in:   `{"file":"` + strings.ReplaceAll(windowsPath, `\`, `\\`) + `","quote":"\u003ctemp.0\u003e"}`,
+			want: `{"file":"[EDITED_PPTX]","quote":"\u003ctemp.0\u003e"}`,
+		},
+		{
+			name: "placeholder path suffix uses golden slash",
+			in:   `{"pdfPath":"` + renderDir + `\edited.pdf"}`,
+			want: `{"pdfPath":"[RENDER_DIR]/edited.pdf"}`,
+		},
+		{
+			name: "escaped quote after placeholder is not a path suffix",
+			in:   `session=\"` + sessionID + `\"`,
+			want: `session=\"[MCP_SESSION]\"`,
+		},
+		{
+			name: "windows serve working package",
+			in:   `ooxml --json xlsx cells extract 'C:/Users/olidc/AppData/Local/Temp/Test/ooxml-serve-123/working-1.xlsx' --sheet 1`,
+			want: `ooxml --json xlsx cells extract [SESSION_WORKING_PACKAGE] --sheet 1`,
+		},
+		{
+			name: "unix serve working package",
+			in:   `ooxml --json validate --strict /tmp/Test/ooxml-serve-123/working-0.xlsm`,
+			want: `ooxml --json validate --strict [SESSION_WORKING_PACKAGE]`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := scrubContractString(tt.in, replacements); got != tt.want {
+				t.Fatalf("scrubContractString() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
 
 func sessionIDFromRPCResult(t *testing.T, resp rpcResponse) string {

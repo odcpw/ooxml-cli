@@ -225,6 +225,14 @@ func diagnosticsJSON(diags []result.Diagnostic) []DiagnosticJSON {
 	return out
 }
 
+func diagnosticsArrayJSON(diags []result.Diagnostic) []DiagnosticJSON {
+	out := diagnosticsJSON(diags)
+	if out == nil {
+		return []DiagnosticJSON{}
+	}
+	return out
+}
+
 // InvalidArgsError creates a CLIError for invalid arguments
 func InvalidArgsError(message string) *CLIError {
 	return NewCLIError(ExitInvalidArgs, message)

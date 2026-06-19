@@ -60,7 +60,7 @@ fn run_ooxml_with_env(args: &[&str], envs: &[(&str, &str)]) -> (i32, Option<Valu
 fn run_go_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
     let output = Command::new(go_ooxml_binary())
         .args(args)
-        .env("GOCACHE", "/tmp/ooxml-go-build")
+        .env("GOCACHE", go_cache_dir())
         .output()
         .expect("run Go ooxml oracle");
     let code = output.status.code().unwrap_or(-1);
@@ -72,7 +72,7 @@ fn run_go_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
 fn run_go_ooxml_with_input(args: &[&str], input: &str) -> (i32, Option<Value>, Option<Value>) {
     let mut child = Command::new(go_ooxml_binary())
         .args(args)
-        .env("GOCACHE", "/tmp/ooxml-go-build")
+        .env("GOCACHE", go_cache_dir())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -89,6 +89,12 @@ fn run_go_ooxml_with_input(args: &[&str], input: &str) -> (i32, Option<Value>, O
     let stdout = parse_json(&output.stdout);
     let stderr = parse_json(&output.stderr);
     (code, stdout, stderr)
+}
+
+fn go_cache_dir() -> PathBuf {
+    let go_cache = std::env::temp_dir().join("ooxml-go-build");
+    fs::create_dir_all(&go_cache).expect("create Go oracle cache");
+    go_cache
 }
 
 fn assert_go_rust_match(args: &[&str]) {
@@ -184,12 +190,13 @@ fn scrub_file_fields(value: Value) -> Value {
 fn go_ooxml_binary() -> &'static PathBuf {
     GO_OOXML_BIN.get_or_init(|| {
         let binary = std::env::temp_dir().join(format!("ooxml-go-oracle-{}", std::process::id()));
+        let go_cache = go_cache_dir();
         let output = Command::new("go")
             .args(["build", "-buildvcs=false", "-o"])
             .arg(&binary)
             .arg("./cmd/ooxml")
             .current_dir(go_oracle_source_dir())
-            .env("GOCACHE", "/tmp/ooxml-go-build")
+            .env("GOCACHE", &go_cache)
             .output()
             .expect("build Go ooxml oracle");
         assert!(
@@ -7941,8 +7948,7 @@ fn serve_inspect_supports_docx_read_commands() {
         &docx_session,
         "docx text",
         serde_json::json!({}),
-        &["docx", "text"],
-        &[],
+        (&["docx", "text"], &[]),
     );
     assert_serve_inspect_matches_cli(
         &mut stdin,
@@ -7951,8 +7957,7 @@ fn serve_inspect_supports_docx_read_commands() {
         &docx_session,
         "docx headers list",
         serde_json::json!({}),
-        &["docx", "headers", "list"],
-        &[],
+        (&["docx", "headers", "list"], &[]),
     );
     assert_serve_inspect_matches_cli(
         &mut stdin,
@@ -7961,8 +7966,10 @@ fn serve_inspect_supports_docx_read_commands() {
         &docx_session,
         "docx headers show",
         serde_json::json!({"selector": "header:1:default"}),
-        &["docx", "headers", "show"],
-        &["--selector", "header:1:default"],
+        (
+            &["docx", "headers", "show"],
+            &["--selector", "header:1:default"],
+        ),
     );
     assert_serve_inspect_matches_cli(
         &mut stdin,
@@ -7971,8 +7978,7 @@ fn serve_inspect_supports_docx_read_commands() {
         &docx_session,
         "docx footers list",
         serde_json::json!({}),
-        &["docx", "footers", "list"],
-        &[],
+        (&["docx", "footers", "list"], &[]),
     );
     assert_serve_inspect_matches_cli(
         &mut stdin,
@@ -7981,8 +7987,7 @@ fn serve_inspect_supports_docx_read_commands() {
         &docx_session,
         "docx footers show",
         serde_json::json!({"id": "rId11"}),
-        &["docx", "footers", "show"],
-        &["--id", "rId11"],
+        (&["docx", "footers", "show"], &["--id", "rId11"]),
     );
 
     let open_image_docx = rpc_request(7, "open", serde_json::json!({"file": image_input_str}));
@@ -7998,8 +8003,7 @@ fn serve_inspect_supports_docx_read_commands() {
         &image_session,
         "docx images list",
         serde_json::json!({}),
-        &["docx", "images", "list"],
-        &[],
+        (&["docx", "images", "list"], &[]),
     );
 
     drop(stdin);
@@ -8015,9 +8019,9 @@ fn assert_serve_inspect_matches_cli(
     session: &str,
     command: &str,
     args: Value,
-    cli_before_file: &[&str],
-    cli_after_file: &[&str],
+    cli_args_around_file: (&[&str], &[&str]),
 ) {
+    let (cli_before_file, cli_after_file) = cli_args_around_file;
     let request = rpc_request(
         request_id,
         "inspect",

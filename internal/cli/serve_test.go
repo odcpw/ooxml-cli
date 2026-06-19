@@ -405,6 +405,12 @@ func TestServeOpenOpInspectValidateCommit(t *testing.T) {
 
 	// validate clean.
 	rawVal := c.mustResult("validate", map[string]interface{}{"session": session})
+	if !bytes.Contains(rawVal, []byte(`"diagnostics":[]`)) {
+		t.Fatalf("validate diagnostics should be an empty array: %s", rawVal)
+	}
+	if bytes.Contains(rawVal, []byte(`"diagnostics":null`)) {
+		t.Fatalf("validate diagnostics should not be null: %s", rawVal)
+	}
 	var val struct {
 		Diagnostics []DiagnosticJSON `json:"diagnostics"`
 	}

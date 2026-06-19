@@ -424,6 +424,12 @@ func TestMCPFlow(t *testing.T) {
 	if valRes.IsError {
 		t.Fatalf("validate returned isError: %s", valRes.StructuredContent)
 	}
+	if !bytes.Contains(valRes.StructuredContent, []byte(`"diagnostics":[]`)) {
+		t.Fatalf("validate diagnostics should be an empty array: %s", valRes.StructuredContent)
+	}
+	if bytes.Contains(valRes.StructuredContent, []byte(`"diagnostics":null`)) {
+		t.Fatalf("validate diagnostics should not be null: %s", valRes.StructuredContent)
+	}
 	if strings.Contains(string(valRes.StructuredContent), "\"severity\":\"error\"") {
 		t.Fatalf("validate returned error diagnostic: %s", valRes.StructuredContent)
 	}

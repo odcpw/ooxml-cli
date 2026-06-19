@@ -9783,9 +9783,8 @@ fn xlsx_defined_name_item_json(
     if !name.description.is_empty() {
         object.insert("description".to_string(), json!(name.description));
     }
-    let unique = counts.map_or(true, |counts| {
-        counts.get(&name.name).copied().unwrap_or_default() == 1
-    });
+    let unique =
+        counts.is_none_or(|counts| counts.get(&name.name).copied().unwrap_or_default() == 1);
     if unique && name.scope == "workbook" && !name.name.trim().is_empty() {
         object.insert(
             "handle".to_string(),

@@ -330,7 +330,7 @@ func (l *mcpLoop) callValidate(args json.RawMessage) (interface{}, *rpcError) {
 	if err != nil {
 		return toolErrorFromEngine(err, false), nil
 	}
-	return toolSuccess(map[string]interface{}{"diagnostics": diagnosticsJSON(diags)}, nil), nil
+	return toolSuccess(map[string]interface{}{"diagnostics": diagnosticsArrayJSON(diags)}, nil), nil
 }
 
 func (l *mcpLoop) callPlan(args json.RawMessage) (interface{}, *rpcError) {

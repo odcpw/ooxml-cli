@@ -464,7 +464,7 @@ func (l *serveLoop) handleValidate(params json.RawMessage) (interface{}, *rpcErr
 	if err != nil {
 		return nil, rpcErrorFromEngine(err)
 	}
-	return map[string]interface{}{"diagnostics": diagnosticsJSON(diags)}, nil
+	return map[string]interface{}{"diagnostics": diagnosticsArrayJSON(diags)}, nil
 }
 
 func (l *serveLoop) handlePlan(params json.RawMessage) (interface{}, *rpcError) {
