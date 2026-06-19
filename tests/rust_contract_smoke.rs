@@ -376,6 +376,12 @@ fn read_zip_string(path: &Path, name: &str) -> String {
     body
 }
 
+fn zip_entry_exists(path: &Path, name: &str) -> bool {
+    let input = File::open(path).expect("open zip");
+    let mut archive = ZipArchive::new(input).expect("read zip");
+    archive.by_name(name).is_ok()
+}
+
 fn write_simple_xlsx_with_sheet_xml(dest: &Path, sheet_xml: &str) {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).expect("fixture parent");
@@ -791,6 +797,207 @@ fn xlsx_ranges_set_matches_go_oracle_and_saved_output() {
     );
 
     let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_ranges_set_format_matches_go_oracle_and_saved_output() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-ranges-set-format-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    let go_out_path = temp_dir.join("go-out.xlsx");
+    let rust_out_path = temp_dir.join("rust-out.xlsx");
+    let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:B1"/>
+  <sheetData>
+    <row r="1">
+      <c r="A1"><v>1234.5</v></c>
+      <c r="B1"><f>A1*2</f><v>2469</v></c>
+    </row>
+  </sheetData>
+</worksheet>"#;
+    write_simple_xlsx_with_sheet_xml(&go_in_path, sheet_xml);
+    write_simple_xlsx_with_sheet_xml(&rust_in_path, sheet_xml);
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let go_out = go_out_path.to_string_lossy().to_string();
+    let rust_out = rust_out_path.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set-format",
+        &go_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--preset",
+        "currency",
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set-format",
+        &rust_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--preset",
+        "currency",
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "ranges set-format exit");
+    assert_eq!(rust_stderr, go_stderr, "ranges set-format stderr");
+    assert_eq!(
+        scrub_paths(
+            rust_stdout.expect("rust ranges set-format stdout"),
+            &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go ranges set-format stdout"),
+            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+        ),
+        "ranges set-format stdout"
+    );
+
+    let export_args_go = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &go_out,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--include-types",
+        "--include-formulas",
+        "--include-formats",
+    ];
+    let export_args_rust = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &rust_out,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--include-types",
+        "--include-formulas",
+        "--include-formats",
+    ];
+    let (go_code, go_export, go_stderr) = run_go_ooxml(&export_args_go);
+    let (rust_code, rust_export, rust_stderr) = run_go_ooxml(&export_args_rust);
+    assert_eq!(rust_code, go_code, "saved output export exit");
+    assert_eq!(rust_stderr, go_stderr, "saved output export stderr");
+    assert_eq!(
+        scrub_path(rust_export.expect("rust saved export"), &rust_out, "[OUT]"),
+        scrub_path(go_export.expect("go saved export"), &go_out, "[OUT]"),
+        "saved output format readback"
+    );
+
+    let dry_go = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set-format",
+        &go_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "C3",
+        "--preset",
+        "percent",
+        "--dry-run",
+    ];
+    let dry_rust = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set-format",
+        &rust_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "C3",
+        "--preset",
+        "percent",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
+    assert_eq!(rust_code, go_code, "ranges set-format dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "ranges set-format dry-run stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust set-format dry-run stdout"),
+            &rust_in,
+            "[IN]"
+        ),
+        scrub_path(
+            go_stdout.expect("go set-format dry-run stdout"),
+            &go_in,
+            "[IN]"
+        ),
+        "ranges set-format dry-run stdout"
+    );
+    assert!(
+        !zip_entry_exists(&rust_in_path, "xl/styles.xml"),
+        "dry-run wrote styles.xml into Rust input workbook"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_ranges_set_format_range_edges_match_go_oracle() {
+    let file = "testdata/xlsx/minimal-workbook/workbook.xlsx";
+    for range in ["A1B2", "A0", "A1:B2:C3", ":B2"] {
+        assert_go_rust_match(&[
+            "--json",
+            "xlsx",
+            "ranges",
+            "set-format",
+            file,
+            "--sheet",
+            "Sheet1",
+            "--range",
+            range,
+            "--preset",
+            "number",
+            "--dry-run",
+        ]);
+    }
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "ranges",
+        "set-format",
+        file,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "B2:A1",
+        "--preset",
+        "number",
+        "--dry-run",
+    ]);
 }
 
 #[test]
@@ -2735,6 +2942,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx sheets show", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set", false);
+    assert_command(&xlsx_caps, "ooxml xlsx ranges set-format", false);
     assert_command(&xlsx_caps, "ooxml xlsx cells extract", false);
     assert_command(&xlsx_caps, "ooxml xlsx cells set", true);
     assert_command(&xlsx_caps, "ooxml xlsx tables list", false);
@@ -2749,6 +2957,13 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml xlsx tables list", false);
     assert_command(&table_caps, "ooxml xlsx tables show", false);
     assert_command(&table_caps, "ooxml xlsx tables export", false);
+
+    let (style_code, style_stdout, style_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "style"]);
+    assert_eq!(style_code, 0);
+    assert_eq!(style_stderr, None);
+    let style_caps = style_stdout.expect("style capabilities");
+    assert_command(&style_caps, "ooxml xlsx ranges set-format", false);
 }
 
 #[test]
@@ -2766,10 +2981,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 20, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 21, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        270,
+        269,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

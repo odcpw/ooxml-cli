@@ -25,6 +25,11 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   preservation of untouched shared-string/style/formula-cache cell XML; this is
   direct CLI subset support, with full formula recalculation/calc-chain parity
   and serve `op` routing still open in `DISC-001`
+- `--json xlsx ranges set-format ...` with Go-oracle comparison for direct CLI
+  number-format mutation, custom styles part creation, formatted blank-cell
+  creation, saved output format readback, generated mutation readback commands,
+  and dry-run non-mutation; serve/MCP operation routing is still open in
+  `DISC-002`
 - `--json docx text <docx>` with Go-oracle comparison across the committed
   positive DOCX fixture corpus: paragraphs, styles, preserved whitespace,
   hyperlinks, field/instruction text omission, tables, merged tables, headers,
@@ -56,7 +61,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 20, and the harness pins the 270-command gap until
+  paths, Rust advertises 21, and the harness pins the 269-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

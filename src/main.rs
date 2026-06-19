@@ -505,6 +505,56 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             )
         }
         [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "ranges" && verb == "set-format" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--range",
+                    "--preset",
+                    "--format-code",
+                    "--decimals",
+                    "--currency-symbol",
+                    "--max-cells",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?
+                .ok_or_else(|| CliError::invalid_args("--sheet is required for range commands"))?;
+            let range = parse_string_flag(rest, "--range")?
+                .ok_or_else(|| CliError::invalid_args("--range is required"))?;
+            let preset = parse_string_flag(rest, "--preset")?;
+            let format_code = parse_string_flag(rest, "--format-code")?;
+            let decimals = parse_i64_flag(rest, "--decimals")?.unwrap_or(2);
+            let currency_symbol = parse_string_flag(rest, "--currency-symbol")?;
+            let max_cells = parse_i64_flag(rest, "--max-cells")?.unwrap_or(100000);
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let no_validate = has_flag(rest, "--no-validate");
+            let in_place = has_flag(rest, "--in-place");
+            xlsx_ranges_set_format(
+                file,
+                XlsxRangesSetFormatOptions {
+                    sheet: &sheet,
+                    range: &range,
+                    preset: preset.as_deref(),
+                    format_code: format_code.as_deref(),
+                    decimals,
+                    currency_symbol: currency_symbol.as_deref(),
+                    max_cells,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    no_validate,
+                    in_place,
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "cells" && verb == "extract" =>
         {
             let sheet = parse_string_flag(rest, "--sheet")?.unwrap_or_else(|| "1".to_string());
@@ -675,11 +725,11 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
             "package": ["ooxml inspect", "ooxml validate", "ooxml verify"],
             "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text", "ooxml pptx render"],
             "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text"],
-            "sheet": ["ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
-            "range": ["ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx cells extract", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
+            "sheet": ["ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
+            "range": ["ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "cell": ["ooxml xlsx ranges set", "ooxml xlsx cells set"],
             "table": ["ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
-            "style": []
+            "style": ["ooxml xlsx ranges set-format"]
         },
         "exitCodes": [
             {"code": EXIT_SUCCESS, "name": "success", "description": "command completed successfully"},
@@ -708,6 +758,7 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
                     "ooxml --json xlsx sheets list workbook.xlsx",
                     "ooxml --json xlsx ranges export workbook.xlsx --sheet sheetId:1 --range A1 --include-types",
                     "ooxml --json xlsx ranges set workbook.xlsx --sheet sheetId:1 --range A1:B2 --values '[[\"A\",\"B\"],[1,2]]' --out edited.xlsx",
+                    "ooxml --json xlsx ranges set-format workbook.xlsx --sheet Sheet1 --range B2:B20 --preset currency --out edited.xlsx",
                     "serve op command: xlsx cells set"
                 ]
             }
@@ -1075,6 +1126,63 @@ fn capability_commands() -> Vec<Value> {
                     "bool",
                     "allow replacing existing formula cells",
                 ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "accepted for CLI compatibility",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml xlsx ranges set-format",
+            "set-format <file>",
+            "Apply a practical number format to a worksheet range.",
+            &["sheet", "range", "style"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag("--range", "range", "string", "A1 range"),
+                flag(
+                    "--preset",
+                    "preset",
+                    "string",
+                    "format preset: integer, number, currency, percent, date, datetime, text, or general",
+                ),
+                flag(
+                    "--format-code",
+                    "formatCode",
+                    "string",
+                    "custom SpreadsheetML number format code",
+                ),
+                flag(
+                    "--decimals",
+                    "decimals",
+                    "number",
+                    "decimal places for number, currency, and percent presets",
+                ),
+                flag(
+                    "--currency-symbol",
+                    "currencySymbol",
+                    "string",
+                    "currency literal for the currency preset",
+                ),
+                flag(
+                    "--max-cells",
+                    "maxCells",
+                    "number",
+                    "maximum cells to format",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
                 flag(
                     "--no-validate",
                     "noValidate",
@@ -2081,7 +2189,7 @@ fn xlsx_range_export_with_options(
     let styles = xlsx_styles(file).unwrap_or_default();
     let sheet_xml = zip_text(file, &sheet_part)?;
     let cells = sheet_cells(&sheet_xml, &shared_strings, &styles);
-    let bounds = parse_range(range)?;
+    let bounds = parse_cli_range(range)?;
     check_range_max_cells(range, bounds, options.max_cells)?;
     let mut values = Vec::new();
     let mut types = Vec::new();
@@ -2091,14 +2199,14 @@ fn xlsx_range_export_with_options(
     let mut number_format_codes = Vec::new();
     let mut formula_count = 0;
     let mut has_format_readback = false;
-    for row in bounds.start_row..=bounds.end_row {
+    for row in bounds.min_row()..=bounds.max_row() {
         let mut row_values = Vec::new();
         let mut row_types = Vec::new();
         let mut row_formulas = Vec::new();
         let mut row_style_indexes = Vec::new();
         let mut row_number_format_ids = Vec::new();
         let mut row_number_format_codes = Vec::new();
-        for col in bounds.start_col..=bounds.end_col {
+        for col in bounds.min_col()..=bounds.max_col() {
             let addr = format!("{}{}", col_name(col), row);
             if let Some(cell) = cells.get(&addr) {
                 if cell.has_formula {
@@ -2146,8 +2254,8 @@ fn xlsx_range_export_with_options(
         number_format_ids.push(Value::Array(row_number_format_ids));
         number_format_codes.push(Value::Array(row_number_format_codes));
     }
-    let rows = bounds.end_row - bounds.start_row + 1;
-    let cols = bounds.end_col - bounds.start_col + 1;
+    let rows = bounds.row_count();
+    let cols = bounds.col_count();
     let mut output = Map::new();
     output.insert(
         "cellsExtractCommand".to_string(),
@@ -2265,8 +2373,8 @@ fn check_range_max_cells(range: &str, bounds: RangeBounds, max_cells: i64) -> Cl
     if max_cells < 0 {
         return Err(CliError::invalid_args("--max-cells must be >= 0"));
     }
-    let rows = i64::from(bounds.end_row.saturating_sub(bounds.start_row) + 1);
-    let cols = i64::from(bounds.end_col.saturating_sub(bounds.start_col) + 1);
+    let rows = i64::from(bounds.row_count());
+    let cols = i64::from(bounds.col_count());
     let cell_count = rows.saturating_mul(cols);
     if max_cells > 0 && cell_count > max_cells {
         return Err(CliError::invalid_args(format!(
@@ -2396,8 +2504,8 @@ fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> CliResult<V
             .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
     }
 
-    let rows = bounds.end_row - bounds.start_row + 1;
-    let cols = bounds.end_col - bounds.start_col + 1;
+    let rows = bounds.row_count();
+    let cols = bounds.col_count();
     let mut result = Map::new();
     result.insert("file".to_string(), json!(file));
     result.insert("sheet".to_string(), json!(sheet.name));
@@ -2433,6 +2541,817 @@ fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> CliResult<V
         &range,
     );
     Ok(Value::Object(result))
+}
+
+struct XlsxRangesSetFormatOptions<'a> {
+    sheet: &'a str,
+    range: &'a str,
+    preset: Option<&'a str>,
+    format_code: Option<&'a str>,
+    decimals: i64,
+    currency_symbol: Option<&'a str>,
+    max_cells: i64,
+    out: Option<&'a str>,
+    backup: Option<&'a str>,
+    dry_run: bool,
+    no_validate: bool,
+    in_place: bool,
+}
+
+#[derive(Clone)]
+struct XlsxNumberFormatSpec {
+    preset: String,
+    format_code: String,
+    number_format_id: u32,
+    builtin: bool,
+}
+
+#[derive(Default)]
+struct XlsxRangeFormatStats {
+    updated: usize,
+    created: usize,
+    created_styles: usize,
+    style_indexes: BTreeSet<u32>,
+}
+
+fn xlsx_ranges_set_format(file: &str, options: XlsxRangesSetFormatOptions<'_>) -> CliResult<Value> {
+    if !Path::new(file).exists() {
+        return Err(CliError::file_not_found(format!("file not found: {file}")));
+    }
+    let bounds = parse_cli_range(options.range)?;
+    let range = range_bounds_ref(bounds);
+    check_range_max_cells(&range, bounds, options.max_cells)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let spec = resolve_xlsx_number_format(
+        options.preset,
+        options.format_code,
+        options.decimals,
+        options.currency_symbol,
+    )?;
+
+    let (sheet, sheet_part) = resolve_xlsx_sheet_context(file, options.sheet)?;
+    let sheet_xml = zip_text(file, &sheet_part)?;
+    let (styles_part, rels_override) = resolve_or_add_xlsx_styles_part(file)?;
+    let styles_xml = zip_text(file, &styles_part).unwrap_or_else(|_| default_xlsx_styles_xml());
+    let (styles_xml, number_format_id) = ensure_xlsx_number_format(styles_xml, &spec)?;
+    let (updated_sheet_xml, styles_xml, stats) =
+        set_xlsx_range_number_format_xml(&sheet_xml, styles_xml, bounds, number_format_id)?;
+    let content_types_xml = ensure_content_type_override(
+        zip_text(file, "[Content_Types].xml")?,
+        &format!("/{styles_part}"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml",
+    );
+
+    let output_path = options.out.filter(|value| !value.is_empty());
+    let commit_path = if options.in_place {
+        Some(file)
+    } else {
+        output_path
+    };
+    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
+        xlsx_ranges_set_temp_path(file)
+    } else {
+        output_path
+            .ok_or_else(|| {
+                CliError::invalid_args(
+                    "must specify exactly one of --out, --in-place, or --dry-run",
+                )
+            })?
+            .to_string()
+    };
+
+    let mut overrides = BTreeMap::new();
+    overrides.insert(sheet_part.clone(), updated_sheet_xml);
+    overrides.insert(styles_part.clone(), styles_xml);
+    overrides.insert("[Content_Types].xml".to_string(), content_types_xml);
+    if let Some(rels_xml) = rels_override {
+        overrides.insert("xl/_rels/workbook.xml.rels".to_string(), rels_xml);
+    }
+    copy_zip_with_part_overrides(file, &readback_path, &overrides)?;
+    if !options.no_validate {
+        validate(&readback_path, true)?;
+    }
+    let destination =
+        xlsx_range_destination_json(&readback_path, commit_path, &sheet, &sheet_part, &range)?;
+    if options.dry_run {
+        let _ = fs::remove_file(&readback_path);
+    } else if options.in_place || output_path == Some(file) {
+        if let Some(backup_path) = options.backup.filter(|value| !value.is_empty()) {
+            fs::copy(file, backup_path)
+                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+        }
+        fs::rename(&readback_path, file)
+            .or_else(|_| {
+                fs::copy(&readback_path, file)?;
+                fs::remove_file(&readback_path)
+            })
+            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    }
+
+    let rows = bounds.row_count();
+    let cols = bounds.col_count();
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("sheet".to_string(), json!(sheet.name));
+    result.insert("sheetNumber".to_string(), json!(sheet.position));
+    result.insert("range".to_string(), json!(range));
+    result.insert("rows".to_string(), json!(rows));
+    result.insert("cols".to_string(), json!(cols));
+    if !spec.preset.is_empty() {
+        result.insert("preset".to_string(), json!(spec.preset));
+    }
+    result.insert("formatCode".to_string(), json!(spec.format_code));
+    result.insert("numberFormatId".to_string(), json!(number_format_id));
+    result.insert("builtin".to_string(), json!(spec.builtin));
+    result.insert("updated".to_string(), json!(stats.updated));
+    result.insert("created".to_string(), json!(stats.created));
+    result.insert("createdStyles".to_string(), json!(stats.created_styles));
+    if !stats.style_indexes.is_empty() {
+        result.insert(
+            "styleIndexes".to_string(),
+            json!(stats.style_indexes.into_iter().collect::<Vec<_>>()),
+        );
+    }
+    if let Some(commit_path) = commit_path {
+        result.insert("output".to_string(), json!(commit_path));
+    }
+    result.insert("dryRun".to_string(), json!(options.dry_run));
+    result.insert("destination".to_string(), destination);
+    add_xlsx_range_mutation_commands(
+        &mut result,
+        commit_path,
+        &format!("sheetId:{}", sheet.sheet_id),
+        &range,
+    );
+    Ok(Value::Object(result))
+}
+
+fn resolve_xlsx_number_format(
+    preset: Option<&str>,
+    format_code: Option<&str>,
+    decimals: i64,
+    currency_symbol: Option<&str>,
+) -> CliResult<XlsxNumberFormatSpec> {
+    let preset = preset.unwrap_or_default().trim().to_ascii_lowercase();
+    let format_code = format_code.unwrap_or_default().trim();
+    if preset.is_empty() == format_code.is_empty() {
+        return Err(CliError::invalid_args(
+            "specify exactly one of preset or format code",
+        ));
+    }
+    if !(0..=10).contains(&decimals) {
+        return Err(CliError::invalid_args("decimals must be between 0 and 10"));
+    }
+    if !format_code.is_empty() {
+        return Ok(XlsxNumberFormatSpec {
+            preset: "custom".to_string(),
+            format_code: format_code.to_string(),
+            number_format_id: 0,
+            builtin: false,
+        });
+    }
+    match preset.as_str() {
+        "general" => builtin_xlsx_number_format_spec("general", 0),
+        "integer" => builtin_xlsx_number_format_spec("integer", 3),
+        "number" => {
+            let code = fixed_decimal_format("#,##0", decimals);
+            match decimals {
+                0 => builtin_xlsx_number_format_spec("number", 3),
+                2 => builtin_xlsx_number_format_spec("number", 4),
+                _ => custom_xlsx_number_format_spec("number", &code),
+            }
+        }
+        "percent" => {
+            let code = format!("{}%", fixed_decimal_format("0", decimals));
+            match decimals {
+                0 => builtin_xlsx_number_format_spec("percent", 9),
+                2 => builtin_xlsx_number_format_spec("percent", 10),
+                _ => custom_xlsx_number_format_spec("percent", &code),
+            }
+        }
+        "currency" => {
+            let symbol = currency_symbol.unwrap_or("$");
+            let code = format!(
+                "{}{}",
+                xlsx_format_literal(symbol),
+                fixed_decimal_format("#,##0", decimals)
+            );
+            custom_xlsx_number_format_spec("currency", &code)
+        }
+        "date" => custom_xlsx_number_format_spec("date", "yyyy-mm-dd"),
+        "datetime" => custom_xlsx_number_format_spec("datetime", "yyyy-mm-dd h:mm"),
+        "text" => builtin_xlsx_number_format_spec("text", 49),
+        _ => Err(CliError::invalid_args(format!(
+            "invalid preset {:?} (must be integer, number, currency, percent, date, datetime, text, or general)",
+            preset
+        ))),
+    }
+}
+
+fn builtin_xlsx_number_format_spec(
+    preset: &str,
+    number_format_id: u32,
+) -> CliResult<XlsxNumberFormatSpec> {
+    let code = builtin_num_format_code(number_format_id).ok_or_else(|| {
+        CliError::unexpected(format!(
+            "unknown built-in number format id {number_format_id}"
+        ))
+    })?;
+    Ok(XlsxNumberFormatSpec {
+        preset: preset.to_string(),
+        format_code: code.to_string(),
+        number_format_id,
+        builtin: true,
+    })
+}
+
+fn custom_xlsx_number_format_spec(preset: &str, code: &str) -> CliResult<XlsxNumberFormatSpec> {
+    Ok(XlsxNumberFormatSpec {
+        preset: preset.to_string(),
+        format_code: code.to_string(),
+        number_format_id: 0,
+        builtin: false,
+    })
+}
+
+fn fixed_decimal_format(base: &str, decimals: i64) -> String {
+    if decimals == 0 {
+        base.to_string()
+    } else {
+        format!("{base}.{}", "0".repeat(decimals as usize))
+    }
+}
+
+fn xlsx_format_literal(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
+}
+
+fn resolve_or_add_xlsx_styles_part(file: &str) -> CliResult<(String, Option<String>)> {
+    let rels_part = "xl/_rels/workbook.xml.rels";
+    let rels_xml = zip_text(file, rels_part)?;
+    let rels = relationship_entries(file, rels_part)?;
+    for rel in &rels {
+        if rel.target_mode == "External" {
+            continue;
+        }
+        if rel.rel_type
+            == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
+        {
+            return Ok((normalize_xl_target(&rel.target), None));
+        }
+    }
+    let next_id = allocate_relationship_id(&rels);
+    let rel = format!(
+        r#"<Relationship Id="{next_id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>"#
+    );
+    let updated = if let Some(pos) = rels_xml.rfind("</Relationships>") {
+        let mut out = String::with_capacity(rels_xml.len() + rel.len());
+        out.push_str(&rels_xml[..pos]);
+        out.push_str(&rel);
+        out.push_str(&rels_xml[pos..]);
+        out
+    } else {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
+        )
+    };
+    Ok(("xl/styles.xml".to_string(), Some(updated)))
+}
+
+fn allocate_relationship_id(rels: &[RelationshipEntry]) -> String {
+    let mut next = 1u32;
+    for rel in rels {
+        if let Some(suffix) = rel.id.strip_prefix("rId")
+            && let Ok(id) = suffix.parse::<u32>()
+            && id >= next
+        {
+            next = id + 1;
+        }
+    }
+    format!("rId{next}")
+}
+
+fn ensure_content_type_override(xml: String, part_name: &str, content_type: &str) -> String {
+    let normalized = format!("/{}", part_name.trim_start_matches('/'));
+    if xml.contains(&format!(r#"PartName="{normalized}""#)) {
+        return xml;
+    }
+    let override_xml = format!(
+        r#"<Override PartName="{normalized}" ContentType="{}"/>"#,
+        xml_attr_escape(content_type)
+    );
+    if let Some(pos) = xml.rfind("</Types>") {
+        let mut out = String::with_capacity(xml.len() + override_xml.len());
+        out.push_str(&xml[..pos]);
+        out.push_str(&override_xml);
+        out.push_str(&xml[pos..]);
+        out
+    } else {
+        xml
+    }
+}
+
+fn default_xlsx_styles_xml() -> String {
+    r#"<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font/></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>"#.to_string()
+}
+
+fn ensure_xlsx_number_format(
+    styles_xml: String,
+    spec: &XlsxNumberFormatSpec,
+) -> CliResult<(String, u32)> {
+    let styles_xml = ensure_xlsx_style_defaults(styles_xml);
+    if spec.builtin {
+        return Ok((styles_xml, spec.number_format_id));
+    }
+    for (id, code) in parse_xlsx_num_formats(&styles_xml) {
+        if code == spec.format_code {
+            return Ok((styles_xml, id));
+        }
+    }
+    let mut next_id = 164u32;
+    for (id, _) in parse_xlsx_num_formats(&styles_xml) {
+        if id >= next_id {
+            next_id = id + 1;
+        }
+    }
+    let num_fmt = format!(
+        r#"<numFmt numFmtId="{next_id}" formatCode="{}"/>"#,
+        xml_attr_escape(&spec.format_code)
+    );
+    let updated = if let Some(span) = element_span_by_local_name(&styles_xml, "numFmts") {
+        let mut out = String::with_capacity(styles_xml.len() + num_fmt.len());
+        out.push_str(&styles_xml[..span.close_start]);
+        out.push_str(&num_fmt);
+        out.push_str(&styles_xml[span.close_start..]);
+        set_collection_count(out, "numFmts", "numFmt")
+    } else {
+        insert_xlsx_styles_collection(
+            &styles_xml,
+            "numFmts",
+            &format!(r#"<numFmts count="1">{num_fmt}</numFmts>"#),
+        )
+    };
+    Ok((updated, next_id))
+}
+
+fn ensure_xlsx_style_defaults(mut styles_xml: String) -> String {
+    if !styles_xml.contains("<styleSheet") {
+        return default_xlsx_styles_xml();
+    }
+    let defaults = [
+        ("fonts", r#"<fonts count="1"><font/></fonts>"#),
+        (
+            "fills",
+            r#"<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>"#,
+        ),
+        ("borders", r#"<borders count="1"><border/></borders>"#),
+        (
+            "cellStyleXfs",
+            r#"<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>"#,
+        ),
+        (
+            "cellXfs",
+            r#"<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>"#,
+        ),
+        (
+            "cellStyles",
+            r#"<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>"#,
+        ),
+    ];
+    for (name, block) in defaults {
+        if element_span_by_local_name(&styles_xml, name).is_none() {
+            styles_xml = insert_xlsx_styles_collection(&styles_xml, name, block);
+        }
+    }
+    styles_xml
+}
+
+fn insert_xlsx_styles_collection(styles_xml: &str, name: &str, block: &str) -> String {
+    let target_order = xlsx_styles_collection_order(name);
+    for candidate in [
+        "numFmts",
+        "fonts",
+        "fills",
+        "borders",
+        "cellStyleXfs",
+        "cellXfs",
+        "cellStyles",
+        "dxfs",
+        "tableStyles",
+        "colors",
+        "extLst",
+    ] {
+        if xlsx_styles_collection_order(candidate) > target_order
+            && let Some(span) = element_span_by_local_name(styles_xml, candidate)
+        {
+            let mut out = String::with_capacity(styles_xml.len() + block.len());
+            out.push_str(&styles_xml[..span.start]);
+            out.push_str(block);
+            out.push_str(&styles_xml[span.start..]);
+            return out;
+        }
+    }
+    if let Some(pos) = styles_xml.rfind("</styleSheet>") {
+        let mut out = String::with_capacity(styles_xml.len() + block.len());
+        out.push_str(&styles_xml[..pos]);
+        out.push_str(block);
+        out.push_str(&styles_xml[pos..]);
+        out
+    } else {
+        styles_xml.to_string()
+    }
+}
+
+fn xlsx_styles_collection_order(name: &str) -> u32 {
+    match name {
+        "numFmts" => 10,
+        "fonts" => 20,
+        "fills" => 30,
+        "borders" => 40,
+        "cellStyleXfs" => 50,
+        "cellXfs" => 60,
+        "cellStyles" => 70,
+        "dxfs" => 80,
+        "tableStyles" => 90,
+        "colors" => 100,
+        "extLst" => 110,
+        _ => 1000,
+    }
+}
+
+#[derive(Clone, Copy)]
+struct XmlElementSpan {
+    start: usize,
+    open_end: usize,
+    close_start: usize,
+}
+
+fn element_span_by_local_name(xml: &str, wanted: &str) -> Option<XmlElementSpan> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        let before = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == wanted => {
+                let open_end = reader.buffer_position() as usize;
+                let mut depth = 1usize;
+                loop {
+                    let inner_before = reader.buffer_position() as usize;
+                    match reader.read_event() {
+                        Ok(Event::Start(e)) if local_name(e.name().as_ref()) == wanted => {
+                            depth += 1;
+                        }
+                        Ok(Event::End(e)) if local_name(e.name().as_ref()) == wanted => {
+                            depth -= 1;
+                            if depth == 0 {
+                                return Some(XmlElementSpan {
+                                    start: before,
+                                    open_end,
+                                    close_start: inner_before,
+                                });
+                            }
+                        }
+                        Ok(Event::Eof) | Err(_) => return None,
+                        _ => {}
+                    }
+                }
+            }
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == wanted => {
+                let end = reader.buffer_position() as usize;
+                return Some(XmlElementSpan {
+                    start: before,
+                    open_end: end,
+                    close_start: before,
+                });
+            }
+            Ok(Event::Eof) | Err(_) => return None,
+            _ => {}
+        }
+    }
+}
+
+fn parse_xlsx_num_formats(styles_xml: &str) -> Vec<(u32, String)> {
+    let mut reader = Reader::from_str(styles_xml);
+    reader.config_mut().trim_text(false);
+    let mut formats = Vec::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "numFmt" =>
+            {
+                if let (Some(id), Some(code)) = (attr(&e, "numFmtId"), attr(&e, "formatCode"))
+                    && let Ok(id) = id.parse::<u32>()
+                {
+                    formats.push((id, code));
+                }
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    formats
+}
+
+#[derive(Clone)]
+struct XlsxXfEntry {
+    attrs: BTreeMap<String, String>,
+    inner_xml: String,
+}
+
+fn parse_xlsx_cell_xfs(styles_xml: &str) -> CliResult<Vec<XlsxXfEntry>> {
+    let Some(parent) = element_span_by_local_name(styles_xml, "cellXfs") else {
+        return Ok(Vec::new());
+    };
+    let fragment = &styles_xml[parent.open_end..parent.close_start];
+    let base = parent.open_end;
+    let mut reader = Reader::from_str(fragment);
+    reader.config_mut().trim_text(false);
+    let mut entries = Vec::new();
+    loop {
+        let before = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "xf" => {
+                let attrs = xml_attrs(&e);
+                let open_end = reader.buffer_position() as usize;
+                loop {
+                    let inner_before = reader.buffer_position() as usize;
+                    match reader.read_event() {
+                        Ok(Event::End(e)) if local_name(e.name().as_ref()) == "xf" => {
+                            entries.push(XlsxXfEntry {
+                                attrs,
+                                inner_xml: styles_xml[base + open_end..base + inner_before]
+                                    .to_string(),
+                            });
+                            break;
+                        }
+                        Ok(Event::Eof) => {
+                            return Err(CliError::unexpected("xf has no closing tag"));
+                        }
+                        Err(err) => return Err(CliError::unexpected(err.to_string())),
+                        _ => {}
+                    }
+                }
+            }
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "xf" => {
+                let _ = before;
+                entries.push(XlsxXfEntry {
+                    attrs: xml_attrs(&e),
+                    inner_xml: String::new(),
+                });
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Ok(entries)
+}
+
+fn ensure_xlsx_cell_style(
+    styles_xml: String,
+    base_style_index: u32,
+    number_format_id: u32,
+) -> CliResult<(String, u32, bool)> {
+    let styles_xml = ensure_xlsx_style_defaults(styles_xml);
+    let xfs = parse_xlsx_cell_xfs(&styles_xml)?;
+    let base_index = if (base_style_index as usize) < xfs.len() {
+        base_style_index
+    } else {
+        0
+    };
+    let base = xfs
+        .get(base_index as usize)
+        .cloned()
+        .unwrap_or_else(default_xlsx_xf_entry);
+    if xlsx_xf_num_fmt_id(&base.attrs) == number_format_id {
+        return Ok((styles_xml, base_index, false));
+    }
+    let mut attrs = base.attrs.clone();
+    for (key, value) in [
+        ("fontId", "0"),
+        ("fillId", "0"),
+        ("borderId", "0"),
+        ("xfId", "0"),
+    ] {
+        attrs
+            .entry(key.to_string())
+            .or_insert_with(|| value.to_string());
+    }
+    attrs.insert("numFmtId".to_string(), number_format_id.to_string());
+    attrs.insert("applyNumberFormat".to_string(), "1".to_string());
+    let candidate = XlsxXfEntry {
+        attrs,
+        inner_xml: base.inner_xml,
+    };
+    let candidate_sig = render_xlsx_xf(&candidate);
+    for (index, xf) in xfs.iter().enumerate() {
+        if render_xlsx_xf(xf) == candidate_sig {
+            return Ok((styles_xml, index as u32, false));
+        }
+    }
+    let Some(parent) = element_span_by_local_name(&styles_xml, "cellXfs") else {
+        return Err(CliError::unexpected("styles cellXfs not found"));
+    };
+    let mut out = String::with_capacity(styles_xml.len() + candidate_sig.len());
+    out.push_str(&styles_xml[..parent.close_start]);
+    out.push_str(&candidate_sig);
+    out.push_str(&styles_xml[parent.close_start..]);
+    let out = set_collection_count(out, "cellXfs", "xf");
+    Ok((out, xfs.len() as u32, true))
+}
+
+fn default_xlsx_xf_entry() -> XlsxXfEntry {
+    let mut attrs = BTreeMap::new();
+    attrs.insert("numFmtId".to_string(), "0".to_string());
+    attrs.insert("fontId".to_string(), "0".to_string());
+    attrs.insert("fillId".to_string(), "0".to_string());
+    attrs.insert("borderId".to_string(), "0".to_string());
+    attrs.insert("xfId".to_string(), "0".to_string());
+    XlsxXfEntry {
+        attrs,
+        inner_xml: String::new(),
+    }
+}
+
+fn render_xlsx_xf(xf: &XlsxXfEntry) -> String {
+    if xf.inner_xml.is_empty() {
+        format!("<xf{}/>", render_xml_attrs(&xf.attrs))
+    } else {
+        format!("<xf{}>{}</xf>", render_xml_attrs(&xf.attrs), xf.inner_xml)
+    }
+}
+
+fn xlsx_xf_num_fmt_id(attrs: &BTreeMap<String, String>) -> u32 {
+    attrs
+        .get("numFmtId")
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(0)
+}
+
+fn set_collection_count(xml: String, parent: &str, child: &str) -> String {
+    let count = count_children_in_parent(&xml, parent, child);
+    let Some(span) = element_span_by_local_name(&xml, parent) else {
+        return xml;
+    };
+    set_start_tag_count_attr(&xml, span, count)
+}
+
+fn count_children_in_parent(xml: &str, parent: &str, child: &str) -> usize {
+    let Some(span) = element_span_by_local_name(xml, parent) else {
+        return 0;
+    };
+    let fragment = &xml[span.open_end..span.close_start];
+    let mut reader = Reader::from_str(fragment);
+    reader.config_mut().trim_text(false);
+    let mut count = 0usize;
+    let mut depth = 0usize;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                if depth == 0 && local_name(e.name().as_ref()) == child {
+                    count += 1;
+                }
+                depth += 1;
+            }
+            Ok(Event::Empty(e)) => {
+                if depth == 0 && local_name(e.name().as_ref()) == child {
+                    count += 1;
+                }
+            }
+            Ok(Event::End(_)) => {
+                depth = depth.saturating_sub(1);
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    count
+}
+
+fn set_start_tag_count_attr(xml: &str, span: XmlElementSpan, count: usize) -> String {
+    let open = &xml[span.start..span.open_end];
+    let replacement = if let Some(pos) = open.find("count=\"") {
+        let value_start = pos + "count=\"".len();
+        if let Some(value_end_rel) = open[value_start..].find('"') {
+            let value_end = value_start + value_end_rel;
+            let mut tag = String::new();
+            tag.push_str(&open[..value_start]);
+            tag.push_str(&count.to_string());
+            tag.push_str(&open[value_end..]);
+            tag
+        } else {
+            open.to_string()
+        }
+    } else if let Some(pos) = open.rfind("/>") {
+        format!("{} count=\"{}\"/>", &open[..pos].trim_end(), count)
+    } else if let Some(pos) = open.rfind('>') {
+        format!("{} count=\"{}\">", &open[..pos].trim_end(), count)
+    } else {
+        open.to_string()
+    };
+    let mut out = String::with_capacity(xml.len() + replacement.len());
+    out.push_str(&xml[..span.start]);
+    out.push_str(&replacement);
+    out.push_str(&xml[span.open_end..]);
+    out
+}
+
+fn set_xlsx_range_number_format_xml(
+    sheet_xml: &str,
+    mut styles_xml: String,
+    bounds: RangeBounds,
+    number_format_id: u32,
+) -> CliResult<(String, String, XlsxRangeFormatStats)> {
+    let sheet_data = xlsx_sheet_data_span(sheet_xml)?;
+    let row_spans = parse_xlsx_row_spans(sheet_xml, sheet_data.as_ref())?;
+    let mut stats = XlsxRangeFormatStats::default();
+    let mut changed_rows = BTreeMap::<u32, String>::new();
+    let mut style_by_base = BTreeMap::<u32, u32>::new();
+    let write_bounds = bounds.normalized();
+    for row_num in write_bounds.start_row..=write_bounds.end_row {
+        let existing_row = row_spans.get(&row_num);
+        let mut rendered_cells = existing_row
+            .map(|span| {
+                span.cells
+                    .iter()
+                    .map(|(col, cell)| (*col, cell.xml.clone()))
+                    .collect::<BTreeMap<u32, String>>()
+            })
+            .unwrap_or_default();
+        let mut row_changed = false;
+        for col_num in write_bounds.start_col..=write_bounds.end_col {
+            let addr = format!("{}{}", col_name(col_num), row_num);
+            let existing_cell = existing_row.and_then(|span| span.cells.get(&col_num));
+            let base_style = existing_cell
+                .and_then(|cell| cell.attrs.get("s"))
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(0);
+            let style_index = if let Some(style_index) = style_by_base.get(&base_style).copied() {
+                style_index
+            } else {
+                let (new_styles_xml, style_index, created) =
+                    ensure_xlsx_cell_style(styles_xml, base_style, number_format_id)?;
+                styles_xml = new_styles_xml;
+                if created {
+                    stats.created_styles += 1;
+                }
+                style_by_base.insert(base_style, style_index);
+                style_index
+            };
+            let cell_xml = if let Some(existing_cell) = existing_cell {
+                render_xlsx_existing_cell_with_style(&addr, existing_cell, style_index)
+            } else {
+                let mut attrs = BTreeMap::new();
+                attrs.insert("r".to_string(), addr.clone());
+                attrs.insert("s".to_string(), style_index.to_string());
+                stats.created += 1;
+                render_empty_xlsx_cell_with_attrs(&addr, Some(&attrs))
+            };
+            rendered_cells.insert(col_num, cell_xml);
+            stats.updated += 1;
+            stats.style_indexes.insert(style_index);
+            row_changed = true;
+        }
+        if row_changed {
+            changed_rows.insert(
+                row_num,
+                render_xlsx_row(row_num, existing_row, rendered_cells),
+            );
+        }
+    }
+    let updated =
+        rebuild_xlsx_sheet_data(sheet_xml, sheet_data.as_ref(), &row_spans, &changed_rows)?;
+    let used_range = xlsx_used_range_from_cell_refs(&updated);
+    Ok((
+        replace_xlsx_dimension(&updated, used_range.as_deref()),
+        styles_xml,
+        stats,
+    ))
+}
+
+fn render_xlsx_existing_cell_with_style(
+    addr: &str,
+    cell: &XlsxCellSpan,
+    style_index: u32,
+) -> String {
+    let mut attrs = cell.attrs.clone();
+    attrs.insert("r".to_string(), addr.to_string());
+    attrs.insert("s".to_string(), style_index.to_string());
+    if cell.xml.trim_end().ends_with("/>") {
+        return render_empty_xlsx_cell_with_attrs(addr, Some(&attrs));
+    }
+    if let Some(open_end) = cell.xml.find('>') {
+        let mut out = format!("<c{}>", render_xml_attrs(&attrs));
+        out.push_str(&cell.xml[open_end + 1..]);
+        out
+    } else {
+        render_empty_xlsx_cell_with_attrs(addr, Some(&attrs))
+    }
 }
 
 fn chrono_like_counter() -> u128 {
@@ -2824,7 +3743,8 @@ fn resolve_xlsx_ranges_set_bounds(
         ));
     }
     if let Some(anchor) = anchor.filter(|value| !value.trim().is_empty()) {
-        let (start_col, start_row) = parse_cell_ref(anchor)?;
+        let (start_col, start_row) = parse_cell_ref(anchor)
+            .map_err(|err| CliError::invalid_args(format!("invalid --anchor: {}", err.message)))?;
         let end_col = start_col + cols as u32 - 1;
         let end_row = start_row + rows as u32 - 1;
         return Ok(RangeBounds {
@@ -2838,9 +3758,9 @@ fn resolve_xlsx_ranges_set_bounds(
         .filter(|value| !value.trim().is_empty())
         .or(range)
         .unwrap_or_default();
-    let bounds = parse_range(range_text)?;
-    let range_rows = bounds.end_row - bounds.start_row + 1;
-    let range_cols = bounds.end_col - bounds.start_col + 1;
+    let bounds = parse_cli_range(range_text)?;
+    let range_rows = bounds.row_count();
+    let range_cols = bounds.col_count();
     if range_rows as usize != rows || range_cols as usize != cols {
         return Err(CliError::invalid_args(format!(
             "range {} is {}x{} but values matrix is {}x{}",
@@ -2914,8 +3834,9 @@ fn set_xlsx_range_in_sheet_xml(
 
     let mut stats = XlsxRangeSetStats::default();
     let mut changed_rows = BTreeMap::<u32, String>::new();
+    let write_bounds = bounds.normalized();
     for (row_offset, row) in rows.iter().enumerate() {
-        let row_number = bounds.start_row + row_offset as u32;
+        let row_number = write_bounds.start_row + row_offset as u32;
         let existing_row = row_spans.get(&row_number);
         let mut rendered_cells = existing_row
             .map(|span| {
@@ -2927,7 +3848,7 @@ fn set_xlsx_range_in_sheet_xml(
             .unwrap_or_default();
         let mut row_changed = false;
         for (col_offset, cell) in row.iter().enumerate() {
-            let col_number = bounds.start_col + col_offset as u32;
+            let col_number = write_bounds.start_col + col_offset as u32;
             let addr = format!("{}{}", col_name(col_number), row_number);
             let existing_cell = existing_row.and_then(|span| span.cells.get(&col_number));
             if !overwrite_formulas
@@ -3506,10 +4427,10 @@ fn reject_xlsx_merged_cell_intersection(xml: &str, bounds: RangeBounds) -> CliRe
 }
 
 fn ranges_intersect(a: RangeBounds, b: RangeBounds) -> bool {
-    a.start_col <= b.end_col
-        && a.end_col >= b.start_col
-        && a.start_row <= b.end_row
-        && a.end_row >= b.start_row
+    a.min_col() <= b.max_col()
+        && a.max_col() >= b.min_col()
+        && a.min_row() <= b.max_row()
+        && a.max_row() >= b.min_row()
 }
 
 fn range_bounds_ref(bounds: RangeBounds) -> String {
@@ -3714,7 +4635,7 @@ fn xlsx_cells_extract(
     let dimension_declared = xlsx_dimension_declared(&sheet_xml);
     let merged_cell_count = xlsx_merged_cell_count(&sheet_xml);
     let all_cells = sheet_cells(&sheet_xml, &shared_strings, &styles);
-    let range_bounds = range.map(parse_range).transpose()?;
+    let range_bounds = range.map(parse_cli_range).transpose()?;
     let cells = sorted_xlsx_cells(&all_cells, range_bounds);
     let used_range = used_range_for_cells(&cells);
     let row_count = cells
@@ -4113,8 +5034,8 @@ fn parse_xlsx_table_part(xml: &str, part_uri: &str) -> CliResult<XlsxTableRef> {
                         table.range, err.message
                     ))
                 })?;
-                table.rows = bounds.end_row.saturating_sub(bounds.start_row) + 1;
-                table.cols = bounds.end_col.saturating_sub(bounds.start_col) + 1;
+                table.rows = bounds.row_count();
+                table.cols = bounds.col_count();
                 table.header_row_count =
                     parse_optional_u32(attr(&e, "headerRowCount").as_deref(), 1);
                 table.totals_row_count =
@@ -7229,6 +8150,33 @@ fn sheet_cells(
                 current_formula.clear();
                 current_style_index = attr(&e, "s").and_then(|value| value.parse::<u32>().ok());
             }
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "c" => {
+                let cell_ref = attr(&e, "r").unwrap_or_default();
+                if !cell_ref.is_empty() {
+                    let cell_type = attr(&e, "t").unwrap_or_default();
+                    let style_index = attr(&e, "s").and_then(|value| value.parse::<u32>().ok());
+                    let style = style_index
+                        .and_then(|index| styles.get(index as usize).cloned())
+                        .unwrap_or_default();
+                    let (kind, matrix_value, display_value) =
+                        decode_xlsx_cell_value(&cell_type, "", "", "", shared_strings, &style);
+                    cells.insert(
+                        cell_ref,
+                        CellValue {
+                            kind,
+                            matrix_value,
+                            display_value,
+                            raw_value: String::new(),
+                            formula: String::new(),
+                            style_index,
+                            number_format_id: style.number_format_id,
+                            number_format_code: style.number_format_code,
+                            date_style: style.date_style,
+                            has_formula: false,
+                        },
+                    );
+                }
+            }
             Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "v" => in_v = true,
             Ok(Event::Start(e))
                 if current_type == "inlineStr" && local_name(e.name().as_ref()) == "t" =>
@@ -7434,6 +8382,13 @@ fn xlsx_styles(file: &str) -> CliResult<Vec<XlsxStyle>> {
 
 fn builtin_num_format_code(id: u32) -> Option<&'static str> {
     match id {
+        0 => Some("General"),
+        1 => Some("0"),
+        2 => Some("0.00"),
+        3 => Some("#,##0"),
+        4 => Some("#,##0.00"),
+        9 => Some("0%"),
+        10 => Some("0.00%"),
         14 => Some("m/d/yy"),
         15 => Some("d-mmm-yy"),
         16 => Some("d-mmm"),
@@ -7446,6 +8401,7 @@ fn builtin_num_format_code(id: u32) -> Option<&'static str> {
         45 => Some("mm:ss"),
         46 => Some("[h]:mm:ss"),
         47 => Some("mmss.0"),
+        49 => Some("@"),
         _ => None,
     }
 }
@@ -7772,10 +8728,10 @@ fn xlsx_cell_json(
 }
 
 fn range_contains_cell(bounds: RangeBounds, col: u32, row: u32) -> bool {
-    col >= bounds.start_col
-        && col <= bounds.end_col
-        && row >= bounds.start_row
-        && row <= bounds.end_row
+    col >= bounds.min_col()
+        && col <= bounds.max_col()
+        && row >= bounds.min_row()
+        && row <= bounds.max_row()
 }
 
 #[derive(Clone, Copy)]
@@ -7786,14 +8742,61 @@ struct RangeBounds {
     end_row: u32,
 }
 
+impl RangeBounds {
+    fn min_col(self) -> u32 {
+        self.start_col.min(self.end_col)
+    }
+
+    fn max_col(self) -> u32 {
+        self.start_col.max(self.end_col)
+    }
+
+    fn min_row(self) -> u32 {
+        self.start_row.min(self.end_row)
+    }
+
+    fn max_row(self) -> u32 {
+        self.start_row.max(self.end_row)
+    }
+
+    fn row_count(self) -> u32 {
+        self.max_row() - self.min_row() + 1
+    }
+
+    fn col_count(self) -> u32 {
+        self.max_col() - self.min_col() + 1
+    }
+
+    fn normalized(self) -> RangeBounds {
+        RangeBounds {
+            start_col: self.min_col(),
+            start_row: self.min_row(),
+            end_col: self.max_col(),
+            end_row: self.max_row(),
+        }
+    }
+}
+
 fn parse_range(range: &str) -> CliResult<RangeBounds> {
-    let mut parts = range.split(':');
-    let start = parts
-        .next()
-        .ok_or_else(|| CliError::invalid_args("range is empty"))?;
-    let end = parts.next().unwrap_or(start);
-    let (start_col, start_row) = parse_cell_ref(start)?;
-    let (end_col, end_row) = parse_cell_ref(end)?;
+    let range = range.trim();
+    if range.is_empty() {
+        return Err(CliError::invalid_args("range reference cannot be empty"));
+    }
+    let parts = range.split(':').collect::<Vec<_>>();
+    if parts.len() > 2 {
+        return Err(CliError::invalid_args(format!(
+            "invalid range reference {range:?}"
+        )));
+    }
+    let start = parts[0];
+    let end = parts.get(1).copied().unwrap_or(start);
+    if parts.len() == 2 && end.trim().is_empty() {
+        return Err(CliError::invalid_args("range end cannot be empty"));
+    }
+    let (start_col, start_row) = parse_cell_ref(start)
+        .map_err(|err| CliError::invalid_args(format!("invalid range start: {}", err.message)))?;
+    let (end_col, end_row) = parse_cell_ref(end)
+        .map_err(|err| CliError::invalid_args(format!("invalid range end: {}", err.message)))?;
     Ok(RangeBounds {
         start_col,
         start_row,
@@ -7802,19 +8805,68 @@ fn parse_range(range: &str) -> CliResult<RangeBounds> {
     })
 }
 
+fn parse_cli_range(range: &str) -> CliResult<RangeBounds> {
+    parse_range(range)
+        .map_err(|err| CliError::invalid_args(format!("invalid --range: {}", err.message)))
+}
+
 fn parse_cell_ref(cell: &str) -> CliResult<(u32, u32)> {
-    let mut col = 0u32;
-    let mut row = String::new();
-    for ch in cell.chars() {
-        if ch.is_ascii_alphabetic() {
-            col = col * 26 + (ch.to_ascii_uppercase() as u32 - 'A' as u32 + 1);
-        } else if ch.is_ascii_digit() {
-            row.push(ch);
+    let cell = cell.trim();
+    if cell.is_empty() {
+        return Err(CliError::invalid_args("cell reference cannot be empty"));
+    }
+    let mut rest = cell;
+    if let Some(after_abs_col) = rest.strip_prefix('$') {
+        rest = after_abs_col;
+        if rest.is_empty() {
+            return Err(CliError::invalid_args("missing column in cell reference"));
         }
     }
-    let row = row
+    let col_len = rest
+        .bytes()
+        .take_while(|byte| byte.is_ascii_alphabetic())
+        .count();
+    if col_len == 0 {
+        return Err(CliError::invalid_args("missing column in cell reference"));
+    }
+    let mut col = 0u32;
+    for ch in rest[..col_len].chars() {
+        col = col * 26 + (ch.to_ascii_uppercase() as u32 - 'A' as u32 + 1);
+        if col > 16_384 {
+            return Err(CliError::invalid_args(format!(
+                "column {:?} out of XLSX bounds A-XFD",
+                &rest[..col_len]
+            )));
+        }
+    }
+    rest = &rest[col_len..];
+    if rest.is_empty() {
+        return Err(CliError::invalid_args("missing row in cell reference"));
+    }
+    if let Some(after_abs_row) = rest.strip_prefix('$') {
+        rest = after_abs_row;
+        if rest.is_empty() {
+            return Err(CliError::invalid_args("missing row in cell reference"));
+        }
+    }
+    if rest.contains('$') {
+        return Err(CliError::invalid_args(
+            "invalid absolute marker in row reference",
+        ));
+    }
+    if !rest.chars().all(|ch| ch.is_ascii_digit()) {
+        return Err(CliError::invalid_args(format!(
+            "invalid row {rest:?} in cell reference"
+        )));
+    }
+    let row = rest
         .parse::<u32>()
-        .map_err(|_| CliError::invalid_args(format!("invalid cell reference: {cell}")))?;
+        .map_err(|err| CliError::invalid_args(format!("invalid row {rest:?}: {err}")))?;
+    if row == 0 || row > 1_048_576 {
+        return Err(CliError::invalid_args(format!(
+            "row {row} out of XLSX bounds 1-1048576"
+        )));
+    }
     Ok((col, row))
 }
 
@@ -8110,6 +9162,16 @@ fn copy_zip_with_replacement(
 }
 
 fn copy_zip_with_part_override(input: &str, output: &str, part: &str, text: &str) -> CliResult<()> {
+    let mut overrides = BTreeMap::new();
+    overrides.insert(part.to_string(), text.to_string());
+    copy_zip_with_part_overrides(input, output, &overrides)
+}
+
+fn copy_zip_with_part_overrides(
+    input: &str,
+    output: &str,
+    overrides: &BTreeMap<String, String>,
+) -> CliResult<()> {
     if let Some(parent) = Path::new(output).parent() {
         fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
     }
@@ -8119,6 +9181,7 @@ fn copy_zip_with_part_override(input: &str, output: &str, part: &str, text: &str
     let out_file = File::create(output).map_err(|err| CliError::unexpected(err.to_string()))?;
     let mut writer = ZipWriter::new(out_file);
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    let mut written = BTreeSet::new();
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)
@@ -8129,10 +9192,11 @@ fn copy_zip_with_part_override(input: &str, output: &str, part: &str, text: &str
                 .map_err(|err| CliError::unexpected(err.to_string()))?;
             continue;
         }
+        let name = entry.name().to_string();
         writer
-            .start_file(entry.name(), options)
+            .start_file(&name, options)
             .map_err(|err| CliError::unexpected(err.to_string()))?;
-        if entry.name() == part {
+        if let Some(text) = overrides.get(&name) {
             writer
                 .write_all(text.as_bytes())
                 .map_err(|err| CliError::unexpected(err.to_string()))?;
@@ -8140,6 +9204,18 @@ fn copy_zip_with_part_override(input: &str, output: &str, part: &str, text: &str
             std::io::copy(&mut entry, &mut writer)
                 .map_err(|err| CliError::unexpected(err.to_string()))?;
         }
+        written.insert(name);
+    }
+    for (name, text) in overrides {
+        if written.contains(name) {
+            continue;
+        }
+        writer
+            .start_file(name, options)
+            .map_err(|err| CliError::unexpected(err.to_string()))?;
+        writer
+            .write_all(text.as_bytes())
+            .map_err(|err| CliError::unexpected(err.to_string()))?;
     }
     writer
         .finish()
@@ -8150,7 +9226,7 @@ fn copy_zip_with_part_override(input: &str, output: &str, part: &str, text: &str
 fn attr(e: &BytesStart<'_>, wanted_local: &str) -> Option<String> {
     e.attributes().flatten().find_map(|a| {
         if local_name(a.key.as_ref()) == wanted_local {
-            Some(String::from_utf8_lossy(a.value.as_ref()).to_string())
+            Some(decode_xml_text(a.value.as_ref()))
         } else {
             None
         }
@@ -8160,7 +9236,7 @@ fn attr(e: &BytesStart<'_>, wanted_local: &str) -> Option<String> {
 fn attr_exact(e: &BytesStart<'_>, wanted: &str) -> Option<String> {
     e.attributes().flatten().find_map(|a| {
         if String::from_utf8_lossy(a.key.as_ref()) == wanted {
-            Some(String::from_utf8_lossy(a.value.as_ref()).to_string())
+            Some(decode_xml_text(a.value.as_ref()))
         } else {
             None
         }
