@@ -173,13 +173,16 @@ Latest milestone, 2026-06-20:
   scaffolding, and cell style XML updates moved from `src/xlsx_mutation.rs`
   into `src/xlsx_mutation/format.rs`, leaving shared worksheet write helpers in
   the mutation facade.
+- XLSX single-cell mutation, handle resolution, previous-value reporting, and
+  emitted readback command generation moved from `src/xlsx_mutation.rs` into
+  `src/xlsx_mutation/cells.rs`, sharing the same range-write and recalculation
+  package-update path used by range writes.
 - Serve `xlsx cells set` now delegates to the shared `xlsx_cells_set`
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
-- Proof after the latest split: `cargo test --test rust_contract_smoke
-  xlsx_ranges_set_format`, `cargo fmt --check`, `cargo clippy --all-targets --
-  -D warnings`, and `cargo test --all-targets` all pass with 77 Rust contract
-  tests.
+- Proof after the latest split: `cargo test --test rust_contract_smoke xlsx_cells_set`,
+  `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
+  `cargo test --all-targets` all pass with 77 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
