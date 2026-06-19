@@ -19,6 +19,10 @@ Latest milestone, 2026-06-19:
   giving future command-family modules a small shared error/result/flag surface.
 - Shared CLI argument parsing helpers moved from `src/main.rs` into
   `src/cli_args.rs`, reducing future command-family coupling.
+- CLI command dispatch moved from `src/main.rs` into `src/cli_dispatch.rs`,
+  leaving `main.rs` as executable entrypoint, global flag parsing, and crate
+  facade exports. The DOCX block-hash validator moved with the router and is
+  re-exported for `serve`.
 - JSON argument/resource helpers moved from `src/main.rs` into
   `src/json_util.rs`, giving serve/MCP and future command modules a shared
   typed JSON parsing and stable field-serialization surface.
