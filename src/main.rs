@@ -1304,6 +1304,105 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
                 },
             )
         }
+        [family, group, subgroup, verb, file]
+            if family == "xlsx"
+                && group == "workbook"
+                && subgroup == "metadata"
+                && verb == "inspect" =>
+        {
+            xlsx_workbook_metadata_inspect(file)
+        }
+        [family, group, subgroup, verb, file, rest @ ..]
+            if family == "xlsx"
+                && group == "workbook"
+                && subgroup == "metadata"
+                && verb == "update" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--title",
+                    "--subject",
+                    "--creator",
+                    "--keywords",
+                    "--description",
+                    "--last-modified-by",
+                    "--category",
+                    "--company",
+                    "--manager",
+                    "--calc-mode",
+                    "--expect-title",
+                    "--expect-subject",
+                    "--expect-creator",
+                    "--expect-keywords",
+                    "--expect-description",
+                    "--expect-last-modified-by",
+                    "--expect-category",
+                    "--expect-company",
+                    "--expect-manager",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--full-calc-on-load",
+                    "--dry-run",
+                    "--no-validate",
+                    "--in-place",
+                ],
+            )?;
+            let title = parse_string_flag(rest, "--title")?;
+            let subject = parse_string_flag(rest, "--subject")?;
+            let creator = parse_string_flag(rest, "--creator")?;
+            let keywords = parse_string_flag(rest, "--keywords")?;
+            let description = parse_string_flag(rest, "--description")?;
+            let last_modified_by = parse_string_flag(rest, "--last-modified-by")?;
+            let category = parse_string_flag(rest, "--category")?;
+            let company = parse_string_flag(rest, "--company")?;
+            let manager = parse_string_flag(rest, "--manager")?;
+            let calc_mode = parse_string_flag(rest, "--calc-mode")?;
+            let expect_title = parse_string_flag(rest, "--expect-title")?;
+            let expect_subject = parse_string_flag(rest, "--expect-subject")?;
+            let expect_creator = parse_string_flag(rest, "--expect-creator")?;
+            let expect_keywords = parse_string_flag(rest, "--expect-keywords")?;
+            let expect_description = parse_string_flag(rest, "--expect-description")?;
+            let expect_last_modified_by = parse_string_flag(rest, "--expect-last-modified-by")?;
+            let expect_category = parse_string_flag(rest, "--expect-category")?;
+            let expect_company = parse_string_flag(rest, "--expect-company")?;
+            let expect_manager = parse_string_flag(rest, "--expect-manager")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let full_calc_on_load = parse_bool_flag(rest, "--full-calc-on-load")?;
+            xlsx_workbook_metadata_update(
+                file,
+                XlsxWorkbookMetadataUpdateOptions {
+                    title: title.as_deref(),
+                    subject: subject.as_deref(),
+                    creator: creator.as_deref(),
+                    keywords: keywords.as_deref(),
+                    description: description.as_deref(),
+                    last_modified_by: last_modified_by.as_deref(),
+                    category: category.as_deref(),
+                    company: company.as_deref(),
+                    manager: manager.as_deref(),
+                    calc_mode: calc_mode.as_deref(),
+                    full_calc_on_load,
+                    expect_title: expect_title.as_deref(),
+                    expect_subject: expect_subject.as_deref(),
+                    expect_creator: expect_creator.as_deref(),
+                    expect_keywords: expect_keywords.as_deref(),
+                    expect_description: expect_description.as_deref(),
+                    expect_last_modified_by: expect_last_modified_by.as_deref(),
+                    expect_category: expect_category.as_deref(),
+                    expect_company: expect_company.as_deref(),
+                    expect_manager: expect_manager.as_deref(),
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
         [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "cells" && verb == "extract" =>
         {
@@ -1473,7 +1572,28 @@ fn parse_string_flag(args: &[String], name: &str) -> CliResult<Option<String>> {
             };
             return Ok(Some(value.clone()));
         }
+        if let Some(value) = args[i].strip_prefix(&format!("{name}=")) {
+            return Ok(Some(value.to_string()));
+        }
         i += 1;
+    }
+    Ok(None)
+}
+
+fn parse_bool_flag(args: &[String], name: &str) -> CliResult<Option<bool>> {
+    for arg in args {
+        if arg == name {
+            return Ok(Some(true));
+        }
+        if let Some(value) = arg.strip_prefix(&format!("{name}=")) {
+            return match value {
+                "true" => Ok(Some(true)),
+                "false" => Ok(Some(false)),
+                _ => Err(CliError::invalid_args(format!(
+                    "{name} must be true or false"
+                ))),
+            };
+        }
     }
     Ok(None)
 }
@@ -1489,6 +1609,21 @@ fn reject_unknown_flags(
         if !arg.starts_with("--") {
             i += 1;
             continue;
+        }
+        if let Some((flag, value)) = arg.split_once('=') {
+            if bool_flags.iter().any(|known| known == &flag) {
+                if !matches!(value, "true" | "false") {
+                    return Err(CliError::invalid_args(format!(
+                        "{flag} must be true or false"
+                    )));
+                }
+                i += 1;
+                continue;
+            }
+            if value_flags.iter().any(|known| known == &flag) {
+                i += 1;
+                continue;
+            }
         }
         if bool_flags.iter().any(|flag| flag == arg) {
             i += 1;
@@ -1507,7 +1642,7 @@ fn reject_unknown_flags(
 }
 
 fn has_flag(args: &[String], name: &str) -> bool {
-    args.iter().any(|arg| arg == name)
+    parse_bool_flag(args, name).ok().flatten().unwrap_or(false)
 }
 
 fn flag_present(args: &[String], name: &str) -> bool {
@@ -1574,7 +1709,7 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
         "commands": commands,
         "objectKinds": ["package", "slide", "shape", "sheet", "range", "cell", "table", "style", "comment"],
         "objectKindsIndex": {
-            "package": ["ooxml inspect", "ooxml validate", "ooxml verify"],
+            "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update"],
             "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text", "ooxml pptx render"],
             "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text"],
             "sheet": ["ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
@@ -1883,6 +2018,155 @@ fn capability_commands() -> Vec<Value> {
                     "number",
                     "maximum cells to export",
                 ),
+            ],
+        ),
+        capability_command(
+            "ooxml xlsx workbook metadata inspect",
+            "inspect <file>",
+            "Inspect workbook core/app properties and calc settings.",
+            &["package"],
+            false,
+            Some("it does not accept the mutation output flags injected by the op engine"),
+            vec![],
+        ),
+        capability_command(
+            "ooxml xlsx workbook metadata update",
+            "update <file>",
+            "Update workbook metadata fields and calc settings.",
+            &["package"],
+            true,
+            None,
+            vec![
+                flag(
+                    "--backup",
+                    "backup",
+                    "string",
+                    "backup file path for --in-place",
+                ),
+                flag(
+                    "--calc-mode",
+                    "calcMode",
+                    "string",
+                    "set workbook calcMode (auto|manual|autoNoTable)",
+                ),
+                flag(
+                    "--category",
+                    "category",
+                    "string",
+                    "set core property category",
+                ),
+                flag("--company", "company", "string", "set app property Company"),
+                flag(
+                    "--creator",
+                    "creator",
+                    "string",
+                    "set core property dc:creator",
+                ),
+                flag(
+                    "--description",
+                    "description",
+                    "string",
+                    "set core property dc:description",
+                ),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "validate mutation without writing",
+                ),
+                flag(
+                    "--expect-category",
+                    "expectCategory",
+                    "string",
+                    "guard: require current category to equal this value",
+                ),
+                flag(
+                    "--expect-company",
+                    "expectCompany",
+                    "string",
+                    "guard: require current company to equal this value",
+                ),
+                flag(
+                    "--expect-creator",
+                    "expectCreator",
+                    "string",
+                    "guard: require current creator to equal this value",
+                ),
+                flag(
+                    "--expect-description",
+                    "expectDescription",
+                    "string",
+                    "guard: require current description to equal this value",
+                ),
+                flag(
+                    "--expect-keywords",
+                    "expectKeywords",
+                    "string",
+                    "guard: require current keywords to equal this value",
+                ),
+                flag(
+                    "--expect-last-modified-by",
+                    "expectLastModifiedBy",
+                    "string",
+                    "guard: require current lastModifiedBy to equal this value",
+                ),
+                flag(
+                    "--expect-manager",
+                    "expectManager",
+                    "string",
+                    "guard: require current manager to equal this value",
+                ),
+                flag(
+                    "--expect-subject",
+                    "expectSubject",
+                    "string",
+                    "guard: require current subject to equal this value",
+                ),
+                flag(
+                    "--expect-title",
+                    "expectTitle",
+                    "string",
+                    "guard: require current title to equal this value",
+                ),
+                flag(
+                    "--full-calc-on-load",
+                    "fullCalcOnLoad",
+                    "bool",
+                    "set fullCalcOnLoad and forceFullCalc so Excel recalculates on open",
+                ),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag(
+                    "--keywords",
+                    "keywords",
+                    "string",
+                    "set core property keywords",
+                ),
+                flag(
+                    "--last-modified-by",
+                    "lastModifiedBy",
+                    "string",
+                    "set core property lastModifiedBy",
+                ),
+                flag("--manager", "manager", "string", "set app property Manager"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip validation after mutation",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--subject",
+                    "subject",
+                    "string",
+                    "set core property dc:subject",
+                ),
+                flag("--title", "title", "string", "set core property dc:title"),
             ],
         ),
         capability_command(
@@ -4023,6 +4307,1212 @@ struct XlsxCellsSetPrevious {
     exists: bool,
     previous_type: Option<String>,
     previous_value: Option<String>,
+}
+
+const XLSX_MAIN_NS: &[u8] = b"http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+const XLSX_CORE_PROPS_NS: &[u8] =
+    b"http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
+const XLSX_DUBLIN_CORE_NS: &[u8] = b"http://purl.org/dc/elements/1.1/";
+const XLSX_EXTENDED_PROPS_NS: &[u8] =
+    b"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties";
+const XLSX_CORE_PROPS_REL: &str =
+    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties";
+const XLSX_EXTENDED_PROPS_REL: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties";
+const XLSX_CORE_PROPS_CONTENT_TYPE: &str =
+    "application/vnd.openxmlformats-officedocument.core-properties+xml";
+const XLSX_EXTENDED_PROPS_CONTENT_TYPE: &str =
+    "application/vnd.openxmlformats-officedocument.extended-properties+xml";
+
+#[derive(Clone, Default)]
+struct XlsxWorkbookMetadataFields {
+    title: String,
+    subject: String,
+    creator: String,
+    keywords: String,
+    description: String,
+    last_modified_by: String,
+    category: String,
+    company: String,
+    manager: String,
+}
+
+#[derive(Clone)]
+struct XlsxWorkbookCalcSettings {
+    calc_mode: String,
+    full_calc_on_load: bool,
+    force_full_calc: bool,
+    calc_id: String,
+    iterate: bool,
+    iterate_count: i64,
+    iterate_delta: f64,
+}
+
+impl Default for XlsxWorkbookCalcSettings {
+    fn default() -> Self {
+        Self {
+            calc_mode: "auto".to_string(),
+            full_calc_on_load: false,
+            force_full_calc: false,
+            calc_id: String::new(),
+            iterate: false,
+            iterate_count: 100,
+            iterate_delta: 0.001,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct XlsxWorkbookMetadataSnapshot {
+    metadata: XlsxWorkbookMetadataFields,
+    calc_settings: XlsxWorkbookCalcSettings,
+}
+
+struct XlsxWorkbookMetadataUpdateOptions<'a> {
+    title: Option<&'a str>,
+    subject: Option<&'a str>,
+    creator: Option<&'a str>,
+    keywords: Option<&'a str>,
+    description: Option<&'a str>,
+    last_modified_by: Option<&'a str>,
+    category: Option<&'a str>,
+    company: Option<&'a str>,
+    manager: Option<&'a str>,
+    calc_mode: Option<&'a str>,
+    full_calc_on_load: Option<bool>,
+    expect_title: Option<&'a str>,
+    expect_subject: Option<&'a str>,
+    expect_creator: Option<&'a str>,
+    expect_keywords: Option<&'a str>,
+    expect_description: Option<&'a str>,
+    expect_last_modified_by: Option<&'a str>,
+    expect_category: Option<&'a str>,
+    expect_company: Option<&'a str>,
+    expect_manager: Option<&'a str>,
+    out: Option<&'a str>,
+    backup: Option<&'a str>,
+    dry_run: bool,
+    no_validate: bool,
+    in_place: bool,
+}
+
+struct MetadataXmlElementSpan {
+    start: usize,
+    end: usize,
+    name: String,
+    attrs: BTreeMap<String, String>,
+}
+
+fn xlsx_workbook_metadata_inspect(file: &str) -> CliResult<Value> {
+    let snapshot = read_xlsx_workbook_metadata(file)?;
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("action".to_string(), json!("inspect"));
+    result.insert(
+        "metadata".to_string(),
+        xlsx_workbook_metadata_fields_json(&snapshot.metadata),
+    );
+    result.insert(
+        "calcSettings".to_string(),
+        xlsx_workbook_calc_settings_json(&snapshot.calc_settings),
+    );
+    result.insert(
+        "inspectCommandTemplate".to_string(),
+        json!("ooxml --json xlsx workbook metadata inspect <placeholder>.xlsx"),
+    );
+    result.insert(
+        "validateCommandTemplate".to_string(),
+        json!("ooxml validate <placeholder>.xlsx"),
+    );
+    Ok(Value::Object(result))
+}
+
+fn xlsx_workbook_metadata_update(
+    file: &str,
+    options: XlsxWorkbookMetadataUpdateOptions<'_>,
+) -> CliResult<Value> {
+    if !xlsx_workbook_metadata_has_updates(&options) {
+        return Err(CliError::invalid_args(
+            "no metadata fields specified; set at least one of --title/--subject/--creator/--keywords/--description/--last-modified-by/--category/--company/--manager/--calc-mode/--full-calc-on-load",
+        ));
+    }
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+
+    let (current, workbook_part) = read_xlsx_workbook_metadata_with_workbook_part(file)?;
+    check_xlsx_workbook_metadata_guards(&options, &current)?;
+
+    let mut updated = current.clone();
+    let mut updated_fields = Vec::<String>::new();
+    let mut previous_values = Map::new();
+
+    apply_xlsx_metadata_string_update(
+        "title",
+        options.title,
+        &current.metadata.title,
+        &mut updated.metadata.title,
+        &mut updated_fields,
+        &mut previous_values,
+    );
+    apply_xlsx_metadata_string_update(
+        "subject",
+        options.subject,
+        &current.metadata.subject,
+        &mut updated.metadata.subject,
+        &mut updated_fields,
+        &mut previous_values,
+    );
+    apply_xlsx_metadata_string_update(
+        "creator",
+        options.creator,
+        &current.metadata.creator,
+        &mut updated.metadata.creator,
+        &mut updated_fields,
+        &mut previous_values,
+    );
+    apply_xlsx_metadata_string_update(
+        "description",
+        options.description,
+        &current.metadata.description,
+        &mut updated.metadata.description,
+        &mut updated_fields,
+        &mut previous_values,
+    );
+    apply_xlsx_metadata_string_update(
+        "keywords",
+        options.keywords,
+        &current.metadata.keywords,
+        &mut updated.metadata.keywords,
+        &mut updated_fields,
+        &mut previous_values,
+    );
+    apply_xlsx_metadata_string_update(
+        "lastModifiedBy",
+        options.last_modified_by,
+        &current.metadata.last_modified_by,
+        &mut updated.metadata.last_modified_by,
+        &mut updated_fields,
+        &mut previous_values,
+    );
+    apply_xlsx_metadata_string_update(
+        "category",
+        options.category,
+        &current.metadata.category,
+        &mut updated.metadata.category,
+        &mut updated_fields,
+        &mut previous_values,
+    );
+    apply_xlsx_metadata_string_update(
+        "company",
+        options.company,
+        &current.metadata.company,
+        &mut updated.metadata.company,
+        &mut updated_fields,
+        &mut previous_values,
+    );
+    apply_xlsx_metadata_string_update(
+        "manager",
+        options.manager,
+        &current.metadata.manager,
+        &mut updated.metadata.manager,
+        &mut updated_fields,
+        &mut previous_values,
+    );
+
+    if let Some(calc_mode) = options.calc_mode {
+        if !matches!(calc_mode, "auto" | "manual" | "autoNoTable") {
+            return Err(CliError::invalid_args(format!(
+                "failed to update workbook metadata: invalid calcMode {calc_mode:?} (must be auto, manual, or autoNoTable)"
+            )));
+        }
+        updated.calc_settings.calc_mode = calc_mode.to_string();
+        updated_fields.push("calcMode".to_string());
+        previous_values.insert(
+            "calcMode".to_string(),
+            Value::String(current.calc_settings.calc_mode.clone()),
+        );
+    }
+    if let Some(full_calc_on_load) = options.full_calc_on_load {
+        updated.calc_settings.full_calc_on_load = full_calc_on_load;
+        updated.calc_settings.force_full_calc = full_calc_on_load;
+        updated_fields.push("fullCalcOnLoad".to_string());
+        previous_values.insert(
+            "fullCalcOnLoad".to_string(),
+            Value::String(current.calc_settings.full_calc_on_load.to_string()),
+        );
+    }
+
+    let mut overrides = BTreeMap::<String, String>::new();
+    let core_uri = xlsx_metadata_part_uri(file, XLSX_CORE_PROPS_REL, "/docProps/core.xml");
+    let core_part = core_uri.trim_start_matches('/').to_string();
+    let app_uri = xlsx_metadata_part_uri(file, XLSX_EXTENDED_PROPS_REL, "/docProps/app.xml");
+    let app_part = app_uri.trim_start_matches('/').to_string();
+    let core_updates = options.title.is_some()
+        || options.subject.is_some()
+        || options.creator.is_some()
+        || options.keywords.is_some()
+        || options.description.is_some()
+        || options.last_modified_by.is_some()
+        || options.category.is_some();
+    let app_updates = options.company.is_some() || options.manager.is_some();
+    let mut created_core = false;
+    let mut created_app = false;
+
+    if core_updates {
+        let existing = zip_text(file, &core_part).ok();
+        created_core = existing.is_none();
+        let xml = if let Some(xml) = existing {
+            update_xlsx_core_props_xml(&xml, &options, &updated.metadata)
+        } else {
+            render_xlsx_core_props_xml(&updated.metadata)
+        };
+        overrides.insert(core_part.clone(), xml);
+    }
+    if app_updates {
+        let existing = zip_text(file, &app_part).ok();
+        created_app = existing.is_none();
+        let xml = if let Some(xml) = existing {
+            update_xlsx_app_props_xml(&xml, &options, &updated.metadata)
+        } else {
+            render_xlsx_app_props_xml(&updated.metadata)
+        };
+        overrides.insert(app_part.clone(), xml);
+    }
+    if options.calc_mode.is_some() || options.full_calc_on_load.is_some() {
+        let workbook_xml = zip_text(file, &workbook_part).map_err(|err| {
+            CliError::invalid_args(format!(
+                "failed to update workbook metadata: failed to read workbook /{}: {}",
+                workbook_part, err.message
+            ))
+        })?;
+        overrides.insert(
+            workbook_part.clone(),
+            update_xlsx_workbook_calc_xml(
+                workbook_xml,
+                options.calc_mode,
+                options.full_calc_on_load,
+            ),
+        );
+    }
+
+    if created_core || created_app {
+        let mut content_types_xml = zip_text(file, "[Content_Types].xml")?;
+        let mut root_rels_xml = zip_text(file, "_rels/.rels").unwrap_or_else(|_| {
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
+        });
+        if created_core {
+            content_types_xml = ensure_content_type_override(
+                content_types_xml,
+                &core_uri,
+                XLSX_CORE_PROPS_CONTENT_TYPE,
+            );
+            root_rels_xml =
+                ensure_package_root_relationship_xml(root_rels_xml, XLSX_CORE_PROPS_REL, &core_uri);
+        }
+        if created_app {
+            content_types_xml = ensure_content_type_override(
+                content_types_xml,
+                &app_uri,
+                XLSX_EXTENDED_PROPS_CONTENT_TYPE,
+            );
+            root_rels_xml = ensure_package_root_relationship_xml(
+                root_rels_xml,
+                XLSX_EXTENDED_PROPS_REL,
+                &app_uri,
+            );
+        }
+        overrides.insert("[Content_Types].xml".to_string(), content_types_xml);
+        overrides.insert("_rels/.rels".to_string(), root_rels_xml);
+    }
+
+    let output_path = options.out.filter(|value| !value.trim().is_empty());
+    let commit_path = if options.in_place {
+        Some(file)
+    } else {
+        output_path
+    };
+    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
+        xlsx_ranges_set_temp_path(file)
+    } else {
+        output_path
+            .ok_or_else(|| {
+                CliError::invalid_args(
+                    "must specify exactly one of --out, --in-place, or --dry-run",
+                )
+            })?
+            .to_string()
+    };
+
+    copy_zip_with_part_overrides(file, &readback_path, &overrides)?;
+    if !options.no_validate {
+        validate(&readback_path, true)?;
+    }
+    let readback = read_xlsx_workbook_metadata(&readback_path)?;
+    if options.dry_run {
+        let _ = fs::remove_file(&readback_path);
+    } else if options.in_place || output_path == Some(file) {
+        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
+            fs::copy(file, backup_path)
+                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+        }
+        fs::rename(&readback_path, file)
+            .or_else(|_| {
+                fs::copy(&readback_path, file)?;
+                fs::remove_file(&readback_path)
+            })
+            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    }
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    if let Some(commit_path) = commit_path {
+        result.insert("output".to_string(), json!(commit_path));
+    }
+    result.insert("dryRun".to_string(), json!(options.dry_run));
+    result.insert("action".to_string(), json!("update"));
+    result.insert(
+        "metadata".to_string(),
+        xlsx_workbook_metadata_fields_json(&readback.metadata),
+    );
+    result.insert(
+        "calcSettings".to_string(),
+        xlsx_workbook_calc_settings_json(&readback.calc_settings),
+    );
+    result.insert("updated".to_string(), json!(updated_fields.len()));
+    result.insert("updatedFields".to_string(), json!(updated_fields));
+    result.insert("previousValues".to_string(), Value::Object(previous_values));
+    if let Some(commit_path) = commit_path {
+        result.insert(
+            "validateCommand".to_string(),
+            json!(format!(
+                "ooxml validate --strict {}",
+                command_arg(commit_path)
+            )),
+        );
+        result.insert(
+            "inspectCommand".to_string(),
+            json!(format!(
+                "ooxml --json xlsx workbook metadata inspect {}",
+                command_arg(commit_path)
+            )),
+        );
+    }
+    Ok(Value::Object(result))
+}
+
+fn read_xlsx_workbook_metadata(file: &str) -> CliResult<XlsxWorkbookMetadataSnapshot> {
+    read_xlsx_workbook_metadata_with_workbook_part(file).map(|(snapshot, _)| snapshot)
+}
+
+fn read_xlsx_workbook_metadata_with_workbook_part(
+    file: &str,
+) -> CliResult<(XlsxWorkbookMetadataSnapshot, String)> {
+    let entries = zip_entry_names(file)?;
+    let workbook_part = find_xlsx_workbook_part(file, &entries)?;
+    let mut snapshot = XlsxWorkbookMetadataSnapshot::default();
+
+    let core_uri = xlsx_metadata_part_uri(file, XLSX_CORE_PROPS_REL, "/docProps/core.xml");
+    if let Ok(xml) = zip_text(file, core_uri.trim_start_matches('/')) {
+        snapshot.metadata.title = xml_direct_child_text_by_ns(&xml, XLSX_DUBLIN_CORE_NS, "title");
+        snapshot.metadata.subject =
+            xml_direct_child_text_by_ns(&xml, XLSX_DUBLIN_CORE_NS, "subject");
+        snapshot.metadata.creator =
+            xml_direct_child_text_by_ns(&xml, XLSX_DUBLIN_CORE_NS, "creator");
+        snapshot.metadata.description =
+            xml_direct_child_text_by_ns(&xml, XLSX_DUBLIN_CORE_NS, "description");
+        snapshot.metadata.keywords =
+            xml_direct_child_text_by_ns(&xml, XLSX_CORE_PROPS_NS, "keywords");
+        snapshot.metadata.last_modified_by =
+            xml_direct_child_text_by_ns(&xml, XLSX_CORE_PROPS_NS, "lastModifiedBy");
+        snapshot.metadata.category =
+            xml_direct_child_text_by_ns(&xml, XLSX_CORE_PROPS_NS, "category");
+    }
+
+    let app_uri = xlsx_metadata_part_uri(file, XLSX_EXTENDED_PROPS_REL, "/docProps/app.xml");
+    if let Ok(xml) = zip_text(file, app_uri.trim_start_matches('/')) {
+        snapshot.metadata.company =
+            xml_direct_child_text_by_ns(&xml, XLSX_EXTENDED_PROPS_NS, "Company");
+        snapshot.metadata.manager =
+            xml_direct_child_text_by_ns(&xml, XLSX_EXTENDED_PROPS_NS, "Manager");
+    }
+
+    if let Ok(workbook_xml) = zip_text(file, &workbook_part) {
+        snapshot.calc_settings = xlsx_workbook_calc_settings_from_xml(&workbook_xml);
+    }
+
+    Ok((snapshot, workbook_part))
+}
+
+fn xlsx_metadata_part_uri(file: &str, rel_type: &str, fallback: &str) -> String {
+    for rel in relationship_entries(file, "_rels/.rels").unwrap_or_default() {
+        if rel.target_mode == "External" {
+            continue;
+        }
+        if rel.rel_type == rel_type {
+            return resolve_relationship_target("/", &rel.target);
+        }
+    }
+    fallback.to_string()
+}
+
+fn xlsx_workbook_metadata_has_updates(options: &XlsxWorkbookMetadataUpdateOptions<'_>) -> bool {
+    options.title.is_some()
+        || options.subject.is_some()
+        || options.creator.is_some()
+        || options.keywords.is_some()
+        || options.description.is_some()
+        || options.last_modified_by.is_some()
+        || options.category.is_some()
+        || options.company.is_some()
+        || options.manager.is_some()
+        || options.calc_mode.is_some()
+        || options.full_calc_on_load.is_some()
+}
+
+fn check_xlsx_workbook_metadata_guards(
+    options: &XlsxWorkbookMetadataUpdateOptions<'_>,
+    current: &XlsxWorkbookMetadataSnapshot,
+) -> CliResult<()> {
+    let checks = [
+        ("title", options.expect_title, &current.metadata.title),
+        ("subject", options.expect_subject, &current.metadata.subject),
+        ("creator", options.expect_creator, &current.metadata.creator),
+        (
+            "keywords",
+            options.expect_keywords,
+            &current.metadata.keywords,
+        ),
+        (
+            "description",
+            options.expect_description,
+            &current.metadata.description,
+        ),
+        (
+            "lastModifiedBy",
+            options.expect_last_modified_by,
+            &current.metadata.last_modified_by,
+        ),
+        (
+            "category",
+            options.expect_category,
+            &current.metadata.category,
+        ),
+        ("company", options.expect_company, &current.metadata.company),
+        ("manager", options.expect_manager, &current.metadata.manager),
+    ];
+    for (name, want, got) in checks {
+        if let Some(want) = want
+            && got != want
+        {
+            return Err(CliError::invalid_args(format!(
+                "failed to update workbook metadata: expected {name} to be {want:?} but found {got:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn apply_xlsx_metadata_string_update(
+    name: &str,
+    value: Option<&str>,
+    previous: &str,
+    target: &mut String,
+    updated_fields: &mut Vec<String>,
+    previous_values: &mut Map<String, Value>,
+) {
+    if let Some(value) = value {
+        *target = value.to_string();
+        updated_fields.push(name.to_string());
+        previous_values.insert(name.to_string(), Value::String(previous.to_string()));
+    }
+}
+
+fn xlsx_workbook_metadata_fields_json(fields: &XlsxWorkbookMetadataFields) -> Value {
+    json!({
+        "title": fields.title,
+        "subject": fields.subject,
+        "creator": fields.creator,
+        "keywords": fields.keywords,
+        "description": fields.description,
+        "lastModifiedBy": fields.last_modified_by,
+        "category": fields.category,
+        "company": fields.company,
+        "manager": fields.manager,
+    })
+}
+
+fn xlsx_workbook_calc_settings_json(calc: &XlsxWorkbookCalcSettings) -> Value {
+    json!({
+        "calcMode": calc.calc_mode,
+        "fullCalcOnLoad": calc.full_calc_on_load,
+        "forceFullCalc": calc.force_full_calc,
+        "calcId": calc.calc_id,
+        "iterate": calc.iterate,
+        "iterateCount": calc.iterate_count,
+        "iterateDelta": calc.iterate_delta,
+    })
+}
+
+fn xlsx_workbook_calc_settings_from_xml(xml: &str) -> XlsxWorkbookCalcSettings {
+    let mut settings = XlsxWorkbookCalcSettings::default();
+    let mut reader = NsReader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "calcPr"
+                    && element_in_ns(reader.resolver(), &e, XLSX_MAIN_NS) =>
+            {
+                if let Some(value) = attr(&e, "calcMode").filter(|value| !value.is_empty()) {
+                    settings.calc_mode = value;
+                }
+                settings.full_calc_on_load = attr(&e, "fullCalcOnLoad").as_deref() == Some("1");
+                settings.force_full_calc = attr(&e, "forceFullCalc").as_deref() == Some("1");
+                settings.calc_id = attr(&e, "calcId").unwrap_or_default();
+                settings.iterate = attr(&e, "iterate").as_deref() == Some("1");
+                if let Some(value) = attr(&e, "iterateCount")
+                    && let Ok(parsed) = value.parse::<i64>()
+                {
+                    settings.iterate_count = parsed;
+                }
+                if let Some(value) = attr(&e, "iterateDelta")
+                    && let Ok(parsed) = value.parse::<f64>()
+                {
+                    settings.iterate_delta = parsed;
+                }
+                break;
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    settings
+}
+
+fn xml_direct_child_text_by_ns(xml: &str, ns: &[u8], local: &str) -> String {
+    let mut reader = NsReader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut depth = 0usize;
+    let mut active_depth = None::<usize>;
+    let mut text = String::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let matched = depth == 1
+                    && local_name(e.name().as_ref()) == local
+                    && element_in_ns(reader.resolver(), &e, ns);
+                depth += 1;
+                if matched {
+                    active_depth = Some(depth);
+                    text.clear();
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                if depth == 1
+                    && local_name(e.name().as_ref()) == local
+                    && element_in_ns(reader.resolver(), &e, ns)
+                {
+                    return String::new();
+                }
+            }
+            Ok(Event::Text(e)) if active_depth.is_some() => {
+                text.push_str(&decode_xml_text(e.as_ref()));
+            }
+            Ok(Event::CData(e)) if active_depth.is_some() => {
+                text.push_str(&String::from_utf8_lossy(e.as_ref()));
+            }
+            Ok(Event::GeneralRef(e)) if active_depth.is_some() => {
+                text.push_str(&xml_general_ref(e.as_ref()));
+            }
+            Ok(Event::End(_)) => {
+                if active_depth == Some(depth) {
+                    return text;
+                }
+                depth = depth.saturating_sub(1);
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    String::new()
+}
+
+fn render_xlsx_core_props_xml(fields: &XlsxWorkbookMetadataFields) -> String {
+    let mut xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">"#.to_string();
+    push_metadata_element(&mut xml, "dc", "title", &fields.title);
+    push_metadata_element(&mut xml, "dc", "subject", &fields.subject);
+    push_metadata_element(&mut xml, "dc", "creator", &fields.creator);
+    push_metadata_element(&mut xml, "dc", "description", &fields.description);
+    push_metadata_element(&mut xml, "cp", "keywords", &fields.keywords);
+    push_metadata_element(&mut xml, "cp", "lastModifiedBy", &fields.last_modified_by);
+    push_metadata_element(&mut xml, "cp", "category", &fields.category);
+    xml.push_str("</cp:coreProperties>");
+    xml
+}
+
+fn render_xlsx_app_props_xml(fields: &XlsxWorkbookMetadataFields) -> String {
+    let mut xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">"#.to_string();
+    push_metadata_element(&mut xml, "", "Manager", &fields.manager);
+    push_metadata_element(&mut xml, "", "Company", &fields.company);
+    xml.push_str("</Properties>");
+    xml
+}
+
+fn push_metadata_element(xml: &mut String, prefix: &str, local: &str, value: &str) {
+    if value.is_empty() {
+        return;
+    }
+    let name = qualified_xml_name(prefix, local);
+    xml.push('<');
+    xml.push_str(&name);
+    xml.push('>');
+    xml.push_str(&xml_escape(value));
+    xml.push_str("</");
+    xml.push_str(&name);
+    xml.push('>');
+}
+
+fn update_xlsx_core_props_xml(
+    xml: &str,
+    options: &XlsxWorkbookMetadataUpdateOptions<'_>,
+    fields: &XlsxWorkbookMetadataFields,
+) -> String {
+    let mut xml = ensure_xmlns_attr(
+        xml.to_string(),
+        "cp",
+        std::str::from_utf8(XLSX_CORE_PROPS_NS).unwrap_or(""),
+    );
+    xml = ensure_xmlns_attr(
+        xml,
+        "dc",
+        std::str::from_utf8(XLSX_DUBLIN_CORE_NS).unwrap_or(""),
+    );
+    xml = ensure_xmlns_attr(xml, "dcterms", "http://purl.org/dc/terms/");
+    xml = ensure_xmlns_attr(xml, "dcmitype", "http://purl.org/dc/dcmitype/");
+    xml = ensure_xmlns_attr(xml, "xsi", "http://www.w3.org/2001/XMLSchema-instance");
+    if options.title.is_some() {
+        xml = set_metadata_direct_child_xml(
+            &xml,
+            XLSX_DUBLIN_CORE_NS,
+            "title",
+            "dc",
+            &fields.title,
+            None,
+        );
+    }
+    if options.subject.is_some() {
+        xml = set_metadata_direct_child_xml(
+            &xml,
+            XLSX_DUBLIN_CORE_NS,
+            "subject",
+            "dc",
+            &fields.subject,
+            None,
+        );
+    }
+    if options.creator.is_some() {
+        xml = set_metadata_direct_child_xml(
+            &xml,
+            XLSX_DUBLIN_CORE_NS,
+            "creator",
+            "dc",
+            &fields.creator,
+            None,
+        );
+    }
+    if options.description.is_some() {
+        xml = set_metadata_direct_child_xml(
+            &xml,
+            XLSX_DUBLIN_CORE_NS,
+            "description",
+            "dc",
+            &fields.description,
+            None,
+        );
+    }
+    if options.keywords.is_some() {
+        xml = set_metadata_direct_child_xml(
+            &xml,
+            XLSX_CORE_PROPS_NS,
+            "keywords",
+            "cp",
+            &fields.keywords,
+            None,
+        );
+    }
+    if options.last_modified_by.is_some() {
+        xml = set_metadata_direct_child_xml(
+            &xml,
+            XLSX_CORE_PROPS_NS,
+            "lastModifiedBy",
+            "cp",
+            &fields.last_modified_by,
+            None,
+        );
+    }
+    if options.category.is_some() {
+        xml = set_metadata_direct_child_xml(
+            &xml,
+            XLSX_CORE_PROPS_NS,
+            "category",
+            "cp",
+            &fields.category,
+            None,
+        );
+    }
+    xml
+}
+
+fn update_xlsx_app_props_xml(
+    xml: &str,
+    options: &XlsxWorkbookMetadataUpdateOptions<'_>,
+    fields: &XlsxWorkbookMetadataFields,
+) -> String {
+    let mut xml = ensure_xmlns_attr(
+        xml.to_string(),
+        "",
+        std::str::from_utf8(XLSX_EXTENDED_PROPS_NS).unwrap_or(""),
+    );
+    if options.manager.is_some() {
+        xml = set_metadata_direct_child_xml(
+            &xml,
+            XLSX_EXTENDED_PROPS_NS,
+            "Manager",
+            "",
+            &fields.manager,
+            Some(app_property_order),
+        );
+    }
+    if options.company.is_some() {
+        xml = set_metadata_direct_child_xml(
+            &xml,
+            XLSX_EXTENDED_PROPS_NS,
+            "Company",
+            "",
+            &fields.company,
+            Some(app_property_order),
+        );
+    }
+    xml
+}
+
+fn set_metadata_direct_child_xml(
+    xml: &str,
+    ns: &[u8],
+    local: &str,
+    prefix: &str,
+    value: &str,
+    order: Option<fn(&str) -> i32>,
+) -> String {
+    if let Some(span) = find_direct_child_span_by_ns(xml, ns, local) {
+        if value.is_empty() {
+            return remove_xml_span(xml, span.start, span.end);
+        }
+        let name = span.name;
+        return replace_xml_span(
+            xml,
+            span.start,
+            span.end,
+            &format!(
+                "<{name}{}>{}</{name}>",
+                render_xml_attrs(&span.attrs),
+                xml_escape(value)
+            ),
+        );
+    }
+    if value.is_empty() {
+        return xml.to_string();
+    }
+    let insert_pos = if let Some(order) = order {
+        metadata_ordered_insert_position(xml, order(local), order)
+    } else {
+        xml_root_end_position(xml)
+    };
+    let Some(insert_pos) = insert_pos else {
+        return xml.to_string();
+    };
+    let name = qualified_xml_name(prefix, local);
+    let child = format!("<{name}>{}</{name}>", xml_escape(value));
+    let mut out = String::with_capacity(xml.len() + child.len());
+    out.push_str(&xml[..insert_pos]);
+    out.push_str(&child);
+    out.push_str(&xml[insert_pos..]);
+    out
+}
+
+fn remove_xml_span(xml: &str, start: usize, end: usize) -> String {
+    let mut out = String::with_capacity(xml.len().saturating_sub(end.saturating_sub(start)));
+    out.push_str(&xml[..start]);
+    out.push_str(&xml[end..]);
+    out
+}
+
+fn find_direct_child_span_by_ns(
+    xml: &str,
+    ns: &[u8],
+    local: &str,
+) -> Option<MetadataXmlElementSpan> {
+    let mut reader = NsReader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut depth = 0usize;
+    let mut active = None::<(usize, usize, String, BTreeMap<String, String>)>;
+    loop {
+        let start = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let matched = depth == 1
+                    && local_name(e.name().as_ref()) == local
+                    && element_in_ns(reader.resolver(), &e, ns);
+                depth += 1;
+                if matched {
+                    active = Some((
+                        start,
+                        depth,
+                        String::from_utf8_lossy(e.name().as_ref()).to_string(),
+                        xml_attrs_map(&e),
+                    ));
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                if depth == 1
+                    && local_name(e.name().as_ref()) == local
+                    && element_in_ns(reader.resolver(), &e, ns)
+                {
+                    return Some(MetadataXmlElementSpan {
+                        start,
+                        end: reader.buffer_position() as usize,
+                        name: String::from_utf8_lossy(e.name().as_ref()).to_string(),
+                        attrs: xml_attrs_map(&e),
+                    });
+                }
+            }
+            Ok(Event::End(_)) => {
+                if let Some((span_start, span_depth, name, attrs)) = active.as_ref()
+                    && *span_depth == depth
+                {
+                    return Some(MetadataXmlElementSpan {
+                        start: *span_start,
+                        end: reader.buffer_position() as usize,
+                        name: name.clone(),
+                        attrs: attrs.clone(),
+                    });
+                }
+                depth = depth.saturating_sub(1);
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn ensure_xmlns_attr(xml: String, prefix: &str, ns: &str) -> String {
+    if ns.is_empty() {
+        return xml;
+    }
+    let attr_name = if prefix.is_empty() {
+        "xmlns".to_string()
+    } else {
+        format!("xmlns:{prefix}")
+    };
+    let mut reader = Reader::from_str(&xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        let start = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                let end = reader.buffer_position() as usize;
+                let mut attrs = xml_attrs_map(&e);
+                if attrs.contains_key(&attr_name) {
+                    return xml;
+                }
+                attrs.insert(attr_name, ns.to_string());
+                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let suffix = if xml[start..end].trim_end().ends_with("/>") {
+                    "/>"
+                } else {
+                    ">"
+                };
+                return replace_xml_span(
+                    &xml,
+                    start,
+                    end,
+                    &format!("<{name}{}{suffix}", render_xml_attrs(&attrs)),
+                );
+            }
+            Ok(Event::Decl(_)) | Ok(Event::PI(_)) | Ok(Event::DocType(_)) => {}
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    xml
+}
+
+fn metadata_ordered_insert_position(
+    xml: &str,
+    target_order: i32,
+    order: fn(&str) -> i32,
+) -> Option<usize> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut depth = 0usize;
+    loop {
+        let start = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                if depth == 1 && order(local_name(e.name().as_ref())) > target_order {
+                    return Some(start);
+                }
+                depth += 1;
+            }
+            Ok(Event::Empty(e)) => {
+                if depth == 1 && order(local_name(e.name().as_ref())) > target_order {
+                    return Some(start);
+                }
+            }
+            Ok(Event::End(_)) => {
+                if depth == 1 {
+                    return Some(start);
+                }
+                depth = depth.saturating_sub(1);
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn xml_root_end_position(xml: &str) -> Option<usize> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut depth = 0usize;
+    loop {
+        let start = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(_)) => depth += 1,
+            Ok(Event::Empty(_)) if depth == 0 => return Some(start),
+            Ok(Event::End(_)) => {
+                if depth == 1 {
+                    return Some(start);
+                }
+                depth = depth.saturating_sub(1);
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn app_property_order(local_name: &str) -> i32 {
+    match local_name {
+        "Template" => 10,
+        "Manager" => 20,
+        "Company" => 30,
+        "Pages" => 40,
+        "Words" => 50,
+        "Characters" => 60,
+        "PresentationFormat" => 70,
+        "Lines" => 80,
+        "Paragraphs" => 90,
+        "Slides" => 100,
+        "Notes" => 110,
+        "TotalTime" => 120,
+        "HiddenSlides" => 130,
+        "MMClips" => 140,
+        "ScaleCrop" => 150,
+        "HeadingPairs" => 160,
+        "TitlesOfParts" => 170,
+        "LinksUpToDate" => 180,
+        "CharactersWithSpaces" => 190,
+        "SharedDoc" => 200,
+        "HyperlinkBase" => 210,
+        "HLinks" => 220,
+        "HyperlinksChanged" => 230,
+        "DigSig" => 240,
+        "Application" => 250,
+        "AppVersion" => 260,
+        "DocSecurity" => 270,
+        _ => 10000,
+    }
+}
+
+fn qualified_xml_name(prefix: &str, local: &str) -> String {
+    if prefix.is_empty() {
+        local.to_string()
+    } else {
+        format!("{prefix}:{local}")
+    }
+}
+
+fn update_xlsx_workbook_calc_xml(
+    xml: String,
+    calc_mode: Option<&str>,
+    full_calc_on_load: Option<bool>,
+) -> String {
+    let mut reader = Reader::from_str(&xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        let start = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "calcPr" => {
+                let end = reader.buffer_position() as usize;
+                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let mut attrs = xml_attrs_map(&e);
+                if let Some(calc_mode) = calc_mode {
+                    attrs.insert("calcMode".to_string(), calc_mode.to_string());
+                }
+                if let Some(full_calc_on_load) = full_calc_on_load {
+                    if full_calc_on_load {
+                        attrs.insert("fullCalcOnLoad".to_string(), "1".to_string());
+                        attrs.insert("forceFullCalc".to_string(), "1".to_string());
+                    } else {
+                        attrs.remove("fullCalcOnLoad");
+                        attrs.remove("forceFullCalc");
+                    }
+                }
+                return replace_xml_span(
+                    &xml,
+                    start,
+                    end,
+                    &format!("<{name}{}/>", render_xml_attrs(&attrs)),
+                );
+            }
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "calcPr" => {
+                let end = reader.buffer_position() as usize;
+                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let mut attrs = xml_attrs_map(&e);
+                if let Some(calc_mode) = calc_mode {
+                    attrs.insert("calcMode".to_string(), calc_mode.to_string());
+                }
+                if let Some(full_calc_on_load) = full_calc_on_load {
+                    if full_calc_on_load {
+                        attrs.insert("fullCalcOnLoad".to_string(), "1".to_string());
+                        attrs.insert("forceFullCalc".to_string(), "1".to_string());
+                    } else {
+                        attrs.remove("fullCalcOnLoad");
+                        attrs.remove("forceFullCalc");
+                    }
+                }
+                return replace_xml_span(
+                    &xml,
+                    start,
+                    end,
+                    &format!("<{name}{}>", render_xml_attrs(&attrs)),
+                );
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+
+    let mut attrs = BTreeMap::new();
+    if let Some(calc_mode) = calc_mode {
+        attrs.insert("calcMode".to_string(), calc_mode.to_string());
+    }
+    if let Some(full_calc_on_load) = full_calc_on_load
+        && full_calc_on_load
+    {
+        attrs.insert("fullCalcOnLoad".to_string(), "1".to_string());
+        attrs.insert("forceFullCalc".to_string(), "1".to_string());
+    }
+    let calc_pr = format!("<calcPr{}/>", render_xml_attrs(&attrs));
+    if let Some(pos) =
+        metadata_ordered_insert_position(&xml, workbook_child_order("calcPr"), workbook_child_order)
+    {
+        let mut out = String::with_capacity(xml.len() + calc_pr.len());
+        out.push_str(&xml[..pos]);
+        out.push_str(&calc_pr);
+        out.push_str(&xml[pos..]);
+        out
+    } else {
+        xml
+    }
+}
+
+fn workbook_child_order(local_name: &str) -> i32 {
+    match local_name {
+        "fileVersion" => 10,
+        "fileSharing" => 20,
+        "workbookPr" => 30,
+        "workbookProtection" => 40,
+        "bookViews" => 50,
+        "sheets" => 60,
+        "functionGroups" => 70,
+        "externalReferences" => 80,
+        "definedNames" => 90,
+        "calcPr" => 100,
+        "oleSize" => 110,
+        "customWorkbookViews" => 120,
+        "pivotCaches" => 130,
+        "smartTagPr" => 140,
+        "smartTagTypes" => 150,
+        "webPublishing" => 160,
+        "fileRecoveryPr" => 170,
+        "webPublishObjects" => 180,
+        "extLst" => 190,
+        _ => 10000,
+    }
+}
+
+fn ensure_package_root_relationship_xml(xml: String, rel_type: &str, target_uri: &str) -> String {
+    let rels = relationship_entries_from_xml(&xml);
+    if rels.iter().any(|rel| rel.rel_type == rel_type) {
+        return xml;
+    }
+    let next_id = allocate_relationship_id(&rels);
+    let rel = format!(
+        r#"<Relationship Id="{next_id}" Type="{}" Target="{}"/>"#,
+        xml_attr_escape(rel_type),
+        xml_attr_escape(target_uri.trim_start_matches('/'))
+    );
+    if let Some(pos) = xml.rfind("</Relationships>") {
+        let mut out = String::with_capacity(xml.len() + rel.len());
+        out.push_str(&xml[..pos]);
+        out.push_str(&rel);
+        out.push_str(&xml[pos..]);
+        out
+    } else {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
+        )
+    }
+}
+
+fn relationship_entries_from_xml(xml: &str) -> Vec<RelationshipEntry> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut rels = Vec::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "Relationship" =>
+            {
+                if let (Some(id), Some(target)) = (attr_exact(&e, "Id"), attr_exact(&e, "Target")) {
+                    rels.push(RelationshipEntry {
+                        id,
+                        rel_type: attr_exact(&e, "Type").unwrap_or_default(),
+                        target,
+                        target_mode: attr_exact(&e, "TargetMode").unwrap_or_default(),
+                    });
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    rels
 }
 
 fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> CliResult<Value> {
@@ -14085,6 +15575,27 @@ enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    XlsxWorkbookMetadataUpdate {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
+}
+
+fn push_serve_plan_string_flag(flags: &mut Vec<Value>, name: &str, value: Option<&str>) {
+    if let Some(value) = value {
+        flags.push(json!(name));
+        flags.push(json!(value));
+    }
+}
+
+fn push_serve_plan_bool_flag(flags: &mut Vec<Value>, name: &str, value: Option<bool>) {
+    match value {
+        Some(true) => flags.push(json!(name)),
+        Some(false) => flags.push(json!(format!("{name}=false"))),
+        None => {}
+    }
 }
 
 impl ServeOp {
@@ -14093,7 +15604,8 @@ impl ServeOp {
             ServeOp::XlsxCellSet { command, .. }
             | ServeOp::PptxReplaceText { command, .. }
             | ServeOp::XlsxRangeSet { command, .. }
-            | ServeOp::XlsxRangeSetFormat { command, .. } => command,
+            | ServeOp::XlsxRangeSetFormat { command, .. }
+            | ServeOp::XlsxWorkbookMetadataUpdate { command, .. } => command,
         }
     }
 
@@ -14227,6 +15739,23 @@ impl ServeOp {
                 ]);
                 Value::Array(argv)
             }
+            ServeOp::XlsxWorkbookMetadataUpdate { plan_flags, .. } => {
+                let mut argv = vec![
+                    json!("xlsx"),
+                    json!("workbook"),
+                    json!("metadata"),
+                    json!("update"),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
             ServeOp::PptxReplaceText {
                 slide,
                 target,
@@ -14272,6 +15801,11 @@ impl ServeOp {
                 ..
             } => replace_json_string(readback.clone(), readback_file, file),
             ServeOp::XlsxRangeSetFormat {
+                readback_file,
+                readback,
+                ..
+            } => replace_json_string(readback.clone(), readback_file, file),
+            ServeOp::XlsxWorkbookMetadataUpdate {
                 readback_file,
                 readback,
                 ..
@@ -14477,6 +16011,145 @@ impl ServeState {
                     readback,
                 }
             }
+            "xlsx workbook metadata update" => {
+                let title = json_optional_string(args, "title");
+                let subject = json_optional_string(args, "subject");
+                let creator = json_optional_string(args, "creator");
+                let keywords = json_optional_string(args, "keywords");
+                let description = json_optional_string(args, "description");
+                let last_modified_by = json_optional_string(args, "last-modified-by")
+                    .or_else(|| json_optional_string(args, "lastModifiedBy"));
+                let category = json_optional_string(args, "category");
+                let company = json_optional_string(args, "company");
+                let manager = json_optional_string(args, "manager");
+                let calc_mode = json_optional_string(args, "calc-mode")
+                    .or_else(|| json_optional_string(args, "calcMode"));
+                let full_calc_on_load = json_bool(args, "full-calc-on-load")
+                    .or_else(|| json_bool(args, "fullCalcOnLoad"));
+                let expect_title = json_optional_string(args, "expect-title")
+                    .or_else(|| json_optional_string(args, "expectTitle"));
+                let expect_subject = json_optional_string(args, "expect-subject")
+                    .or_else(|| json_optional_string(args, "expectSubject"));
+                let expect_creator = json_optional_string(args, "expect-creator")
+                    .or_else(|| json_optional_string(args, "expectCreator"));
+                let expect_keywords = json_optional_string(args, "expect-keywords")
+                    .or_else(|| json_optional_string(args, "expectKeywords"));
+                let expect_description = json_optional_string(args, "expect-description")
+                    .or_else(|| json_optional_string(args, "expectDescription"));
+                let expect_last_modified_by = json_optional_string(args, "expect-last-modified-by")
+                    .or_else(|| json_optional_string(args, "expectLastModifiedBy"));
+                let expect_category = json_optional_string(args, "expect-category")
+                    .or_else(|| json_optional_string(args, "expectCategory"));
+                let expect_company = json_optional_string(args, "expect-company")
+                    .or_else(|| json_optional_string(args, "expectCompany"));
+                let expect_manager = json_optional_string(args, "expect-manager")
+                    .or_else(|| json_optional_string(args, "expectManager"));
+                let readback = xlsx_workbook_metadata_update(
+                    &session.working,
+                    XlsxWorkbookMetadataUpdateOptions {
+                        title: title.as_deref(),
+                        subject: subject.as_deref(),
+                        creator: creator.as_deref(),
+                        keywords: keywords.as_deref(),
+                        description: description.as_deref(),
+                        last_modified_by: last_modified_by.as_deref(),
+                        category: category.as_deref(),
+                        company: company.as_deref(),
+                        manager: manager.as_deref(),
+                        calc_mode: calc_mode.as_deref(),
+                        full_calc_on_load,
+                        expect_title: expect_title.as_deref(),
+                        expect_subject: expect_subject.as_deref(),
+                        expect_creator: expect_creator.as_deref(),
+                        expect_keywords: expect_keywords.as_deref(),
+                        expect_description: expect_description.as_deref(),
+                        expect_last_modified_by: expect_last_modified_by.as_deref(),
+                        expect_category: expect_category.as_deref(),
+                        expect_company: expect_company.as_deref(),
+                        expect_manager: expect_manager.as_deref(),
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        no_validate: true,
+                        in_place: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                push_serve_plan_string_flag(&mut plan_flags, "--title", title.as_deref());
+                push_serve_plan_string_flag(&mut plan_flags, "--subject", subject.as_deref());
+                push_serve_plan_string_flag(&mut plan_flags, "--creator", creator.as_deref());
+                push_serve_plan_string_flag(&mut plan_flags, "--keywords", keywords.as_deref());
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--description",
+                    description.as_deref(),
+                );
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--last-modified-by",
+                    last_modified_by.as_deref(),
+                );
+                push_serve_plan_string_flag(&mut plan_flags, "--category", category.as_deref());
+                push_serve_plan_string_flag(&mut plan_flags, "--company", company.as_deref());
+                push_serve_plan_string_flag(&mut plan_flags, "--manager", manager.as_deref());
+                push_serve_plan_string_flag(&mut plan_flags, "--calc-mode", calc_mode.as_deref());
+                push_serve_plan_bool_flag(
+                    &mut plan_flags,
+                    "--full-calc-on-load",
+                    full_calc_on_load,
+                );
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-title",
+                    expect_title.as_deref(),
+                );
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-subject",
+                    expect_subject.as_deref(),
+                );
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-creator",
+                    expect_creator.as_deref(),
+                );
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-keywords",
+                    expect_keywords.as_deref(),
+                );
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-description",
+                    expect_description.as_deref(),
+                );
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-last-modified-by",
+                    expect_last_modified_by.as_deref(),
+                );
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-category",
+                    expect_category.as_deref(),
+                );
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-company",
+                    expect_company.as_deref(),
+                );
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-manager",
+                    expect_manager.as_deref(),
+                );
+                ServeOp::XlsxWorkbookMetadataUpdate {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
             "pptx replace text" => {
                 let slide = json_u32(args, "slide")?.unwrap_or(1);
                 let target = json_string(args, "target")?;
@@ -14606,6 +16279,7 @@ impl ServeState {
                     },
                 )
             }
+            "xlsx workbook metadata inspect" => xlsx_workbook_metadata_inspect(&session.working),
             "pptx slides list" => pptx_slides_list(&session.working),
             "pptx slides selectors" => {
                 let slide = json_u32(args, "slide")?

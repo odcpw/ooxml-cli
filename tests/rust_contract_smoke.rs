@@ -1080,6 +1080,342 @@ fn xlsx_ranges_set_formula_recalc_metadata_matches_go_oracle() {
 }
 
 #[test]
+fn xlsx_workbook_metadata_inspect_matches_go_oracle() {
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "workbook",
+        "metadata",
+        "inspect",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+    ]);
+}
+
+#[test]
+fn xlsx_workbook_metadata_update_matches_go_oracle_and_readback() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-workbook-metadata-update-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in = temp_dir.join("go in.xlsx");
+    let rust_in = temp_dir.join("rust in.xlsx");
+    let go_out = temp_dir.join("go out.xlsx");
+    let rust_out = temp_dir.join("rust out.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in).expect("stage go input");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &rust_in).expect("stage rust input");
+    let go_in = go_in.to_string_lossy().to_string();
+    let rust_in = rust_in.to_string_lossy().to_string();
+    let go_out = go_out.to_string_lossy().to_string();
+    let rust_out = rust_out.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json",
+        "xlsx",
+        "workbook",
+        "metadata",
+        "update",
+        &go_in,
+        "--keywords",
+        "budget,forecast",
+        "--description",
+        "Board pack",
+        "--subject",
+        "FY26",
+        "--category",
+        "Finance",
+        "--company",
+        "Acme Corp",
+        "--manager",
+        "Carol White",
+        "--calc-mode",
+        "manual",
+        "--full-calc-on-load",
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "workbook",
+        "metadata",
+        "update",
+        &rust_in,
+        "--keywords",
+        "budget,forecast",
+        "--description",
+        "Board pack",
+        "--subject",
+        "FY26",
+        "--category",
+        "Finance",
+        "--company",
+        "Acme Corp",
+        "--manager",
+        "Carol White",
+        "--calc-mode",
+        "manual",
+        "--full-calc-on-load",
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "metadata update exit");
+    assert_eq!(rust_stderr, go_stderr, "metadata update stderr");
+    let go_raw = go_stdout.expect("go metadata update stdout");
+    let rust_raw = rust_stdout.expect("rust metadata update stdout");
+    let go_json = scrub_paths(go_raw, &[(&go_in, "[IN]"), (&go_out, "[OUT]")]);
+    let rust_json = scrub_paths(
+        rust_raw.clone(),
+        &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")],
+    );
+    assert_eq!(rust_json, go_json, "metadata update stdout");
+    assert_eq!(
+        rust_json["updatedFields"],
+        serde_json::json!([
+            "subject",
+            "description",
+            "keywords",
+            "category",
+            "company",
+            "manager",
+            "calcMode",
+            "fullCalcOnLoad"
+        ]),
+        "updatedFields must use Go mutator order"
+    );
+
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_raw, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_raw, "inspectCommand");
+
+    let (go_read_code, go_read_stdout, go_read_stderr) =
+        run_go_ooxml(&["--json", "xlsx", "workbook", "metadata", "inspect", &go_out]);
+    let (rust_read_code, rust_read_stdout, rust_read_stderr) = run_ooxml(&[
+        "--json", "xlsx", "workbook", "metadata", "inspect", &rust_out,
+    ]);
+    assert_eq!(rust_read_code, go_read_code, "metadata readback exit");
+    assert_eq!(rust_read_stderr, go_read_stderr, "metadata readback stderr");
+    assert_eq!(
+        scrub_path(
+            rust_read_stdout.expect("rust metadata readback"),
+            &rust_out,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_read_stdout.expect("go metadata readback"),
+            &go_out,
+            "[OUT]"
+        ),
+        "metadata readback stdout"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_workbook_metadata_update_dry_run_matches_go_oracle() {
+    let workbook = "testdata/xlsx/minimal-workbook/workbook.xlsx";
+    let args = [
+        "--json",
+        "xlsx",
+        "workbook",
+        "metadata",
+        "update",
+        workbook,
+        "--title",
+        "Dry",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+    assert_eq!(rust_code, go_code, "metadata dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "metadata dry-run stderr");
+    let rust_json = rust_stdout.expect("rust dry-run stdout");
+    assert_eq!(rust_json, go_stdout.expect("go dry-run stdout"));
+    assert_eq!(rust_json["dryRun"], Value::Bool(true));
+    assert!(rust_json.get("output").is_none(), "dry-run output omitted");
+    assert!(
+        rust_json.get("validateCommand").is_none(),
+        "dry-run validateCommand omitted"
+    );
+    assert!(
+        rust_json.get("inspectCommand").is_none(),
+        "dry-run inspectCommand omitted"
+    );
+}
+
+#[test]
+fn xlsx_workbook_metadata_clear_fields_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-workbook-metadata-clear-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_seed = temp_dir.join("go-seed.xlsx").to_string_lossy().to_string();
+    let rust_seed = temp_dir
+        .join("rust-seed.xlsx")
+        .to_string_lossy()
+        .to_string();
+    let go_clear = temp_dir.join("go-clear.xlsx").to_string_lossy().to_string();
+    let rust_clear = temp_dir
+        .join("rust-clear.xlsx")
+        .to_string_lossy()
+        .to_string();
+
+    let go_seed_args = [
+        "--json",
+        "xlsx",
+        "workbook",
+        "metadata",
+        "update",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--title",
+        "Temporary",
+        "--full-calc-on-load",
+        "--out",
+        &go_seed,
+    ];
+    let rust_seed_args = [
+        "--json",
+        "xlsx",
+        "workbook",
+        "metadata",
+        "update",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--title",
+        "Temporary",
+        "--full-calc-on-load",
+        "--out",
+        &rust_seed,
+    ];
+    assert_eq!(run_go_ooxml(&go_seed_args).0, 0, "go seed");
+    assert_eq!(run_ooxml(&rust_seed_args).0, 0, "rust seed");
+
+    let go_clear_args = [
+        "--json",
+        "xlsx",
+        "workbook",
+        "metadata",
+        "update",
+        &go_seed,
+        "--title",
+        "",
+        "--full-calc-on-load=false",
+        "--out",
+        &go_clear,
+    ];
+    let rust_clear_args = [
+        "--json",
+        "xlsx",
+        "workbook",
+        "metadata",
+        "update",
+        &rust_seed,
+        "--title",
+        "",
+        "--full-calc-on-load=false",
+        "--out",
+        &rust_clear,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_clear_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_clear_args);
+    assert_eq!(rust_code, go_code, "metadata clear exit");
+    assert_eq!(rust_stderr, go_stderr, "metadata clear stderr");
+    assert_eq!(
+        scrub_paths(
+            rust_stdout.expect("rust clear stdout"),
+            &[(&rust_seed, "[IN]"), (&rust_clear, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go clear stdout"),
+            &[(&go_seed, "[IN]"), (&go_clear, "[OUT]")]
+        ),
+        "metadata clear stdout"
+    );
+    let core_xml = read_zip_string(Path::new(&rust_clear), "docProps/core.xml");
+    assert!(
+        !core_xml.contains("<dc:title>"),
+        "empty title should remove dc:title"
+    );
+    let workbook_xml = read_zip_string(Path::new(&rust_clear), "xl/workbook.xml");
+    assert!(
+        !workbook_xml.contains("fullCalcOnLoad") && !workbook_xml.contains("forceFullCalc"),
+        "explicit false should remove recalc attrs"
+    );
+    let (validate_code, _, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_clear]);
+    assert_eq!(validate_code, 0, "metadata clear validate");
+    assert_eq!(validate_stderr, None, "metadata clear validate stderr");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_workbook_metadata_error_envelopes_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-workbook-metadata-errors-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let out = temp_dir.join("out.xlsx").to_string_lossy().to_string();
+    let workbook = "testdata/xlsx/minimal-workbook/workbook.xlsx";
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json", "xlsx", "workbook", "metadata", "update", workbook, "--out", &out,
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "workbook",
+            "metadata",
+            "update",
+            workbook,
+            "--title",
+            "Needs output mode",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "workbook",
+            "metadata",
+            "update",
+            workbook,
+            "--calc-mode",
+            "bogus",
+            "--out",
+            &out,
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "workbook",
+            "metadata",
+            "update",
+            workbook,
+            "--title",
+            "New",
+            "--expect-title",
+            "Wrong",
+            "--out",
+            &out,
+        ],
+    ];
+    for args in cases {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "metadata error exit for {args:?}");
+        assert_eq!(rust_stdout, go_stdout, "metadata error stdout for {args:?}");
+        assert_eq!(rust_stderr, go_stderr, "metadata error stderr for {args:?}");
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_ranges_set_formula_overwrite_invalidates_calc_chain_like_go() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-ranges-set-calc-chain-{}",
@@ -6647,6 +6983,127 @@ fn serve_op_supports_xlsx_ranges_set_format() {
 }
 
 #[test]
+fn serve_op_supports_xlsx_workbook_metadata_update() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-workbook-metadata-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("serve-metadata-out.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(
+        1,
+        "open",
+        serde_json::json!({"file": input_str, "out": output_str}),
+    );
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let op = rpc_request(
+        2,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx workbook metadata update",
+            "args": {
+                "title": "Serve Title",
+                "company": "Acme Corp",
+                "fullCalcOnLoad": true
+            },
+        }),
+    );
+    let op_response = serve_roundtrip(&mut stdin, &mut reader, &op);
+    assert!(
+        op_response.get("error").is_none(),
+        "metadata op failed: {op_response:?}"
+    );
+    let readback = &op_response["result"]["readback"];
+    assert_eq!(
+        readback["metadata"]["title"],
+        Value::String("Serve Title".to_string())
+    );
+    assert_eq!(
+        readback["metadata"]["company"],
+        Value::String("Acme Corp".to_string())
+    );
+    assert_eq!(
+        readback["calcSettings"]["fullCalcOnLoad"],
+        Value::Bool(true)
+    );
+
+    let inspect = rpc_request(
+        3,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx workbook metadata inspect",
+            "args": {},
+        }),
+    );
+    let inspect_response = serve_roundtrip(&mut stdin, &mut reader, &inspect);
+    assert_eq!(
+        inspect_response["result"]["metadata"]["title"],
+        Value::String("Serve Title".to_string())
+    );
+
+    let plan = rpc_request(4, "plan", serde_json::json!({"session": session}));
+    let plan_response = serve_roundtrip(&mut stdin, &mut reader, &plan);
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][1],
+        Value::String("workbook".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][3],
+        Value::String("update".to_string())
+    );
+
+    let commit = rpc_request(5, "commit", serde_json::json!({"session": session}));
+    let commit_response = serve_roundtrip(&mut stdin, &mut reader, &commit);
+    assert!(
+        commit_response.get("error").is_none(),
+        "metadata commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+    let (inspect_code, inspect_stdout, inspect_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "workbook",
+        "metadata",
+        "inspect",
+        &output_str,
+    ]);
+    assert_eq!(inspect_code, 0, "metadata serve inspect output exit");
+    assert_eq!(inspect_stderr, None, "metadata serve inspect output stderr");
+    assert_eq!(
+        inspect_stdout.expect("metadata serve output inspect")["metadata"]["title"],
+        Value::String("Serve Title".to_string())
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_pptx_generic_web_agent_edit_path_works() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-pptx-{}", std::process::id()));
@@ -7363,6 +7820,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx tables list", false);
     assert_command(&xlsx_caps, "ooxml xlsx tables show", false);
     assert_command(&xlsx_caps, "ooxml xlsx tables export", false);
+    assert_command(&xlsx_caps, "ooxml xlsx workbook metadata inspect", false);
+    assert_command(&xlsx_caps, "ooxml xlsx workbook metadata update", true);
 
     let (table_code, table_stdout, table_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "table"]);
@@ -7480,10 +7939,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 45, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 47, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        245,
+        243,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
@@ -7661,14 +8120,86 @@ fn assert_rust_emitted_ooxml_command_succeeds(result: &Value, field: &str) {
     assert!(stdout.is_some(), "emitted {field} stdout for {command}");
 }
 
+fn assert_rust_emitted_ooxml_command_exits_zero(result: &Value, field: &str) {
+    let command = result[field]
+        .as_str()
+        .unwrap_or_else(|| panic!("{field} command string"));
+    let args = emitted_ooxml_args(command);
+    let borrowed = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let (code, _, stderr) = run_ooxml(&borrowed);
+    assert_eq!(code, 0, "emitted {field} exit for {command}");
+    assert_eq!(stderr, None, "emitted {field} stderr for {command}");
+}
+
 fn emitted_ooxml_args(command: &str) -> Vec<String> {
     let command = command
         .strip_prefix("ooxml ")
         .unwrap_or_else(|| panic!("emitted command must start with ooxml: {command}"));
-    command
-        .split_whitespace()
-        .map(ToString::to_string)
-        .collect()
+    shell_words(command).unwrap_or_else(|err| panic!("parse emitted command {command:?}: {err}"))
+}
+
+fn shell_words(command: &str) -> Result<Vec<String>, String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut chars = command.chars().peekable();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut started = false;
+    while let Some(ch) = chars.next() {
+        if in_single {
+            if ch == '\'' {
+                in_single = false;
+            } else {
+                current.push(ch);
+            }
+            continue;
+        }
+        if in_double {
+            match ch {
+                '"' => in_double = false,
+                '\\' => {
+                    if let Some(next) = chars.next() {
+                        current.push(next);
+                    }
+                }
+                _ => current.push(ch),
+            }
+            continue;
+        }
+        match ch {
+            '\'' => {
+                in_single = true;
+                started = true;
+            }
+            '"' => {
+                in_double = true;
+                started = true;
+            }
+            '\\' => {
+                started = true;
+                if let Some(next) = chars.next() {
+                    current.push(next);
+                }
+            }
+            ch if ch.is_whitespace() => {
+                if started {
+                    words.push(std::mem::take(&mut current));
+                    started = false;
+                }
+            }
+            _ => {
+                started = true;
+                current.push(ch);
+            }
+        }
+    }
+    if in_single || in_double {
+        return Err("unterminated quote".to_string());
+    }
+    if started {
+        words.push(current);
+    }
+    Ok(words)
 }
 
 fn scrub_dynamic(value: Value, replacements: &[(String, String)]) -> Value {

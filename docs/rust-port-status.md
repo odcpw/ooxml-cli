@@ -30,6 +30,13 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   creation, saved output format readback, generated mutation readback commands,
   dry-run non-mutation, and serve/MCP operation routing through the session
   `op` path
+- `--json xlsx workbook metadata inspect/update ...` with Go-oracle comparison
+  for core/app properties, calc settings defaults, canonical updated-field
+  ordering, stringly previous values, dry-run omission of output/readback
+  commands, empty-value clearing, explicit `--full-calc-on-load=false` clearing,
+  strict validation, generated inspect/validate command replay with quoted
+  paths, guard failures, invalid calc modes, and serve operation/inspect routing
+  through the session path
 - `--json docx text <docx>` with Go-oracle comparison across the committed
   positive DOCX fixture corpus: paragraphs, styles, preserved whitespace,
   hyperlinks, field/instruction text omission, tables, merged tables, headers,
@@ -154,7 +161,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 45, and the harness pins the 245-command gap until
+  paths, Rust advertises 47, and the harness pins the 243-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -180,6 +187,10 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   export, typed export, formula matrices, `--data-out`, `--max-cells`, missing
   selectors, paths/sheet names with spaces, `capabilities --for table`, and
   serve inspect routing
+- `--json xlsx workbook metadata inspect/update <xlsx>` with Go-oracle
+  comparison for default inspection, saved mutation output, generated readback
+  commands, dry-run, clearing, calc-mode/full-recalc flags, guard/error
+  envelopes, `capabilities --for xlsx`, and strict Go-subset inventory ratchet
 - `serve` JSON-RPC generic PPTX inspect/op/commit path for
   `pptx slides show` plus `pptx replace text`, matching the Flue workbench's
   generic `apply_ooxml_ops_to_current` smoke route
@@ -190,6 +201,9 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   loop
 - `serve` JSON-RPC inspect support for `xlsx tables list/show`, so generated
   table readback commands can run through the web/agent session loop
+- `serve` JSON-RPC op/inspect support for `xlsx workbook metadata
+  update/inspect`, so workbook-level metadata edits can run through the same
+  web/agent session loop as range and table workflows
 
 Still missing before parity can be claimed:
 
