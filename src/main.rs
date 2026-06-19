@@ -420,6 +420,12 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             docx_fields_list(file, field_type.as_deref())
         }
         [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && (group == "headers" || group == "footers") && verb == "list" =>
+        {
+            reject_unknown_flags(rest, &[], &[])?;
+            docx_headers_footers_list(file)
+        }
+        [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && group == "images" && verb == "list" =>
         {
             reject_unknown_flags(rest, &[], &[])?;
@@ -1385,6 +1391,28 @@ fn capability_commands() -> Vec<Value> {
                 "string",
                 "show only fields whose leading instruction keyword matches",
             )],
+        ),
+        capability_command(
+            "ooxml docx headers list",
+            "list <file>",
+            "List headers and footers defined per section.",
+            &["header", "footer"],
+            false,
+            Some(
+                "read-only command; generated header/footer selectors can be pasted into show or set-text",
+            ),
+            vec![],
+        ),
+        capability_command(
+            "ooxml docx footers list",
+            "list <file>",
+            "List headers and footers defined per section.",
+            &["footer", "header"],
+            false,
+            Some(
+                "read-only command; generated header/footer selectors can be pasted into show or set-text",
+            ),
+            vec![],
         ),
         capability_command(
             "ooxml docx images list",
@@ -6594,6 +6622,260 @@ fn docx_word_attr_ns(
     wanted_local: &[u8],
 ) -> Option<String> {
     attr_prefixed_ns(element, resolver, b"w", DOCX_W_NS, wanted_local)
+}
+
+fn docx_headers_footers_list(file: &str) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    let package_kind = detect_inspect_package_type(file, &entries);
+    if package_kind != InspectPackageKind::Docx {
+        let detected = match package_kind {
+            InspectPackageKind::Pptx => "pptx",
+            InspectPackageKind::Xlsx => "xlsx",
+            InspectPackageKind::Docx => "docx",
+            InspectPackageKind::Unknown => package_type(file)?,
+        };
+        return Err(CliError::unsupported_type(format!(
+            "file is not a DOCX document (detected: {detected})"
+        )));
+    }
+
+    let document_part = find_docx_document_part(file, &entries)?;
+    let document_uri = format!("/{}", document_part.trim_start_matches('/'));
+    let xml = zip_text(file, &document_part).map_err(|err| {
+        CliError::unexpected(format!(
+            "failed to list headers/footers: failed to read document part {document_uri}: {}",
+            err.message
+        ))
+    })?;
+    let rel_targets = relationship_entries(file, &relationships_part_for(&document_part))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|rel| rel.target_mode != "External")
+        .map(|rel| {
+            (
+                rel.id,
+                resolve_relationship_target(&document_uri, &rel.target),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let sections = docx_header_footer_sections(file, &xml, &rel_targets)?;
+    Ok(json!({
+        "file": file,
+        "documentPartUri": document_uri,
+        "sections": sections,
+    }))
+}
+
+#[derive(Default)]
+struct DocxHeaderFooterSectionBuild {
+    section_index: usize,
+    headers: DocxHeaderFooterSetBuild,
+    footers: DocxHeaderFooterSetBuild,
+}
+
+#[derive(Default)]
+struct DocxHeaderFooterSetBuild {
+    default: Option<Value>,
+    first: Option<Value>,
+    even: Option<Value>,
+}
+
+fn docx_header_footer_sections(
+    file: &str,
+    document_xml: &str,
+    rel_targets: &BTreeMap<String, String>,
+) -> CliResult<Vec<Value>> {
+    let mut reader = NsReader::from_str(document_xml);
+    let mut stack: Vec<String> = Vec::new();
+    let mut sections = Vec::new();
+    let mut current = None::<DocxHeaderFooterSectionBuild>;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let parent = stack.last().map(String::as_str);
+                let grandparent = stack
+                    .len()
+                    .checked_sub(2)
+                    .and_then(|index| stack.get(index))
+                    .map(String::as_str);
+                let is_word = element_in_ns(reader.resolver(), &e, DOCX_W_NS);
+                if current.is_none()
+                    && is_word
+                    && name == "sectPr"
+                    && (parent == Some("body") || parent == Some("pPr") && grandparent == Some("p"))
+                {
+                    current = Some(DocxHeaderFooterSectionBuild {
+                        section_index: sections.len() + 1,
+                        ..DocxHeaderFooterSectionBuild::default()
+                    });
+                } else if let Some(section) = current.as_mut()
+                    && is_word
+                    && matches!(name.as_str(), "headerReference" | "footerReference")
+                {
+                    docx_note_header_footer_ref(
+                        file,
+                        section,
+                        &e,
+                        reader.resolver(),
+                        &name,
+                        rel_targets,
+                    );
+                }
+                stack.push(name);
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let parent = stack.last().map(String::as_str);
+                let grandparent = stack
+                    .len()
+                    .checked_sub(2)
+                    .and_then(|index| stack.get(index))
+                    .map(String::as_str);
+                let is_word = element_in_ns(reader.resolver(), &e, DOCX_W_NS);
+                if current.is_none()
+                    && is_word
+                    && name == "sectPr"
+                    && (parent == Some("body") || parent == Some("pPr") && grandparent == Some("p"))
+                {
+                    let section = DocxHeaderFooterSectionBuild {
+                        section_index: sections.len() + 1,
+                        ..DocxHeaderFooterSectionBuild::default()
+                    };
+                    sections.push(docx_header_footer_section_json(section));
+                } else if let Some(section) = current.as_mut()
+                    && is_word
+                    && matches!(name.as_str(), "headerReference" | "footerReference")
+                {
+                    docx_note_header_footer_ref(
+                        file,
+                        section,
+                        &e,
+                        reader.resolver(),
+                        &name,
+                        rel_targets,
+                    );
+                }
+            }
+            Ok(Event::End(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if name == "sectPr"
+                    && let Some(section) = current.take()
+                {
+                    sections.push(docx_header_footer_section_json(section));
+                }
+                stack.pop();
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+
+    Ok(sections)
+}
+
+fn docx_note_header_footer_ref(
+    file: &str,
+    section: &mut DocxHeaderFooterSectionBuild,
+    element: &BytesStart<'_>,
+    resolver: &NamespaceResolver,
+    name: &str,
+    rel_targets: &BTreeMap<String, String>,
+) {
+    let kind = if name == "footerReference" {
+        "footer"
+    } else {
+        "header"
+    };
+    let id = attr_bound_ns(
+        element,
+        resolver,
+        b"http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        b"id",
+    )
+    .unwrap_or_default();
+    let ref_type = normalize_docx_header_footer_type(
+        attr_bound_ns(element, resolver, DOCX_W_NS, b"type").unwrap_or_default(),
+    );
+    let part_uri = rel_targets.get(&id).cloned().unwrap_or_default();
+    let content_type = if part_uri.is_empty() {
+        String::new()
+    } else {
+        content_type_for_part(file, &part_uri).unwrap_or_default()
+    };
+    let value = docx_header_footer_ref_json(
+        kind,
+        &id,
+        &ref_type,
+        section.section_index,
+        &part_uri,
+        &content_type,
+    );
+    let set = if kind == "footer" {
+        &mut section.footers
+    } else {
+        &mut section.headers
+    };
+    match ref_type.as_str() {
+        "first" => set.first = Some(value),
+        "even" => set.even = Some(value),
+        _ => set.default = Some(value),
+    }
+}
+
+fn normalize_docx_header_footer_type(value: String) -> String {
+    match value.as_str() {
+        "first" | "even" => value,
+        _ => "default".to_string(),
+    }
+}
+
+fn docx_header_footer_ref_json(
+    kind: &str,
+    id: &str,
+    ref_type: &str,
+    section: usize,
+    part_uri: &str,
+    content_type: &str,
+) -> Value {
+    let primary_selector = format!("{kind}:{section}:{ref_type}");
+    let mut selectors = vec![primary_selector.clone()];
+    if !id.is_empty() {
+        selectors.push(format!("id:{id}"));
+        selectors.push(id.to_string());
+    }
+    if !part_uri.is_empty() {
+        selectors.push(format!("part:{part_uri}"));
+        selectors.push(part_uri.to_string());
+    }
+    json!({
+        "kind": kind,
+        "id": id,
+        "type": ref_type,
+        "section": section,
+        "primarySelector": primary_selector,
+        "selectors": selectors,
+        "partUri": part_uri,
+        "contentType": content_type,
+    })
+}
+
+fn docx_header_footer_section_json(section: DocxHeaderFooterSectionBuild) -> Value {
+    json!({
+        "sectionIndex": section.section_index,
+        "headers": docx_header_footer_set_json(section.headers),
+        "footers": docx_header_footer_set_json(section.footers),
+    })
+}
+
+fn docx_header_footer_set_json(set: DocxHeaderFooterSetBuild) -> Value {
+    json!({
+        "default": set.default.unwrap_or(Value::Null),
+        "first": set.first.unwrap_or(Value::Null),
+        "even": set.even.unwrap_or(Value::Null),
+    })
 }
 
 fn docx_images_list(file: &str) -> CliResult<Value> {
@@ -11912,6 +12194,24 @@ fn attr_prefixed_ns(
         if &raw[..colon] != wanted_prefix || &raw[colon + 1..] != wanted_local {
             return None;
         }
+        let (resolved, local) = resolver.resolve_attribute(a.key);
+        if matches!(resolved, ResolveResult::Bound(Namespace(uri)) if uri == wanted_ns)
+            && local.as_ref() == wanted_local
+        {
+            Some(decode_xml_text(a.value.as_ref()))
+        } else {
+            None
+        }
+    })
+}
+
+fn attr_bound_ns(
+    e: &BytesStart<'_>,
+    resolver: &NamespaceResolver,
+    wanted_ns: &[u8],
+    wanted_local: &[u8],
+) -> Option<String> {
+    e.attributes().flatten().find_map(|a| {
         let (resolved, local) = resolver.resolve_attribute(a.key);
         if matches!(resolved, ResolveResult::Bound(Namespace(uri)) if uri == wanted_ns)
             && local.as_ref() == wanted_local

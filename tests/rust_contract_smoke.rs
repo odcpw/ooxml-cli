@@ -2395,6 +2395,58 @@ fn docx_fields_list_matches_go_oracle() {
 }
 
 #[test]
+fn docx_headers_and_footers_list_match_go_oracle() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "headers",
+            "list",
+            "testdata/docx/headers/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "footers",
+            "list",
+            "testdata/docx/headers/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "headers",
+            "list",
+            "testdata/docx/minimal/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "footers",
+            "list",
+            "testdata/docx/minimal/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "headers",
+            "list",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "footers",
+            "list",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+}
+
+#[test]
 fn docx_images_list_matches_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
@@ -3523,6 +3575,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let all_caps = all_stdout.expect("all capabilities");
     assert_command(&all_caps, "ooxml version", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
+    assert_command(&all_caps, "ooxml docx headers list", false);
+    assert_command(&all_caps, "ooxml docx footers list", false);
     assert_command(&all_caps, "ooxml docx images list", false);
     assert_command(&all_caps, "ooxml docx tables show", false);
 
@@ -3605,6 +3659,22 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let field_caps = field_stdout.expect("field capabilities");
     assert_command(&field_caps, "ooxml docx fields list", false);
 
+    let (header_code, header_stdout, header_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "header"]);
+    assert_eq!(header_code, 0);
+    assert_eq!(header_stderr, None);
+    let header_caps = header_stdout.expect("header capabilities");
+    assert_command(&header_caps, "ooxml docx headers list", false);
+    assert_command(&header_caps, "ooxml docx footers list", false);
+
+    let (footer_code, footer_stdout, footer_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "footer"]);
+    assert_eq!(footer_code, 0);
+    assert_eq!(footer_stderr, None);
+    let footer_caps = footer_stdout.expect("footer capabilities");
+    assert_command(&footer_caps, "ooxml docx headers list", false);
+    assert_command(&footer_caps, "ooxml docx footers list", false);
+
     let (image_code, image_stdout, image_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "image"]);
     assert_eq!(image_code, 0);
@@ -3618,6 +3688,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(docx_stderr, None);
     let docx_caps = docx_stdout.expect("docx capabilities");
     assert_command(&docx_caps, "ooxml docx fields list", false);
+    assert_command(&docx_caps, "ooxml docx headers list", false);
+    assert_command(&docx_caps, "ooxml docx footers list", false);
     assert_command(&docx_caps, "ooxml docx images list", false);
     assert_command(&docx_caps, "ooxml docx tables show", false);
 }
@@ -3637,10 +3709,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 28, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 30, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        262,
+        260,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
