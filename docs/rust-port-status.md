@@ -76,6 +76,9 @@ Latest milestone, 2026-06-19:
 - PPTX slide-part reference discovery moved from `src/pptx_readback.rs` into
   `src/pptx_readback/slide_parts.rs`, giving comments, notes, and table
   readback a shared child-module helper without widening the crate facade.
+- PPTX notes extraction/show reporting moved from `src/pptx_readback.rs` into
+  `src/pptx_readback/notes.rs`, reusing the shared slide-part helper and parent
+  shape text parser through the PPTX readback facade.
 - PPTX render orchestration, slide-list parsing, mock render output, and local
   `soffice`/`pdftoppm` invocation helpers moved from `src/main.rs` into
   `src/pptx_render.rs`, leaving PPTX text mutation and serve routing at the
