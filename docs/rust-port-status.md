@@ -58,6 +58,10 @@ Latest milestone, 2026-06-19:
   readback/reporting helpers moved from `src/main.rs` into
   `src/pptx_readback.rs`, leaving mutation/render orchestration at the crate
   root.
+- PPTX render orchestration, slide-list parsing, mock render output, and local
+  `soffice`/`pdftoppm` invocation helpers moved from `src/main.rs` into
+  `src/pptx_render.rs`, leaving PPTX text mutation and serve routing at the
+  crate root.
 - MCP tool response shaping, resource schemas, capability resources, command
   resource lookup, and URI decoding moved from `src/main.rs` into
   `src/mcp_support.rs`, leaving MCP state logic separate from protocol support
