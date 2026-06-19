@@ -106,6 +106,10 @@ Latest milestone, 2026-06-20:
   moved from `src/serve.rs` into `src/serve/op_dispatch.rs`, leaving op
   indexing, readback framing, session commit/abort, and working-copy ownership
   in the serve facade.
+- XLSX serve operation dispatch for range/cell/workbook-metadata session
+  mutations split from `src/serve/op_dispatch.rs` into
+  `src/serve/op_dispatch/xlsx.rs`, keeping the top-level serve op dispatcher
+  responsible for family routing and unsupported-command errors.
 - XLSX workbook metadata inspect/update types, XML readers, property renderers,
   and calc-setting mutation helpers moved from `src/main.rs` into
   `src/xlsx_metadata.rs`, keeping CLI and serve call sites stable through the
@@ -201,10 +205,9 @@ Latest milestone, 2026-06-20:
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
 - Proof after the latest split: `cargo test --test rust_contract_smoke
-  serve_op`, `cargo test --test rust_contract_smoke
-  frozen_serve_flow_matches_go_baseline -- --exact`, `cargo fmt --check`,
-  `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
-  all pass with 77 Rust contract tests.
+  serve_op_supports_xlsx`, `cargo test --test rust_contract_smoke serve_op`,
+  `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
+  `cargo test --all-targets` all pass with 77 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
