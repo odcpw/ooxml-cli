@@ -3265,7 +3265,7 @@ fn capability_commands() -> Vec<Value> {
             &[],
             false,
             Some(
-                "read-only command; generated table hashes feed hash-guarded DOCX table mutations",
+                "read-only command; call via inspect in serve/MCP; generated table hashes feed hash-guarded DOCX table mutations",
             ),
             vec![
                 flag(
@@ -3287,8 +3287,8 @@ fn capability_commands() -> Vec<Value> {
             "set-cell <file>",
             "Set one main-document DOCX table cell's plain text.",
             &["table"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--table", "table", "int", "1-based table number"),
                 flag("--row", "row", "int", "1-based table row"),
@@ -3328,8 +3328,8 @@ fn capability_commands() -> Vec<Value> {
             "clear-cell <file>",
             "Clear one main-document DOCX table cell's text.",
             &["table"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--table", "table", "int", "1-based table number"),
                 flag("--row", "row", "int", "1-based table row"),
@@ -17594,6 +17594,12 @@ enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    DocxTablesOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
 }
 
 fn push_serve_plan_string_flag(flags: &mut Vec<Value>, name: &str, value: Option<&str>) {
@@ -17621,7 +17627,8 @@ impl ServeOp {
             | ServeOp::XlsxWorkbookMetadataUpdate { command, .. }
             | ServeOp::DocxHeaderFooterSetText { command, .. }
             | ServeOp::DocxFieldsOp { command, .. }
-            | ServeOp::DocxBlocksOp { command, .. } => command,
+            | ServeOp::DocxBlocksOp { command, .. }
+            | ServeOp::DocxTablesOp { command, .. } => command,
         }
     }
 
@@ -17836,6 +17843,27 @@ impl ServeOp {
                 ]);
                 Value::Array(argv)
             }
+            ServeOp::DocxTablesOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command.split_whitespace().nth(2).unwrap_or("set-cell");
+                let mut argv = vec![
+                    json!("docx"),
+                    json!("tables"),
+                    json!(verb),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
             ServeOp::PptxReplaceText {
                 slide,
                 target,
@@ -17901,6 +17929,11 @@ impl ServeOp {
                 ..
             }
             | ServeOp::DocxBlocksOp {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::DocxTablesOp {
                 readback_file,
                 readback,
                 ..
@@ -18551,6 +18584,135 @@ impl ServeState {
                     readback,
                 }
             }
+            "docx tables set-cell" => {
+                let table = json_i64(args, "table")?
+                    .ok_or_else(|| CliError::invalid_args("table is required"))?;
+                let row = json_i64(args, "row")?
+                    .ok_or_else(|| CliError::invalid_args("row is required"))?;
+                let col = json_i64(args, "col")?
+                    .ok_or_else(|| CliError::invalid_args("col is required"))?;
+                validate_positive_i64(table, "--table")?;
+                validate_positive_i64(row, "--row")?;
+                validate_positive_i64(col, "--col")?;
+                let expect_hash = json_optional_string(args, "expect-hash")
+                    .or_else(|| json_optional_string(args, "expectHash"))
+                    .unwrap_or_default();
+                require_docx_block_hash(&expect_hash)?;
+                let text_changed = args.get("text").is_some();
+                let text_file_changed =
+                    args.get("text-file").is_some() || args.get("textFile").is_some();
+                let text = json_optional_string(args, "text");
+                let text_file = json_optional_string(args, "text-file")
+                    .or_else(|| json_optional_string(args, "textFile"));
+                let resolved_text = resolve_required_docx_table_text(
+                    text.as_deref(),
+                    text_file.as_deref(),
+                    text_changed,
+                    text_file_changed,
+                )?;
+                let readback = docx_tables_set_cell(
+                    &session.working,
+                    table as usize,
+                    row as usize,
+                    col as usize,
+                    &expect_hash,
+                    &resolved_text,
+                    DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = vec![
+                    json!("--table"),
+                    json!(table.to_string()),
+                    json!("--row"),
+                    json!(row.to_string()),
+                    json!("--col"),
+                    json!(col.to_string()),
+                ];
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-hash",
+                    Some(expect_hash.as_str()),
+                );
+                if text_changed {
+                    push_serve_plan_string_flag(
+                        &mut plan_flags,
+                        "--text",
+                        Some(resolved_text.as_str()),
+                    );
+                }
+                if text_file_changed {
+                    push_serve_plan_string_flag(
+                        &mut plan_flags,
+                        "--text-file",
+                        text_file.as_deref(),
+                    );
+                }
+                ServeOp::DocxTablesOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
+            "docx tables clear-cell" => {
+                let table = json_i64(args, "table")?
+                    .ok_or_else(|| CliError::invalid_args("table is required"))?;
+                let row = json_i64(args, "row")?
+                    .ok_or_else(|| CliError::invalid_args("row is required"))?;
+                let col = json_i64(args, "col")?
+                    .ok_or_else(|| CliError::invalid_args("col is required"))?;
+                validate_positive_i64(table, "--table")?;
+                validate_positive_i64(row, "--row")?;
+                validate_positive_i64(col, "--col")?;
+                let expect_hash = json_optional_string(args, "expect-hash")
+                    .or_else(|| json_optional_string(args, "expectHash"))
+                    .unwrap_or_default();
+                require_docx_block_hash(&expect_hash)?;
+                let readback = docx_tables_clear_cell(
+                    &session.working,
+                    table as usize,
+                    row as usize,
+                    col as usize,
+                    &expect_hash,
+                    DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = vec![
+                    json!("--table"),
+                    json!(table.to_string()),
+                    json!("--row"),
+                    json!(row.to_string()),
+                    json!("--col"),
+                    json!(col.to_string()),
+                ];
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--expect-hash",
+                    Some(expect_hash.as_str()),
+                );
+                ServeOp::DocxTablesOp {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
             "pptx replace text" => {
                 let slide = json_u32(args, "slide")?.unwrap_or(1);
                 let target = json_string(args, "target")?;
@@ -18694,6 +18856,16 @@ impl ServeState {
                     .or_else(|| json_bool(args, "includeRuns"))
                     .unwrap_or(false);
                 docx_blocks_show(&session.working, block as usize, include_runs)
+            }
+            "docx tables show" => {
+                let table = json_i64(args, "table")?.unwrap_or(0);
+                if table < 0 {
+                    return Err(CliError::invalid_args("--table must be >= 0"));
+                }
+                let details = json_bool(args, "details")
+                    .or_else(|| json_bool(args, "includeDetails"))
+                    .unwrap_or(false);
+                docx_tables_show(&session.working, table as usize, details)
             }
             "pptx slides list" => pptx_slides_list(&session.working),
             "pptx slides selectors" => {

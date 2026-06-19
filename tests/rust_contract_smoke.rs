@@ -8133,6 +8133,212 @@ fn serve_op_supports_docx_blocks_editing() {
 }
 
 #[test]
+fn serve_op_supports_docx_tables_editing() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-docx-tables-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.docx");
+    let output = temp_dir.join("serve-docx-tables-out.docx");
+    fs::copy("testdata/docx/table/document.docx", &input).expect("stage docx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({"file": input_str, "out": output_str}),
+        ),
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let table_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            2,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "docx tables show",
+                "args": {"table": 1},
+            }),
+        ),
+    );
+    assert!(
+        table_response.get("error").is_none(),
+        "docx tables show inspect failed: {table_response:?}"
+    );
+    assert_eq!(
+        table_response["result"]["tables"][0]["cells"][0][1],
+        Value::String("B1".to_string())
+    );
+    let table_hash = table_response["result"]["tables"][0]["contentHash"]
+        .as_str()
+        .expect("table hash")
+        .to_string();
+
+    let set_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            3,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx tables set-cell",
+                "args": {
+                    "table": 1,
+                    "row": 1,
+                    "col": 2,
+                    "expectHash": table_hash,
+                    "text": "Serve table value"
+                },
+            }),
+        ),
+    );
+    assert!(
+        set_response.get("error").is_none(),
+        "docx tables set-cell op failed: {set_response:?}"
+    );
+    assert_eq!(
+        set_response["result"]["readback"]["previousText"],
+        Value::String("B1".to_string())
+    );
+    assert_eq!(
+        set_response["result"]["readback"]["text"],
+        Value::String("Serve table value".to_string())
+    );
+    let set_hash = set_response["result"]["readback"]["contentHash"]
+        .as_str()
+        .expect("set-cell content hash")
+        .to_string();
+
+    let changed_table_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            4,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "docx tables show",
+                "args": {"table": 1},
+            }),
+        ),
+    );
+    assert!(
+        changed_table_response.get("error").is_none(),
+        "docx tables changed inspect failed: {changed_table_response:?}"
+    );
+    assert_eq!(
+        changed_table_response["result"]["tables"][0]["cells"][0][1],
+        Value::String("Serve table value".to_string())
+    );
+
+    let clear_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            5,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "docx tables clear-cell",
+                "args": {
+                    "table": 1,
+                    "row": 1,
+                    "col": 2,
+                    "expectHash": set_hash
+                },
+            }),
+        ),
+    );
+    assert!(
+        clear_response.get("error").is_none(),
+        "docx tables clear-cell op failed: {clear_response:?}"
+    );
+    assert_eq!(
+        clear_response["result"]["readback"]["previousText"],
+        Value::String("Serve table value".to_string())
+    );
+
+    let plan_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(6, "plan", serde_json::json!({"session": session})),
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][1],
+        Value::String("tables".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][2],
+        Value::String("set-cell".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][1]["argv"][2],
+        Value::String("clear-cell".to_string())
+    );
+
+    let commit_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(7, "commit", serde_json::json!({"session": session})),
+    );
+    assert!(
+        commit_response.get("error").is_none(),
+        "docx tables commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "docx tables serve validate exit");
+    assert_eq!(validate_stderr, None, "docx tables serve validate stderr");
+
+    let (tables_code, tables_stdout, tables_stderr) = run_ooxml(&[
+        "--json",
+        "docx",
+        "tables",
+        "show",
+        &output_str,
+        "--table",
+        "1",
+    ]);
+    assert_eq!(tables_code, 0, "docx tables output readback exit");
+    assert_eq!(tables_stderr, None, "docx tables output readback stderr");
+    let tables = tables_stdout.expect("docx tables output readback");
+    assert_eq!(
+        tables["tables"][0]["cells"][0][1],
+        Value::String(String::new())
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_pptx_generic_web_agent_edit_path_works() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-pptx-{}", std::process::id()));
@@ -8810,8 +9016,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx footers set-text", true);
     assert_command(&all_caps, "ooxml docx images list", false);
     assert_command(&all_caps, "ooxml docx tables show", false);
-    assert_command(&all_caps, "ooxml docx tables set-cell", false);
-    assert_command(&all_caps, "ooxml docx tables clear-cell", false);
+    assert_command(&all_caps, "ooxml docx tables set-cell", true);
+    assert_command(&all_caps, "ooxml docx tables clear-cell", true);
     assert_command(&all_caps, "ooxml docx blocks replace", true);
     assert_command(&all_caps, "ooxml docx blocks delete", true);
     assert_command(&all_caps, "ooxml docx blocks insert-after", true);
@@ -8873,8 +9079,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml xlsx tables list", false);
     assert_command(&table_caps, "ooxml xlsx tables show", false);
     assert_command(&table_caps, "ooxml xlsx tables export", false);
-    assert_command(&table_caps, "ooxml docx tables set-cell", false);
-    assert_command(&table_caps, "ooxml docx tables clear-cell", false);
+    assert_command(&table_caps, "ooxml docx tables set-cell", true);
+    assert_command(&table_caps, "ooxml docx tables clear-cell", true);
     assert_command(&table_caps, "ooxml docx blocks delete", true);
     assert_no_command(&table_caps, "ooxml docx blocks");
     assert_no_command(&table_caps, "ooxml docx tables show");
@@ -8963,8 +9169,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx footers set-text", true);
     assert_command(&docx_caps, "ooxml docx images list", false);
     assert_command(&docx_caps, "ooxml docx tables show", false);
-    assert_command(&docx_caps, "ooxml docx tables set-cell", false);
-    assert_command(&docx_caps, "ooxml docx tables clear-cell", false);
+    assert_command(&docx_caps, "ooxml docx tables set-cell", true);
+    assert_command(&docx_caps, "ooxml docx tables clear-cell", true);
     assert_command(&docx_caps, "ooxml docx blocks replace", true);
     assert_command(&docx_caps, "ooxml docx blocks delete", true);
     assert_command(&docx_caps, "ooxml docx blocks insert-after", true);

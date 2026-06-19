@@ -149,7 +149,8 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json docx tables set-cell <docx>` and
   `--json docx tables clear-cell <docx>` with Go-oracle comparison for
   hash-guarded cell mutation JSON, output/readback command fields, strict
-  validation, selected-table readback, previous cell text, and dry-run shape
+  validation, selected-table readback, previous cell text, dry-run shape, and
+  serve operation/inspect routing through the session path
 - `--json docx text <xlsx>` unsupported-type rejection with direct Go-oracle
   comparison for exit code, stderr JSON, and empty stdout
 - JSON error envelope for an invalid slide number
