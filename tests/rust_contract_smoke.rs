@@ -205,6 +205,39 @@ fn write_relocated_docx_main_part_with_content_type(dest: &Path, document_conten
     });
 }
 
+fn write_nested_table_docx(dest: &Path) {
+    rewrite_zip_fixture("testdata/docx/minimal/document.docx", dest, |name, data| {
+        let data = if name == "word/document.xml" {
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:tbl>
+      <w:tr>
+        <w:tc>
+          <w:p><w:r><w:t>Outer</w:t></w:r></w:p>
+          <w:tbl>
+            <w:tr>
+              <w:tc><w:p><w:r><w:t>Inner</w:t></w:r></w:p></w:tc>
+            </w:tr>
+          </w:tbl>
+        </w:tc>
+        <w:tc><w:p><w:r><w:t>B1</w:t></w:r></w:p></w:tc>
+      </w:tr>
+      <w:tr>
+        <w:tc><w:p><w:r><w:t>A2</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>B2</w:t></w:r></w:p></w:tc>
+      </w:tr>
+    </w:tbl>
+  </w:body>
+</w:document>"#
+                .to_vec()
+        } else {
+            data
+        };
+        Some((name.to_string(), data))
+    });
+}
+
 fn rewrite_zip_fixture<F>(source: &str, dest: &Path, mut mutator: F)
 where
     F: FnMut(&str, Vec<u8>) -> Option<(String, Vec<u8>)>,
@@ -1828,6 +1861,183 @@ fn docx_text_matches_go_oracle() {
 }
 
 #[test]
+fn docx_blocks_match_go_oracle() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "testdata/docx/minimal/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "testdata/docx/mixed-blocks/document.docx",
+            "--block",
+            "2",
+            "--include-runs",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "testdata/docx/table/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "testdata/docx/merged-table/document.docx",
+            "--include-runs",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "testdata/docx/paraid/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "testdata/docx/paraid-dup/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "testdata/docx/styled-headings/document.docx",
+            "--include-runs",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "testdata/docx/minimal/document.docx",
+            "--block",
+            "99",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "testdata/docx/minimal/document.docx",
+            "--block",
+            "-1",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-docx-blocks-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx blocks temp dir");
+
+    let malformed_docx = temp_dir.join("malformed-document.docx");
+    rewrite_zip_fixture(
+        "testdata/docx/minimal/document.docx",
+        &malformed_docx,
+        |name, data| {
+            let data = if name == "word/document.xml" {
+                br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>"#.to_vec()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let malformed_docx = malformed_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "docx", "blocks", &malformed_docx]);
+
+    let wrong_root_docx = temp_dir.join("wrong-root-document.docx");
+    rewrite_zip_fixture(
+        "testdata/docx/minimal/document.docx",
+        &wrong_root_docx,
+        |name, data| {
+            let data = if name == "word/document.xml" {
+                br#"<w:notDocument xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Text</w:t></w:r></w:p></w:body></w:notDocument>"#.to_vec()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let wrong_root_docx = wrong_root_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "docx", "blocks", &wrong_root_docx]);
+
+    let missing_body_docx = temp_dir.join("missing-body-document.docx");
+    rewrite_zip_fixture(
+        "testdata/docx/minimal/document.docx",
+        &missing_body_docx,
+        |name, data| {
+            let data = if name == "word/document.xml" {
+                br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>Text</w:t></w:r></w:p></w:document>"#.to_vec()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let missing_body_docx = missing_body_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "docx", "blocks", &missing_body_docx]);
+
+    let nested_table_docx = temp_dir.join("nested-table.docx");
+    write_nested_table_docx(&nested_table_docx);
+    let nested_table_docx = nested_table_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "docx", "blocks", &nested_table_docx]);
+
+    let alternate_prefix_paraid_docx = temp_dir.join("alternate-prefix-paraid.docx");
+    rewrite_zip_fixture(
+        "testdata/docx/minimal/document.docx",
+        &alternate_prefix_paraid_docx,
+        |name, data| {
+            let data = if name == "word/document.xml" {
+                br#"<doc:document xmlns:doc="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:p14="http://schemas.microsoft.com/office/word/2010/wordml"><doc:body><doc:p p14:paraId="ABCD1234"><doc:r><doc:t>Alternate paraId prefix</doc:t></doc:r></doc:p></doc:body></doc:document>"#.to_vec()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let alternate_prefix_paraid_docx = alternate_prefix_paraid_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "docx", "blocks", &alternate_prefix_paraid_docx]);
+
+    let foreign_metadata_docx = temp_dir.join("foreign-metadata.docx");
+    rewrite_zip_fixture(
+        "testdata/docx/minimal/document.docx",
+        &foreign_metadata_docx,
+        |name, data| {
+            let data = if name == "word/document.xml" {
+                br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:f="urn:foreign"><w:body><w:p f:paraId="DEAD00FF"><w:pPr><f:pStyle w:val="ForeignStyle"/><w:pStyle f:val="IgnoredStyle"/></w:pPr><w:r><w:rPr><f:b w:val="true"/><w:b f:val="false"/><f:color w:val="FF0000"/><w:color f:val="00FF00"/><w:u f:val="none"/><w:sz f:val="48"/></w:rPr><w:t>Foreign metadata</w:t></w:r></w:p></w:body></w:document>"#.to_vec()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let foreign_metadata_docx = foreign_metadata_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "blocks",
+        &foreign_metadata_docx,
+        "--include-runs",
+    ]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_styles_list_and_show_match_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
@@ -3060,6 +3270,13 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
     assert_command(&pptx_caps, "ooxml pptx replace text", true);
 
+    let (package_code, package_stdout, package_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "package"]);
+    assert_eq!(package_code, 0);
+    assert_eq!(package_stderr, None);
+    let package_caps = package_stdout.expect("package capabilities");
+    assert_no_command(&package_caps, "ooxml docx blocks");
+
     let (xlsx_code, xlsx_stdout, xlsx_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "xlsx"]);
     assert_eq!(xlsx_code, 0);
@@ -3084,6 +3301,14 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml xlsx tables list", false);
     assert_command(&table_caps, "ooxml xlsx tables show", false);
     assert_command(&table_caps, "ooxml xlsx tables export", false);
+    assert_no_command(&table_caps, "ooxml docx blocks");
+
+    let (paragraph_code, paragraph_stdout, paragraph_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "paragraph"]);
+    assert_eq!(paragraph_code, 0);
+    assert_eq!(paragraph_stderr, None);
+    let paragraph_caps = paragraph_stdout.expect("paragraph capabilities");
+    assert_no_command(&paragraph_caps, "ooxml docx blocks");
 
     let (style_code, style_stdout, style_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "style"]);
@@ -3117,10 +3342,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 24, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 25, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        266,
+        265,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
@@ -3242,6 +3467,16 @@ fn assert_command(capabilities: &Value, path: &str, op_compatible: bool) {
         command["opCompatible"],
         Value::Bool(op_compatible),
         "opCompatible for {path}"
+    );
+}
+
+fn assert_no_command(capabilities: &Value, path: &str) {
+    let commands = capabilities["commands"].as_array().expect("commands array");
+    assert!(
+        !commands
+            .iter()
+            .any(|command| command["path"].as_str() == Some(path)),
+        "unexpected command {path}: {commands:?}"
     );
 }
 

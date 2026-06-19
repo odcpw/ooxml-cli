@@ -1,5 +1,6 @@
-use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
+use quick_xml::name::{Namespace, NamespaceResolver, ResolveResult};
+use quick_xml::{NsReader, Reader};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -16,6 +17,8 @@ const EXIT_INVALID_ARGS: i32 = 2;
 const EXIT_FILE_NOT_FOUND: i32 = 3;
 const EXIT_UNSUPPORTED_TYPE: i32 = 4;
 const EXIT_TARGET_NOT_FOUND: i32 = 6;
+const DOCX_W_NS: &[u8] = b"http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const DOCX_W14_NS: &[u8] = b"http://schemas.microsoft.com/office/word/2010/wordml";
 
 #[derive(Debug)]
 struct CliError {
@@ -378,6 +381,15 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [cmd, file] if cmd == "validate" => validate(file, flags.strict),
         [cmd, file, rest @ ..] if cmd == "verify" => verify(file, rest),
         [cmd, family, file] if cmd == "docx" && family == "text" => docx_text(file),
+        [cmd, group, file, rest @ ..] if cmd == "docx" && group == "blocks" => {
+            reject_unknown_flags(rest, &["--block"], &["--include-runs"])?;
+            let block = parse_i64_flag(rest, "--block")?.unwrap_or(0);
+            if block < 0 {
+                return Err(CliError::invalid_args("--block must be >= 0"));
+            }
+            let include_runs = has_flag(rest, "--include-runs");
+            docx_blocks_show(file, block as usize, include_runs)
+        }
         [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && group == "styles" && verb == "list" =>
         {
@@ -818,7 +830,7 @@ fn capability_commands() -> Vec<Value> {
             "ooxml version",
             "version",
             "Print the version of ooxml.",
-            &["package"],
+            &[],
             false,
             Some("read-only metadata command"),
             vec![],
@@ -1274,6 +1286,28 @@ fn capability_commands() -> Vec<Value> {
             false,
             Some("read-only command"),
             vec![],
+        ),
+        capability_command(
+            "ooxml docx blocks",
+            "blocks <file>",
+            "Show stable DOCX body blocks with hashes, selectors, paragraph metadata, table cells, and optional runs.",
+            &[],
+            false,
+            Some("read-only command; block hashes and selectors feed hash-guarded DOCX mutations"),
+            vec![
+                flag(
+                    "--block",
+                    "block",
+                    "int",
+                    "1-based body block index to show",
+                ),
+                flag(
+                    "--include-runs",
+                    "includeRuns",
+                    "bool",
+                    "include paragraph run text and basic run properties",
+                ),
+            ],
         ),
         capability_command(
             "ooxml docx styles list",
@@ -5506,6 +5540,55 @@ fn docx_text(file: &str) -> CliResult<Value> {
     let xml = zip_text(file, "word/document.xml")?;
     let blocks = docx_blocks(&xml);
     Ok(json!({"blocks": blocks, "file": file}))
+}
+
+fn docx_blocks_show(file: &str, block: usize, include_runs: bool) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    let package_kind = detect_inspect_package_type(file, &entries);
+    if package_kind != InspectPackageKind::Docx {
+        let detected = match package_kind {
+            InspectPackageKind::Pptx => "pptx",
+            InspectPackageKind::Xlsx => "xlsx",
+            InspectPackageKind::Docx => "docx",
+            InspectPackageKind::Unknown => package_type(file)?,
+        };
+        return Err(CliError::unsupported_type(format!(
+            "file is not a DOCX document (detected: {detected})"
+        )));
+    }
+    let document_part = find_docx_document_part(file, &entries)?;
+    let document_uri = format!("/{}", document_part.trim_start_matches('/'));
+    let xml = zip_text(file, &document_part)?;
+    let reports = docx_rich_block_reports(&xml, include_runs).map_err(|err| {
+        if err.message == "invalid DOCX XML"
+            || err.message.starts_with("failed to extract DOCX blocks:")
+        {
+            CliError::unexpected(format!(
+                "failed to extract DOCX blocks: failed to read document part {document_uri}: failed to parse XML part {document_uri}: etree: invalid XML format"
+            ))
+        } else {
+            CliError::unexpected(format!("failed to extract DOCX blocks: {}", err.message))
+        }
+    })?;
+    let blocks: Vec<Value> = if block > 0 {
+        reports
+            .into_iter()
+            .filter(|report| report.index == block)
+            .map(docx_rich_block_json)
+            .collect()
+    } else {
+        reports.into_iter().map(docx_rich_block_json).collect()
+    };
+    if block > 0 && blocks.is_empty() {
+        return Err(CliError::target_not_found(format!(
+            "target not found: block {block}"
+        )));
+    }
+    Ok(json!({
+        "file": file,
+        "documentPartUri": document_uri,
+        "blocks": blocks,
+    }))
 }
 
 fn docx_styles_list(file: &str, style_type: Option<&str>) -> CliResult<Value> {
@@ -9832,6 +9915,647 @@ fn docx_para_id(element: &BytesStart<'_>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn docx_para_id_ns(element: &BytesStart<'_>, resolver: &NamespaceResolver) -> Option<String> {
+    attr_prefixed_ns(element, resolver, b"w14", DOCX_W14_NS, b"paraId")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn docx_word_val_ns(element: &BytesStart<'_>, resolver: &NamespaceResolver) -> Option<String> {
+    attr_prefixed_ns(element, resolver, b"w", DOCX_W_NS, b"val")
+}
+
+fn element_in_ns(resolver: &NamespaceResolver, element: &BytesStart<'_>, ns: &[u8]) -> bool {
+    matches!(
+        resolver.resolve_element(element.name()),
+        (ResolveResult::Bound(Namespace(uri)), _) if uri == ns
+    )
+}
+
+#[derive(Default)]
+struct DocxRichParagraphState {
+    text: String,
+    style: String,
+    para_id: String,
+    runs: Vec<DocxRichRunInfo>,
+}
+
+enum DocxRichParagraphContext {
+    Body,
+    TableCell,
+}
+
+#[derive(Clone, Default)]
+struct DocxRichRunInfo {
+    text: String,
+    bold: bool,
+    italic: bool,
+    underline: String,
+    color: String,
+    size: String,
+}
+
+#[derive(Default)]
+struct DocxRichRunState {
+    info: DocxRichRunInfo,
+}
+
+#[derive(Default)]
+struct DocxRichTableState {
+    rows: Vec<Vec<String>>,
+    current_row: Option<Vec<String>>,
+    current_cell: Option<Vec<String>>,
+}
+
+struct DocxRichBlockReport {
+    index: usize,
+    kind: &'static str,
+    text: String,
+    style: String,
+    para_id: String,
+    handle: String,
+    content_hash: String,
+    runs: Vec<DocxRichRunInfo>,
+    table_rows: Vec<Vec<String>>,
+}
+
+fn docx_rich_block_reports(xml: &str, include_runs: bool) -> CliResult<Vec<DocxRichBlockReport>> {
+    let mut reader = NsReader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let para_id_counts = docx_body_para_id_counts(xml)?;
+    let mut stack: Vec<String> = Vec::new();
+    let mut word_stack: Vec<bool> = Vec::new();
+    let mut blocks = Vec::new();
+    let mut current_paragraph: Option<DocxRichParagraphState> = None;
+    let mut paragraph_context: Option<DocxRichParagraphContext> = None;
+    let mut current_run: Option<DocxRichRunState> = None;
+    let mut current_table: Option<DocxRichTableState> = None;
+    let mut body_table_depth = 0usize;
+    let mut in_t = false;
+    let mut skip_text_depth = 0usize;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let parent = stack.last().map(String::as_str);
+                let parent_is_word = word_stack.last().copied().unwrap_or(false);
+                let is_word = element_in_ns(reader.resolver(), &e, DOCX_W_NS);
+                if parent == Some("body") && name == "tbl" {
+                    current_table = Some(DocxRichTableState::default());
+                    body_table_depth = 1;
+                } else if current_table.is_some() && name == "tbl" {
+                    body_table_depth += 1;
+                } else if current_table.is_some()
+                    && body_table_depth == 1
+                    && parent == Some("tbl")
+                    && is_word
+                    && name == "tr"
+                {
+                    if let Some(table) = current_table.as_mut() {
+                        table.current_row = Some(Vec::new());
+                    }
+                } else if current_table.is_some()
+                    && body_table_depth == 1
+                    && parent == Some("tr")
+                    && parent_is_word
+                    && is_word
+                    && name == "tc"
+                {
+                    if let Some(table) = current_table.as_mut() {
+                        table.current_cell = Some(Vec::new());
+                    }
+                } else if parent == Some("body") && name == "p" {
+                    current_paragraph = Some(DocxRichParagraphState {
+                        para_id: docx_para_id_ns(&e, reader.resolver()).unwrap_or_default(),
+                        ..DocxRichParagraphState::default()
+                    });
+                    paragraph_context = Some(DocxRichParagraphContext::Body);
+                } else if current_table.is_some()
+                    && body_table_depth == 1
+                    && parent == Some("tc")
+                    && parent_is_word
+                    && is_word
+                    && name == "p"
+                {
+                    current_paragraph = Some(DocxRichParagraphState::default());
+                    paragraph_context = Some(DocxRichParagraphContext::TableCell);
+                } else if include_runs
+                    && matches!(paragraph_context, Some(DocxRichParagraphContext::Body))
+                    && parent == Some("p")
+                    && is_word
+                    && name == "r"
+                {
+                    current_run = Some(DocxRichRunState::default());
+                }
+
+                docx_rich_note_empty_or_start(
+                    &e,
+                    reader.resolver(),
+                    &stack,
+                    &word_stack,
+                    &mut current_paragraph,
+                    &mut current_run,
+                    skip_text_depth,
+                );
+                if name == "t" {
+                    in_t = true;
+                }
+                if name == "delText" || name == "instrText" {
+                    skip_text_depth += 1;
+                }
+                stack.push(name);
+                word_stack.push(is_word);
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let parent = stack.last().map(String::as_str);
+                let parent_is_word = word_stack.last().copied().unwrap_or(false);
+                let is_word = element_in_ns(reader.resolver(), &e, DOCX_W_NS);
+                if parent == Some("body") && name == "p" {
+                    let paragraph = DocxRichParagraphState {
+                        para_id: docx_para_id_ns(&e, reader.resolver()).unwrap_or_default(),
+                        ..DocxRichParagraphState::default()
+                    };
+                    blocks.push(docx_rich_paragraph_report(
+                        blocks.len() + 1,
+                        paragraph,
+                        &para_id_counts,
+                    ));
+                } else if parent == Some("body") && name == "tbl" {
+                    blocks.push(docx_rich_table_report(blocks.len() + 1, Vec::new()));
+                } else if current_table.is_some()
+                    && body_table_depth == 1
+                    && parent == Some("tr")
+                    && parent_is_word
+                    && is_word
+                    && name == "tc"
+                {
+                    if let Some(row) = current_table
+                        .as_mut()
+                        .and_then(|table| table.current_row.as_mut())
+                    {
+                        row.push(String::new());
+                    }
+                } else if current_table.is_some()
+                    && body_table_depth == 1
+                    && parent == Some("tbl")
+                    && is_word
+                    && name == "tr"
+                {
+                    if let Some(table) = current_table.as_mut() {
+                        table.rows.push(Vec::new());
+                    }
+                } else if current_table.is_some()
+                    && body_table_depth == 1
+                    && parent == Some("tc")
+                    && parent_is_word
+                    && is_word
+                    && name == "p"
+                    && let Some(cell) = current_table
+                        .as_mut()
+                        .and_then(|table| table.current_cell.as_mut())
+                {
+                    cell.push(String::new());
+                }
+                docx_rich_note_empty_or_start(
+                    &e,
+                    reader.resolver(),
+                    &stack,
+                    &word_stack,
+                    &mut current_paragraph,
+                    &mut current_run,
+                    skip_text_depth,
+                );
+            }
+            Ok(Event::Text(e)) if in_t && skip_text_depth == 0 => {
+                docx_rich_append_text(
+                    &mut current_paragraph,
+                    &mut current_run,
+                    &decode_xml_text(e.as_ref()),
+                );
+            }
+            Ok(Event::GeneralRef(e)) if in_t && skip_text_depth == 0 => {
+                docx_rich_append_text(
+                    &mut current_paragraph,
+                    &mut current_run,
+                    &xml_general_ref(e.as_ref()),
+                );
+            }
+            Ok(Event::CData(e)) if in_t && skip_text_depth == 0 => {
+                docx_rich_append_text(
+                    &mut current_paragraph,
+                    &mut current_run,
+                    &String::from_utf8_lossy(e.as_ref()),
+                );
+            }
+            Ok(Event::End(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                match name.as_str() {
+                    "t" => in_t = false,
+                    "delText" | "instrText" => {
+                        skip_text_depth = skip_text_depth.saturating_sub(1);
+                    }
+                    "r" => {
+                        if let Some(run) = current_run.take()
+                            && let Some(paragraph) = current_paragraph.as_mut()
+                            && docx_rich_run_has_content(&run.info)
+                        {
+                            paragraph.runs.push(run.info);
+                        }
+                    }
+                    "p" => {
+                        if let (Some(paragraph), Some(context)) =
+                            (current_paragraph.take(), paragraph_context.take())
+                        {
+                            match context {
+                                DocxRichParagraphContext::Body => {
+                                    blocks.push(docx_rich_paragraph_report(
+                                        blocks.len() + 1,
+                                        paragraph,
+                                        &para_id_counts,
+                                    ));
+                                }
+                                DocxRichParagraphContext::TableCell => {
+                                    if let Some(cell) = current_table
+                                        .as_mut()
+                                        .and_then(|table| table.current_cell.as_mut())
+                                    {
+                                        cell.push(paragraph.text);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    "tc" => {
+                        if body_table_depth == 1
+                            && let Some(table) = current_table.as_mut()
+                            && let Some(cell) = table.current_cell.take()
+                            && let Some(row) = table.current_row.as_mut()
+                        {
+                            row.push(cell.join("\n"));
+                        }
+                    }
+                    "tr" => {
+                        if body_table_depth == 1
+                            && let Some(table) = current_table.as_mut()
+                            && let Some(row) = table.current_row.take()
+                        {
+                            table.rows.push(row);
+                        }
+                    }
+                    "tbl" => {
+                        if body_table_depth == 1 {
+                            body_table_depth = 0;
+                            if let Some(table) = current_table.take() {
+                                blocks.push(docx_rich_table_report(blocks.len() + 1, table.rows));
+                            }
+                        } else if body_table_depth > 1 {
+                            body_table_depth -= 1;
+                        } else if let Some(table) = current_table.take() {
+                            blocks.push(docx_rich_table_report(blocks.len() + 1, table.rows));
+                        }
+                    }
+                    _ => {}
+                }
+                stack.pop();
+                word_stack.pop();
+            }
+            Ok(Event::Eof) => {
+                if !stack.is_empty() {
+                    return Err(CliError::unexpected("invalid DOCX XML"));
+                }
+                break;
+            }
+            Err(err) => {
+                return Err(CliError::unexpected(format!(
+                    "failed to extract DOCX blocks: {err}"
+                )));
+            }
+            _ => {}
+        }
+    }
+
+    Ok(blocks)
+}
+
+fn docx_rich_note_empty_or_start(
+    element: &BytesStart<'_>,
+    resolver: &NamespaceResolver,
+    stack: &[String],
+    word_stack: &[bool],
+    current_paragraph: &mut Option<DocxRichParagraphState>,
+    current_run: &mut Option<DocxRichRunState>,
+    skip_text_depth: usize,
+) {
+    let qualified_name = element.name();
+    let name = local_name(qualified_name.as_ref());
+    if matches!(name, "tab" | "br" | "cr" | "noBreakHyphen") && skip_text_depth == 0 {
+        let text = match name {
+            "tab" => "\t",
+            "br" | "cr" => "\n",
+            "noBreakHyphen" => "-",
+            _ => "",
+        };
+        docx_rich_append_text(current_paragraph, current_run, text);
+        return;
+    }
+
+    if let Some(paragraph) = current_paragraph.as_mut()
+        && name == "pStyle"
+        && element_in_ns(resolver, element, DOCX_W_NS)
+        && stack.last().is_some_and(|parent| parent == "pPr")
+        && word_stack.last().copied().unwrap_or(false)
+        && let Some(style) = docx_word_val_ns(element, resolver).filter(|style| !style.is_empty())
+    {
+        paragraph.style = style;
+    }
+
+    if stack.last().is_some_and(|parent| parent == "rPr")
+        && word_stack.last().copied().unwrap_or(false)
+        && element_in_ns(resolver, element, DOCX_W_NS)
+        && let Some(run) = current_run.as_mut()
+    {
+        docx_rich_note_run_prop(element, resolver, name, &mut run.info);
+    }
+}
+
+fn docx_rich_note_run_prop(
+    element: &BytesStart<'_>,
+    resolver: &NamespaceResolver,
+    name: &str,
+    run: &mut DocxRichRunInfo,
+) {
+    match name {
+        "b" => run.bold = docx_word_toggle_enabled(element, resolver),
+        "i" => run.italic = docx_word_toggle_enabled(element, resolver),
+        "u" => {
+            let value = docx_word_val_ns(element, resolver).unwrap_or_else(|| "single".to_string());
+            if value != "none" && value != "0" {
+                run.underline = value;
+            }
+        }
+        "color" => {
+            if let Some(value) = docx_word_val_ns(element, resolver) {
+                run.color = value;
+            }
+        }
+        "sz" => {
+            if let Some(value) = docx_word_val_ns(element, resolver) {
+                run.size = value;
+            }
+        }
+        _ => {}
+    }
+}
+
+fn docx_word_toggle_enabled(element: &BytesStart<'_>, resolver: &NamespaceResolver) -> bool {
+    let Some(value) = docx_word_val_ns(element, resolver) else {
+        return true;
+    };
+    match value.to_ascii_lowercase().as_str() {
+        "" | "1" | "true" | "on" => true,
+        "0" | "false" | "off" => false,
+        _ => true,
+    }
+}
+
+fn docx_rich_append_text(
+    current_paragraph: &mut Option<DocxRichParagraphState>,
+    current_run: &mut Option<DocxRichRunState>,
+    text: &str,
+) {
+    if let Some(paragraph) = current_paragraph.as_mut() {
+        paragraph.text.push_str(text);
+    }
+    if let Some(run) = current_run.as_mut() {
+        run.info.text.push_str(text);
+    }
+}
+
+fn docx_rich_run_has_content(run: &DocxRichRunInfo) -> bool {
+    !run.text.is_empty()
+        || run.bold
+        || run.italic
+        || !run.underline.is_empty()
+        || !run.color.is_empty()
+        || !run.size.is_empty()
+}
+
+fn docx_rich_paragraph_report(
+    index: usize,
+    paragraph: DocxRichParagraphState,
+    para_id_counts: &BTreeMap<String, usize>,
+) -> DocxRichBlockReport {
+    let normalized_para_id = paragraph.para_id.trim().to_ascii_uppercase();
+    let handle = if !paragraph.para_id.is_empty()
+        && para_id_counts
+            .get(&normalized_para_id)
+            .copied()
+            .unwrap_or_default()
+            == 1
+    {
+        format!("H:docx/pt:doc/para:m:{}", paragraph.para_id)
+    } else {
+        String::new()
+    };
+    let content_hash = docx_rich_block_content_hash("paragraph", &paragraph.style, &paragraph.text);
+    DocxRichBlockReport {
+        index,
+        kind: "paragraph",
+        text: paragraph.text,
+        style: paragraph.style,
+        para_id: paragraph.para_id,
+        handle,
+        content_hash,
+        runs: paragraph.runs,
+        table_rows: Vec::new(),
+    }
+}
+
+fn docx_rich_table_report(index: usize, rows: Vec<Vec<String>>) -> DocxRichBlockReport {
+    let text = docx_rich_table_text(&rows);
+    let content_hash = docx_rich_block_content_hash("table", "", &text);
+    DocxRichBlockReport {
+        index,
+        kind: "table",
+        text,
+        style: String::new(),
+        para_id: String::new(),
+        handle: String::new(),
+        content_hash,
+        runs: Vec::new(),
+        table_rows: rows,
+    }
+}
+
+fn docx_rich_block_json(report: DocxRichBlockReport) -> Value {
+    let mut block = Map::new();
+    block.insert("id".to_string(), json!(format!("body.b{}", report.index)));
+    block.insert("index".to_string(), json!(report.index));
+    block.insert("kind".to_string(), json!(report.kind));
+    block.insert("text".to_string(), json!(report.text));
+    block.insert(
+        "primarySelector".to_string(),
+        json!(report.index.to_string()),
+    );
+    block.insert("selectors".to_string(), json!([report.index.to_string()]));
+    if !report.para_id.is_empty() {
+        block.insert("paraId".to_string(), json!(report.para_id));
+    }
+    if !report.handle.is_empty() {
+        block.insert("handle".to_string(), json!(report.handle));
+    }
+    block.insert("contentHash".to_string(), json!(report.content_hash));
+    if report.kind == "paragraph" {
+        let mut paragraph = Map::new();
+        if !report.style.is_empty() {
+            paragraph.insert("style".to_string(), json!(report.style));
+        }
+        if !report.runs.is_empty() {
+            paragraph.insert(
+                "runs".to_string(),
+                Value::Array(report.runs.into_iter().map(docx_rich_run_json).collect()),
+            );
+        }
+        block.insert("paragraph".to_string(), Value::Object(paragraph));
+    } else if report.kind == "table" {
+        let rows: Vec<Value> = report
+            .table_rows
+            .iter()
+            .map(|row| {
+                let cells: Vec<Value> = row.iter().map(|text| json!({"text": text})).collect();
+                json!({"cells": cells})
+            })
+            .collect();
+        block.insert("table".to_string(), json!({"rows": rows}));
+    }
+    Value::Object(block)
+}
+
+fn docx_rich_run_json(run: DocxRichRunInfo) -> Value {
+    let mut object = Map::new();
+    object.insert("text".to_string(), json!(run.text));
+    if run.bold {
+        object.insert("bold".to_string(), json!(true));
+    }
+    if run.italic {
+        object.insert("italic".to_string(), json!(true));
+    }
+    if !run.underline.is_empty() {
+        object.insert("underline".to_string(), json!(run.underline));
+    }
+    if !run.color.is_empty() {
+        object.insert("color".to_string(), json!(run.color));
+    }
+    if !run.size.is_empty() {
+        object.insert("size".to_string(), json!(run.size));
+    }
+    Value::Object(object)
+}
+
+fn docx_rich_table_text(rows: &[Vec<String>]) -> String {
+    rows.iter()
+        .map(|row| row.join("\t"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn docx_rich_block_content_hash(kind: &str, style: &str, text: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(kind.as_bytes());
+    hasher.update([0]);
+    hasher.update(style.as_bytes());
+    hasher.update([0]);
+    hasher.update(text.as_bytes());
+    format!("sha256:{:x}", hasher.finalize())
+}
+
+fn docx_body_para_id_counts(xml: &str) -> CliResult<BTreeMap<String, usize>> {
+    let mut reader = NsReader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut stack: Vec<String> = Vec::new();
+    let mut word_stack: Vec<bool> = Vec::new();
+    let mut counts = BTreeMap::new();
+    let mut saw_root = false;
+    let mut saw_body = false;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let is_word = element_in_ns(reader.resolver(), &e, DOCX_W_NS);
+                if stack.is_empty() {
+                    if name != "document" || !is_word {
+                        return Err(CliError::unexpected("document root element not found"));
+                    }
+                    saw_root = true;
+                }
+                if stack.last().is_some_and(|parent| parent == "document")
+                    && word_stack.last().copied().unwrap_or(false)
+                    && name == "body"
+                    && is_word
+                {
+                    saw_body = true;
+                }
+                if stack.last().is_some_and(|parent| parent == "body")
+                    && name == "p"
+                    && let Some(para_id) = docx_para_id_ns(&e, reader.resolver())
+                {
+                    *counts.entry(para_id.to_ascii_uppercase()).or_insert(0) += 1;
+                }
+                stack.push(name);
+                word_stack.push(is_word);
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let is_word = element_in_ns(reader.resolver(), &e, DOCX_W_NS);
+                if stack.is_empty() {
+                    if name != "document" || !is_word {
+                        return Err(CliError::unexpected("document root element not found"));
+                    }
+                    saw_root = true;
+                }
+                if stack.last().is_some_and(|parent| parent == "document")
+                    && word_stack.last().copied().unwrap_or(false)
+                    && name == "body"
+                    && is_word
+                {
+                    saw_body = true;
+                }
+                if stack.last().is_some_and(|parent| parent == "body")
+                    && name == "p"
+                    && let Some(para_id) = docx_para_id_ns(&e, reader.resolver())
+                {
+                    *counts.entry(para_id.to_ascii_uppercase()).or_insert(0) += 1;
+                }
+            }
+            Ok(Event::End(_)) => {
+                stack.pop();
+                word_stack.pop();
+            }
+            Ok(Event::Eof) => {
+                if !stack.is_empty() {
+                    return Err(CliError::unexpected("invalid DOCX XML"));
+                }
+                break;
+            }
+            Err(err) => {
+                return Err(CliError::unexpected(format!(
+                    "failed to extract DOCX blocks: {err}"
+                )));
+            }
+            _ => {}
+        }
+    }
+    if !saw_root {
+        return Err(CliError::unexpected("document root element not found"));
+    }
+    if !saw_body {
+        return Err(CliError::unexpected("document body element not found"));
+    }
+    Ok(counts)
+}
+
 fn copy_zip_with_replacement(
     input: &str,
     output: &str,
@@ -9945,6 +10669,30 @@ fn copy_zip_with_part_overrides(
 fn attr(e: &BytesStart<'_>, wanted_local: &str) -> Option<String> {
     e.attributes().flatten().find_map(|a| {
         if local_name(a.key.as_ref()) == wanted_local {
+            Some(decode_xml_text(a.value.as_ref()))
+        } else {
+            None
+        }
+    })
+}
+
+fn attr_prefixed_ns(
+    e: &BytesStart<'_>,
+    resolver: &NamespaceResolver,
+    wanted_prefix: &[u8],
+    wanted_ns: &[u8],
+    wanted_local: &[u8],
+) -> Option<String> {
+    e.attributes().flatten().find_map(|a| {
+        let raw = a.key.as_ref();
+        let colon = raw.iter().position(|byte| *byte == b':')?;
+        if &raw[..colon] != wanted_prefix || &raw[colon + 1..] != wanted_local {
+            return None;
+        }
+        let (resolved, local) = resolver.resolve_attribute(a.key);
+        if matches!(resolved, ResolveResult::Bound(Namespace(uri)) if uri == wanted_ns)
+            && local.as_ref() == wanted_local
+        {
             Some(decode_xml_text(a.value.as_ref()))
         } else {
             None
