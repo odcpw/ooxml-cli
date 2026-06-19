@@ -95,5 +95,8 @@ Use this when character budget is tight:
 ```text
 Read and follow GOAL.md. Use the named `$` skills there. Continue the Rust port
 until Go is preserved as the oracle branch and the Rust branch reaches proven
-full parity through the frozen contract and Go-vs-Rust conformance harness.
+full parity through the frozen contract and Go-vs-Rust conformance harness. Do
+not run the full Go test suite for each Rust-only slice; Go is not being changed.
+Use targeted Go-vs-Rust checks unless a milestone gate or Go/contract change
+requires broader Go verification.
 ```
