@@ -10,6 +10,15 @@ Do not claim parity from intention, partial tests, or similar-looking output.
 Parity means current evidence proves the Rust subject matches the Go oracle for
 the relevant command surface.
 
+## Test Cadence Override
+
+This is a Rust port. Normal slices change Rust, not Go. Do **not** run the full
+Go test suite after each Rust-only slice. In particular, do **not** run
+`go test ./...` as a reflex check. Use targeted Go CLI oracle comparisons only
+for the exact command path being ported or audited. Reserve full Go tests for
+milestone gates, Go-side edits, frozen contract changes, or a concrete reason
+to distrust the oracle baseline.
+
 ## Required Skills
 
 Use these skills explicitly:
