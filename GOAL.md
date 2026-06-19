@@ -18,7 +18,9 @@ package tests, or Go unit tests as reflex checks while only the Rust subject is
 changing. Use the Go implementation by running its CLI as the oracle for the
 exact command path being ported or audited. Reserve Go tests for milestone
 gates, Go-side edits, frozen contract changes, or a concrete reason to distrust
-the oracle baseline.
+the oracle baseline. If the current slice changes only Rust code, Rust tests,
+Rust docs/status files, or the differential harness, the default loop is Rust
+verification plus focused Go CLI oracle comparisons, not Go test suites.
 
 ## Required Skills
 
@@ -69,6 +71,8 @@ crates and document why.
 - In regular Rust port work, do not run `go test ./...`, package-level Go
   tests, or Go unit tests. Run the Go CLI only as the comparison oracle for the
   exact command path under port.
+- Do not run Go tests "just in case" after Rust-only edits. The absence of Go
+  changes is itself the reason to skip Go test suites.
 - Reserve Go tests for milestone gates, Go-side edits, frozen contract changes,
   or a concrete reason to distrust the oracle baseline.
 - Port by command surface, not vague module mirroring.
