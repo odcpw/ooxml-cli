@@ -919,6 +919,138 @@ fn xlsx_ranges_set_matches_go_oracle_and_saved_output() {
 }
 
 #[test]
+fn xlsx_cells_set_matches_go_oracle_and_emitted_commands_run() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-cells-set-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    let go_out_path = temp_dir.join("go-out.xlsx");
+    let rust_out_path = temp_dir.join("rust-out.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("stage go input");
+    fs::copy(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &rust_in_path,
+    )
+    .expect("stage rust input");
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let go_out = go_out_path.to_string_lossy().to_string();
+    let rust_out = rust_out_path.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json", "xlsx", "cells", "set", &go_in, "--sheet", "Sheet1", "--cell", "B2", "--value",
+        "42.50", "--type", "number", "--out", &go_out,
+    ];
+    let rust_args = [
+        "--json", "xlsx", "cells", "set", &rust_in, "--sheet", "Sheet1", "--cell", "B2", "--value",
+        "42.50", "--type", "number", "--out", &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "cells set exit");
+    assert_eq!(rust_stderr, go_stderr, "cells set stderr");
+    let go_json = scrub_paths(
+        go_stdout.expect("go cells set stdout"),
+        &[(&go_in, "[IN]"), (&go_out, "[OUT]")],
+    );
+    let rust_raw = rust_stdout.expect("rust cells set stdout");
+    let rust_json = scrub_paths(
+        rust_raw.clone(),
+        &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")],
+    );
+    assert_eq!(rust_json, go_json, "cells set stdout");
+    for field in [
+        "validateCommand",
+        "cellsExtractCommand",
+        "rangesExportCommand",
+    ] {
+        assert_rust_emitted_ooxml_command_succeeds(&rust_raw, field);
+    }
+
+    let export_args_go = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &go_out,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "B2",
+        "--include-types",
+        "--include-formulas",
+    ];
+    let export_args_rust = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &rust_out,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "B2",
+        "--include-types",
+        "--include-formulas",
+    ];
+    let (go_code, go_export, go_stderr) = run_go_ooxml(&export_args_go);
+    let (rust_code, rust_export, rust_stderr) = run_go_ooxml(&export_args_rust);
+    assert_eq!(rust_code, go_code, "saved cells set export exit");
+    assert_eq!(rust_stderr, go_stderr, "saved cells set export stderr");
+    assert_eq!(
+        scrub_path(rust_export.expect("rust saved export"), &rust_out, "[OUT]"),
+        scrub_path(go_export.expect("go saved export"), &go_out, "[OUT]"),
+        "saved cells set readback"
+    );
+
+    let dry_go = [
+        "--json",
+        "xlsx",
+        "cells",
+        "set",
+        &go_in,
+        "--sheet",
+        "MissingSheetIsIgnoredForHandle",
+        "--cell",
+        "H:xlsx/ws:1/cell:a:A1",
+        "--value",
+        "handled",
+        "--dry-run",
+    ];
+    let dry_rust = [
+        "--json",
+        "xlsx",
+        "cells",
+        "set",
+        &rust_in,
+        "--sheet",
+        "MissingSheetIsIgnoredForHandle",
+        "--cell",
+        "H:xlsx/ws:1/cell:a:A1",
+        "--value",
+        "handled",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
+    assert_eq!(rust_code, go_code, "cells set handle dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "cells set handle dry-run stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust handle dry-run stdout"),
+            &rust_in,
+            "[IN]"
+        ),
+        scrub_path(go_stdout.expect("go handle dry-run stdout"), &go_in, "[IN]"),
+        "cells set handle dry-run stdout"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_ranges_set_format_matches_go_oracle_and_saved_output() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-ranges-set-format-{}",
@@ -6931,6 +7063,28 @@ fn nullable(value: &Value) -> Option<Value> {
 
 fn scrub_path(value: Value, from: &str, to: &str) -> Value {
     scrub_paths(value, &[(from, to)])
+}
+
+fn assert_rust_emitted_ooxml_command_succeeds(result: &Value, field: &str) {
+    let command = result[field]
+        .as_str()
+        .unwrap_or_else(|| panic!("{field} command string"));
+    let args = emitted_ooxml_args(command);
+    let borrowed = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let (code, stdout, stderr) = run_ooxml(&borrowed);
+    assert_eq!(code, 0, "emitted {field} exit for {command}");
+    assert_eq!(stderr, None, "emitted {field} stderr for {command}");
+    assert!(stdout.is_some(), "emitted {field} stdout for {command}");
+}
+
+fn emitted_ooxml_args(command: &str) -> Vec<String> {
+    let command = command
+        .strip_prefix("ooxml ")
+        .unwrap_or_else(|| panic!("emitted command must start with ooxml: {command}"));
+    command
+        .split_whitespace()
+        .map(ToString::to_string)
+        .collect()
 }
 
 fn scrub_dynamic(value: Value, replacements: &[(String, String)]) -> Value {
