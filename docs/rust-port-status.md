@@ -102,31 +102,36 @@ Latest milestone, 2026-06-19:
   hashing moved from `src/main.rs` into `src/docx_block_readers.rs`.
 - DOCX text and body block command wrappers for show, insert-after, replace,
   and delete moved from `src/main.rs` into `src/docx_block_commands.rs`, with
-  shared paragraph mutation helpers left at the crate root until the remaining
-  paragraph/style seams are split.
+  shared body/paragraph XML helpers now provided by `src/docx_xml.rs` through
+  the crate facade.
 - DOCX paragraph append/insert/set/clear command wrappers and required
   set-text argument validation moved from `src/main.rs` into
-  `src/docx_paragraph_commands.rs`, still sharing the crate-root body XML and
-  handle mutation helpers used by styles.
+  `src/docx_paragraph_commands.rs`, using the shared `src/docx_xml.rs` body XML
+  and handle mutation helpers also used by styles.
 - Shared DOCX mutation primitives for output path resolution, package writes,
   text-file resolution, DOCX package guards, strict-validate command text, and
   paragraph handle errors/resolution moved from `src/main.rs` into
   `src/docx_mutation_core.rs`.
 - DOCX style list/show/apply commands, style catalog parsing, style handle
   parsing, and style-specific XML rewrite helpers moved from `src/main.rs`
-  into `src/docx_styles.rs`, while shared body/table XML helpers remain at the
-  crate root.
+  into `src/docx_styles.rs`, while shared body/table XML helpers live in
+  `src/docx_xml.rs`.
 - DOCX field listing, field insertion, cached-result mutation, field-location
   parsing, simple/complex field detection, and field XML rewrite helpers moved
   from `src/main.rs` into `src/docx_fields.rs`.
 - DOCX header/footer list/show/set-text commands, selector parsing,
   section/reference creation, relationship/content-type wiring, part templates,
   and readback command generation moved from `src/main.rs` into
-  `src/docx_headers.rs`, while shared paragraph-fragment text extraction stays
-  at the crate facade for `docx_fields`.
+  `src/docx_headers.rs`, using shared paragraph-fragment text extraction from
+  `src/docx_xml.rs` through the crate facade.
 - DOCX table show/set-cell/clear-cell commands, table summary rendering,
   table-cell XML rewrites, and table readback command generation moved from
   `src/main.rs` into `src/docx_tables.rs`.
+- Shared DOCX Word XML constants, paragraph/text fragment readers, body block
+  range walkers, paragraph rendering/insertion/replacement, table scaffolding,
+  `w14:paraId` stamping, and namespace helpers moved from `src/main.rs` into
+  `src/docx_xml.rs`, while existing command modules keep importing through the
+  crate facade.
 - XLSX range export, JSON range rendering, data-out writing, data-format
   normalization, and range max-cell guards moved from `src/main.rs` into
   `src/xlsx_ranges.rs`.
