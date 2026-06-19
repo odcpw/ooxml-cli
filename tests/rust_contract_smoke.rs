@@ -2038,6 +2038,96 @@ fn docx_blocks_match_go_oracle() {
 }
 
 #[test]
+fn docx_tables_show_matches_go_oracle() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "tables",
+            "show",
+            "testdata/docx/table/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "tables",
+            "show",
+            "testdata/docx/table/document.docx",
+            "--table",
+            "1",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "tables",
+            "show",
+            "testdata/docx/merged-table/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "tables",
+            "show",
+            "testdata/docx/table/document.docx",
+            "--details",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "tables",
+            "show",
+            "testdata/docx/minimal/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "tables",
+            "show",
+            "testdata/docx/table/document.docx",
+            "--table",
+            "2",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "tables",
+            "show",
+            "testdata/docx/table/document.docx",
+            "--table",
+            "-1",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "tables",
+            "show",
+            "testdata/docx/corrupted-missing-document/document.docx",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "tables",
+            "show",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-docx-tables-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx tables temp dir");
+    let nested_table_docx = temp_dir.join("nested-table.docx");
+    write_nested_table_docx(&nested_table_docx);
+    let nested_table_docx = nested_table_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "docx", "tables", "show", &nested_table_docx]);
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_styles_list_and_show_match_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
@@ -3254,6 +3344,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(all_stderr, None);
     let all_caps = all_stdout.expect("all capabilities");
     assert_command(&all_caps, "ooxml version", false);
+    assert_command(&all_caps, "ooxml docx tables show", false);
 
     let (pptx_code, pptx_stdout, pptx_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "pptx"]);
@@ -3302,6 +3393,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml xlsx tables show", false);
     assert_command(&table_caps, "ooxml xlsx tables export", false);
     assert_no_command(&table_caps, "ooxml docx blocks");
+    assert_no_command(&table_caps, "ooxml docx tables show");
 
     let (paragraph_code, paragraph_stdout, paragraph_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "paragraph"]);
@@ -3325,6 +3417,13 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(comment_stderr, None);
     let comment_caps = comment_stdout.expect("comment capabilities");
     assert_command(&comment_caps, "ooxml docx comments list", false);
+
+    let (docx_code, docx_stdout, docx_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "docx"]);
+    assert_eq!(docx_code, 0);
+    assert_eq!(docx_stderr, None);
+    let docx_caps = docx_stdout.expect("docx capabilities");
+    assert_command(&docx_caps, "ooxml docx tables show", false);
 }
 
 #[test]
@@ -3342,10 +3441,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 25, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 26, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        265,
+        264,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

@@ -412,6 +412,17 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             let comment_id = parse_i64_flag(rest, "--comment-id")?;
             docx_comments_list(file, comment_id)
         }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "tables" && verb == "show" =>
+        {
+            reject_unknown_flags(rest, &["--table"], &["--details"])?;
+            let table = parse_i64_flag(rest, "--table")?.unwrap_or(0);
+            if table < 0 {
+                return Err(CliError::invalid_args("--table must be positive"));
+            }
+            let include_details = has_flag(rest, "--details");
+            docx_tables_show(file, table as usize, include_details)
+        }
         [family, verb, file, rest @ ..] if family == "pptx" && verb == "render" => {
             pptx_render(file, rest)
         }
@@ -1345,6 +1356,30 @@ fn capability_commands() -> Vec<Value> {
                 "int",
                 "show only the comment with this numeric w:id",
             )],
+        ),
+        capability_command(
+            "ooxml docx tables show",
+            "show <file>",
+            "Show DOCX tables by table index, body block index, dimensions, merged-cell flag, and cell text.",
+            &[],
+            false,
+            Some(
+                "read-only command; generated table hashes feed hash-guarded DOCX table mutations",
+            ),
+            vec![
+                flag(
+                    "--details",
+                    "details",
+                    "bool",
+                    "include detailed table object in JSON output",
+                ),
+                flag(
+                    "--table",
+                    "table",
+                    "int",
+                    "1-based table number; omitted shows all tables",
+                ),
+            ],
         ),
     ]
 }
@@ -5868,6 +5903,104 @@ fn docx_comments_list(file: &str, comment_id: Option<i64>) -> CliResult<Value> {
     Ok(Value::Object(result))
 }
 
+fn docx_tables_show(file: &str, table: usize, include_details: bool) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    let package_kind = detect_inspect_package_type(file, &entries);
+    if package_kind != InspectPackageKind::Docx {
+        let detected = match package_kind {
+            InspectPackageKind::Pptx => "pptx",
+            InspectPackageKind::Xlsx => "xlsx",
+            InspectPackageKind::Docx => "docx",
+            InspectPackageKind::Unknown => package_type(file)?,
+        };
+        return Err(CliError::unsupported_type(format!(
+            "file is not a DOCX document (detected: {detected})"
+        )));
+    }
+
+    let document_part = find_docx_document_part(file, &entries)?;
+    let document_uri = format!("/{}", document_part.trim_start_matches('/'));
+    let xml = zip_text(file, &document_part).map_err(|_| {
+        CliError::unexpected(format!(
+            "failed to read main document: part {document_uri} not found"
+        ))
+    })?;
+    let reports = docx_rich_block_reports(&xml, false).map_err(|err| {
+        if err.message == "invalid DOCX XML"
+            || err.message.starts_with("failed to extract DOCX blocks:")
+        {
+            CliError::unexpected(format!(
+                "failed to read main document: failed to read document part {document_uri}: failed to parse XML part {document_uri}: etree: invalid XML format"
+            ))
+        } else {
+            CliError::unexpected(format!("failed to read main document: {}", err.message))
+        }
+    })?;
+
+    let mut table_number = 0usize;
+    let mut tables = Vec::new();
+    for report in reports.into_iter().filter(|report| report.kind == "table") {
+        table_number += 1;
+        if table > 0 && table_number != table {
+            continue;
+        }
+        tables.push(docx_table_summary_json(
+            file,
+            table_number,
+            report,
+            include_details,
+        ));
+    }
+    if table > 0 && tables.is_empty() {
+        return Err(CliError::target_not_found(format!(
+            "target not found: table {table}"
+        )));
+    }
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert(
+        "tables".to_string(),
+        if tables.is_empty() {
+            Value::Null
+        } else {
+            Value::Array(tables)
+        },
+    );
+    Ok(Value::Object(result))
+}
+
+fn docx_table_summary_json(
+    file: &str,
+    table_number: usize,
+    report: DocxRichBlockReport,
+    include_details: bool,
+) -> Value {
+    let rows = report.table_rows;
+    let row_count = rows.len();
+    let col_count = rows.iter().map(Vec::len).max().unwrap_or_default();
+    let mut table = Map::new();
+    table.insert("file".to_string(), json!(file));
+    table.insert("table".to_string(), json!(table_number));
+    table.insert("block".to_string(), json!(report.index));
+    table.insert(
+        "primarySelector".to_string(),
+        json!(table_number.to_string()),
+    );
+    table.insert("selectors".to_string(), json!([table_number.to_string()]));
+    table.insert("contentHash".to_string(), json!(report.content_hash));
+    table.insert("rows".to_string(), json!(row_count));
+    table.insert("cols".to_string(), json!(col_count));
+    table.insert("merged".to_string(), json!(report.table_merged));
+    if include_details {
+        let detail_rows: Vec<Value> = rows.iter().map(|row| json!({"cells": row})).collect();
+        table.insert("tableInfo".to_string(), json!({"rows": detail_rows}));
+    } else {
+        table.insert("cells".to_string(), json!(rows));
+    }
+    Value::Object(table)
+}
+
 fn docx_document_and_comments_parts(file: &str) -> CliResult<(String, Option<String>)> {
     let entries = zip_entry_names(file)?;
     if detect_inspect_package_type(file, &entries) != InspectPackageKind::Docx {
@@ -9965,6 +10098,7 @@ struct DocxRichTableState {
     rows: Vec<Vec<String>>,
     current_row: Option<Vec<String>>,
     current_cell: Option<Vec<String>>,
+    merged: bool,
 }
 
 struct DocxRichBlockReport {
@@ -9977,6 +10111,7 @@ struct DocxRichBlockReport {
     content_hash: String,
     runs: Vec<DocxRichRunInfo>,
     table_rows: Vec<Vec<String>>,
+    table_merged: bool,
 }
 
 fn docx_rich_block_reports(xml: &str, include_runs: bool) -> CliResult<Vec<DocxRichBlockReport>> {
@@ -10048,6 +10183,13 @@ fn docx_rich_block_reports(xml: &str, include_runs: bool) -> CliResult<Vec<DocxR
                 {
                     current_run = Some(DocxRichRunState::default());
                 }
+                if current_table.is_some()
+                    && is_word
+                    && matches!(name.as_str(), "gridSpan" | "vMerge")
+                    && let Some(table) = current_table.as_mut()
+                {
+                    table.merged = true;
+                }
 
                 docx_rich_note_empty_or_start(
                     &e,
@@ -10083,7 +10225,7 @@ fn docx_rich_block_reports(xml: &str, include_runs: bool) -> CliResult<Vec<DocxR
                         &para_id_counts,
                     ));
                 } else if parent == Some("body") && name == "tbl" {
-                    blocks.push(docx_rich_table_report(blocks.len() + 1, Vec::new()));
+                    blocks.push(docx_rich_table_report(blocks.len() + 1, Vec::new(), false));
                 } else if current_table.is_some()
                     && body_table_depth == 1
                     && parent == Some("tr")
@@ -10117,6 +10259,13 @@ fn docx_rich_block_reports(xml: &str, include_runs: bool) -> CliResult<Vec<DocxR
                         .and_then(|table| table.current_cell.as_mut())
                 {
                     cell.push(String::new());
+                }
+                if current_table.is_some()
+                    && is_word
+                    && matches!(name.as_str(), "gridSpan" | "vMerge")
+                    && let Some(table) = current_table.as_mut()
+                {
+                    table.merged = true;
                 }
                 docx_rich_note_empty_or_start(
                     &e,
@@ -10208,12 +10357,20 @@ fn docx_rich_block_reports(xml: &str, include_runs: bool) -> CliResult<Vec<DocxR
                         if body_table_depth == 1 {
                             body_table_depth = 0;
                             if let Some(table) = current_table.take() {
-                                blocks.push(docx_rich_table_report(blocks.len() + 1, table.rows));
+                                blocks.push(docx_rich_table_report(
+                                    blocks.len() + 1,
+                                    table.rows,
+                                    table.merged,
+                                ));
                             }
                         } else if body_table_depth > 1 {
                             body_table_depth -= 1;
                         } else if let Some(table) = current_table.take() {
-                            blocks.push(docx_rich_table_report(blocks.len() + 1, table.rows));
+                            blocks.push(docx_rich_table_report(
+                                blocks.len() + 1,
+                                table.rows,
+                                table.merged,
+                            ));
                         }
                     }
                     _ => {}
@@ -10370,10 +10527,15 @@ fn docx_rich_paragraph_report(
         content_hash,
         runs: paragraph.runs,
         table_rows: Vec::new(),
+        table_merged: false,
     }
 }
 
-fn docx_rich_table_report(index: usize, rows: Vec<Vec<String>>) -> DocxRichBlockReport {
+fn docx_rich_table_report(
+    index: usize,
+    rows: Vec<Vec<String>>,
+    merged: bool,
+) -> DocxRichBlockReport {
     let text = docx_rich_table_text(&rows);
     let content_hash = docx_rich_block_content_hash("table", "", &text);
     DocxRichBlockReport {
@@ -10386,6 +10548,7 @@ fn docx_rich_table_report(index: usize, rows: Vec<Vec<String>>) -> DocxRichBlock
         content_hash,
         runs: Vec::new(),
         table_rows: rows,
+        table_merged: merged,
     }
 }
 
