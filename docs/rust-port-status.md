@@ -74,6 +74,9 @@ Latest milestone, 2026-06-19:
   shared worksheet parser in place for later, lower-risk extraction.
 - DOCX image listing, relationship-target resolution, drawing scan state, and
   image reference extraction moved from `src/main.rs` into `src/docx_images.rs`.
+- DOCX body block readers, rich block reports, paragraph/table text extraction,
+  run formatting capture, namespace-aware paragraph handles, and block content
+  hashing moved from `src/main.rs` into `src/docx_block_readers.rs`.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
