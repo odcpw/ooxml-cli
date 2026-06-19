@@ -9595,6 +9595,39 @@ fn serve_pptx_generic_web_agent_edit_path_works() {
         Value::String(String::new())
     );
 
+    let masters_list_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            36,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx masters list",
+                "args": {},
+            }),
+        ),
+    );
+    assert_eq!(
+        masters_list_response["result"]["masters"][0]["primarySelector"],
+        Value::String("1".to_string())
+    );
+
+    let masters_show_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            37,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx masters show",
+                "args": {"master": 1},
+            }),
+        ),
+    );
+    assert_eq!(masters_show_response["result"]["shapes"], Value::from(12));
+
     let layouts_list_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
@@ -10259,6 +10292,63 @@ fn web_smoke_binary_readback_checks_are_supported() {
         vec![
             "--json",
             "pptx",
+            "masters",
+            "list",
+            "testdata/pptx/minimal-title/presentation.pptx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "masters",
+            "list",
+            "testdata/pptx/multi-layout/presentation.pptx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "masters",
+            "list",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "masters",
+            "show",
+            "testdata/pptx/minimal-title/presentation.pptx",
+            "--master",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "masters",
+            "show",
+            "testdata/pptx/multi-layout/presentation.pptx",
+            "--master",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "masters",
+            "show",
+            "testdata/pptx/minimal-title/presentation.pptx",
+            "--master",
+            "999",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "masters",
+            "show",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--master",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
             "layouts",
             "list",
             "testdata/pptx/minimal-title/presentation.pptx",
@@ -10518,6 +10608,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx extract text", false);
     assert_command(&all_caps, "ooxml pptx extract notes", false);
     assert_command(&all_caps, "ooxml pptx notes show", false);
+    assert_command(&all_caps, "ooxml pptx masters list", false);
+    assert_command(&all_caps, "ooxml pptx masters show", false);
     assert_command(&all_caps, "ooxml pptx layouts list", false);
     assert_command(&all_caps, "ooxml pptx layouts show", false);
     assert_command(&all_caps, "ooxml pptx tables show", false);
@@ -10554,6 +10646,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "footer",
         "image",
         "table",
+        "master",
         "layout",
         "placeholder",
         "style",
@@ -10576,6 +10669,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "header", "ooxml docx headers set-text");
     assert_object_kind_command(&all_caps, "footer", "ooxml docx footers set-text");
     assert_object_kind_command(&all_caps, "image", "ooxml docx images list");
+    assert_object_kind_command(&all_caps, "master", "ooxml pptx masters list");
+    assert_object_kind_command(&all_caps, "master", "ooxml pptx masters show");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments list");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments add");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments edit");
@@ -10594,6 +10689,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx slides selectors", false);
     assert_command(&pptx_caps, "ooxml pptx slides show", false);
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
+    assert_command(&pptx_caps, "ooxml pptx masters list", false);
+    assert_command(&pptx_caps, "ooxml pptx masters show", false);
     assert_command(&pptx_caps, "ooxml pptx layouts list", false);
     assert_command(&pptx_caps, "ooxml pptx layouts show", false);
     assert_command(&pptx_caps, "ooxml pptx tables show", false);
@@ -10651,11 +10748,21 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&layout_caps, "ooxml pptx layouts show", false);
     assert_no_command(&layout_caps, "ooxml pptx tables show");
 
+    let (master_code, master_stdout, master_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "master"]);
+    assert_eq!(master_code, 0);
+    assert_eq!(master_stderr, None);
+    let master_caps = master_stdout.expect("master capabilities");
+    assert_command(&master_caps, "ooxml pptx masters list", false);
+    assert_command(&master_caps, "ooxml pptx masters show", false);
+    assert_no_command(&master_caps, "ooxml pptx layouts show");
+
     let (placeholder_code, placeholder_stdout, placeholder_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "placeholder"]);
     assert_eq!(placeholder_code, 0);
     assert_eq!(placeholder_stderr, None);
     let placeholder_caps = placeholder_stdout.expect("placeholder capabilities");
+    assert_command(&placeholder_caps, "ooxml pptx masters show", false);
     assert_command(&placeholder_caps, "ooxml pptx layouts list", false);
     assert_command(&placeholder_caps, "ooxml pptx layouts show", false);
 
@@ -10799,10 +10906,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 60, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 62, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        230,
+        228,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
