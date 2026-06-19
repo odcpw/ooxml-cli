@@ -73,7 +73,10 @@ Latest milestone, 2026-06-19:
   `src/mcp_support.rs`, leaving MCP state logic separate from protocol support
   helpers.
 - MCP stdio runner and protocol state moved from `src/main.rs` into
-  `src/mcp.rs`, with the serve engine left in place for a later dedicated split.
+  `src/mcp.rs`, and the serve/session engine, JSON-RPC routing, operation
+  planning/readback, commit/abort flow, and working-copy management moved from
+  `src/main.rs` into `src/serve.rs`; MCP now reaches the engine through the
+  crate facade's `ServeState`.
 - XLSX workbook metadata inspect/update types, XML readers, property renderers,
   and calc-setting mutation helpers moved from `src/main.rs` into
   `src/xlsx_metadata.rs`, keeping CLI and serve call sites stable through the
