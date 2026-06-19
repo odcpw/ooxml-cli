@@ -72,6 +72,8 @@ Latest milestone, 2026-06-19:
 - XLSX sheet/cell read commands for `xlsx cells extract` and `xlsx sheets
   list/show` moved from `src/main.rs` into `src/xlsx_sheets.rs`, leaving the
   shared worksheet parser in place for later, lower-risk extraction.
+- DOCX image listing, relationship-target resolution, drawing scan state, and
+  image reference extraction moved from `src/main.rs` into `src/docx_images.rs`.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
