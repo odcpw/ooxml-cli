@@ -7,7 +7,7 @@ from `OOXML_GO_ORACLE_DIR`/`OOXML_GO_ORACLE_REF` when deliberately overridden.
 
 The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.json`.
 
-Latest milestone, 2026-06-19:
+Latest milestone, 2026-06-20:
 
 - Merged current `origin/master` hardening, including OPC inflate limits, CFB
   traversal guards, and new Go ingest fuzz harnesses.
@@ -169,12 +169,17 @@ Latest milestone, 2026-06-19:
   checks, and A1 range rendering moved from `src/xlsx_mutation.rs` into
   `src/xlsx_sheet_xml.rs`, keeping range writes and range-format writes on one
   shared worksheet substrate.
+- XLSX range set-format command routing, number-format resolution, styles part
+  scaffolding, and cell style XML updates moved from `src/xlsx_mutation.rs`
+  into `src/xlsx_mutation/format.rs`, leaving shared worksheet write helpers in
+  the mutation facade.
 - Serve `xlsx cells set` now delegates to the shared `xlsx_cells_set`
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
-- Proof after the split: `cargo fmt --check`,
-  `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
-  all pass with 77 Rust contract tests.
+- Proof after the latest split: `cargo test --test rust_contract_smoke
+  xlsx_ranges_set_format`, `cargo fmt --check`, `cargo clippy --all-targets --
+  -D warnings`, and `cargo test --all-targets` all pass with 77 Rust contract
+  tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
