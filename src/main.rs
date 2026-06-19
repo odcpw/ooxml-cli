@@ -455,10 +455,8 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
                 &["--text", "--text-file", "--style", "--out", "--backup"],
                 &["--dry-run", "--in-place", "--no-validate"],
             )?;
-            let text = resolve_optional_docx_paragraph_text(
-                parse_string_flag(rest, "--text")?,
-                parse_string_flag(rest, "--text-file")?,
-            )?;
+            let text = parse_string_flag(rest, "--text")?;
+            let text_file = parse_string_flag(rest, "--text-file")?;
             let style = parse_string_flag(rest, "--style")?.unwrap_or_default();
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
@@ -467,8 +465,48 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             let no_validate = has_flag(rest, "--no-validate");
             docx_paragraphs_append(
                 file,
-                DocxParagraphAppendOptions {
-                    text: &text,
+                DocxParagraphMutationOptions {
+                    text: text.as_deref(),
+                    text_file: text_file.as_deref(),
+                    style: &style,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "paragraphs" && verb == "insert" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--insert-after",
+                    "--text",
+                    "--text-file",
+                    "--style",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let insert_after = parse_i64_flag(rest, "--insert-after")?.unwrap_or(0);
+            let text = parse_string_flag(rest, "--text")?;
+            let text_file = parse_string_flag(rest, "--text-file")?;
+            let style = parse_string_flag(rest, "--style")?.unwrap_or_default();
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_paragraphs_insert(
+                file,
+                insert_after,
+                DocxParagraphMutationOptions {
+                    text: text.as_deref(),
+                    text_file: text_file.as_deref(),
                     style: &style,
                     out: out.as_deref(),
                     backup: backup.as_deref(),
@@ -1383,6 +1421,45 @@ fn capability_commands() -> Vec<Value> {
             false,
             Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
             vec![
+                flag("--text", "text", "string", "paragraph text"),
+                flag(
+                    "--text-file",
+                    "textFile",
+                    "string",
+                    "path to paragraph text",
+                ),
+                flag("--style", "style", "string", "optional paragraph style ID"),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml docx paragraphs insert",
+            "insert <file>",
+            "Insert a main document body paragraph after a body block index.",
+            &["paragraph"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag(
+                    "--insert-after",
+                    "insertAfter",
+                    "int",
+                    "0 to prepend, or a 1-based body block index",
+                ),
                 flag("--text", "text", "string", "paragraph text"),
                 flag(
                     "--text-file",
@@ -7913,8 +7990,9 @@ fn docx_tables_show(file: &str, table: usize, include_details: bool) -> CliResul
     Ok(Value::Object(result))
 }
 
-struct DocxParagraphAppendOptions<'a> {
-    text: &'a str,
+struct DocxParagraphMutationOptions<'a> {
+    text: Option<&'a str>,
+    text_file: Option<&'a str>,
     style: &'a str,
     out: Option<&'a str>,
     backup: Option<&'a str>,
@@ -7923,8 +8001,18 @@ struct DocxParagraphAppendOptions<'a> {
     no_validate: bool,
 }
 
-fn docx_paragraphs_append(file: &str, options: DocxParagraphAppendOptions<'_>) -> CliResult<Value> {
+fn docx_paragraphs_append(
+    file: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
+    let text = resolve_optional_docx_paragraph_text(options.text, options.text_file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
     let package_kind = detect_inspect_package_type(file, &entries);
     if package_kind != InspectPackageKind::Docx {
         let detected = match package_kind {
@@ -7937,12 +8025,6 @@ fn docx_paragraphs_append(file: &str, options: DocxParagraphAppendOptions<'_>) -
             "file is not a DOCX document (detected: {detected})"
         )));
     }
-    validate_xlsx_mutation_output_flags(
-        options.out,
-        options.in_place,
-        options.backup,
-        options.dry_run,
-    )?;
 
     let document_part = find_docx_document_part(file, &entries)?;
     let xml = zip_text(file, &document_part)?;
@@ -7951,7 +8033,7 @@ fn docx_paragraphs_append(file: &str, options: DocxParagraphAppendOptions<'_>) -
             CliError::unexpected(format!("failed to read main document: {}", err.message))
         })?
         .len();
-    let updated_xml = append_docx_body_paragraph_xml(&xml, options.text, options.style)?;
+    let updated_xml = append_docx_body_paragraph_xml(&xml, &text, options.style)?;
 
     let output_path = options.out.filter(|value| !value.trim().is_empty());
     let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
@@ -7990,20 +8072,96 @@ fn docx_paragraphs_append(file: &str, options: DocxParagraphAppendOptions<'_>) -
     if !options.style.is_empty() {
         result.insert("style".to_string(), json!(options.style));
     }
-    result.insert("text".to_string(), json!(options.text));
+    result.insert("text".to_string(), json!(text));
+    Ok(Value::Object(result))
+}
+
+fn docx_paragraphs_insert(
+    file: &str,
+    insert_after: i64,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    if insert_after < 0 {
+        return Err(CliError::invalid_args("--insert-after must be >= 0"));
+    }
+    let text = resolve_optional_docx_paragraph_text(options.text, options.text_file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let package_kind = detect_inspect_package_type(file, &entries);
+    if package_kind != InspectPackageKind::Docx {
+        let detected = match package_kind {
+            InspectPackageKind::Pptx => "pptx",
+            InspectPackageKind::Xlsx => "xlsx",
+            InspectPackageKind::Docx => "docx",
+            InspectPackageKind::Unknown => package_type(file)?,
+        };
+        return Err(CliError::unsupported_type(format!(
+            "file is not a DOCX document (detected: {detected})"
+        )));
+    }
+
+    let document_part = find_docx_document_part(file, &entries)?;
+    let xml = zip_text(file, &document_part)?;
+    let (updated_xml, index) =
+        insert_docx_body_paragraph_xml(&xml, insert_after as usize, &text, options.style)?;
+
+    let output_path = options.out.filter(|value| !value.trim().is_empty());
+    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
+        docx_mutation_temp_path(file)
+    } else {
+        output_path
+            .ok_or_else(|| {
+                CliError::invalid_args(
+                    "must specify exactly one of --out, --in-place, or --dry-run",
+                )
+            })?
+            .to_string()
+    };
+    copy_zip_with_part_override(file, &readback_path, &document_part, &updated_xml)?;
+    if !options.no_validate {
+        validate(&readback_path, true)?;
+    }
+    if options.dry_run {
+        let _ = fs::remove_file(&readback_path);
+    } else if options.in_place || output_path == Some(file) {
+        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
+            fs::copy(file, backup_path)
+                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+        }
+        fs::rename(&readback_path, file)
+            .or_else(|_| {
+                fs::copy(&readback_path, file)?;
+                fs::remove_file(&readback_path)
+            })
+            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    }
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("index".to_string(), json!(index));
+    result.insert("insertAfter".to_string(), json!(insert_after));
+    if !options.style.is_empty() {
+        result.insert("style".to_string(), json!(options.style));
+    }
+    result.insert("text".to_string(), json!(text));
     Ok(Value::Object(result))
 }
 
 fn resolve_optional_docx_paragraph_text(
-    text: Option<String>,
-    text_file: Option<String>,
+    text: Option<&str>,
+    text_file: Option<&str>,
 ) -> CliResult<String> {
     match (text, text_file) {
         (Some(_), Some(_)) => Err(CliError::invalid_args(
             "cannot specify both --text and --text-file",
         )),
-        (Some(value), None) => Ok(value),
-        (None, Some(path)) => fs::read(&path)
+        (Some(value), None) => Ok(value.to_string()),
+        (None, Some(path)) => fs::read(path)
             .map(|data| String::from_utf8_lossy(&data).to_string())
             .map_err(|_| CliError::file_not_found(format!("file not found: {path}"))),
         (None, None) => Ok(String::new()),
@@ -8032,6 +8190,139 @@ fn append_docx_body_paragraph_xml(xml: &str, text: &str, style: &str) -> CliResu
     let paragraph = render_docx_paragraph(&prefix, text, style);
     working.insert_str(insert_at, &paragraph);
     Ok(working)
+}
+
+fn insert_docx_body_paragraph_xml(
+    xml: &str,
+    insert_after: usize,
+    text: &str,
+    style: &str,
+) -> CliResult<(String, usize)> {
+    let body_tag = docx_body_tag(xml)?;
+    let close_tag = format!("</{body_tag}>");
+    if !xml.contains(&close_tag) {
+        return Err(CliError::unexpected("document body element not found"));
+    }
+    let prefix = body_tag
+        .split_once(':')
+        .map(|(prefix, _)| prefix.to_string())
+        .unwrap_or_default();
+    let mut working = if prefix.is_empty() && !style.is_empty() {
+        ensure_docx_word_prefix(xml)?
+    } else {
+        xml.to_string()
+    };
+    let body_close = working.rfind(&close_tag).ok_or_else(|| {
+        CliError::unexpected("document body element not found after namespace update")
+    })?;
+    let blocks = docx_body_block_ranges(&working, &body_tag)?;
+    let (insert_at, index) = if insert_after == 0 {
+        (
+            blocks.first().map(|block| block.start).unwrap_or_else(|| {
+                docx_body_sectpr_start(&working[..body_close], &prefix).unwrap_or(body_close)
+            }),
+            1,
+        )
+    } else {
+        let block = blocks.get(insert_after - 1).ok_or_else(|| {
+            CliError::target_not_found(format!("target not found: block index {insert_after}"))
+        })?;
+        (block.end, insert_after + 1)
+    };
+    let paragraph = render_docx_paragraph(&prefix, text, style);
+    working.insert_str(insert_at, &paragraph);
+    Ok((working, index))
+}
+
+#[derive(Clone, Copy)]
+struct XmlRange {
+    start: usize,
+    end: usize,
+}
+
+fn docx_body_block_ranges(xml: &str, body_tag: &str) -> CliResult<Vec<XmlRange>> {
+    let (content_start, content_end) = docx_body_content_bounds(xml, body_tag)?;
+    let mut cursor = content_start;
+    let mut depth = 0usize;
+    let mut active_block_start: Option<usize> = None;
+    let mut blocks = Vec::new();
+    while cursor < content_end {
+        let Some(relative_start) = xml[cursor..content_end].find('<') else {
+            break;
+        };
+        let tag_start = cursor + relative_start;
+        let Some(relative_end) = xml[tag_start..content_end].find('>') else {
+            return Err(CliError::unexpected("invalid DOCX XML"));
+        };
+        let tag_end = tag_start + relative_end;
+        let token = &xml[tag_start + 1..tag_end];
+        let trimmed = token.trim_start();
+        if trimmed.starts_with("!--") || trimmed.starts_with('?') || trimmed.starts_with('!') {
+            cursor = tag_end + 1;
+            continue;
+        }
+        let closing = trimmed.starts_with('/');
+        if closing {
+            if depth > 0 {
+                depth -= 1;
+                if depth == 0
+                    && let Some(start) = active_block_start.take()
+                {
+                    blocks.push(XmlRange {
+                        start,
+                        end: tag_end + 1,
+                    });
+                }
+            }
+            cursor = tag_end + 1;
+            continue;
+        }
+
+        let self_closing = trimmed.trim_end().ends_with('/');
+        let name = xml_token_name(trimmed).unwrap_or_default();
+        let is_body_block = depth == 0 && matches!(local_name(name.as_bytes()), "p" | "tbl");
+        if is_body_block {
+            active_block_start = Some(tag_start);
+        }
+        if self_closing {
+            if is_body_block {
+                blocks.push(XmlRange {
+                    start: tag_start,
+                    end: tag_end + 1,
+                });
+                active_block_start = None;
+            }
+        } else {
+            depth += 1;
+        }
+        cursor = tag_end + 1;
+    }
+    Ok(blocks)
+}
+
+fn docx_body_content_bounds(xml: &str, body_tag: &str) -> CliResult<(usize, usize)> {
+    let body_open = xml
+        .find(&format!("<{body_tag}"))
+        .ok_or_else(|| CliError::unexpected("document body element not found"))?;
+    let content_start = xml[body_open..]
+        .find('>')
+        .map(|offset| body_open + offset + 1)
+        .ok_or_else(|| CliError::unexpected("document body element not found"))?;
+    let content_end = xml
+        .rfind(&format!("</{body_tag}>"))
+        .ok_or_else(|| CliError::unexpected("document body element not found"))?;
+    Ok((content_start, content_end))
+}
+
+fn xml_token_name(token: &str) -> Option<&str> {
+    let token = token.trim_start().trim_start_matches('/');
+    if token.is_empty() || token.starts_with('?') || token.starts_with('!') {
+        return None;
+    }
+    let end = token
+        .find(|ch: char| ch.is_whitespace() || ch == '/')
+        .unwrap_or(token.len());
+    Some(&token[..end])
 }
 
 fn docx_body_tag(xml: &str) -> CliResult<String> {

@@ -2339,6 +2339,272 @@ fn docx_paragraphs_append_dry_run_and_errors_match_go_oracle() {
 }
 
 #[test]
+fn docx_paragraphs_insert_matches_go_oracle() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-docx-insert-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx insert temp dir");
+
+    let text_file = temp_dir.join("insert.txt");
+    fs::write(&text_file, "Lead\tparagraph\nline 2").expect("write insert text file");
+    let text_file = text_file.to_string_lossy().to_string();
+    let go_out = temp_dir
+        .join("insert-go.docx")
+        .to_string_lossy()
+        .to_string();
+    let rust_out = temp_dir
+        .join("insert-rust.docx")
+        .to_string_lossy()
+        .to_string();
+    let go_args = [
+        "--json",
+        "docx",
+        "paragraphs",
+        "insert",
+        "testdata/docx/styled-headings/document.docx",
+        "--insert-after",
+        "0",
+        "--text-file",
+        &text_file,
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "docx",
+        "paragraphs",
+        "insert",
+        "testdata/docx/styled-headings/document.docx",
+        "--insert-after",
+        "0",
+        "--text-file",
+        &text_file,
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "insert start exit");
+    assert_eq!(rust_stderr, go_stderr, "insert start stderr");
+    assert_eq!(rust_stdout, go_stdout, "insert start stdout");
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_out]);
+    assert_eq!(validate_code, 0, "insert start validate exit");
+    assert_eq!(validate_stderr, None, "insert start validate stderr");
+
+    let (go_text_code, go_text_stdout, go_text_stderr) =
+        run_go_ooxml(&["--json", "docx", "text", &go_out]);
+    let (rust_text_code, rust_text_stdout, rust_text_stderr) =
+        run_ooxml(&["--json", "docx", "text", &rust_out]);
+    assert_eq!(rust_text_code, go_text_code, "insert start readback exit");
+    assert_eq!(
+        rust_text_stderr, go_text_stderr,
+        "insert start readback stderr"
+    );
+    let go_text_result = go_text_stdout.expect("Go insert start readback JSON");
+    let rust_text_result = rust_text_stdout.expect("Rust insert start readback JSON");
+    assert_eq!(
+        rust_text_result["blocks"], go_text_result["blocks"],
+        "insert start readback blocks"
+    );
+    let blocks = rust_text_result["blocks"].as_array().expect("docx blocks");
+    assert_eq!(blocks.len(), 3, "insert start block count");
+    assert_eq!(
+        blocks[0]["text"],
+        Value::String("Lead\tparagraph\nline 2".to_string())
+    );
+    assert_eq!(blocks[1]["text"], Value::String("Heading Text".to_string()));
+
+    let go_table_out = temp_dir
+        .join("insert-after-table-go.docx")
+        .to_string_lossy()
+        .to_string();
+    let rust_table_out = temp_dir
+        .join("insert-after-table-rust.docx")
+        .to_string_lossy()
+        .to_string();
+    let go_table_args = [
+        "--json",
+        "docx",
+        "paragraphs",
+        "insert",
+        "testdata/docx/mixed-blocks/document.docx",
+        "--insert-after",
+        "1",
+        "--text",
+        "After table",
+        "--out",
+        &go_table_out,
+    ];
+    let rust_table_args = [
+        "--json",
+        "docx",
+        "paragraphs",
+        "insert",
+        "testdata/docx/mixed-blocks/document.docx",
+        "--insert-after",
+        "1",
+        "--text",
+        "After table",
+        "--out",
+        &rust_table_out,
+    ];
+    let (go_table_code, go_table_stdout, go_table_stderr) = run_go_ooxml(&go_table_args);
+    let (rust_table_code, rust_table_stdout, rust_table_stderr) = run_ooxml(&rust_table_args);
+    assert_eq!(rust_table_code, go_table_code, "insert table exit");
+    assert_eq!(rust_table_stderr, go_table_stderr, "insert table stderr");
+    assert_eq!(rust_table_stdout, go_table_stdout, "insert table stdout");
+    let (go_table_text_code, go_table_text_stdout, go_table_text_stderr) =
+        run_go_ooxml(&["--json", "docx", "text", &go_table_out]);
+    let (rust_table_text_code, rust_table_text_stdout, rust_table_text_stderr) =
+        run_ooxml(&["--json", "docx", "text", &rust_table_out]);
+    assert_eq!(
+        rust_table_text_code, go_table_text_code,
+        "insert table readback exit"
+    );
+    assert_eq!(
+        rust_table_text_stderr, go_table_text_stderr,
+        "insert table readback stderr"
+    );
+    let go_table_text = go_table_text_stdout.expect("Go insert table readback JSON");
+    let rust_table_text = rust_table_text_stdout.expect("Rust insert table readback JSON");
+    assert_eq!(
+        rust_table_text["blocks"], go_table_text["blocks"],
+        "insert table readback blocks"
+    );
+    let table_blocks = rust_table_text["blocks"].as_array().expect("docx blocks");
+    assert_eq!(table_blocks.len(), 5, "insert table block count");
+    assert_eq!(table_blocks[0]["kind"], Value::String("table".to_string()));
+    assert_eq!(
+        table_blocks[1]["text"],
+        Value::String("After table".to_string())
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn docx_paragraphs_insert_dry_run_and_errors_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-docx-insert-dry-run-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx insert temp dir");
+    let dry_docx = temp_dir.join("dry-run.docx");
+    fs::copy("testdata/docx/minimal/document.docx", &dry_docx).expect("copy dry-run docx");
+    let dry_docx = dry_docx.to_string_lossy().to_string();
+
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "insert",
+        &dry_docx,
+        "--insert-after",
+        "0",
+        "--text",
+        "Dry run head",
+        "--dry-run",
+    ]);
+    let (text_code, text_stdout, text_stderr) = run_ooxml(&["--json", "docx", "text", &dry_docx]);
+    assert_eq!(text_code, 0);
+    assert_eq!(text_stderr, None);
+    let text_result = text_stdout.expect("dry-run readback");
+    let blocks = text_result["blocks"].as_array().expect("docx blocks");
+    assert_eq!(blocks.len(), 1, "insert dry-run wrote to document");
+    assert_eq!(blocks[0]["text"], Value::String("Hello world".to_string()));
+
+    let text_file = temp_dir.join("text.txt");
+    fs::write(&text_file, "x").expect("write text file");
+    let text_file = text_file.to_string_lossy().to_string();
+    let out = temp_dir.join("bad.docx").to_string_lossy().to_string();
+    let missing = temp_dir.join("missing.docx").to_string_lossy().to_string();
+    let bad_cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "paragraphs",
+            "insert",
+            &missing,
+            "--insert-after",
+            "-1",
+            "--text",
+            "x",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "paragraphs",
+            "insert",
+            "testdata/docx/styled-headings/document.docx",
+            "--insert-after",
+            "-1",
+            "--text",
+            "x",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "paragraphs",
+            "insert",
+            "testdata/docx/styled-headings/document.docx",
+            "--insert-after",
+            "99",
+            "--text",
+            "x",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "paragraphs",
+            "insert",
+            "testdata/docx/styled-headings/document.docx",
+            "--insert-after",
+            "1",
+            "--text",
+            "x",
+            "--dry-run",
+            "--out",
+            &out,
+        ],
+        vec![
+            "--json",
+            "docx",
+            "paragraphs",
+            "insert",
+            "testdata/docx/styled-headings/document.docx",
+            "--insert-after",
+            "1",
+            "--text",
+            "x",
+            "--text-file",
+            &text_file,
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "paragraphs",
+            "insert",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--insert-after",
+            "0",
+            "--text",
+            "x",
+            "--dry-run",
+        ],
+    ];
+    for args in bad_cases {
+        assert_go_rust_match(&args);
+    }
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_styles_list_and_show_match_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
@@ -3866,6 +4132,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(paragraph_stderr, None);
     let paragraph_caps = paragraph_stdout.expect("paragraph capabilities");
     assert_command(&paragraph_caps, "ooxml docx paragraphs append", false);
+    assert_command(&paragraph_caps, "ooxml docx paragraphs insert", false);
     assert_no_command(&paragraph_caps, "ooxml docx blocks");
 
     let (style_code, style_stdout, style_stderr) =
@@ -3929,6 +4196,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx images list", false);
     assert_command(&docx_caps, "ooxml docx tables show", false);
     assert_command(&docx_caps, "ooxml docx paragraphs append", false);
+    assert_command(&docx_caps, "ooxml docx paragraphs insert", false);
 }
 
 #[test]
@@ -3946,10 +4214,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 33, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 34, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        257,
+        256,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
