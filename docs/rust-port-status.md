@@ -90,6 +90,10 @@ Latest milestone, 2026-06-19:
   and calc-setting mutation helpers moved from `src/main.rs` into
   `src/xlsx_metadata.rs`, keeping CLI and serve call sites stable through the
   crate facade.
+- XLSX formula recalculation metadata updates, calcChain content-type cleanup,
+  workbook relationship cleanup, and calcChain part removal moved from
+  `src/xlsx_mutation.rs` into `src/xlsx_formula_recalc.rs`, with the mutation
+  module passing only the formula state needed by that package-update layer.
 - XLSX defined-name model, list/show commands, selector resolution, handle
   parsing, JSON rendering, and readback-command helpers moved from `src/main.rs`
   into `src/xlsx_names.rs`.
