@@ -25,6 +25,9 @@ Latest milestone, 2026-06-19:
 - Generated command quoting moved from `src/main.rs` into `src/command_text.rs`,
   preserving one shared readback-command quoting contract across DOCX, XLSX,
   PPTX, serve, and MCP output.
+- Shared OPC relationship/content-type helpers moved from `src/main.rs` into
+  `src/opc.rs`, creating a common package substrate for future DOCX, XLSX, and
+  PPTX module splits.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
