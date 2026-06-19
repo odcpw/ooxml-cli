@@ -22,6 +22,9 @@ Latest milestone, 2026-06-19:
 - JSON argument/resource helpers moved from `src/main.rs` into
   `src/json_util.rs`, giving serve/MCP and future command modules a shared
   typed JSON parsing and stable field-serialization surface.
+- Generated command quoting moved from `src/main.rs` into `src/command_text.rs`,
+  preserving one shared readback-command quoting contract across DOCX, XLSX,
+  PPTX, serve, and MCP output.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.

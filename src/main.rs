@@ -14,6 +14,7 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 mod capabilities;
 mod cli_args;
 mod cli_core;
+mod command_text;
 mod json_util;
 
 pub(crate) use cli_args::{
@@ -26,6 +27,7 @@ pub(crate) use cli_core::{
     EXIT_SUCCESS, EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED, EXIT_UNSUPPORTED_TYPE,
     EXIT_VALIDATION_FAILED, GlobalFlags,
 };
+pub(crate) use command_text::command_arg;
 pub(crate) use json_util::{
     json_bool, json_field, json_i64, json_optional_serialized, json_optional_string, json_string,
     json_u32,
@@ -8303,43 +8305,6 @@ fn xlsx_source_command(args: Vec<&str>, flags: &[(&str, &str)]) -> String {
         }
     }
     args.join(" ")
-}
-
-fn command_arg(value: &str) -> String {
-    if value.is_empty() {
-        return "''".to_string();
-    }
-    let needs_quotes = value.chars().any(|ch| {
-        matches!(
-            ch,
-            ' ' | '\t'
-                | '\r'
-                | '\n'
-                | '\''
-                | '"'
-                | '\\'
-                | '$'
-                | '`'
-                | '<'
-                | '>'
-                | '|'
-                | '&'
-                | ';'
-                | '('
-                | ')'
-                | '['
-                | ']'
-                | '{'
-                | '}'
-                | '*'
-                | '?'
-                | '!'
-        )
-    });
-    if !needs_quotes {
-        return value.to_string();
-    }
-    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 fn parse_optional_u32(value: Option<&str>, fallback: u32) -> u32 {
