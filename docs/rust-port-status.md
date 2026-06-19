@@ -83,9 +83,19 @@ Latest milestone, 2026-06-19:
 - Shared XLSX workbook sheet resolution, cell/style decoding, used-range
   summaries, sparse/dense cell row rendering, cell/range parsing, and column
   naming moved from `src/main.rs` into `src/xlsx_model.rs`.
+- XLSX range/cell mutation commands, range formatting, calc-chain
+  invalidation, style XML mutation, sheet-data rewrites, and mutation readback
+  command generation moved from `src/main.rs` into `src/xlsx_mutation.rs`.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
+- Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
+  edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
+  schema validation, and desktop Office COM open proof. The three implemented
+  XLSX mutation scenarios (`xlsx-cells-set`, `xlsx-ranges-set`, and
+  `xlsx-ranges-set-format`) opened in Excel without repair/failure. The full
+  52-scenario smoke remains red for the Rust port because 40 Go-surface edit
+  commands are still intentionally unsupported.
 
 The first Rust slice implements and tests the CLI cases from that baseline:
 

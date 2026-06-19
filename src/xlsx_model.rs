@@ -4,8 +4,7 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
 use crate::{
-    CliError, CliResult, attr, attr_exact, decode_xml_text, local_name, normalize_xlsx_cell_ref,
-    xml_general_ref, zip_text,
+    CliError, CliResult, attr, attr_exact, decode_xml_text, local_name, xml_general_ref, zip_text,
 };
 #[derive(Clone)]
 pub(crate) struct WorkbookSheet {
@@ -983,6 +982,12 @@ pub(crate) fn parse_range(range: &str) -> CliResult<RangeBounds> {
 pub(crate) fn parse_cli_range(range: &str) -> CliResult<RangeBounds> {
     parse_range(range)
         .map_err(|err| CliError::invalid_args(format!("invalid --range: {}", err.message)))
+}
+
+pub(crate) fn normalize_xlsx_cell_ref(value: &str, flag: &str) -> CliResult<String> {
+    let (col, row) = parse_cell_ref(value)
+        .map_err(|err| CliError::invalid_args(format!("invalid {flag}: {}", err.message)))?;
+    Ok(format!("{}{}", col_name(col), row))
 }
 
 pub(crate) fn parse_cell_ref(cell: &str) -> CliResult<(u32, u32)> {
