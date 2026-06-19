@@ -77,6 +77,9 @@ Latest milestone, 2026-06-19:
 - DOCX body block readers, rich block reports, paragraph/table text extraction,
   run formatting capture, namespace-aware paragraph handles, and block content
   hashing moved from `src/main.rs` into `src/docx_block_readers.rs`.
+- XLSX range export, JSON range rendering, data-out writing, data-format
+  normalization, and range max-cell guards moved from `src/main.rs` into
+  `src/xlsx_ranges.rs`.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
