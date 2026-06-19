@@ -835,6 +835,83 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             docx_headers_footers_show(file, docx_header_footer_kind(group), rest)
         }
         [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx"
+                && (group == "headers" || group == "footers")
+                && verb == "set-text" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--id",
+                    "--type",
+                    "--section",
+                    "--index",
+                    "--selector",
+                    "--text",
+                    "--text-file",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let id = parse_string_flag(rest, "--id")?.unwrap_or_default();
+            let ref_type =
+                parse_string_flag(rest, "--type")?.unwrap_or_else(|| "default".to_string());
+            let ref_type = normalize_docx_header_footer_show_type(&ref_type)?;
+            let section = parse_i64_flag(rest, "--section")?.unwrap_or(0);
+            let index = parse_i64_flag(rest, "--index")?.unwrap_or(1);
+            if index < 1 {
+                return Err(CliError::invalid_args("--index must be >= 1"));
+            }
+            if section < 0 {
+                return Err(CliError::invalid_args(
+                    "--section must be >= 0 (0 means the last section)",
+                ));
+            }
+            let selector = parse_string_flag(rest, "--selector")?;
+            if selector.is_some()
+                && (parse_string_flag(rest, "--id")?.is_some()
+                    || parse_string_flag(rest, "--type")?.is_some()
+                    || parse_string_flag(rest, "--section")?.is_some())
+            {
+                return Err(CliError::invalid_args(
+                    "cannot specify --selector with --id, --type, or --section",
+                ));
+            }
+            let text = parse_string_flag(rest, "--text")?;
+            let text_file = parse_string_flag(rest, "--text-file")?;
+            let text = resolve_required_docx_table_text(
+                text.as_deref(),
+                text_file.as_deref(),
+                parse_string_flag(rest, "--text")?.is_some(),
+                parse_string_flag(rest, "--text-file")?.is_some(),
+            )?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_headers_footers_set_text(
+                file,
+                docx_header_footer_kind(group),
+                DocxHeaderFooterSetTextOptions {
+                    id: &id,
+                    ref_type: &ref_type,
+                    section,
+                    index,
+                    selector: selector.as_deref(),
+                    selector_given: selector.is_some(),
+                    index_given: parse_string_flag(rest, "--index")?.is_some(),
+                    text: &text,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && group == "images" && verb == "list" =>
         {
             reject_unknown_flags(rest, &[], &[])?;
@@ -2950,6 +3027,15 @@ fn capability_commands() -> Vec<Value> {
             ],
         ),
         capability_command(
+            "ooxml docx headers set-text",
+            "set-text <file>",
+            "Set header paragraph text by index.",
+            &["header", "paragraph"],
+            true,
+            None,
+            docx_header_footer_set_text_flags(),
+        ),
+        capability_command(
             "ooxml docx footers list",
             "list <file>",
             "List headers and footers defined per section.",
@@ -2988,6 +3074,15 @@ fn capability_commands() -> Vec<Value> {
                 ),
                 flag("--type", "type", "string", "default, first, or even"),
             ],
+        ),
+        capability_command(
+            "ooxml docx footers set-text",
+            "set-text <file>",
+            "Set footer paragraph text by index.",
+            &["footer", "paragraph"],
+            true,
+            None,
+            docx_header_footer_set_text_flags(),
         ),
         capability_command(
             "ooxml docx images list",
@@ -3122,6 +3217,58 @@ fn capability_command(
         object.insert("opIneligibleReason".to_string(), json!(reason));
     }
     Value::Object(object)
+}
+
+fn docx_header_footer_set_text_flags() -> Vec<Value> {
+    vec![
+        flag(
+            "--id",
+            "id",
+            "string",
+            "relationship id to resolve directly",
+        ),
+        flag("--type", "type", "string", "default, first, or even"),
+        flag(
+            "--section",
+            "section",
+            "int",
+            "1-based section index; 0 means the last section",
+        ),
+        flag(
+            "--index",
+            "index",
+            "int",
+            "1-based paragraph index within the part",
+        ),
+        flag(
+            "--selector",
+            "selector",
+            "string",
+            "selector from headers/footers list",
+        ),
+        flag("--text", "text", "string", "replacement text"),
+        flag(
+            "--text-file",
+            "textFile",
+            "string",
+            "path to replacement text",
+        ),
+        flag("--out", "out", "string", "output file path"),
+        flag(
+            "--in-place",
+            "inPlace",
+            "bool",
+            "write the input file in place",
+        ),
+        flag("--backup", "backup", "string", "backup path for --in-place"),
+        flag("--dry-run", "dryRun", "bool", "plan without writing"),
+        flag(
+            "--no-validate",
+            "noValidate",
+            "bool",
+            "skip post-write validation",
+        ),
+    ]
 }
 
 fn flag(name: &str, arg_name: &str, flag_type: &str, description: &str) -> Value {
@@ -10985,6 +11132,7 @@ struct DocxHeaderFooterSelector {
     ref_type: String,
     section: i64,
     part_uri: String,
+    paragraph_index: i64,
 }
 
 fn docx_header_footer_sections(
@@ -11282,10 +11430,11 @@ fn parse_docx_header_footer_selector(
     if raw.is_empty() {
         return Err(CliError::invalid_args("--selector cannot be empty"));
     }
-    let base = split_docx_header_footer_paragraph_selector(raw)?;
+    let (base, paragraph_index) = split_docx_header_footer_paragraph_selector(raw)?;
     let mut selector = DocxHeaderFooterSelector {
         kind: command_kind.to_string(),
         ref_type: "default".to_string(),
+        paragraph_index,
         ..DocxHeaderFooterSelector::default()
     };
     if let Some(id) = base.strip_prefix("id:") {
@@ -11345,7 +11494,7 @@ fn parse_docx_header_footer_selector(
     ))
 }
 
-fn split_docx_header_footer_paragraph_selector(raw: &str) -> CliResult<&str> {
+fn split_docx_header_footer_paragraph_selector(raw: &str) -> CliResult<(&str, i64)> {
     for marker in ["/paragraph:", "/p:"] {
         if let Some(index) = raw.rfind(marker) {
             let base = raw[..index].trim();
@@ -11355,11 +11504,11 @@ fn split_docx_header_footer_paragraph_selector(raw: &str) -> CliResult<&str> {
                     "--selector paragraph suffix requires a header/footer selector before it",
                 ));
             }
-            let _ = parse_positive_i64(value, "selector paragraph")?;
-            return Ok(base);
+            let paragraph_index = parse_positive_i64(value, "selector paragraph")?;
+            return Ok((base, paragraph_index));
         }
     }
-    Ok(raw)
+    Ok((raw, 0))
 }
 
 fn parse_positive_i64(value: &str, label: &str) -> CliResult<i64> {
@@ -11617,6 +11766,946 @@ fn docx_header_footer_paragraph_json(
         "style": paragraph.style,
         "text": paragraph.text,
     })
+}
+
+struct DocxHeaderFooterSetTextOptions<'a> {
+    id: &'a str,
+    ref_type: &'a str,
+    section: i64,
+    index: i64,
+    selector: Option<&'a str>,
+    selector_given: bool,
+    index_given: bool,
+    text: &'a str,
+    out: Option<&'a str>,
+    backup: Option<&'a str>,
+    dry_run: bool,
+    in_place: bool,
+    no_validate: bool,
+}
+
+struct DocxHeaderFooterEnsureResult {
+    document_xml: String,
+    rels_part: Option<String>,
+    rels_xml: Option<String>,
+    content_types_xml: Option<String>,
+    part_xml: Option<String>,
+    reference: DocxHeaderFooterRefInfo,
+    created_part: bool,
+    created_ref: bool,
+}
+
+struct DocxHeaderFooterEnsureContext<'a> {
+    file: &'a str,
+    entries: &'a [String],
+    document_part: &'a str,
+    document_uri: &'a str,
+    document_xml: &'a str,
+}
+
+#[derive(Clone, Copy)]
+struct DocxSectionRange {
+    index: i64,
+    start: usize,
+    end: usize,
+}
+
+fn docx_headers_footers_set_text(
+    file: &str,
+    kind: &str,
+    mut options: DocxHeaderFooterSetTextOptions<'_>,
+) -> CliResult<Value> {
+    if !Path::new(file).exists() {
+        return Err(CliError::file_not_found(format!("file not found: {file}")));
+    }
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let entries = zip_entry_names(file)?;
+    ensure_docx_package_kind(file, &entries)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let document_uri = format!("/{}", document_part.trim_start_matches('/'));
+    let document_xml = zip_text(file, &document_part)?;
+
+    let mut created_part = false;
+    let mut created_ref = false;
+    let mut document_override = None::<String>;
+    let mut rels_override = None::<(String, String)>;
+    let mut content_types_override = None::<String>;
+    let mut part_xml_override = None::<String>;
+
+    let reference = if options.selector_given {
+        let selector = options.selector.unwrap_or_default();
+        let parsed = parse_docx_header_footer_selector(kind, selector)?;
+        if parsed.paragraph_index > 0 {
+            if options.index_given && options.index != parsed.paragraph_index {
+                return Err(CliError::invalid_args(
+                    "--index conflicts with the paragraph index embedded in --selector",
+                ));
+            }
+            options.index = parsed.paragraph_index;
+        }
+        if !parsed.id.is_empty() || !parsed.part_uri.is_empty() {
+            let (_document_uri, sections) = docx_header_footer_listing(file)?;
+            resolve_docx_header_footer_selector(&sections, kind, &parsed).ok_or_else(|| {
+                CliError::target_not_found(format!("{kind} not found: {selector}"))
+            })?
+        } else {
+            let ensured = ensure_docx_header_footer(
+                DocxHeaderFooterEnsureContext {
+                    file,
+                    entries: &entries,
+                    document_part: &document_part,
+                    document_uri: &document_uri,
+                    document_xml: &document_xml,
+                },
+                kind,
+                &parsed.ref_type,
+                parsed.section,
+            )?;
+            created_part = ensured.created_part;
+            created_ref = ensured.created_ref;
+            document_override = Some(ensured.document_xml);
+            if let (Some(part), Some(xml)) = (ensured.rels_part, ensured.rels_xml) {
+                rels_override = Some((part, xml));
+            }
+            content_types_override = ensured.content_types_xml;
+            part_xml_override = ensured.part_xml;
+            ensured.reference
+        }
+    } else if !options.id.is_empty() {
+        let (_document_uri, sections) = docx_header_footer_listing(file)?;
+        resolve_docx_header_footer_selector(
+            &sections,
+            kind,
+            &DocxHeaderFooterSelector {
+                kind: kind.to_string(),
+                id: options.id.to_string(),
+                ref_type: options.ref_type.to_string(),
+                section: options.section,
+                ..DocxHeaderFooterSelector::default()
+            },
+        )
+        .ok_or_else(|| CliError::target_not_found(format!("{kind} not found: id:{}", options.id)))?
+    } else {
+        let ensured = ensure_docx_header_footer(
+            DocxHeaderFooterEnsureContext {
+                file,
+                entries: &entries,
+                document_part: &document_part,
+                document_uri: &document_uri,
+                document_xml: &document_xml,
+            },
+            kind,
+            options.ref_type,
+            options.section,
+        )?;
+        created_part = ensured.created_part;
+        created_ref = ensured.created_ref;
+        document_override = Some(ensured.document_xml);
+        if let (Some(part), Some(xml)) = (ensured.rels_part, ensured.rels_xml) {
+            rels_override = Some((part, xml));
+        }
+        content_types_override = ensured.content_types_xml;
+        part_xml_override = ensured.part_xml;
+        ensured.reference
+    };
+
+    if reference.part_uri.is_empty() {
+        return Err(CliError::invalid_args(format!(
+            "{kind} reference {:?} does not resolve to a part",
+            reference.id
+        )));
+    }
+
+    let part_name = reference.part_uri.trim_start_matches('/').to_string();
+    let part_xml = if let Some(xml) = part_xml_override {
+        xml
+    } else {
+        zip_text(file, &part_name).map_err(|_| {
+            CliError::target_not_found(format!("{kind} part not found: {}", reference.part_uri))
+        })?
+    };
+    let mutation = set_docx_header_footer_text_xml(
+        &part_xml,
+        &reference.part_uri,
+        options.index,
+        options.text,
+    )?;
+
+    let mut overrides = BTreeMap::new();
+    if let Some(xml) = document_override.filter(|xml| xml != &document_xml) {
+        overrides.insert(document_part.clone(), xml);
+    }
+    if let Some((part, xml)) = rels_override {
+        overrides.insert(part, xml);
+    }
+    if let Some(xml) = content_types_override {
+        overrides.insert("[Content_Types].xml".to_string(), xml);
+    }
+    overrides.insert(part_name, mutation.xml);
+
+    let output_path = docx_mutation_output_path_for_result(
+        file,
+        &DocxParagraphMutationOptions {
+            text: None,
+            text_file: None,
+            style: "",
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            in_place: options.in_place,
+            no_validate: options.no_validate,
+        },
+    );
+    write_docx_package_mutation_output(
+        file,
+        &overrides,
+        DocxParagraphMutationOptions {
+            text: None,
+            text_file: None,
+            style: "",
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            in_place: options.in_place,
+            no_validate: options.no_validate,
+        },
+    )?;
+
+    let paragraph_primary =
+        docx_header_footer_paragraph_primary_selector(&reference.primary_selector, mutation.index);
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    if let Some(output) = output_path.as_deref() {
+        result.insert("output".to_string(), json!(output));
+    }
+    result.insert("dryRun".to_string(), json!(options.dry_run));
+    result.insert("kind".to_string(), json!(reference.kind));
+    result.insert("partUri".to_string(), json!(reference.part_uri));
+    result.insert("id".to_string(), json!(reference.id));
+    result.insert("type".to_string(), json!(reference.ref_type));
+    result.insert("section".to_string(), json!(reference.section));
+    result.insert(
+        "primarySelector".to_string(),
+        json!(reference.primary_selector),
+    );
+    result.insert("selectors".to_string(), json!(reference.selectors));
+    result.insert("paragraphIndex".to_string(), json!(mutation.index));
+    result.insert(
+        "paragraphPrimarySelector".to_string(),
+        json!(paragraph_primary),
+    );
+    result.insert(
+        "paragraphSelectors".to_string(),
+        json!(docx_header_footer_paragraph_selectors(
+            &reference.selectors,
+            mutation.index
+        )),
+    );
+    result.insert("previousText".to_string(), json!(mutation.previous_text));
+    result.insert("text".to_string(), json!(options.text));
+    result.insert("createdPart".to_string(), json!(created_part));
+    result.insert("createdRef".to_string(), json!(created_ref));
+    add_docx_header_footer_readback_commands(
+        &mut result,
+        output_path.as_deref(),
+        &reference.kind,
+        &reference.primary_selector,
+    );
+    Ok(Value::Object(result))
+}
+
+fn ensure_docx_header_footer(
+    ctx: DocxHeaderFooterEnsureContext<'_>,
+    kind: &str,
+    ref_type: &str,
+    section_index: i64,
+) -> CliResult<DocxHeaderFooterEnsureResult> {
+    if let Some(section) = select_docx_section_range(ctx.document_xml, section_index)?
+        && let Some(id) = docx_header_footer_reference_id(
+            &ctx.document_xml[section.start..section.end],
+            kind,
+            ref_type,
+        )
+    {
+        let rels = relationship_entries(ctx.file, &relationships_part_for(ctx.document_part))
+            .unwrap_or_default();
+        let part_uri = rels
+            .iter()
+            .find(|rel| rel.id == id)
+            .map(|rel| resolve_relationship_target(ctx.document_uri, &rel.target))
+            .unwrap_or_default();
+        return Ok(DocxHeaderFooterEnsureResult {
+            document_xml: ctx.document_xml.to_string(),
+            rels_part: None,
+            rels_xml: None,
+            content_types_xml: None,
+            part_xml: None,
+            reference: docx_header_footer_ref_info_from_parts(
+                kind,
+                &id,
+                ref_type,
+                section.index,
+                &part_uri,
+            ),
+            created_part: false,
+            created_ref: false,
+        });
+    }
+
+    let mut working = ctx.document_xml.to_string();
+    if docx_body_prefix(&docx_body_tag(&working)?).is_empty() {
+        working = ensure_docx_word_prefix(&working)?;
+    }
+    working = ensure_docx_relationship_namespace(&working)?;
+    let (mut working, section) = select_or_create_docx_section_range(working, section_index)?;
+
+    let rels_part = relationships_part_for(ctx.document_part);
+    let rels = relationship_entries(ctx.file, &rels_part).unwrap_or_default();
+    let referenced = docx_referenced_header_footer_rel_ids(&working);
+    let mut created_part = false;
+    let mut rels_xml = None::<String>;
+    let mut content_types_xml = None::<String>;
+    let mut part_xml = None::<String>;
+    let (id, part_uri) = if let Some((id, part_uri)) =
+        unreferenced_docx_header_footer_part(&rels, &referenced, ctx.document_uri, kind)
+    {
+        (id, part_uri)
+    } else {
+        let part_uri = allocate_docx_header_footer_part_uri(ctx.entries, kind);
+        let id = allocate_relationship_id(&rels);
+        let target = relationship_target_from_source_to_target(ctx.document_uri, &part_uri);
+        let rel_xml = add_relationship_to_xml(
+            zip_text(ctx.file, &rels_part).unwrap_or_else(|_| {
+                r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#
+                    .to_string()
+            }),
+            &id,
+            docx_header_footer_relationship_type(kind),
+            &target,
+        );
+        let content_xml = ensure_content_type_override(
+            zip_text(ctx.file, "[Content_Types].xml")?,
+            &part_uri,
+            docx_header_footer_content_type(kind),
+        );
+        created_part = true;
+        rels_xml = Some(rel_xml);
+        content_types_xml = Some(content_xml);
+        part_xml = Some(docx_header_footer_template(kind));
+        (id, part_uri)
+    };
+
+    working = insert_docx_header_footer_reference(&working, section, kind, ref_type, &id)?;
+
+    Ok(DocxHeaderFooterEnsureResult {
+        document_xml: working,
+        rels_part: rels_xml.as_ref().map(|_| rels_part),
+        rels_xml,
+        content_types_xml,
+        part_xml,
+        reference: docx_header_footer_ref_info_from_parts(
+            kind,
+            &id,
+            ref_type,
+            section.index,
+            &part_uri,
+        ),
+        created_part,
+        created_ref: true,
+    })
+}
+
+fn select_docx_section_range(xml: &str, section_index: i64) -> CliResult<Option<DocxSectionRange>> {
+    let sections = docx_section_ranges(xml)?;
+    if sections.is_empty() {
+        return Ok(None);
+    }
+    let selected = if section_index <= 0 {
+        *sections.last().expect("nonempty sections")
+    } else {
+        *sections.get(section_index as usize - 1).ok_or_else(|| {
+            CliError::unexpected(format!(
+                "failed to mutate header: section {section_index} out of range (document has {} sections)",
+                sections.len()
+            ))
+        })?
+    };
+    Ok(Some(selected))
+}
+
+fn select_or_create_docx_section_range(
+    mut xml: String,
+    section_index: i64,
+) -> CliResult<(String, DocxSectionRange)> {
+    if let Some(section) = select_docx_section_range(&xml, section_index)? {
+        return Ok((xml, section));
+    }
+    let body_tag = docx_body_tag(&xml)?;
+    let prefix = docx_body_prefix(&body_tag);
+    let body_close = xml
+        .rfind(&format!("</{body_tag}>"))
+        .ok_or_else(|| CliError::unexpected("document body element not found"))?;
+    let sect_pr = format!("<{}/>", word_xml_tag(&prefix, "sectPr"));
+    xml.insert_str(body_close, &sect_pr);
+    Ok((
+        xml,
+        DocxSectionRange {
+            index: 1,
+            start: body_close,
+            end: body_close + sect_pr.len(),
+        },
+    ))
+}
+
+fn docx_section_ranges(xml: &str) -> CliResult<Vec<DocxSectionRange>> {
+    let body_tag = docx_body_tag(xml)?;
+    let (content_start, content_end) = docx_body_content_bounds(xml, &body_tag)?;
+    let mut sections = Vec::new();
+    for child in xml_direct_child_ranges(xml, content_start, content_end)? {
+        if child.kind == "sectPr" {
+            sections.push(DocxSectionRange {
+                index: sections.len() as i64 + 1,
+                start: child.start,
+                end: child.end,
+            });
+            continue;
+        }
+        if child.kind != "p" {
+            continue;
+        }
+        let Some(p_pr) = direct_child_range_by_kind(xml, child, "pPr")? else {
+            continue;
+        };
+        let Some(sect_pr) = direct_child_range_by_kind(xml, p_pr, "sectPr")? else {
+            continue;
+        };
+        sections.push(DocxSectionRange {
+            index: sections.len() as i64 + 1,
+            start: sect_pr.start,
+            end: sect_pr.end,
+        });
+    }
+    Ok(sections)
+}
+
+fn direct_child_range_by_kind(
+    xml: &str,
+    range: XmlNamedRange,
+    wanted: &str,
+) -> CliResult<Option<XmlNamedRange>> {
+    let fragment = &xml[range.start..range.end];
+    let (open_end, _tag_name, close_start, self_closing) = xml_fragment_bounds(fragment)?;
+    if self_closing {
+        return Ok(None);
+    }
+    Ok(
+        xml_direct_child_ranges(xml, range.start + open_end + 1, range.start + close_start)?
+            .into_iter()
+            .find(|child| child.kind == wanted),
+    )
+}
+
+fn docx_header_footer_reference_id(fragment: &str, kind: &str, ref_type: &str) -> Option<String> {
+    let wanted = format!("{kind}Reference");
+    let mut reader = NsReader::from_str(fragment);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == wanted =>
+            {
+                let actual_type =
+                    normalize_docx_header_footer_type(attr(&e, "type").unwrap_or_default());
+                if actual_type == ref_type {
+                    return attr(&e, "id");
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn docx_referenced_header_footer_rel_ids(xml: &str) -> BTreeSet<String> {
+    let mut reader = NsReader::from_str(xml);
+    let mut ids = BTreeSet::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if matches!(
+                    local_name(e.name().as_ref()),
+                    "headerReference" | "footerReference"
+                ) =>
+            {
+                if let Some(id) = attr(&e, "id") {
+                    ids.insert(id);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    ids
+}
+
+fn unreferenced_docx_header_footer_part(
+    rels: &[RelationshipEntry],
+    referenced: &BTreeSet<String>,
+    document_uri: &str,
+    kind: &str,
+) -> Option<(String, String)> {
+    let rel_type = docx_header_footer_relationship_type(kind);
+    rels.iter()
+        .find(|rel| {
+            rel.rel_type == rel_type
+                && rel.target_mode != "External"
+                && !referenced.contains(&rel.id)
+        })
+        .map(|rel| {
+            (
+                rel.id.clone(),
+                resolve_relationship_target(document_uri, &rel.target),
+            )
+        })
+}
+
+fn allocate_docx_header_footer_part_uri(entries: &[String], kind: &str) -> String {
+    let prefix = format!("word/{kind}");
+    let mut used = BTreeSet::new();
+    for entry in entries {
+        let normalized = entry.trim_start_matches('/');
+        if !normalized.starts_with(&prefix) || !normalized.ends_with(".xml") {
+            continue;
+        }
+        let number = normalized
+            .trim_start_matches(&prefix)
+            .trim_end_matches(".xml")
+            .parse::<u32>();
+        if let Ok(number) = number {
+            used.insert(number);
+        }
+    }
+    let mut next = 1;
+    while used.contains(&next) {
+        next += 1;
+    }
+    format!("/word/{kind}{next}.xml")
+}
+
+fn add_relationship_to_xml(xml: String, id: &str, rel_type: &str, target: &str) -> String {
+    let rel = format!(
+        r#"<Relationship Id="{}" Type="{}" Target="{}"/>"#,
+        xml_attr_escape(id),
+        xml_attr_escape(rel_type),
+        xml_attr_escape(target)
+    );
+    if let Some(pos) = xml.rfind("</Relationships>") {
+        let mut out = String::with_capacity(xml.len() + rel.len());
+        out.push_str(&xml[..pos]);
+        out.push_str(&rel);
+        out.push_str(&xml[pos..]);
+        out
+    } else {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
+        )
+    }
+}
+
+fn insert_docx_header_footer_reference(
+    xml: &str,
+    section: DocxSectionRange,
+    kind: &str,
+    ref_type: &str,
+    id: &str,
+) -> CliResult<String> {
+    let fragment = &xml[section.start..section.end];
+    let (open_end, tag_name, close_start, self_closing) = xml_fragment_bounds(fragment)?;
+    let prefix = xml_tag_prefix(&tag_name);
+    let ref_tag = word_xml_tag(&prefix, &format!("{kind}Reference"));
+    let type_attr = if prefix.is_empty() {
+        "w:type".to_string()
+    } else {
+        format!("{prefix}:type")
+    };
+    let reference = format!(
+        r#"<{ref_tag} {type_attr}="{}" r:id="{}"/>"#,
+        xml_attr_escape(ref_type),
+        xml_attr_escape(id)
+    );
+    let mut updated = xml_open_tag_from_start(&fragment[..=open_end]);
+    if self_closing {
+        updated.push_str(&reference);
+    } else {
+        let children = xml_direct_child_ranges(fragment, open_end + 1, close_start)?;
+        let insert_at = children
+            .iter()
+            .find(|child| child.kind != "headerReference" && child.kind != "footerReference")
+            .map(|child| child.start)
+            .unwrap_or(close_start);
+        updated.push_str(&fragment[open_end + 1..insert_at]);
+        updated.push_str(&reference);
+        updated.push_str(&fragment[insert_at..close_start]);
+    }
+    updated.push_str("</");
+    updated.push_str(&tag_name);
+    updated.push('>');
+
+    let mut out = String::with_capacity(xml.len() + updated.len());
+    out.push_str(&xml[..section.start]);
+    out.push_str(&updated);
+    out.push_str(&xml[section.end..]);
+    Ok(out)
+}
+
+struct DocxHeaderFooterTextMutation {
+    xml: String,
+    index: i64,
+    previous_text: String,
+}
+
+fn set_docx_header_footer_text_xml(
+    xml: &str,
+    part_uri: &str,
+    index: i64,
+    text: &str,
+) -> CliResult<DocxHeaderFooterTextMutation> {
+    let root_tag = docx_header_footer_root_tag(xml, part_uri)?;
+    let root_start = xml.find(&format!("<{root_tag}")).ok_or_else(|| {
+        CliError::unexpected(format!("part {part_uri} is not a header or footer"))
+    })?;
+    let root_open_end = xml[root_start..]
+        .find('>')
+        .map(|offset| root_start + offset)
+        .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?;
+    let root_self_closing = xml[root_start..=root_open_end].trim_end().ends_with("/>");
+    let root_close_start = if root_self_closing {
+        root_open_end + 1
+    } else {
+        xml.rfind(&format!("</{root_tag}>"))
+            .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?
+    };
+    let paragraphs: Vec<XmlNamedRange> = if root_self_closing {
+        Vec::new()
+    } else {
+        xml_direct_child_ranges(xml, root_open_end + 1, root_close_start)?
+            .into_iter()
+            .filter(|child| child.kind == "p")
+            .collect()
+    };
+    let paragraph = paragraphs.get(index as usize - 1).ok_or_else(|| {
+        CliError::target_not_found(format!("target not found: header/footer paragraph {index}"))
+    })?;
+    let fragment = &xml[paragraph.start..paragraph.end];
+    let previous_text = docx_paragraph_fragment_text(fragment);
+    let updated_paragraph = replace_docx_header_footer_paragraph_fragment(fragment, text)?;
+    let mut out = String::with_capacity(xml.len() + updated_paragraph.len());
+    out.push_str(&xml[..paragraph.start]);
+    out.push_str(&updated_paragraph);
+    out.push_str(&xml[paragraph.end..]);
+    Ok(DocxHeaderFooterTextMutation {
+        xml: out,
+        index,
+        previous_text,
+    })
+}
+
+fn replace_docx_header_footer_paragraph_fragment(fragment: &str, text: &str) -> CliResult<String> {
+    let (open_end, tag_name, close_start, self_closing) = xml_fragment_bounds(fragment)?;
+    let start_tag = &fragment[..=open_end];
+    let prefix = xml_tag_prefix(&tag_name);
+    let mut paragraph_properties = String::new();
+    let mut run_properties = String::new();
+    if !self_closing {
+        for child in xml_direct_child_ranges(fragment, open_end + 1, close_start)? {
+            match child.kind.as_str() {
+                "pPr" if paragraph_properties.is_empty() => {
+                    paragraph_properties.push_str(&fragment[child.start..child.end]);
+                }
+                "r" if run_properties.is_empty() => {
+                    if let Some(r_pr) =
+                        first_direct_xml_child_by_kind(&fragment[child.start..child.end], "rPr")?
+                    {
+                        run_properties.push_str(&r_pr);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut out = xml_open_tag_from_start(start_tag);
+    out.push_str(&paragraph_properties);
+    let r = word_xml_tag(&prefix, "r");
+    out.push('<');
+    out.push_str(&r);
+    out.push('>');
+    out.push_str(&run_properties);
+    append_docx_text_children(&mut out, &prefix, text);
+    out.push_str("</");
+    out.push_str(&r);
+    out.push('>');
+    out.push_str("</");
+    out.push_str(&tag_name);
+    out.push('>');
+    Ok(out)
+}
+
+fn docx_paragraph_fragment_text(fragment: &str) -> String {
+    let mut reader = NsReader::from_str(fragment);
+    let mut text = String::new();
+    let mut in_t = false;
+    let mut skip_text_depth = 0usize;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if name == "t" {
+                    in_t = true;
+                }
+                if matches!(name.as_str(), "delText" | "instrText") {
+                    skip_text_depth += 1;
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if skip_text_depth == 0 {
+                    match name.as_str() {
+                        "tab" => text.push('\t'),
+                        "br" | "cr" => text.push('\n'),
+                        "noBreakHyphen" => text.push('-'),
+                        _ => {}
+                    }
+                }
+            }
+            Ok(Event::Text(e)) if in_t && skip_text_depth == 0 => {
+                text.push_str(&decode_xml_text(e.as_ref()));
+            }
+            Ok(Event::GeneralRef(e)) if in_t && skip_text_depth == 0 => {
+                text.push_str(&xml_general_ref(e.as_ref()));
+            }
+            Ok(Event::CData(e)) if in_t && skip_text_depth == 0 => {
+                text.push_str(&String::from_utf8_lossy(e.as_ref()));
+            }
+            Ok(Event::End(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if name == "t" {
+                    in_t = false;
+                } else if matches!(name.as_str(), "delText" | "instrText") {
+                    skip_text_depth = skip_text_depth.saturating_sub(1);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    text
+}
+
+fn docx_header_footer_root_tag(xml: &str, part_uri: &str) -> CliResult<String> {
+    let mut reader = NsReader::from_str(xml);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if element_in_ns(reader.resolver(), &e, DOCX_W_NS)
+                    && matches!(name.as_str(), "hdr" | "ftr")
+                {
+                    return Ok(String::from_utf8_lossy(e.name().as_ref()).to_string());
+                }
+                return Err(CliError::unexpected(format!(
+                    "part {part_uri} is not a header or footer"
+                )));
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Err(CliError::unexpected(format!(
+        "part {part_uri} is not a header or footer"
+    )))
+}
+
+fn write_docx_package_mutation_output(
+    file: &str,
+    overrides: &BTreeMap<String, String>,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<()> {
+    let output_path = options.out.filter(|value| !value.trim().is_empty());
+    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
+        docx_mutation_temp_path(file)
+    } else {
+        output_path
+            .ok_or_else(|| {
+                CliError::invalid_args(
+                    "must specify exactly one of --out, --in-place, or --dry-run",
+                )
+            })?
+            .to_string()
+    };
+    copy_zip_with_part_overrides(file, &readback_path, overrides)?;
+    if !options.no_validate {
+        validate(&readback_path, true)?;
+    }
+    if options.dry_run {
+        let _ = fs::remove_file(&readback_path);
+    } else if options.in_place || output_path == Some(file) {
+        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
+            fs::copy(file, backup_path)
+                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+        }
+        fs::rename(&readback_path, file)
+            .or_else(|_| {
+                fs::copy(&readback_path, file)?;
+                fs::remove_file(&readback_path)
+            })
+            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    }
+    Ok(())
+}
+
+fn docx_header_footer_ref_info_from_parts(
+    kind: &str,
+    id: &str,
+    ref_type: &str,
+    section: i64,
+    part_uri: &str,
+) -> DocxHeaderFooterRefInfo {
+    let primary_selector = format!("{kind}:{section}:{ref_type}");
+    let mut selectors = vec![primary_selector.clone()];
+    if !id.is_empty() {
+        selectors.push(format!("id:{id}"));
+        selectors.push(id.to_string());
+    }
+    if !part_uri.is_empty() {
+        selectors.push(format!("part:{part_uri}"));
+        selectors.push(part_uri.to_string());
+    }
+    DocxHeaderFooterRefInfo {
+        kind: kind.to_string(),
+        id: id.to_string(),
+        ref_type: ref_type.to_string(),
+        section,
+        primary_selector,
+        selectors,
+        part_uri: part_uri.to_string(),
+    }
+}
+
+fn docx_header_footer_paragraph_primary_selector(selector: &str, index: i64) -> String {
+    if selector.is_empty() {
+        String::new()
+    } else {
+        format!("{selector}/p:{index}")
+    }
+}
+
+fn docx_header_footer_paragraph_selectors(selectors: &[String], index: i64) -> Vec<String> {
+    let mut out = Vec::with_capacity(selectors.len() * 2);
+    for selector in selectors {
+        out.push(format!("{selector}/p:{index}"));
+        out.push(format!("{selector}/paragraph:{index}"));
+    }
+    out
+}
+
+fn add_docx_header_footer_readback_commands(
+    result: &mut Map<String, Value>,
+    output_path: Option<&str>,
+    kind: &str,
+    selector: &str,
+) {
+    let target = output_path.unwrap_or("<out.docx>");
+    let validate = format!("ooxml validate --strict {target}");
+    let show = docx_header_footer_show_command(target, kind, selector);
+    let list = docx_header_footer_list_command(target, kind);
+    if output_path.is_some() {
+        result.insert("validateCommand".to_string(), json!(validate));
+        result.insert("showCommand".to_string(), json!(show));
+        result.insert("listCommand".to_string(), json!(list));
+    } else {
+        result.insert("validateCommandTemplate".to_string(), json!(validate));
+        result.insert("showCommandTemplate".to_string(), json!(show));
+        result.insert("listCommandTemplate".to_string(), json!(list));
+    }
+}
+
+fn docx_header_footer_show_command(file: &str, kind: &str, selector: &str) -> String {
+    let group = if kind == "footer" {
+        "footers"
+    } else {
+        "headers"
+    };
+    let mut command = format!("ooxml --json docx {group} show {}", command_arg(file));
+    if !selector.trim().is_empty() {
+        command.push_str(" --selector ");
+        command.push_str(&command_arg(selector));
+    }
+    command
+}
+
+fn docx_header_footer_list_command(file: &str, kind: &str) -> String {
+    let group = if kind == "footer" {
+        "footers"
+    } else {
+        "headers"
+    };
+    format!("ooxml --json docx {group} list {}", command_arg(file))
+}
+
+fn ensure_docx_relationship_namespace(xml: &str) -> CliResult<String> {
+    if xml
+        .contains("xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"")
+    {
+        return Ok(xml.to_string());
+    }
+    let document_start = xml
+        .find("<w:document")
+        .or_else(|| xml.find("<document"))
+        .ok_or_else(|| CliError::unexpected("document root element not found"))?;
+    let start_end = xml[document_start..]
+        .find('>')
+        .map(|offset| document_start + offset)
+        .ok_or_else(|| CliError::unexpected("document root element not found"))?;
+    let mut out = String::with_capacity(xml.len() + 88);
+    out.push_str(&xml[..start_end]);
+    out.push_str(
+        " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"",
+    );
+    out.push_str(&xml[start_end..]);
+    Ok(out)
+}
+
+fn docx_header_footer_template(kind: &str) -> String {
+    let tag = if kind == "footer" { "w:ftr" } else { "w:hdr" };
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><{tag} xmlns:w="{}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:p/></{tag}>"#,
+        String::from_utf8_lossy(DOCX_W_NS)
+    )
+}
+
+fn docx_header_footer_content_type(kind: &str) -> &'static str {
+    if kind == "footer" {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"
+    } else {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"
+    }
+}
+
+fn docx_header_footer_relationship_type(kind: &str) -> &'static str {
+    if kind == "footer" {
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer"
+    } else {
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
+    }
 }
 
 fn docx_images_list(file: &str) -> CliResult<Value> {
@@ -15581,6 +16670,12 @@ enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    DocxHeaderFooterSetText {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
 }
 
 fn push_serve_plan_string_flag(flags: &mut Vec<Value>, name: &str, value: Option<&str>) {
@@ -15605,7 +16700,8 @@ impl ServeOp {
             | ServeOp::PptxReplaceText { command, .. }
             | ServeOp::XlsxRangeSet { command, .. }
             | ServeOp::XlsxRangeSetFormat { command, .. }
-            | ServeOp::XlsxWorkbookMetadataUpdate { command, .. } => command,
+            | ServeOp::XlsxWorkbookMetadataUpdate { command, .. }
+            | ServeOp::DocxHeaderFooterSetText { command, .. } => command,
         }
     }
 
@@ -15756,6 +16852,28 @@ impl ServeOp {
                 ]);
                 Value::Array(argv)
             }
+            ServeOp::DocxHeaderFooterSetText {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let parts = command.split_whitespace().collect::<Vec<_>>();
+                let group = parts.get(1).copied().unwrap_or("headers");
+                let mut argv = vec![
+                    json!("docx"),
+                    json!(group),
+                    json!("set-text"),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
             ServeOp::PptxReplaceText {
                 slide,
                 target,
@@ -15806,6 +16924,11 @@ impl ServeOp {
                 ..
             } => replace_json_string(readback.clone(), readback_file, file),
             ServeOp::XlsxWorkbookMetadataUpdate {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::DocxHeaderFooterSetText {
                 readback_file,
                 readback,
                 ..
@@ -16144,6 +17267,87 @@ impl ServeState {
                     expect_manager.as_deref(),
                 );
                 ServeOp::XlsxWorkbookMetadataUpdate {
+                    command: command.clone(),
+                    plan_flags,
+                    readback_file: session.working.clone(),
+                    readback,
+                }
+            }
+            "docx headers set-text" | "docx footers set-text" => {
+                let kind = if command.contains("footers") {
+                    "footer"
+                } else {
+                    "header"
+                };
+                let id = json_optional_string(args, "id").unwrap_or_default();
+                let ref_type =
+                    json_optional_string(args, "type").unwrap_or_else(|| "default".to_string());
+                let ref_type = normalize_docx_header_footer_show_type(&ref_type)?;
+                let section_value = json_i64(args, "section")?;
+                let section = section_value.unwrap_or(0);
+                let index_value = json_i64(args, "index")?;
+                let index = index_value.unwrap_or(1);
+                let selector = json_optional_string(args, "selector");
+                let text = json_optional_string(args, "text");
+                let text_file = json_optional_string(args, "text-file")
+                    .or_else(|| json_optional_string(args, "textFile"));
+                let text_set = args.get("text").is_some();
+                let text_file_set =
+                    args.get("text-file").is_some() || args.get("textFile").is_some();
+                let text = resolve_required_docx_table_text(
+                    text.as_deref(),
+                    text_file.as_deref(),
+                    text_set,
+                    text_file_set,
+                )?;
+                let readback = docx_headers_footers_set_text(
+                    &session.working,
+                    kind,
+                    DocxHeaderFooterSetTextOptions {
+                        id: &id,
+                        ref_type: &ref_type,
+                        section,
+                        index,
+                        selector: selector.as_deref(),
+                        selector_given: selector.is_some(),
+                        index_given: index_value.is_some(),
+                        text: &text,
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                )?;
+                let mut plan_flags = Vec::new();
+                push_serve_plan_string_flag(
+                    &mut plan_flags,
+                    "--id",
+                    (!id.is_empty()).then_some(id.as_str()),
+                );
+                if args.get("type").is_some() {
+                    push_serve_plan_string_flag(&mut plan_flags, "--type", Some(ref_type.as_str()));
+                }
+                if let Some(section) = section_value {
+                    plan_flags.push(json!("--section"));
+                    plan_flags.push(json!(section.to_string()));
+                }
+                if let Some(index) = index_value {
+                    plan_flags.push(json!("--index"));
+                    plan_flags.push(json!(index.to_string()));
+                }
+                push_serve_plan_string_flag(&mut plan_flags, "--selector", selector.as_deref());
+                if text_set {
+                    push_serve_plan_string_flag(&mut plan_flags, "--text", Some(text.as_str()));
+                }
+                if text_file_set {
+                    push_serve_plan_string_flag(
+                        &mut plan_flags,
+                        "--text-file",
+                        text_file.as_deref(),
+                    );
+                }
+                ServeOp::DocxHeaderFooterSetText {
                     command: command.clone(),
                     plan_flags,
                     readback_file: session.working.clone(),

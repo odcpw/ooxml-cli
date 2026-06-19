@@ -6255,6 +6255,172 @@ fn docx_headers_and_footers_show_match_go_oracle() {
 }
 
 #[test]
+fn docx_headers_and_footers_set_text_match_go_oracle() {
+    let dry_cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "headers",
+            "set-text",
+            "testdata/docx/headers/document.docx",
+            "--selector",
+            "header:1:default/p:1",
+            "--text",
+            "Selector Header",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "footers",
+            "set-text",
+            "testdata/docx/headers/document.docx",
+            "--selector",
+            "footer:1:default",
+            "--index",
+            "1",
+            "--text",
+            "Selector Footer",
+            "--dry-run",
+        ],
+    ];
+    for args in dry_cases {
+        assert_go_rust_match(&args);
+    }
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-docx-header-footer-set-text-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_out = temp_dir.join("go create header.docx");
+    let rust_out = temp_dir.join("rust create header.docx");
+    let go_out_str = go_out.to_string_lossy().to_string();
+    let rust_out_str = rust_out.to_string_lossy().to_string();
+    let go_args = [
+        "--json",
+        "docx",
+        "headers",
+        "set-text",
+        "testdata/docx/minimal/document.docx",
+        "--type",
+        "default",
+        "--index",
+        "1",
+        "--text",
+        "Brand New Header",
+        "--out",
+        &go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "docx",
+        "headers",
+        "set-text",
+        "testdata/docx/minimal/document.docx",
+        "--type",
+        "default",
+        "--index",
+        "1",
+        "--text",
+        "Brand New Header",
+        "--out",
+        &rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "create header exit");
+    assert_eq!(rust_stderr, go_stderr, "create header stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust create header stdout"),
+            &rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_stdout.expect("go create header stdout"),
+            &go_out_str,
+            "[OUT]"
+        ),
+        "create header stdout"
+    );
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["validate", "--strict", &rust_out_str]);
+    assert_eq!(validate_code, 0, "created header validates");
+    assert_eq!(validate_stderr, None, "created header validate stderr");
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "docx",
+        "headers",
+        "show",
+        &rust_out_str,
+        "--selector",
+        "header:1:default",
+    ]);
+    assert_eq!(show_code, 0, "created header show exit");
+    assert_eq!(show_stderr, None, "created header show stderr");
+    assert_eq!(
+        show_stdout.expect("created header show")["paragraphs"][0]["text"],
+        Value::String("Brand New Header".to_string())
+    );
+
+    let go_footer_out = temp_dir.join("go add footer ref.docx");
+    let rust_footer_out = temp_dir.join("rust add footer ref.docx");
+    let go_footer_out_str = go_footer_out.to_string_lossy().to_string();
+    let rust_footer_out_str = rust_footer_out.to_string_lossy().to_string();
+    let go_args = [
+        "--json",
+        "docx",
+        "footers",
+        "set-text",
+        "testdata/docx/with-media/document.docx",
+        "--type",
+        "default",
+        "--index",
+        "1",
+        "--text",
+        "Footer Wired",
+        "--out",
+        &go_footer_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "docx",
+        "footers",
+        "set-text",
+        "testdata/docx/with-media/document.docx",
+        "--type",
+        "default",
+        "--index",
+        "1",
+        "--text",
+        "Footer Wired",
+        "--out",
+        &rust_footer_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "add footer ref exit");
+    assert_eq!(rust_stderr, go_stderr, "add footer ref stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust add footer stdout"),
+            &rust_footer_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_stdout.expect("go add footer stdout"),
+            &go_footer_out_str,
+            "[OUT]"
+        ),
+        "add footer ref stdout"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_images_list_matches_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
@@ -7104,6 +7270,107 @@ fn serve_op_supports_xlsx_workbook_metadata_update() {
 }
 
 #[test]
+fn serve_op_supports_docx_headers_set_text() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-docx-header-set-text-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.docx");
+    let output = temp_dir.join("serve-docx-out.docx");
+    std::fs::copy("testdata/docx/headers/document.docx", &input).expect("stage docx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(
+        1,
+        "open",
+        serde_json::json!({"file": input_str, "out": output_str}),
+    );
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let op = rpc_request(
+        2,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "docx headers set-text",
+            "args": {
+                "selector": "header:1:default/p:1",
+                "text": "Serve Header"
+            },
+        }),
+    );
+    let op_response = serve_roundtrip(&mut stdin, &mut reader, &op);
+    assert!(
+        op_response.get("error").is_none(),
+        "docx header op failed: {op_response:?}"
+    );
+    assert_eq!(
+        op_response["result"]["readback"]["text"],
+        Value::String("Serve Header".to_string())
+    );
+    assert_eq!(
+        op_response["result"]["readback"]["previousText"],
+        Value::String("Page Header".to_string())
+    );
+
+    let plan = rpc_request(3, "plan", serde_json::json!({"session": session}));
+    let plan_response = serve_roundtrip(&mut stdin, &mut reader, &plan);
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][1],
+        Value::String("headers".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][2],
+        Value::String("set-text".to_string())
+    );
+
+    let commit = rpc_request(4, "commit", serde_json::json!({"session": session}));
+    let commit_response = serve_roundtrip(&mut stdin, &mut reader, &commit);
+    assert!(
+        commit_response.get("error").is_none(),
+        "docx header commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "docx",
+        "headers",
+        "show",
+        &output_str,
+        "--selector",
+        "header:1:default",
+    ]);
+    assert_eq!(show_code, 0, "docx serve show output exit");
+    assert_eq!(show_stderr, None, "docx serve show output stderr");
+    assert_eq!(
+        show_stdout.expect("docx serve output show")["paragraphs"][0]["text"],
+        Value::String("Serve Header".to_string())
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_pptx_generic_web_agent_edit_path_works() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-pptx-{}", std::process::id()));
@@ -7775,6 +8042,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx footers list", false);
     assert_command(&all_caps, "ooxml docx headers show", false);
     assert_command(&all_caps, "ooxml docx footers show", false);
+    assert_command(&all_caps, "ooxml docx headers set-text", true);
+    assert_command(&all_caps, "ooxml docx footers set-text", true);
     assert_command(&all_caps, "ooxml docx images list", false);
     assert_command(&all_caps, "ooxml docx tables show", false);
     assert_command(&all_caps, "ooxml docx tables set-cell", false);
@@ -7884,6 +8153,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&header_caps, "ooxml docx headers list", false);
     assert_command(&header_caps, "ooxml docx footers list", false);
     assert_command(&header_caps, "ooxml docx headers show", false);
+    assert_command(&header_caps, "ooxml docx headers set-text", true);
 
     let (footer_code, footer_stdout, footer_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "footer"]);
@@ -7893,6 +8163,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&footer_caps, "ooxml docx headers list", false);
     assert_command(&footer_caps, "ooxml docx footers list", false);
     assert_command(&footer_caps, "ooxml docx footers show", false);
+    assert_command(&footer_caps, "ooxml docx footers set-text", true);
 
     let (image_code, image_stdout, image_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "image"]);
@@ -7911,6 +8182,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx footers list", false);
     assert_command(&docx_caps, "ooxml docx headers show", false);
     assert_command(&docx_caps, "ooxml docx footers show", false);
+    assert_command(&docx_caps, "ooxml docx headers set-text", true);
+    assert_command(&docx_caps, "ooxml docx footers set-text", true);
     assert_command(&docx_caps, "ooxml docx images list", false);
     assert_command(&docx_caps, "ooxml docx tables show", false);
     assert_command(&docx_caps, "ooxml docx tables set-cell", false);
@@ -7939,10 +8212,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 47, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 49, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        243,
+        241,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

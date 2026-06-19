@@ -122,6 +122,13 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   relationship and part selector aliases, scoped paragraph selectors, paragraph
   text/style readback, paragraph-suffix selectors, and unsupported package-type
   rejection
+- `--json docx headers set-text <docx>` and
+  `--json docx footers set-text <docx>` with Go-oracle comparison for selector
+  and index targeting, paragraph-suffix selectors, previous-text readback,
+  first-run property preservation, strict validation, dry-run templates,
+  generated validate/show/list commands, new header/footer part creation,
+  unreferenced part reuse with section-reference wiring, and serve operation
+  routing through the session `op` path
 - `--json docx images list <docx>` with Go-oracle comparison for inline image
   enumeration, media relationship resolution, content type, EMU dimensions,
   block indexes, block hashes, selectors, empty documents, media-only fixtures
@@ -161,7 +168,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 47, and the harness pins the 243-command gap until
+  paths, Rust advertises 49, and the harness pins the 241-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -204,6 +211,9 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `serve` JSON-RPC op/inspect support for `xlsx workbook metadata
   update/inspect`, so workbook-level metadata edits can run through the same
   web/agent session loop as range and table workflows
+- `serve` JSON-RPC op support for `docx headers set-text`, proving the
+  op-compatible DOCX header/footer mutation path used by the web/agent session
+  loop
 
 Still missing before parity can be claimed:
 
