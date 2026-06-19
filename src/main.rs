@@ -447,6 +447,37 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             let include_details = has_flag(rest, "--details");
             docx_tables_show(file, table as usize, include_details)
         }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "paragraphs" && verb == "append" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--text", "--text-file", "--style", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let text = resolve_optional_docx_paragraph_text(
+                parse_string_flag(rest, "--text")?,
+                parse_string_flag(rest, "--text-file")?,
+            )?;
+            let style = parse_string_flag(rest, "--style")?.unwrap_or_default();
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_paragraphs_append(
+                file,
+                DocxParagraphAppendOptions {
+                    text: &text,
+                    style: &style,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
         [family, verb, file, rest @ ..] if family == "pptx" && verb == "render" => {
             pptx_render(file, rest)
         }
@@ -1341,6 +1372,39 @@ fn capability_commands() -> Vec<Value> {
                     "includeRuns",
                     "bool",
                     "include paragraph run text and basic run properties",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml docx paragraphs append",
+            "append <file>",
+            "Append a main document body paragraph, preserving trailing section properties.",
+            &["paragraph"],
+            false,
+            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            vec![
+                flag("--text", "text", "string", "paragraph text"),
+                flag(
+                    "--text-file",
+                    "textFile",
+                    "string",
+                    "path to paragraph text",
+                ),
+                flag("--style", "style", "string", "optional paragraph style ID"),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
                 ),
             ],
         ),
@@ -3630,6 +3694,21 @@ fn xlsx_ranges_set_temp_path(file: &str) -> String {
     parent
         .join(format!(
             ".ooxml-rust-ranges-set-{}-{}.xlsx",
+            std::process::id(),
+            chrono_like_counter()
+        ))
+        .to_string_lossy()
+        .to_string()
+}
+
+fn docx_mutation_temp_path(file: &str) -> String {
+    let parent = Path::new(file)
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    parent
+        .join(format!(
+            ".ooxml-rust-docx-mutation-{}-{}.docx",
             std::process::id(),
             chrono_like_counter()
         ))
@@ -7832,6 +7911,291 @@ fn docx_tables_show(file: &str, table: usize, include_details: bool) -> CliResul
         },
     );
     Ok(Value::Object(result))
+}
+
+struct DocxParagraphAppendOptions<'a> {
+    text: &'a str,
+    style: &'a str,
+    out: Option<&'a str>,
+    backup: Option<&'a str>,
+    dry_run: bool,
+    in_place: bool,
+    no_validate: bool,
+}
+
+fn docx_paragraphs_append(file: &str, options: DocxParagraphAppendOptions<'_>) -> CliResult<Value> {
+    let entries = zip_entry_names(file)?;
+    let package_kind = detect_inspect_package_type(file, &entries);
+    if package_kind != InspectPackageKind::Docx {
+        let detected = match package_kind {
+            InspectPackageKind::Pptx => "pptx",
+            InspectPackageKind::Xlsx => "xlsx",
+            InspectPackageKind::Docx => "docx",
+            InspectPackageKind::Unknown => package_type(file)?,
+        };
+        return Err(CliError::unsupported_type(format!(
+            "file is not a DOCX document (detected: {detected})"
+        )));
+    }
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+
+    let document_part = find_docx_document_part(file, &entries)?;
+    let xml = zip_text(file, &document_part)?;
+    let block_count = docx_rich_block_reports(&xml, false)
+        .map_err(|err| {
+            CliError::unexpected(format!("failed to read main document: {}", err.message))
+        })?
+        .len();
+    let updated_xml = append_docx_body_paragraph_xml(&xml, options.text, options.style)?;
+
+    let output_path = options.out.filter(|value| !value.trim().is_empty());
+    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
+        docx_mutation_temp_path(file)
+    } else {
+        output_path
+            .ok_or_else(|| {
+                CliError::invalid_args(
+                    "must specify exactly one of --out, --in-place, or --dry-run",
+                )
+            })?
+            .to_string()
+    };
+    copy_zip_with_part_override(file, &readback_path, &document_part, &updated_xml)?;
+    if !options.no_validate {
+        validate(&readback_path, true)?;
+    }
+    if options.dry_run {
+        let _ = fs::remove_file(&readback_path);
+    } else if options.in_place || output_path == Some(file) {
+        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
+            fs::copy(file, backup_path)
+                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+        }
+        fs::rename(&readback_path, file)
+            .or_else(|_| {
+                fs::copy(&readback_path, file)?;
+                fs::remove_file(&readback_path)
+            })
+            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    }
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("index".to_string(), json!(block_count + 1));
+    if !options.style.is_empty() {
+        result.insert("style".to_string(), json!(options.style));
+    }
+    result.insert("text".to_string(), json!(options.text));
+    Ok(Value::Object(result))
+}
+
+fn resolve_optional_docx_paragraph_text(
+    text: Option<String>,
+    text_file: Option<String>,
+) -> CliResult<String> {
+    match (text, text_file) {
+        (Some(_), Some(_)) => Err(CliError::invalid_args(
+            "cannot specify both --text and --text-file",
+        )),
+        (Some(value), None) => Ok(value),
+        (None, Some(path)) => fs::read(&path)
+            .map(|data| String::from_utf8_lossy(&data).to_string())
+            .map_err(|_| CliError::file_not_found(format!("file not found: {path}"))),
+        (None, None) => Ok(String::new()),
+    }
+}
+
+fn append_docx_body_paragraph_xml(xml: &str, text: &str, style: &str) -> CliResult<String> {
+    let body_tag = docx_body_tag(xml)?;
+    let close_tag = format!("</{body_tag}>");
+    if !xml.contains(&close_tag) {
+        return Err(CliError::unexpected("document body element not found"));
+    }
+    let prefix = body_tag
+        .split_once(':')
+        .map(|(prefix, _)| prefix.to_string())
+        .unwrap_or_default();
+    let mut working = if prefix.is_empty() && !style.is_empty() {
+        ensure_docx_word_prefix(xml)?
+    } else {
+        xml.to_string()
+    };
+    let body_close = working.rfind(&close_tag).ok_or_else(|| {
+        CliError::unexpected("document body element not found after namespace update")
+    })?;
+    let insert_at = docx_body_sectpr_start(&working[..body_close], &prefix).unwrap_or(body_close);
+    let paragraph = render_docx_paragraph(&prefix, text, style);
+    working.insert_str(insert_at, &paragraph);
+    Ok(working)
+}
+
+fn docx_body_tag(xml: &str) -> CliResult<String> {
+    let mut reader = NsReader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut stack: Vec<String> = Vec::new();
+    let mut word_stack: Vec<bool> = Vec::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let is_word = element_in_ns(reader.resolver(), &e, DOCX_W_NS);
+                if stack.last().is_some_and(|parent| parent == "document")
+                    && word_stack.last().copied().unwrap_or(false)
+                    && name == "body"
+                    && is_word
+                {
+                    return Ok(String::from_utf8_lossy(e.name().as_ref()).to_string());
+                }
+                stack.push(name);
+                word_stack.push(is_word);
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let is_word = element_in_ns(reader.resolver(), &e, DOCX_W_NS);
+                if stack.last().is_some_and(|parent| parent == "document")
+                    && word_stack.last().copied().unwrap_or(false)
+                    && name == "body"
+                    && is_word
+                {
+                    return Ok(String::from_utf8_lossy(e.name().as_ref()).to_string());
+                }
+            }
+            Ok(Event::End(_)) => {
+                stack.pop();
+                word_stack.pop();
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => {
+                return Err(CliError::unexpected(format!(
+                    "failed to read main document: {err}"
+                )));
+            }
+            _ => {}
+        }
+    }
+    Err(CliError::unexpected("document body element not found"))
+}
+
+fn ensure_docx_word_prefix(xml: &str) -> CliResult<String> {
+    if xml.contains("xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"") {
+        return Ok(xml.to_string());
+    }
+    let document_start = xml
+        .find("<document")
+        .or_else(|| xml.find("<w:document"))
+        .ok_or_else(|| CliError::unexpected("document root element not found"))?;
+    let start_end = xml[document_start..]
+        .find('>')
+        .map(|offset| document_start + offset)
+        .ok_or_else(|| CliError::unexpected("document root element not found"))?;
+    let mut out = String::with_capacity(xml.len() + 83);
+    out.push_str(&xml[..start_end]);
+    out.push_str(" xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"");
+    out.push_str(&xml[start_end..]);
+    Ok(out)
+}
+
+fn docx_body_sectpr_start(body_prefix: &str, prefix: &str) -> Option<usize> {
+    let tag = if prefix.is_empty() {
+        "<sectPr".to_string()
+    } else {
+        format!("<{prefix}:sectPr")
+    };
+    body_prefix.rfind(&tag)
+}
+
+fn render_docx_paragraph(prefix: &str, text: &str, style: &str) -> String {
+    let p = word_xml_tag(prefix, "p");
+    let mut paragraph = String::new();
+    paragraph.push('<');
+    paragraph.push_str(&p);
+    paragraph.push('>');
+    if !style.is_empty() {
+        let p_pr = word_xml_tag(prefix, "pPr");
+        let p_style = word_xml_tag(prefix, "pStyle");
+        let val_attr = if prefix.is_empty() {
+            "w:val".to_string()
+        } else {
+            format!("{prefix}:val")
+        };
+        paragraph.push('<');
+        paragraph.push_str(&p_pr);
+        paragraph.push('>');
+        paragraph.push('<');
+        paragraph.push_str(&p_style);
+        paragraph.push(' ');
+        paragraph.push_str(&val_attr);
+        paragraph.push_str("=\"");
+        paragraph.push_str(&xml_attr_escape(style));
+        paragraph.push_str("\"/>");
+        paragraph.push_str("</");
+        paragraph.push_str(&p_pr);
+        paragraph.push('>');
+    }
+    if !text.is_empty() {
+        let r = word_xml_tag(prefix, "r");
+        paragraph.push('<');
+        paragraph.push_str(&r);
+        paragraph.push('>');
+        append_docx_text_children(&mut paragraph, prefix, text);
+        paragraph.push_str("</");
+        paragraph.push_str(&r);
+        paragraph.push('>');
+    }
+    paragraph.push_str("</");
+    paragraph.push_str(&p);
+    paragraph.push('>');
+    paragraph
+}
+
+fn append_docx_text_children(out: &mut String, prefix: &str, text: &str) {
+    for (line_index, line) in text.split('\n').enumerate() {
+        if line_index > 0 {
+            let br = word_xml_tag(prefix, "br");
+            out.push('<');
+            out.push_str(&br);
+            out.push_str("/>");
+        }
+        for (segment_index, segment) in line.split('\t').enumerate() {
+            if segment_index > 0 {
+                let tab = word_xml_tag(prefix, "tab");
+                out.push('<');
+                out.push_str(&tab);
+                out.push_str("/>");
+            }
+            if segment.is_empty() {
+                continue;
+            }
+            let t = word_xml_tag(prefix, "t");
+            out.push('<');
+            out.push_str(&t);
+            if needs_docx_space_preserve(segment) {
+                out.push_str(" xml:space=\"preserve\"");
+            }
+            out.push('>');
+            out.push_str(&xml_escape(segment));
+            out.push_str("</");
+            out.push_str(&t);
+            out.push('>');
+        }
+    }
+}
+
+fn needs_docx_space_preserve(value: &str) -> bool {
+    value != value.trim_matches(|ch| matches!(ch, ' ' | '\t' | '\r' | '\n'))
+}
+
+fn word_xml_tag(prefix: &str, local: &str) -> String {
+    if prefix.is_empty() {
+        local.to_string()
+    } else {
+        format!("{prefix}:{local}")
+    }
 }
 
 fn docx_table_summary_json(
