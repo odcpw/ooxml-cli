@@ -23,6 +23,10 @@ Immediate execution rule: do not run Go test suites after Rust-only work. We are
 not changing Go in ordinary port slices; use targeted Go CLI oracle comparisons
 instead.
 
+Plain-English rule from Oliver: do not run Go tests each time. We are not
+changing Go. For normal Rust-only work, prove behavior with exact Go CLI oracle
+commands and Rust verification, not Go test suites.
+
 ## Test Cadence Override
 
 This is a Rust port. Normal slices change Rust, not Go. Do **not** run Go tests
