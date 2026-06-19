@@ -177,10 +177,15 @@ Latest milestone, 2026-06-20:
   emitted readback command generation moved from `src/xlsx_mutation.rs` into
   `src/xlsx_mutation/cells.rs`, sharing the same range-write and recalculation
   package-update path used by range writes.
+- XLSX range-set command orchestration, inline/file/stdin input parsing,
+  JSON/CSV/TSV matrix normalization, null/ragged policy handling, and range
+  bounds resolution moved from `src/xlsx_mutation.rs` into
+  `src/xlsx_mutation/ranges.rs`; the parent module now holds the shared
+  worksheet XML rewrite substrate used by range, cell, and format mutations.
 - Serve `xlsx cells set` now delegates to the shared `xlsx_cells_set`
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
-- Proof after the latest split: `cargo test --test rust_contract_smoke xlsx_cells_set`,
+- Proof after the latest split: `cargo test --test rust_contract_smoke xlsx_ranges_set`,
   `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
   `cargo test --all-targets` all pass with 77 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
