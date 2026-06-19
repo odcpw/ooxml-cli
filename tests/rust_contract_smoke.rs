@@ -554,6 +554,81 @@ fn write_table_xlsx_with_sheet(dest: &Path, sheet_name: &str) {
     writer.finish().expect("finish table xlsx");
 }
 
+fn write_defined_names_xlsx(dest: &Path) {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("fixture parent");
+    }
+    let output = File::create(dest).expect("create names xlsx");
+    let mut writer = ZipWriter::new(output);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    write_zip_string(
+        &mut writer,
+        options,
+        "[Content_Types].xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "_rels/.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/workbook.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <bookViews><workbookView activeTab="2" firstSheet="0"/></bookViews>
+  <sheets>
+    <sheet name="Summary" sheetId="1" r:id="rId1"/>
+    <sheet name="Data" sheetId="2" r:id="rId2"/>
+    <sheet name="Tail" sheetId="3" r:id="rId3"/>
+  </sheets>
+  <definedNames>
+    <definedName name="GlobalName">Summary!$A$1</definedName>
+    <definedName name="LocalSummary" localSheetId="0">Summary!$A$1</definedName>
+    <definedName name="LocalData" localSheetId="1">Data!$A$1</definedName>
+    <definedName name="LocalTail" localSheetId="2">Tail!$A$1</definedName>
+  </definedNames>
+</workbook>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/_rels/workbook.xml.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
+</Relationships>"#,
+    );
+    for sheet_number in 1..=3 {
+        write_zip_string(
+            &mut writer,
+            options,
+            &format!("xl/worksheets/sheet{sheet_number}.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData/>
+</worksheet>"#,
+        );
+    }
+    writer.finish().expect("finish names xlsx");
+}
+
 fn write_zip_string(
     writer: &mut ZipWriter<File>,
     options: SimpleFileOptions,
@@ -2424,6 +2499,158 @@ fn xlsx_sheets_show_matches_go_oracle() {
     for args in cases {
         assert_go_rust_match(&args);
     }
+}
+
+#[test]
+fn xlsx_names_list_show_matches_go_oracle() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-names-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let workbook = temp_dir.join("defined-names.xlsx");
+    write_defined_names_xlsx(&workbook);
+    let workbook = workbook.to_string_lossy().to_string();
+
+    let cases: Vec<Vec<&str>> = vec![
+        vec!["--json", "xlsx", "names", "list", &workbook],
+        vec![
+            "--json",
+            "xlsx",
+            "names",
+            "list",
+            &workbook,
+            "--scope-sheet",
+            "Data",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "names",
+            "show",
+            &workbook,
+            "--name",
+            "GlobalName",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "names",
+            "show",
+            &workbook,
+            "--name",
+            "H:xlsx/wb/name:n:GlobalName",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "names",
+            "show",
+            &workbook,
+            "--name",
+            "LocalData",
+            "--scope-sheet",
+            "Data",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "names",
+            "show",
+            &workbook,
+            "--name",
+            "sheet:2/name:LocalData",
+        ],
+        vec!["--json", "xlsx", "defined-names", "list", &workbook],
+        vec!["--json", "xlsx", "names", "show", &workbook],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "xlsx", "names", "list", &workbook]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    let result = stdout.expect("names list stdout");
+    assert_eq!(result["file"], Value::String(workbook.clone()));
+    assert_eq!(
+        result["validateCommand"],
+        Value::String(format!(
+            "ooxml validate --strict {}",
+            command_arg_for_test(&workbook)
+        ))
+    );
+    let names = result["names"].as_array().expect("names array");
+    assert_eq!(names.len(), 4);
+
+    let global = &names[0];
+    assert_eq!(global["name"], Value::String("GlobalName".to_string()));
+    assert_eq!(global["scope"], Value::String("workbook".to_string()));
+    assert_eq!(global["ref"], Value::String("Summary!$A$1".to_string()));
+    assert_eq!(
+        global["primarySelector"],
+        Value::String("name:GlobalName".to_string())
+    );
+    assert_eq!(
+        global["handle"],
+        Value::String("H:xlsx/wb/name:n:GlobalName".to_string())
+    );
+    assert!(
+        global["selectors"]
+            .as_array()
+            .expect("global selectors")
+            .contains(&Value::String("scope:workbook/name:GlobalName".to_string()))
+    );
+    assert_rust_emitted_ooxml_command_succeeds(global, "showCommand");
+
+    let local = names
+        .iter()
+        .find(|name| name["name"] == Value::String("LocalData".to_string()))
+        .expect("local data defined name");
+    assert_eq!(local["scope"], Value::String("sheet".to_string()));
+    assert_eq!(local["localSheetId"], Value::from(1));
+    assert_eq!(local["sheetNumber"], Value::from(2));
+    assert_eq!(local["sheetName"], Value::String("Data".to_string()));
+    assert_eq!(local["ref"], Value::String("Data!$A$1".to_string()));
+    assert!(
+        local.get("handle").is_none(),
+        "sheet-local names are not handles"
+    );
+    assert!(
+        local["selectors"]
+            .as_array()
+            .expect("local selectors")
+            .contains(&Value::String("sheet:2/name:LocalData".to_string()))
+    );
+    assert_eq!(
+        local["showCommand"],
+        Value::String(format!(
+            "ooxml --json xlsx names show {} --name LocalData --scope-sheet sheet:2",
+            command_arg_for_test(&workbook)
+        ))
+    );
+    assert_rust_emitted_ooxml_command_succeeds(local, "showCommand");
+
+    let (filtered_code, filtered_stdout, filtered_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "names",
+        "list",
+        &workbook,
+        "--scope-sheet",
+        "Data",
+    ]);
+    assert_eq!(filtered_code, 0);
+    assert_eq!(filtered_stderr, None);
+    let filtered = filtered_stdout.expect("filtered names stdout");
+    let filtered_names = filtered["names"].as_array().expect("filtered names array");
+    assert_eq!(filtered_names.len(), 1);
+    assert_eq!(
+        filtered_names[0]["name"],
+        Value::String("LocalData".to_string())
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
@@ -7488,6 +7715,94 @@ fn serve_inspect_supports_xlsx_sheets_show() {
 }
 
 #[test]
+fn serve_inspect_supports_xlsx_names() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-serve-names-{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("defined-names.xlsx");
+    write_defined_names_xlsx(&input);
+    let input_str = input.to_str().expect("input path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(1, "open", serde_json::json!({"file": input_str}));
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let list = rpc_request(
+        2,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx names list",
+            "args": {"scopeSheet": "Data"},
+        }),
+    );
+    let list_response = serve_roundtrip(&mut stdin, &mut reader, &list);
+    let working = list_response["result"]["file"]
+        .as_str()
+        .expect("working file");
+    let (code, expected, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "names",
+        "list",
+        working,
+        "--scope-sheet",
+        "Data",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    assert_eq!(
+        list_response["result"],
+        expected.expect("names list stdout")
+    );
+
+    let show = rpc_request(
+        3,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx names show",
+            "args": {"name": "LocalData", "scopeSheet": "Data"},
+        }),
+    );
+    let show_response = serve_roundtrip(&mut stdin, &mut reader, &show);
+    let (show_code, show_expected, show_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "names",
+        "show",
+        working,
+        "--name",
+        "LocalData",
+        "--scope-sheet",
+        "Data",
+    ]);
+    assert_eq!(show_code, 0);
+    assert_eq!(show_stderr, None);
+    assert_eq!(
+        show_response["result"],
+        show_expected.expect("names show stdout")
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+}
+
+#[test]
 fn serve_inspect_supports_xlsx_tables_show() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-tables-{}", std::process::id()));
@@ -10787,6 +11102,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "footer",
         "image",
         "table",
+        "name",
         "master",
         "layout",
         "placeholder",
@@ -10817,6 +11133,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments add");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments edit");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments remove");
+    assert_object_kind_command(&all_caps, "name", "ooxml xlsx names list");
+    assert_object_kind_command(&all_caps, "name", "ooxml xlsx names show");
 
     let (pptx_code, pptx_stdout, pptx_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "pptx"]);
@@ -10864,6 +11182,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx tables list", false);
     assert_command(&xlsx_caps, "ooxml xlsx tables show", false);
     assert_command(&xlsx_caps, "ooxml xlsx tables export", false);
+    assert_command(&xlsx_caps, "ooxml xlsx names list", false);
+    assert_command(&xlsx_caps, "ooxml xlsx names show", false);
     assert_command(&xlsx_caps, "ooxml xlsx workbook metadata inspect", false);
     assert_command(&xlsx_caps, "ooxml xlsx workbook metadata update", true);
 
@@ -10881,6 +11201,15 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml docx blocks delete", true);
     assert_no_command(&table_caps, "ooxml docx blocks");
     assert_no_command(&table_caps, "ooxml docx tables show");
+
+    let (name_code, name_stdout, name_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "name"]);
+    assert_eq!(name_code, 0);
+    assert_eq!(name_stderr, None);
+    let name_caps = name_stdout.expect("name capabilities");
+    assert_command(&name_caps, "ooxml xlsx names list", false);
+    assert_command(&name_caps, "ooxml xlsx names show", false);
+    assert_no_command(&name_caps, "ooxml xlsx tables list");
 
     let (layout_code, layout_stdout, layout_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "layout"]);
@@ -11050,10 +11379,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 63, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 65, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        227,
+        225,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
@@ -11264,6 +11593,36 @@ fn assert_rust_emitted_ooxml_command_exits_zero(result: &Value, field: &str) {
     let (code, _, stderr) = run_ooxml(&borrowed);
     assert_eq!(code, 0, "emitted {field} exit for {command}");
     assert_eq!(stderr, None, "emitted {field} stderr for {command}");
+}
+
+fn command_arg_for_test(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    let needs_quotes = value.chars().any(|ch| {
+        matches!(
+            ch,
+            ' ' | '\t'
+                | '\r'
+                | '\n'
+                | '\''
+                | '"'
+                | '\\'
+                | '$'
+                | '`'
+                | '<'
+                | '>'
+                | '|'
+                | '&'
+                | ';'
+                | '('
+                | ')'
+        )
+    });
+    if !needs_quotes {
+        return value.to_string();
+    }
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 fn emitted_ooxml_args(command: &str) -> Vec<String> {
