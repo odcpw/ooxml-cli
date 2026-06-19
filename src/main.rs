@@ -1612,7 +1612,7 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
                     "ooxml --json xlsx ranges export workbook.xlsx --sheet sheetId:1 --range A1 --include-types",
                     "ooxml --json xlsx ranges set workbook.xlsx --sheet sheetId:1 --range A1:B2 --values '[[\"A\",\"B\"],[1,2]]' --out edited.xlsx",
                     "ooxml --json xlsx ranges set-format workbook.xlsx --sheet Sheet1 --range B2:B20 --preset currency --out edited.xlsx",
-                    "serve op commands: xlsx cells set, xlsx ranges set-format"
+                    "serve op commands: xlsx cells set, xlsx ranges set, xlsx ranges set-format"
                 ]
             }
         ],
@@ -1932,8 +1932,8 @@ fn capability_commands() -> Vec<Value> {
             "set <file>",
             "Set a worksheet range from a rectangular JSON, CSV, or TSV matrix.",
             &["sheet", "range", "cell"],
-            false,
-            Some("direct CLI mutation is implemented; serve op routing is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--sheet", "sheet", "string", "sheet selector"),
                 flag("--range", "range", "string", "A1 range"),
@@ -13792,6 +13792,21 @@ enum ServeOp {
         target: String,
         text: String,
     },
+    XlsxRangeSet {
+        command: String,
+        sheet: String,
+        range: Option<String>,
+        anchor: Option<String>,
+        values: Option<String>,
+        values_file: Option<String>,
+        data_format: Option<String>,
+        null_policy: Option<String>,
+        ragged: Option<String>,
+        max_cells: i64,
+        overwrite_formulas: bool,
+        readback_file: String,
+        readback: Value,
+    },
     XlsxRangeSetFormat {
         command: String,
         sheet: String,
@@ -13811,6 +13826,7 @@ impl ServeOp {
         match self {
             ServeOp::XlsxCellSet { command, .. }
             | ServeOp::PptxReplaceText { command, .. }
+            | ServeOp::XlsxRangeSet { command, .. }
             | ServeOp::XlsxRangeSetFormat { command, .. } => command,
         }
     }
@@ -13835,6 +13851,68 @@ impl ServeOp {
                 "--json",
                 "--no-validate",
             ]),
+            ServeOp::XlsxRangeSet {
+                sheet,
+                range,
+                anchor,
+                values,
+                values_file,
+                data_format,
+                null_policy,
+                ragged,
+                max_cells,
+                overwrite_formulas,
+                ..
+            } => {
+                let mut argv = vec![
+                    json!("xlsx"),
+                    json!("ranges"),
+                    json!("set"),
+                    json!(source_file),
+                    json!("--sheet"),
+                    json!(sheet),
+                ];
+                if let Some(range) = range {
+                    argv.push(json!("--range"));
+                    argv.push(json!(range));
+                }
+                if let Some(anchor) = anchor {
+                    argv.push(json!("--anchor"));
+                    argv.push(json!(anchor));
+                }
+                if let Some(values) = values {
+                    argv.push(json!("--values"));
+                    argv.push(json!(values));
+                }
+                if let Some(values_file) = values_file {
+                    argv.push(json!("--values-file"));
+                    argv.push(json!(values_file));
+                }
+                if let Some(data_format) = data_format {
+                    argv.push(json!("--data-format"));
+                    argv.push(json!(data_format));
+                }
+                if let Some(null_policy) = null_policy {
+                    argv.push(json!("--null-policy"));
+                    argv.push(json!(null_policy));
+                }
+                if let Some(ragged) = ragged {
+                    argv.push(json!("--ragged"));
+                    argv.push(json!(ragged));
+                }
+                if *max_cells != 100000 {
+                    argv.push(json!("--max-cells"));
+                    argv.push(json!(max_cells.to_string()));
+                }
+                argv.push(json!("--out"));
+                argv.push(json!("<temp.0>"));
+                argv.push(json!("--json"));
+                argv.push(json!("--no-validate"));
+                if *overwrite_formulas {
+                    argv.push(json!("--overwrite-formulas"));
+                }
+                Value::Array(argv)
+            }
             ServeOp::XlsxRangeSetFormat {
                 sheet,
                 range,
@@ -13922,6 +14000,11 @@ impl ServeOp {
                 text,
                 ..
             } => pptx_replace_text_readback(file, file, *slide, target, text),
+            ServeOp::XlsxRangeSet {
+                readback_file,
+                readback,
+                ..
+            } => replace_json_string(readback.clone(), readback_file, file),
             ServeOp::XlsxRangeSetFormat {
                 readback_file,
                 readback,
@@ -14030,6 +14113,60 @@ impl ServeState {
                     value,
                     previous_type: previous.kind,
                     previous_value: previous.value,
+                }
+            }
+            "xlsx ranges set" => {
+                let sheet = json_string(args, "sheet")?;
+                let range = json_optional_string(args, "range");
+                let anchor = json_optional_string(args, "anchor");
+                let values = json_optional_serialized(args, "values")?;
+                let values_file = json_optional_string(args, "values-file")
+                    .or_else(|| json_optional_string(args, "valuesFile"));
+                let data_format = json_optional_string(args, "data-format")
+                    .or_else(|| json_optional_string(args, "dataFormat"));
+                let null_policy = json_optional_string(args, "null-policy")
+                    .or_else(|| json_optional_string(args, "nullPolicy"));
+                let ragged = json_optional_string(args, "ragged");
+                let max_cells = json_i64(args, "max-cells")?
+                    .or(json_i64(args, "maxCells")?)
+                    .unwrap_or(100000);
+                let overwrite_formulas = json_bool(args, "overwrite-formulas")
+                    .or_else(|| json_bool(args, "overwriteFormulas"))
+                    .unwrap_or(false);
+                let readback = xlsx_ranges_set(
+                    &session.working,
+                    XlsxRangesSetOptions {
+                        sheet: &sheet,
+                        range: range.as_deref(),
+                        anchor: anchor.as_deref(),
+                        values: values.as_deref(),
+                        values_file: values_file.as_deref(),
+                        data_format: data_format.as_deref(),
+                        null_policy: null_policy.as_deref(),
+                        ragged: ragged.as_deref(),
+                        max_cells,
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        no_validate: true,
+                        in_place: true,
+                        overwrite_formulas,
+                    },
+                )?;
+                ServeOp::XlsxRangeSet {
+                    command: command.clone(),
+                    sheet,
+                    range,
+                    anchor,
+                    values,
+                    values_file,
+                    data_format,
+                    null_policy,
+                    ragged,
+                    max_cells,
+                    overwrite_formulas,
+                    readback_file: session.working.clone(),
+                    readback,
                 }
             }
             "xlsx ranges set-format" => {
@@ -14419,6 +14556,18 @@ fn json_optional_string(value: &Value, key: &str) -> Option<String> {
         .get(key)
         .and_then(Value::as_str)
         .map(ToString::to_string)
+}
+
+fn json_optional_serialized(value: &Value, key: &str) -> CliResult<Option<String>> {
+    let Some(raw) = value.get(key) else {
+        return Ok(None);
+    };
+    if let Some(text) = raw.as_str() {
+        return Ok(Some(text.to_string()));
+    }
+    serde_json::to_string(raw)
+        .map(Some)
+        .map_err(|err| CliError::invalid_args(format!("{key} must be valid JSON: {err}")))
 }
 
 fn json_bool(value: &Value, key: &str) -> Option<bool> {

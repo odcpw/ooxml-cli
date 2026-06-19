@@ -6072,6 +6072,131 @@ fn serve_inspect_supports_xlsx_tables_show() {
 }
 
 #[test]
+fn serve_op_supports_xlsx_ranges_set() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-ranges-set-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("serve-ranges-set-out.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(
+        1,
+        "open",
+        serde_json::json!({"file": input_str, "out": output_str}),
+    );
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let op = rpc_request(
+        2,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx ranges set",
+            "args": {
+                "sheet": "Sheet1",
+                "range": "A1:B2",
+                "values": [["Agent", {"value": "12.5", "type": "number"}], ["Flag", true]]
+            },
+        }),
+    );
+    let op_response = serve_roundtrip(&mut stdin, &mut reader, &op);
+    assert!(
+        op_response.get("error").is_none(),
+        "ranges set op failed: {op_response:?}"
+    );
+    let readback = &op_response["result"]["readback"];
+    assert_eq!(readback["range"], Value::String("A1:B2".to_string()));
+    assert_eq!(readback["updated"], Value::from(4));
+    assert_eq!(readback["created"], Value::from(2));
+    assert_eq!(
+        readback["destination"]["values"][0][0],
+        Value::String("Agent".to_string())
+    );
+    assert_eq!(
+        readback["destination"]["values"][0][1],
+        serde_json::json!(12.5)
+    );
+    assert_eq!(readback["destination"]["values"][1][1], Value::Bool(true));
+
+    let plan = rpc_request(3, "plan", serde_json::json!({"session": session}));
+    let plan_response = serve_roundtrip(&mut stdin, &mut reader, &plan);
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][2],
+        Value::String("set".to_string())
+    );
+
+    let commit = rpc_request(4, "commit", serde_json::json!({"session": session}));
+    let commit_response = serve_roundtrip(&mut stdin, &mut reader, &commit);
+    assert!(
+        commit_response.get("error").is_none(),
+        "commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+    assert_eq!(
+        commit_response["result"]["applied"][0]["readback"]["file"],
+        Value::String(output_str.clone())
+    );
+    assert_eq!(
+        commit_response["result"]["applied"][0]["readback"]["output"],
+        Value::String(output_str.clone())
+    );
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "ranges set serve output validate exit");
+    assert_eq!(
+        validate_stderr, None,
+        "ranges set serve output validate stderr"
+    );
+
+    let (export_code, export_stdout, export_stderr) = run_go_ooxml(&[
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &output_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--include-types",
+        "--include-formulas",
+    ]);
+    assert_eq!(export_code, 0, "Go export readback exit");
+    assert_eq!(export_stderr, None, "Go export readback stderr");
+    let export = export_stdout.expect("Go export readback");
+    assert_eq!(export["values"][0][0], Value::String("Agent".to_string()));
+    assert_eq!(export["values"][0][1], serde_json::json!(12.5));
+    assert_eq!(export["values"][1][0], Value::String("Flag".to_string()));
+    assert_eq!(export["values"][1][1], Value::Bool(true));
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_op_supports_xlsx_ranges_set_format() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-format-{}", std::process::id()));
@@ -6899,7 +7024,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx sheets list", false);
     assert_command(&xlsx_caps, "ooxml xlsx sheets show", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
-    assert_command(&xlsx_caps, "ooxml xlsx ranges set", false);
+    assert_command(&xlsx_caps, "ooxml xlsx ranges set", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set-format", true);
     assert_command(&xlsx_caps, "ooxml xlsx cells extract", false);
     assert_command(&xlsx_caps, "ooxml xlsx cells set", true);

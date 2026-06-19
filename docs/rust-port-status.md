@@ -22,9 +22,9 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   matrices, CSV/TSV matrix input, `--values-file -` stdin, saved output
   readback, formula cells, null skipping, dry-run templates, generated mutation
   readback commands, formula-overwrite rejection, merged-cell rejection, and
-  preservation of untouched shared-string/style/formula-cache cell XML; this is
-  direct CLI subset support, with full formula recalculation/calc-chain parity
-  and serve `op` routing still open in `DISC-001`
+  preservation of untouched shared-string/style/formula-cache cell XML, plus
+  serve/MCP operation routing through the session `op` path; full formula
+  recalculation/calc-chain parity remains open in `DISC-001`
 - `--json xlsx ranges set-format ...` with Go-oracle comparison for direct CLI
   number-format mutation, custom styles part creation, formatted blank-cell
   creation, saved output format readback, generated mutation readback commands,
