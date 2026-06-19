@@ -9,6 +9,9 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 static GO_OOXML_BIN: OnceLock<PathBuf> = OnceLock::new();
+static GO_ORACLE_SOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+const DEFAULT_GO_ORACLE_REF: &str = "codex/ooxml-go-reference";
 
 fn baseline() -> Value {
     serde_json::from_str(include_str!(
@@ -142,9 +145,10 @@ fn go_ooxml_binary() -> &'static PathBuf {
     GO_OOXML_BIN.get_or_init(|| {
         let binary = std::env::temp_dir().join(format!("ooxml-go-oracle-{}", std::process::id()));
         let output = Command::new("go")
-            .args(["build", "-o"])
+            .args(["build", "-buildvcs=false", "-o"])
             .arg(&binary)
             .arg("./cmd/ooxml")
+            .current_dir(go_oracle_source_dir())
             .env("GOCACHE", "/tmp/ooxml-go-build")
             .output()
             .expect("build Go ooxml oracle");
@@ -155,6 +159,40 @@ fn go_ooxml_binary() -> &'static PathBuf {
             String::from_utf8_lossy(&output.stderr)
         );
         binary
+    })
+}
+
+fn go_oracle_source_dir() -> &'static PathBuf {
+    GO_ORACLE_SOURCE_DIR.get_or_init(|| {
+        if let Ok(path) = std::env::var("OOXML_GO_ORACLE_DIR")
+            && !path.trim().is_empty()
+        {
+            return PathBuf::from(path);
+        }
+
+        let ref_name =
+            std::env::var("OOXML_GO_ORACLE_REF").unwrap_or_else(|_| DEFAULT_GO_ORACLE_REF.into());
+        let unique_suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let source_dir = std::env::temp_dir().join(format!(
+            "ooxml-go-oracle-src-{}-{unique_suffix}",
+            std::process::id()
+        ));
+        let output = Command::new("git")
+            .args(["worktree", "add", "--detach"])
+            .arg(&source_dir)
+            .arg(&ref_name)
+            .output()
+            .expect("create Go oracle worktree");
+        assert!(
+            output.status.success(),
+            "create Go oracle worktree for {ref_name:?} failed\nstdout:\n{}\nstderr:\n{}\nSet OOXML_GO_ORACLE_DIR to a prepared frozen Go reference checkout if needed.",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        source_dir
     })
 }
 
@@ -6668,6 +6706,85 @@ fn frozen_serve_flow_matches_go_baseline() {
 }
 
 #[test]
+fn serve_commit_does_not_write_dry_run_output() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-serve-dryrun-{}", std::process::id()));
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("dry-run-out.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({"file": input_str, "out": output_str, "dryRun": true}),
+        ),
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let op_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            2,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "xlsx cells set",
+                "args": {"sheet": "1", "cell": "A1", "value": "dry-run-commit"},
+            }),
+        ),
+    );
+    assert!(
+        op_response.get("error").is_none(),
+        "dry-run op returned error: {op_response:?}"
+    );
+
+    let commit_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(3, "commit", serde_json::json!({"session": session})),
+    );
+    assert!(
+        commit_response.get("error").is_none(),
+        "dry-run commit returned error: {commit_response:?}"
+    );
+    assert_eq!(commit_response["result"]["dryRun"], Value::Bool(true));
+    assert_eq!(commit_response["result"]["committed"], Value::Bool(false));
+    assert_eq!(commit_response["result"]["output"], Value::Null);
+    assert_eq!(
+        commit_response["result"]["plannedOutput"],
+        Value::String(output_str)
+    );
+    assert!(
+        !output.exists(),
+        "dry-run commit must not create the requested output"
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+}
+
+#[test]
 fn serve_inspect_supports_xlsx_cells_extract() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-cells-{}", std::process::id()));
@@ -8051,6 +8168,13 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx blocks replace", false);
     assert_command(&all_caps, "ooxml docx blocks delete", false);
     assert_command(&all_caps, "ooxml docx blocks insert-after", false);
+    for kind in ["block", "paragraph", "field", "header", "footer", "image"] {
+        assert_object_kind(&all_caps, kind);
+    }
+    assert_object_kind_command(&all_caps, "field", "ooxml docx fields list");
+    assert_object_kind_command(&all_caps, "header", "ooxml docx headers set-text");
+    assert_object_kind_command(&all_caps, "footer", "ooxml docx footers set-text");
+    assert_object_kind_command(&all_caps, "image", "ooxml docx images list");
 
     let (pptx_code, pptx_stdout, pptx_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "pptx"]);
@@ -8347,6 +8471,30 @@ fn assert_no_command(capabilities: &Value, path: &str) {
             .iter()
             .any(|command| command["path"].as_str() == Some(path)),
         "unexpected command {path}: {commands:?}"
+    );
+}
+
+fn assert_object_kind(capabilities: &Value, kind: &str) {
+    let kinds = capabilities["objectKinds"]
+        .as_array()
+        .expect("objectKinds array");
+    assert!(
+        kinds.iter().any(|value| value.as_str() == Some(kind)),
+        "missing object kind {kind}: {kinds:?}"
+    );
+    assert!(
+        capabilities["objectKindsIndex"].get(kind).is_some(),
+        "missing objectKindsIndex entry for {kind}"
+    );
+}
+
+fn assert_object_kind_command(capabilities: &Value, kind: &str, path: &str) {
+    let commands = capabilities["objectKindsIndex"][kind]
+        .as_array()
+        .unwrap_or_else(|| panic!("objectKindsIndex entry for {kind} is not an array"));
+    assert!(
+        commands.iter().any(|value| value.as_str() == Some(path)),
+        "missing {path} in objectKindsIndex[{kind}]: {commands:?}"
     );
 }
 

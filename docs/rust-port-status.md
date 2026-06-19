@@ -1,7 +1,9 @@
 # Rust Port Status
 
 The Go implementation remains the reference on `codex/ooxml-go-reference`.
-Rust work lands on `codex/ooxml-rust-port`.
+Rust work lands on `codex/ooxml-rust-port`. The Rust smoke harness builds its
+Go oracle from a detached `codex/ooxml-go-reference` worktree by default, or
+from `OOXML_GO_ORACLE_DIR`/`OOXML_GO_ORACLE_REF` when deliberately overridden.
 
 The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.json`.
 The first Rust slice implements and tests the CLI cases from that baseline:

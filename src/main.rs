@@ -1784,17 +1784,23 @@ fn capabilities(args: &[String]) -> CliResult<Value> {
             {"name": "--strict", "argName": "strict", "type": "bool", "default": "false", "description": "enable strict validation mode"}
         ],
         "commands": commands,
-        "objectKinds": ["package", "slide", "shape", "sheet", "range", "cell", "table", "style", "comment"],
+        "objectKinds": ["package", "slide", "shape", "sheet", "range", "cell", "table", "block", "paragraph", "style", "comment", "field", "header", "footer", "image"],
         "objectKindsIndex": {
-            "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update"],
+            "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml docx text", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update"],
             "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text", "ooxml pptx render"],
             "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx replace text"],
             "sheet": ["ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "range": ["ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx cells extract", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
             "cell": ["ooxml xlsx ranges set", "ooxml xlsx cells set"],
-            "table": ["ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export"],
+            "table": ["ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export", "ooxml docx tables show", "ooxml docx tables set-cell", "ooxml docx tables clear-cell"],
+            "block": ["ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx tables show"],
+            "paragraph": ["ooxml docx text", "ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx paragraphs append", "ooxml docx paragraphs insert", "ooxml docx paragraphs set", "ooxml docx paragraphs clear", "ooxml docx styles apply", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx images list"],
             "style": ["ooxml xlsx ranges set-format", "ooxml docx styles list", "ooxml docx styles show", "ooxml docx styles apply"],
-            "comment": ["ooxml docx comments list"]
+            "comment": ["ooxml docx comments list", "ooxml docx comments add", "ooxml docx comments edit", "ooxml docx comments remove"],
+            "field": ["ooxml docx fields list"],
+            "header": ["ooxml docx headers list", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers list"],
+            "footer": ["ooxml docx footers list", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx headers list"],
+            "image": ["ooxml docx images list"]
         },
         "exitCodes": [
             {"code": EXIT_SUCCESS, "name": "success", "description": "command completed successfully"},
@@ -17548,10 +17554,18 @@ impl ServeState {
             .out
             .clone()
             .ok_or_else(|| CliError::invalid_args("commit requires an output path"))?;
-        if let Some(parent) = Path::new(&output).parent() {
-            fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
+        if !session.dry_run {
+            if let Some(parent) = Path::new(&output).parent() {
+                fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
+            }
+            fs::copy(&session.working, &output)
+                .map_err(|err| CliError::unexpected(err.to_string()))?;
         }
-        fs::copy(&session.working, &output).map_err(|err| CliError::unexpected(err.to_string()))?;
+        let readback_file = if session.dry_run {
+            &session.working
+        } else {
+            &output
+        };
         let applied: Vec<Value> = session
             .ops
             .iter()
@@ -17560,19 +17574,30 @@ impl ServeState {
                 json!({
                     "command": op.command(),
                     "index": index,
-                    "readback": op.readback(&output),
+                    "readback": op.readback(readback_file),
                 })
             })
             .collect();
-        Ok(json!({
+        let mut result = json!({
             "applied": applied,
             "dryRun": session.dry_run,
             "file": session.file,
             "opsCount": session.ops.len(),
-            "output": output,
+            "output": if session.dry_run { Value::Null } else { json!(output.clone()) },
             "schemaVersion": 1,
-            "validateCommand": format!("ooxml validate --strict {output}"),
-        }))
+            "validateCommand": if session.dry_run {
+                Value::Null
+            } else {
+                json!(format!("ooxml validate --strict {output}"))
+            },
+        });
+        if session.dry_run
+            && let Value::Object(ref mut object) = result
+        {
+            object.insert("committed".to_string(), json!(false));
+            object.insert("plannedOutput".to_string(), json!(output));
+        }
+        Ok(result)
     }
 
     fn serve_abort(&mut self, params: &Value) -> CliResult<Value> {
