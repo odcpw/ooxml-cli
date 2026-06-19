@@ -56,6 +56,8 @@ Latest milestone, 2026-06-19:
   resource lookup, and URI decoding moved from `src/main.rs` into
   `src/mcp_support.rs`, leaving MCP state logic separate from protocol support
   helpers.
+- MCP stdio runner and protocol state moved from `src/main.rs` into
+  `src/mcp.rs`, with the serve engine left in place for a later dedicated split.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
