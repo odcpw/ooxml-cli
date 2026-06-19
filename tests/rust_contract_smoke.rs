@@ -10097,7 +10097,8 @@ fn serve_pptx_generic_web_agent_edit_path_works() {
     assert_eq!(
         op_response["result"]["readback"]["readbackCommand"],
         Value::String(format!(
-            "ooxml --json pptx shapes get {pptx_working} --slide 1 --target title --include-text --include-bounds"
+            "ooxml --json pptx shapes get {} --slide 1 --target title --include-text --include-bounds",
+            command_arg_for_test(pptx_working)
         ))
     );
 
@@ -11703,11 +11704,12 @@ fn shell_words(command: &str) -> Result<Vec<String>, String> {
 fn scrub_dynamic(value: Value, replacements: &[(String, String)]) -> Value {
     match value {
         Value::String(text) => {
-            let mut text = text;
-            for (from, to) in replacements {
-                text = text.replace(from, to);
-            }
-            Value::String(text)
+            let replacements = scrub_replacement_variants(
+                replacements
+                    .iter()
+                    .map(|(from, to)| (from.as_str(), to.as_str())),
+            );
+            Value::String(scrub_string(text, replacements))
         }
         Value::Array(items) => Value::Array(
             items
@@ -11726,13 +11728,10 @@ fn scrub_dynamic(value: Value, replacements: &[(String, String)]) -> Value {
 
 fn scrub_paths(value: Value, replacements: &[(&str, &str)]) -> Value {
     match value {
-        Value::String(text) => {
-            let mut text = text;
-            for (from, to) in replacements {
-                text = text.replace(from, to);
-            }
-            Value::String(text)
-        }
+        Value::String(text) => Value::String(scrub_string(
+            text,
+            scrub_replacement_variants(replacements.iter().copied()),
+        )),
         Value::Array(items) => Value::Array(
             items
                 .into_iter()
@@ -11746,4 +11745,55 @@ fn scrub_paths(value: Value, replacements: &[(&str, &str)]) -> Value {
         ),
         other => other,
     }
+}
+
+fn scrub_replacement_variants<'a, I>(replacements: I) -> Vec<(String, String)>
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    let mut variants = Vec::new();
+    for (from, to) in replacements {
+        if from.is_empty() {
+            continue;
+        }
+        let mut from_variants = vec![from.to_string()];
+        let slash_normalized = from.replace('\\', "/");
+        if slash_normalized != from {
+            from_variants.push(slash_normalized);
+        }
+        let json_escaped = from.replace('\\', r"\\");
+        if json_escaped != from {
+            from_variants.push(json_escaped);
+        }
+        for variant in from_variants {
+            variants.push((variant.clone(), to.to_string()));
+            variants.push((format!("'{variant}'"), to.to_string()));
+        }
+    }
+    variants.sort_by_key(|variant| std::cmp::Reverse(variant.0.len()));
+    variants
+}
+
+fn scrub_string(mut text: String, replacements: Vec<(String, String)>) -> String {
+    let mut placeholders = BTreeSet::new();
+    for (from, to) in replacements {
+        text = text.replace(&from, &to);
+        if is_path_placeholder(&to) {
+            placeholders.insert(to);
+        }
+    }
+    for placeholder in placeholders {
+        text = text.replace(&format!("{placeholder}\\"), &format!("{placeholder}/"));
+    }
+    text
+}
+
+fn is_path_placeholder(value: &str) -> bool {
+    value.starts_with('[')
+        && value.ends_with(']')
+        && [
+            "FILE", "XLSX", "XLSM", "PPTX", "PPTM", "DOCX", "DOCM", "PACKAGE", "DIR", "OUT",
+        ]
+        .iter()
+        .any(|needle| value.contains(needle))
 }
