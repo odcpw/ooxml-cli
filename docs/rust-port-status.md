@@ -31,6 +31,9 @@ Latest milestone, 2026-06-19:
 - ZIP package read/write helpers moved from `src/main.rs` into `src/zip_io.rs`,
   separating shared package I/O from command-family logic while preserving the
   existing mutation copy path.
+- Core XML attribute, namespace, and escape/unescape helpers moved from
+  `src/main.rs` into `src/xml_util.rs`, giving future OOXML modules a shared
+  lexical XML layer.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
