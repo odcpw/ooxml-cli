@@ -426,6 +426,11 @@ fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             docx_headers_footers_list(file)
         }
         [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && (group == "headers" || group == "footers") && verb == "show" =>
+        {
+            docx_headers_footers_show(file, docx_header_footer_kind(group), rest)
+        }
+        [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && group == "images" && verb == "list" =>
         {
             reject_unknown_flags(rest, &[], &[])?;
@@ -1404,6 +1409,35 @@ fn capability_commands() -> Vec<Value> {
             vec![],
         ),
         capability_command(
+            "ooxml docx headers show",
+            "show <file>",
+            "Show header content by type, section, or relationship id.",
+            &["header", "paragraph"],
+            false,
+            Some("read-only command; accepts selectors from docx headers list"),
+            vec![
+                flag(
+                    "--id",
+                    "id",
+                    "string",
+                    "relationship id to resolve directly",
+                ),
+                flag(
+                    "--section",
+                    "section",
+                    "int",
+                    "1-based section index; 0 means the last section",
+                ),
+                flag(
+                    "--selector",
+                    "selector",
+                    "string",
+                    "selector from headers/footers list",
+                ),
+                flag("--type", "type", "string", "default, first, or even"),
+            ],
+        ),
+        capability_command(
             "ooxml docx footers list",
             "list <file>",
             "List headers and footers defined per section.",
@@ -1413,6 +1447,35 @@ fn capability_commands() -> Vec<Value> {
                 "read-only command; generated header/footer selectors can be pasted into show or set-text",
             ),
             vec![],
+        ),
+        capability_command(
+            "ooxml docx footers show",
+            "show <file>",
+            "Show footer content by type, section, or relationship id.",
+            &["footer", "paragraph"],
+            false,
+            Some("read-only command; accepts selectors from docx footers list"),
+            vec![
+                flag(
+                    "--id",
+                    "id",
+                    "string",
+                    "relationship id to resolve directly",
+                ),
+                flag(
+                    "--section",
+                    "section",
+                    "int",
+                    "1-based section index; 0 means the last section",
+                ),
+                flag(
+                    "--selector",
+                    "selector",
+                    "string",
+                    "selector from headers/footers list",
+                ),
+                flag("--type", "type", "string", "default, first, or even"),
+            ],
         ),
         capability_command(
             "ooxml docx images list",
@@ -6625,6 +6688,15 @@ fn docx_word_attr_ns(
 }
 
 fn docx_headers_footers_list(file: &str) -> CliResult<Value> {
+    let (document_uri, sections) = docx_header_footer_listing(file)?;
+    Ok(json!({
+        "file": file,
+        "documentPartUri": document_uri,
+        "sections": sections,
+    }))
+}
+
+fn docx_header_footer_listing(file: &str) -> CliResult<(String, Vec<Value>)> {
     let entries = zip_entry_names(file)?;
     let package_kind = detect_inspect_package_type(file, &entries);
     if package_kind != InspectPackageKind::Docx {
@@ -6659,11 +6731,7 @@ fn docx_headers_footers_list(file: &str) -> CliResult<Value> {
         })
         .collect::<BTreeMap<_, _>>();
     let sections = docx_header_footer_sections(file, &xml, &rel_targets)?;
-    Ok(json!({
-        "file": file,
-        "documentPartUri": document_uri,
-        "sections": sections,
-    }))
+    Ok((document_uri, sections))
 }
 
 #[derive(Default)]
@@ -6678,6 +6746,26 @@ struct DocxHeaderFooterSetBuild {
     default: Option<Value>,
     first: Option<Value>,
     even: Option<Value>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct DocxHeaderFooterRefInfo {
+    kind: String,
+    id: String,
+    ref_type: String,
+    section: i64,
+    primary_selector: String,
+    selectors: Vec<String>,
+    part_uri: String,
+}
+
+#[derive(Default)]
+struct DocxHeaderFooterSelector {
+    kind: String,
+    id: String,
+    ref_type: String,
+    section: i64,
+    part_uri: String,
 }
 
 fn docx_header_footer_sections(
@@ -6875,6 +6963,440 @@ fn docx_header_footer_set_json(set: DocxHeaderFooterSetBuild) -> Value {
         "default": set.default.unwrap_or(Value::Null),
         "first": set.first.unwrap_or(Value::Null),
         "even": set.even.unwrap_or(Value::Null),
+    })
+}
+
+fn docx_headers_footers_show(file: &str, kind: &str, rest: &[String]) -> CliResult<Value> {
+    reject_unknown_flags(rest, &["--id", "--type", "--section", "--selector"], &[])?;
+    let id = parse_string_flag(rest, "--id")?.unwrap_or_default();
+    let ref_type = parse_string_flag(rest, "--type")?.unwrap_or_else(|| "default".to_string());
+    let ref_type = normalize_docx_header_footer_show_type(&ref_type)?;
+    let section = parse_i64_flag(rest, "--section")?.unwrap_or(0);
+    if section < 0 {
+        return Err(CliError::invalid_args(
+            "--section must be >= 0 (0 means the last section)",
+        ));
+    }
+    let selector = parse_string_flag(rest, "--selector")?;
+    if selector.is_some()
+        && (has_flag(rest, "--id") || has_flag(rest, "--type") || has_flag(rest, "--section"))
+    {
+        return Err(CliError::invalid_args(
+            "cannot specify --selector with --id, --type, or --section",
+        ));
+    }
+
+    let (_document_uri, sections) = docx_header_footer_listing(file)?;
+    let target = if let Some(selector) = selector {
+        let parsed = parse_docx_header_footer_selector(kind, &selector)?;
+        resolve_docx_header_footer_selector(&sections, kind, &parsed)
+    } else if !id.is_empty() {
+        resolve_docx_header_footer_selector(
+            &sections,
+            kind,
+            &DocxHeaderFooterSelector {
+                kind: kind.to_string(),
+                id,
+                ref_type,
+                section,
+                ..DocxHeaderFooterSelector::default()
+            },
+        )
+    } else {
+        resolve_docx_header_footer_selector(
+            &sections,
+            kind,
+            &DocxHeaderFooterSelector {
+                kind: kind.to_string(),
+                ref_type,
+                section,
+                ..DocxHeaderFooterSelector::default()
+            },
+        )
+    }
+    .ok_or_else(|| CliError::target_not_found(format!("target not found: {kind}")))?;
+
+    if target.part_uri.is_empty() {
+        return Err(CliError::invalid_args(format!(
+            "{kind} reference {:?} does not resolve to a part",
+            target.id
+        )));
+    }
+    let paragraphs = docx_header_footer_paragraphs(file, &target)?;
+    Ok(json!({
+        "file": file,
+        "kind": target.kind,
+        "partUri": target.part_uri,
+        "id": target.id,
+        "type": target.ref_type,
+        "section": target.section,
+        "primarySelector": target.primary_selector,
+        "selectors": target.selectors,
+        "paragraphs": paragraphs,
+    }))
+}
+
+fn docx_header_footer_kind(group: &str) -> &'static str {
+    if group == "footers" {
+        "footer"
+    } else {
+        "header"
+    }
+}
+
+fn normalize_docx_header_footer_show_type(value: &str) -> CliResult<String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" | "default" => Ok("default".to_string()),
+        "first" => Ok("first".to_string()),
+        "even" => Ok("even".to_string()),
+        _ => Err(CliError::invalid_args(
+            "--type must be one of default, first, even",
+        )),
+    }
+}
+
+fn parse_docx_header_footer_selector(
+    command_kind: &str,
+    raw: &str,
+) -> CliResult<DocxHeaderFooterSelector> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err(CliError::invalid_args("--selector cannot be empty"));
+    }
+    let base = split_docx_header_footer_paragraph_selector(raw)?;
+    let mut selector = DocxHeaderFooterSelector {
+        kind: command_kind.to_string(),
+        ref_type: "default".to_string(),
+        ..DocxHeaderFooterSelector::default()
+    };
+    if let Some(id) = base.strip_prefix("id:") {
+        if id.is_empty() {
+            return Err(CliError::invalid_args(
+                "--selector id:<relId> cannot be empty",
+            ));
+        }
+        selector.id = id.to_string();
+        return Ok(selector);
+    }
+    if let Some(part_uri) = base.strip_prefix("part:") {
+        if part_uri.is_empty() {
+            return Err(CliError::invalid_args(
+                "--selector part:<partUri> cannot be empty",
+            ));
+        }
+        selector.part_uri = part_uri.to_string();
+        return Ok(selector);
+    }
+    if base.starts_with('/') {
+        selector.part_uri = base.to_string();
+        return Ok(selector);
+    }
+    if base.starts_with("rId") {
+        selector.id = base.to_string();
+        return Ok(selector);
+    }
+    if let Some(rest) = base.strip_prefix("section:") {
+        let parts = rest.split(':').collect::<Vec<_>>();
+        if parts.len() != 3 || parts[1] != "type" {
+            return Err(CliError::invalid_args(
+                "--selector section form must be section:<n>:type:<default|first|even>",
+            ));
+        }
+        selector.section = parse_positive_i64(parts[0], "selector section")?;
+        selector.ref_type = normalize_docx_header_footer_show_type(parts[2])?;
+        return Ok(selector);
+    }
+
+    let parts = base.split(':').collect::<Vec<_>>();
+    if parts.len() == 3 && (parts[0] == "header" || parts[0] == "footer") {
+        if parts[0] != command_kind {
+            return Err(CliError::invalid_args(format!(
+                "--selector kind {:?} does not match {command_kind} command",
+                parts[0]
+            )));
+        }
+        selector.kind = parts[0].to_string();
+        selector.section = parse_positive_i64(parts[1], "selector section")?;
+        selector.ref_type = normalize_docx_header_footer_show_type(parts[2])?;
+        return Ok(selector);
+    }
+
+    Err(CliError::invalid_args(
+        "--selector must be header:<section>:<type>, footer:<section>:<type>, section:<section>:type:<type>, id:<relId>, or part:<partUri>",
+    ))
+}
+
+fn split_docx_header_footer_paragraph_selector(raw: &str) -> CliResult<&str> {
+    for marker in ["/paragraph:", "/p:"] {
+        if let Some(index) = raw.rfind(marker) {
+            let base = raw[..index].trim();
+            let value = raw[index + marker.len()..].trim();
+            if base.is_empty() {
+                return Err(CliError::invalid_args(
+                    "--selector paragraph suffix requires a header/footer selector before it",
+                ));
+            }
+            let _ = parse_positive_i64(value, "selector paragraph")?;
+            return Ok(base);
+        }
+    }
+    Ok(raw)
+}
+
+fn parse_positive_i64(value: &str, label: &str) -> CliResult<i64> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(CliError::invalid_args(format!("{label} cannot be empty")));
+    }
+    let parsed = value
+        .parse::<i64>()
+        .map_err(|_| CliError::invalid_args(format!("{label} must be an integer")))?;
+    if parsed < 1 {
+        return Err(CliError::invalid_args(format!("{label} must be >= 1")));
+    }
+    Ok(parsed)
+}
+
+fn resolve_docx_header_footer_selector(
+    sections: &[Value],
+    command_kind: &str,
+    selector: &DocxHeaderFooterSelector,
+) -> Option<DocxHeaderFooterRefInfo> {
+    let kind = if selector.kind.is_empty() {
+        command_kind
+    } else {
+        &selector.kind
+    };
+    let refs = docx_header_footer_refs(sections, kind);
+    if !selector.id.is_empty() {
+        return refs
+            .into_iter()
+            .find(|reference| reference.id == selector.id);
+    }
+    if !selector.part_uri.is_empty() {
+        return refs
+            .into_iter()
+            .find(|reference| reference.part_uri == selector.part_uri);
+    }
+    let section = if selector.section > 0 {
+        selector.section
+    } else {
+        sections
+            .last()
+            .and_then(|section| section["sectionIndex"].as_i64())
+            .unwrap_or(0)
+    };
+    refs.into_iter()
+        .find(|reference| reference.section == section && reference.ref_type == selector.ref_type)
+}
+
+fn docx_header_footer_refs(sections: &[Value], kind: &str) -> Vec<DocxHeaderFooterRefInfo> {
+    let mut refs = Vec::new();
+    for section in sections {
+        let set = if kind == "footer" {
+            &section["footers"]
+        } else {
+            &section["headers"]
+        };
+        for ref_type in ["default", "first", "even"] {
+            if let Some(reference) = docx_header_footer_ref_info(&set[ref_type]) {
+                refs.push(reference);
+            }
+        }
+    }
+    refs
+}
+
+fn docx_header_footer_ref_info(value: &Value) -> Option<DocxHeaderFooterRefInfo> {
+    if value.is_null() {
+        return None;
+    }
+    let selectors = value["selectors"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(ToString::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    Some(DocxHeaderFooterRefInfo {
+        kind: value["kind"].as_str()?.to_string(),
+        id: value["id"].as_str().unwrap_or_default().to_string(),
+        ref_type: value["type"].as_str().unwrap_or_default().to_string(),
+        section: value["section"].as_i64().unwrap_or_default(),
+        primary_selector: value["primarySelector"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        selectors,
+        part_uri: value["partUri"].as_str().unwrap_or_default().to_string(),
+    })
+}
+
+fn docx_header_footer_paragraphs(
+    file: &str,
+    reference: &DocxHeaderFooterRefInfo,
+) -> CliResult<Vec<Value>> {
+    let xml = zip_text(file, reference.part_uri.trim_start_matches('/')).map_err(|err| {
+        CliError::unexpected(format!(
+            "failed to read header/footer part {}: {}",
+            reference.part_uri, err.message
+        ))
+    })?;
+    let mut reader = NsReader::from_str(&xml);
+    let mut stack = Vec::<String>::new();
+    let mut paragraphs = Vec::new();
+    let mut current = None::<DocxHeaderFooterParagraphBuild>;
+    let mut in_t = false;
+    let mut skip_text_depth = 0usize;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let is_word = element_in_ns(reader.resolver(), &e, DOCX_W_NS);
+                if stack.len() == 1 && is_word && name == "p" {
+                    current = Some(DocxHeaderFooterParagraphBuild::default());
+                }
+                docx_note_header_footer_paragraph_start(
+                    &mut current,
+                    &e,
+                    reader.resolver(),
+                    &stack,
+                    is_word,
+                    skip_text_depth,
+                );
+                if is_word && name == "t" {
+                    in_t = true;
+                }
+                if is_word && matches!(name.as_str(), "delText" | "instrText") {
+                    skip_text_depth += 1;
+                }
+                stack.push(name);
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let is_word = element_in_ns(reader.resolver(), &e, DOCX_W_NS);
+                if stack.len() == 1 && is_word && name == "p" {
+                    let paragraph = DocxHeaderFooterParagraphBuild::default();
+                    paragraphs.push(docx_header_footer_paragraph_json(
+                        paragraphs.len() + 1,
+                        paragraph,
+                        reference,
+                    ));
+                } else {
+                    docx_note_header_footer_paragraph_start(
+                        &mut current,
+                        &e,
+                        reader.resolver(),
+                        &stack,
+                        is_word,
+                        skip_text_depth,
+                    );
+                }
+            }
+            Ok(Event::Text(e)) if in_t && skip_text_depth == 0 => {
+                if let Some(paragraph) = current.as_mut() {
+                    paragraph.text.push_str(&decode_xml_text(e.as_ref()));
+                }
+            }
+            Ok(Event::GeneralRef(e)) if in_t && skip_text_depth == 0 => {
+                if let Some(paragraph) = current.as_mut() {
+                    paragraph.text.push_str(&xml_general_ref(e.as_ref()));
+                }
+            }
+            Ok(Event::CData(e)) if in_t && skip_text_depth == 0 => {
+                if let Some(paragraph) = current.as_mut() {
+                    paragraph
+                        .text
+                        .push_str(&String::from_utf8_lossy(e.as_ref()));
+                }
+            }
+            Ok(Event::End(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if name == "t" {
+                    in_t = false;
+                } else if matches!(name.as_str(), "delText" | "instrText") {
+                    skip_text_depth = skip_text_depth.saturating_sub(1);
+                } else if name == "p"
+                    && let Some(paragraph) = current.take()
+                {
+                    paragraphs.push(docx_header_footer_paragraph_json(
+                        paragraphs.len() + 1,
+                        paragraph,
+                        reference,
+                    ));
+                }
+                stack.pop();
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+
+    Ok(paragraphs)
+}
+
+#[derive(Default)]
+struct DocxHeaderFooterParagraphBuild {
+    style: String,
+    text: String,
+}
+
+fn docx_note_header_footer_paragraph_start(
+    current: &mut Option<DocxHeaderFooterParagraphBuild>,
+    element: &BytesStart<'_>,
+    resolver: &NamespaceResolver,
+    stack: &[String],
+    is_word: bool,
+    skip_text_depth: usize,
+) {
+    let Some(paragraph) = current.as_mut() else {
+        return;
+    };
+    let qualified_name = element.name();
+    let name = local_name(qualified_name.as_ref());
+    if is_word
+        && name == "pStyle"
+        && stack.last().is_some_and(|parent| parent == "pPr")
+        && let Some(style) = docx_word_attr_ns(element, resolver, b"val")
+    {
+        paragraph.style = style;
+        return;
+    }
+    if is_word && skip_text_depth == 0 {
+        match name {
+            "tab" => paragraph.text.push('\t'),
+            "br" | "cr" => paragraph.text.push('\n'),
+            "noBreakHyphen" => paragraph.text.push('-'),
+            _ => {}
+        }
+    }
+}
+
+fn docx_header_footer_paragraph_json(
+    index: usize,
+    paragraph: DocxHeaderFooterParagraphBuild,
+    reference: &DocxHeaderFooterRefInfo,
+) -> Value {
+    let primary_selector = if reference.primary_selector.is_empty() {
+        String::new()
+    } else {
+        format!("{}/p:{index}", reference.primary_selector)
+    };
+    let mut selectors = Vec::new();
+    for selector in &reference.selectors {
+        selectors.push(format!("{selector}/p:{index}"));
+        selectors.push(format!("{selector}/paragraph:{index}"));
+    }
+    json!({
+        "index": index,
+        "primarySelector": primary_selector,
+        "selectors": selectors,
+        "style": paragraph.style,
+        "text": paragraph.text,
     })
 }
 
