@@ -147,6 +147,11 @@ Latest milestone, 2026-06-19:
 - XLSX range/cell mutation commands, range formatting, calc-chain
   invalidation, style XML mutation, sheet-data rewrites, and mutation readback
   command generation moved from `src/main.rs` into `src/xlsx_mutation.rs`.
+- Shared XLSX worksheet XML span parsing, row/cell span capture,
+  `<sheetData>` rebuilding, used-range detection, merged-range intersection
+  checks, and A1 range rendering moved from `src/xlsx_mutation.rs` into
+  `src/xlsx_sheet_xml.rs`, keeping range writes and range-format writes on one
+  shared worksheet substrate.
 - Serve `xlsx cells set` now delegates to the shared `xlsx_cells_set`
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.

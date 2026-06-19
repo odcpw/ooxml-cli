@@ -35,6 +35,7 @@ mod xlsx_model;
 mod xlsx_mutation;
 mod xlsx_names;
 mod xlsx_ranges;
+mod xlsx_sheet_xml;
 mod xlsx_sheets;
 mod xlsx_tables;
 mod xml_util;
@@ -155,6 +156,11 @@ pub(crate) use xlsx_names::{xlsx_names_list, xlsx_names_show};
 pub(crate) use xlsx_ranges::{
     XlsxRangeExportOptions, check_range_max_cells, normalize_xlsx_ranges_set_data_format,
     require_json_data_format, xlsx_range_export_with_options,
+};
+pub(crate) use xlsx_sheet_xml::{
+    XlsxCellSpan, parse_xlsx_row_spans, range_bounds_ref, rebuild_xlsx_sheet_data,
+    reject_xlsx_merged_cell_intersection, render_xlsx_row, xlsx_sheet_data_span,
+    xlsx_used_range_from_cell_refs,
 };
 pub(crate) use xlsx_sheets::{xlsx_cells_extract, xlsx_sheets_list, xlsx_sheets_show};
 pub(crate) use xlsx_tables::{
