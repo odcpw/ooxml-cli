@@ -10156,6 +10156,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(all_stderr, None);
     let all_caps = all_stdout.expect("all capabilities");
     assert_command(&all_caps, "ooxml version", false);
+    assert_command(&all_caps, "ooxml capabilities", false);
+    assert_command(&all_caps, "ooxml serve", false);
+    assert_command(&all_caps, "ooxml mcp", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx fields insert", true);
     assert_command(&all_caps, "ooxml docx fields set-result", true);
@@ -10338,6 +10341,29 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let image_caps = image_stdout.expect("image capabilities");
     assert_command(&image_caps, "ooxml docx images list", false);
 
+    let (capabilities_code, capabilities_stdout, capabilities_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "capabilities"]);
+    assert_eq!(capabilities_code, 0);
+    assert_eq!(capabilities_stderr, None);
+    let capabilities_caps = capabilities_stdout.expect("capabilities filter");
+    assert_command(&capabilities_caps, "ooxml capabilities", false);
+    assert_no_command(&capabilities_caps, "ooxml serve");
+
+    let (serve_code, serve_stdout, serve_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "serve"]);
+    assert_eq!(serve_code, 0);
+    assert_eq!(serve_stderr, None);
+    let serve_caps = serve_stdout.expect("serve filter");
+    assert_command(&serve_caps, "ooxml serve", false);
+    assert_no_command(&serve_caps, "ooxml capabilities");
+
+    let (mcp_code, mcp_stdout, mcp_stderr) = run_ooxml(&["--json", "capabilities", "--for", "mcp"]);
+    assert_eq!(mcp_code, 0);
+    assert_eq!(mcp_stderr, None);
+    let mcp_caps = mcp_stdout.expect("mcp filter");
+    assert_command(&mcp_caps, "ooxml mcp", false);
+    assert_no_command(&mcp_caps, "ooxml serve");
+
     let (docx_code, docx_stdout, docx_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "docx"]);
     assert_eq!(docx_code, 0);
@@ -10385,10 +10411,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 51, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 54, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        239,
+        236,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

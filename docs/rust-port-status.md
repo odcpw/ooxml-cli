@@ -182,6 +182,9 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   `ooxml ...` paths and op-vocabulary shorthand paths
 - `mcp` `resource://capabilities` mirrors the Rust CLI capability inventory and
   contract metadata, with the MCP command-resource template included
+- `--json capabilities` advertises Rust control surfaces `ooxml capabilities`,
+  `ooxml serve`, and `ooxml mcp`, keeping the machine-readable inventory aligned
+  with the self-description, JSON-RPC session, and MCP entry points
 - `--json capabilities --for <filter>` for the Rust-supported partial command
   surface, including the web-agent-relevant PPTX and XLSX commands
 - Rust capability inventory is checked as a strict subset of the Go oracle
