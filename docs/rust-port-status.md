@@ -69,6 +69,9 @@ Latest milestone, 2026-06-19:
   table-part parsing, selector resolution, table readback-command templates,
   and XLSX-to-PPTX source command templates moved from `src/main.rs` into
   `src/xlsx_tables.rs`.
+- XLSX sheet/cell read commands for `xlsx cells extract` and `xlsx sheets
+  list/show` moved from `src/main.rs` into `src/xlsx_sheets.rs`, leaving the
+  shared worksheet parser in place for later, lower-risk extraction.
 - Proof after the split: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 77 Rust contract tests.
