@@ -6,6 +6,19 @@ Go oracle from a detached `codex/ooxml-go-reference` worktree by default, or
 from `OOXML_GO_ORACLE_DIR`/`OOXML_GO_ORACLE_REF` when deliberately overridden.
 
 The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.json`.
+
+Latest milestone, 2026-06-19:
+
+- Merged current `origin/master` hardening, including OPC inflate limits, CFB
+  traversal guards, and new Go ingest fuzz harnesses.
+- Repaired the Windows Rust contract comparator for quoted and JSON-escaped
+  temp paths after the merge, keeping the frozen Go contract stable on Windows.
+- First de-monolithization seam landed: the Rust capability inventory moved from
+  `src/main.rs` into `src/capabilities.rs` with no behavior changes.
+- Proof after the split: `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
+  all pass with 77 Rust contract tests.
+
 The first Rust slice implements and tests the CLI cases from that baseline:
 
 - `--json version`
