@@ -477,6 +477,14 @@ Latest milestone, 2026-06-20:
   A Rust-generated frozen workbook passed Rust `validate --strict`, Microsoft
   Open XML SDK validation (`Valid: true`, `ErrorCount: 0`), and desktop Excel
   COM open proof (`1 passed, 0 failed`).
+- XLSX CLI dispatch split from the top-level `src/cli_dispatch.rs` into
+  `src/cli_dispatch/xlsx.rs`, mirroring the existing DOCX family dispatcher and
+  reducing the main collision point before the larger table-append slice. This
+  was an isomorphic code-move slice: `cargo fmt --check`, `cargo
+  check --all-targets`, focused `xlsx_` Go-oracle tests, focused serve XLSX
+  inspect/op tests, `cargo clippy --all-targets -- -D warnings`, and `cargo
+  test --all-targets` all passed with 4 ZIP guard unit tests plus 83 Rust
+  contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
