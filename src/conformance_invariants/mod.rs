@@ -5,6 +5,7 @@ use crate::{CliResult, zip_entry_names, zip_entry_set};
 mod chart_structure;
 mod content_types;
 mod deep_relationships;
+mod embedded_workbook;
 mod image_payloads;
 mod package;
 mod pptx_animations;
