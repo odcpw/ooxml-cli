@@ -41,6 +41,7 @@ mod xlsx_model;
 mod xlsx_mutation;
 mod xlsx_names;
 mod xlsx_ranges;
+mod xlsx_sheet_lifecycle;
 mod xlsx_sheet_xml;
 mod xlsx_sheets;
 mod xlsx_table_append;
@@ -187,6 +188,10 @@ pub(crate) use xlsx_names::{xlsx_names_list, xlsx_names_show};
 pub(crate) use xlsx_ranges::{
     XlsxRangeExportOptions, check_range_max_cells, normalize_xlsx_ranges_set_data_format,
     require_json_data_format, xlsx_range_export_with_options,
+};
+pub(crate) use xlsx_sheet_lifecycle::{
+    XlsxSheetsAddOptions, XlsxSheetsDeleteOptions, XlsxSheetsMoveOptions, XlsxSheetsRenameOptions,
+    xlsx_sheets_add, xlsx_sheets_delete, xlsx_sheets_move, xlsx_sheets_rename,
 };
 pub(crate) use xlsx_sheet_xml::{
     XlsxCellSpan, parse_xlsx_row_spans, range_bounds_ref, rebuild_xlsx_sheet_data,

@@ -298,6 +298,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let xlsx_caps = xlsx_stdout.expect("xlsx capabilities");
     assert_command(&xlsx_caps, "ooxml xlsx sheets list", false);
     assert_command(&xlsx_caps, "ooxml xlsx sheets show", false);
+    assert_command(&xlsx_caps, "ooxml xlsx sheets add", true);
+    assert_command(&xlsx_caps, "ooxml xlsx sheets rename", true);
+    assert_command(&xlsx_caps, "ooxml xlsx sheets move", true);
+    assert_command(&xlsx_caps, "ooxml xlsx sheets delete", true);
     assert_command(&xlsx_caps, "ooxml xlsx colwidths show", false);
     assert_command(&xlsx_caps, "ooxml xlsx colwidths set", true);
     assert_command(&xlsx_caps, "ooxml xlsx rowheights show", false);
@@ -623,12 +627,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        108,
+        112,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        182,
+        178,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

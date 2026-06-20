@@ -9,6 +9,27 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust XLSX sheet lifecycle mutation parity landed for direct
+  `xlsx sheets add`, `xlsx sheets rename`, `xlsx sheets move`, and
+  `xlsx sheets delete`. The slice preserves existing `sheets list/show`
+  readback, creates worksheet parts and workbook relationships/content-types
+  for added sheets, renames workbook sheet metadata, reorders sheet tabs while
+  remapping workbook-view indexes, and deletes worksheet parts plus orphaned
+  relationships/content-type overrides. Saved mutation JSON, dry-run
+  templates, validation/readback command fields, required-flag and
+  representative error behavior, emitted readback execution, capability
+  indexing, and strict validation of saved outputs are covered against the Go
+  oracle; the add test normalizes the oracle's intentionally variable new
+  sheetId while preserving all structural invariants. Rust capabilities now
+  advertise 112 Go-oracle command paths, leaving a pinned 178-command gap.
+  Proof: `cargo fmt --check`, `cargo check --all-targets`, focused `cargo
+  test --test rust_contract_smoke xlsx_sheets_ -- --nocapture`, focused
+  capability ratchet/discovery tests, strict validation for saved
+  add/rename/move/delete XLSX proof files, Open XML SDK Office2019 schema
+  validation (zero errors) for all four proof files, Excel COM open oracle for
+  all four proof files, `cargo clippy --all-targets -- -D warnings`, and
+  `cargo test --all-targets` passed with 4 ZIP guard unit tests plus 118 Rust
+  contract tests.
 - Rust PPTX speaker-notes mutation capability advertisement and serve operation
   parity landed for the already-ported direct `pptx notes set` and
   `pptx notes clear` commands. Rust now advertises both leaves as
@@ -1032,7 +1053,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 103, and the harness pins the 187-command gap until
+  paths, Rust advertises 110, and the harness pins the 180-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -1082,6 +1103,13 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json xlsx sheets show <xlsx>` with Go-oracle comparison for worksheet
   metadata, used ranges, stable selectors, and generated readback command
   templates
+- `--json xlsx sheets add/rename/move/delete <xlsx>` with Go-oracle comparison
+  for saved mutation JSON, dry-run output/templates, required-flag and
+  representative error parity, validation/list/show readback command execution,
+  sheet-name validation, move-target and last-sheet delete guards, capability
+  indexing, and strict validation of saved outputs. The add harness normalizes
+  the Go oracle's variable new sheetId while asserting the same destination
+  shape and package invariants.
 - `--json xlsx names list/show <xlsx>` with Go-oracle comparison for
   workbook-scoped and sheet-local defined names, scope filtering, selectors,
   workbook handles, generated `showCommand` execution, `capabilities --for
