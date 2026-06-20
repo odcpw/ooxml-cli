@@ -9,6 +9,23 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust `conformance check` now includes the second conformance parity wave:
+  local `--office-check` behavior, PPTX animation target repair invariants,
+  chart embedded-workbook package-open repair invariants, and a
+  behavior-preserving split of embedded workbook helpers into
+  `src/conformance_invariants/embedded_workbook.rs`. Proof: focused
+  Go-vs-Rust tests for office-check missing-engine behavior, PPTX animation
+  target diagnostics, chart embedded-workbook diagnostics, the combined
+  `conformance_check` subset with 14 tests, `cargo fmt --check`, `cargo
+  clippy --all-targets -- -D warnings`, Open XML SDK validator build, and
+  `cargo test --all-targets` with 4 unit tests plus 217 Rust contract tests.
+  Capability promotion remains intentionally blocked: a read-only red-team
+  audit found missing or divergent full-report behavior for
+  `XLSX_WORKSHEET_HYPERLINK_REFERENCE`, `OOXML_RELS_READ_ERROR`,
+  `OOXML_OPEN_FAILED`, `OOXML_VALIDATE_FAILED`, and
+  `OOXML_REPAIR_INVARIANT_FAILED`. Rust still advertises 289 Go-oracle command
+  paths while Go advertises 290; the remaining unadvertised path is still
+  `ooxml conformance check`.
 - Rust `conformance check` now includes the focused Go-oracle spreadsheet
   semantic-reference invariant slice. The checks live in
   `src/conformance_invariants/spreadsheet_semantics.rs` and cover workbook

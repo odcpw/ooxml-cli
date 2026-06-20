@@ -37,18 +37,22 @@ history.
   - `cargo check --all-targets` passed.
   - `cargo fmt --check` passed.
   - `cargo clippy --all-targets -- -D warnings` passed.
-  - `cargo test --all-targets` passed with 4 unit tests and 215 Rust contract
+  - `cargo test --all-targets` passed with 4 unit tests and 217 Rust contract
     tests after the hidden conformance ZIP-timestamp, reference-list,
-    deep-relationship, image-payload, chart-structure, and table/pivot
-    invariant slices, plus spreadsheet semantic references.
+    deep-relationship, image-payload, chart-structure, table/pivot,
+    spreadsheet semantic-reference, PPTX animation-target, chart embedded
+    workbook-open, and local office-check slices.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
   - Current capability ratchet: Go advertises 290 command paths, Rust
     advertises 289, leaving 1 unported path after the exact `pptx diff`
     integration: `ooxml conformance check`.
-  - `ooxml conformance check` has a hidden Rust-native repair-invariant slice,
-    but remains unadvertised until the remaining Go invariant surface and
-    `--office-check` behavior are ported.
+  - `ooxml conformance check` has a hidden Rust-native repair-invariant slice
+    with local `--office-check` behavior, but remains unadvertised until the
+    remaining Go full-report surface is ported. Current red-team blocker list:
+    `XLSX_WORKSHEET_HYPERLINK_REFERENCE`, `OOXML_RELS_READ_ERROR`,
+    `OOXML_OPEN_FAILED`, `OOXML_VALIDATE_FAILED`, and
+    `OOXML_REPAIR_INVARIANT_FAILED`.
   - The hidden conformance invariant engine was split at `951a227` into focused
     Rust modules under `src/conformance_invariants/` for content types,
     relationships, spec tables, XML-part checks, shared types, and utilities.
@@ -69,6 +73,14 @@ history.
     table columns, pivot table/cache fields, records, and index references.
   - Spreadsheet semantic checks landed in Rust for defined-name sheet/scope
     references, calc-chain references, and worksheet cell style references.
+  - PPTX animation target checks landed in Rust for missing, invalid, negative,
+    and missing-shape `spid` references.
+  - Chart embedded-workbook open checks landed in Rust and were then split into
+    `src/conformance_invariants/embedded_workbook.rs` to keep
+    `deep_relationships.rs` from regrowing into a monolith.
+  - Local `conformance check --office-check` behavior landed for the Go-shaped
+    LibreOffice/soffice compatibility check, including missing-engine and
+    unsupported-family report shapes.
   - Open XML SDK validation and desktop PowerPoint COM open proof passed for the
     generated `template apply` and `pptx template compile` decks.
 
