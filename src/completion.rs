@@ -33,6 +33,7 @@ fn commands() -> &'static [&'static str] {
         "doctor",
         "docx",
         "find",
+        "help",
         "inspect",
         "mcp",
         "pptx",

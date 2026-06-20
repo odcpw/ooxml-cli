@@ -27,6 +27,19 @@ fn utility_capabilities_advertise_only_implemented_paths() {
     }
     assert_no_command(&caps, "ooxml conformance check");
     assert_no_command(&caps, "ooxml help");
+    for path in [
+        "ooxml completion",
+        "ooxml conformance",
+        "ooxml docx",
+        "ooxml xlsx",
+        "ooxml xlsx sheets",
+        "ooxml xlsx tables",
+        "ooxml pptx",
+        "ooxml pptx slides",
+        "ooxml pptx layouts",
+    ] {
+        assert_no_command(&caps, path);
+    }
 }
 
 #[test]
@@ -99,6 +112,105 @@ fn completion_shells_emit_text_scripts() {
         );
         assert!(output.stderr.is_empty(), "completion {shell} stderr");
     }
+}
+
+#[test]
+fn root_and_parent_help_text_surfaces_are_useful_and_unadvertised() {
+    let cases: &[(&[&str], &[&str])] = &[
+        (
+            &[],
+            &["Rust port", "Usage:", "Available Commands", "capabilities"],
+        ),
+        (&["help"], &["Rust port", "Usage:", "Available Commands"]),
+        (
+            &["completion"],
+            &["Generate shell completion scripts", "bash", "powershell"],
+        ),
+        (
+            &["conformance"],
+            &[
+                "static conformance coverage",
+                "Intentionally Unported",
+                "conformance check",
+            ],
+        ),
+        (&["docx"], &["DOCX", "comments", "tables"]),
+        (&["xlsx"], &["XLSX", "sheets", "ranges"]),
+        (&["xlsx", "sheets"], &["sheet readback", "list", "add"]),
+        (&["pptx"], &["PPTX", "slides", "charts"]),
+        (&["pptx", "slides"], &["slide readback", "list", "show"]),
+        (
+            &["vba"],
+            &["Rust-supported command group", "inspect", "attach"],
+        ),
+    ];
+
+    for (args, needles) in cases {
+        let (code, stdout, stderr) = run_ooxml_raw(args);
+        assert_eq!(code, 0, "help exit for {args:?}: {stderr}");
+        assert_eq!(stderr, "", "help stderr for {args:?}");
+        assert!(
+            stdout.contains("Usage:"),
+            "help usage for {args:?}: {stdout}"
+        );
+        for needle in *needles {
+            assert!(
+                stdout.contains(needle),
+                "help stdout for {args:?} missing {needle:?}: {stdout}"
+            );
+        }
+    }
+}
+
+#[test]
+fn go_and_rust_help_like_paths_share_success_shape() {
+    for args in [
+        &["help"][..],
+        &["completion"][..],
+        &["conformance"][..],
+        &["docx"][..],
+        &["pptx", "slides"][..],
+        &["xlsx", "sheets"][..],
+    ] {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(args);
+        assert_eq!(rust_code, go_code, "exit code for {args:?}");
+        assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
+        assert!(
+            go_stdout.contains("Usage:"),
+            "Go stdout for {args:?}: {go_stdout}"
+        );
+        assert!(
+            rust_stdout.contains("Usage:"),
+            "Rust stdout for {args:?}: {rust_stdout}"
+        );
+    }
+}
+
+#[test]
+fn conformance_check_remains_unimplemented_until_repair_invariants_ported() {
+    let (help_code, help_stdout, help_stderr) = run_ooxml_raw(&["help", "conformance", "check"]);
+    assert_eq!(help_code, 0);
+    assert_eq!(help_stderr, "");
+    assert!(help_stdout.contains("repair-invariant"));
+    assert!(help_stdout.contains("intentionally unimplemented"));
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "conformance",
+        "check",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+    ]);
+    assert_eq!(code, 2);
+    assert_eq!(stdout, None);
+    let error = stderr.expect("conformance check stderr");
+    assert_eq!(error["error"]["code"], "invalid_args");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .expect("error message")
+            .contains("unsupported Rust-port contract command: conformance check")
+    );
 }
 
 #[test]

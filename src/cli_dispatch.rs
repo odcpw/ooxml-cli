@@ -29,6 +29,9 @@ pub(crate) struct DispatchOutput {
 }
 
 pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {
+    if crate::help::is_help_request(args) {
+        return crate::help::help(args);
+    }
     if let [cmd, rest @ ..] = args
         && cmd == "doctor"
     {

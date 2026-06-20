@@ -9,6 +9,22 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust utility/root help surfaces landed for `ooxml`, `ooxml help`,
+  top-level `completion`, top-level `conformance`, and parent/group help paths
+  such as `docx`, `xlsx`, `pptx`, `pptx slides`, `pptx layouts`,
+  `xlsx sheets`, and `xlsx tables`. These are text-only affordances derived
+  from the Rust capability inventory; they remain intentionally absent from
+  `--json capabilities` because parent groups are not executable work leaves.
+  Rust capabilities remain pinned at 214 Go-oracle command paths with a
+  76-command gap. `conformance check` remains unadvertised and unimplemented:
+  Go's command combines package-open, repo validation, repair-invariant, and
+  optional Office-open checks, while Rust only has the validation portion today.
+  The Rust completion leaves keep emitting simple real shell scripts instead of
+  copying Cobra scripts that depend on hidden `__complete`. Proof: focused
+  Go-vs-Rust help-shape tests, capability absence assertions for parent groups,
+  explicit `conformance check` gap tests, `cargo fmt --check`, focused utility
+  tests, focused capability tests, and `cargo clippy --all-targets -- -D
+  warnings`.
 - Rust PPTX text-run mutation parity landed for direct `pptx text set`. The
   slice updates run-level bold, italic, underline, font size, color, font
   family, and hyperlink styling, preserving Go-shaped saved-output, dry-run,
@@ -37,10 +53,9 @@ Latest milestone, 2026-06-20:
   read-only semantic search over PPTX/XLSX/DOCX fixtures, Rust-filtered robot
   docs that avoid Go-only commands, and Go-shaped conformance coverage data.
   Rust capabilities now advertise 212 Go-oracle command paths, leaving a pinned
-  78-command gap. `find --to-ops`/`--apply`, `conformance check`, top-level
-  `completion`, top-level `conformance`, and `help` remain intentionally
-  unadvertised until the corresponding Go behavior can be ported without fake
-  aliases or mutation-output guesses. Proof: focused utility smoke tests,
+  78-command gap. `find --to-ops`/`--apply` and `conformance check` remain
+  intentionally unadvertised until the corresponding Go behavior can be ported
+  without fake aliases or mutation-output guesses. Proof: focused utility smoke tests,
   Go-vs-Rust conformance coverage parity, focused capability ratchet/MCP
   command-resource tests, and `cargo check`.
 - Rust PPTX chart authoring/data parity landed for direct
@@ -1697,6 +1712,8 @@ Still missing before parity can be claimed:
 
 - real render proof parity beyond the mocked frozen manifest path.
 - Full command-surface inventory parity.
+- Rust-native `conformance check` repair-invariant parity rather than wrapping
+  `validate` as a misleading placeholder.
 - Metamorphic and fuzz harnesses for OOXML package invariants.
 - Broad release-grade Office/Open XML SDK/COM proof for the complete promoted
   Rust surface, including Office-authored `vba create`, real macro package

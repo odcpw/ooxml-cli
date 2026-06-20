@@ -24,6 +24,18 @@ fn run_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
     run_ooxml_with_env(args, &[])
 }
 
+fn run_ooxml_raw(args: &[&str]) -> (i32, String, String) {
+    let output = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args(args)
+        .output()
+        .expect("run Rust ooxml");
+    (
+        output.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
 fn run_ooxml_with_input(args: &[&str], input: &str) -> (i32, Option<Value>, Option<Value>) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
         .args(args)
@@ -67,6 +79,19 @@ fn run_go_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
     let stdout = parse_json(&output.stdout);
     let stderr = parse_json(&output.stderr);
     (code, stdout, stderr)
+}
+
+fn run_go_ooxml_raw(args: &[&str]) -> (i32, String, String) {
+    let output = Command::new(go_ooxml_binary())
+        .args(args)
+        .env("GOCACHE", go_cache_dir())
+        .output()
+        .expect("run Go ooxml oracle");
+    (
+        output.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
 }
 
 fn run_go_ooxml_with_input(args: &[&str], input: &str) -> (i32, Option<Value>, Option<Value>) {

@@ -23,6 +23,7 @@ mod docx_styles;
 mod docx_tables;
 mod docx_xml;
 mod find;
+mod help;
 mod inspect;
 mod json_util;
 mod mcp;
@@ -393,6 +394,9 @@ fn is_validate_command(args: &[String]) -> bool {
 }
 
 fn is_text_utility_command(args: &[String]) -> bool {
+    if crate::help::is_help_request(args) {
+        return true;
+    }
     match args {
         [cmd, ..] if cmd == "doctor" => true,
         [cmd, ..] if cmd == "find" => true,
