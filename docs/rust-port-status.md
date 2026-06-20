@@ -146,6 +146,11 @@ Latest milestone, 2026-06-20:
   moved from `src/cli_dispatch/docx.rs` into
   `src/cli_dispatch/docx/tables.rs`, preserving exact table flag validation,
   mutation option wiring, and unsupported-command fallback text.
+- DOCX CLI paragraph command dispatch for `append`, `insert`, `set`, and
+  `clear` moved from `src/cli_dispatch/docx.rs` into
+  `src/cli_dispatch/docx/paragraphs.rs`, preserving paragraph handle/index
+  validation, required text resolution, mutation option wiring, and
+  unsupported-command fallback text.
 - The static capability command inventory moved from
   `src/capabilities/commands.rs` into family modules under
   `src/capabilities/commands/`, preserving the emitted command order as core,
