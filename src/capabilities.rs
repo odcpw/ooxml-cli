@@ -38,7 +38,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             {"name": "--strict", "argName": "strict", "type": "bool", "default": "false", "description": "enable strict validation mode"}
         ],
         "commands": commands,
-        "objectKinds": ["package", "slide", "shape", "master", "layout", "placeholder", "sheet", "range", "data-validation", "cell", "hyperlink", "table", "name", "block", "paragraph", "style", "comment", "field", "header", "footer", "image", "module"],
+        "objectKinds": ["package", "slide", "shape", "master", "layout", "placeholder", "sheet", "range", "data-validation", "cell", "hyperlink", "table", "name", "block", "paragraph", "style", "comment", "chart", "field", "header", "footer", "image", "module"],
         "objectKindsIndex": {
             "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml docx text", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update", "ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba inspect-bin", "ooxml vba list", "ooxml vba extract", "ooxml vba attach", "ooxml vba remove"],
             "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx slides delete", "ooxml pptx slides move", "ooxml pptx slides reorder", "ooxml pptx shapes show", "ooxml pptx layouts list", "ooxml pptx layouts show", "ooxml pptx tables show", "ooxml pptx tables set-cell", "ooxml pptx tables delete-row", "ooxml pptx tables insert-row", "ooxml pptx tables delete-col", "ooxml pptx tables insert-col", "ooxml pptx tables update-from-xlsx", "ooxml pptx extract text", "ooxml pptx extract notes", "ooxml pptx extract images", "ooxml pptx extract xml", "ooxml pptx notes show", "ooxml pptx notes set", "ooxml pptx notes clear", "ooxml pptx comments list", "ooxml pptx replace text", "ooxml pptx render"],
@@ -57,6 +57,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             "paragraph": ["ooxml docx text", "ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx paragraphs append", "ooxml docx paragraphs insert", "ooxml docx paragraphs set", "ooxml docx paragraphs clear", "ooxml docx styles apply", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx images list", "ooxml docx images insert"],
             "style": ["ooxml xlsx ranges set-format", "ooxml docx styles list", "ooxml docx styles show", "ooxml docx styles apply"],
             "comment": ["ooxml pptx comments list", "ooxml pptx comments add", "ooxml pptx comments edit", "ooxml pptx comments remove", "ooxml xlsx comments list", "ooxml xlsx comments add", "ooxml xlsx comments update", "ooxml xlsx comments remove", "ooxml docx comments list", "ooxml docx comments add", "ooxml docx comments edit", "ooxml docx comments remove"],
+            "chart": ["ooxml xlsx charts list"],
             "field": ["ooxml docx fields list", "ooxml docx fields insert", "ooxml docx fields set-result"],
             "header": ["ooxml docx headers list", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers list"],
             "footer": ["ooxml docx footers list", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx headers list"],

@@ -363,6 +363,17 @@ pub(super) fn commands() -> Vec<Value> {
             ],
         ),
         capability_command(
+            "ooxml xlsx charts list",
+            "list <file>",
+            "List workbook charts, stable selectors, source formulas, anchors, and chart style readback.",
+            &["chart"],
+            false,
+            Some(
+                "read-only command; xlsx charts show is implemented but not advertised until the Go capability oracle publishes it",
+            ),
+            vec![flag("--sheet", "sheet", "string", "sheet selector")],
+        ),
+        capability_command(
             "ooxml xlsx comments list",
             "list <file> [--sheet <sheet>] [--comment-id <id>]",
             "List worksheet comments, authors, selectors, hashes, and anchored cells.",

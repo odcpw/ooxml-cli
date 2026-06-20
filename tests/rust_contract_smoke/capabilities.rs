@@ -89,6 +89,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "placeholder",
         "style",
         "comment",
+        "chart",
         "module",
     ] {
         assert_object_kind(&all_caps, kind);
@@ -333,6 +334,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
         assert_command_target_kind(&all_caps, path, "range");
         assert_command_target_kind(&all_caps, path, "sheet");
     }
+    assert_object_kind_command(&all_caps, "chart", "ooxml xlsx charts list");
+    assert_command_target_kind(&all_caps, "ooxml xlsx charts list", "chart");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names list");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names show");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names add");
@@ -444,6 +447,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx hyperlinks add", true);
     assert_command(&xlsx_caps, "ooxml xlsx hyperlinks update", true);
     assert_command(&xlsx_caps, "ooxml xlsx hyperlinks delete", true);
+    assert_command(&xlsx_caps, "ooxml xlsx charts list", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set-format", true);
@@ -587,6 +591,14 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&hyperlink_caps, "ooxml xlsx hyperlinks update", true);
     assert_command(&hyperlink_caps, "ooxml xlsx hyperlinks delete", true);
     assert_no_command(&hyperlink_caps, "ooxml xlsx comments list");
+
+    let (chart_code, chart_stdout, chart_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "chart"]);
+    assert_eq!(chart_code, 0);
+    assert_eq!(chart_stderr, None);
+    let chart_caps = chart_stdout.expect("chart capabilities");
+    assert_command(&chart_caps, "ooxml xlsx charts list", false);
+    assert_no_command(&chart_caps, "ooxml xlsx charts show");
 
     let (layout_code, layout_stdout, layout_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "layout"]);
@@ -787,12 +799,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        134,
+        135,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        156,
+        155,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

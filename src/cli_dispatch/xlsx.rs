@@ -20,16 +20,17 @@ use crate::{
     XlsxFiltersSortsSetSortOptions, XlsxHyperlinkAddOptions, XlsxHyperlinkDeleteOptions,
     XlsxHyperlinkUpdateOptions, XlsxRowHeightsSetOptions, XlsxRowsDeleteOptions,
     XlsxRowsInsertOptions, XlsxSheetsAddOptions, XlsxSheetsDeleteOptions, XlsxSheetsMoveOptions,
-    XlsxSheetsRenameOptions, xlsx_cols_delete, xlsx_cols_insert, xlsx_colwidths_set,
-    xlsx_colwidths_show, xlsx_comments_add, xlsx_comments_list, xlsx_comments_remove,
-    xlsx_comments_update, xlsx_data_validations_create, xlsx_data_validations_delete,
-    xlsx_data_validations_list, xlsx_data_validations_show, xlsx_data_validations_update,
-    xlsx_filters_sorts_add_column_filter, xlsx_filters_sorts_clear_autofilter,
-    xlsx_filters_sorts_clear_column_filter, xlsx_filters_sorts_clear_sort,
-    xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_set_sort, xlsx_filters_sorts_show,
-    xlsx_hyperlinks_add, xlsx_hyperlinks_delete, xlsx_hyperlinks_list, xlsx_hyperlinks_show,
-    xlsx_hyperlinks_update, xlsx_rowheights_set, xlsx_rowheights_show, xlsx_rows_delete,
-    xlsx_rows_insert, xlsx_sheets_add, xlsx_sheets_delete, xlsx_sheets_move, xlsx_sheets_rename,
+    XlsxSheetsRenameOptions, xlsx_charts_list, xlsx_charts_show, xlsx_cols_delete,
+    xlsx_cols_insert, xlsx_colwidths_set, xlsx_colwidths_show, xlsx_comments_add,
+    xlsx_comments_list, xlsx_comments_remove, xlsx_comments_update, xlsx_data_validations_create,
+    xlsx_data_validations_delete, xlsx_data_validations_list, xlsx_data_validations_show,
+    xlsx_data_validations_update, xlsx_filters_sorts_add_column_filter,
+    xlsx_filters_sorts_clear_autofilter, xlsx_filters_sorts_clear_column_filter,
+    xlsx_filters_sorts_clear_sort, xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_set_sort,
+    xlsx_filters_sorts_show, xlsx_hyperlinks_add, xlsx_hyperlinks_delete, xlsx_hyperlinks_list,
+    xlsx_hyperlinks_show, xlsx_hyperlinks_update, xlsx_rowheights_set, xlsx_rowheights_show,
+    xlsx_rows_delete, xlsx_rows_insert, xlsx_sheets_add, xlsx_sheets_delete, xlsx_sheets_move,
+    xlsx_sheets_rename,
 };
 
 pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
@@ -400,6 +401,21 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
                     in_place: has_flag(rest, "--in-place"),
                 },
             )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "charts" && verb == "list" =>
+        {
+            reject_unknown_flags(rest, &["--sheet"], &[])?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            xlsx_charts_list(file, sheet.as_deref())
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "charts" && verb == "show" =>
+        {
+            reject_unknown_flags(rest, &["--sheet", "--chart"], &[])?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let chart = parse_string_flag(rest, "--chart")?;
+            xlsx_charts_show(file, sheet.as_deref(), chart.as_deref())
         }
         [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "comments" && verb == "list" =>

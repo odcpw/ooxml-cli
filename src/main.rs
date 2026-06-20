@@ -31,6 +31,7 @@ mod serve;
 mod validation;
 mod vba;
 mod verify;
+mod xlsx_charts;
 mod xlsx_comments;
 mod xlsx_data_validations;
 mod xlsx_dimensions;
@@ -154,6 +155,7 @@ pub(crate) use runtime_util::{
 pub(crate) use selector_util::{add_selector, selector_candidates};
 pub(crate) use serve::{ServeState, run_serve_stdio};
 pub(crate) use validation::{validate, validate_exit_code};
+pub(crate) use xlsx_charts::{xlsx_charts_list, xlsx_charts_show};
 pub(crate) use xlsx_comments::{
     XlsxCommentsAddOptions, XlsxCommentsRemoveOptions, XlsxCommentsUpdateOptions,
     xlsx_comments_add, xlsx_comments_list, xlsx_comments_remove, xlsx_comments_update,

@@ -179,6 +179,59 @@ fn xlsx_rowheights_show_matches_go_oracle() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+#[test]
+fn xlsx_charts_list_and_show_match_go_oracle() {
+    let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
+    assert_go_rust_match(&["--json", "xlsx", "charts", "list", workbook]);
+    assert_go_rust_match(&[
+        "--json", "xlsx", "charts", "list", workbook, "--sheet", "Data",
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "charts",
+        "show",
+        workbook,
+        "--chart",
+        "Revenue Chart 1",
+    ]);
+    assert_go_rust_match(&[
+        "--json", "xlsx", "charts", "show", workbook, "--sheet", "Data", "--chart", "chart:1",
+    ]);
+
+    for selector in [
+        "chart:1",
+        "#1",
+        "chart:Revenue Chart 1",
+        "name:Revenue Chart 1",
+        "~Revenue Chart 1",
+        "part:/xl/charts/chart1.xml",
+        "rid:rIdChart1",
+        "drawingRid:rIdDrawing1",
+    ] {
+        assert_go_rust_match(&[
+            "--json", "xlsx", "charts", "show", workbook, "--chart", selector,
+        ]);
+    }
+}
+
+#[test]
+fn xlsx_charts_empty_and_errors_match_go_oracle() {
+    let chart_workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
+    let no_chart_workbook = "testdata/xlsx/minimal-workbook/workbook.xlsx";
+    assert_go_rust_match(&["--json", "xlsx", "charts", "list", no_chart_workbook]);
+    assert_go_rust_match(&["--json", "xlsx", "charts", "show", no_chart_workbook]);
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "charts",
+        "show",
+        chart_workbook,
+        "--chart",
+        "Missing",
+    ]);
+}
+
 fn assert_xlsx_structure_command_matches(
     label: &str,
     go_args: &[&str],
