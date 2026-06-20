@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{CliError, CliResult, zip_bytes};
+use crate::{CliError, CliResult, selector_candidates, zip_bytes};
 
 use super::cfb::CfbFile;
 use super::inspect::inspect_vba_package;
@@ -183,7 +183,7 @@ pub(crate) fn vba_extract(file: &str, out_dir: &str, selector: Option<&str>) -> 
         return Err(CliError::invalid_args("--out-dir is required"));
     }
     let (info, project) = inspect_source_project_for_file(file)?;
-    let modules = select_modules(&project.modules, selector.unwrap_or_default())?;
+    let modules = select_modules(file, &project.modules, selector.unwrap_or_default())?;
     if modules.is_empty() {
         return Err(CliError::target_not_found("no VBA modules to extract"));
     }
@@ -979,7 +979,11 @@ fn module_output_name(module: &SourceModule) -> String {
         .to_string()
 }
 
-fn select_modules(modules: &[SourceModule], selector: &str) -> CliResult<Vec<SourceModule>> {
+fn select_modules(
+    file: &str,
+    modules: &[SourceModule],
+    selector: &str,
+) -> CliResult<Vec<SourceModule>> {
     let selector = selector.trim();
     if selector.is_empty() {
         return Ok(modules.to_vec());
@@ -995,14 +999,70 @@ fn select_modules(modules: &[SourceModule], selector: &str) -> CliResult<Vec<Sou
         .cloned()
         .collect::<Vec<_>>();
     match matches.len() {
-        0 => Err(CliError::target_not_found(format!(
-            "VBA module not found: {selector}"
-        ))),
+        0 => Err(vba_module_not_found_error(file, modules, selector)),
         1 => Ok(matches),
         _ => Err(CliError::invalid_args(format!(
-            "VBA module selector {selector:?} matched multiple modules"
+            "VBA module selector {selector:?} matched multiple modules ({}); use a more specific selector; discover with `{}`",
+            ambiguous_module_selectors(&matches).join(", "),
+            vba_list_command(file)
         ))),
     }
+}
+
+fn vba_module_not_found_error(file: &str, modules: &[SourceModule], selector: &str) -> CliError {
+    let candidates = selector_candidates(
+        &modules
+            .iter()
+            .map(|module| {
+                (
+                    module.primary_selector.as_str(),
+                    module.selectors.as_slice(),
+                )
+            })
+            .collect::<Vec<_>>(),
+        selector,
+        3,
+    );
+    let mut message = format!("VBA module not found: {selector}");
+    if !candidates.is_empty() {
+        message.push_str(&format!("; did you mean: {}", candidates.join(", ")));
+    }
+    message.push_str(&format!("; discover with `{}`", vba_list_command(file)));
+    CliError::target_not_found(message)
+}
+
+fn ambiguous_module_selectors(modules: &[SourceModule]) -> Vec<String> {
+    let mut primary_counts = BTreeMap::<String, usize>::new();
+    for module in modules {
+        let primary = module.primary_selector.trim();
+        if !primary.is_empty() {
+            *primary_counts
+                .entry(primary.to_ascii_lowercase())
+                .or_insert(0) += 1;
+        }
+    }
+    modules
+        .iter()
+        .filter_map(|module| {
+            let primary = module.primary_selector.trim();
+            if !primary.is_empty()
+                && primary_counts
+                    .get(&primary.to_ascii_lowercase())
+                    .copied()
+                    .unwrap_or_default()
+                    == 1
+            {
+                return Some(primary.to_string());
+            }
+            if module.number > 0 {
+                return Some(format!("module:{}", module.number));
+            }
+            if !primary.is_empty() {
+                return Some(primary.to_string());
+            }
+            None
+        })
+        .collect()
 }
 
 fn populate_office_compatibility(project: &mut SourceProject) {

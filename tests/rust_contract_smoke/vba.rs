@@ -109,6 +109,46 @@ fn vba_source_readback_inspect_list_extract_matches_go_oracle() {
         "extracted Module1 source"
     );
 
+    let go_missing_extract_dir = temp_dir.join("go-missing-module");
+    let rust_missing_extract_dir = temp_dir.join("rust-missing-module");
+    let go_missing_extract = go_missing_extract_dir.to_string_lossy().to_string();
+    let rust_missing_extract = rust_missing_extract_dir.to_string_lossy().to_string();
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
+        "--json",
+        "vba",
+        "extract",
+        &go_xlsm,
+        "--out-dir",
+        &go_missing_extract,
+        "--module",
+        "Modul",
+    ]);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "extract",
+        &rust_xlsm,
+        "--out-dir",
+        &rust_missing_extract,
+        "--module",
+        "Modul",
+    ]);
+    assert_eq!(rust_code, go_code, "extract missing module exit");
+    assert_eq!(rust_stdout, go_stdout, "extract missing module stdout");
+    assert_eq!(
+        scrub_path(
+            rust_stderr.expect("rust extract missing module stderr"),
+            &rust_xlsm,
+            "[XLSM]"
+        ),
+        scrub_path(
+            go_stderr.expect("go extract missing module stderr"),
+            &go_xlsm,
+            "[XLSM]"
+        ),
+        "extract missing module stderr"
+    );
+
     let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "vba", "list", &go_in]);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "vba", "list", &rust_in]);
     assert_eq!(rust_code, go_code, "missing macro list exit");
