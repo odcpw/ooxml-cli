@@ -9,6 +9,17 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- The hidden Rust `conformance check` invariant engine was de-monolithized from
+  a fresh 1,392-line accumulation file into focused modules under
+  `src/conformance_invariants/`: `content_types`, `relationships`, `spec`,
+  `types`, `util`, and `xml_parts`, with `mod.rs` preserving the existing
+  `check_repair_invariants` entrypoint. This behavior-preserving split is the
+  integration base for parallel workbook/reference, deep relationship, and
+  Office-check readiness lanes. Proof: `cargo fmt --check`, focused
+  Go-vs-Rust `conformance_check` tests, focused utility tests, `cargo clippy
+  --all-targets -- -D warnings`, and `cargo test --all-targets` with 4 unit
+  tests plus 206 Rust contract tests. No command-count change: Rust still
+  advertises 289 Go-oracle paths and keeps `ooxml conformance check` hidden.
 - Rust `conformance check` now has a hidden Rust-native repair-invariant slice
   instead of a placeholder: package open, strict repo validation, content-type
   checks, relationship closure, known part roots, shared-string/style/worksheet

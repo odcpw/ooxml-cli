@@ -47,6 +47,10 @@ history.
   - `ooxml conformance check` has a hidden Rust-native repair-invariant slice,
     but remains unadvertised until the remaining Go invariant surface and
     `--office-check` behavior are ported.
+  - The hidden conformance invariant engine was split at `951a227` into focused
+    Rust modules under `src/conformance_invariants/` for content types,
+    relationships, spec tables, XML-part checks, shared types, and utilities.
+    This is the base for the next parallel conformance worker lanes.
   - Open XML SDK validation and desktop PowerPoint COM open proof passed for the
     generated `template apply` and `pptx template compile` decks.
 
