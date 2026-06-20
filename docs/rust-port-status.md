@@ -455,6 +455,15 @@ Latest milestone, 2026-06-20:
   Rust `validate --strict`, Microsoft Open XML SDK validation (`Valid: true`,
   `ErrorCount: 0`), and desktop Excel COM open proof (`1 passed, 0 failed`,
   Excel 16.0 build 20026).
+- The Rust XLSX defined-name implementation then split from the 1179-line
+  `src/xlsx_names.rs` into a small facade plus private `src/xlsx_names/`
+  modules for model data, package parsing/selection, JSON/readback output,
+  mutation orchestration, and workbook XML rendering. This was an isomorphic
+  code-move slice: the focused `xlsx_names` Go-oracle tests, capability subset
+  tests, `cargo fmt --check`, `cargo check --all-targets`,
+  `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
+  all passed after the split with the same 4 ZIP guard unit tests plus 81 Rust
+  contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
