@@ -9,6 +9,20 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust XLSX chart leaf parity expanded for direct `xlsx charts show`,
+  `xlsx charts convert-type`, `xlsx charts copy-style`, and
+  `xlsx charts set-axis`. The slice promotes chart show output, changes chart
+  type metadata, copies practical chart styling, and mutates axis title/format
+  options while preserving Go-shaped saved-output, dry-run, readback, and error
+  behavior. Rust capabilities now advertise 182 Go-oracle command paths,
+  leaving a pinned 108-command gap; these commands are direct CLI chart leaves
+  with `opCompatible=false` because serve/MCP operation dispatch is not wired
+  for these XLSX chart mutations yet. Proof: focused Go-vs-Rust XLSX chart
+  tests; focused capability ratchet/MCP command-resource tests; strict
+  validation for all generated proof workbooks; Open XML SDK Office2019 schema
+  validation (zero errors) for all proof workbooks; Excel COM open oracle for
+  all proof workbooks; `cargo fmt --check`; `cargo check --all-targets`;
+  `cargo clippy --all-targets -- -D warnings`; and `cargo test --all-targets`.
 - Rust PPTX layout and slide-authoring parity landed for direct
   `pptx layouts clone`, `pptx masters add-placeholder`, `pptx clone-slide`,
   and `pptx new-slide-from-layout`. The slice clones layouts, adds master

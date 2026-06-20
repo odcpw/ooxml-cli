@@ -230,6 +230,46 @@ fn xlsx_charts_empty_and_errors_match_go_oracle() {
         "--chart",
         "Missing",
     ]);
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "charts",
+        "convert-type",
+        chart_workbook,
+        "--sheet",
+        "Data",
+        "--chart",
+        "chart:1",
+        "--to",
+        "doughnut",
+        "--dry-run",
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "charts",
+        "copy-style",
+        chart_workbook,
+        "--sheet",
+        "Data",
+        "--chart",
+        "chart:1",
+        "--dry-run",
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "charts",
+        "set-axis",
+        chart_workbook,
+        "--sheet",
+        "Data",
+        "--chart",
+        "chart:1",
+        "--axis",
+        "value",
+        "--dry-run",
+    ]);
 }
 
 #[test]
@@ -342,6 +382,82 @@ fn xlsx_charts_style_mutations_match_go_oracle() {
 }
 
 #[test]
+fn xlsx_charts_remaining_mutations_match_go_oracle() {
+    let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
+    for args in [
+        vec![
+            "--json",
+            "xlsx",
+            "charts",
+            "convert-type",
+            workbook,
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+            "--to",
+            "line",
+            "--expect-type",
+            "column",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "charts",
+            "copy-style",
+            workbook,
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+            "--from",
+            workbook,
+            "--from-chart",
+            "chart:1",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "charts",
+            "set-axis",
+            workbook,
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+            "--axis",
+            "value",
+            "--title",
+            "Sales Axis",
+            "--min",
+            "0",
+            "--max",
+            "100",
+            "--major-unit",
+            "25",
+            "--number-format",
+            "#,##0",
+            "--major-gridlines=true",
+            "--minor-gridlines=true",
+            "--tick-label-font-size",
+            "9",
+            "--tick-label-font-color",
+            "333333",
+            "--tick-label-font-bold=true",
+            "--title-font-color",
+            "2255AA",
+            "--title-font-size",
+            "12",
+            "--dry-run",
+        ],
+    ] {
+        assert_go_rust_match(&args);
+    }
+}
+
+#[test]
 fn xlsx_charts_style_saved_outputs_validate_and_read_back() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-chart-style-{}",
@@ -439,6 +555,173 @@ fn xlsx_charts_style_saved_outputs_validate_and_read_back() {
         let rust_out_path = temp_dir.join(format!("{label}-rust-out.xlsx"));
         fs::copy("testdata/xlsx/chart-workbook/workbook.xlsx", &go_in_path).expect("go input");
         fs::copy("testdata/xlsx/chart-workbook/workbook.xlsx", &rust_in_path).expect("rust input");
+
+        let go_in = go_in_path.to_string_lossy().to_string();
+        let rust_in = rust_in_path.to_string_lossy().to_string();
+        let go_out = go_out_path.to_string_lossy().to_string();
+        let rust_out = rust_out_path.to_string_lossy().to_string();
+
+        let mut go_args = vec![
+            "--json".to_string(),
+            "xlsx".to_string(),
+            "charts".to_string(),
+            flags[0].to_string(),
+            go_in.clone(),
+        ];
+        go_args.extend(flags.iter().skip(1).map(|value| value.to_string()));
+        go_args.extend(["--out".to_string(), go_out.clone()]);
+
+        let mut rust_args = vec![
+            "--json".to_string(),
+            "xlsx".to_string(),
+            "charts".to_string(),
+            flags[0].to_string(),
+            rust_in.clone(),
+        ];
+        rust_args.extend(flags.iter().skip(1).map(|value| value.to_string()));
+        rust_args.extend(["--out".to_string(), rust_out.clone()]);
+
+        let go_refs = go_args.iter().map(String::as_str).collect::<Vec<_>>();
+        let rust_refs = rust_args.iter().map(String::as_str).collect::<Vec<_>>();
+        let replacements = [
+            (go_in.as_str(), "[IN]"),
+            (rust_in.as_str(), "[IN]"),
+            (go_out.as_str(), "[OUT]"),
+            (rust_out.as_str(), "[OUT]"),
+        ];
+        assert_xlsx_structure_command_matches(label, &go_refs, &rust_refs, &replacements);
+        assert_xlsx_chart_style_valid_strict(&rust_out);
+
+        let show_go_args = [
+            "--json",
+            "xlsx",
+            "charts",
+            "show",
+            go_out.as_str(),
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+        ];
+        let show_rust_args = [
+            "--json",
+            "xlsx",
+            "charts",
+            "show",
+            rust_out.as_str(),
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+        ];
+        assert_xlsx_structure_command_matches(
+            &format!("{label} readback"),
+            &show_go_args,
+            &show_rust_args,
+            &[(go_out.as_str(), "[OUT]"), (rust_out.as_str(), "[OUT]")],
+        );
+
+        let chart_xml = read_zip_string(&rust_out_path, "xl/charts/chart1.xml");
+        for needle in xml_needles {
+            assert!(
+                chart_xml.contains(needle),
+                "{label} chart XML contains {needle}"
+            );
+        }
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_charts_remaining_saved_outputs_validate_and_read_back() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-chart-rest-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
+    let cases: Vec<(&str, Vec<&str>, Vec<&str>)> = vec![
+        (
+            "convert-type",
+            vec![
+                "convert-type",
+                "--sheet",
+                "Data",
+                "--chart",
+                "chart:1",
+                "--to",
+                "line",
+                "--expect-type",
+                "column",
+            ],
+            vec!["lineChart"],
+        ),
+        (
+            "copy-style",
+            vec![
+                "copy-style",
+                "--sheet",
+                "Data",
+                "--chart",
+                "chart:1",
+                "--from",
+                workbook,
+                "--from-chart",
+                "chart:1",
+            ],
+            vec!["barChart", "ser"],
+        ),
+        (
+            "set-axis",
+            vec![
+                "set-axis",
+                "--sheet",
+                "Data",
+                "--chart",
+                "chart:1",
+                "--axis",
+                "value",
+                "--title",
+                "Sales Axis",
+                "--min",
+                "0",
+                "--max",
+                "100",
+                "--major-unit",
+                "25",
+                "--number-format",
+                "#,##0",
+                "--major-gridlines=true",
+                "--minor-gridlines=true",
+                "--tick-label-font-size",
+                "9",
+                "--tick-label-font-color",
+                "333333",
+                "--tick-label-font-bold=true",
+                "--title-font-color",
+                "2255AA",
+                "--title-font-size",
+                "12",
+            ],
+            vec![
+                "Sales Axis",
+                "numFmt formatCode=\"#,##0\"",
+                "majorGridlines",
+                "minorGridlines",
+                "333333",
+                "2255AA",
+            ],
+        ),
+    ];
+
+    for (label, flags, xml_needles) in cases {
+        let go_in_path = temp_dir.join(format!("{label}-go-input.xlsx"));
+        let rust_in_path = temp_dir.join(format!("{label}-rust-input.xlsx"));
+        let go_out_path = temp_dir.join(format!("{label}-go-out.xlsx"));
+        let rust_out_path = temp_dir.join(format!("{label}-rust-out.xlsx"));
+        fs::copy(workbook, &go_in_path).expect("go input");
+        fs::copy(workbook, &rust_in_path).expect("rust input");
 
         let go_in = go_in_path.to_string_lossy().to_string();
         let rust_in = rust_in_path.to_string_lossy().to_string();

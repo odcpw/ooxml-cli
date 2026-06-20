@@ -12,6 +12,7 @@ use crate::xlsx_names::*;
 use crate::xlsx_ranges::*;
 use crate::xlsx_sheets::*;
 use crate::{
+    XlsxChartConvertTypeOptions, XlsxChartCopyStyleOptions, XlsxChartSetAxisOptions,
     XlsxChartSetFillOptions, XlsxChartSetLegendOptions, XlsxChartSetSeriesStyleOptions,
     XlsxChartSetTitleOptions, XlsxColWidthsSetOptions, XlsxColsDeleteOptions,
     XlsxColsInsertOptions, XlsxCommentsAddOptions, XlsxCommentsRemoveOptions,
@@ -21,7 +22,8 @@ use crate::{
     XlsxFiltersSortsSetAutoFilterOptions, XlsxFiltersSortsSetSortOptions, XlsxHyperlinkAddOptions,
     XlsxHyperlinkDeleteOptions, XlsxHyperlinkUpdateOptions, XlsxRowHeightsSetOptions,
     XlsxRowsDeleteOptions, XlsxRowsInsertOptions, XlsxSheetsAddOptions, XlsxSheetsDeleteOptions,
-    XlsxSheetsMoveOptions, XlsxSheetsRenameOptions, xlsx_charts_list,
+    XlsxSheetsMoveOptions, XlsxSheetsRenameOptions, xlsx_charts_convert_type,
+    xlsx_charts_copy_style, xlsx_charts_list, xlsx_charts_set_axis,
     xlsx_charts_set_chart_area_fill, xlsx_charts_set_legend, xlsx_charts_set_plot_area_fill,
     xlsx_charts_set_series_style, xlsx_charts_set_title, xlsx_charts_show, xlsx_cols_delete,
     xlsx_cols_insert, xlsx_colwidths_set, xlsx_colwidths_show, xlsx_comments_add,
@@ -685,6 +687,178 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
                     marker_symbol: marker_symbol.as_deref(),
                     marker_size,
                     expect_series_count,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "charts" && verb == "convert-type" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--chart",
+                    "--to",
+                    "--expect-type",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let chart = parse_string_flag(rest, "--chart")?;
+            let to = parse_string_flag(rest, "--to")?;
+            let expect_type = parse_string_flag(rest, "--expect-type")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_charts_convert_type(
+                file,
+                XlsxChartConvertTypeOptions {
+                    sheet: sheet.as_deref(),
+                    chart: chart.as_deref(),
+                    to: to.as_deref(),
+                    expect_type: expect_type.as_deref(),
+                    expect_type_present: value_flag_present(rest, "--expect-type"),
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "charts" && verb == "copy-style" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--chart",
+                    "--to-chart",
+                    "--from",
+                    "--from-chart",
+                    "--expect-series-count",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let chart = parse_string_flag(rest, "--chart")?;
+            let to_chart = parse_string_flag(rest, "--to-chart")?;
+            let from = parse_string_flag(rest, "--from")?;
+            let from_chart = parse_string_flag(rest, "--from-chart")?;
+            let expect_series_count = parse_i64_flag(rest, "--expect-series-count")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_charts_copy_style(
+                file,
+                XlsxChartCopyStyleOptions {
+                    sheet: sheet.as_deref(),
+                    chart: chart.as_deref(),
+                    to_chart: to_chart.as_deref(),
+                    to_chart_present: value_flag_present(rest, "--to-chart"),
+                    from: from.as_deref(),
+                    from_chart: from_chart.as_deref(),
+                    expect_series_count,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "charts" && verb == "set-axis" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--chart",
+                    "--axis",
+                    "--title",
+                    "--expect-axis-title",
+                    "--min",
+                    "--max",
+                    "--major-unit",
+                    "--number-format",
+                    "--tick-label-font-family",
+                    "--tick-label-font-size",
+                    "--tick-label-font-color",
+                    "--title-font-family",
+                    "--title-font-size",
+                    "--title-font-color",
+                    "--expect-axis-count",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--hidden",
+                    "--major-gridlines",
+                    "--minor-gridlines",
+                    "--tick-label-font-bold",
+                    "--tick-label-font-italic",
+                    "--title-font-bold",
+                    "--title-font-italic",
+                    "--dry-run",
+                    "--no-validate",
+                    "--in-place",
+                ],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let chart = parse_string_flag(rest, "--chart")?;
+            let axis = parse_string_flag(rest, "--axis")?;
+            let title = parse_string_flag(rest, "--title")?;
+            let expect_axis_title = parse_string_flag(rest, "--expect-axis-title")?;
+            let min = parse_f64_flag(rest, "--min")?;
+            let max = parse_f64_flag(rest, "--max")?;
+            let major_unit = parse_f64_flag(rest, "--major-unit")?;
+            let number_format = parse_string_flag(rest, "--number-format")?;
+            let tick_label_font_family = parse_string_flag(rest, "--tick-label-font-family")?;
+            let tick_label_font_size = parse_f64_flag(rest, "--tick-label-font-size")?;
+            let tick_label_font_color = parse_string_flag(rest, "--tick-label-font-color")?;
+            let title_font_family = parse_string_flag(rest, "--title-font-family")?;
+            let title_font_size = parse_f64_flag(rest, "--title-font-size")?;
+            let title_font_color = parse_string_flag(rest, "--title-font-color")?;
+            let expect_axis_count = parse_i64_flag(rest, "--expect-axis-count")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_charts_set_axis(
+                file,
+                XlsxChartSetAxisOptions {
+                    sheet: sheet.as_deref(),
+                    chart: chart.as_deref(),
+                    axis: axis.as_deref(),
+                    title: title.as_deref(),
+                    title_present: value_flag_present(rest, "--title"),
+                    expect_axis_title: expect_axis_title.as_deref(),
+                    expect_axis_title_present: value_flag_present(rest, "--expect-axis-title"),
+                    hidden: parse_bool_flag(rest, "--hidden")?,
+                    min,
+                    max,
+                    major_unit,
+                    number_format: number_format.as_deref(),
+                    major_gridlines: parse_bool_flag(rest, "--major-gridlines")?,
+                    minor_gridlines: parse_bool_flag(rest, "--minor-gridlines")?,
+                    tick_label_font_family: tick_label_font_family.as_deref(),
+                    tick_label_font_size,
+                    tick_label_font_color: tick_label_font_color.as_deref(),
+                    tick_label_font_bold: parse_bool_flag(rest, "--tick-label-font-bold")?,
+                    tick_label_font_italic: parse_bool_flag(rest, "--tick-label-font-italic")?,
+                    title_font_family: title_font_family.as_deref(),
+                    title_font_size,
+                    title_font_color: title_font_color.as_deref(),
+                    title_font_bold: parse_bool_flag(rest, "--title-font-bold")?,
+                    title_font_italic: parse_bool_flag(rest, "--title-font-italic")?,
+                    expect_axis_count,
                     out: out.as_deref(),
                     backup: backup.as_deref(),
                     dry_run: has_flag(rest, "--dry-run"),
