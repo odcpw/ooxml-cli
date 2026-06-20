@@ -405,6 +405,10 @@ Latest milestone, 2026-06-20:
   scaffolding moved from `src/xlsx_mutation/format.rs` into
   `src/xlsx_mutation/format/styles_part.rs`, isolating package plumbing from
   style collection mutation.
+- XLSX set-format style collection insertion, element-span discovery, and
+  collection count repair moved from `src/xlsx_mutation/format.rs` into
+  `src/xlsx_mutation/format/styles_xml.rs`, separating generic style XML
+  structure editing from set-format orchestration.
 - XLSX single-cell mutation, handle resolution, previous-value reporting, and
   emitted readback command generation moved from `src/xlsx_mutation.rs` into
   `src/xlsx_mutation/cells.rs`, sharing the same range-write and recalculation
