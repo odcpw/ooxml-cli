@@ -248,6 +248,10 @@ Latest milestone, 2026-06-20:
   parsing, and style-specific XML rewrite helpers moved from `src/main.rs`
   into `src/docx_styles.rs`, while shared body/table XML helpers live in
   `src/docx_xml.rs`.
+- DOCX style list/show readback, styles-part discovery, style catalog parsing,
+  style type filtering, and list/show JSON rendering moved from
+  `src/docx_styles.rs` into `src/docx_styles/read.rs`, leaving style apply
+  validation and XML mutation in the DOCX styles facade.
 - DOCX field listing, field insertion, cached-result mutation, field-location
   parsing, simple/complex field detection, and field XML rewrite helpers moved
   from `src/main.rs` into `src/docx_fields.rs`.
