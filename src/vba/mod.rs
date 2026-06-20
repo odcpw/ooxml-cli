@@ -1,8 +1,10 @@
+mod cfb;
 mod inspect;
 mod model;
 mod mutation;
 mod output;
 mod package_xml;
+mod source;
 
 use serde_json::{Map, Value, json};
 use std::fs;
@@ -19,6 +21,8 @@ use output::{
     vba_validate_command,
 };
 use package_xml::package_part_name;
+
+pub(crate) use source::{vba_extract, vba_inspect_bin, vba_list};
 
 pub(crate) fn vba_inspect(file: &str) -> CliResult<Value> {
     let info = inspect_vba_package(file)?;

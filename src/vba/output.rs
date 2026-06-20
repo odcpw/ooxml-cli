@@ -82,6 +82,10 @@ pub(super) fn vba_inspect_command(file: &str) -> String {
     format!("ooxml --json vba inspect {}", command_arg(file))
 }
 
+pub(super) fn vba_list_command(file: &str) -> String {
+    format!("ooxml --json vba list {}", command_arg(file))
+}
+
 pub(super) fn vba_validate_command(file: &str) -> String {
     format!("ooxml validate --strict {}", command_arg(file))
 }
@@ -114,6 +118,13 @@ pub(super) fn vba_package_readback_command(file: &str, family: &str) -> String {
     }
 }
 
+pub(super) fn vba_extract_modules_template(file: &str) -> String {
+    format!(
+        "ooxml --json vba extract {} --out-dir macros",
+        command_arg(file)
+    )
+}
+
 pub(super) fn vba_next_mutation_template(file: &str, info: &VbaInfo) -> String {
     if info.macro_enabled || info.project.as_ref().is_some_and(|project| project.exists) {
         return format!(
@@ -127,6 +138,23 @@ pub(super) fn vba_next_mutation_template(file: &str, info: &VbaInfo) -> String {
         command_arg(file),
         command_arg(&vba_output_placeholder(info.family.macro_extension))
     )
+}
+
+pub(super) fn vba_standalone_attach_template(bin_path: &str, family: &str) -> String {
+    match family {
+        "pptx" => format!(
+            "ooxml --json vba attach deck.pptx --bin {} --out deck.pptm",
+            command_arg(bin_path)
+        ),
+        "xlsx" => format!(
+            "ooxml --json vba attach workbook.xlsx --bin {} --out workbook.xlsm",
+            command_arg(bin_path)
+        ),
+        _ => format!(
+            "ooxml --json vba attach <target.pptx|target.xlsx> --bin {} --out <macro-output.pptm|macro-output.xlsm>",
+            command_arg(bin_path)
+        ),
+    }
 }
 
 pub(super) fn vba_attach_template_for_bin(bin_path: &str, info: &VbaInfo) -> String {

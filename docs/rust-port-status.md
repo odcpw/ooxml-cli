@@ -9,6 +9,20 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust VBA source readback parity landed for direct `vba inspect-bin`,
+  `vba list`, and `vba extract`. The slice ports a read-only CFB/MS-OVBA reader
+  for parseable `vbaProject.bin` payloads, reports source-module selectors,
+  decoded-source hashes, line metadata, host-family compatibility warnings, and
+  extracts `.bas`/`.cls` source files. Source-changing VBA mutation, `vba
+  create`, and `vba office-check` remain unadvertised in Rust until their
+  Office-facing proof is owned by a mutation lane. Rust capabilities now
+  advertise 103 Go-oracle command paths, leaving a pinned 187-command gap.
+  Proof: `cargo fmt --check`, `cargo check --all-targets`, focused `cargo test
+  --test rust_contract_smoke vba -- --nocapture`, focused capability
+  ratchet/discovery tests, `cargo clippy --all-targets -- -D warnings`, and
+  `cargo test --all-targets` passed with 4 ZIP guard unit tests plus 112 Rust
+  contract tests. Office/Open XML mutation proof was not run because this slice
+  is readback/source extraction only.
 - Rust XLSX worksheet dimension mutation parity landed for direct
   `xlsx colwidths set` and `xlsx rowheights set`. The slice preserves existing
   column span attributes while carving target widths, creates missing row
@@ -968,7 +982,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 96, and the harness pins the 194-command gap until
+  paths, Rust advertises 103, and the harness pins the 187-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -1084,8 +1098,15 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json vba inspect/extract-bin/attach/remove <xlsx|xlsm>` for the opaque
   package-level VBA path, with Go-oracle comparison for macro package wiring,
   byte-for-byte `vbaProject.bin` extraction, saved output readback, dry-run
-  templates, and strict validation of attached/removed packages. This does not
-  yet port CFB/MS-OVBA source-module parsing or Office-authored `vba create`.
+  templates, and strict validation of attached/removed packages.
+- `--json vba inspect-bin <vbaProject.bin> --family xlsx|pptx`,
+  `--json vba list <xlsm|pptm>`, and
+  `--json vba extract <xlsm|pptm> --out-dir <dir>` with Go-oracle comparison
+  for parseable source-only VBA projects, CFB/MS-OVBA decompression, module
+  selectors and hashes, host-family compatibility warnings, missing-macro
+  errors, and extracted `.bas` source readback. Rust still does not promote
+  Office-authored `vba create`, `vba office-check`, or source-changing
+  `add-module`/`replace-module`/`remove-module`.
 - `serve` JSON-RPC generic PPTX inspect/op/commit path for
   `pptx slides show` plus `pptx replace text`, matching the Flue workbench's
   generic `apply_ooxml_ops_to_current` smoke route

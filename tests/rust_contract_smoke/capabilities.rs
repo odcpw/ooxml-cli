@@ -58,6 +58,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx comments remove", true);
     assert_command(&all_caps, "ooxml vba inspect", false);
     assert_command(&all_caps, "ooxml vba extract-bin", false);
+    assert_command(&all_caps, "ooxml vba inspect-bin", false);
+    assert_command(&all_caps, "ooxml vba list", false);
+    assert_command(&all_caps, "ooxml vba extract", false);
     assert_command(&all_caps, "ooxml vba attach", true);
     assert_command(&all_caps, "ooxml vba remove", true);
     for kind in [
@@ -231,6 +234,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names rename");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names delete");
     assert_object_kind_command(&all_caps, "module", "ooxml vba inspect");
+    assert_object_kind_command(&all_caps, "module", "ooxml vba inspect-bin");
+    assert_object_kind_command(&all_caps, "module", "ooxml vba list");
+    assert_object_kind_command(&all_caps, "module", "ooxml vba extract");
     assert_object_kind_command(&all_caps, "module", "ooxml vba attach");
 
     let (pptx_code, pptx_stdout, pptx_stderr) =
@@ -564,6 +570,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let vba_caps = vba_stdout.expect("vba capabilities");
     assert_command(&vba_caps, "ooxml vba inspect", false);
     assert_command(&vba_caps, "ooxml vba extract-bin", false);
+    assert_command(&vba_caps, "ooxml vba inspect-bin", false);
+    assert_command(&vba_caps, "ooxml vba list", false);
+    assert_command(&vba_caps, "ooxml vba extract", false);
     assert_command(&vba_caps, "ooxml vba attach", true);
     assert_command(&vba_caps, "ooxml vba remove", true);
 }
@@ -585,12 +594,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        100,
+        103,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        190,
+        187,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

@@ -24,6 +24,24 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
         }
         [cmd, file, rest @ ..] if cmd == "verify" => verify(file, rest),
         [family, verb, file] if family == "vba" && verb == "inspect" => vba_inspect(file),
+        [family, verb, bin_path, rest @ ..] if family == "vba" && verb == "inspect-bin" => {
+            reject_unknown_flags(rest, &["--family"], &[])?;
+            let family = parse_string_flag(rest, "--family")?.ok_or_else(|| {
+                CliError::invalid_args("--family is required for inspect-bin (pptx or xlsx)")
+            })?;
+            vba_inspect_bin(bin_path, &family)
+        }
+        [family, verb, file, rest @ ..] if family == "vba" && verb == "list" => {
+            reject_unknown_flags(rest, &[], &[])?;
+            vba_list(file)
+        }
+        [family, verb, file, rest @ ..] if family == "vba" && verb == "extract" => {
+            reject_unknown_flags(rest, &["--out-dir", "--module"], &[])?;
+            let out_dir = parse_string_flag(rest, "--out-dir")?
+                .ok_or_else(|| CliError::invalid_args("--out-dir is required"))?;
+            let selector = parse_string_flag(rest, "--module")?;
+            vba_extract(file, &out_dir, selector.as_deref())
+        }
         [family, verb, file, rest @ ..] if family == "vba" && verb == "extract-bin" => {
             reject_unknown_flags(rest, &["--out"], &[])?;
             let out = parse_string_flag(rest, "--out")?
