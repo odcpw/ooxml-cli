@@ -150,6 +150,17 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "range", "ooxml xlsx rowheights set");
     assert_command_target_kind(&all_caps, "ooxml xlsx rowheights set", "sheet");
     assert_command_target_kind(&all_caps, "ooxml xlsx rowheights set", "range");
+    for path in [
+        "ooxml xlsx rows insert",
+        "ooxml xlsx rows delete",
+        "ooxml xlsx cols insert",
+        "ooxml xlsx cols delete",
+    ] {
+        assert_object_kind_command(&all_caps, "sheet", path);
+        assert_object_kind_command(&all_caps, "range", path);
+        assert_command_target_kind(&all_caps, path, "sheet");
+        assert_command_target_kind(&all_caps, path, "range");
+    }
     assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx filters-sorts show");
     assert_object_kind_command(
         &all_caps,
@@ -338,6 +349,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx colwidths set", true);
     assert_command(&xlsx_caps, "ooxml xlsx rowheights show", false);
     assert_command(&xlsx_caps, "ooxml xlsx rowheights set", true);
+    assert_command(&xlsx_caps, "ooxml xlsx rows insert", false);
+    assert_command(&xlsx_caps, "ooxml xlsx rows delete", false);
+    assert_command(&xlsx_caps, "ooxml xlsx cols insert", false);
+    assert_command(&xlsx_caps, "ooxml xlsx cols delete", false);
     assert_command(&xlsx_caps, "ooxml xlsx filters-sorts show", false);
     assert_command(&xlsx_caps, "ooxml xlsx filters-sorts set-autofilter", false);
     assert_command(
@@ -397,6 +412,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&range_caps, "ooxml xlsx colwidths set", true);
     assert_command(&range_caps, "ooxml xlsx rowheights show", false);
     assert_command(&range_caps, "ooxml xlsx rowheights set", true);
+    assert_command(&range_caps, "ooxml xlsx rows insert", false);
+    assert_command(&range_caps, "ooxml xlsx rows delete", false);
+    assert_command(&range_caps, "ooxml xlsx cols insert", false);
+    assert_command(&range_caps, "ooxml xlsx cols delete", false);
     assert_command(&range_caps, "ooxml xlsx filters-sorts show", false);
     assert_command(
         &range_caps,
@@ -681,12 +700,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        117,
+        121,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        173,
+        169,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

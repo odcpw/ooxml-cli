@@ -12,19 +12,21 @@ use crate::xlsx_names::*;
 use crate::xlsx_ranges::*;
 use crate::xlsx_sheets::*;
 use crate::{
-    XlsxColWidthsSetOptions, XlsxCommentsAddOptions, XlsxCommentsRemoveOptions,
-    XlsxCommentsUpdateOptions, XlsxDataValidationFields, XlsxDataValidationMutationOptions,
-    XlsxFiltersSortsAddColumnFilterOptions, XlsxFiltersSortsClearAutoFilterOptions,
-    XlsxFiltersSortsClearColumnFilterOptions, XlsxFiltersSortsClearSortOptions,
-    XlsxFiltersSortsSetAutoFilterOptions, XlsxFiltersSortsSetSortOptions, XlsxRowHeightsSetOptions,
-    XlsxSheetsAddOptions, XlsxSheetsDeleteOptions, XlsxSheetsMoveOptions, XlsxSheetsRenameOptions,
-    xlsx_colwidths_set, xlsx_colwidths_show, xlsx_comments_add, xlsx_comments_list,
-    xlsx_comments_remove, xlsx_comments_update, xlsx_data_validations_create,
-    xlsx_data_validations_delete, xlsx_data_validations_list, xlsx_data_validations_show,
-    xlsx_data_validations_update, xlsx_filters_sorts_add_column_filter,
-    xlsx_filters_sorts_clear_autofilter, xlsx_filters_sorts_clear_column_filter,
-    xlsx_filters_sorts_clear_sort, xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_set_sort,
-    xlsx_filters_sorts_show, xlsx_rowheights_set, xlsx_rowheights_show, xlsx_sheets_add,
+    XlsxColWidthsSetOptions, XlsxColsDeleteOptions, XlsxColsInsertOptions, XlsxCommentsAddOptions,
+    XlsxCommentsRemoveOptions, XlsxCommentsUpdateOptions, XlsxDataValidationFields,
+    XlsxDataValidationMutationOptions, XlsxFiltersSortsAddColumnFilterOptions,
+    XlsxFiltersSortsClearAutoFilterOptions, XlsxFiltersSortsClearColumnFilterOptions,
+    XlsxFiltersSortsClearSortOptions, XlsxFiltersSortsSetAutoFilterOptions,
+    XlsxFiltersSortsSetSortOptions, XlsxRowHeightsSetOptions, XlsxRowsDeleteOptions,
+    XlsxRowsInsertOptions, XlsxSheetsAddOptions, XlsxSheetsDeleteOptions, XlsxSheetsMoveOptions,
+    XlsxSheetsRenameOptions, xlsx_cols_delete, xlsx_cols_insert, xlsx_colwidths_set,
+    xlsx_colwidths_show, xlsx_comments_add, xlsx_comments_list, xlsx_comments_remove,
+    xlsx_comments_update, xlsx_data_validations_create, xlsx_data_validations_delete,
+    xlsx_data_validations_list, xlsx_data_validations_show, xlsx_data_validations_update,
+    xlsx_filters_sorts_add_column_filter, xlsx_filters_sorts_clear_autofilter,
+    xlsx_filters_sorts_clear_column_filter, xlsx_filters_sorts_clear_sort,
+    xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_set_sort, xlsx_filters_sorts_show,
+    xlsx_rowheights_set, xlsx_rowheights_show, xlsx_rows_delete, xlsx_rows_insert, xlsx_sheets_add,
     xlsx_sheets_delete, xlsx_sheets_move, xlsx_sheets_rename,
 };
 
@@ -271,6 +273,124 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
                     range: &range,
                     height,
                     expect_height,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && (group == "rows" || group == "row") && verb == "insert" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--sheet", "--at", "--count", "--out", "--backup"],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let at = parse_i64_flag(rest, "--at")?;
+            let count = parse_i64_flag(rest, "--count")?.unwrap_or(1);
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_rows_insert(
+                file,
+                XlsxRowsInsertOptions {
+                    sheet: sheet.as_deref(),
+                    at,
+                    count,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && (group == "rows" || group == "row") && verb == "delete" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--sheet", "--row", "--count", "--out", "--backup"],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let row = parse_i64_flag(rest, "--row")?;
+            let count = parse_i64_flag(rest, "--count")?.unwrap_or(1);
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_rows_delete(
+                file,
+                XlsxRowsDeleteOptions {
+                    sheet: sheet.as_deref(),
+                    row,
+                    count,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx"
+                && (group == "cols"
+                    || group == "col"
+                    || group == "columns"
+                    || group == "column")
+                && verb == "insert" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--sheet", "--at", "--count", "--out", "--backup"],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let at = parse_string_flag(rest, "--at")?;
+            let count = parse_i64_flag(rest, "--count")?.unwrap_or(1);
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_cols_insert(
+                file,
+                XlsxColsInsertOptions {
+                    sheet: sheet.as_deref(),
+                    at: at.as_deref(),
+                    count,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx"
+                && (group == "cols"
+                    || group == "col"
+                    || group == "columns"
+                    || group == "column")
+                && verb == "delete" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--sheet", "--col", "--count", "--out", "--backup"],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let col = parse_string_flag(rest, "--col")?;
+            let count = parse_i64_flag(rest, "--count")?.unwrap_or(1);
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_cols_delete(
+                file,
+                XlsxColsDeleteOptions {
+                    sheet: sheet.as_deref(),
+                    col: col.as_deref(),
+                    count,
                     out: out.as_deref(),
                     backup: backup.as_deref(),
                     dry_run: has_flag(rest, "--dry-run"),

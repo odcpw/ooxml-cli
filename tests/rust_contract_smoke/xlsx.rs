@@ -179,6 +179,633 @@ fn xlsx_rowheights_show_matches_go_oracle() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+fn assert_xlsx_structure_command_matches(
+    label: &str,
+    go_args: &[&str],
+    rust_args: &[&str],
+    replacements: &[(&str, &str)],
+) -> Value {
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(rust_args);
+    assert_eq!(rust_code, go_code, "{label} exit");
+    assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+    let rust_result = rust_stdout.expect("rust xlsx structure stdout");
+    assert_eq!(
+        scrub_paths(rust_result.clone(), replacements),
+        scrub_paths(
+            go_stdout.unwrap_or_else(|| panic!("go xlsx structure stdout for {label}")),
+            replacements
+        ),
+        "{label} stdout"
+    );
+    rust_result
+}
+
+fn assert_xlsx_structure_saved_readback(
+    label: &str,
+    go_out: &str,
+    rust_out: &str,
+    readback_range: &str,
+) {
+    let (validate_code, validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", rust_out]);
+    assert_eq!(validate_code, 0, "{label} strict validate exit");
+    assert_eq!(validate_stderr, None, "{label} strict validate stderr");
+    assert!(
+        validate_stdout.is_some(),
+        "{label} strict validate should emit JSON"
+    );
+
+    for (readback_label, go_args, rust_args) in [
+        (
+            "sheet show",
+            vec![
+                "--json", "xlsx", "sheets", "show", go_out, "--sheet", "Sheet1",
+            ],
+            vec![
+                "--json", "xlsx", "sheets", "show", rust_out, "--sheet", "Sheet1",
+            ],
+        ),
+        (
+            "range export",
+            vec![
+                "--json",
+                "xlsx",
+                "ranges",
+                "export",
+                go_out,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                readback_range,
+                "--include-types",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "ranges",
+                "export",
+                rust_out,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                readback_range,
+                "--include-types",
+            ],
+        ),
+    ] {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (rust_code, rust_stdout, rust_stderr) = run_go_ooxml(&rust_args);
+        assert_eq!(rust_code, go_code, "{label} {readback_label} exit");
+        assert_eq!(rust_stderr, go_stderr, "{label} {readback_label} stderr");
+        assert_eq!(
+            scrub_path(
+                rust_stdout.unwrap_or_else(|| {
+                    panic!("rust xlsx structure saved {readback_label} stdout")
+                }),
+                rust_out,
+                "[OUT]"
+            ),
+            scrub_path(
+                go_stdout.unwrap_or_else(|| {
+                    panic!("go xlsx structure saved {readback_label} stdout")
+                }),
+                go_out,
+                "[OUT]"
+            ),
+            "{label} {readback_label}"
+        );
+    }
+}
+
+#[test]
+fn xlsx_structure_mutations_match_go_oracle_saved_readback_and_dry_run() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-structure-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let base_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:D4"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="str"><v>r1a</v></c><c r="C1"><v>13</v></c></row>
+    <row r="2"><c r="B2"><v>22</v></c><c r="D2"><v>24</v></c></row>
+    <row r="4"><c r="A4"><v>41</v></c><c r="D4"><v>44</v></c></row>
+  </sheetData>
+</worksheet>"#;
+
+    for (label, family, action, position_flag, position_value, count, range) in [
+        ("rows insert", "rows", "insert", "--at", "2", "2", "A1:D6"),
+        ("rows delete", "rows", "delete", "--row", "2", "1", "A1:D3"),
+        ("cols insert", "cols", "insert", "--at", "B", "2", "A1:F4"),
+        ("cols delete", "cols", "delete", "--col", "B", "1", "A1:C4"),
+    ] {
+        let go_in_path = temp_dir.join(format!("go-{family}-{action}-in.xlsx"));
+        let rust_in_path = temp_dir.join(format!("rust-{family}-{action}-in.xlsx"));
+        let go_out_path = temp_dir.join(format!("go-{family}-{action}-out.xlsx"));
+        let rust_out_path = temp_dir.join(format!("rust-{family}-{action}-out.xlsx"));
+        write_simple_xlsx_with_sheet_xml(&go_in_path, base_xml);
+        write_simple_xlsx_with_sheet_xml(&rust_in_path, base_xml);
+        let go_in = go_in_path.to_string_lossy().to_string();
+        let rust_in = rust_in_path.to_string_lossy().to_string();
+        let go_out = go_out_path.to_string_lossy().to_string();
+        let rust_out = rust_out_path.to_string_lossy().to_string();
+        let replacements = [
+            (rust_in.as_str(), "[IN]"),
+            (rust_out.as_str(), "[OUT]"),
+            (go_in.as_str(), "[IN]"),
+            (go_out.as_str(), "[OUT]"),
+        ];
+
+        let go_args = [
+            "--json",
+            "xlsx",
+            family,
+            action,
+            &go_in,
+            "--sheet",
+            "Sheet1",
+            position_flag,
+            position_value,
+            "--count",
+            count,
+            "--out",
+            &go_out,
+        ];
+        let rust_args = [
+            "--json",
+            "xlsx",
+            family,
+            action,
+            &rust_in,
+            "--sheet",
+            "Sheet1",
+            position_flag,
+            position_value,
+            "--count",
+            count,
+            "--out",
+            &rust_out,
+        ];
+        let rust_result =
+            assert_xlsx_structure_command_matches(label, &go_args, &rust_args, &replacements);
+        assert_rust_emitted_ooxml_command_exits_zero(&rust_result, "validateCommand");
+        assert_rust_emitted_ooxml_command_succeeds(&rust_result, "sheetShowCommand");
+        assert_rust_emitted_ooxml_command_succeeds(&rust_result, "sheetsListCommand");
+        assert_xlsx_structure_saved_readback(label, &go_out, &rust_out, range);
+    }
+
+    let go_dry_in_path = temp_dir.join("go-rows-dry-in.xlsx");
+    let rust_dry_in_path = temp_dir.join("rust-rows-dry-in.xlsx");
+    write_simple_xlsx_with_sheet_xml(&go_dry_in_path, base_xml);
+    write_simple_xlsx_with_sheet_xml(&rust_dry_in_path, base_xml);
+    let before_rows = read_zip_string(&rust_dry_in_path, "xl/worksheets/sheet1.xml");
+    let go_dry_in = go_dry_in_path.to_string_lossy().to_string();
+    let rust_dry_in = rust_dry_in_path.to_string_lossy().to_string();
+    let go_dry = [
+        "--json",
+        "xlsx",
+        "rows",
+        "insert",
+        &go_dry_in,
+        "--sheet",
+        "Sheet1",
+        "--at",
+        "3",
+        "--count",
+        "2",
+        "--dry-run",
+    ];
+    let rust_dry = [
+        "--json",
+        "xlsx",
+        "rows",
+        "insert",
+        &rust_dry_in,
+        "--sheet",
+        "Sheet1",
+        "--at",
+        "3",
+        "--count",
+        "2",
+        "--dry-run",
+    ];
+    assert_xlsx_structure_command_matches(
+        "rows insert dry-run",
+        &go_dry,
+        &rust_dry,
+        &[(rust_dry_in.as_str(), "[IN]"), (go_dry_in.as_str(), "[IN]")],
+    );
+    assert_eq!(
+        read_zip_string(&rust_dry_in_path, "xl/worksheets/sheet1.xml"),
+        before_rows,
+        "rows insert dry-run should not mutate source workbook"
+    );
+
+    let go_col_dry_in_path = temp_dir.join("go-cols-dry-in.xlsx");
+    let rust_col_dry_in_path = temp_dir.join("rust-cols-dry-in.xlsx");
+    write_simple_xlsx_with_sheet_xml(&go_col_dry_in_path, base_xml);
+    write_simple_xlsx_with_sheet_xml(&rust_col_dry_in_path, base_xml);
+    let before_cols = read_zip_string(&rust_col_dry_in_path, "xl/worksheets/sheet1.xml");
+    let go_col_dry_in = go_col_dry_in_path.to_string_lossy().to_string();
+    let rust_col_dry_in = rust_col_dry_in_path.to_string_lossy().to_string();
+    let go_col_dry = [
+        "--json",
+        "xlsx",
+        "cols",
+        "delete",
+        &go_col_dry_in,
+        "--sheet",
+        "Sheet1",
+        "--col",
+        "C",
+        "--count",
+        "1",
+        "--dry-run",
+    ];
+    let rust_col_dry = [
+        "--json",
+        "xlsx",
+        "cols",
+        "delete",
+        &rust_col_dry_in,
+        "--sheet",
+        "Sheet1",
+        "--col",
+        "C",
+        "--count",
+        "1",
+        "--dry-run",
+    ];
+    assert_xlsx_structure_command_matches(
+        "cols delete dry-run",
+        &go_col_dry,
+        &rust_col_dry,
+        &[
+            (rust_col_dry_in.as_str(), "[IN]"),
+            (go_col_dry_in.as_str(), "[IN]"),
+        ],
+    );
+    assert_eq!(
+        read_zip_string(&rust_col_dry_in_path, "xl/worksheets/sheet1.xml"),
+        before_cols,
+        "cols delete dry-run should not mutate source workbook"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_structure_mutation_errors_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-structure-errors-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let clean_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:B2"/>
+  <sheetData>
+    <row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c></row>
+    <row r="2"><c r="A2"><v>3</v></c><c r="B2"><v>4</v></c></row>
+  </sheetData>
+</worksheet>"#;
+    let go_clean_path = temp_dir.join("go-clean.xlsx");
+    let rust_clean_path = temp_dir.join("rust-clean.xlsx");
+    write_simple_xlsx_with_sheet_xml(&go_clean_path, clean_xml);
+    write_simple_xlsx_with_sheet_xml(&rust_clean_path, clean_xml);
+    let go_clean = go_clean_path.to_string_lossy().to_string();
+    let rust_clean = rust_clean_path.to_string_lossy().to_string();
+
+    for (label, go_bad, rust_bad) in [
+        (
+            "missing sheet",
+            vec![
+                "--json",
+                "xlsx",
+                "rows",
+                "insert",
+                &go_clean,
+                "--at",
+                "1",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "rows",
+                "insert",
+                &rust_clean,
+                "--at",
+                "1",
+                "--dry-run",
+            ],
+        ),
+        (
+            "row zero",
+            vec![
+                "--json",
+                "xlsx",
+                "rows",
+                "insert",
+                &go_clean,
+                "--sheet",
+                "Sheet1",
+                "--at",
+                "0",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "rows",
+                "insert",
+                &rust_clean,
+                "--sheet",
+                "Sheet1",
+                "--at",
+                "0",
+                "--dry-run",
+            ],
+        ),
+        (
+            "count zero",
+            vec![
+                "--json",
+                "xlsx",
+                "rows",
+                "delete",
+                &go_clean,
+                "--sheet",
+                "Sheet1",
+                "--row",
+                "1",
+                "--count",
+                "0",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "rows",
+                "delete",
+                &rust_clean,
+                "--sheet",
+                "Sheet1",
+                "--row",
+                "1",
+                "--count",
+                "0",
+                "--dry-run",
+            ],
+        ),
+        (
+            "missing workbook sheet",
+            vec![
+                "--json",
+                "xlsx",
+                "cols",
+                "insert",
+                &go_clean,
+                "--sheet",
+                "Missing",
+                "--at",
+                "A",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "cols",
+                "insert",
+                &rust_clean,
+                "--sheet",
+                "Missing",
+                "--at",
+                "A",
+                "--dry-run",
+            ],
+        ),
+        (
+            "bad column reference",
+            vec![
+                "--json",
+                "xlsx",
+                "cols",
+                "insert",
+                &go_clean,
+                "--sheet",
+                "Sheet1",
+                "--at",
+                "A1",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "cols",
+                "insert",
+                &rust_clean,
+                "--sheet",
+                "Sheet1",
+                "--at",
+                "A1",
+                "--dry-run",
+            ],
+        ),
+        (
+            "column out of bounds",
+            vec![
+                "--json",
+                "xlsx",
+                "cols",
+                "delete",
+                &go_clean,
+                "--sheet",
+                "Sheet1",
+                "--col",
+                "XFE",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "cols",
+                "delete",
+                &rust_clean,
+                "--sheet",
+                "Sheet1",
+                "--col",
+                "XFE",
+                "--dry-run",
+            ],
+        ),
+        (
+            "column span out of bounds",
+            vec![
+                "--json",
+                "xlsx",
+                "cols",
+                "insert",
+                &go_clean,
+                "--sheet",
+                "Sheet1",
+                "--at",
+                "XFD",
+                "--count",
+                "2",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "cols",
+                "insert",
+                &rust_clean,
+                "--sheet",
+                "Sheet1",
+                "--at",
+                "XFD",
+                "--count",
+                "2",
+                "--dry-run",
+            ],
+        ),
+    ] {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_bad);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_bad);
+        assert_eq!(rust_code, go_code, "{label} exit");
+        assert_eq!(rust_stdout, go_stdout, "{label} stdout");
+        assert_eq!(
+            scrub_path(
+                rust_stderr.unwrap_or_else(|| panic!("rust structure error stderr for {label}")),
+                &rust_clean,
+                "[IN]"
+            ),
+            scrub_path(
+                go_stderr.unwrap_or_else(|| panic!("go structure error stderr for {label}")),
+                &go_clean,
+                "[IN]"
+            ),
+            "{label} stderr"
+        );
+    }
+
+    for (label, sheet_xml, family, action, position_flag, position_value) in [
+        (
+            "formula guard",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData><row r="1"><c r="A1"><f>B1</f><v>2</v></c><c r="B1"><v>2</v></c></row></sheetData>
+</worksheet>"#,
+            "rows",
+            "insert",
+            "--at",
+            "1",
+        ),
+        (
+            "merged cell guard",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData>
+  <mergeCells count="1"><mergeCell ref="A1:B1"/></mergeCells>
+</worksheet>"#,
+            "rows",
+            "delete",
+            "--row",
+            "1",
+        ),
+        (
+            "table guard",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData>
+  <tableParts count="1"><tablePart r:id="rIdTable1"/></tableParts>
+</worksheet>"#,
+            "rows",
+            "insert",
+            "--at",
+            "1",
+        ),
+        (
+            "column metadata guard",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <cols><col min="1" max="1" width="20" customWidth="1"/></cols>
+  <sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData>
+</worksheet>"#,
+            "cols",
+            "insert",
+            "--at",
+            "A",
+        ),
+        (
+            "invalid row references guard",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData><row r="2"><c r="A1"><v>1</v></c></row></sheetData>
+</worksheet>"#,
+            "rows",
+            "insert",
+            "--at",
+            "1",
+        ),
+    ] {
+        let go_path = temp_dir.join(format!("go-{label}.xlsx").replace(' ', "-"));
+        let rust_path = temp_dir.join(format!("rust-{label}.xlsx").replace(' ', "-"));
+        write_simple_xlsx_with_sheet_xml(&go_path, sheet_xml);
+        write_simple_xlsx_with_sheet_xml(&rust_path, sheet_xml);
+        let go_file = go_path.to_string_lossy().to_string();
+        let rust_file = rust_path.to_string_lossy().to_string();
+        let go_bad = [
+            "--json",
+            "xlsx",
+            family,
+            action,
+            &go_file,
+            "--sheet",
+            "Sheet1",
+            position_flag,
+            position_value,
+            "--dry-run",
+        ];
+        let rust_bad = [
+            "--json",
+            "xlsx",
+            family,
+            action,
+            &rust_file,
+            "--sheet",
+            "Sheet1",
+            position_flag,
+            position_value,
+            "--dry-run",
+        ];
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_bad);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_bad);
+        assert_eq!(rust_code, go_code, "{label} exit");
+        assert_eq!(rust_stdout, go_stdout, "{label} stdout");
+        assert_eq!(
+            scrub_path(
+                rust_stderr.unwrap_or_else(|| panic!("rust structure guard stderr for {label}")),
+                &rust_file,
+                "[IN]"
+            ),
+            scrub_path(
+                go_stderr.unwrap_or_else(|| panic!("go structure guard stderr for {label}")),
+                &go_file,
+                "[IN]"
+            ),
+            "{label} stderr"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
 #[test]
 fn xlsx_data_validations_list_show_match_go_oracle() {
     assert_go_rust_match(&[

@@ -9,6 +9,23 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust XLSX row/column structural mutation parity landed for direct
+  `xlsx rows insert`, `xlsx rows delete`, `xlsx cols insert`, and
+  `xlsx cols delete`. The slice rewrites worksheet row and cell references,
+  updates worksheet dimensions, preserves Go-oracle guardrails for formulas,
+  merged cells, tables, column metadata, invalid row/cell references, and
+  related structural hazards, and emits Go-shaped saved/dry-run readback
+  command fields. Rust capabilities now advertise 121 Go-oracle command paths,
+  leaving a pinned 169-command gap. Serve mutation ops remain intentionally
+  unwired for this direct-CLI-only structural worksheet slice. Proof: focused
+  Go-vs-Rust saved-output/readback, dry-run, and error parity with `cargo test
+  --test rust_contract_smoke xlsx_structure -- --nocapture`, focused
+  capability ratchet/discovery tests, strict validation for generated Rust XLSX
+  outputs in the contract harness plus four integration proof files, Open XML
+  SDK Office2019 schema validation (zero errors) for all four proof files,
+  Excel COM open oracle for all four proof files, `cargo clippy --all-targets
+  -- -D warnings`, and `cargo test --all-targets` passed with 4 ZIP guard unit
+  tests plus 123 Rust contract tests.
 - Rust XLSX worksheet data-validations direct CLI parity landed for
   `xlsx data-validations list`, `show`, `create`, `update`, and `delete`.
   The slice reads and mutates worksheet `dataValidations` XML in schema order,

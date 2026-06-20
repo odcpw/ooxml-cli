@@ -45,6 +45,7 @@ mod xlsx_ranges;
 mod xlsx_sheet_lifecycle;
 mod xlsx_sheet_xml;
 mod xlsx_sheets;
+mod xlsx_structure;
 mod xlsx_table_append;
 mod xlsx_table_format;
 mod xlsx_tables;
@@ -205,6 +206,10 @@ pub(crate) use xlsx_sheet_xml::{
     xlsx_used_range_from_cell_refs,
 };
 pub(crate) use xlsx_sheets::{xlsx_cells_extract, xlsx_sheets_list, xlsx_sheets_show};
+pub(crate) use xlsx_structure::{
+    XlsxColsDeleteOptions, XlsxColsInsertOptions, XlsxRowsDeleteOptions, XlsxRowsInsertOptions,
+    xlsx_cols_delete, xlsx_cols_insert, xlsx_rows_delete, xlsx_rows_insert,
+};
 pub(crate) use xlsx_table_append::{
     XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions, xlsx_tables_append_records,
     xlsx_tables_append_rows,
