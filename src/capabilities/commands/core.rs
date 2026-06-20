@@ -92,12 +92,12 @@ pub(super) fn commands() -> Vec<Value> {
         ),
         capability_command(
             "ooxml find",
-            "find <query> <file> [--type <all|text|formula|name>] [--ignore-case] [--regex] [--max <n>]",
-            "Search supported OOXML package text, formulas, and defined names without mutating the package.",
+            "find <query> <file> [--type <all|text|formula|name>] [--ignore-case] [--regex] [--max <n>] [--to-ops|--replace <new> --apply (--out <file>|--in-place|--dry-run)]",
+            "Search supported OOXML package text, formulas, and defined names; optionally emit or apply generated mutation ops.",
             &["package"],
             false,
             Some(
-                "read-only search command; Rust does not yet advertise Go find --to-ops/--apply composition",
+                "search/compose command with query and file positionals; emit apply-compatible operations with --to-ops, or use the generated mutation commands as apply ops",
             ),
             vec![
                 flag(
@@ -123,6 +123,44 @@ pub(super) fn commands() -> Vec<Value> {
                     "max",
                     "int",
                     "maximum hits to return; 0 means unlimited",
+                ),
+                flag(
+                    "--to-ops",
+                    "toOps",
+                    "bool",
+                    "emit apply-compatible ops JSON without mutating the package",
+                ),
+                flag(
+                    "--replace",
+                    "replace",
+                    "string",
+                    "replacement value for generated ops",
+                ),
+                flag(
+                    "--apply",
+                    "apply",
+                    "bool",
+                    "run generated ops through the apply engine",
+                ),
+                flag("--out", "out", "string", "output file for --apply"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write --apply changes in place",
+                ),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "plan --apply without writing",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip final validation for --apply",
                 ),
             ],
         ),

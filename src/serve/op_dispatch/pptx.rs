@@ -2,11 +2,11 @@ use serde_json::{Value, json};
 
 use super::super::op::ServeOp;
 use crate::{
-    CliError, CliResult, json_i64,
+    CliError, CliResult, json_bool, json_i64,
     pptx_mutation::{
-        pptx_notes_clear, pptx_notes_set, pptx_tables_delete_col, pptx_tables_delete_row,
-        pptx_tables_insert_col, pptx_tables_insert_row, pptx_tables_set_cell,
-        pptx_tables_update_from_xlsx,
+        pptx_notes_clear, pptx_notes_set, pptx_replace_text_occurrences, pptx_tables_delete_col,
+        pptx_tables_delete_row, pptx_tables_insert_col, pptx_tables_insert_row,
+        pptx_tables_set_cell, pptx_tables_update_from_xlsx,
     },
 };
 
@@ -135,6 +135,33 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
 
             finish_pptx_notes_op(working, command, plan_args, pptx_notes_clear)?
         }
+        "pptx replace text-occurrences" => {
+            let match_text = required_string_alias(args, "match-text", "matchText")?;
+            let new_text = required_string_alias(args, "new-text", "newText")?;
+            let mut plan_args = Vec::new();
+            push_cli_flag(&mut plan_args, "--match-text", &match_text);
+            push_cli_flag(&mut plan_args, "--new-text", &new_text);
+            for (key, alias, flag) in [
+                ("for-slides", "forSlides", "--for-slides"),
+                ("for-shape", "forShape", "--for-shape"),
+                ("expect-count", "expectCount", "--expect-count"),
+                ("expect-plan-hash", "expectPlanHash", "--expect-plan-hash"),
+            ] {
+                if let Some(value) = optional_string_alias(args, key, alias)?.0 {
+                    push_cli_flag(&mut plan_args, flag, &value);
+                }
+            }
+            for (key, alias, flag) in [
+                ("ignore-case", "ignoreCase", "--ignore-case"),
+                ("allow-zero", "allowZero", "--allow-zero"),
+            ] {
+                if optional_bool_alias(args, key, alias) {
+                    plan_args.push(flag.to_string());
+                }
+            }
+
+            finish_pptx_text_occurrences_op(working, command, plan_args)?
+        }
         _ => {
             return Err(CliError::invalid_args(format!(
                 "unsupported serve op command: {command}"
@@ -142,6 +169,23 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
         }
     };
     Ok(op)
+}
+
+fn finish_pptx_text_occurrences_op(
+    working: &str,
+    command: &str,
+    plan_args: Vec<String>,
+) -> CliResult<ServeOp> {
+    let mut mutation_args = plan_args.clone();
+    mutation_args.push("--in-place".to_string());
+    mutation_args.push("--no-validate".to_string());
+    let readback = pptx_replace_text_occurrences(working, &mutation_args)?;
+    Ok(ServeOp::PptxReplaceOp {
+        command: command.to_string(),
+        plan_flags: plan_args.into_iter().map(|arg| json!(arg)).collect(),
+        readback_file: working.to_string(),
+        readback,
+    })
 }
 
 fn finish_pptx_tables_op(
@@ -204,6 +248,12 @@ fn required_string(args: &Value, key: &str) -> CliResult<String> {
         .ok_or_else(|| CliError::invalid_args(format!("{key} is required")))
 }
 
+fn required_string_alias(args: &Value, key: &str, alias: &str) -> CliResult<String> {
+    optional_string_alias(args, key, alias)?
+        .0
+        .ok_or_else(|| CliError::invalid_args(format!("{key} is required")))
+}
+
 fn optional_i64_alias(args: &Value, key: &str, alias: &str) -> CliResult<Option<i64>> {
     match json_i64(args, key)? {
         Some(value) => Ok(Some(value)),
@@ -231,6 +281,12 @@ fn optional_string_alias(
         return Ok((value, true));
     }
     optional_string(args, alias)
+}
+
+fn optional_bool_alias(args: &Value, key: &str, alias: &str) -> bool {
+    json_bool(args, key)
+        .or_else(|| json_bool(args, alias))
+        .unwrap_or(false)
 }
 
 fn push_cli_flag(args: &mut Vec<String>, name: &str, value: &str) {

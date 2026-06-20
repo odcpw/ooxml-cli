@@ -3475,8 +3475,8 @@ pub(super) fn commands() -> Vec<Value> {
             "text-occurrences <file>",
             "Replace matching slide-visible text occurrences across a deck.",
             &["slide", "shape"],
-            false,
-            Some("direct CLI mutation; serve/MCP op support is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--match-text", "matchText", "string", "text to find"),
                 flag("--new-text", "newText", "string", "replacement text"),

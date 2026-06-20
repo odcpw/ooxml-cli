@@ -16,6 +16,12 @@ pub(super) enum ServeOp {
         target: String,
         text: String,
     },
+    PptxReplaceOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
     PptxTablesOp {
         command: String,
         plan_flags: Vec<Value>,
@@ -143,6 +149,7 @@ impl ServeOp {
         match self {
             ServeOp::XlsxCellSet { command, .. }
             | ServeOp::PptxReplaceText { command, .. }
+            | ServeOp::PptxReplaceOp { command, .. }
             | ServeOp::PptxTablesOp { command, .. }
             | ServeOp::PptxNotesOp { command, .. }
             | ServeOp::XlsxRangeSet { command, .. }
@@ -393,6 +400,27 @@ impl ServeOp {
                 ]);
                 Value::Array(argv)
             }
+            ServeOp::PptxReplaceOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command.split_whitespace().nth(2).unwrap_or("text");
+                let mut argv = vec![
+                    json!("pptx"),
+                    json!("replace"),
+                    json!(verb),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
             ServeOp::PptxNotesOp {
                 command,
                 plan_flags,
@@ -610,6 +638,11 @@ impl ServeOp {
                 ..
             }
             | ServeOp::PptxTablesOp {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::PptxReplaceOp {
                 readback_file,
                 readback,
                 ..

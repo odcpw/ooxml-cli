@@ -159,6 +159,251 @@ fn apply_rejects_session_owned_nested_args_like_go_oracle() {
 }
 
 #[test]
+fn find_to_ops_emits_apply_compatible_ops_for_xlsx_docx_pptx() {
+    let cases = [
+        (
+            "xlsx",
+            [
+                "--json",
+                "find",
+                "Revenue",
+                "testdata/xlsx/types-and-formulas/workbook.xlsx",
+                "--replace",
+                "Income",
+                "--to-ops",
+            ],
+            "xlsx cells set",
+            ("cell", "H:xlsx/ws:1/cell:a:B1"),
+            ("value", "Income"),
+        ),
+        (
+            "docx",
+            [
+                "--json",
+                "find",
+                "marked",
+                "testdata/docx/paraid/document.docx",
+                "--replace",
+                "updated",
+                "--to-ops",
+            ],
+            "docx paragraphs set",
+            ("handle", "H:docx/pt:doc/para:m:1A2B3C4D"),
+            ("text", "First updated paragraph"),
+        ),
+        (
+            "pptx",
+            [
+                "--json",
+                "find",
+                "Content Slide",
+                "testdata/pptx/title-content/presentation.pptx",
+                "--replace",
+                "SURVIVED",
+                "--to-ops",
+            ],
+            "pptx replace text-occurrences",
+            ("for-shape", "H:pptx/s:257/shape:n:2"),
+            ("new-text", "SURVIVED"),
+        ),
+    ];
+
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-find-to-ops-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("find to-ops temp dir");
+
+    for (label, args, command, target, replacement) in cases {
+        let (code, stdout, stderr) = run_ooxml_raw(&args);
+        assert_eq!(code, 0, "{label} find --to-ops exit; stderr={stderr}");
+        let ops: Value = serde_json::from_str(stdout.trim()).expect("ops JSON");
+        let ops = ops.as_array().expect("ops array");
+        assert_eq!(ops.len(), 1, "{label} ops: {stdout}");
+        assert_eq!(ops[0]["command"], command, "{label} command");
+        assert_eq!(ops[0]["args"][target.0], target.1, "{label} target arg");
+        assert_eq!(
+            ops[0]["args"][replacement.0], replacement.1,
+            "{label} replacement arg"
+        );
+
+        let ops_path = temp_dir.join(format!("{label}-ops.json"));
+        fs::write(&ops_path, stdout).expect("write emitted ops");
+        let input = args[3];
+        let ops_str = ops_path.to_str().expect("ops path");
+        let (apply_code, _apply_stdout, apply_stderr) =
+            run_ooxml(&["--json", "apply", input, "--ops", ops_str, "--dry-run"]);
+        assert_eq!(
+            apply_code, 0,
+            "{label} emitted ops should be accepted by apply; stderr={apply_stderr:?}"
+        );
+    }
+}
+
+#[test]
+fn find_replace_apply_dry_run_matches_go_oracle_for_xlsx() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-find-apply-dry-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("find apply dry temp dir");
+    let input = temp_dir.join("input.xlsx");
+    fs::copy("testdata/xlsx/types-and-formulas/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path");
+    let args = [
+        "--json",
+        "find",
+        "Revenue",
+        input_str,
+        "--replace",
+        "Income",
+        "--apply",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(&args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(&args);
+    assert_eq!(rust_code, go_code, "find apply dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "find apply dry-run stderr");
+    let go_json: Value = serde_json::from_str(go_stdout.trim()).expect("go plan");
+    let rust_json: Value = serde_json::from_str(rust_stdout.trim()).expect("rust plan");
+    assert_eq!(rust_json, go_json, "find apply dry-run stdout");
+}
+
+#[test]
+fn find_replace_apply_saved_outputs_read_back_and_validate() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-find-apply-saved-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("find apply saved temp dir");
+
+    let cases = [
+        (
+            "xlsx",
+            "testdata/xlsx/types-and-formulas/workbook.xlsx",
+            "Revenue",
+            "Income",
+            "out.xlsx",
+        ),
+        (
+            "docx",
+            "testdata/docx/paraid/document.docx",
+            "marked",
+            "updated",
+            "out.docx",
+        ),
+        (
+            "pptx",
+            "testdata/pptx/title-content/presentation.pptx",
+            "Content Slide",
+            "SURVIVED",
+            "out.pptx",
+        ),
+    ];
+
+    for (label, input, query, replacement, out_name) in cases {
+        let out = temp_dir.join(out_name);
+        let out_str = out.to_str().expect("out path");
+        let (code, stdout, stderr) = run_ooxml_raw(&[
+            "--json",
+            "find",
+            query,
+            input,
+            "--replace",
+            replacement,
+            "--apply",
+            "--out",
+            out_str,
+        ]);
+        assert_eq!(
+            code, 0,
+            "{label} find apply saved exit; stdout={stdout}; stderr={stderr}"
+        );
+        assert!(out.exists(), "{label} output exists");
+
+        let (validate_code, _validate_stdout, validate_stderr) =
+            run_ooxml(&["--json", "validate", out_str, "--strict"]);
+        assert_eq!(
+            validate_code, 0,
+            "{label} strict validation exit; stderr={validate_stderr:?}"
+        );
+
+        let expected = if label == "docx" {
+            "First updated paragraph"
+        } else {
+            replacement
+        };
+        let (read_code, read_stdout, read_stderr) =
+            run_ooxml(&["--json", "find", expected, out_str]);
+        assert_eq!(read_code, 0, "{label} readback exit");
+        assert_eq!(read_stderr, None, "{label} readback stderr");
+        assert_eq!(
+            read_stdout.expect("readback stdout")["totalHits"],
+            Value::from(1),
+            "{label} replacement readback"
+        );
+    }
+}
+
+#[test]
+fn find_compose_invalid_flag_combinations_match_go_oracle() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "find",
+            "Revenue",
+            "testdata/xlsx/types-and-formulas/workbook.xlsx",
+            "--apply",
+            "--out",
+            "x.xlsx",
+        ],
+        vec![
+            "--json",
+            "find",
+            "Revenue",
+            "testdata/xlsx/types-and-formulas/workbook.xlsx",
+            "--replace",
+            "Income",
+        ],
+        vec![
+            "--json",
+            "find",
+            "Revenue",
+            "testdata/xlsx/types-and-formulas/workbook.xlsx",
+            "--replace",
+            "Income",
+            "--to-ops",
+            "--apply",
+            "--out",
+            "x.xlsx",
+        ],
+        vec![
+            "--json",
+            "find",
+            "Revenue",
+            "testdata/xlsx/types-and-formulas/workbook.xlsx",
+            "--replace",
+            "",
+            "--apply",
+            "--out",
+            "x.xlsx",
+        ],
+    ];
+    for args in cases {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "invalid find flags exit for {args:?}");
+        assert_eq!(
+            rust_stdout, go_stdout,
+            "invalid find flags stdout for {args:?}"
+        );
+        assert_eq!(
+            rust_stderr, go_stderr,
+            "invalid find flags stderr for {args:?}"
+        );
+    }
+}
+
+#[test]
 fn frozen_mcp_discovery_and_flow_match_go_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-mcp-{}", std::process::id()));

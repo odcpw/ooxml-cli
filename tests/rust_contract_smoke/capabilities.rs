@@ -160,7 +160,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx media list", false);
     assert_command(&all_caps, "ooxml pptx media add", false);
     assert_command(&all_caps, "ooxml pptx media replace", false);
-    assert_command(&all_caps, "ooxml pptx replace text-occurrences", false);
+    assert_command(&all_caps, "ooxml pptx replace text-occurrences", true);
     assert_command(&all_caps, "ooxml pptx replace text-from-xlsx", false);
     assert_command(&all_caps, "ooxml pptx replace text-map-from-xlsx", false);
     assert_command(&all_caps, "ooxml pptx replace images", false);
@@ -824,7 +824,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx comments edit", false);
     assert_command(&pptx_caps, "ooxml pptx comments remove", false);
     assert_command(&pptx_caps, "ooxml pptx replace text", true);
-    assert_command(&pptx_caps, "ooxml pptx replace text-occurrences", false);
+    assert_command(&pptx_caps, "ooxml pptx replace text-occurrences", true);
     assert_command(&pptx_caps, "ooxml pptx replace text-from-xlsx", false);
     assert_command(&pptx_caps, "ooxml pptx replace text-map-from-xlsx", false);
     assert_command(&pptx_caps, "ooxml pptx replace images", false);
