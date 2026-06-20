@@ -1,3 +1,7 @@
+mod notes;
+
+pub(crate) use notes::{pptx_notes_clear, pptx_notes_set};
+
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;

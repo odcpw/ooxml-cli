@@ -127,6 +127,26 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
             pptx_notes_show(file, slide)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "notes" && verb == "set" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--slide", "--text", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_notes_set(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "notes" && verb == "clear" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--slide", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_notes_clear(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "comments" && verb == "list" =>
         {
             reject_unknown_flags(rest, &["--slide", "--comment-id"], &[])?;

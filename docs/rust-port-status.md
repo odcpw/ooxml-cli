@@ -9,6 +9,19 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX speaker-notes mutation parity landed for direct
+  `pptx notes set` and `pptx notes clear`. The slice can create a missing
+  notes slide and notes master relationship graph, update existing notes,
+  clear notes, emit readback/validate/render commands, and match Go-oracle
+  dry-run and error behavior. This is direct CLI surface only, so the Rust
+  capability ratchet remains 80 Go-oracle command paths with a pinned
+  210-command gap. Proof: `cargo fmt --check`, `cargo check --all-targets`,
+  focused `cargo test --test rust_contract_smoke pptx_notes -- --nocapture`,
+  strict repo validation for generated set/clear PPTX outputs, Open XML SDK
+  Office2019 schema validation (zero errors) for both outputs, PowerPoint COM
+  open oracle for both outputs, `cargo clippy --all-targets -- -D warnings`,
+  and `cargo test --all-targets` passed with 4 ZIP guard unit tests plus 94
+  Rust contract tests.
 - Rust XLSX column-width readback parity landed for direct
   `xlsx colwidths show`. The slice reports default and explicit worksheet
   column widths, hidden/custom flags, normalized column spans, uniformity, and
