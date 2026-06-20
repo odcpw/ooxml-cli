@@ -51,7 +51,7 @@ func isXMLPart(uri string, contentType string) bool {
 			"application/vnd.openxmlformats-officedocument.theme+xml",
 			"application/vnd.openxmlformats-package.relationships+xml",
 			"application/vnd.openxmlformats-officedocument.custom-properties+xml",
-			"application/vnd.openxmlformats-officedocument.core-properties+xml":
+			"application/vnd.openxmlformats-package.core-properties+xml":
 			return true
 		}
 

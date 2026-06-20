@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	contentTypeCoreProps = "application/vnd.openxmlformats-officedocument.core-properties+xml"
+	contentTypeCoreProps = "application/vnd.openxmlformats-package.core-properties+xml"
 	contentTypeAppProps  = "application/vnd.openxmlformats-officedocument.extended-properties+xml"
 )
 

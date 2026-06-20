@@ -157,6 +157,11 @@ Latest milestone, 2026-06-20:
   `application/vnd.openxmlformats-package.core-properties+xml`; the Rust
   contract test now asserts the invalid `officedocument.core-properties` type
   is not written.
+- The Go reference XLSX workbook metadata emitter and XML-part classifier now
+  use the same standards-correct core-properties content type. Regression
+  coverage asserts fresh Go-created `docProps/core.xml` parts avoid the invalid
+  legacy MIME, and the produced workbook passes strict `ooxml validate`, .NET
+  OpenXML SDK validation, and the Windows Excel oracle.
 - XLSX formula recalculation metadata updates, calcChain content-type cleanup,
   workbook relationship cleanup, and calcChain part removal moved from
   `src/xlsx_mutation.rs` into `src/xlsx_formula_recalc.rs`, with the mutation

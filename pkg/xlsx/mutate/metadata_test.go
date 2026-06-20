@@ -50,6 +50,13 @@ func TestUpdateWorkbookMetadataFreshCoreAndApp(t *testing.T) {
 	if xlsxinspect.CorePropsURI(pkg) != "/docProps/core.xml" {
 		t.Fatalf("core props relationship not registered: %q", xlsxinspect.CorePropsURI(pkg))
 	}
+	const expectedCorePropsContentType = "application/vnd.openxmlformats-package.core-properties+xml"
+	if got := pkg.GetContentType("/docProps/core.xml"); got != expectedCorePropsContentType {
+		t.Fatalf("core props content type = %q, want %q", got, expectedCorePropsContentType)
+	}
+	if got := pkg.GetContentType("/docProps/core.xml"); got == "application/vnd.openxmlformats-officedocument.core-properties+xml" {
+		t.Fatalf("core props content type uses invalid legacy MIME: %q", got)
+	}
 	if xlsxinspect.AppPropsURI(pkg) != "/docProps/app.xml" {
 		t.Fatalf("app props relationship not registered: %q", xlsxinspect.AppPropsURI(pkg))
 	}
