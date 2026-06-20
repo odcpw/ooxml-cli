@@ -9,6 +9,23 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX replacement parity expanded for agent deck-editing workflows with
+  direct CLI support for `pptx replace text-occurrences` and `pptx replace
+  images`. The slice matches the Go oracle for occurrence dry-runs, stale
+  `--expect-count`/`--expect-plan-hash` guards, saved-output JSON, no-match
+  errors, shape readback commands, single-picture replacement by slide/selector,
+  image destination metadata, missing-target hints, extracted-image artifact
+  readback, and strict validation of mutated PPTX outputs. Rust capabilities
+  now advertise 147 Go-oracle command paths, leaving a pinned 143-command gap.
+  `pptx media list/replace`, `pptx replace images --for-slides` batch output,
+  and the XLSX-backed PPTX text replacement variants remain explicit follow-up
+  seams. Proof: focused Go-vs-Rust contract tests for text-occurrences and image
+  replacement; focused capability ratchet/discovery tests; strict validation for
+  fresh occurrence/image proof PPTX files; Open XML SDK Office2019 schema
+  validation (zero errors); PowerPoint COM open oracle for both proof decks;
+  `cargo fmt --check`; `cargo check --all-targets`; `cargo clippy --all-targets
+  -- -D warnings`; and `cargo test --all-targets` passed with 4 ZIP guard unit
+  tests plus 142 Rust contract tests.
 - Rust VBA source-module workflow parity expanded to direct `vba create` and
   `vba office-check`. `vba create` validates `.bas`/`.cls` sources, creates
   `.xlsm` and `.pptm` packages from scratch through Windows desktop Office COM,
@@ -1226,7 +1243,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 145, and the harness pins the 145-command gap until
+  paths, Rust advertises 147, and the harness pins the 143-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

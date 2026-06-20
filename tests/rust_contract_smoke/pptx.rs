@@ -359,6 +359,329 @@ fn pptx_extract_images_artifacts_null_manifest_and_errors_match_go_oracle() {
 }
 
 #[test]
+fn pptx_replace_text_occurrences_saved_readback_dry_run_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-replace-occurrences-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("replace text occurrences temp dir");
+
+    let fixture = "testdata/pptx/minimal-title/presentation.pptx";
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "text-occurrences",
+        fixture,
+        "--match-text",
+        "Minimal",
+        "--new-text",
+        "Tiny",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "replace text occurrences dry-run exit");
+    assert_eq!(
+        rust_stderr, go_stderr,
+        "replace text occurrences dry-run stderr"
+    );
+    let rust_dry_json = rust_stdout.expect("rust replace text occurrences dry-run");
+    assert_eq!(
+        rust_dry_json,
+        go_stdout.expect("go replace text occurrences dry-run"),
+        "replace text occurrences dry-run stdout"
+    );
+    let plan_hash = rust_dry_json["staleGuard"]["actualPlanHash"]
+        .as_str()
+        .expect("dry-run plan hash");
+
+    let go_out = temp_dir.join("go-occurrences.pptx");
+    let rust_out = temp_dir.join("rust-occurrences.pptx");
+    let go_out_str = go_out.to_str().expect("go occurrences output path");
+    let rust_out_str = rust_out.to_str().expect("rust occurrences output path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "text-occurrences",
+        fixture,
+        "--match-text",
+        "Minimal",
+        "--new-text",
+        "Tiny",
+        "--expect-count",
+        "1",
+        "--expect-plan-hash",
+        plan_hash,
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "text-occurrences",
+        fixture,
+        "--match-text",
+        "Minimal",
+        "--new-text",
+        "Tiny",
+        "--expect-count",
+        "1",
+        "--expect-plan-hash",
+        plan_hash,
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "replace text occurrences saved exit");
+    assert_eq!(
+        rust_stderr, go_stderr,
+        "replace text occurrences saved stderr"
+    );
+    let rust_json = rust_stdout.expect("rust replace text occurrences saved");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go replace text occurrences saved"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "replace text occurrences saved stdout"
+    );
+    assert!(
+        go_out.exists(),
+        "Go replace text occurrences output missing"
+    );
+    assert!(
+        rust_out.exists(),
+        "Rust replace text occurrences output missing"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json["matches"][0], "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let (go_text_code, go_text_stdout, go_text_stderr) =
+        run_go_ooxml(&["--json", "pptx", "extract", "text", go_out_str]);
+    let (rust_text_code, rust_text_stdout, rust_text_stderr) =
+        run_ooxml(&["--json", "pptx", "extract", "text", rust_out_str]);
+    assert_eq!(rust_text_code, go_text_code, "text readback exit");
+    assert_eq!(rust_text_stderr, go_text_stderr, "text readback stderr");
+    assert_eq!(
+        scrub_path(
+            rust_text_stdout.expect("rust text readback"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_text_stdout.expect("go text readback"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "text readback stdout"
+    );
+
+    let count_mismatch = [
+        "--json",
+        "pptx",
+        "replace",
+        "text-occurrences",
+        fixture,
+        "--match-text",
+        "Minimal",
+        "--new-text",
+        "Tiny",
+        "--expect-count",
+        "2",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&count_mismatch);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&count_mismatch);
+    assert_eq!(rust_code, go_code, "replace text occurrences guard exit");
+    assert_eq!(
+        rust_stdout, go_stdout,
+        "replace text occurrences guard stdout"
+    );
+    assert_eq!(
+        rust_stderr, go_stderr,
+        "replace text occurrences guard stderr"
+    );
+
+    let no_match = temp_dir.join("no-match.pptx");
+    let no_match_str = no_match.to_str().expect("no match path");
+    let no_match_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "text-occurrences",
+        fixture,
+        "--match-text",
+        "Missing",
+        "--new-text",
+        "Tiny",
+        "--out",
+        no_match_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&no_match_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&no_match_args);
+    assert_eq!(rust_code, go_code, "replace text occurrences no-match exit");
+    assert_eq!(
+        rust_stdout, go_stdout,
+        "replace text occurrences no-match stdout"
+    );
+    assert_eq!(
+        rust_stderr, go_stderr,
+        "replace text occurrences no-match stderr"
+    );
+}
+
+#[test]
+fn pptx_replace_images_saved_readback_dry_run_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-replace-images-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("replace images temp dir");
+
+    let fixture = "testdata/pptx/slide-assembly-notes-media/presentation.pptx";
+    let image = "testdata/test_image.png";
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "images",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "shape:4",
+        "--image",
+        image,
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "replace images dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "replace images dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust replace images dry-run"),
+        go_stdout.expect("go replace images dry-run"),
+        "replace images dry-run stdout"
+    );
+
+    let go_out = temp_dir.join("go-image.pptx");
+    let rust_out = temp_dir.join("rust-image.pptx");
+    let go_out_str = go_out.to_str().expect("go image output path");
+    let rust_out_str = rust_out.to_str().expect("rust image output path");
+    let go_args = [
+        "--json", "pptx", "replace", "images", fixture, "--slide", "2", "--target", "shape:4",
+        "--image", image, "--out", go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "images",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "shape:4",
+        "--image",
+        image,
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "replace images saved exit");
+    assert_eq!(rust_stderr, go_stderr, "replace images saved stderr");
+    let rust_json = rust_stdout.expect("rust replace images saved");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go replace images saved"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "replace images saved stdout"
+    );
+    assert!(go_out.exists(), "Go replace images output missing");
+    assert!(rust_out.exists(), "Rust replace images output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let go_dir = temp_dir.join("go-image-extract");
+    let rust_dir = temp_dir.join("rust-image-extract");
+    let go_dir_str = go_dir.to_str().expect("go image extract dir");
+    let rust_dir_str = rust_dir.to_str().expect("rust image extract dir");
+    let (go_extract_code, go_extract_stdout, go_extract_stderr) = run_go_ooxml(&[
+        "--json", "pptx", "extract", "images", go_out_str, "--out", go_dir_str,
+    ]);
+    let (rust_extract_code, rust_extract_stdout, rust_extract_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "extract",
+        "images",
+        rust_out_str,
+        "--out",
+        rust_dir_str,
+    ]);
+    assert_eq!(rust_extract_code, go_extract_code, "image readback exit");
+    assert_eq!(
+        rust_extract_stderr, go_extract_stderr,
+        "image readback stderr"
+    );
+    assert_eq!(
+        scrub_paths(
+            rust_extract_stdout.expect("rust image readback"),
+            &[(rust_out_str, "[PPTX]"), (rust_dir_str, "[OUT]")]
+        ),
+        scrub_paths(
+            go_extract_stdout.expect("go image readback"),
+            &[(go_out_str, "[PPTX]"), (go_dir_str, "[OUT]")]
+        ),
+        "image readback stdout"
+    );
+    assert_export_dirs_match(&go_dir, &rust_dir);
+
+    let missing_target = [
+        "--json",
+        "pptx",
+        "replace",
+        "images",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "shape:999",
+        "--image",
+        image,
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&missing_target);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&missing_target);
+    assert_eq!(rust_code, go_code, "replace images missing target exit");
+    assert_eq!(
+        rust_stdout, go_stdout,
+        "replace images missing target stdout"
+    );
+    assert_eq!(
+        rust_stderr, go_stderr,
+        "replace images missing target stderr"
+    );
+}
+
+#[test]
 fn pptx_extract_xml_artifacts_selectors_and_errors_match_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

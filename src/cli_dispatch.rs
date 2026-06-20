@@ -572,7 +572,52 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "replace" && verb == "text" =>
         {
+            reject_unknown_flags(rest, &["--slide", "--target", "--text", "--out"], &[])?;
             pptx_replace_text(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "replace" && verb == "text-occurrences" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--match-text",
+                    "--new-text",
+                    "--new-text-file",
+                    "--for-slides",
+                    "--for-shape",
+                    "--expect-count",
+                    "--expect-plan-hash",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--ignore-case",
+                    "--allow-zero",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
+            )?;
+            pptx_replace_text_occurrences(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "replace" && verb == "images" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--target",
+                    "--image",
+                    "--fit-mode",
+                    "--slide",
+                    "--for-slides",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_replace_images(file, rest)
         }
         _ => Err(CliError::invalid_args(format!(
             "unsupported Rust-port contract command: {}",
