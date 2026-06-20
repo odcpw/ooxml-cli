@@ -75,6 +75,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "table",
         "name",
         "data-validation",
+        "hyperlink",
         "master",
         "layout",
         "placeholder",
@@ -283,6 +284,22 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "data-validation",
     );
     assert_command_target_kind(&all_caps, "ooxml xlsx data-validations show", "range");
+    for path in [
+        "ooxml xlsx hyperlinks list",
+        "ooxml xlsx hyperlinks show",
+        "ooxml xlsx hyperlinks add",
+        "ooxml xlsx hyperlinks update",
+        "ooxml xlsx hyperlinks delete",
+    ] {
+        assert_object_kind_command(&all_caps, "hyperlink", path);
+        assert_object_kind_command(&all_caps, "cell", path);
+        assert_object_kind_command(&all_caps, "range", path);
+        assert_object_kind_command(&all_caps, "sheet", path);
+        assert_command_target_kind(&all_caps, path, "hyperlink");
+        assert_command_target_kind(&all_caps, path, "cell");
+        assert_command_target_kind(&all_caps, path, "range");
+        assert_command_target_kind(&all_caps, path, "sheet");
+    }
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names list");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names show");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names add");
@@ -381,6 +398,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx data-validations create", true);
     assert_command(&xlsx_caps, "ooxml xlsx data-validations update", true);
     assert_command(&xlsx_caps, "ooxml xlsx data-validations delete", true);
+    assert_command(&xlsx_caps, "ooxml xlsx hyperlinks list", false);
+    assert_command(&xlsx_caps, "ooxml xlsx hyperlinks show", false);
+    assert_command(&xlsx_caps, "ooxml xlsx hyperlinks add", true);
+    assert_command(&xlsx_caps, "ooxml xlsx hyperlinks update", true);
+    assert_command(&xlsx_caps, "ooxml xlsx hyperlinks delete", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set-format", true);
@@ -444,6 +466,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&range_caps, "ooxml xlsx data-validations create", true);
     assert_command(&range_caps, "ooxml xlsx data-validations update", true);
     assert_command(&range_caps, "ooxml xlsx data-validations delete", true);
+    assert_command(&range_caps, "ooxml xlsx hyperlinks list", false);
+    assert_command(&range_caps, "ooxml xlsx hyperlinks show", false);
+    assert_command(&range_caps, "ooxml xlsx hyperlinks add", true);
+    assert_command(&range_caps, "ooxml xlsx hyperlinks update", true);
+    assert_command(&range_caps, "ooxml xlsx hyperlinks delete", true);
     assert_command(&range_caps, "ooxml xlsx ranges export", false);
 
     let (table_code, table_stdout, table_stderr) =
@@ -503,6 +530,18 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&dv_caps, "ooxml xlsx data-validations update", true);
     assert_command(&dv_caps, "ooxml xlsx data-validations delete", true);
     assert_no_command(&dv_caps, "ooxml xlsx tables list");
+
+    let (hyperlink_code, hyperlink_stdout, hyperlink_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "hyperlink"]);
+    assert_eq!(hyperlink_code, 0);
+    assert_eq!(hyperlink_stderr, None);
+    let hyperlink_caps = hyperlink_stdout.expect("hyperlink capabilities");
+    assert_command(&hyperlink_caps, "ooxml xlsx hyperlinks list", false);
+    assert_command(&hyperlink_caps, "ooxml xlsx hyperlinks show", false);
+    assert_command(&hyperlink_caps, "ooxml xlsx hyperlinks add", true);
+    assert_command(&hyperlink_caps, "ooxml xlsx hyperlinks update", true);
+    assert_command(&hyperlink_caps, "ooxml xlsx hyperlinks delete", true);
+    assert_no_command(&hyperlink_caps, "ooxml xlsx comments list");
 
     let (layout_code, layout_stdout, layout_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "layout"]);
@@ -700,12 +739,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        121,
+        126,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        169,
+        164,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

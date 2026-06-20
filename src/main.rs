@@ -37,6 +37,7 @@ mod xlsx_dimensions;
 mod xlsx_filters_sorts;
 mod xlsx_formula_recalc;
 mod xlsx_freeze;
+mod xlsx_hyperlinks;
 mod xlsx_metadata;
 mod xlsx_model;
 mod xlsx_mutation;
@@ -175,6 +176,11 @@ pub(crate) use xlsx_filters_sorts::{
     xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_set_sort, xlsx_filters_sorts_show,
 };
 pub(crate) use xlsx_formula_recalc::add_xlsx_formula_recalc_package_updates;
+pub(crate) use xlsx_hyperlinks::{
+    XlsxHyperlinkAddOptions, XlsxHyperlinkDeleteOptions, XlsxHyperlinkUpdateOptions,
+    xlsx_hyperlinks_add, xlsx_hyperlinks_delete, xlsx_hyperlinks_list, xlsx_hyperlinks_show,
+    xlsx_hyperlinks_update,
+};
 pub(crate) use xlsx_metadata::{
     XlsxWorkbookMetadataUpdateOptions, xlsx_workbook_metadata_inspect,
     xlsx_workbook_metadata_update,
