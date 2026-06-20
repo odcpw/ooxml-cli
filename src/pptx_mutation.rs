@@ -17,7 +17,10 @@ pub(crate) use layouts::{
     pptx_layouts_set_bounds,
 };
 pub(crate) use notes::{pptx_notes_clear, pptx_notes_set};
-pub(crate) use replace::{pptx_replace_images, pptx_replace_text_occurrences};
+pub(crate) use replace::{
+    pptx_replace_images, pptx_replace_text_from_xlsx, pptx_replace_text_map_from_xlsx,
+    pptx_replace_text_occurrences,
+};
 pub(crate) use shapes::{pptx_shapes_delete, pptx_shapes_set_bounds};
 pub(crate) use slides::{pptx_slides_delete, pptx_slides_move, pptx_slides_reorder};
 pub(crate) use tables::{

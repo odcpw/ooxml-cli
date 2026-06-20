@@ -3912,6 +3912,406 @@ fn pptx_tables_update_from_xlsx_matches_go_oracle_saved_dry_run_and_errors() {
     }
 }
 
+#[test]
+fn pptx_replace_text_from_xlsx_matches_go_oracle_saved_dry_run_and_errors() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-replace-text-xlsx-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx replace text xlsx temp dir");
+
+    let fixture = "testdata/pptx/title-content/presentation.pptx";
+    let workbook = temp_dir.join("source-text.xlsx");
+    write_simple_xlsx_with_sheet_xml(&workbook, pptx_replace_text_source_sheet_xml());
+    let workbook_str = workbook.to_str().expect("source workbook path");
+
+    for args in [
+        vec!["--json", "pptx", "replace", "text-from-xlsx"],
+        vec!["--json", "pptx", "replace", "text-map-from-xlsx"],
+    ] {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "missing file exit for {args:?}");
+        assert_eq!(rust_stdout, go_stdout, "missing file stdout for {args:?}");
+        assert_eq!(rust_stderr, go_stderr, "missing file stderr for {args:?}");
+    }
+
+    let go_out = temp_dir.join("go-text-from-xlsx.pptx");
+    let rust_out = temp_dir.join("rust-text-from-xlsx.pptx");
+    let go_out_str = go_out.to_str().expect("go text-from-xlsx output path");
+    let rust_out_str = rust_out.to_str().expect("rust text-from-xlsx output path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "text-from-xlsx",
+        fixture,
+        "--workbook",
+        workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--slide",
+        "1",
+        "--target",
+        "title",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "text-from-xlsx",
+        fixture,
+        "--workbook",
+        workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--slide",
+        "1",
+        "--target",
+        "title",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "text-from-xlsx saved exit");
+    assert_eq!(rust_stderr, go_stderr, "text-from-xlsx saved stderr");
+    let rust_json = rust_stdout.expect("rust text-from-xlsx stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go text-from-xlsx stdout"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "text-from-xlsx saved stdout"
+    );
+    assert!(go_out.exists(), "Go text-from-xlsx output missing");
+    assert!(rust_out.exists(), "Rust text-from-xlsx output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let (go_read_code, go_read_stdout, go_read_stderr) = run_go_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "get",
+        go_out_str,
+        "--slide",
+        "1",
+        "--target",
+        "title",
+        "--include-text",
+    ]);
+    let (rust_read_code, rust_read_stdout, rust_read_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "get",
+        rust_out_str,
+        "--slide",
+        "1",
+        "--target",
+        "title",
+        "--include-text",
+    ]);
+    assert_eq!(rust_read_code, go_read_code, "text-from readback exit");
+    assert_eq!(
+        rust_read_stderr, go_read_stderr,
+        "text-from readback stderr"
+    );
+    assert_eq!(
+        scrub_path(
+            rust_read_stdout.expect("rust text-from readback"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_read_stdout.expect("go text-from readback"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "text-from readback stdout"
+    );
+
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "text-from-xlsx",
+        fixture,
+        "--workbook",
+        workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--slide",
+        "2",
+        "--target",
+        "body",
+        "--row-sep",
+        "\\n",
+        "--col-sep",
+        " | ",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "text-from-xlsx dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "text-from-xlsx dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust text-from-xlsx dry-run stdout"),
+        go_stdout.expect("go text-from-xlsx dry-run stdout"),
+        "text-from-xlsx dry-run stdout"
+    );
+
+    let missing_target = [
+        "--json",
+        "pptx",
+        "replace",
+        "text-from-xlsx",
+        fixture,
+        "--workbook",
+        workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--slide",
+        "1",
+        "--target",
+        "missing",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&missing_target);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&missing_target);
+    assert_eq!(rust_code, go_code, "text-from missing target exit");
+    assert_eq!(rust_stdout, go_stdout, "text-from missing target stdout");
+    assert_eq!(rust_stderr, go_stderr, "text-from missing target stderr");
+}
+
+#[test]
+fn pptx_replace_text_map_from_xlsx_matches_go_oracle_saved_dry_run_and_errors() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-replace-text-map-xlsx-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx replace text map xlsx temp dir");
+
+    let fixture = "testdata/pptx/title-content/presentation.pptx";
+    let workbook = temp_dir.join("source-map.xlsx");
+    write_simple_xlsx_with_sheet_xml(&workbook, pptx_replace_text_map_source_sheet_xml());
+    let workbook_str = workbook.to_str().expect("source map workbook path");
+    let table_workbook = temp_dir.join("source-map-table.xlsx");
+    write_pptx_text_map_table_xlsx(&table_workbook);
+    let table_workbook_str = table_workbook.to_str().expect("source table workbook path");
+
+    let go_out = temp_dir.join("go-text-map-from-xlsx.pptx");
+    let rust_out = temp_dir.join("rust-text-map-from-xlsx.pptx");
+    let go_out_str = go_out.to_str().expect("go text-map output path");
+    let rust_out_str = rust_out.to_str().expect("rust text-map output path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "text-map-from-xlsx",
+        fixture,
+        "--workbook",
+        workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:C3",
+        "--expect-source-range",
+        "A1:C3",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "text-map-from-xlsx",
+        fixture,
+        "--workbook",
+        workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:C3",
+        "--expect-source-range",
+        "A1:C3",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "text-map-from-xlsx saved exit");
+    assert_eq!(rust_stderr, go_stderr, "text-map-from-xlsx saved stderr");
+    let rust_json = rust_stdout.expect("rust text-map-from-xlsx stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go text-map-from-xlsx stdout"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "text-map-from-xlsx saved stdout"
+    );
+    assert!(go_out.exists(), "Go text-map-from-xlsx output missing");
+    assert!(rust_out.exists(), "Rust text-map-from-xlsx output missing");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let (go_extract_code, go_extract_stdout, go_extract_stderr) =
+        run_go_ooxml(&["--json", "pptx", "extract", "text", go_out_str]);
+    let (rust_extract_code, rust_extract_stdout, rust_extract_stderr) =
+        run_ooxml(&["--json", "pptx", "extract", "text", rust_out_str]);
+    assert_eq!(rust_extract_code, go_extract_code, "text-map extract exit");
+    assert_eq!(
+        rust_extract_stderr, go_extract_stderr,
+        "text-map extract stderr"
+    );
+    assert_eq!(
+        scrub_path(
+            rust_extract_stdout.expect("rust text-map extract"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_extract_stdout.expect("go text-map extract"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "text-map extract stdout"
+    );
+
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "text-map-from-xlsx",
+        fixture,
+        "--workbook",
+        table_workbook_str,
+        "--table",
+        "TextMap",
+        "--slide-col",
+        "1",
+        "--target-col",
+        "2",
+        "--text-col",
+        "3",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "text-map-from-xlsx dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "text-map-from-xlsx dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust text-map dry-run stdout"),
+        go_stdout.expect("go text-map dry-run stdout"),
+        "text-map-from-xlsx dry-run stdout"
+    );
+
+    let error_cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "pptx",
+            "replace",
+            "text-map-from-xlsx",
+            fixture,
+            "--workbook",
+            workbook_str,
+            "--range",
+            "A1:C3",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "replace",
+            "text-map-from-xlsx",
+            fixture,
+            "--workbook",
+            workbook_str,
+            "--sheet",
+            "Sheet1",
+            "--range",
+            "A1:C3",
+            "--slide-col",
+            "1",
+            "--target-col",
+            "1",
+            "--text-col",
+            "3",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "replace",
+            "text-map-from-xlsx",
+            fixture,
+            "--workbook",
+            workbook_str,
+            "--sheet",
+            "Sheet1",
+            "--range",
+            "A1:C3",
+            "--target-col",
+            "3",
+            "--text-col",
+            "2",
+            "--dry-run",
+        ],
+    ];
+    for args in error_cases {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "text-map error exit for {args:?}");
+        assert_eq!(rust_stdout, go_stdout, "text-map error stdout for {args:?}");
+        assert_eq!(rust_stderr, go_stderr, "text-map error stderr for {args:?}");
+    }
+}
+
+fn pptx_replace_text_source_sheet_xml() -> &'static str {
+    r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:B2"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Region</t></is></c><c r="B1" t="inlineStr"><is><t>Amount</t></is></c></row>
+    <row r="2"><c r="A2" t="inlineStr"><is><t>North</t></is></c><c r="B2"><v>42</v></c></row>
+  </sheetData>
+</worksheet>"#
+}
+
+fn pptx_replace_text_map_source_sheet_xml() -> &'static str {
+    r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:C3"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>slide</t></is></c><c r="B1" t="inlineStr"><is><t>target</t></is></c><c r="C1" t="inlineStr"><is><t>text</t></is></c></row>
+    <row r="2"><c r="A2"><v>1</v></c><c r="B2" t="inlineStr"><is><t>title</t></is></c><c r="C2" t="inlineStr"><is><t>Range Title</t></is></c></row>
+    <row r="3"><c r="A3"><v>2</v></c><c r="B3" t="inlineStr"><is><t>body</t></is></c><c r="C3" t="inlineStr"><is><t>Range Body</t></is></c></row>
+  </sheetData>
+</worksheet>"#
+}
+
 fn pptx_update_source_sheet_xml_4x4() -> &'static str {
     r#"<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -4014,4 +4414,94 @@ fn write_pptx_update_table_xlsx(dest: &Path) {
 </table>"#,
     );
     writer.finish().expect("finish pptx update table xlsx");
+}
+
+fn write_pptx_text_map_table_xlsx(dest: &Path) {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("fixture parent");
+    }
+    let output = File::create(dest).expect("create pptx text map table xlsx");
+    let mut writer = ZipWriter::new(output);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    write_zip_string(
+        &mut writer,
+        options,
+        "[Content_Types].xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>
+</Types>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "_rels/.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/workbook.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Data" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/_rels/workbook.xml.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/worksheets/sheet1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <dimension ref="A1:C2"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>slide</t></is></c><c r="B1" t="inlineStr"><is><t>target</t></is></c><c r="C1" t="inlineStr"><is><t>text</t></is></c></row>
+    <row r="2"><c r="A2"><v>1</v></c><c r="B2" t="inlineStr"><is><t>title</t></is></c><c r="C2" t="inlineStr"><is><t>Table Title</t></is></c></row>
+  </sheetData>
+  <tableParts count="1"><tablePart r:id="rId1"/></tableParts>
+</worksheet>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/worksheets/_rels/sheet1.xml.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/tables/table1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="TextMap" displayName="TextMap" ref="A1:C2" headerRowCount="1" totalsRowShown="0">
+  <autoFilter ref="A1:C2"/>
+  <tableColumns count="3">
+    <tableColumn id="1" name="slide"/>
+    <tableColumn id="2" name="target"/>
+    <tableColumn id="3" name="text"/>
+  </tableColumns>
+  <tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>
+</table>"#,
+    );
+    writer.finish().expect("finish pptx text map table xlsx");
 }

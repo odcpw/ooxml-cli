@@ -712,11 +712,65 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             )?;
             pptx_tables_update_from_xlsx(file, rest)
         }
+        [family, group, verb]
+            if family == "pptx"
+                && group == "replace"
+                && (verb.as_str() == "text-from-xlsx" || verb.as_str() == "text-map-from-xlsx") =>
+        {
+            Err(CliError::invalid_args("accepts 1 arg(s), received 0"))
+        }
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "replace" && verb == "text" =>
         {
             reject_unknown_flags(rest, &["--slide", "--target", "--text", "--out"], &[])?;
             pptx_replace_text(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "replace" && verb == "text-from-xlsx" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--target",
+                    "--workbook",
+                    "--sheet",
+                    "--range",
+                    "--max-cells",
+                    "--formula-mode",
+                    "--mode",
+                    "--row-sep",
+                    "--col-sep",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_replace_text_from_xlsx(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "replace" && verb == "text-map-from-xlsx" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--workbook",
+                    "--sheet",
+                    "--range",
+                    "--table",
+                    "--max-cells",
+                    "--formula-mode",
+                    "--mode",
+                    "--slide-col",
+                    "--target-col",
+                    "--text-col",
+                    "--expect-source-range",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_replace_text_map_from_xlsx(file, rest)
         }
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "replace" && verb == "text-occurrences" =>
