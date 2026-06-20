@@ -126,6 +126,10 @@ Latest milestone, 2026-06-20:
   `src/capabilities/commands.rs` into family modules under
   `src/capabilities/commands/`, preserving the emitted command order as core,
   PPTX, XLSX, then DOCX for CLI capabilities and MCP command-resource lookups.
+- The DOCX capability inventory split further into body/block, paragraph,
+  style, comment, field, header/footer, image, and table submodules under
+  `src/capabilities/commands/docx/`, keeping the DOCX capability facade as an
+  ordered family registry.
 - XLSX workbook metadata inspect/update types, XML readers, property renderers,
   and calc-setting mutation helpers moved from `src/main.rs` into
   `src/xlsx_metadata.rs`, keeping CLI and serve call sites stable through the
