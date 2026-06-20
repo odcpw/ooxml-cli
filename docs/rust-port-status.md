@@ -163,6 +163,12 @@ Latest milestone, 2026-06-20:
 - DOCX body block readers, rich block reports, paragraph/table text extraction,
   run formatting capture, namespace-aware paragraph handles, and block content
   hashing moved from `src/main.rs` into `src/docx_block_readers.rs`.
+- DOCX rich body-block reporting, run formatting capture, namespace-aware
+  paragraph-handle counting, table merge detection, and block content hashing
+  moved from `src/docx_block_readers.rs` into
+  `src/docx_block_readers/rich.rs`, leaving the original block-reader facade
+  responsible for simple paragraph/table extraction and shared namespace
+  helpers.
 - DOCX text and body block command wrappers for show, insert-after, replace,
   and delete moved from `src/main.rs` into `src/docx_block_commands.rs`, with
   shared body/paragraph XML helpers now provided by `src/docx_xml.rs` through
@@ -230,13 +236,11 @@ Latest milestone, 2026-06-20:
 - Serve `xlsx cells set` now delegates to the shared `xlsx_cells_set`
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
-- Proof after the latest split: `cargo test --test rust_contract_smoke
-  frozen_cli_slice_matches_go_baseline -- --exact`, `cargo test --test
-  rust_contract_smoke frozen_serve_flow_matches_go_baseline -- --exact`,
-  `cargo test --test rust_contract_smoke
-  frozen_pptx_mutation_and_validate_match_go_baseline -- --exact`,
-  `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
-  `cargo test --all-targets` all pass with 78 Rust contract tests.
+- Proof after the latest split: `cargo check --all-targets`, `cargo test --test
+  rust_contract_smoke docx_blocks`, `cargo test --test rust_contract_smoke
+  serve_inspect_supports_docx_read_commands -- --exact`, `cargo clippy
+  --all-targets -- -D warnings`, and `cargo test --all-targets` all pass with
+  78 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
