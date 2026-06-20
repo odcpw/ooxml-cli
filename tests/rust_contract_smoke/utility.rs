@@ -141,6 +141,26 @@ fn doctor_contract_commands_are_machine_readable() {
     assert_eq!(caps["doctorVersion"], "1.3.0");
     assert_eq!(caps["readOnly"], true);
     assert!(caps["checks"].as_array().expect("checks").len() >= 10);
+    let doctor_contract = serde_json::to_string(&caps).expect("doctor capabilities JSON");
+    assert!(
+        !doctor_contract.contains("scripts/") && !doctor_contract.contains("scripts\\\\"),
+        "doctor capabilities should not advertise removed scripts/ proof commands: {doctor_contract}"
+    );
+    assert!(
+        doctor_contract.contains("tools\\\\windows-office-oracle.ps1"),
+        "doctor capabilities should advertise the real Windows Office oracle script"
+    );
+    for gate in [
+        "make check-release-fast",
+        "make check-release-slow",
+        "make check-office-vba-schema",
+        "make check-office-vba-com",
+    ] {
+        assert!(
+            doctor_contract.contains(gate),
+            "doctor capabilities should advertise release gate {gate}"
+        );
+    }
 
     let (health_code, health_stdout, health_stderr) =
         run_ooxml(&["--json", "doctor", "health", "--only", "go-toolchain"]);

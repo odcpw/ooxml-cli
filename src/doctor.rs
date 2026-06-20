@@ -139,35 +139,35 @@ fn doctor_capabilities(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
                 "id": "microsoft-office-com-open",
                 "description": "Open a document through Microsoft Office COM automation on Windows.",
                 "requiredChecks": ["openxml-sdk-validator", "microsoft-office-com", "office-edit-smoke"],
-                "command": "pwsh -File scripts/office-edit-smoke.ps1 -Path <file>"
+                "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\tools\\windows-office-oracle.ps1 -InputFile <file> -RepoRoot ."
             },
             {
                 "id": "microsoft-office-vba-com-open",
                 "description": "Open a macro-enabled document through Microsoft Office COM automation on Windows.",
                 "requiredChecks": ["openxml-sdk-validator", "microsoft-office-com", "office-vba-smoke"],
-                "command": "pwsh -File scripts/office-vba-smoke.ps1 -Path <file> -EnableVbaObjectModelAccess"
+                "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\tools\\windows-office-oracle.ps1 -InputFile <file> -RepoRoot ."
             }
         ],
         "releaseGates": [
             {
                 "id": "check-release-fast",
                 "requiresOffice": false,
-                "command": "pwsh -File scripts/check-release.ps1 -SkipOffice"
+                "command": "make check-release-fast"
             },
             {
                 "id": "check-release-slow",
                 "requiresOffice": true,
-                "command": "pwsh -File scripts/check-release.ps1"
+                "command": "make check-release-slow"
             },
             {
                 "id": "check-office-vba-schema",
                 "requiresOffice": false,
-                "command": "pwsh -File scripts/check-release.ps1 -SkipOffice -EnableVbaObjectModelAccess"
+                "command": "make check-office-vba-schema"
             },
             {
                 "id": "check-office-vba-com",
                 "requiresOffice": true,
-                "command": "pwsh -File scripts/check-release.ps1 -EnableVbaObjectModelAccess"
+                "command": "make check-office-vba-com"
             }
         ],
         "exitCodes": [
@@ -504,8 +504,8 @@ fn check_office_edit_smoke() -> CheckReport {
     check_script(
         "office-edit-smoke",
         "Windows Office edit smoke gate available",
-        Path::new("scripts/office-edit-smoke.ps1"),
-        "pwsh -File scripts/office-edit-smoke.ps1 -Path <file>",
+        Path::new("tools/windows-office-edit-smoke.ps1"),
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\tools\\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice",
     )
 }
 
@@ -513,8 +513,8 @@ fn check_office_vba_smoke() -> CheckReport {
     check_script(
         "office-vba-smoke",
         "Windows Office VBA smoke gate available",
-        Path::new("scripts/office-vba-smoke.ps1"),
-        "pwsh -File scripts/office-vba-smoke.ps1 -Path <file> -EnableVbaObjectModelAccess",
+        Path::new("tools/windows-office-vba-smoke.ps1"),
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\tools\\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -SkipOffice -EnableVbaObjectModelAccess",
     )
 }
 
