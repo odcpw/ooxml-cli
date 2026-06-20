@@ -9,6 +9,21 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust `conformance check` now includes the focused Go-oracle deep relationship
+  and content-type invariant slice for worksheet drawing/VML/table references,
+  workbook pivot-cache references, pivot-cache records, drawing chart
+  references, chart external-data references, and drawing media image/audio/video
+  relationships. The checks live in
+  `src/conformance_invariants/deep_relationships.rs`, keep the command
+  hidden/unadvertised, and leave `--office-check` explicitly unsupported until
+  the remaining Go invariant surface is ported. Proof: focused Go-vs-Rust deep
+  relationship conformance test, full focused conformance tests, `cargo fmt
+  --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test
+  --all-targets` with 4 unit tests plus 209 Rust contract tests. No command-count
+  change: Rust still advertises 289 Go-oracle paths and keeps `ooxml
+  conformance check` hidden. Remaining conformance gaps include binary image
+  payload signature checks, embedded chart workbook-open validation, and
+  `--office-check` promotion.
 - Rust `conformance check` now includes the focused Go-oracle reference-list
   repair invariant slice for workbook sheet relationships, presentation slide
   and slide-master references, slide-layout master relationships, and

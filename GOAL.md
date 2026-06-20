@@ -37,9 +37,9 @@ history.
   - `cargo check --all-targets` passed.
   - `cargo fmt --check` passed.
   - `cargo clippy --all-targets -- -D warnings` passed.
-  - `cargo test --all-targets` passed with 4 unit tests and 208 Rust contract
-    tests after the hidden conformance ZIP-timestamp and reference-list
-    invariant slices.
+  - `cargo test --all-targets` passed with 4 unit tests and 209 Rust contract
+    tests after the hidden conformance ZIP-timestamp, reference-list, and
+    deep-relationship invariant slices.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
   - Current capability ratchet: Go advertises 290 command paths, Rust
@@ -57,6 +57,9 @@ history.
   - Workbook/presentation reference-list repair checks landed in Rust and match
     the Go oracle on synthetic workbook sheet, presentation slide, slide-layout
     master, and slide-master layout relationship failures.
+  - Worksheet drawing/VML/table, workbook pivot-cache, chart external-data, and
+    drawing media relationship/content-type repair checks landed in Rust and
+    match the Go oracle on synthetic deep relationship failures.
   - Open XML SDK validation and desktop PowerPoint COM open proof passed for the
     generated `template apply` and `pptx template compile` decks.
 
