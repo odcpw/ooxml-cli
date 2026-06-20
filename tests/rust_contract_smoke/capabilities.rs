@@ -29,6 +29,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx shapes get", false);
     assert_command(&all_caps, "ooxml pptx shapes set-bounds", false);
     assert_command(&all_caps, "ooxml pptx shapes delete", false);
+    assert_command(&all_caps, "ooxml pptx charts list", false);
+    assert_command(&all_caps, "ooxml pptx charts show", false);
     assert_command(&all_caps, "ooxml pptx tables show", false);
     assert_command(&all_caps, "ooxml pptx tables set-cell", true);
     assert_command(&all_caps, "ooxml pptx tables delete-row", true);
@@ -87,12 +89,12 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "name",
         "data-validation",
         "hyperlink",
+        "chart",
         "master",
         "layout",
         "placeholder",
         "style",
         "comment",
-        "chart",
         "module",
     ] {
         assert_object_kind(&all_caps, kind);
@@ -135,6 +137,12 @@ fn capabilities_advertise_supported_web_agent_surface() {
         assert_command_target_kind(&all_caps, path, "slide");
         assert_command_target_kind(&all_caps, path, "shape");
     }
+    assert_object_kind_command(&all_caps, "chart", "ooxml pptx charts list");
+    assert_object_kind_command(&all_caps, "chart", "ooxml pptx charts show");
+    assert_command_target_kind(&all_caps, "ooxml pptx charts list", "slide");
+    assert_command_target_kind(&all_caps, "ooxml pptx charts list", "chart");
+    assert_command_target_kind(&all_caps, "ooxml pptx charts show", "slide");
+    assert_command_target_kind(&all_caps, "ooxml pptx charts show", "chart");
     assert_object_kind_command(&all_caps, "table", "ooxml pptx tables delete-col");
     assert_command_target_kind(&all_caps, "ooxml pptx tables delete-col", "slide");
     assert_command_target_kind(&all_caps, "ooxml pptx tables delete-col", "table");
@@ -401,6 +409,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx masters show", false);
     assert_command(&pptx_caps, "ooxml pptx layouts list", false);
     assert_command(&pptx_caps, "ooxml pptx layouts show", false);
+    assert_command(&pptx_caps, "ooxml pptx charts list", false);
+    assert_command(&pptx_caps, "ooxml pptx charts show", false);
     assert_command(&pptx_caps, "ooxml pptx tables show", false);
     assert_command(&pptx_caps, "ooxml pptx tables set-cell", true);
     assert_command(&pptx_caps, "ooxml pptx tables delete-row", true);
@@ -602,6 +612,15 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml docx blocks delete", true);
     assert_no_command(&table_caps, "ooxml docx blocks");
     assert_no_command(&table_caps, "ooxml docx tables show");
+
+    let (chart_code, chart_stdout, chart_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "chart"]);
+    assert_eq!(chart_code, 0);
+    assert_eq!(chart_stderr, None);
+    let chart_caps = chart_stdout.expect("chart capabilities");
+    assert_command(&chart_caps, "ooxml pptx charts list", false);
+    assert_command(&chart_caps, "ooxml pptx charts show", false);
+    assert_no_command(&chart_caps, "ooxml pptx tables show");
 
     let (name_code, name_stdout, name_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "name"]);
@@ -848,12 +867,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        141,
+        143,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        149,
+        147,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

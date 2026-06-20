@@ -362,6 +362,21 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
             pptx_layouts_show(file, &layout)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "charts" && verb == "list" =>
+        {
+            reject_unknown_flags(rest, &["--slide"], &[])?;
+            let slide = parse_i64_flag(rest, "--slide")?.unwrap_or(0);
+            pptx_charts_list(file, slide)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "charts" && verb == "show" =>
+        {
+            reject_unknown_flags(rest, &["--slide", "--chart"], &[])?;
+            let slide = parse_i64_flag(rest, "--slide")?.unwrap_or(0);
+            let chart = parse_string_flag(rest, "--chart")?;
+            pptx_charts_show(file, slide, chart.as_deref())
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "tables" && verb == "show" =>
         {
             reject_unknown_flags(rest, &["--slide", "--table-id", "--target"], &["--details"])?;

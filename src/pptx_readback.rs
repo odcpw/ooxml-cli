@@ -1,3 +1,4 @@
+mod charts;
 mod comments;
 mod extract;
 mod layouts;
@@ -7,6 +8,7 @@ mod slide_parts;
 mod tables;
 mod text;
 
+pub(crate) use charts::{pptx_charts_list, pptx_charts_show};
 pub(crate) use comments::pptx_comments_list;
 pub(crate) use extract::{pptx_extract_images, pptx_extract_xml};
 pub(crate) use layouts::{

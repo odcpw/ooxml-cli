@@ -9,6 +9,17 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX charts read-only parity landed for direct `pptx charts list` and
+  `pptx charts show`. The slice discovers chart relationships from slides,
+  reads chart parts, selectors, titles, type hints, series references and cache
+  previews, and reports representative Go-compatible errors. Rust capabilities
+  now advertise 143 Go-oracle command paths, leaving a pinned 147-command gap.
+  Proof: focused Go-vs-Rust chart list/show contract tests; focused capability
+  ratchet/discovery tests; `cargo fmt --check`; `cargo check --all-targets`;
+  `cargo clippy --all-targets -- -D warnings`; and `cargo test --all-targets`
+  passed with 4 ZIP guard unit tests plus 138 Rust contract tests. No Office
+  COM or Open XML SDK proof is required because this slice only reads package
+  parts.
 - Rust PPTX shapes/bounds parity landed for direct `pptx shapes get`,
   `pptx shapes set-bounds`, and `pptx shapes delete`. The slice adds
   Go-compatible single-shape readback, bounds mutation with dry-run/saved-output
@@ -1197,7 +1208,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 141, and the harness pins the 149-command gap until
+  paths, Rust advertises 143, and the harness pins the 147-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

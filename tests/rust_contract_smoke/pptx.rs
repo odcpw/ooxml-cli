@@ -60,6 +60,95 @@ fn collect_export_files(
 }
 
 #[test]
+fn pptx_charts_list_show_json_and_errors_match_go_oracle() {
+    let fixture = "testdata/pptx/chart-simple/presentation.pptx";
+    let list_args = ["--json", "pptx", "charts", "list", fixture];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&list_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&list_args);
+    assert_eq!(rust_code, go_code, "charts list exit");
+    assert_eq!(rust_stderr, go_stderr, "charts list stderr");
+    let rust_list = rust_stdout.expect("rust charts list stdout");
+    assert_eq!(
+        rust_list,
+        go_stdout.expect("go charts list stdout"),
+        "charts list stdout"
+    );
+    assert_eq!(rust_list["charts"].as_array().map(Vec::len), Some(2));
+    assert_eq!(rust_list["charts"][0]["primarySelector"], "chart:1");
+    assert_eq!(
+        rust_list["charts"][0]["style"]["title"]["text"],
+        "Revenue by Region"
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_list, "validateCommand");
+
+    let second_show = rust_list["charts"][1]["showCommand"]
+        .as_str()
+        .expect("second chart showCommand");
+    let emitted_args = emitted_ooxml_args(second_show);
+    let emitted_borrowed = emitted_args.iter().map(String::as_str).collect::<Vec<_>>();
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&emitted_borrowed);
+    assert_eq!(show_code, 0, "generated second chart show exit");
+    assert_eq!(show_stderr, None, "generated second chart show stderr");
+    let show_json = show_stdout.expect("generated second chart show stdout");
+    assert_eq!(show_json["charts"].as_array().map(Vec::len), Some(1));
+    assert_eq!(show_json["charts"][0]["partUri"], "/ppt/charts/chart2.xml");
+
+    for args in [
+        vec!["--json", "pptx", "charts", "list", fixture, "--slide", "2"],
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "show",
+            fixture,
+            "--slide",
+            "1",
+            "--chart",
+            "Revenue Chart",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "show",
+            fixture,
+            "--chart",
+            "part:/ppt/charts/chart2.xml",
+        ],
+    ] {
+        let borrowed = args.to_vec();
+        assert_go_rust_match(&borrowed);
+    }
+
+    for args in [
+        vec!["--json", "pptx", "charts", "show", fixture],
+        vec![
+            "--json", "pptx", "charts", "show", fixture, "--chart", "missing",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "show",
+            "testdata/pptx/minimal-title/presentation.pptx",
+        ],
+    ] {
+        let borrowed = args.to_vec();
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&borrowed);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&borrowed);
+        assert_eq!(rust_code, go_code, "charts error exit for {borrowed:?}");
+        assert_eq!(
+            rust_stdout, go_stdout,
+            "charts error stdout for {borrowed:?}"
+        );
+        assert_eq!(
+            rust_stderr, go_stderr,
+            "charts error stderr for {borrowed:?}"
+        );
+    }
+}
+
+#[test]
 fn frozen_pptx_mutation_and_validate_match_go_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-contract-{}", std::process::id()));
