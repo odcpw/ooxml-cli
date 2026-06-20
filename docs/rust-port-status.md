@@ -413,6 +413,10 @@ Latest milestone, 2026-06-20:
   reuse/creation moved from `src/xlsx_mutation/format.rs` into
   `src/xlsx_mutation/format/style_xfs.rs`, keeping cell style record mechanics
   separate from range application.
+- XLSX set-format `numFmt` parsing, custom format-id reuse/allocation, and
+  number-format collection insertion moved from `src/xlsx_mutation/format.rs`
+  into `src/xlsx_mutation/format/num_formats_xml.rs`, leaving the set-format
+  facade free of direct XML parser dependencies.
 - XLSX single-cell mutation, handle resolution, previous-value reporting, and
   emitted readback command generation moved from `src/xlsx_mutation.rs` into
   `src/xlsx_mutation/cells.rs`, sharing the same range-write and recalculation

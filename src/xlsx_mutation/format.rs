@@ -1,10 +1,9 @@
+mod num_formats_xml;
 mod number_format;
 mod style_xfs;
 mod styles_part;
 mod styles_xml;
 
-use quick_xml::Reader;
-use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -15,19 +14,16 @@ use super::{
     resolve_xlsx_sheet_context, validate_xlsx_mutation_output_flags, xlsx_range_destination_json,
 };
 use crate::{
-    CliError, CliResult, RangeBounds, XlsxCellSpan, attr, check_range_max_cells, col_name,
-    copy_zip_with_part_overrides, ensure_content_type_override, local_name, parse_cli_range,
+    CliError, CliResult, RangeBounds, XlsxCellSpan, check_range_max_cells, col_name,
+    copy_zip_with_part_overrides, ensure_content_type_override, parse_cli_range,
     parse_xlsx_row_spans, range_bounds_ref, rebuild_xlsx_sheet_data, render_xlsx_row,
     render_xml_attrs, validate, xlsx_ranges_set_temp_path, xlsx_sheet_data_span,
-    xlsx_used_range_from_cell_refs, xml_attr_escape, zip_text,
+    xlsx_used_range_from_cell_refs, zip_text,
 };
-use number_format::{XlsxNumberFormatSpec, resolve_xlsx_number_format};
+use num_formats_xml::ensure_xlsx_number_format;
+use number_format::resolve_xlsx_number_format;
 use style_xfs::ensure_xlsx_cell_style;
 use styles_part::{default_xlsx_styles_xml, resolve_or_add_xlsx_styles_part};
-use styles_xml::{
-    element_span_by_local_name, ensure_xlsx_style_defaults, insert_xlsx_styles_collection,
-    set_collection_count,
-};
 
 pub(crate) struct XlsxRangesSetFormatOptions<'a> {
     pub(crate) sheet: &'a str,
@@ -170,67 +166,6 @@ pub(crate) fn xlsx_ranges_set_format(
         &range,
     );
     Ok(Value::Object(result))
-}
-
-fn ensure_xlsx_number_format(
-    styles_xml: String,
-    spec: &XlsxNumberFormatSpec,
-) -> CliResult<(String, u32)> {
-    let styles_xml = ensure_xlsx_style_defaults(styles_xml);
-    if spec.builtin {
-        return Ok((styles_xml, spec.number_format_id));
-    }
-    for (id, code) in parse_xlsx_num_formats(&styles_xml) {
-        if code == spec.format_code {
-            return Ok((styles_xml, id));
-        }
-    }
-    let mut next_id = 164u32;
-    for (id, _) in parse_xlsx_num_formats(&styles_xml) {
-        if id >= next_id {
-            next_id = id + 1;
-        }
-    }
-    let num_fmt = format!(
-        r#"<numFmt numFmtId="{next_id}" formatCode="{}"/>"#,
-        xml_attr_escape(&spec.format_code)
-    );
-    let updated = if let Some(span) = element_span_by_local_name(&styles_xml, "numFmts") {
-        let mut out = String::with_capacity(styles_xml.len() + num_fmt.len());
-        out.push_str(&styles_xml[..span.close_start]);
-        out.push_str(&num_fmt);
-        out.push_str(&styles_xml[span.close_start..]);
-        set_collection_count(out, "numFmts", "numFmt")
-    } else {
-        insert_xlsx_styles_collection(
-            &styles_xml,
-            "numFmts",
-            &format!(r#"<numFmts count="1">{num_fmt}</numFmts>"#),
-        )
-    };
-    Ok((updated, next_id))
-}
-
-fn parse_xlsx_num_formats(styles_xml: &str) -> Vec<(u32, String)> {
-    let mut reader = Reader::from_str(styles_xml);
-    reader.config_mut().trim_text(false);
-    let mut formats = Vec::new();
-    loop {
-        match reader.read_event() {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e))
-                if local_name(e.name().as_ref()) == "numFmt" =>
-            {
-                if let (Some(id), Some(code)) = (attr(&e, "numFmtId"), attr(&e, "formatCode"))
-                    && let Ok(id) = id.parse::<u32>()
-                {
-                    formats.push((id, code));
-                }
-            }
-            Ok(Event::Eof) | Err(_) => break,
-            _ => {}
-        }
-    }
-    formats
 }
 
 fn set_xlsx_range_number_format_xml(
