@@ -799,6 +799,60 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             pptx_charts_show(file, slide, chart.as_deref())
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "charts" && verb == "create" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--type",
+                    "--title",
+                    "--values-json",
+                    "--values-file",
+                    "--source-file",
+                    "--source-sheet",
+                    "--source-range",
+                    "--expect-source-range",
+                    "--max-cells",
+                    "--x",
+                    "--y",
+                    "--cx",
+                    "--cy",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--embed-workbook",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
+            )?;
+            pptx_charts_create(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "charts" && verb == "update-data" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--chart",
+                    "--series",
+                    "--values",
+                    "--values-json",
+                    "--categories",
+                    "--categories-json",
+                    "--expect-point-count",
+                    "--expect-values-hash",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_charts_update_data(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "charts" && verb == "set-title" =>
         {
             reject_unknown_flags(

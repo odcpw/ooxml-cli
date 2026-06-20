@@ -908,6 +908,284 @@ fn pptx_charts_list_show_json_and_errors_match_go_oracle() {
 }
 
 #[test]
+fn pptx_charts_create_inline_saved_dry_run_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-chart-create-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx chart create temp dir");
+
+    let fixture = "testdata/pptx/multi-layout/presentation.pptx";
+    let values = r#"[["","North","South"],["Q1",10,20],["Q2",15,25]]"#;
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "charts",
+        "create",
+        fixture,
+        "--slide",
+        "1",
+        "--type",
+        "bar",
+        "--title",
+        "Quarterly Revenue",
+        "--values-json",
+        values,
+        "--dry-run",
+    ];
+    assert_go_rust_match(&dry_run_args);
+
+    let go_out = temp_dir.join("go-create-inline.pptx");
+    let rust_out = temp_dir.join("rust-create-inline.pptx");
+    let go_out_str = go_out.to_str().expect("go chart create output path");
+    let rust_out_str = rust_out.to_str().expect("rust chart create output path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "charts",
+        "create",
+        fixture,
+        "--slide",
+        "1",
+        "--type",
+        "bar",
+        "--title",
+        "Quarterly Revenue",
+        "--values-json",
+        values,
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "charts",
+        "create",
+        fixture,
+        "--slide",
+        "1",
+        "--type",
+        "bar",
+        "--title",
+        "Quarterly Revenue",
+        "--values-json",
+        values,
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "chart create exit");
+    assert_eq!(rust_stderr, go_stderr, "chart create stderr");
+    let rust_json = rust_stdout.expect("rust chart create stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go chart create stdout"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "chart create stdout"
+    );
+    assert!(go_out.exists(), "Go chart create output missing");
+    assert!(rust_out.exists(), "Rust chart create output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "chartShowCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    for args in [
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "create",
+            fixture,
+            "--slide",
+            "1",
+            "--type",
+            "bar",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "create",
+            fixture,
+            "--slide",
+            "1",
+            "--type",
+            "doughnut",
+            "--values-json",
+            values,
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "create",
+            fixture,
+            "--slide",
+            "99",
+            "--type",
+            "bar",
+            "--values-json",
+            values,
+            "--dry-run",
+        ],
+    ] {
+        assert_go_rust_match(&args);
+    }
+}
+
+#[test]
+fn pptx_charts_update_data_saved_dry_run_and_guards_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-chart-update-data-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx chart update-data temp dir");
+
+    let fixture = "testdata/pptx/chart-simple/presentation.pptx";
+    let values = r#"["12","24","36"]"#;
+    let categories = r#"["East","West","Central"]"#;
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "charts",
+        "update-data",
+        fixture,
+        "--slide",
+        "1",
+        "--chart",
+        "chart:1",
+        "--series",
+        "1",
+        "--values-json",
+        values,
+        "--categories-json",
+        categories,
+        "--dry-run",
+    ];
+    assert_go_rust_match(&dry_run_args);
+
+    let go_out = temp_dir.join("go-update-data.pptx");
+    let rust_out = temp_dir.join("rust-update-data.pptx");
+    let go_out_str = go_out.to_str().expect("go chart update output path");
+    let rust_out_str = rust_out.to_str().expect("rust chart update output path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "charts",
+        "update-data",
+        fixture,
+        "--slide",
+        "1",
+        "--chart",
+        "chart:1",
+        "--series",
+        "1",
+        "--values-json",
+        values,
+        "--categories-json",
+        categories,
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "charts",
+        "update-data",
+        fixture,
+        "--slide",
+        "1",
+        "--chart",
+        "chart:1",
+        "--series",
+        "1",
+        "--values-json",
+        values,
+        "--categories-json",
+        categories,
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "chart update-data exit");
+    assert_eq!(rust_stderr, go_stderr, "chart update-data stderr");
+    let rust_json = rust_stdout.expect("rust chart update-data stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go chart update-data stdout"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "chart update-data stdout"
+    );
+    assert!(go_out.exists(), "Go chart update-data output missing");
+    assert!(rust_out.exists(), "Rust chart update-data output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "chartShowCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    for args in [
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "update-data",
+            fixture,
+            "--chart",
+            "chart:1",
+            "--series",
+            "1",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "update-data",
+            fixture,
+            "--chart",
+            "chart:1",
+            "--series",
+            "1",
+            "--values",
+            "1,2,3",
+            "--values-json",
+            values,
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "update-data",
+            fixture,
+            "--chart",
+            "chart:1",
+            "--series",
+            "1",
+            "--values-json",
+            values,
+            "--expect-values-hash",
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        ],
+    ] {
+        assert_go_rust_match(&args);
+    }
+}
+
+#[test]
 fn pptx_animations_list_json_and_missing_path_match_go_oracle() {
     assert_go_rust_match(&[
         "--json",

@@ -14,9 +14,9 @@ pub(crate) use animations::{
     pptx_animations_reorder,
 };
 pub(crate) use charts::{
-    pptx_charts_convert_type, pptx_charts_copy_style, pptx_charts_set_axis,
+    pptx_charts_convert_type, pptx_charts_copy_style, pptx_charts_create, pptx_charts_set_axis,
     pptx_charts_set_chart_area_fill, pptx_charts_set_legend, pptx_charts_set_plot_area_fill,
-    pptx_charts_set_series_style, pptx_charts_set_title,
+    pptx_charts_set_series_style, pptx_charts_set_title, pptx_charts_update_data,
 };
 pub(crate) use comments::{pptx_comments_add, pptx_comments_edit, pptx_comments_remove};
 pub(crate) use layouts::{

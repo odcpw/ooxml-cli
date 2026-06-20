@@ -47,6 +47,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx animations prune-stale", false);
     assert_command(&all_caps, "ooxml pptx charts list", false);
     assert_command(&all_caps, "ooxml pptx charts show", false);
+    assert_command(&all_caps, "ooxml pptx charts create", false);
+    assert_command(&all_caps, "ooxml pptx charts update-data", false);
     assert_command(&all_caps, "ooxml pptx charts set-title", false);
     assert_command(&all_caps, "ooxml pptx charts set-legend", false);
     assert_command(&all_caps, "ooxml pptx charts set-chart-area-fill", false);
@@ -242,10 +244,18 @@ fn capabilities_advertise_supported_web_agent_surface() {
     }
     assert_object_kind_command(&all_caps, "chart", "ooxml pptx charts list");
     assert_object_kind_command(&all_caps, "chart", "ooxml pptx charts show");
+    assert_object_kind_command(&all_caps, "chart", "ooxml pptx charts create");
+    assert_object_kind_command(&all_caps, "chart", "ooxml pptx charts update-data");
+    assert_object_kind_command(&all_caps, "slide", "ooxml pptx charts create");
+    assert_object_kind_command(&all_caps, "range", "ooxml pptx charts create");
     assert_command_target_kind(&all_caps, "ooxml pptx charts list", "slide");
     assert_command_target_kind(&all_caps, "ooxml pptx charts list", "chart");
     assert_command_target_kind(&all_caps, "ooxml pptx charts show", "slide");
     assert_command_target_kind(&all_caps, "ooxml pptx charts show", "chart");
+    assert_command_target_kind(&all_caps, "ooxml pptx charts create", "chart");
+    assert_command_target_kind(&all_caps, "ooxml pptx charts create", "slide");
+    assert_command_target_kind(&all_caps, "ooxml pptx charts create", "range");
+    assert_command_target_kind(&all_caps, "ooxml pptx charts update-data", "chart");
     for path in [
         "ooxml pptx charts set-title",
         "ooxml pptx charts set-legend",
@@ -626,6 +636,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx layouts add-placeholder", false);
     assert_command(&pptx_caps, "ooxml pptx charts list", false);
     assert_command(&pptx_caps, "ooxml pptx charts show", false);
+    assert_command(&pptx_caps, "ooxml pptx charts create", false);
+    assert_command(&pptx_caps, "ooxml pptx charts update-data", false);
     assert_command(&pptx_caps, "ooxml pptx charts set-title", false);
     assert_command(&pptx_caps, "ooxml pptx charts set-legend", false);
     assert_command(&pptx_caps, "ooxml pptx charts set-chart-area-fill", false);
@@ -815,6 +827,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&range_caps, "ooxml pptx place table-from-xlsx", false);
     assert_command(&range_caps, "ooxml pptx replace text-from-xlsx", false);
     assert_command(&range_caps, "ooxml pptx replace text-map-from-xlsx", false);
+    assert_command(&range_caps, "ooxml pptx charts create", false);
     assert_command(&range_caps, "ooxml xlsx ranges export", false);
     assert_command(&range_caps, "ooxml xlsx ranges set-style", false);
     assert_command(&range_caps, "ooxml xlsx cells clear", false);
@@ -881,6 +894,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let chart_caps = chart_stdout.expect("chart capabilities");
     assert_command(&chart_caps, "ooxml pptx charts list", false);
     assert_command(&chart_caps, "ooxml pptx charts show", false);
+    assert_command(&chart_caps, "ooxml pptx charts create", false);
+    assert_command(&chart_caps, "ooxml pptx charts update-data", false);
     assert_command(&chart_caps, "ooxml pptx charts set-title", false);
     assert_command(&chart_caps, "ooxml pptx charts set-legend", false);
     assert_command(&chart_caps, "ooxml pptx charts set-chart-area-fill", false);
@@ -1212,12 +1227,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        196,
+        198,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        94,
+        92,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

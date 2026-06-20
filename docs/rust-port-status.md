@@ -9,6 +9,20 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX chart authoring/data parity landed for direct
+  `pptx charts create` and `pptx charts update-data`. The slice authors slide
+  chart parts from inline matrices or XLSX ranges, wires slide/chart
+  relationships and optional embedded workbooks, and updates existing chart
+  caches plus matching embedded workbook source cells for simple row/column
+  ranges. Rust capabilities now advertise 198 Go-oracle command paths, leaving
+  a pinned 92-command gap; these commands are direct CLI mutations with
+  `opCompatible=false` because serve/MCP operation dispatch is not wired for
+  `pptx charts` mutations yet. Proof: focused Go-vs-Rust create/update-data
+  saved-output, dry-run, readback, generated-command, and error tests; focused
+  capability ratchet/MCP command-resource tests; strict validation for manual
+  generated create/update proof decks; `cargo check`; and focused
+  `cargo test --test rust_contract_smoke pptx_charts -- --nocapture` plus
+  `cargo test --test rust_contract_smoke capabilities -- --nocapture`.
 - Rust XLSX chart creation/source-update parity landed for direct
   `xlsx charts create` and `xlsx charts update-source`. The slice creates
   embedded worksheet charts from ranges/tables and retargets existing series
@@ -1464,7 +1478,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 196, and the harness pins the 94-command gap until
+  paths, Rust advertises 198, and the harness pins the 92-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
