@@ -6,6 +6,7 @@ pub(crate) const EXIT_UNSUPPORTED_TYPE: i32 = 4;
 pub(crate) const EXIT_VALIDATION_FAILED: i32 = 5;
 pub(crate) const EXIT_TARGET_NOT_FOUND: i32 = 6;
 pub(crate) const EXIT_RENDER_FAILED: i32 = 7;
+pub(crate) const EXIT_DIFF_THRESHOLD: i32 = 8;
 pub(crate) const EXIT_PARTIAL_SUCCESS: i32 = 9;
 
 #[derive(Debug)]

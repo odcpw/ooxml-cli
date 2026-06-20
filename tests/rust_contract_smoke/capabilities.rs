@@ -1548,16 +1548,17 @@ fn pptx_parent_group_capabilities_match_go_oracle_metadata() {
         optional_array_is_empty(rust_diff, "targetObjectKinds"),
         "Rust targetObjectKinds should be absent or empty for ooxml pptx diff"
     );
-    assert!(
-        optional_array_is_empty(rust_diff, "localFlags"),
-        "Rust localFlags should stay empty until visual diff flags are ported"
+    assert_eq!(
+        local_flag_field(rust_diff, "name"),
+        serde_json::json!(["--render", "--threshold", "--out"]),
+        "Rust localFlags should advertise ported visual diff flags"
     );
     assert!(
         rust_diff["opIneligibleReason"]
             .as_str()
             .expect("Rust op-ineligible reason")
-            .contains("semantic diff"),
-        "Rust reason should describe semantic-only pptx diff support"
+            .contains("read-only package comparison"),
+        "Rust reason should describe read-only diff support"
     );
 }
 

@@ -14,10 +14,11 @@ use crate::validation::validate;
 use crate::vba::*;
 use crate::verify::verify;
 use crate::{
-    apply, diff, pptx_diff_command, pptx_media_add, pptx_media_list, pptx_media_replace,
-    pptx_template_capture, pptx_template_compile, pptx_template_inspect, pptx_translate_apply,
-    pptx_translate_export, pptx_validate_layout, pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan,
-    template_apply, template_profile_inspect, template_profile_save, template_tokens,
+    apply, diff, diff_command, pptx_diff_command, pptx_diff_dispatch, pptx_media_add,
+    pptx_media_list, pptx_media_replace, pptx_template_capture, pptx_template_compile,
+    pptx_template_inspect, pptx_translate_apply, pptx_translate_export, pptx_validate_layout,
+    pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan, template_apply, template_profile_inspect,
+    template_profile_save, template_tokens,
 };
 
 pub(crate) enum DispatchBody {
@@ -63,6 +64,25 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
         && cmd == "conformance"
     {
         return crate::conformance::conformance(flags, rest);
+    }
+    if let [cmd, baseline, candidate, rest @ ..] = args
+        && cmd == "diff"
+    {
+        let output = diff_command(flags, baseline, candidate, rest)?;
+        return Ok(DispatchOutput {
+            body: DispatchBody::Json(output.value),
+            exit_code: output.exit_code,
+        });
+    }
+    if let [family, verb, baseline, candidate, rest @ ..] = args
+        && family == "pptx"
+        && verb == "diff"
+    {
+        let output = pptx_diff_dispatch(flags, baseline, candidate, rest)?;
+        return Ok(DispatchOutput {
+            body: DispatchBody::Json(output.value),
+            exit_code: output.exit_code,
+        });
     }
     if let [family, verb, file, rest @ ..] = args
         && family == "vba"

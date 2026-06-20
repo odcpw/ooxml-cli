@@ -2,23 +2,38 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::pptx_render::pptx_render;
 use crate::{
-    CliError, CliResult, DocxRichBlockReport, InspectPackageKind, WorkbookSheet, XlsxTableRef,
-    attr, decode_xml_text, detect_inspect_package_type, docx_rich_block_reports,
-    find_docx_document_part, find_xlsx_workbook_part, local_name, normalize_xl_target,
-    package_type, parse_cell_ref, pptx_diff, relationship_entries, relationships_part_for,
-    shared_strings, sheet_cells, workbook_sheets, xlsx_styles, xlsx_tables, zip_entry_names,
-    zip_text,
+    CliError, CliResult, DocxRichBlockReport, EXIT_DIFF_THRESHOLD, EXIT_PARTIAL_SUCCESS,
+    EXIT_RENDER_FAILED, EXIT_SUCCESS, EXIT_UNEXPECTED, GlobalFlags, InspectPackageKind,
+    WorkbookSheet, XlsxTableRef, attr, decode_xml_text, detect_inspect_package_type,
+    docx_rich_block_reports, find_docx_document_part, find_xlsx_workbook_part, local_name,
+    normalize_xl_target, package_type, parse_cell_ref, pptx_diff, relationship_entries,
+    relationships_part_for, shared_strings, sheet_cells, workbook_sheets, xlsx_styles, xlsx_tables,
+    zip_entry_names, zip_text,
 };
 
+pub(crate) struct DiffCommandOutput {
+    pub(crate) value: Value,
+    pub(crate) exit_code: i32,
+}
+
 pub(crate) fn diff(baseline: &str, candidate: &str, args: &[String]) -> CliResult<Value> {
+    diff_command(&GlobalFlags::default(), baseline, candidate, args).map(|output| output.value)
+}
+
+pub(crate) fn diff_command(
+    flags: &GlobalFlags,
+    baseline: &str,
+    candidate: &str,
+    args: &[String],
+) -> CliResult<DiffCommandOutput> {
     let options = parse_diff_options(args)?;
-    if options.render {
-        return Err(CliError::invalid_args(
-            "diff --render visual diff is not yet supported by the Rust port; rerun without --render for semantic diff",
-        ));
-    }
 
     let baseline_type = package_type(baseline)?;
     let candidate_type = package_type(candidate)?;
@@ -28,14 +43,28 @@ pub(crate) fn diff(baseline: &str, candidate: &str, args: &[String]) -> CliResul
         )));
     }
 
-    match baseline_type {
+    let mut value = match baseline_type {
         "pptx" => pptx_diff(baseline, candidate),
         "xlsx" => xlsx_diff(baseline, candidate),
         "docx" => docx_diff(baseline, candidate),
         other => Err(CliError::unsupported_type(format!(
             "unsupported package type for diff: {other}"
         ))),
+    }?;
+    let mut exit_code = EXIT_SUCCESS;
+    if baseline_type == "pptx" {
+        let visual = if options.render {
+            let outcome = render_visual_diff(flags, baseline, candidate, &options);
+            exit_code = outcome.exit_code;
+            outcome.value
+        } else {
+            visual_disabled()
+        };
+        if let Some(map) = value.as_object_mut() {
+            map.insert("visual".to_string(), visual);
+        }
     }
+    Ok(DiffCommandOutput { value, exit_code })
 }
 
 pub(crate) fn pptx_diff_command(
@@ -43,12 +72,17 @@ pub(crate) fn pptx_diff_command(
     candidate: &str,
     args: &[String],
 ) -> CliResult<Value> {
+    pptx_diff_dispatch(&GlobalFlags::default(), baseline, candidate, args)
+        .map(|output| output.value)
+}
+
+pub(crate) fn pptx_diff_dispatch(
+    flags: &GlobalFlags,
+    baseline: &str,
+    candidate: &str,
+    args: &[String],
+) -> CliResult<DiffCommandOutput> {
     let options = parse_diff_options(args)?;
-    if options.render {
-        return Err(CliError::invalid_args(
-            "pptx diff --render visual diff is not yet supported by the Rust port; rerun without --render for semantic diff",
-        ));
-    }
 
     let baseline_type = package_type(baseline)?;
     let candidate_type = package_type(candidate)?;
@@ -62,17 +96,36 @@ pub(crate) fn pptx_diff_command(
     if let Some(map) = result.as_object_mut() {
         map.remove("schemaVersion");
         map.remove("type");
+        let visual = if options.render {
+            let outcome = render_visual_diff(flags, baseline, candidate, &options);
+            map.insert("visual".to_string(), outcome.value);
+            return Ok(DiffCommandOutput {
+                value: result,
+                exit_code: outcome.exit_code,
+            });
+        } else {
+            visual_disabled()
+        };
+        map.insert("visual".to_string(), visual);
     }
-    Ok(result)
+    Ok(DiffCommandOutput {
+        value: result,
+        exit_code: EXIT_SUCCESS,
+    })
 }
 
 #[derive(Default)]
 struct DiffOptions {
     render: bool,
+    threshold: f64,
+    out: Option<String>,
 }
 
 fn parse_diff_options(args: &[String]) -> CliResult<DiffOptions> {
-    let mut options = DiffOptions::default();
+    let mut options = DiffOptions {
+        threshold: 0.01,
+        ..DiffOptions::default()
+    };
     let mut i = 0;
     while i < args.len() {
         let arg = &args[i];
@@ -85,7 +138,7 @@ fn parse_diff_options(args: &[String]) -> CliResult<DiffOptions> {
                 let Some(value) = args.get(i + 1) else {
                     return Err(CliError::invalid_args(format!("{arg} requires a value")));
                 };
-                validate_diff_value_flag(arg, value)?;
+                apply_diff_value_flag(&mut options, arg, value)?;
                 i += 2;
             }
             "--json" => {
@@ -96,10 +149,11 @@ fn parse_diff_options(args: &[String]) -> CliResult<DiffOptions> {
                 i += 1;
             }
             _ if arg.starts_with("--threshold=") => {
-                validate_threshold_value(&arg["--threshold=".len()..])?;
+                options.threshold = parse_threshold_value(&arg["--threshold=".len()..])?;
                 i += 1;
             }
             _ if arg.starts_with("--out=") => {
+                options.out = Some(arg["--out=".len()..].to_string());
                 i += 1;
             }
             _ if arg.starts_with("--format=") => {
@@ -119,20 +173,310 @@ fn parse_diff_options(args: &[String]) -> CliResult<DiffOptions> {
     Ok(options)
 }
 
-fn validate_diff_value_flag(flag: &str, value: &str) -> CliResult<()> {
+fn apply_diff_value_flag(options: &mut DiffOptions, flag: &str, value: &str) -> CliResult<()> {
     match flag {
-        "--threshold" => validate_threshold_value(value),
+        "--threshold" => {
+            options.threshold = parse_threshold_value(value)?;
+            Ok(())
+        }
         "--format" | "-f" => validate_json_format(value),
-        "--out" => Ok(()),
+        "--out" => {
+            options.out = Some(value.to_string());
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
 
-fn validate_threshold_value(value: &str) -> CliResult<()> {
+fn parse_threshold_value(value: &str) -> CliResult<f64> {
     value
         .parse::<f64>()
-        .map(|_| ())
         .map_err(|_| CliError::invalid_args("--threshold must be a number"))
+}
+
+fn visual_disabled() -> Value {
+    json!({
+        "enabled": false,
+        "status": "disabled",
+    })
+}
+
+struct VisualOutcome {
+    value: Value,
+    exit_code: i32,
+}
+
+fn render_visual_diff(
+    flags: &GlobalFlags,
+    baseline: &str,
+    candidate: &str,
+    options: &DiffOptions,
+) -> VisualOutcome {
+    match try_render_visual_diff(baseline, candidate, options) {
+        Ok(value) => {
+            let pass = value["pass"].as_bool().unwrap_or(true);
+            let exit_code = if pass {
+                EXIT_SUCCESS
+            } else {
+                EXIT_DIFF_THRESHOLD
+            };
+            VisualOutcome { value, exit_code }
+        }
+        Err(err) if is_render_tool_issue(&err) => VisualOutcome {
+            value: json!({
+                "enabled": true,
+                "status": "unavailable",
+                "threshold": options.threshold,
+            }),
+            exit_code: if flags.strict {
+                EXIT_RENDER_FAILED
+            } else {
+                EXIT_PARTIAL_SUCCESS
+            },
+        },
+        Err(_) => VisualOutcome {
+            value: json!({
+                "enabled": true,
+                "status": "error",
+                "threshold": options.threshold,
+            }),
+            exit_code: EXIT_UNEXPECTED,
+        },
+    }
+}
+
+fn try_render_visual_diff(
+    baseline: &str,
+    candidate: &str,
+    options: &DiffOptions,
+) -> CliResult<Value> {
+    let workspace = DiffRenderWorkspace::new(options.out.as_deref())?;
+    let base_dir = workspace.path.join("baseline");
+    let candidate_dir = workspace.path.join("candidate");
+    let diff_dir = workspace.path.join("diff");
+    fs::create_dir_all(&diff_dir).map_err(|err| CliError::unexpected(err.to_string()))?;
+
+    let base_images = render_pptx_images(baseline, &base_dir)?;
+    let candidate_images = render_pptx_images(candidate, &candidate_dir)?;
+    let max_slides = base_images.len().max(candidate_images.len());
+    let mut pass = true;
+    let mut slides = Vec::with_capacity(max_slides);
+
+    for index in 0..max_slides {
+        let slide = index + 1;
+        let mut entry = Map::new();
+        entry.insert("slide".to_string(), json!(slide));
+        match (base_images.get(index), candidate_images.get(index)) {
+            (Some(base_image), Some(candidate_image)) => {
+                let diff_image = diff_dir.join(format!("slide-{slide}-diff.png"));
+                let difference = visual_image_diff(base_image, candidate_image, &diff_image)?;
+                let slide_pass = difference <= options.threshold;
+                if !slide_pass {
+                    pass = false;
+                }
+                entry.insert("difference".to_string(), json!(difference));
+                entry.insert("pass".to_string(), json!(slide_pass));
+                if diff_image.exists() {
+                    entry.insert(
+                        "diffImage".to_string(),
+                        json!(diff_image.to_string_lossy().to_string()),
+                    );
+                }
+            }
+            _ => {
+                pass = false;
+                entry.insert("difference".to_string(), json!(1.0));
+                entry.insert("pass".to_string(), json!(false));
+            }
+        }
+        slides.push(Value::Object(entry));
+    }
+
+    Ok(json!({
+        "enabled": true,
+        "status": "ok",
+        "threshold": options.threshold,
+        "pass": pass,
+        "slides": slides,
+    }))
+}
+
+struct DiffRenderWorkspace {
+    path: PathBuf,
+    cleanup: bool,
+}
+
+impl DiffRenderWorkspace {
+    fn new(out: Option<&str>) -> CliResult<Self> {
+        if let Some(out) = out
+            && !out.is_empty()
+        {
+            let path = PathBuf::from(out);
+            fs::create_dir_all(&path).map_err(|err| CliError::unexpected(err.to_string()))?;
+            return Ok(Self {
+                path,
+                cleanup: false,
+            });
+        }
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("ooxml-diff-{}-{suffix}", std::process::id()));
+        fs::create_dir_all(&path).map_err(|err| CliError::unexpected(err.to_string()))?;
+        Ok(Self {
+            path,
+            cleanup: true,
+        })
+    }
+}
+
+impl Drop for DiffRenderWorkspace {
+    fn drop(&mut self) {
+        if self.cleanup {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+}
+
+fn render_pptx_images(file: &str, out_dir: &Path) -> CliResult<Vec<PathBuf>> {
+    let args = vec![
+        "--out".to_string(),
+        out_dir.to_string_lossy().to_string(),
+        "--format".to_string(),
+        "json".to_string(),
+    ];
+    let value = pptx_render(file, &args)?;
+    let slides = value["slides"]
+        .as_array()
+        .ok_or_else(|| CliError::unexpected("render manifest missing slides"))?;
+    let mut images = Vec::with_capacity(slides.len());
+    for slide in slides {
+        let image = slide["imagePath"]
+            .as_str()
+            .ok_or_else(|| CliError::unexpected("render manifest slide missing imagePath"))?;
+        images.push(PathBuf::from(image));
+    }
+    Ok(images)
+}
+
+fn visual_image_diff(
+    base_image: &Path,
+    candidate_image: &Path,
+    diff_image: &Path,
+) -> CliResult<f64> {
+    if std::env::var_os("OOXML_RUST_MOCK_RENDER").is_some() {
+        return mock_visual_image_diff(base_image, candidate_image, diff_image);
+    }
+    let (program, args) = visual_diff_command(base_image, candidate_image, diff_image)?;
+    let output = Command::new(&program)
+        .args(args)
+        .output()
+        .map_err(|err| CliError::unexpected(format!("{program} failed: {err}")))?;
+    if let Some(metric) = parse_visual_diff_metric(&output.stderr)
+        .or_else(|| parse_visual_diff_metric(&output.stdout))
+    {
+        return Ok(metric);
+    }
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            return Err(CliError::unexpected(format!(
+                "{program} failed: {}",
+                output.status
+            )));
+        }
+        return Err(CliError::unexpected(format!("{program} failed: {stderr}")));
+    }
+    Err(CliError::unexpected(
+        "could not parse visual diff metric output",
+    ))
+}
+
+fn mock_visual_image_diff(
+    base_image: &Path,
+    candidate_image: &Path,
+    diff_image: &Path,
+) -> CliResult<f64> {
+    if let Some(parent) = diff_image.parent() {
+        fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
+    }
+    let base = fs::read(base_image).map_err(|err| CliError::unexpected(err.to_string()))?;
+    let candidate =
+        fs::read(candidate_image).map_err(|err| CliError::unexpected(err.to_string()))?;
+    fs::write(diff_image, b"png").map_err(|err| CliError::unexpected(err.to_string()))?;
+    Ok(if base == candidate { 0.0 } else { 1.0 })
+}
+
+fn visual_diff_command(
+    base_image: &Path,
+    candidate_image: &Path,
+    diff_image: &Path,
+) -> CliResult<(String, Vec<String>)> {
+    if command_exists("compare") {
+        return Ok((
+            "compare".to_string(),
+            vec![
+                "-metric".to_string(),
+                "RMSE".to_string(),
+                base_image.to_string_lossy().to_string(),
+                candidate_image.to_string_lossy().to_string(),
+                diff_image.to_string_lossy().to_string(),
+            ],
+        ));
+    }
+    if command_exists("magick") {
+        return Ok((
+            "magick".to_string(),
+            vec![
+                "compare".to_string(),
+                "-metric".to_string(),
+                "RMSE".to_string(),
+                base_image.to_string_lossy().to_string(),
+                candidate_image.to_string_lossy().to_string(),
+                diff_image.to_string_lossy().to_string(),
+            ],
+        ));
+    }
+    Err(CliError::unexpected(
+        "required render tool not available: compare",
+    ))
+}
+
+fn command_exists(name: &str) -> bool {
+    Command::new(name).arg("--version").output().is_ok()
+}
+
+fn parse_visual_diff_metric(bytes: &[u8]) -> Option<f64> {
+    let text = String::from_utf8_lossy(bytes);
+    if let Some(start) = text.find('(')
+        && let Some(end) = text[start + 1..].find(')')
+    {
+        let metric = &text[start + 1..start + 1 + end];
+        if let Ok(value) = metric.trim().parse::<f64>() {
+            return Some(value);
+        }
+    }
+    for token in text.split_whitespace() {
+        let token = token.trim_matches(|ch| ch == '(' || ch == ')' || ch == ',');
+        if let Ok(value) = token.parse::<f64>() {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn is_render_tool_issue(err: &CliError) -> bool {
+    let message = err.message.as_str();
+    message.starts_with("required render tool not available:")
+        || message.starts_with("soffice failed:")
+        || message.starts_with("libreoffice failed:")
+        || message.starts_with("pdftoppm failed:")
+        || message.starts_with("compare failed:")
+        || message.starts_with("magick failed:")
+        || message == "soffice render failed"
+        || message == "pdftoppm rasterize failed"
 }
 
 fn validate_json_format(value: &str) -> CliResult<()> {

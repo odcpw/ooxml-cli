@@ -81,13 +81,13 @@ pub(crate) use cli_args::{
     parse_u32_flags, parse_validate_args, reject_unknown_flags, validate_positive_i64,
 };
 pub(crate) use cli_core::{
-    CliError, CliResult, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS, EXIT_PARTIAL_SUCCESS,
-    EXIT_RENDER_FAILED, EXIT_SUCCESS, EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED,
+    CliError, CliResult, EXIT_DIFF_THRESHOLD, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS,
+    EXIT_PARTIAL_SUCCESS, EXIT_RENDER_FAILED, EXIT_SUCCESS, EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED,
     EXIT_UNSUPPORTED_TYPE, EXIT_VALIDATION_FAILED, GlobalFlags,
 };
 pub(crate) use cli_dispatch::{DispatchBody, dispatch, require_docx_block_hash};
 pub(crate) use command_text::command_arg;
-pub(crate) use diff::{diff, pptx_diff_command};
+pub(crate) use diff::{diff, diff_command, pptx_diff_command, pptx_diff_dispatch};
 pub(crate) use docx_block_commands::{
     docx_blocks_delete, docx_blocks_insert_after, docx_blocks_replace, docx_blocks_show, docx_text,
 };

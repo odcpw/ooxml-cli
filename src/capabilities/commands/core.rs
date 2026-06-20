@@ -507,13 +507,30 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml diff",
             "diff <baseline> <candidate>",
-            "Compare two OOXML packages semantically where the Rust port has readback models.",
+            "Compare two OOXML packages semantically, with optional PPTX visual render diff.",
             &["package"],
             false,
-            Some(
-                "read-only semantic diff command; Rust visual --render diff is intentionally unported",
-            ),
-            vec![],
+            Some("read-only package comparison command; not a serve/MCP mutation op"),
+            vec![
+                flag(
+                    "--render",
+                    "render",
+                    "bool",
+                    "enable PPTX visual diff via rendered slide images",
+                ),
+                flag(
+                    "--threshold",
+                    "threshold",
+                    "float",
+                    "visual diff threshold for PPTX --render",
+                ),
+                flag(
+                    "--out",
+                    "out",
+                    "string",
+                    "output directory for PPTX visual diff artifacts",
+                ),
+            ],
         ),
         capability_command(
             "ooxml verify",

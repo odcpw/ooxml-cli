@@ -14,9 +14,13 @@ pub(super) fn commands() -> Vec<Value> {
             &[],
             false,
             Some(
-                "read-only semantic diff command; Rust visual --render diff is intentionally unported",
+                "read-only package comparison command; not a serve/MCP mutation op",
             ),
-            vec![],
+            vec![
+                flag("--render", "render", "bool", "enable visual diff via rendered slide images"),
+                flag("--threshold", "threshold", "float", "visual diff threshold"),
+                flag("--out", "out", "string", "output directory for visual diff artifacts"),
+            ],
         ),
         capability_command(
             "ooxml pptx slides list",
