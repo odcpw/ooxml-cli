@@ -141,6 +141,11 @@ Latest milestone, 2026-06-20:
   validation, `textFile` alias handling, plan flag ordering,
   `DocxCommentsOp` readback shaping, and unsupported-command fallback
   behavior.
+- DOCX serve operation dispatch for field `insert` and `set-result` moved from
+  `src/serve/op_dispatch/docx.rs` into
+  `src/serve/op_dispatch/docx/fields.rs`, preserving required argument
+  validation, `fieldCode`/`expectHash` alias handling, plan flag ordering,
+  `DocxFieldsOp` readback shaping, and unsupported-command fallback behavior.
 - The top-level serve op dispatcher now routes XLSX and DOCX commands by
   family prefix, leaving exact command matching and unsupported-command
   fallbacks inside each child dispatcher.

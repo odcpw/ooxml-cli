@@ -1,17 +1,18 @@
 use serde_json::{Value, json};
 
 mod comments;
+mod fields;
 mod tables;
 
 use super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
 use crate::{
     CliError, CliResult, DocxHeaderFooterSetTextOptions, DocxParagraphMutationOptions,
     DocxStyleApplyOptions, DocxStyleTarget, docx_blocks_delete, docx_blocks_insert_after,
-    docx_blocks_replace, docx_fields_insert, docx_fields_set_result, docx_headers_footers_set_text,
-    docx_paragraphs_append, docx_paragraphs_clear, docx_paragraphs_insert, docx_paragraphs_set,
-    docx_styles_apply, json_bool, json_i64, json_optional_string, json_string,
-    normalize_docx_header_footer_show_type, normalize_docx_style_target, require_docx_block_hash,
-    resolve_required_docx_paragraph_set_text, resolve_required_docx_table_text,
+    docx_blocks_replace, docx_headers_footers_set_text, docx_paragraphs_append,
+    docx_paragraphs_clear, docx_paragraphs_insert, docx_paragraphs_set, docx_styles_apply,
+    json_bool, json_i64, json_optional_string, normalize_docx_header_footer_show_type,
+    normalize_docx_style_target, require_docx_block_hash, resolve_required_docx_paragraph_set_text,
+    resolve_required_docx_table_text,
 };
 
 pub(super) fn serve_docx_op(working: &str, command: &str, args: &Value) -> CliResult<ServeOp> {
@@ -92,81 +93,8 @@ pub(super) fn serve_docx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "docx fields insert" => {
-            let location = json_string(args, "location")?;
-            let field_code = json_optional_string(args, "field-code")
-                .or_else(|| json_optional_string(args, "fieldCode"))
-                .ok_or_else(|| CliError::invalid_args("field-code is required"))?;
-            let result = json_optional_string(args, "result").unwrap_or_default();
-            let result_set = args.get("result").is_some();
-            let readback = docx_fields_insert(
-                working,
-                &location,
-                &field_code,
-                &result,
-                DocxParagraphMutationOptions {
-                    text: None,
-                    text_file: None,
-                    style: "",
-                    out: None,
-                    backup: None,
-                    dry_run: false,
-                    in_place: true,
-                    no_validate: true,
-                },
-            )?;
-            let mut plan_flags = Vec::new();
-            push_serve_plan_string_flag(&mut plan_flags, "--location", Some(&location));
-            push_serve_plan_string_flag(&mut plan_flags, "--field-code", Some(&field_code));
-            if result_set {
-                push_serve_plan_string_flag(&mut plan_flags, "--result", Some(&result));
-            }
-            ServeOp::DocxFieldsOp {
-                command: command.to_string(),
-                plan_flags,
-                readback_file: working.to_string(),
-                readback,
-            }
-        }
-        "docx fields set-result" => {
-            let selector = json_string(args, "selector")?;
-            if args.get("result").is_none() {
-                return Err(CliError::invalid_args("result is required"));
-            }
-            let result = json_optional_string(args, "result").unwrap_or_default();
-            let expect_hash = json_optional_string(args, "expect-hash")
-                .or_else(|| json_optional_string(args, "expectHash"))
-                .unwrap_or_default();
-            let readback = docx_fields_set_result(
-                working,
-                &selector,
-                &result,
-                &expect_hash,
-                DocxParagraphMutationOptions {
-                    text: None,
-                    text_file: None,
-                    style: "",
-                    out: None,
-                    backup: None,
-                    dry_run: false,
-                    in_place: true,
-                    no_validate: true,
-                },
-            )?;
-            let mut plan_flags = Vec::new();
-            push_serve_plan_string_flag(&mut plan_flags, "--selector", Some(&selector));
-            push_serve_plan_string_flag(&mut plan_flags, "--result", Some(&result));
-            push_serve_plan_string_flag(
-                &mut plan_flags,
-                "--expect-hash",
-                (!expect_hash.is_empty()).then_some(expect_hash.as_str()),
-            );
-            ServeOp::DocxFieldsOp {
-                command: command.to_string(),
-                plan_flags,
-                readback_file: working.to_string(),
-                readback,
-            }
+        family_command if family_command.starts_with("docx fields ") => {
+            fields::serve_docx_fields_op(working, family_command, args)?
         }
         "docx paragraphs append" => {
             let text = json_optional_string(args, "text");
