@@ -122,6 +122,10 @@ Latest milestone, 2026-06-20:
   image, table, and paragraph commands moved from `src/cli_dispatch.rs` into
   `src/cli_dispatch/docx.rs`, leaving the top-level CLI dispatcher responsible
   for core command routing plus PPTX/XLSX families.
+- The static capability command inventory moved from
+  `src/capabilities/commands.rs` into family modules under
+  `src/capabilities/commands/`, preserving the emitted command order as core,
+  PPTX, XLSX, then DOCX for CLI capabilities and MCP command-resource lookups.
 - XLSX workbook metadata inspect/update types, XML readers, property renderers,
   and calc-setting mutation helpers moved from `src/main.rs` into
   `src/xlsx_metadata.rs`, keeping CLI and serve call sites stable through the
@@ -217,10 +221,11 @@ Latest milestone, 2026-06-20:
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
 - Proof after the latest split: `cargo test --test rust_contract_smoke
-  docx_`, `cargo test --test rust_contract_smoke
-  frozen_cli_slice_matches_go_baseline -- --exact`, `cargo fmt --check`,
-  `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
-  all pass with 78 Rust contract tests.
+  capabilities`, `cargo test --test rust_contract_smoke
+  rust_capability_inventory_is_go_oracle_subset`, `cargo test --test
+  rust_contract_smoke mcp_command_resources_cover_advertised_rust_capabilities`,
+  `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
+  `cargo test --all-targets` all pass with 78 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
