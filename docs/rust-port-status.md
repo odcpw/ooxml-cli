@@ -9,6 +9,19 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX placement parity landed for direct `pptx add-textbox` and
+  `pptx place image`. The slice creates new slide text boxes and places image
+  shapes with explicit geometry while preserving Go-shaped saved-output,
+  dry-run, readback, and error behavior. Rust capabilities now advertise 174
+  Go-oracle command paths, leaving a pinned 116-command gap; these commands are
+  direct CLI mutations with `opCompatible=false` because serve/MCP operation
+  dispatch is not wired for `pptx add-textbox` or `pptx place` yet. Proof:
+  focused Go-vs-Rust add-textbox/place-image tests; focused capability
+  ratchet/MCP command-resource tests; strict validation for both generated
+  proof decks; Open XML SDK Office2019 schema validation (zero errors) for both
+  proof decks; PowerPoint COM open oracle for both proof decks; `cargo fmt --check`;
+  `cargo check --all-targets`; `cargo clippy --all-targets -- -D warnings`;
+  and `cargo test --all-targets`.
 - Rust core `ooxml apply` parity landed for batch mutation orchestration. The
   slice parses Go-shaped operation JSON, normalizes command/arg spelling,
   rejects session-owned nested flags such as `out`, emits the Go dry-run plan

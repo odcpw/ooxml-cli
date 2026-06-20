@@ -154,6 +154,57 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [family, verb, file, rest @ ..] if family == "pptx" && verb == "render" => {
             pptx_render(file, rest)
         }
+        [family, verb, file, rest @ ..] if family == "pptx" && verb == "add-textbox" => {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--text",
+                    "--x",
+                    "--y",
+                    "--cx",
+                    "--cy",
+                    "--name",
+                    "--mode",
+                    "--font-size",
+                    "--font",
+                    "--color",
+                    "--level",
+                    "--align",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--bold",
+                    "--italic",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
+            )?;
+            pptx_add_textbox(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "place" && verb == "image" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--image",
+                    "--x",
+                    "--y",
+                    "--cx",
+                    "--cy",
+                    "--name",
+                    "--fit-mode",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_place_image(file, rest)
+        }
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "animations" && verb == "list" =>
         {

@@ -3,6 +3,7 @@ mod charts;
 mod comments;
 mod layouts;
 mod notes;
+mod placement;
 mod replace;
 mod shapes;
 mod slides;
@@ -22,6 +23,7 @@ pub(crate) use layouts::{
     pptx_layouts_set_bounds,
 };
 pub(crate) use notes::{pptx_notes_clear, pptx_notes_set};
+pub(crate) use placement::{pptx_add_textbox, pptx_place_image};
 pub(crate) use replace::{
     pptx_replace_images, pptx_replace_text_from_xlsx, pptx_replace_text_map_from_xlsx,
     pptx_replace_text_occurrences,

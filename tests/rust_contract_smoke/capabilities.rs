@@ -28,6 +28,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx layouts list", false);
     assert_command(&all_caps, "ooxml pptx layouts show", false);
     assert_command(&all_caps, "ooxml pptx shapes get", false);
+    assert_command(&all_caps, "ooxml pptx add-textbox", false);
+    assert_command(&all_caps, "ooxml pptx place image", false);
     assert_command(&all_caps, "ooxml pptx shapes set-bounds", false);
     assert_command(&all_caps, "ooxml pptx shapes delete", false);
     assert_command(&all_caps, "ooxml pptx animations list", false);
@@ -522,6 +524,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx slides reorder", false);
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
     assert_command(&pptx_caps, "ooxml pptx shapes get", false);
+    assert_command(&pptx_caps, "ooxml pptx add-textbox", false);
+    assert_command(&pptx_caps, "ooxml pptx place image", false);
     assert_command(&pptx_caps, "ooxml pptx shapes set-bounds", false);
     assert_command(&pptx_caps, "ooxml pptx shapes delete", false);
     assert_command(&pptx_caps, "ooxml pptx animations list", false);
@@ -969,6 +973,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(image_stderr, None);
     let image_caps = image_stdout.expect("image capabilities");
     assert_command(&image_caps, "ooxml pptx extract images", false);
+    assert_command(&image_caps, "ooxml pptx place image", false);
     assert_command(&image_caps, "ooxml pptx replace images", false);
     assert_command(&image_caps, "ooxml docx images list", false);
     assert_command(&image_caps, "ooxml docx images replace", false);
@@ -1067,12 +1072,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        172,
+        174,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        118,
+        116,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

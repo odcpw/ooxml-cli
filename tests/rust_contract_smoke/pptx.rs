@@ -35,6 +35,23 @@ fn sorted_export_files(root: &std::path::Path) -> Vec<String> {
     files
 }
 
+fn scrub_created_at(value: Value) -> Value {
+    match value {
+        Value::Object(mut map) => {
+            for (key, item) in map.iter_mut() {
+                if key == "createdAt" && item.as_str().is_some() {
+                    *item = Value::String("[CREATED_AT]".to_string());
+                } else {
+                    *item = scrub_created_at(item.take());
+                }
+            }
+            Value::Object(map)
+        }
+        Value::Array(items) => Value::Array(items.into_iter().map(scrub_created_at).collect()),
+        other => other,
+    }
+}
+
 fn collect_export_files(
     root: &std::path::Path,
     current: &std::path::Path,
@@ -56,6 +73,335 @@ fn collect_export_files(
                     .join("/"),
             );
         }
+    }
+}
+
+#[test]
+fn pptx_add_textbox_saved_readback_dry_run_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-add-textbox-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("add textbox temp dir");
+
+    let fixture = "testdata/pptx/minimal-title/presentation.pptx";
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "add-textbox",
+        fixture,
+        "--slide",
+        "1",
+        "--text",
+        "Agent text box",
+        "--x",
+        "100000",
+        "--y",
+        "200000",
+        "--cx",
+        "2000000",
+        "--cy",
+        "500000",
+        "--name",
+        "Agent Box",
+        "--font-size",
+        "20",
+        "--font",
+        "Arial",
+        "--bold",
+        "--color",
+        "FF0000",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "add-textbox dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "add-textbox dry-run stderr");
+    assert_eq!(
+        scrub_created_at(rust_stdout.expect("rust add-textbox dry-run")),
+        scrub_created_at(go_stdout.expect("go add-textbox dry-run")),
+        "add-textbox dry-run stdout"
+    );
+
+    let go_out = temp_dir.join("go-add-textbox.pptx");
+    let rust_out = temp_dir.join("rust-add-textbox.pptx");
+    let go_out_str = go_out.to_str().expect("go add-textbox output");
+    let rust_out_str = rust_out.to_str().expect("rust add-textbox output");
+    let go_args = [
+        "--json",
+        "pptx",
+        "add-textbox",
+        fixture,
+        "--slide",
+        "1",
+        "--text",
+        "Agent text box",
+        "--x",
+        "100000",
+        "--y",
+        "200000",
+        "--cx",
+        "2000000",
+        "--cy",
+        "500000",
+        "--name",
+        "Agent Box",
+        "--font-size",
+        "20",
+        "--font",
+        "Arial",
+        "--bold",
+        "--color",
+        "FF0000",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "add-textbox",
+        fixture,
+        "--slide",
+        "1",
+        "--text",
+        "Agent text box",
+        "--x",
+        "100000",
+        "--y",
+        "200000",
+        "--cx",
+        "2000000",
+        "--cy",
+        "500000",
+        "--name",
+        "Agent Box",
+        "--font-size",
+        "20",
+        "--font",
+        "Arial",
+        "--bold",
+        "--color",
+        "FF0000",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "add-textbox saved exit");
+    assert_eq!(rust_stderr, go_stderr, "add-textbox saved stderr");
+    let rust_json = rust_stdout.expect("rust add-textbox saved");
+    assert_eq!(
+        scrub_created_at(scrub_path(rust_json.clone(), rust_out_str, "[OUT]")),
+        scrub_created_at(scrub_path(
+            go_stdout.expect("go add-textbox saved"),
+            go_out_str,
+            "[OUT]"
+        )),
+        "add-textbox saved stdout"
+    );
+    assert!(go_out.exists(), "Go add-textbox output missing");
+    assert!(rust_out.exists(), "Rust add-textbox output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    for args in [
+        vec![
+            "--json",
+            "pptx",
+            "add-textbox",
+            fixture,
+            "--slide",
+            "1",
+            "--cx",
+            "2000000",
+            "--cy",
+            "500000",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "add-textbox",
+            fixture,
+            "--slide",
+            "1",
+            "--text",
+            "Bad dimensions",
+            "--cx",
+            "0",
+            "--cy",
+            "500000",
+            "--dry-run",
+        ],
+    ] {
+        assert_go_rust_json_match(&args, "add-textbox representative error");
+    }
+}
+
+#[test]
+fn pptx_place_image_saved_readback_dry_run_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-place-image-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("place image temp dir");
+
+    let fixture = "testdata/pptx/minimal-title/presentation.pptx";
+    let image = "testdata/test_image.png";
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "place",
+        "image",
+        fixture,
+        "--slide",
+        "1",
+        "--image",
+        image,
+        "--x",
+        "100000",
+        "--y",
+        "200000",
+        "--cx",
+        "1000000",
+        "--cy",
+        "700000",
+        "--name",
+        "Agent Image",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "place image dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "place image dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust place image dry-run"),
+        go_stdout.expect("go place image dry-run"),
+        "place image dry-run stdout"
+    );
+
+    let go_out = temp_dir.join("go-place-image.pptx");
+    let rust_out = temp_dir.join("rust-place-image.pptx");
+    let go_out_str = go_out.to_str().expect("go place image output");
+    let rust_out_str = rust_out.to_str().expect("rust place image output");
+    let go_args = [
+        "--json",
+        "pptx",
+        "place",
+        "image",
+        fixture,
+        "--slide",
+        "1",
+        "--image",
+        image,
+        "--x",
+        "100000",
+        "--y",
+        "200000",
+        "--cx",
+        "1000000",
+        "--cy",
+        "700000",
+        "--name",
+        "Agent Image",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "place",
+        "image",
+        fixture,
+        "--slide",
+        "1",
+        "--image",
+        image,
+        "--x",
+        "100000",
+        "--y",
+        "200000",
+        "--cx",
+        "1000000",
+        "--cy",
+        "700000",
+        "--name",
+        "Agent Image",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "place image saved exit");
+    assert_eq!(rust_stderr, go_stderr, "place image saved stderr");
+    let rust_json = rust_stdout.expect("rust place image saved");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go place image saved"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "place image saved stdout"
+    );
+    assert!(go_out.exists(), "Go place image output missing");
+    assert!(rust_out.exists(), "Rust place image output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    for args in [
+        vec![
+            "--json",
+            "pptx",
+            "place",
+            "image",
+            fixture,
+            "--slide",
+            "1",
+            "--image",
+            "testdata/missing.png",
+            "--x",
+            "0",
+            "--y",
+            "0",
+            "--cx",
+            "1",
+            "--cy",
+            "1",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "place",
+            "image",
+            fixture,
+            "--slide",
+            "1",
+            "--image",
+            image,
+            "--x",
+            "0",
+            "--y",
+            "0",
+            "--cx",
+            "1",
+            "--cy",
+            "1",
+            "--fit-mode",
+            "stretch",
+            "--dry-run",
+        ],
+    ] {
+        assert_go_rust_json_match(&args, "place image representative error");
     }
 }
 
