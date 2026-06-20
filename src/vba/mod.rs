@@ -26,7 +26,10 @@ use output::{
 };
 use package_xml::package_part_name;
 
-pub(crate) use source::{vba_extract, vba_inspect_bin, vba_list};
+pub(crate) use source::{
+    VbaAddModuleOptions, VbaRemoveModuleOptions, VbaReplaceModuleOptions, vba_add_module,
+    vba_extract, vba_inspect_bin, vba_list, vba_remove_module, vba_replace_module,
+};
 
 pub(crate) fn vba_inspect(file: &str) -> CliResult<Value> {
     let info = inspect_vba_package(file)?;

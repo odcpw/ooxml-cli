@@ -53,6 +53,7 @@ pub(super) struct VbaInfo {
     pub(super) main_part_uri: String,
     pub(super) main_content_type: String,
     pub(super) project: Option<VbaProjectInfo>,
+    pub(super) signature_artifacts: Vec<SignatureArtifact>,
     pub(super) warnings: Vec<String>,
 }
 
@@ -65,4 +66,14 @@ pub(super) struct VbaProjectInfo {
     pub(super) relationship_id: String,
     pub(super) relationship_type: String,
     pub(super) relationship_target: String,
+}
+
+#[derive(Clone)]
+pub(super) struct SignatureArtifact {
+    pub(super) kind: String,
+    pub(super) part_uri: String,
+    pub(super) source_uri: String,
+    pub(super) relationship_id: String,
+    pub(super) rel_type: String,
+    pub(super) target: String,
 }

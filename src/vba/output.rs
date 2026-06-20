@@ -2,7 +2,7 @@ use serde_json::{Map, Value, json};
 
 use crate::command_arg;
 
-use super::model::{VbaInfo, VbaProjectInfo};
+use super::model::{SignatureArtifact, VbaInfo, VbaProjectInfo};
 
 pub(super) fn vba_info_json(info: &VbaInfo) -> Value {
     let mut object = Map::new();
@@ -26,6 +26,17 @@ pub(super) fn vba_info_json(info: &VbaInfo) -> Value {
         "macroExtension".to_string(),
         json!(info.family.macro_extension),
     );
+    if !info.signature_artifacts.is_empty() {
+        object.insert(
+            "signatureArtifacts".to_string(),
+            Value::Array(
+                info.signature_artifacts
+                    .iter()
+                    .map(signature_artifact_json)
+                    .collect(),
+            ),
+        );
+    }
     if !info.warnings.is_empty() {
         object.insert("warnings".to_string(), json!(info.warnings));
     }
@@ -57,6 +68,30 @@ fn vba_project_json(project: &VbaProjectInfo) -> Value {
             "relationshipTarget".to_string(),
             json!(project.relationship_target),
         );
+    }
+    Value::Object(object)
+}
+
+fn signature_artifact_json(artifact: &SignatureArtifact) -> Value {
+    let mut object = Map::new();
+    object.insert("kind".to_string(), json!(artifact.kind));
+    if !artifact.part_uri.is_empty() {
+        object.insert("partUri".to_string(), json!(artifact.part_uri));
+    }
+    if !artifact.source_uri.is_empty() {
+        object.insert("sourceUri".to_string(), json!(artifact.source_uri));
+    }
+    if !artifact.relationship_id.is_empty() {
+        object.insert(
+            "relationshipId".to_string(),
+            json!(artifact.relationship_id),
+        );
+    }
+    if !artifact.rel_type.is_empty() {
+        object.insert("type".to_string(), json!(artifact.rel_type));
+    }
+    if !artifact.target.is_empty() {
+        object.insert("target".to_string(), json!(artifact.target));
     }
     Value::Object(object)
 }

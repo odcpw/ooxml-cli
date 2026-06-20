@@ -8,8 +8,8 @@ use crate::{
 };
 
 use super::model::{
-    VBA_FAMILIES, VBA_PROJECT_CONTENT_TYPE, VBA_PROJECT_REL_TYPE, VbaFamilySpec, VbaInfo,
-    VbaProjectInfo,
+    SignatureArtifact, VBA_FAMILIES, VBA_PROJECT_CONTENT_TYPE, VBA_PROJECT_REL_TYPE, VbaFamilySpec,
+    VbaInfo, VbaProjectInfo,
 };
 use super::package_xml::package_part_name;
 
@@ -19,6 +19,7 @@ pub(super) fn inspect_vba_package(file: &str) -> CliResult<VbaInfo> {
     let main_part_uri = find_vba_main_part(file, &entries, family)?;
     let main_content_type = content_type_for_part(file, &main_part_uri)?;
     let project = inspect_vba_project(file, &entries, &main_part_uri, family)?;
+    let signature_artifacts = find_signature_artifacts(file, &entries)?;
     let has_project = project.as_ref().is_some_and(|project| project.exists);
     let macro_enabled = main_content_type.eq_ignore_ascii_case(family.macro_content_type)
         || has_project
@@ -32,6 +33,12 @@ pub(super) fn inspect_vba_package(file: &str) -> CliResult<VbaInfo> {
     if !main_content_type.eq_ignore_ascii_case(family.macro_content_type) && has_project {
         warnings.push("VBA project exists but main content type is not macro-enabled".to_string());
     }
+    if !signature_artifacts.is_empty() {
+        warnings.push(
+            "known signature artifacts are present; attach/remove refuses to mutate signed macro packages"
+                .to_string(),
+        );
+    }
     Ok(VbaInfo {
         family,
         package_type: family.family,
@@ -39,6 +46,7 @@ pub(super) fn inspect_vba_package(file: &str) -> CliResult<VbaInfo> {
         main_part_uri,
         main_content_type,
         project,
+        signature_artifacts,
         warnings,
     })
 }
@@ -172,4 +180,71 @@ pub(super) fn candidate_vba_project_parts(file: &str, info: &VbaInfo) -> CliResu
         .filter(|part| zip_entry_exists(&entries, part))
         .filter(|part| seen.insert(package_part_name(part)))
         .collect())
+}
+
+fn find_signature_artifacts(file: &str, entries: &[String]) -> CliResult<Vec<SignatureArtifact>> {
+    let mut artifacts = Vec::new();
+    let mut seen = BTreeSet::new();
+    let mut add = |artifact: SignatureArtifact| {
+        let key = format!(
+            "{}|{}|{}|{}|{}",
+            artifact.kind,
+            artifact.part_uri,
+            artifact.source_uri,
+            artifact.relationship_id,
+            artifact.target
+        );
+        if seen.insert(key) {
+            artifacts.push(artifact);
+        }
+    };
+
+    let mut sources = vec!["/".to_string()];
+    for entry in entries {
+        let uri = format!("/{entry}");
+        sources.push(uri.clone());
+        let lower_uri = uri.to_ascii_lowercase();
+        let lower_content_type = content_type_for_part(file, &uri)
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if lower_uri.contains("_xmlsignatures")
+            || lower_uri.contains("vbaprojectsignature")
+            || lower_content_type.contains("digital-signature")
+            || lower_content_type.contains("vbaprojectsignature")
+        {
+            add(SignatureArtifact {
+                kind: "part".to_string(),
+                part_uri: uri,
+                source_uri: String::new(),
+                relationship_id: String::new(),
+                rel_type: String::new(),
+                target: String::new(),
+            });
+        }
+    }
+
+    for source_uri in sources {
+        let rels_part = if source_uri == "/" {
+            "_rels/.rels".to_string()
+        } else {
+            relationships_part_for(&source_uri)
+        };
+        for rel in relationship_entries(file, &rels_part).unwrap_or_default() {
+            let lower_type = rel.rel_type.to_ascii_lowercase();
+            if lower_type.contains("digital-signature")
+                || lower_type.contains("vbaprojectsignature")
+            {
+                add(SignatureArtifact {
+                    kind: "relationship".to_string(),
+                    part_uri: resolve_relationship_target(&source_uri, &rel.target),
+                    source_uri: source_uri.clone(),
+                    relationship_id: rel.id,
+                    rel_type: rel.rel_type,
+                    target: rel.target,
+                });
+            }
+        }
+    }
+
+    Ok(artifacts)
 }

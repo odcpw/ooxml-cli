@@ -142,6 +142,137 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             let selector = parse_string_flag(rest, "--module")?;
             vba_extract(file, &out_dir, selector.as_deref())
         }
+        [family, verb, file, rest @ ..] if family == "vba" && verb == "add-module" => {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--source",
+                    "--name",
+                    "--kind",
+                    "--expect-module-count",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--allow-experimental-vba-source-rewrite",
+                    "--dry-run",
+                    "--no-validate",
+                    "--in-place",
+                ],
+            )?;
+            let source = parse_string_flag(rest, "--source")?
+                .ok_or_else(|| CliError::invalid_args("--source is required"))?;
+            let name = parse_string_flag(rest, "--name")?;
+            let kind = parse_string_flag(rest, "--kind")?;
+            let expect_module_count = parse_string_flag(rest, "--expect-module-count")?
+                .map(|value| {
+                    value.parse::<usize>().map_err(|_| {
+                        CliError::invalid_args("--expect-module-count must be an integer")
+                    })
+                })
+                .transpose()?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            vba_add_module(
+                file,
+                VbaAddModuleOptions {
+                    source: &source,
+                    name: name.as_deref(),
+                    kind: kind.as_deref(),
+                    expect_module_count,
+                    allow_experimental_vba_source_rewrite: has_flag(
+                        rest,
+                        "--allow-experimental-vba-source-rewrite",
+                    ),
+                    mutation: VbaMutationOptions {
+                        out: out.as_deref(),
+                        backup: backup.as_deref(),
+                        dry_run: has_flag(rest, "--dry-run"),
+                        no_validate: has_flag(rest, "--no-validate"),
+                        in_place: has_flag(rest, "--in-place"),
+                    },
+                },
+            )
+        }
+        [family, verb, file, rest @ ..] if family == "vba" && verb == "replace-module" => {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--module",
+                    "--source",
+                    "--expect-sha256",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--allow-experimental-vba-source-rewrite",
+                    "--dry-run",
+                    "--no-validate",
+                    "--in-place",
+                ],
+            )?;
+            let module = parse_string_flag(rest, "--module")?
+                .ok_or_else(|| CliError::invalid_args("--module is required"))?;
+            let source = parse_string_flag(rest, "--source")?
+                .ok_or_else(|| CliError::invalid_args("--source is required"))?;
+            let expect_sha256 = parse_string_flag(rest, "--expect-sha256")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            vba_replace_module(
+                file,
+                VbaReplaceModuleOptions {
+                    module: &module,
+                    source: &source,
+                    expect_sha256: expect_sha256.as_deref(),
+                    allow_experimental_vba_source_rewrite: has_flag(
+                        rest,
+                        "--allow-experimental-vba-source-rewrite",
+                    ),
+                    mutation: VbaMutationOptions {
+                        out: out.as_deref(),
+                        backup: backup.as_deref(),
+                        dry_run: has_flag(rest, "--dry-run"),
+                        no_validate: has_flag(rest, "--no-validate"),
+                        in_place: has_flag(rest, "--in-place"),
+                    },
+                },
+            )
+        }
+        [family, verb, file, rest @ ..] if family == "vba" && verb == "remove-module" => {
+            reject_unknown_flags(
+                rest,
+                &["--module", "--expect-sha256", "--out", "--backup"],
+                &[
+                    "--allow-experimental-vba-source-rewrite",
+                    "--dry-run",
+                    "--no-validate",
+                    "--in-place",
+                ],
+            )?;
+            let module = parse_string_flag(rest, "--module")?
+                .ok_or_else(|| CliError::invalid_args("--module is required"))?;
+            let expect_sha256 = parse_string_flag(rest, "--expect-sha256")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            vba_remove_module(
+                file,
+                VbaRemoveModuleOptions {
+                    module: &module,
+                    expect_sha256: expect_sha256.as_deref(),
+                    allow_experimental_vba_source_rewrite: has_flag(
+                        rest,
+                        "--allow-experimental-vba-source-rewrite",
+                    ),
+                    mutation: VbaMutationOptions {
+                        out: out.as_deref(),
+                        backup: backup.as_deref(),
+                        dry_run: has_flag(rest, "--dry-run"),
+                        no_validate: has_flag(rest, "--no-validate"),
+                        in_place: has_flag(rest, "--in-place"),
+                    },
+                },
+            )
+        }
         [family, verb, file, rest @ ..] if family == "vba" && verb == "extract-bin" => {
             reject_unknown_flags(rest, &["--out"], &[])?;
             let out = parse_string_flag(rest, "--out")?

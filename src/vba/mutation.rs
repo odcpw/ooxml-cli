@@ -34,6 +34,11 @@ pub(super) fn attach_vba_project(
         return Err(CliError::invalid_args("vbaProject.bin is empty"));
     }
     let info = inspect_vba_package(file)?;
+    if !info.signature_artifacts.is_empty() {
+        return Err(CliError::unexpected(
+            "refusing to attach VBA project because known signature artifacts are present",
+        ));
+    }
     let target_part = info
         .project
         .as_ref()
@@ -79,6 +84,11 @@ pub(super) fn attach_vba_project(
 
 pub(super) fn remove_vba_project(file: &str, options: VbaMutationOptions<'_>) -> CliResult<Value> {
     let info = inspect_vba_package(file)?;
+    if !info.signature_artifacts.is_empty() {
+        return Err(CliError::unexpected(
+            "refusing to remove VBA project because known signature artifacts are present",
+        ));
+    }
     let main_part = package_part_name(&info.main_part_uri);
     let main_data = zip_bytes(file, &main_part)?;
     let mut text_overrides = BTreeMap::new();

@@ -9,6 +9,23 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust VBA source-module mutation parity landed for direct `vba add-module`,
+  `vba replace-module`, and `vba remove-module` on parseable macro-enabled
+  packages where the Go oracle permits source rewrites. The slice performs real
+  `vbaProject.bin` CFB stream rewrites, updates `VBA/dir`, `PROJECT`, and
+  `PROJECTwm` metadata when present, purges compiled cache streams, preserves
+  Go-shaped saved-output/dry-run/readback/hash-guard/error behavior for
+  representative cases, and keeps add/remove refusal guards for Office-shaped
+  `_VBA_PROJECT` metadata instead of faking unsupported module-set changes.
+  Rust capabilities now advertise 222 Go-oracle command paths, leaving a pinned
+  68-command gap; these commands are direct CLI mutations with
+  `opCompatible=false` because serve/MCP operation dispatch is not wired for
+  VBA source rewrites. Proof: focused Go-vs-Rust VBA source-module mutation
+  contract tests, focused capability ratchet tests, strict validation, Open XML
+  SDK validation, Excel/PowerPoint COM open proof for Office-authored seed,
+  attach, remove-project, and replace-module outputs, `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings`, and `cargo test
+  --all-targets`.
 - Rust PPTX field readback/mutation and deck theme update parity landed for
   `pptx fields inspect`, `pptx fields set`, and `pptx theme update`. The slice
   reports master header/footer defaults plus slide footer/date/slide-number
@@ -1555,7 +1572,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 219, and the harness pins the 71-command gap until
+  paths, Rust advertises 222, and the harness pins the 68-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
