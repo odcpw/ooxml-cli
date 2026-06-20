@@ -359,6 +359,10 @@ Latest milestone, 2026-06-20:
   paragraph replacement, section-property insertion, and paragraph rendering
   behind the same `docx_xml` facade while leaving shared text-child rendering
   and generic XML range walkers in place.
+- DOCX paragraph id and `w14` namespace helpers moved from `src/docx_xml.rs`
+  into `src/docx_xml/paragraph_ids.rs`, keeping para-id stamping, namespace
+  insertion, existing-id scanning, and id minting behind the same `docx_xml`
+  facade for paragraph and style mutation paths.
 - XLSX range export, JSON range rendering, data-out writing, data-format
   normalization, and range max-cell guards moved from `src/main.rs` into
   `src/xlsx_ranges.rs`.
