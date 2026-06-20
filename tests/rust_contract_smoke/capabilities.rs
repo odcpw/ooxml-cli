@@ -85,7 +85,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     for path in PPTX_PARENT_GROUP_CAPABILITY_PATHS {
         assert_command(&all_caps, path, false);
     }
-    assert_no_command(&all_caps, "ooxml pptx diff");
+    assert_command(&all_caps, "ooxml pptx diff", false);
     assert_command(&all_caps, "ooxml pptx extract text", false);
     assert_command(&all_caps, "ooxml pptx extract notes", false);
     assert_command(&all_caps, "ooxml pptx extract images", false);
@@ -1527,14 +1527,35 @@ fn pptx_parent_group_capabilities_match_go_oracle_metadata() {
     }
 
     let go_diff = command_by_path(&go_caps, "ooxml pptx diff");
+    let rust_diff = command_by_path(&rust_caps, "ooxml pptx diff");
     assert_eq!(go_diff["opCompatible"], Value::Bool(false));
     assert_eq!(
         go_diff["use"],
         Value::String("diff <baseline> <candidate>".to_string())
     );
+    assert_eq!(rust_diff["use"], go_diff["use"], "use for ooxml pptx diff");
+    assert_eq!(
+        rust_diff["short"], go_diff["short"],
+        "short for ooxml pptx diff"
+    );
+    assert_eq!(
+        rust_diff["opCompatible"], go_diff["opCompatible"],
+        "opCompatible for ooxml pptx diff"
+    );
     assert!(
-        !capability_has_path(&rust_caps, "ooxml pptx diff"),
-        "Rust must not advertise pptx diff until that exact path is routed"
+        optional_array_is_empty(rust_diff, "targetObjectKinds"),
+        "Rust targetObjectKinds should be absent or empty for ooxml pptx diff"
+    );
+    assert!(
+        optional_array_is_empty(rust_diff, "localFlags"),
+        "Rust localFlags should stay empty until visual diff flags are ported"
+    );
+    assert!(
+        rust_diff["opIneligibleReason"]
+            .as_str()
+            .expect("Rust op-ineligible reason")
+            .contains("semantic diff"),
+        "Rust reason should describe semantic-only pptx diff support"
     );
 }
 
@@ -1550,17 +1571,20 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(rust_stderr, None);
     let rust_caps = rust_stdout.expect("rust capabilities");
 
+    assert_no_duplicate_command_paths(&go_caps, "Go oracle");
+    assert_no_duplicate_command_paths(&rust_caps, "Rust");
+
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        288,
+        289,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        2,
+        1,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
@@ -1570,6 +1594,22 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert!(
         invented.is_empty(),
         "Rust capabilities must be a Go-oracle command subset; invented paths: {invented:?}"
+    );
+}
+
+fn assert_no_duplicate_command_paths(capabilities: &Value, label: &str) {
+    let commands = capabilities["commands"].as_array().expect("commands array");
+    let mut seen = BTreeSet::new();
+    let mut duplicates = BTreeSet::new();
+    for command in commands {
+        let path = command["path"].as_str().expect("command path").to_string();
+        if !seen.insert(path.clone()) {
+            duplicates.insert(path);
+        }
+    }
+    assert!(
+        duplicates.is_empty(),
+        "{label} capabilities must not duplicate command paths: {duplicates:?}"
     );
 }
 
@@ -1589,14 +1629,6 @@ fn is_absent_or_empty_array(value: Option<&Value>) -> bool {
 
 fn is_empty_array(value: &Value) -> bool {
     value.as_array().is_some_and(Vec::is_empty)
-}
-
-fn capability_has_path(capabilities: &Value, path: &str) -> bool {
-    capabilities["commands"]
-        .as_array()
-        .expect("commands array")
-        .iter()
-        .any(|command| command["path"].as_str() == Some(path))
 }
 
 fn optional_array_is_empty(value: &Value, field: &str) -> bool {

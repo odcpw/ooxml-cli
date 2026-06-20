@@ -84,7 +84,7 @@ pub(crate) use cli_core::{
 };
 pub(crate) use cli_dispatch::{DispatchBody, dispatch, require_docx_block_hash};
 pub(crate) use command_text::command_arg;
-pub(crate) use diff::diff;
+pub(crate) use diff::{diff, pptx_diff_command};
 pub(crate) use docx_block_commands::{
     docx_blocks_delete, docx_blocks_insert_after, docx_blocks_replace, docx_blocks_show, docx_text,
 };

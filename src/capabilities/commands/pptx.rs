@@ -8,6 +8,17 @@ pub(super) fn commands() -> Vec<Value> {
     let mut commands = group_commands();
     commands.extend(vec![
         capability_command(
+            "ooxml pptx diff",
+            "diff <baseline> <candidate>",
+            "Compare two PPTX presentations",
+            &[],
+            false,
+            Some(
+                "read-only semantic diff command; Rust visual --render diff is intentionally unported",
+            ),
+            vec![],
+        ),
+        capability_command(
             "ooxml pptx slides list",
             "list <file>",
             "List slides and stable slide selectors.",
@@ -332,15 +343,6 @@ pub(super) fn commands() -> Vec<Value> {
             &[],
             false,
             Some("read-only command; layout QA is not a mutation op"),
-            vec![],
-        ),
-        capability_command(
-            "ooxml pptx template",
-            "template",
-            "Work with template manifests and compilation.",
-            &[],
-            false,
-            Some("it is a command group, not a leaf mutation command"),
             vec![],
         ),
         capability_command(

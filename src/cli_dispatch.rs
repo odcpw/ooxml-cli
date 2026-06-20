@@ -14,10 +14,10 @@ use crate::validation::validate;
 use crate::vba::*;
 use crate::verify::verify;
 use crate::{
-    apply, diff, pptx_media_add, pptx_media_list, pptx_media_replace, pptx_template_capture,
-    pptx_template_compile, pptx_template_inspect, pptx_translate_apply, pptx_translate_export,
-    pptx_validate_layout, pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan, template_apply,
-    template_profile_inspect, template_profile_save, template_tokens,
+    apply, diff, pptx_diff_command, pptx_media_add, pptx_media_list, pptx_media_replace,
+    pptx_template_capture, pptx_template_compile, pptx_template_inspect, pptx_translate_apply,
+    pptx_translate_export, pptx_validate_layout, pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan,
+    template_apply, template_profile_inspect, template_profile_save, template_tokens,
 };
 
 pub(crate) enum DispatchBody {
@@ -346,6 +346,15 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         }
         [family, ..] if family == "docx" => docx::dispatch_docx(args),
         [family, ..] if family == "xlsx" => xlsx::dispatch_xlsx(args),
+        [family, verb] if family == "pptx" && verb == "diff" => {
+            Err(CliError::invalid_args("accepts 2 arg(s), received 0"))
+        }
+        [family, verb, _baseline] if family == "pptx" && verb == "diff" => {
+            Err(CliError::invalid_args("accepts 2 arg(s), received 1"))
+        }
+        [family, verb, baseline, candidate, rest @ ..] if family == "pptx" && verb == "diff" => {
+            pptx_diff_command(baseline, candidate, rest)
+        }
         [family, verb, file, rest @ ..] if family == "pptx" && verb == "render" => {
             pptx_render(file, rest)
         }

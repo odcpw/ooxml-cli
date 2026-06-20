@@ -38,6 +38,34 @@ pub(crate) fn diff(baseline: &str, candidate: &str, args: &[String]) -> CliResul
     }
 }
 
+pub(crate) fn pptx_diff_command(
+    baseline: &str,
+    candidate: &str,
+    args: &[String],
+) -> CliResult<Value> {
+    let options = parse_diff_options(args)?;
+    if options.render {
+        return Err(CliError::invalid_args(
+            "pptx diff --render visual diff is not yet supported by the Rust port; rerun without --render for semantic diff",
+        ));
+    }
+
+    let baseline_type = package_type(baseline)?;
+    let candidate_type = package_type(candidate)?;
+    if baseline_type != "pptx" || candidate_type != "pptx" {
+        return Err(CliError::unsupported_type(format!(
+            "pptx diff requires PPTX inputs (baseline: {baseline_type}, candidate: {candidate_type})"
+        )));
+    }
+
+    let mut result = pptx_diff(baseline, candidate)?;
+    if let Some(map) = result.as_object_mut() {
+        map.remove("schemaVersion");
+        map.remove("type");
+    }
+    Ok(result)
+}
+
 #[derive(Default)]
 struct DiffOptions {
     render: bool,

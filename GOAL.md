@@ -42,8 +42,8 @@ history.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
   - Current capability ratchet: Go advertises 290 command paths, Rust
-    advertises 288, leaving 2 unported paths after the template leaf
-    integration: `ooxml conformance check` and `ooxml pptx diff`.
+    advertises 289, leaving 1 unported path after the exact `pptx diff`
+    integration: `ooxml conformance check`.
   - Open XML SDK validation and desktop PowerPoint COM open proof passed for the
     generated `template apply` and `pptx template compile` decks.
 

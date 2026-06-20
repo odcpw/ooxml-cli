@@ -83,7 +83,7 @@ fn utility_capabilities_advertise_only_implemented_paths() {
         assert_command(&caps, path, false);
     }
     assert_no_command(&caps, "ooxml conformance check");
-    assert_no_command(&caps, "ooxml pptx diff");
+    assert_command(&caps, "ooxml pptx diff", false);
 }
 
 #[test]

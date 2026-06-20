@@ -97,6 +97,40 @@ fn top_level_diff_pptx_matches_go_oracle_for_title_text_change() {
 }
 
 #[test]
+fn pptx_diff_path_matches_go_oracle_for_title_text_change() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-pptx-diff-path-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let candidate = temp_dir.join("candidate.pptx");
+    rewrite_zip_fixture(
+        "testdata/pptx/title-content/presentation.pptx",
+        &candidate,
+        |name, data| {
+            let data = if name == "ppt/slides/slide1.xml" {
+                replace_ascii(
+                    data,
+                    "<a:t>Title Content Presentation</a:t>",
+                    "<a:t>Renamed Title</a:t>",
+                )
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let candidate = candidate.to_string_lossy().to_string();
+
+    assert_go_rust_match(&[
+        "--json",
+        "pptx",
+        "diff",
+        "testdata/pptx/title-content/presentation.pptx",
+        &candidate,
+    ]);
+}
+
+#[test]
 fn top_level_diff_mismatched_family_error_matches_go_oracle() {
     assert_go_rust_match(&[
         "--json",

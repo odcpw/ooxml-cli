@@ -9,6 +9,16 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust exact `pptx diff` routing landed for the semantic PPTX diff path. The
+  slice preserves the existing top-level `diff` behavior, routes
+  `pptx diff <baseline> <candidate>` through the PPTX-specific Go-shaped JSON
+  envelope, rejects visual `--render` as an explicit Rust gap, and advertises
+  `ooxml pptx diff` as a read-only, non-op-compatible command. Rust
+  capabilities now advertise 289 Go-oracle command paths, leaving a pinned
+  1-command gap: `ooxml conformance check`. Proof: focused Go-vs-Rust diff
+  contract tests, focused capability ratchet tests, focused utility capability
+  tests, full Rust contract suite, fmt, and clippy. No Office/Open XML proof
+  was required because this is a read-only comparison path.
 - Rust template leaf parity landed for the useful, proofed portions of
   `template apply`, `template profile`, and `pptx template compile`. The slice
   advertises `template`, `template profile`, and `pptx template` as Go-matching
