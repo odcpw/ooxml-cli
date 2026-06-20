@@ -20,13 +20,17 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx slides delete", false);
     assert_command(&all_caps, "ooxml pptx slides move", false);
     assert_command(&all_caps, "ooxml pptx slides reorder", false);
+    assert_command(&all_caps, "ooxml pptx clone-slide", false);
+    assert_command(&all_caps, "ooxml pptx new-slide-from-layout", false);
     assert_command(&all_caps, "ooxml pptx notes show", false);
     assert_command(&all_caps, "ooxml pptx notes set", true);
     assert_command(&all_caps, "ooxml pptx notes clear", true);
     assert_command(&all_caps, "ooxml pptx masters list", false);
     assert_command(&all_caps, "ooxml pptx masters show", false);
+    assert_command(&all_caps, "ooxml pptx masters add-placeholder", false);
     assert_command(&all_caps, "ooxml pptx layouts list", false);
     assert_command(&all_caps, "ooxml pptx layouts show", false);
+    assert_command(&all_caps, "ooxml pptx layouts clone", false);
     assert_command(&all_caps, "ooxml pptx shapes get", false);
     assert_command(&all_caps, "ooxml pptx add-textbox", false);
     assert_command(&all_caps, "ooxml pptx place image", false);
@@ -488,6 +492,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command_target_kind(&all_caps, "ooxml xlsx cells clear", "cell");
     assert_command_target_kind(&all_caps, "ooxml xlsx cells set-batch", "cell");
     for path in [
+        "ooxml pptx new-slide-from-layout",
+        "ooxml pptx layouts clone",
         "ooxml pptx layouts rename",
         "ooxml pptx layouts set-bounds",
         "ooxml pptx layouts delete-shape",
@@ -505,6 +511,19 @@ fn capabilities_advertise_supported_web_agent_surface() {
         &all_caps,
         "ooxml pptx layouts add-placeholder",
         "placeholder",
+    );
+    assert_object_kind_command(&all_caps, "slide", "ooxml pptx clone-slide");
+    assert_command_target_kind(&all_caps, "ooxml pptx clone-slide", "slide");
+    assert_object_kind_command(&all_caps, "slide", "ooxml pptx new-slide-from-layout");
+    assert_command_target_kind(&all_caps, "ooxml pptx new-slide-from-layout", "slide");
+    assert_object_kind_command(&all_caps, "placeholder", "ooxml pptx new-slide-from-layout");
+    assert_command_target_kind(&all_caps, "ooxml pptx new-slide-from-layout", "placeholder");
+    assert_object_kind_command(&all_caps, "master", "ooxml pptx masters add-placeholder");
+    assert_command_target_kind(&all_caps, "ooxml pptx masters add-placeholder", "master");
+    assert_object_kind_command(
+        &all_caps,
+        "placeholder",
+        "ooxml pptx masters add-placeholder",
     );
 
     let (pptx_code, pptx_stdout, pptx_stderr) =
@@ -1072,12 +1091,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        174,
+        178,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        116,
+        112,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

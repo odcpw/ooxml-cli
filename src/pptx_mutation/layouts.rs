@@ -1,6 +1,7 @@
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
+use std::collections::BTreeMap;
 use std::fs;
 
 use crate::cli_args::value_flag_present;
@@ -9,11 +10,21 @@ use crate::pptx_readback::{
     pptx_presentation_layouts, pptx_shape_entry_matches,
 };
 use crate::{
-    CliError, CliResult, attr, command_arg, copy_zip_with_part_override, has_flag, local_name,
-    package_mutation_temp_path, package_type, parse_i64_flag, parse_string_flag, remove_xml_span,
-    replace_xml_span, validate, validate_xlsx_mutation_output_flags, xml_attr_escape,
-    xml_direct_child_ranges, zip_text,
+    CliError, CliResult, add_relationship_to_xml, allocate_relationship_id, attr, command_arg,
+    content_type_for_part, copy_zip_with_part_override, copy_zip_with_part_overrides,
+    ensure_content_type_override, has_flag, local_name, package_mutation_temp_path, package_type,
+    parse_i64_flag, parse_string_flag, relationship_entries_from_xml,
+    relationship_target_from_source_to_target, relationships_part_for, remove_xml_span,
+    replace_xml_span, resolve_relationship_target, validate, validate_xlsx_mutation_output_flags,
+    xml_attr_escape, xml_direct_child_ranges, zip_entry_names, zip_text,
 };
+
+const LAYOUT_REL_TYPE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout";
+const SLIDE_MASTER_REL_TYPE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster";
+const LAYOUT_CONTENT_TYPE: &str =
+    "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml";
 
 #[derive(Clone)]
 struct PptxLayoutMutationOptions {
@@ -51,6 +62,17 @@ struct RenameLayoutMutation {
     new_name: String,
 }
 
+struct CloneLayoutMutation {
+    overrides: BTreeMap<String, String>,
+    old_name: String,
+    new_name: String,
+    source_layout_uri: String,
+    new_layout_uri: String,
+    master_uri: String,
+    relationship_id: String,
+    layout_id: u32,
+}
+
 struct SetBoundsMutation {
     layout_name: String,
     layout_part: String,
@@ -77,6 +99,23 @@ struct AddPlaceholderMutation {
     shape_id: u32,
     shape_name: String,
     idx: i64,
+}
+
+struct AddMasterPlaceholderMutation {
+    master: i64,
+    master_uri: String,
+    updated_xml: String,
+    placeholder_type: String,
+    shape_id: u32,
+    shape_name: String,
+    idx: i64,
+}
+
+pub(crate) fn pptx_layouts_clone(file: &str, args: &[String]) -> CliResult<Value> {
+    let layout = required_string_flag(args, "--layout")?;
+    let name = required_string_flag(args, "--name")?;
+    let options = parse_layout_mutation_options(args)?;
+    clone_pptx_layout(file, &layout, &name, options)
 }
 
 pub(crate) fn pptx_layouts_rename(file: &str, args: &[String]) -> CliResult<Value> {
@@ -150,6 +189,68 @@ pub(crate) fn pptx_layouts_add_placeholder(file: &str, args: &[String]) -> CliRe
     )
 }
 
+pub(crate) fn pptx_masters_add_placeholder(file: &str, args: &[String]) -> CliResult<Value> {
+    let master = parse_i64_flag(args, "--master")?
+        .ok_or_else(|| CliError::invalid_args("--master must be specified"))?;
+    if master < 1 {
+        return Err(CliError::invalid_args(
+            "invalid master index (must be positive integer)",
+        ));
+    }
+    let placeholder_type = required_string_flag(args, "--type")?;
+    let bounds_value = parse_string_flag(args, "--bounds")?
+        .ok_or_else(|| CliError::invalid_args("--bounds must be specified in format x,y,cx,cy"))?;
+    if bounds_value.trim().is_empty() {
+        return Err(CliError::invalid_args(
+            "--bounds must be specified in format x,y,cx,cy",
+        ));
+    }
+    let bounds = parse_bounds(&bounds_value)
+        .map_err(|message| CliError::invalid_args(format!("invalid bounds: {message}")))?;
+    if bounds.cx <= 0 || bounds.cy <= 0 {
+        return Err(CliError::invalid_args(
+            "--bounds width and height must be positive",
+        ));
+    }
+    let ph_type = placeholder_type.trim().to_ascii_lowercase();
+    if !matches!(ph_type.as_str(), "text" | "pic") {
+        return Err(CliError::invalid_args(format!(
+            "invalid placeholder type {placeholder_type:?} (must be 'text' or 'pic')"
+        )));
+    }
+    let explicit_idx = value_flag_present(args, "--idx");
+    let idx = parse_i64_flag(args, "--idx")?;
+    let size = parse_string_flag(args, "--size")?.unwrap_or_default();
+    let orient = parse_string_flag(args, "--orient")?.unwrap_or_default();
+    let options = parse_layout_mutation_options(args)?;
+    add_pptx_master_placeholder(
+        file,
+        master,
+        &ph_type,
+        bounds,
+        idx,
+        explicit_idx,
+        &size,
+        &orient,
+        options,
+    )
+}
+
+fn clone_pptx_layout(
+    file: &str,
+    selector: &str,
+    new_name: &str,
+    options: PptxLayoutMutationOptions,
+) -> CliResult<Value> {
+    ensure_pptx_package(file)?;
+    let mutation = build_clone_layout_mutation(file, selector, new_name)?;
+    let output_path = layout_mutation_output_path(file, &options);
+    let staged_path = stage_layout_package_mutation(file, &mutation.overrides, &options)?;
+    let result = clone_layout_result_json(file, &mutation, output_path.as_deref());
+    finish_layout_mutation(file, &staged_path, &options, output_path.as_deref())?;
+    Ok(result)
+}
+
 fn rename_pptx_layout(
     file: &str,
     selector: &str,
@@ -162,6 +263,37 @@ fn rename_pptx_layout(
     let staged_path =
         stage_layout_mutation(file, &mutation.layout_part, &mutation.updated_xml, &options)?;
     let result = rename_layout_result_json(file, &mutation, output_path.as_deref());
+    finish_layout_mutation(file, &staged_path, &options, output_path.as_deref())?;
+    Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn add_pptx_master_placeholder(
+    file: &str,
+    master: i64,
+    placeholder_type: &str,
+    bounds: Bounds,
+    idx: Option<i64>,
+    explicit_idx: bool,
+    size: &str,
+    orient: &str,
+    options: PptxLayoutMutationOptions,
+) -> CliResult<Value> {
+    ensure_pptx_package(file)?;
+    let mutation = build_add_master_placeholder_mutation(
+        file,
+        master,
+        placeholder_type,
+        bounds,
+        idx,
+        explicit_idx,
+        size,
+        orient,
+    )?;
+    let output_path = layout_mutation_output_path(file, &options);
+    let staged_path =
+        stage_layout_mutation(file, &mutation.master_uri, &mutation.updated_xml, &options)?;
+    let result = add_master_placeholder_result_json(file, &mutation, output_path.as_deref());
     finish_layout_mutation(file, &staged_path, &options, output_path.as_deref())?;
     Ok(result)
 }
@@ -258,6 +390,87 @@ fn build_rename_layout_mutation(
     })
 }
 
+fn build_clone_layout_mutation(
+    file: &str,
+    selector: &str,
+    new_name: &str,
+) -> CliResult<CloneLayoutMutation> {
+    let layouts = pptx_presentation_layouts(file)?;
+    let layout = pptx_find_layout(&layouts, selector)
+        .ok_or_else(|| layout_not_found_with_candidates(&layouts, selector))?
+        .clone();
+    if layouts
+        .iter()
+        .any(|candidate| candidate.part_uri != layout.part_uri && candidate.name == new_name)
+    {
+        return Err(CliError::unexpected(format!(
+            "layout name already exists: {new_name}"
+        )));
+    }
+
+    let source_layout_part = layout.part_uri.trim_start_matches('/').to_string();
+    let source_layout_rels_part = relationships_part_for(&layout.part_uri);
+    let source_layout_rels_xml = zip_text(file, &source_layout_rels_part)?;
+    let source_layout_rels = relationship_entries_from_xml(&source_layout_rels_xml);
+    let master_uri = source_layout_rels
+        .iter()
+        .find(|rel| rel.rel_type == SLIDE_MASTER_REL_TYPE)
+        .map(|rel| resolve_relationship_target(&layout.part_uri, &rel.target))
+        .ok_or_else(|| {
+            CliError::unexpected(format!(
+                "layout {} is missing a slideMaster relationship",
+                layout.part_uri
+            ))
+        })?;
+
+    let entries = zip_entry_names(file)?;
+    let new_layout_part =
+        allocate_numbered_part_name(&entries, "ppt/slideLayouts/slideLayout", ".xml");
+    let new_layout_uri = package_uri(&new_layout_part);
+    let layout_xml = zip_text(file, &source_layout_part)?;
+    let updated_layout_xml = set_layout_name(&layout_xml, new_name)?;
+    let master_xml = zip_text(file, master_uri.trim_start_matches('/'))?;
+    let master_rels_part = relationships_part_for(&master_uri);
+    let master_rels_xml = zip_text(file, &master_rels_part)?;
+    let master_rels = relationship_entries_from_xml(&master_rels_xml);
+    let relationship_id = allocate_relationship_id(&master_rels);
+    let target = relationship_target_from_source_to_target(&master_uri, &new_layout_uri);
+    let updated_master_rels =
+        add_relationship_to_xml(master_rels_xml, &relationship_id, LAYOUT_REL_TYPE, &target);
+    let (updated_master_xml, layout_id) =
+        append_master_layout_reference_xml(&master_xml, &relationship_id)?;
+    let content_types = ensure_content_type_override(
+        zip_text(file, "[Content_Types].xml")?,
+        &new_layout_part,
+        &content_type_for_part(file, &layout.part_uri)
+            .unwrap_or_else(|_| LAYOUT_CONTENT_TYPE.to_string()),
+    );
+
+    let mut overrides = BTreeMap::new();
+    overrides.insert(new_layout_part.clone(), updated_layout_xml);
+    overrides.insert(
+        relationships_part_for(&new_layout_part),
+        source_layout_rels_xml,
+    );
+    overrides.insert(
+        master_uri.trim_start_matches('/').to_string(),
+        updated_master_xml,
+    );
+    overrides.insert(master_rels_part, updated_master_rels);
+    overrides.insert("[Content_Types].xml".to_string(), content_types);
+
+    Ok(CloneLayoutMutation {
+        overrides,
+        old_name: layout.name,
+        new_name: new_name.to_string(),
+        source_layout_uri: package_uri(&source_layout_part),
+        new_layout_uri,
+        master_uri,
+        relationship_id,
+        layout_id,
+    })
+}
+
 fn build_set_bounds_mutation(
     file: &str,
     selector: &str,
@@ -295,6 +508,56 @@ fn build_set_bounds_mutation(
         shape_name,
         old_bounds: bounds_from_entry(&entry),
         new_bounds: bounds,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_add_master_placeholder_mutation(
+    file: &str,
+    master: i64,
+    placeholder_type: &str,
+    bounds: Bounds,
+    idx: Option<i64>,
+    explicit_idx: bool,
+    size: &str,
+    orient: &str,
+) -> CliResult<AddMasterPlaceholderMutation> {
+    let master_uri = master_uri_by_index(file, master)?;
+    let master_xml = zip_text(file, master_uri.trim_start_matches('/'))?;
+    let sp_tree = find_first_element_span(&master_xml, "spTree")?
+        .ok_or_else(|| CliError::unexpected("shape tree not found in master"))?;
+    let sp_tree_fragment = &master_xml[sp_tree.start..sp_tree.end];
+    let shape_id = next_sp_tree_shape_id(sp_tree_fragment);
+    let idx = if explicit_idx && idx.unwrap_or(-1) >= 0 {
+        idx.unwrap_or_default()
+    } else {
+        allocate_next_placeholder_index(sp_tree_fragment)
+    };
+    let shape_name = match placeholder_type {
+        "text" => format!("Content Placeholder {idx}"),
+        "pic" => format!("Picture Placeholder {idx}"),
+        _ => unreachable!("placeholder type validated by caller"),
+    };
+    let placeholder_xml = build_placeholder_xml(
+        placeholder_type,
+        shape_id,
+        &shape_name,
+        idx,
+        size,
+        orient,
+        bounds,
+    );
+    let (_, content_end) = element_content_bounds(sp_tree_fragment)?;
+    let insert_at = sp_tree.start + content_end;
+    let updated_xml = insert_xml_at(&master_xml, insert_at, &placeholder_xml);
+    Ok(AddMasterPlaceholderMutation {
+        master,
+        master_uri,
+        updated_xml,
+        placeholder_type: placeholder_type.to_string(),
+        shape_id,
+        shape_name,
+        idx,
     })
 }
 
@@ -422,6 +685,31 @@ fn rename_layout_result_json(
     Value::Object(result)
 }
 
+fn clone_layout_result_json(
+    file: &str,
+    mutation: &CloneLayoutMutation,
+    output_path: Option<&str>,
+) -> Value {
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    if let Some(output_path) = output_path {
+        result.insert("output".to_string(), json!(output_path));
+    }
+    result.insert("dryRun".to_string(), json!(output_path.is_none()));
+    result.insert("sourceLayout".to_string(), json!(mutation.old_name));
+    result.insert("sourceUri".to_string(), json!(mutation.source_layout_uri));
+    result.insert("newLayout".to_string(), json!(mutation.new_name));
+    result.insert("newUri".to_string(), json!(mutation.new_layout_uri));
+    result.insert("masterUri".to_string(), json!(mutation.master_uri));
+    result.insert(
+        "relationshipId".to_string(),
+        json!(mutation.relationship_id),
+    );
+    result.insert("layoutId".to_string(), json!(mutation.layout_id));
+    add_pptx_layout_readback_commands(&mut result, output_path, &mutation.new_name);
+    Value::Object(result)
+}
+
 fn set_bounds_result_json(
     file: &str,
     mutation: &SetBoundsMutation,
@@ -447,6 +735,72 @@ fn set_bounds_result_json(
     result.insert("newCy".to_string(), json!(mutation.new_bounds.cy));
     add_pptx_layout_readback_commands(&mut result, output_path, &mutation.layout_name);
     Value::Object(result)
+}
+
+fn add_master_placeholder_result_json(
+    file: &str,
+    mutation: &AddMasterPlaceholderMutation,
+    output_path: Option<&str>,
+) -> Value {
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    if let Some(output_path) = output_path {
+        result.insert("output".to_string(), json!(output_path));
+    }
+    result.insert("dryRun".to_string(), json!(output_path.is_none()));
+    result.insert(
+        "layout".to_string(),
+        json!(format!("Master {}", mutation.master)),
+    );
+    result.insert("type".to_string(), json!(mutation.placeholder_type));
+    result.insert("shapeId".to_string(), json!(mutation.shape_id));
+    result.insert("shapeName".to_string(), json!(mutation.shape_name));
+    result.insert("idx".to_string(), json!(mutation.idx));
+    result.insert("master".to_string(), json!(mutation.master));
+    result.insert("masterUri".to_string(), json!(mutation.master_uri));
+    add_pptx_master_readback_commands(&mut result, output_path, mutation.master);
+    Value::Object(result)
+}
+
+fn add_pptx_master_readback_commands(
+    result: &mut Map<String, Value>,
+    output_path: Option<&str>,
+    master: i64,
+) {
+    let command_target = output_path.unwrap_or("<out.pptx>");
+    let command_suffix = if output_path.is_some() {
+        ""
+    } else {
+        "Template"
+    };
+    result.insert(
+        format!("readbackCommand{command_suffix}"),
+        json!(format!(
+            "ooxml --json pptx masters show {} --master {master}",
+            command_arg(command_target)
+        )),
+    );
+    result.insert(
+        format!("mastersListCommand{command_suffix}"),
+        json!(format!(
+            "ooxml --json pptx masters list {}",
+            command_arg(command_target)
+        )),
+    );
+    result.insert(
+        format!("validateCommand{command_suffix}"),
+        json!(format!(
+            "ooxml validate --strict {}",
+            command_arg(command_target)
+        )),
+    );
+    result.insert(
+        format!("renderCommand{command_suffix}"),
+        json!(format!(
+            "ooxml pptx render {} --out render-check",
+            command_arg(command_target)
+        )),
+    );
 }
 
 fn delete_shape_result_json(
@@ -626,6 +980,33 @@ fn stage_layout_mutation(
     Ok(write_path)
 }
 
+fn stage_layout_package_mutation(
+    file: &str,
+    overrides: &BTreeMap<String, String>,
+    options: &PptxLayoutMutationOptions,
+) -> CliResult<String> {
+    let output_path = options
+        .out
+        .as_deref()
+        .filter(|value| !value.trim().is_empty());
+    let write_path = if options.dry_run || options.in_place || output_path == Some(file) {
+        package_mutation_temp_path(file, "pptx-layout")
+    } else {
+        output_path
+            .ok_or_else(|| {
+                CliError::invalid_args(
+                    "must specify exactly one of --out, --in-place, or --dry-run",
+                )
+            })?
+            .to_string()
+    };
+    copy_zip_with_part_overrides(file, &write_path, overrides)?;
+    if !options.no_validate {
+        validate(&write_path, true)?;
+    }
+    Ok(write_path)
+}
+
 fn finish_layout_mutation(
     file: &str,
     staged_path: &str,
@@ -696,6 +1077,95 @@ fn layout_not_found_with_candidates(
             candidates.join(", ")
         ))
     }
+}
+
+fn master_uri_by_index(file: &str, master: i64) -> CliResult<String> {
+    let list = crate::pptx_readback::pptx_masters_list(file)?;
+    let masters = list
+        .get("masters")
+        .and_then(Value::as_array)
+        .ok_or_else(|| CliError::unexpected("masters list readback missing masters"))?;
+    let Some(entry) = masters.get(master as usize - 1) else {
+        let candidates = (1..=masters.len())
+            .map(|index| index.to_string())
+            .collect::<Vec<_>>();
+        return Err(CliError::target_not_found(format!(
+            "master not found: {master}; did you mean: {}; discover with `ooxml --json pptx masters list <file>`",
+            candidates.join(", ")
+        )));
+    };
+    entry
+        .get("uri")
+        .and_then(Value::as_str)
+        .filter(|uri| !uri.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| CliError::unexpected("masters list readback missing uri"))
+}
+
+fn allocate_numbered_part_name(entries: &[String], prefix: &str, suffix: &str) -> String {
+    let mut next = 1_u32;
+    for entry in entries {
+        let normalized = entry.trim_start_matches('/');
+        if let Some(raw) = normalized
+            .strip_prefix(prefix)
+            .and_then(|tail| tail.strip_suffix(suffix))
+            && let Ok(value) = raw.parse::<u32>()
+            && value >= next
+        {
+            next = value + 1;
+        }
+    }
+    format!("{prefix}{next}{suffix}")
+}
+
+fn package_uri(part: &str) -> String {
+    format!("/{}", part.trim_start_matches('/'))
+}
+
+fn append_master_layout_reference_xml(master_xml: &str, rel_id: &str) -> CliResult<(String, u32)> {
+    let layout_id = next_master_layout_id(master_xml);
+    let fragment = format!(
+        r#"<p:sldLayoutId id="{layout_id}" r:id="{}"/>"#,
+        xml_attr_escape(rel_id)
+    );
+    if let Some(list) = find_first_element_span(master_xml, "sldLayoutIdLst")? {
+        let (_, content_end) = element_content_bounds(&master_xml[list.start..list.end])?;
+        let insert_at = list.start + content_end;
+        return Ok((insert_xml_at(master_xml, insert_at, &fragment), layout_id));
+    }
+    let close_start = master_xml
+        .rfind("</")
+        .ok_or_else(|| CliError::unexpected("invalid slide master XML"))?;
+    Ok((
+        insert_xml_at(
+            master_xml,
+            close_start,
+            &format!("<p:sldLayoutIdLst>{fragment}</p:sldLayoutIdLst>"),
+        ),
+        layout_id,
+    ))
+}
+
+fn next_master_layout_id(master_xml: &str) -> u32 {
+    const BASE: u32 = 2_147_483_649;
+    let mut reader = Reader::from_str(master_xml);
+    reader.config_mut().trim_text(true);
+    let mut max_id = 0_u32;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "sldLayoutId" =>
+            {
+                if let Some(id) = attr(&e, "id").and_then(|value| value.parse::<u32>().ok()) {
+                    max_id = max_id.max(id);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    if max_id < BASE { BASE } else { max_id + 1 }
 }
 
 fn shape_id_from_entry(entry: &Value) -> CliResult<u32> {

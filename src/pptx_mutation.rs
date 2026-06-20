@@ -19,8 +19,8 @@ pub(crate) use charts::{
 };
 pub(crate) use comments::{pptx_comments_add, pptx_comments_edit, pptx_comments_remove};
 pub(crate) use layouts::{
-    pptx_layouts_add_placeholder, pptx_layouts_delete_shape, pptx_layouts_rename,
-    pptx_layouts_set_bounds,
+    pptx_layouts_add_placeholder, pptx_layouts_clone, pptx_layouts_delete_shape,
+    pptx_layouts_rename, pptx_layouts_set_bounds, pptx_masters_add_placeholder,
 };
 pub(crate) use notes::{pptx_notes_clear, pptx_notes_set};
 pub(crate) use placement::{pptx_add_textbox, pptx_place_image};
@@ -29,7 +29,10 @@ pub(crate) use replace::{
     pptx_replace_text_occurrences,
 };
 pub(crate) use shapes::{pptx_shapes_delete, pptx_shapes_set_bounds};
-pub(crate) use slides::{pptx_slides_delete, pptx_slides_move, pptx_slides_reorder};
+pub(crate) use slides::{
+    pptx_clone_slide, pptx_new_slide_from_layout, pptx_slides_delete, pptx_slides_move,
+    pptx_slides_reorder,
+};
 pub(crate) use tables::{
     pptx_tables_delete_col, pptx_tables_delete_row, pptx_tables_insert_col, pptx_tables_insert_row,
     pptx_tables_set_cell, pptx_tables_update_from_xlsx,

@@ -4,15 +4,25 @@ use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
+use crate::cli_args::{parse_string_flags, value_flag_present};
 use crate::{
-    CliError, CliResult, attr, attr_exact, command_arg, copy_zip_with_part_overrides_and_removals,
-    local_name, package_mutation_temp_path, package_type, pptx_slides_list,
-    relationship_entries_from_xml, relationships_part_for, replace_xml_span,
-    resolve_relationship_target, validate, validate_xlsx_mutation_output_flags, zip_text,
+    CliError, CliResult, RelationshipEntry, add_relationship_to_xml, allocate_relationship_id,
+    attr, attr_exact, command_arg, copy_zip_with_part_overrides_and_removals,
+    ensure_content_type_override, local_name, package_mutation_temp_path, package_type,
+    pptx_slides_list, relationship_entries_from_xml, relationship_target_from_source_to_target,
+    relationships_part_for, replace_xml_span, resolve_relationship_target, validate,
+    validate_xlsx_mutation_output_flags, xml_attr_escape, xml_direct_child_ranges, xml_escape,
+    zip_entry_names, zip_text,
 };
 
 const NOTES_REL_TYPE: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
+const SLIDE_REL_TYPE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide";
+const SLIDE_LAYOUT_REL_TYPE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout";
+const SLIDE_CONTENT_TYPE: &str =
+    "application/vnd.openxmlformats-officedocument.presentationml.slide+xml";
 
 #[derive(Clone)]
 struct PptxSlideMutationOptions {
@@ -41,9 +51,40 @@ struct SlideIdSpan {
     end: usize,
 }
 
+#[derive(Clone, Copy)]
 struct ElementSpan {
     start: usize,
     end: usize,
+}
+
+struct CloneSlideMutation {
+    package: PptxPackageMutation,
+    source_slide: i64,
+    insert_after: i64,
+    slide_count_before: usize,
+    slide_count_after: usize,
+    new_slide_number: i64,
+    new_slide_id: u32,
+    new_slide_uri: String,
+}
+
+struct NewSlideFromLayoutMutation {
+    package: PptxPackageMutation,
+    layout: String,
+    requested_insert_after: i64,
+    new_slide_number: i64,
+    new_slide_id: u32,
+    new_slide_uri: String,
+}
+
+#[derive(Clone)]
+struct TextShapeTarget {
+    span: ElementSpan,
+    tx_body: Option<ElementSpan>,
+    shape_id: u32,
+    shape_name: String,
+    placeholder_type: String,
+    placeholder_index: Option<u32>,
 }
 
 pub(crate) fn pptx_slides_delete(file: &str, slide: i64, args: &[String]) -> CliResult<Value> {
@@ -53,6 +94,65 @@ pub(crate) fn pptx_slides_delete(file: &str, slide: i64, args: &[String]) -> Cli
     let output_path = slide_mutation_output_path(file, &options);
     let staged_path = stage_slide_mutation(file, &mutation.package, &options)?;
     let result = delete_result_json(file, &mutation, output_path.as_deref(), options.dry_run);
+    finish_slide_mutation(file, &staged_path, &options, output_path.as_deref())?;
+    Ok(result)
+}
+
+pub(crate) fn pptx_clone_slide(file: &str, args: &[String]) -> CliResult<Value> {
+    let slide = crate::parse_i64_flag(args, "--slide")?.unwrap_or(0);
+    if slide < 1 {
+        return Err(CliError::invalid_args("--slide must be >= 1"));
+    }
+    let insert_after = crate::parse_i64_flag(args, "--insert-after")?.unwrap_or(0);
+    let options = parse_slide_mutation_options(args)?;
+    ensure_pptx(file)?;
+    let mutation = build_clone_slide_mutation(file, slide, insert_after)?;
+    let output_path = slide_mutation_output_path(file, &options);
+    let staged_path = stage_slide_mutation(file, &mutation.package, &options)?;
+    let source = clone_slide_destination(file, mutation.source_slide, Some(file))?;
+    let destination = clone_slide_destination(
+        &staged_path,
+        mutation.new_slide_number,
+        output_path.as_deref(),
+    )?;
+    let result = clone_slide_result_json(
+        file,
+        &mutation,
+        output_path.as_deref(),
+        options.dry_run,
+        source,
+        destination,
+    );
+    finish_slide_mutation(file, &staged_path, &options, output_path.as_deref())?;
+    Ok(result)
+}
+
+pub(crate) fn pptx_new_slide_from_layout(file: &str, args: &[String]) -> CliResult<Value> {
+    let layout = crate::parse_string_flag(args, "--layout")?
+        .ok_or_else(|| CliError::invalid_args("--layout must be specified"))?;
+    if layout.trim().is_empty() {
+        return Err(CliError::invalid_args("--layout must be specified"));
+    }
+    reject_deferred_new_slide_flags(args)?;
+    let insert_after = crate::parse_i64_flag(args, "--insert-after")?.unwrap_or(0);
+    let set_texts = parse_text_assignments(&parse_string_flags(args, "--set-text")?)?;
+    let options = parse_slide_mutation_options(args)?;
+    ensure_pptx(file)?;
+    let mutation = build_new_slide_from_layout_mutation(file, &layout, insert_after, &set_texts)?;
+    let output_path = slide_mutation_output_path(file, &options);
+    let staged_path = stage_slide_mutation(file, &mutation.package, &options)?;
+    let destination = clone_slide_destination(
+        &staged_path,
+        mutation.new_slide_number,
+        output_path.as_deref(),
+    )?;
+    let result = new_slide_from_layout_result_json(
+        file,
+        &mutation,
+        output_path.as_deref(),
+        options.dry_run,
+        destination,
+    );
     finish_slide_mutation(file, &staged_path, &options, output_path.as_deref())?;
     Ok(result)
 }
@@ -276,6 +376,207 @@ fn build_reorder_slides_mutation(file: &str, order: &str) -> CliResult<ReorderSl
         },
         new_order: parsed,
         slide_count,
+    })
+}
+
+fn build_clone_slide_mutation(
+    file: &str,
+    slide: i64,
+    insert_after: i64,
+) -> CliResult<CloneSlideMutation> {
+    let presentation_xml = zip_text(file, "ppt/presentation.xml")?;
+    let refs = pptx_slide_refs_for_lifecycle(file, &presentation_xml)?;
+    let slide_count = refs.len();
+    if slide < 1 || slide as usize > slide_count {
+        return Err(CliError::target_not_found(format!(
+            "slide {slide} not found"
+        )));
+    }
+    let insert_after = if insert_after == 0 {
+        slide
+    } else {
+        insert_after
+    };
+    if insert_after < 1 || insert_after as usize > slide_count {
+        return Err(CliError::invalid_args(format!(
+            "insert-after {insert_after} out of range"
+        )));
+    }
+
+    let entries = zip_entry_names(file)?;
+    let new_slide_part = allocate_numbered_part_name(&entries, "ppt/slides/slide", ".xml");
+    let new_slide_uri = package_uri(&new_slide_part);
+    let source_ref = &refs[slide as usize - 1];
+    let slide_xml = zip_text(file, &source_ref.part)?;
+    let source_rels_part = relationships_part_for(&source_ref.part);
+    let source_rels_xml = zip_text(file, &source_rels_part).unwrap_or_else(|_| relationships_xml());
+    let source_rels = relationship_entries_from_xml(&source_rels_xml);
+    let cloned_rels = source_rels
+        .into_iter()
+        .filter(|rel| rel.rel_type != NOTES_REL_TYPE)
+        .collect::<Vec<_>>();
+    let new_slide_rels = render_relationships_xml(&cloned_rels);
+
+    let new_slide_id = next_presentation_slide_id(&presentation_xml);
+    let presentation_rels_xml = zip_text(file, "ppt/_rels/presentation.xml.rels")?;
+    let presentation_rels = relationship_entries_from_xml(&presentation_rels_xml);
+    let new_rel_id = allocate_relationship_id(&presentation_rels);
+    let rel_target =
+        relationship_target_from_source_to_target("ppt/presentation.xml", &new_slide_part);
+    let updated_presentation_rels = add_relationship_to_xml(
+        presentation_rels_xml,
+        &new_rel_id,
+        SLIDE_REL_TYPE,
+        &rel_target,
+    );
+    let new_fragment = format!(r#"<p:sldId id="{new_slide_id}" r:id="{new_rel_id}"/>"#);
+    let updated_presentation = insert_slide_fragment(
+        &presentation_xml,
+        &refs,
+        insert_after as usize,
+        &new_fragment,
+    )?;
+    let content_types = ensure_content_type_override(
+        zip_text(file, "[Content_Types].xml")?,
+        &new_slide_part,
+        SLIDE_CONTENT_TYPE,
+    );
+
+    let mut overrides = BTreeMap::new();
+    overrides.insert(new_slide_part.clone(), slide_xml);
+    overrides.insert(relationships_part_for(&new_slide_part), new_slide_rels);
+    overrides.insert("ppt/presentation.xml".to_string(), updated_presentation);
+    overrides.insert(
+        "ppt/_rels/presentation.xml.rels".to_string(),
+        updated_presentation_rels,
+    );
+    overrides.insert("[Content_Types].xml".to_string(), content_types);
+
+    Ok(CloneSlideMutation {
+        package: PptxPackageMutation {
+            overrides,
+            removals: BTreeSet::new(),
+        },
+        source_slide: slide,
+        insert_after,
+        slide_count_before: slide_count,
+        slide_count_after: slide_count + 1,
+        new_slide_number: insert_after + 1,
+        new_slide_id,
+        new_slide_uri,
+    })
+}
+
+fn build_new_slide_from_layout_mutation(
+    file: &str,
+    layout_selector: &str,
+    insert_after: i64,
+    set_texts: &[(String, String)],
+) -> CliResult<NewSlideFromLayoutMutation> {
+    let layouts = crate::pptx_readback::pptx_presentation_layouts(file)?;
+    let layout = crate::pptx_readback::pptx_find_layout(&layouts, layout_selector)
+        .ok_or_else(|| CliError::invalid_args(format!("layout {layout_selector:?} not found")))?
+        .clone();
+    let presentation_xml = zip_text(file, "ppt/presentation.xml")?;
+    let refs = pptx_slide_refs_for_lifecycle(file, &presentation_xml)?;
+    let slide_count = refs.len();
+    let requested_insert_after = insert_after;
+    let insert_after = if insert_after == 0 {
+        slide_count as i64
+    } else {
+        insert_after
+    };
+    if insert_after < 0 || insert_after as usize > slide_count {
+        return Err(CliError::invalid_args(format!(
+            "insert-after {insert_after} out of range"
+        )));
+    }
+
+    if let Some(template_slide) = find_template_slide_for_layout(file, &refs, &layout.part_uri)? {
+        let mut cloned = build_clone_slide_mutation(file, template_slide, insert_after)?;
+        let new_slide_part = cloned.new_slide_uri.trim_start_matches('/').to_string();
+        let template_part = &refs[template_slide as usize - 1].part;
+        let mut slide_xml = reset_slide_text_bodies(&zip_text(file, template_part)?)?;
+        for (target, text) in set_texts {
+            slide_xml = set_text_target(&slide_xml, target, text)?;
+        }
+        cloned.package.overrides.insert(new_slide_part, slide_xml);
+        return Ok(NewSlideFromLayoutMutation {
+            package: cloned.package,
+            layout: layout_selector.to_string(),
+            requested_insert_after,
+            new_slide_number: cloned.new_slide_number,
+            new_slide_id: cloned.new_slide_id,
+            new_slide_uri: cloned.new_slide_uri,
+        });
+    }
+
+    let entries = zip_entry_names(file)?;
+    let new_slide_part = allocate_numbered_part_name(&entries, "ppt/slides/slide", ".xml");
+    let new_slide_uri = package_uri(&new_slide_part);
+    let layout_xml = zip_text(file, layout.part_uri.trim_start_matches('/'))?;
+    let c_sld = find_first_element_span(&layout_xml, "cSld")?
+        .ok_or_else(|| CliError::unexpected("layout common slide data not found"))?;
+    let mut slide_xml =
+        build_slide_xml_from_layout_common_data(&layout_xml[c_sld.start..c_sld.end]);
+    slide_xml = reset_slide_text_bodies(&slide_xml)?;
+    for (target, text) in set_texts {
+        slide_xml = set_text_target(&slide_xml, target, text)?;
+    }
+
+    let new_slide_id = next_presentation_slide_id(&presentation_xml);
+    let presentation_rels_xml = zip_text(file, "ppt/_rels/presentation.xml.rels")?;
+    let presentation_rels = relationship_entries_from_xml(&presentation_rels_xml);
+    let new_rel_id = allocate_relationship_id(&presentation_rels);
+    let slide_rel_target =
+        relationship_target_from_source_to_target("ppt/presentation.xml", &new_slide_part);
+    let updated_presentation_rels = add_relationship_to_xml(
+        presentation_rels_xml,
+        &new_rel_id,
+        SLIDE_REL_TYPE,
+        &slide_rel_target,
+    );
+    let new_fragment = format!(r#"<p:sldId id="{new_slide_id}" r:id="{new_rel_id}"/>"#);
+    let updated_presentation = insert_slide_fragment(
+        &presentation_xml,
+        &refs,
+        insert_after as usize,
+        &new_fragment,
+    )?;
+
+    let layout_target = relationship_target_from_source_to_target(&new_slide_uri, &layout.part_uri);
+    let slide_rels_xml = render_relationships_xml(&[RelationshipEntry {
+        id: "rId1".to_string(),
+        rel_type: SLIDE_LAYOUT_REL_TYPE.to_string(),
+        target: layout_target,
+        target_mode: String::new(),
+    }]);
+    let content_types = ensure_content_type_override(
+        zip_text(file, "[Content_Types].xml")?,
+        &new_slide_part,
+        SLIDE_CONTENT_TYPE,
+    );
+
+    let mut overrides = BTreeMap::new();
+    overrides.insert(new_slide_part.clone(), slide_xml);
+    overrides.insert(relationships_part_for(&new_slide_part), slide_rels_xml);
+    overrides.insert("ppt/presentation.xml".to_string(), updated_presentation);
+    overrides.insert(
+        "ppt/_rels/presentation.xml.rels".to_string(),
+        updated_presentation_rels,
+    );
+    overrides.insert("[Content_Types].xml".to_string(), content_types);
+
+    Ok(NewSlideFromLayoutMutation {
+        package: PptxPackageMutation {
+            overrides,
+            removals: BTreeSet::new(),
+        },
+        layout: layout_selector.to_string(),
+        requested_insert_after,
+        new_slide_number: insert_after + 1,
+        new_slide_id,
+        new_slide_uri,
     })
 }
 
@@ -592,6 +893,14 @@ fn moved_slide_destination(
     slide: i64,
     output_path: Option<&str>,
 ) -> CliResult<Value> {
+    clone_slide_destination(readback_file, slide, output_path)
+}
+
+fn clone_slide_destination(
+    readback_file: &str,
+    slide: i64,
+    file_field: Option<&str>,
+) -> CliResult<Value> {
     let list = pptx_slides_list(readback_file)?;
     let item = list
         .get("slides")
@@ -599,8 +908,8 @@ fn moved_slide_destination(
         .and_then(|slides| slides.get(slide as usize - 1))
         .ok_or_else(|| CliError::unexpected(format!("slide {slide} readback not found")))?;
     let mut out = Map::new();
-    if let Some(output_path) = output_path {
-        out.insert("file".to_string(), json!(output_path));
+    if let Some(file_field) = file_field.filter(|value| !value.is_empty()) {
+        out.insert("file".to_string(), json!(file_field));
     }
     copy_json_field(item, &mut out, "number");
     copy_json_field(item, &mut out, "partUri");
@@ -650,6 +959,145 @@ fn delete_result_json(
         json!(mutation.remaining_slides),
     );
     add_pptx_slides_mutation_commands(&mut result, output_path);
+    Value::Object(result)
+}
+
+fn clone_slide_result_json(
+    file: &str,
+    mutation: &CloneSlideMutation,
+    output_path: Option<&str>,
+    dry_run: bool,
+    source: Value,
+    destination: Value,
+) -> Value {
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    if let Some(output_path) = output_path {
+        result.insert("output".to_string(), json!(output_path));
+    }
+    result.insert("dryRun".to_string(), json!(dry_run));
+    result.insert("sourceSlide".to_string(), json!(mutation.source_slide));
+    result.insert("insertAfter".to_string(), json!(mutation.insert_after));
+    result.insert(
+        "slideCountBefore".to_string(),
+        json!(mutation.slide_count_before),
+    );
+    result.insert(
+        "slideCountAfter".to_string(),
+        json!(mutation.slide_count_after),
+    );
+    result.insert(
+        "newSlideNumber".to_string(),
+        json!(mutation.new_slide_number),
+    );
+    result.insert("newSlideId".to_string(), json!(mutation.new_slide_id));
+    result.insert("newSlideUri".to_string(), json!(mutation.new_slide_uri));
+    result.insert("source".to_string(), source);
+    result.insert("destination".to_string(), destination);
+    if let Some(output_path) = output_path {
+        result.insert(
+            "readbackCommand".to_string(),
+            json!(slide_readback_command(
+                output_path,
+                mutation.new_slide_number
+            )),
+        );
+        result.insert(
+            "slidesListCommand".to_string(),
+            json!(slides_list_command(output_path)),
+        );
+        result.insert(
+            "validateCommand".to_string(),
+            json!(validate_command(output_path)),
+        );
+        result.insert(
+            "renderCommand".to_string(),
+            json!(render_command(output_path)),
+        );
+    } else {
+        result.insert(
+            "readbackCommandTemplate".to_string(),
+            json!(slide_readback_command(
+                "<out.pptx>",
+                mutation.new_slide_number
+            )),
+        );
+        result.insert(
+            "slidesListCommandTemplate".to_string(),
+            json!(slides_list_command("<out.pptx>")),
+        );
+    }
+    Value::Object(result)
+}
+
+fn new_slide_from_layout_result_json(
+    file: &str,
+    mutation: &NewSlideFromLayoutMutation,
+    output_path: Option<&str>,
+    dry_run: bool,
+    destination: Value,
+) -> Value {
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    if let Some(output_path) = output_path {
+        result.insert("output".to_string(), json!(output_path));
+    }
+    result.insert("dryRun".to_string(), json!(dry_run));
+    result.insert("layout".to_string(), json!(mutation.layout));
+    if mutation.requested_insert_after > 0 {
+        result.insert(
+            "insertAfter".to_string(),
+            json!(mutation.requested_insert_after),
+        );
+    }
+    result.insert(
+        "newSlideNumber".to_string(),
+        json!(mutation.new_slide_number),
+    );
+    result.insert("newSlideId".to_string(), json!(mutation.new_slide_id));
+    result.insert("newSlideUri".to_string(), json!(mutation.new_slide_uri));
+    result.insert("destination".to_string(), destination);
+    if let Some(output_path) = output_path {
+        result.insert(
+            "readbackCommand".to_string(),
+            json!(slide_readback_command(
+                output_path,
+                mutation.new_slide_number
+            )),
+        );
+        result.insert(
+            "slidesListCommand".to_string(),
+            json!(slides_list_command(output_path)),
+        );
+        result.insert(
+            "validateCommand".to_string(),
+            json!(validate_command(output_path)),
+        );
+        result.insert(
+            "renderCommand".to_string(),
+            json!(render_command(output_path)),
+        );
+    } else {
+        result.insert(
+            "readbackCommandTemplate".to_string(),
+            json!(slide_readback_command(
+                "<out.pptx>",
+                mutation.new_slide_number
+            )),
+        );
+        result.insert(
+            "slidesListCommandTemplate".to_string(),
+            json!(slides_list_command("<out.pptx>")),
+        );
+        result.insert(
+            "validateCommandTemplate".to_string(),
+            json!(validate_command("<out.pptx>")),
+        );
+        result.insert(
+            "renderCommandTemplate".to_string(),
+            json!(render_command("<out.pptx>")),
+        );
+    }
     Value::Object(result)
 }
 
@@ -744,10 +1192,415 @@ fn add_pptx_slides_mutation_commands(result: &mut Map<String, Value>, output_pat
     );
 }
 
+fn slide_readback_command(file_path: &str, slide: i64) -> String {
+    format!(
+        "ooxml --json pptx slides show {} --slide {slide} --include-text --include-bounds",
+        command_arg(file_path)
+    )
+}
+
+fn slides_list_command(file_path: &str) -> String {
+    format!("ooxml --json pptx slides list {}", command_arg(file_path))
+}
+
+fn validate_command(file_path: &str) -> String {
+    format!("ooxml validate --strict {}", command_arg(file_path))
+}
+
+fn render_command(file_path: &str) -> String {
+    format!(
+        "ooxml pptx render {} --out render-check",
+        command_arg(file_path)
+    )
+}
+
 fn package_part_name(uri: &str) -> String {
     uri.trim_start_matches('/').to_string()
 }
 
 fn relationships_xml() -> String {
     r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
+}
+
+fn render_relationships_xml(rels: &[RelationshipEntry]) -> String {
+    let mut out = String::from(
+        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
+    );
+    for rel in rels {
+        let target_mode = if rel.target_mode.is_empty() {
+            String::new()
+        } else {
+            format!(r#" TargetMode="{}""#, xml_attr_escape(&rel.target_mode))
+        };
+        out.push_str(&format!(
+            r#"<Relationship Id="{}" Type="{}" Target="{}"{} />"#,
+            xml_attr_escape(&rel.id),
+            xml_attr_escape(&rel.rel_type),
+            xml_attr_escape(&rel.target),
+            target_mode
+        ));
+    }
+    out.push_str("</Relationships>");
+    out
+}
+
+fn allocate_numbered_part_name(entries: &[String], prefix: &str, suffix: &str) -> String {
+    let mut next = 1_u32;
+    for entry in entries {
+        let normalized = entry.trim_start_matches('/');
+        if let Some(raw) = normalized
+            .strip_prefix(prefix)
+            .and_then(|tail| tail.strip_suffix(suffix))
+            && let Ok(value) = raw.parse::<u32>()
+            && value >= next
+        {
+            next = value + 1;
+        }
+    }
+    format!("{prefix}{next}{suffix}")
+}
+
+fn package_uri(part: &str) -> String {
+    format!("/{}", part.trim_start_matches('/'))
+}
+
+fn next_presentation_slide_id(xml: &str) -> u32 {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut max_id = 255_u32;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "sldId" =>
+            {
+                if let Some(id) = attr(&e, "id").and_then(|value| value.parse::<u32>().ok()) {
+                    max_id = max_id.max(id);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    max_id + 1
+}
+
+fn insert_slide_fragment(
+    presentation_xml: &str,
+    refs: &[SlideIdRef],
+    insert_after: usize,
+    new_fragment: &str,
+) -> CliResult<String> {
+    let mut fragments = refs
+        .iter()
+        .map(|slide| slide.fragment.clone())
+        .collect::<Vec<_>>();
+    if insert_after > fragments.len() {
+        return Err(CliError::invalid_args(format!(
+            "insert-after {insert_after} out of range"
+        )));
+    }
+    fragments.insert(insert_after, new_fragment.to_string());
+    replace_slide_id_list(presentation_xml, refs, &fragments)
+}
+
+fn find_template_slide_for_layout(
+    file: &str,
+    refs: &[SlideIdRef],
+    layout_uri: &str,
+) -> CliResult<Option<i64>> {
+    let wanted = package_uri(layout_uri);
+    for (index, slide_ref) in refs.iter().enumerate() {
+        if slide_layout_uri(file, &slide_ref.part)?.as_deref() == Some(wanted.as_str()) {
+            return Ok(Some(index as i64 + 1));
+        }
+    }
+    Ok(None)
+}
+
+fn slide_layout_uri(file: &str, slide_part: &str) -> CliResult<Option<String>> {
+    let rels_xml =
+        zip_text(file, &relationships_part_for(slide_part)).unwrap_or_else(|_| relationships_xml());
+    for rel in relationship_entries_from_xml(&rels_xml) {
+        if rel.rel_type == SLIDE_LAYOUT_REL_TYPE {
+            return Ok(Some(resolve_relationship_target(
+                &package_uri(slide_part),
+                &rel.target,
+            )));
+        }
+    }
+    Ok(None)
+}
+
+fn build_slide_xml_from_layout_common_data(c_sld_xml: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">{c_sld_xml}<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"#
+    )
+}
+
+fn parse_text_assignments(values: &[String]) -> CliResult<Vec<(String, String)>> {
+    let mut assignments = Vec::new();
+    for value in values {
+        if value.trim().is_empty() || value == "[]" {
+            continue;
+        }
+        let Some((key, text)) = value.split_once('=') else {
+            return Err(CliError::invalid_args(format!(
+                "invalid --set-text value {value:?} (expected key=value)"
+            )));
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            return Err(CliError::invalid_args(format!(
+                "invalid --set-text value {value:?} (expected key=value)"
+            )));
+        }
+        assignments.push((key.to_string(), text.to_string()));
+    }
+    Ok(assignments)
+}
+
+fn reject_deferred_new_slide_flags(args: &[String]) -> CliResult<()> {
+    for name in [
+        "--set-rich-text",
+        "--set-image",
+        "--set-image-coords",
+        "--set-image-slot",
+    ] {
+        if value_flag_present(args, name) {
+            return Err(CliError::invalid_args(format!(
+                "pptx new-slide-from-layout {name} is deferred in the Rust port; use --set-text for this slice"
+            )));
+        }
+    }
+    for name in [
+        "--image-fit",
+        "--level",
+        "--align",
+        "--bullet-mode",
+        "--bullet-char",
+        "--auto-num",
+        "--space-before",
+        "--space-after",
+        "--line-spacing",
+    ] {
+        if value_flag_present(args, name) {
+            return Err(CliError::invalid_args(format!(
+                "pptx new-slide-from-layout {name} is deferred in the Rust port"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn reset_slide_text_bodies(xml: &str) -> CliResult<String> {
+    let mut out = xml.to_string();
+    let shapes = text_shape_targets(xml)?;
+    for shape in shapes.into_iter().rev() {
+        if let Some(tx_body) = shape.tx_body {
+            out = replace_xml_span(&out, tx_body.start, tx_body.end, &text_body_xml(""));
+        }
+    }
+    Ok(out)
+}
+
+fn set_text_target(xml: &str, target: &str, text: &str) -> CliResult<String> {
+    let shapes = text_shape_targets(xml)?;
+    let matches = shapes
+        .iter()
+        .filter(|shape| text_shape_matches(shape, target))
+        .cloned()
+        .collect::<Vec<_>>();
+    let shape = match matches.as_slice() {
+        [shape] => shape,
+        [] => {
+            return Err(CliError::target_not_found(format!(
+                "target not found: {target}"
+            )));
+        }
+        _ => {
+            return Err(CliError::target_not_found(format!(
+                "ambiguous target: {target}"
+            )));
+        }
+    };
+    let replacement = text_body_xml(text);
+    if let Some(tx_body) = shape.tx_body {
+        return Ok(replace_xml_span(
+            xml,
+            tx_body.start,
+            tx_body.end,
+            &replacement,
+        ));
+    }
+    let insert_at = shape
+        .span
+        .end
+        .checked_sub(close_tag_len(xml, shape.span.end)?)
+        .ok_or_else(|| CliError::unexpected("invalid shape span"))?;
+    Ok(insert_xml_at(xml, insert_at, &replacement))
+}
+
+fn text_shape_targets(xml: &str) -> CliResult<Vec<TextShapeTarget>> {
+    let Some(sp_tree) = find_first_element_span(xml, "spTree")? else {
+        return Ok(Vec::new());
+    };
+    let (content_start, content_end) = element_content_bounds(&xml[sp_tree.start..sp_tree.end])?;
+    let ranges = xml_direct_child_ranges(
+        xml,
+        sp_tree.start + content_start,
+        sp_tree.start + content_end,
+    )?;
+    let mut out = Vec::new();
+    for range in ranges.into_iter().filter(|range| range.kind == "sp") {
+        let fragment = &xml[range.start..range.end];
+        let tx_body = find_first_element_span(fragment, "txBody")?.map(|span| ElementSpan {
+            start: range.start + span.start,
+            end: range.start + span.end,
+        });
+        let mut target = TextShapeTarget {
+            span: ElementSpan {
+                start: range.start,
+                end: range.end,
+            },
+            tx_body,
+            shape_id: 0,
+            shape_name: String::new(),
+            placeholder_type: String::new(),
+            placeholder_index: None,
+        };
+        let mut reader = Reader::from_str(fragment);
+        reader.config_mut().trim_text(true);
+        loop {
+            match reader.read_event() {
+                Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                    if local_name(e.name().as_ref()) == "cNvPr" =>
+                {
+                    target.shape_id = attr(&e, "id")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(target.shape_id);
+                    target.shape_name =
+                        attr(&e, "name").unwrap_or_else(|| target.shape_name.clone());
+                }
+                Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                    if local_name(e.name().as_ref()) == "ph" =>
+                {
+                    target.placeholder_type = attr(&e, "type").unwrap_or_default();
+                    target.placeholder_index = attr(&e, "idx").and_then(|value| value.parse().ok());
+                }
+                Ok(Event::Eof) => break,
+                Err(err) => return Err(CliError::unexpected(err.to_string())),
+                _ => {}
+            }
+        }
+        out.push(target);
+    }
+    Ok(out)
+}
+
+fn text_shape_matches(shape: &TextShapeTarget, target: &str) -> bool {
+    let target = target.trim();
+    if target == format!("shape:{}", shape.shape_id) {
+        return true;
+    }
+    if !shape.shape_name.is_empty() && target == format!("~{}", shape.shape_name) {
+        return true;
+    }
+    let role = placeholder_role(&shape.placeholder_type);
+    if !role.is_empty() && target == role {
+        return true;
+    }
+    if let Some(index) = shape.placeholder_index
+        && (target == format!("{role}:{index}") || target == format!("#{index}"))
+    {
+        return true;
+    }
+    false
+}
+
+fn placeholder_role(literal_type: &str) -> String {
+    match literal_type {
+        "ctrTitle" | "title" => "title",
+        "subTitle" => "subtitle",
+        "body" | "obj" => "body",
+        other => other,
+    }
+    .to_string()
+}
+
+fn text_body_xml(text: &str) -> String {
+    format!(
+        "<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>{}</a:t></a:r></a:p></p:txBody>",
+        xml_escape(text)
+    )
+}
+
+fn insert_xml_at(xml: &str, index: usize, insert: &str) -> String {
+    let mut out = String::with_capacity(xml.len() + insert.len());
+    out.push_str(&xml[..index]);
+    out.push_str(insert);
+    out.push_str(&xml[index..]);
+    out
+}
+
+fn close_tag_len(xml: &str, end: usize) -> CliResult<usize> {
+    let prefix = &xml[..end];
+    let close_start = prefix
+        .rfind("</")
+        .ok_or_else(|| CliError::unexpected("invalid PPTX shape XML"))?;
+    Ok(end - close_start)
+}
+
+fn find_first_element_span(xml: &str, wanted_local: &str) -> CliResult<Option<ElementSpan>> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut active: Option<(usize, usize)> = None;
+    loop {
+        let before = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                if let Some((_, depth)) = active.as_mut() {
+                    *depth += 1;
+                } else if local_name(e.name().as_ref()) == wanted_local {
+                    active = Some((before, 1));
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                if active.is_none() && local_name(e.name().as_ref()) == wanted_local {
+                    return Ok(Some(ElementSpan {
+                        start: before,
+                        end: reader.buffer_position() as usize,
+                    }));
+                }
+            }
+            Ok(Event::End(e)) => {
+                if let Some((start, depth)) = active.as_mut() {
+                    if *depth == 1 && local_name(e.name().as_ref()) == wanted_local {
+                        return Ok(Some(ElementSpan {
+                            start: *start,
+                            end: reader.buffer_position() as usize,
+                        }));
+                    }
+                    *depth = depth.saturating_sub(1);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Ok(None)
+}
+
+fn element_content_bounds(fragment: &str) -> CliResult<(usize, usize)> {
+    let open_end = fragment
+        .find('>')
+        .ok_or_else(|| CliError::unexpected("invalid PPTX XML"))?;
+    if fragment[..=open_end].trim_end().ends_with("/>") {
+        return Ok((open_end + 1, open_end + 1));
+    }
+    let close_start = fragment
+        .rfind("</")
+        .ok_or_else(|| CliError::unexpected("invalid PPTX XML"))?;
+    Ok((open_end + 1, close_start))
 }

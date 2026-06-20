@@ -184,6 +184,41 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             )?;
             pptx_add_textbox(file, rest)
         }
+        [family, verb, file, rest @ ..] if family == "pptx" && verb == "clone-slide" => {
+            reject_unknown_flags(
+                rest,
+                &["--slide", "--insert-after", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_clone_slide(file, rest)
+        }
+        [family, verb, file, rest @ ..] if family == "pptx" && verb == "new-slide-from-layout" => {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--layout",
+                    "--set-text",
+                    "--set-rich-text",
+                    "--set-image",
+                    "--set-image-coords",
+                    "--set-image-slot",
+                    "--image-fit",
+                    "--insert-after",
+                    "--level",
+                    "--align",
+                    "--bullet-mode",
+                    "--bullet-char",
+                    "--auto-num",
+                    "--space-before",
+                    "--space-after",
+                    "--line-spacing",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_new_slide_from_layout(file, rest)
+        }
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "place" && verb == "image" =>
         {
@@ -579,6 +614,19 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             pptx_masters_show(file, master)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "masters" && verb == "add-placeholder" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--master", "--type", "--bounds", "--idx", "--size", "--orient", "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_masters_add_placeholder(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "layouts" && verb == "list" =>
         {
             reject_unknown_flags(rest, &["--master"], &[])?;
@@ -597,6 +645,16 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             let layout = parse_string_flag(rest, "--layout")?
                 .ok_or_else(|| CliError::invalid_args("--layout flag is required"))?;
             pptx_layouts_show(file, &layout)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "layouts" && verb == "clone" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--layout", "--name", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_layouts_clone(file, rest)
         }
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "layouts" && verb == "rename" =>

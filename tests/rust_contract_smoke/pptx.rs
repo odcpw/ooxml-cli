@@ -2823,6 +2823,308 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
 }
 
 #[test]
+fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-layout-slide-authoring-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx layout slide authoring temp dir");
+
+    let fixture = "testdata/pptx/title-content/presentation.pptx";
+
+    for args in [
+        vec![
+            "--json",
+            "pptx",
+            "layouts",
+            "clone",
+            fixture,
+            "--layout",
+            "1",
+            "--name",
+            "RustClonedLayout",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "masters",
+            "add-placeholder",
+            fixture,
+            "--master",
+            "1",
+            "--type",
+            "text",
+            "--bounds",
+            "100000,100000,1000000,500000",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "clone-slide",
+            fixture,
+            "--slide",
+            "1",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "new-slide-from-layout",
+            fixture,
+            "--layout",
+            "1",
+            "--set-text",
+            "title=RustTitle",
+            "--dry-run",
+        ],
+    ] {
+        assert_go_rust_match(&args);
+    }
+
+    let go_layout = temp_dir.join("go-layout-clone.pptx");
+    let rust_layout = temp_dir.join("rust-layout-clone.pptx");
+    let go_layout_str = go_layout.to_str().expect("go layout clone path");
+    let rust_layout_str = rust_layout.to_str().expect("rust layout clone path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "clone",
+        fixture,
+        "--layout",
+        "1",
+        "--name",
+        "RustClonedLayout",
+        "--out",
+        go_layout_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "clone",
+        fixture,
+        "--layout",
+        "1",
+        "--name",
+        "RustClonedLayout",
+        "--out",
+        rust_layout_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "layout clone exit");
+    assert_eq!(rust_stderr, go_stderr, "layout clone stderr");
+    let rust_json = rust_stdout.expect("rust layout clone stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_layout_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go layout clone stdout"),
+            go_layout_str,
+            "[OUT]"
+        ),
+        "layout clone stdout"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+        "--json",
+        "pptx",
+        "layouts",
+        "show",
+        go_layout_str,
+        "--layout",
+        "RustClonedLayout",
+    ]);
+    let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "layouts",
+        "show",
+        rust_layout_str,
+        "--layout",
+        "RustClonedLayout",
+    ]);
+    assert_eq!(rust_show_code, go_show_code, "layout clone readback exit");
+    assert_eq!(
+        rust_show_stderr, go_show_stderr,
+        "layout clone readback stderr"
+    );
+    assert_eq!(
+        rust_show_stdout.expect("rust layout clone readback"),
+        go_show_stdout.expect("go layout clone readback"),
+        "layout clone readback stdout"
+    );
+
+    let go_master = temp_dir.join("go-master-placeholder.pptx");
+    let rust_master = temp_dir.join("rust-master-placeholder.pptx");
+    let go_master_str = go_master.to_str().expect("go master placeholder path");
+    let rust_master_str = rust_master.to_str().expect("rust master placeholder path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "masters",
+        "add-placeholder",
+        fixture,
+        "--master",
+        "1",
+        "--type",
+        "text",
+        "--bounds",
+        "100000,100000,1000000,500000",
+        "--out",
+        go_master_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "masters",
+        "add-placeholder",
+        fixture,
+        "--master",
+        "1",
+        "--type",
+        "text",
+        "--bounds",
+        "100000,100000,1000000,500000",
+        "--out",
+        rust_master_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "master add-placeholder exit");
+    assert_eq!(rust_stderr, go_stderr, "master add-placeholder stderr");
+    let rust_json = rust_stdout.expect("rust master add-placeholder stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_master_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go master add-placeholder stdout"),
+            go_master_str,
+            "[OUT]"
+        ),
+        "master add-placeholder stdout"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let go_clone = temp_dir.join("go-clone-slide.pptx");
+    let rust_clone = temp_dir.join("rust-clone-slide.pptx");
+    let go_clone_str = go_clone.to_str().expect("go clone-slide path");
+    let rust_clone_str = rust_clone.to_str().expect("rust clone-slide path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "clone-slide",
+        fixture,
+        "--slide",
+        "1",
+        "--out",
+        go_clone_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "clone-slide",
+        fixture,
+        "--slide",
+        "1",
+        "--out",
+        rust_clone_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "clone-slide exit");
+    assert_eq!(rust_stderr, go_stderr, "clone-slide stderr");
+    let rust_json = rust_stdout.expect("rust clone-slide stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_clone_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go clone-slide stdout"),
+            go_clone_str,
+            "[OUT]"
+        ),
+        "clone-slide stdout"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let go_new = temp_dir.join("go-new-slide.pptx");
+    let rust_new = temp_dir.join("rust-new-slide.pptx");
+    let go_new_str = go_new.to_str().expect("go new slide path");
+    let rust_new_str = rust_new.to_str().expect("rust new slide path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "new-slide-from-layout",
+        fixture,
+        "--layout",
+        "1",
+        "--set-text",
+        "title=RustTitle",
+        "--out",
+        go_new_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "new-slide-from-layout",
+        fixture,
+        "--layout",
+        "1",
+        "--set-text",
+        "title=RustTitle",
+        "--out",
+        rust_new_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "new-slide-from-layout exit");
+    assert_eq!(rust_stderr, go_stderr, "new-slide-from-layout stderr");
+    let rust_json = rust_stdout.expect("rust new-slide-from-layout stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_new_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go new-slide-from-layout stdout"),
+            go_new_str,
+            "[OUT]"
+        ),
+        "new-slide-from-layout stdout"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let new_slide = rust_json["newSlideNumber"]
+        .as_i64()
+        .expect("new slide number");
+    let new_slide_arg = new_slide.to_string();
+    let rust_readback = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "get",
+        rust_new_str,
+        "--slide",
+        &new_slide_arg,
+        "--target",
+        "title",
+        "--include-text",
+    ])
+    .1
+    .expect("rust new slide title readback");
+    assert_eq!(
+        rust_readback["shapes"][0]["textPreview"], "RustTitle",
+        "new slide title text readback"
+    );
+}
+
+#[test]
 fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
