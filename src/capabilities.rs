@@ -4,8 +4,8 @@ pub(crate) use commands::capability_commands;
 use serde_json::{Value, json};
 
 use crate::{
-    CliResult, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS, EXIT_SUCCESS, EXIT_TARGET_NOT_FOUND,
-    EXIT_UNEXPECTED, EXIT_UNSUPPORTED_TYPE, parse_string_flag,
+    CliResult, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS, EXIT_RENDER_FAILED, EXIT_SUCCESS,
+    EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED, EXIT_UNSUPPORTED_TYPE, parse_string_flag,
 };
 
 pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
@@ -40,7 +40,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
         "commands": commands,
         "objectKinds": ["package", "slide", "shape", "master", "layout", "placeholder", "sheet", "range", "data-validation", "cell", "hyperlink", "table", "name", "block", "paragraph", "style", "comment", "chart", "field", "header", "footer", "image", "module"],
         "objectKindsIndex": {
-            "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml docx text", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update", "ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba inspect-bin", "ooxml vba list", "ooxml vba extract", "ooxml vba attach", "ooxml vba remove"],
+            "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml docx text", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update", "ooxml vba create", "ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba inspect-bin", "ooxml vba list", "ooxml vba extract", "ooxml vba attach", "ooxml vba remove"],
             "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx slides delete", "ooxml pptx slides move", "ooxml pptx slides reorder", "ooxml pptx shapes show", "ooxml pptx shapes get", "ooxml pptx shapes set-bounds", "ooxml pptx shapes delete", "ooxml pptx layouts list", "ooxml pptx layouts show", "ooxml pptx tables show", "ooxml pptx tables set-cell", "ooxml pptx tables delete-row", "ooxml pptx tables insert-row", "ooxml pptx tables delete-col", "ooxml pptx tables insert-col", "ooxml pptx tables update-from-xlsx", "ooxml pptx charts list", "ooxml pptx charts show", "ooxml pptx extract text", "ooxml pptx extract notes", "ooxml pptx extract images", "ooxml pptx extract xml", "ooxml pptx notes show", "ooxml pptx notes set", "ooxml pptx notes clear", "ooxml pptx comments list", "ooxml pptx replace text", "ooxml pptx render"],
             "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx shapes get", "ooxml pptx shapes set-bounds", "ooxml pptx shapes delete", "ooxml pptx extract text", "ooxml pptx replace text"],
             "master": ["ooxml pptx masters list", "ooxml pptx masters show", "ooxml pptx extract xml"],
@@ -62,7 +62,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             "header": ["ooxml docx headers list", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers list"],
             "footer": ["ooxml docx footers list", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx headers list"],
             "image": ["ooxml pptx extract images", "ooxml docx images list", "ooxml docx images replace", "ooxml docx images insert"],
-            "module": ["ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba inspect-bin", "ooxml vba list", "ooxml vba extract", "ooxml vba attach", "ooxml vba remove"]
+            "module": ["ooxml vba create", "ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba inspect-bin", "ooxml vba list", "ooxml vba extract", "ooxml vba office-check", "ooxml vba attach", "ooxml vba remove"]
         },
         "exitCodes": [
             {"code": EXIT_SUCCESS, "name": "success", "description": "command completed successfully"},
@@ -70,7 +70,8 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             {"code": EXIT_INVALID_ARGS, "name": "invalid_args", "description": "invalid command line arguments or incompatible options"},
             {"code": EXIT_FILE_NOT_FOUND, "name": "file_not_found", "description": "input file was not found"},
             {"code": EXIT_UNSUPPORTED_TYPE, "name": "unsupported_type", "description": "input package type is unsupported for the requested command"},
-            {"code": EXIT_TARGET_NOT_FOUND, "name": "target_not_found", "description": "requested slide, sheet, table, shape, or macro part was not found"}
+            {"code": EXIT_TARGET_NOT_FOUND, "name": "target_not_found", "description": "requested slide, sheet, table, shape, or macro part was not found"},
+            {"code": EXIT_RENDER_FAILED, "name": "render_failed", "description": "rendering or local Office-compatible open check failed"}
         ],
         "workflows": [
             {

@@ -5,6 +5,60 @@ use super::{capability_command, flag};
 pub(super) fn commands() -> Vec<Value> {
     vec![
         capability_command(
+            "ooxml vba create",
+            "create <output.xlsm|output.pptm>",
+            "Create an Office-authored XLSM/PPTM from .bas/.cls source files using the Windows Office helper.",
+            &["package", "module"],
+            false,
+            Some(
+                "requires Windows desktop Office automation and does not accept op mutation output flags",
+            ),
+            vec![
+                flag(
+                    "--enable-vba-object-model-access",
+                    "enableVbaObjectModelAccess",
+                    "bool",
+                    "temporarily enable Trust access to the VBA project object model",
+                ),
+                flag(
+                    "--extract-bin",
+                    "extractBin",
+                    "string",
+                    "optional path to write the created vbaProject.bin seed",
+                ),
+                flag(
+                    "--family",
+                    "family",
+                    "string",
+                    "target Office family: xlsx or pptx; inferred from .xlsm/.pptm output",
+                ),
+                flag(
+                    "--force",
+                    "force",
+                    "bool",
+                    "overwrite existing helper outputs",
+                ),
+                flag(
+                    "--office-create-script",
+                    "officeCreateScript",
+                    "string",
+                    "path to windows-office-vba-create.ps1 when not running from the repo checkout",
+                ),
+                flag(
+                    "--source",
+                    "source",
+                    "stringArray",
+                    "repeatable .bas or .cls source file to import",
+                ),
+                flag(
+                    "--visible",
+                    "visible",
+                    "bool",
+                    "show the Office application window during creation",
+                ),
+            ],
+        ),
+        capability_command(
             "ooxml vba inspect",
             "inspect <file>",
             "Inspect opaque VBA package state for XLSM/PPTM package wiring.",
@@ -66,6 +120,20 @@ pub(super) fn commands() -> Vec<Value> {
                     "directory for extracted .bas/.cls modules",
                 ),
             ],
+        ),
+        capability_command(
+            "ooxml vba office-check",
+            "office-check <file>",
+            "Validate a macro package and run a local LibreOffice/soffice open-check when available.",
+            &["module"],
+            false,
+            Some("read-only compatibility evidence; macros are not executed or compiled"),
+            vec![flag(
+                "--out-dir",
+                "outDir",
+                "string",
+                "optional directory to keep LibreOffice conversion output for inspection",
+            )],
         ),
         capability_command(
             "ooxml vba attach",

@@ -38,6 +38,26 @@ pub(crate) fn parse_string_flag(args: &[String], name: &str) -> CliResult<Option
     Ok(None)
 }
 
+pub(crate) fn parse_string_flags(args: &[String], name: &str) -> CliResult<Vec<String>> {
+    let mut values = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == name {
+            let Some(value) = args.get(i + 1) else {
+                return Err(CliError::invalid_args(format!("{name} requires a value")));
+            };
+            values.push(value.clone());
+            i += 2;
+            continue;
+        }
+        if let Some(value) = args[i].strip_prefix(&format!("{name}=")) {
+            values.push(value.to_string());
+        }
+        i += 1;
+    }
+    Ok(values)
+}
+
 pub(crate) fn parse_bool_flag(args: &[String], name: &str) -> CliResult<Option<bool>> {
     for arg in args {
         if arg == name {

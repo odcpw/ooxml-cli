@@ -60,8 +60,8 @@ pub(crate) use cli_args::{
 };
 pub(crate) use cli_core::{
     CliError, CliResult, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS, EXIT_PARTIAL_SUCCESS,
-    EXIT_SUCCESS, EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED, EXIT_UNSUPPORTED_TYPE,
-    EXIT_VALIDATION_FAILED, GlobalFlags,
+    EXIT_RENDER_FAILED, EXIT_SUCCESS, EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED,
+    EXIT_UNSUPPORTED_TYPE, EXIT_VALIDATION_FAILED, GlobalFlags,
 };
 pub(crate) use cli_dispatch::{dispatch, require_docx_block_hash};
 pub(crate) use command_text::command_arg;
@@ -292,9 +292,9 @@ fn run(raw_args: &[String]) -> CliResult<RunOutput> {
         let exit_code = validate_exit_code(&value, strict);
         return Ok(RunOutput { value, exit_code });
     }
-    dispatch(&flags, &args).map(|value| RunOutput {
-        value,
-        exit_code: EXIT_SUCCESS,
+    dispatch(&flags, &args).map(|output| RunOutput {
+        value: output.value,
+        exit_code: output.exit_code,
     })
 }
 

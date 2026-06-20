@@ -9,6 +9,24 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust VBA source-module workflow parity expanded to direct `vba create` and
+  `vba office-check`. `vba create` validates `.bas`/`.cls` sources, creates
+  `.xlsm` and `.pptm` packages from scratch through Windows desktop Office COM,
+  imports modules, optionally extracts the authored `vbaProject.bin`, and emits
+  inspect/list/validate/office-check/readback follow-up commands. `vba
+  office-check` now prefers the Microsoft Office COM open oracle on Windows and
+  falls back to the compatibility engine path elsewhere. Source-changing
+  `add-module`, `replace-module`, and `remove-module` remain unadvertised in
+  Rust. Rust capabilities now advertise 145 Go-oracle command paths, leaving a
+  pinned 145-command gap. Proof: focused Go-vs-Rust VBA create/office-check
+  contract tests; focused capability ratchet/discovery tests; Office-authored
+  XLSM and PPTM proof files from `.bas`/`.cls` sources; VBA list readback for
+  both proof files; strict Rust validation; Open XML SDK Office2019 schema
+  validation (zero errors); Excel and PowerPoint COM open oracle; `vba
+  office-check` returning `microsoftOfficeVerified: true` for both proof files;
+  `cargo fmt --check`; `cargo check --all-targets`; `cargo clippy --all-targets
+  -- -D warnings`; and `cargo test --all-targets` passed with 4 ZIP guard unit
+  tests plus 140 Rust contract tests.
 - Rust PPTX charts read-only parity landed for direct `pptx charts list` and
   `pptx charts show`. The slice discovers chart relationships from slides,
   reads chart parts, selectors, titles, type hints, series references and cache
@@ -1208,7 +1226,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 143, and the harness pins the 147-command gap until
+  paths, Rust advertises 145, and the harness pins the 145-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -1352,9 +1370,16 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   `--json vba extract <xlsm|pptm> --out-dir <dir>` with Go-oracle comparison
   for parseable source-only VBA projects, CFB/MS-OVBA decompression, module
   selectors and hashes, host-family compatibility warnings, missing-macro
-  errors, and extracted `.bas` source readback. Rust still does not promote
-  Office-authored `vba create`, `vba office-check`, or source-changing
-  `add-module`/`replace-module`/`remove-module`.
+  errors, and extracted `.bas` source readback.
+- `--json vba create <output.xlsm|output.pptm>` with Go-oracle comparison for
+  source normalization, argument errors, fake-helper JSON completion, emitted
+  follow-up commands, and PowerShell helper invocation shape without launching
+  Office COM in Rust tests.
+- `--json vba office-check <xlsm|pptm>` with Go-oracle comparison for the
+  deterministic macro-free skipped report and Rust implementation of the local
+  LibreOffice/soffice open-check path when an engine is installed. Rust still
+  does not promote source-changing `add-module`/`replace-module`/
+  `remove-module`.
 - `serve` JSON-RPC generic PPTX inspect/op/commit path for
   `pptx slides show` plus `pptx replace text`, matching the Flue workbench's
   generic `apply_ooxml_ops_to_current` smoke route
@@ -1388,8 +1413,8 @@ Still missing before parity can be claimed:
 - Full command-surface inventory parity.
 - Metamorphic and fuzz harnesses for OOXML package invariants.
 - Broad release-grade Office/Open XML SDK/COM proof for the complete promoted
-  Rust surface, including Office-authored macro/VBA gates beyond the opaque
-  package attach/extract/remove path.
+  Rust surface, including Office-authored `vba create`, real macro package
+  `vba office-check`, and module source mutation gates.
 
 Dependency note: live GitHub inspection of `https://github.com/Dicklesworthstone`
 found useful Rust infrastructure projects, but no direct OOXML/ZIP/XML package

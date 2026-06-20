@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 use crate::capabilities;
 use crate::cli_args::*;
-use crate::cli_core::{CliError, CliResult, GlobalFlags};
+use crate::cli_core::{CliError, CliResult, EXIT_SUCCESS, GlobalFlags};
 use crate::inspect::inspect;
 use crate::pptx_mutation::*;
 use crate::pptx_readback::*;
@@ -13,7 +13,29 @@ use crate::pptx_render::pptx_render;
 use crate::validation::validate;
 use crate::vba::*;
 use crate::verify::verify;
-pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
+
+pub(crate) struct DispatchOutput {
+    pub(crate) value: Value,
+    pub(crate) exit_code: i32,
+}
+
+pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {
+    if let [family, verb, file, rest @ ..] = args
+        && family == "vba"
+        && verb == "office-check"
+    {
+        reject_unknown_flags(rest, &["--out-dir"], &[])?;
+        let out_dir = parse_string_flag(rest, "--out-dir")?;
+        let (value, exit_code) = vba_office_check(file, out_dir.as_deref())?;
+        return Ok(DispatchOutput { value, exit_code });
+    }
+    dispatch_value(flags, args).map(|value| DispatchOutput {
+        value,
+        exit_code: EXIT_SUCCESS,
+    })
+}
+
+fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
     match args {
         [cmd] if cmd == "version" => Ok(json!({"tool": "ooxml", "version": "0.0.1"})),
         [cmd, rest @ ..] if cmd == "capabilities" => capabilities::capabilities(rest),
@@ -24,6 +46,37 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
         }
         [cmd, file, rest @ ..] if cmd == "verify" => verify(file, rest),
         [family, verb, file] if family == "vba" && verb == "inspect" => vba_inspect(file),
+        [family, verb, output, rest @ ..] if family == "vba" && verb == "create" => {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--family",
+                    "--source",
+                    "--extract-bin",
+                    "--office-create-script",
+                ],
+                &["--enable-vba-object-model-access", "--visible", "--force"],
+            )?;
+            let family = parse_string_flag(rest, "--family")?;
+            let sources = parse_string_flags(rest, "--source")?;
+            let extract_bin = parse_string_flag(rest, "--extract-bin")?;
+            let office_create_script = parse_string_flag(rest, "--office-create-script")?;
+            vba_create(
+                output,
+                VbaCreateOptions {
+                    family: family.as_deref(),
+                    sources,
+                    extract_bin: extract_bin.as_deref(),
+                    office_create_script: office_create_script.as_deref(),
+                    enable_vba_object_model_access: has_flag(
+                        rest,
+                        "--enable-vba-object-model-access",
+                    ),
+                    visible: has_flag(rest, "--visible"),
+                    force: has_flag(rest, "--force"),
+                },
+            )
+        }
         [family, verb, bin_path, rest @ ..] if family == "vba" && verb == "inspect-bin" => {
             reject_unknown_flags(rest, &["--family"], &[])?;
             let family = parse_string_flag(rest, "--family")?.ok_or_else(|| {

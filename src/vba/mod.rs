@@ -1,7 +1,9 @@
 mod cfb;
+mod create;
 mod inspect;
 mod model;
 mod mutation;
+mod office_check;
 mod output;
 mod package_xml;
 mod source;
@@ -10,7 +12,9 @@ use serde_json::{Map, Value, json};
 use std::fs;
 use std::path::Path;
 
+pub(crate) use create::{VbaCreateOptions, vba_create};
 pub(crate) use model::VbaMutationOptions;
+pub(crate) use office_check::vba_office_check;
 
 use crate::{CliError, CliResult, zip_bytes};
 use inspect::inspect_vba_package;

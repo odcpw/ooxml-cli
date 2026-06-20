@@ -4,6 +4,168 @@ use super::*;
 use std::collections::BTreeMap;
 
 #[test]
+fn vba_create_source_workflow_matches_go_oracle_without_office_com() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-vba-create-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let source_path = temp_dir.join("Module,One.bas");
+    let helper_path = temp_dir.join("fake-windows-office-vba-create.ps1");
+    fs::write(
+        &source_path,
+        "Attribute VB_Name = \"ModuleOne\"\r\nPublic Sub Main()\r\nEnd Sub\r\n",
+    )
+    .expect("write VBA source");
+    fs::write(&helper_path, "Write-Output \"{}\"\r\n").expect("write fake helper");
+
+    let go_out = temp_dir.join("go-created.xlsm");
+    let rust_out = temp_dir.join("rust-created.xlsm");
+    let go_bin = temp_dir.join("go-vbaProject.bin");
+    let rust_bin = temp_dir.join("rust-vbaProject.bin");
+    let source = source_path.to_string_lossy().to_string();
+    let helper = helper_path.to_string_lossy().to_string();
+    let go_out = go_out.to_string_lossy().to_string();
+    let rust_out = rust_out.to_string_lossy().to_string();
+    let go_bin = go_bin.to_string_lossy().to_string();
+    let rust_bin = rust_bin.to_string_lossy().to_string();
+
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
+        "--json",
+        "vba",
+        "create",
+        &go_out,
+        "--source",
+        &source,
+        "--extract-bin",
+        &go_bin,
+        "--office-create-script",
+        &helper,
+        "--force",
+    ]);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "create",
+        &rust_out,
+        "--source",
+        &source,
+        "--extract-bin",
+        &rust_bin,
+        "--office-create-script",
+        &helper,
+        "--force",
+    ]);
+    assert_eq!(rust_code, go_code, "create exit");
+    assert_eq!(rust_stderr, go_stderr, "create stderr");
+    assert_eq!(
+        scrub_paths(
+            rust_stdout.expect("rust create stdout"),
+            &[(&rust_out, "[OUT]"), (&rust_bin, "[BIN]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go create stdout"),
+            &[(&go_out, "[OUT]"), (&go_bin, "[BIN]")]
+        ),
+        "create stdout"
+    );
+
+    let bad_xlsx = temp_dir.join("bad.xlsx").to_string_lossy().to_string();
+    let bad_pptm = temp_dir.join("bad.pptm").to_string_lossy().to_string();
+    let missing_source_out = temp_dir
+        .join("missing-source.xlsm")
+        .to_string_lossy()
+        .to_string();
+    let missing_file_out = temp_dir
+        .join("missing-file.xlsm")
+        .to_string_lossy()
+        .to_string();
+    let missing_source = temp_dir.join("Missing.bas").to_string_lossy().to_string();
+    let missing_helper_out = temp_dir
+        .join("missing-helper.xlsm")
+        .to_string_lossy()
+        .to_string();
+    let missing_helper = temp_dir
+        .join("missing-helper.ps1")
+        .to_string_lossy()
+        .to_string();
+
+    let cases = [
+        vec![
+            "--json",
+            "vba",
+            "create",
+            &bad_xlsx,
+            "--source",
+            &source,
+            "--office-create-script",
+            &helper,
+        ],
+        vec![
+            "--json",
+            "vba",
+            "create",
+            &bad_pptm,
+            "--family",
+            "xlsx",
+            "--source",
+            &source,
+            "--office-create-script",
+            &helper,
+        ],
+        vec![
+            "--json",
+            "vba",
+            "create",
+            &missing_source_out,
+            "--office-create-script",
+            &helper,
+        ],
+        vec![
+            "--json",
+            "vba",
+            "create",
+            &missing_file_out,
+            "--source",
+            &missing_source,
+            "--office-create-script",
+            &helper,
+        ],
+        vec![
+            "--json",
+            "vba",
+            "create",
+            &missing_helper_out,
+            "--source",
+            &source,
+            "--office-create-script",
+            &missing_helper,
+        ],
+    ];
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn vba_office_check_macro_free_package_matches_go_oracle() {
+    assert_go_rust_match(&[
+        "--json",
+        "vba",
+        "office-check",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+    ]);
+}
+
+#[test]
 fn vba_source_readback_inspect_list_extract_matches_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
