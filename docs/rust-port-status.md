@@ -215,6 +215,10 @@ Latest milestone, 2026-06-20:
   and document comment marker insertion moved from `src/docx_comments.rs` into
   `src/docx_comments/render.rs`, keeping mutation entrypoints in the facade and
   preserving direct DOCX/serve comment contract coverage.
+- DOCX comment marker removal and XML range deletion moved from
+  `src/docx_comments.rs` into `src/docx_comments/markers.rs`, keeping
+  comment removal orchestration in the facade and preserving direct DOCX/serve
+  comment contract coverage.
 - DOCX body block readers, rich block reports, paragraph/table text extraction,
   run formatting capture, namespace-aware paragraph handles, and block content
   hashing moved from `src/main.rs` into `src/docx_block_readers.rs`.
