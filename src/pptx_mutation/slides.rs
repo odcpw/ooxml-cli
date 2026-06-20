@@ -3,16 +3,17 @@ use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::path::Path;
 
 use crate::cli_args::{parse_string_flags, value_flag_present};
 use crate::{
     CliError, CliResult, RelationshipEntry, add_relationship_to_xml, allocate_relationship_id,
-    attr, attr_exact, command_arg, copy_zip_with_part_overrides_and_removals,
-    ensure_content_type_override, local_name, package_mutation_temp_path, package_type,
-    pptx_slides_list, relationship_entries_from_xml, relationship_target_from_source_to_target,
-    relationships_part_for, replace_xml_span, resolve_relationship_target, validate,
-    validate_xlsx_mutation_output_flags, xml_attr_escape, xml_direct_child_ranges, xml_escape,
-    zip_entry_names, zip_text,
+    attr, attr_exact, command_arg, copy_zip_with_binary_part_overrides_and_removals,
+    copy_zip_with_part_overrides_and_removals, ensure_content_type_override, local_name,
+    package_mutation_temp_path, package_type, pptx_slides_list, relationship_entries_from_xml,
+    relationship_target_from_source_to_target, relationships_part_for, replace_xml_span,
+    resolve_relationship_target, validate, validate_xlsx_mutation_output_flags, xml_attr_escape,
+    xml_direct_child_ranges, xml_escape, zip_entry_names, zip_text,
 };
 
 const NOTES_REL_TYPE: &str =
@@ -21,6 +22,8 @@ const SLIDE_REL_TYPE: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide";
 const SLIDE_LAYOUT_REL_TYPE: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout";
+const IMAGE_REL_TYPE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 const SLIDE_CONTENT_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.presentationml.slide+xml";
 
@@ -35,6 +38,7 @@ struct PptxSlideMutationOptions {
 
 struct PptxPackageMutation {
     overrides: BTreeMap<String, String>,
+    binary_overrides: BTreeMap<String, Vec<u8>>,
     removals: BTreeSet<String>,
 }
 
@@ -55,6 +59,14 @@ struct SlideIdSpan {
 struct ElementSpan {
     start: usize,
     end: usize,
+}
+
+#[derive(Clone, Copy)]
+struct ShapeBounds {
+    x: i64,
+    y: i64,
+    cx: i64,
+    cy: i64,
 }
 
 struct CloneSlideMutation {
@@ -85,6 +97,18 @@ struct TextShapeTarget {
     shape_name: String,
     placeholder_type: String,
     placeholder_index: Option<u32>,
+    bounds: Option<ShapeBounds>,
+}
+
+struct ImageSlotAssignment {
+    target: String,
+    image_path: String,
+}
+
+struct ImageSlotPayload {
+    image_part: String,
+    content_type: String,
+    data: Vec<u8>,
 }
 
 pub(crate) fn pptx_slides_delete(file: &str, slide: i64, args: &[String]) -> CliResult<Value> {
@@ -136,9 +160,22 @@ pub(crate) fn pptx_new_slide_from_layout(file: &str, args: &[String]) -> CliResu
     reject_deferred_new_slide_flags(args)?;
     let insert_after = crate::parse_i64_flag(args, "--insert-after")?.unwrap_or(0);
     let set_texts = parse_text_assignments(&parse_string_flags(args, "--set-text")?)?;
+    let image_slots = parse_image_slot_assignments(&parse_string_flags(args, "--set-image-slot")?)?;
+    let image_fit = normalize_image_fit(
+        crate::parse_string_flag(args, "--image-fit")?
+            .as_deref()
+            .unwrap_or("contain"),
+    )?;
     let options = parse_slide_mutation_options(args)?;
     ensure_pptx(file)?;
-    let mutation = build_new_slide_from_layout_mutation(file, &layout, insert_after, &set_texts)?;
+    let mutation = build_new_slide_from_layout_mutation(
+        file,
+        &layout,
+        insert_after,
+        &set_texts,
+        &image_slots,
+        &image_fit,
+    )?;
     let output_path = slide_mutation_output_path(file, &options);
     let staged_path = stage_slide_mutation(file, &mutation.package, &options)?;
     let destination = clone_slide_destination(
@@ -291,6 +328,7 @@ fn build_delete_slide_mutation(file: &str, slide: i64) -> CliResult<DeleteSlideM
     Ok(DeleteSlideMutation {
         package: PptxPackageMutation {
             overrides,
+            binary_overrides: BTreeMap::new(),
             removals,
         },
         deleted_slide: slide,
@@ -332,6 +370,7 @@ fn build_move_slide_mutation(
     let package = if is_no_op {
         PptxPackageMutation {
             overrides: BTreeMap::new(),
+            binary_overrides: BTreeMap::new(),
             removals: BTreeSet::new(),
         }
     } else {
@@ -342,6 +381,7 @@ fn build_move_slide_mutation(
         );
         PptxPackageMutation {
             overrides,
+            binary_overrides: BTreeMap::new(),
             removals: BTreeSet::new(),
         }
     };
@@ -372,6 +412,7 @@ fn build_reorder_slides_mutation(file: &str, order: &str) -> CliResult<ReorderSl
     Ok(ReorderSlidesMutation {
         package: PptxPackageMutation {
             overrides,
+            binary_overrides: BTreeMap::new(),
             removals: BTreeSet::new(),
         },
         new_order: parsed,
@@ -455,6 +496,7 @@ fn build_clone_slide_mutation(
     Ok(CloneSlideMutation {
         package: PptxPackageMutation {
             overrides,
+            binary_overrides: BTreeMap::new(),
             removals: BTreeSet::new(),
         },
         source_slide: slide,
@@ -472,6 +514,8 @@ fn build_new_slide_from_layout_mutation(
     layout_selector: &str,
     insert_after: i64,
     set_texts: &[(String, String)],
+    image_slots: &[ImageSlotAssignment],
+    image_fit: &str,
 ) -> CliResult<NewSlideFromLayoutMutation> {
     let layouts = crate::pptx_readback::pptx_presentation_layouts(file)?;
     let layout = crate::pptx_readback::pptx_find_layout(&layouts, layout_selector)
@@ -500,7 +544,43 @@ fn build_new_slide_from_layout_mutation(
         for (target, text) in set_texts {
             slide_xml = set_text_target(&slide_xml, target, text)?;
         }
-        cloned.package.overrides.insert(new_slide_part, slide_xml);
+        let mut slide_rels_xml = cloned
+            .package
+            .overrides
+            .get(&relationships_part_for(&new_slide_part))
+            .cloned()
+            .unwrap_or_else(|| {
+                zip_text(file, &relationships_part_for(&new_slide_part))
+                    .unwrap_or_else(|_| relationships_xml())
+            });
+        let mut content_types_xml = cloned
+            .package
+            .overrides
+            .get("[Content_Types].xml")
+            .cloned()
+            .unwrap_or_else(|| zip_text(file, "[Content_Types].xml").unwrap_or_default());
+        apply_image_slot_assignments(
+            file,
+            &new_slide_part,
+            &mut slide_xml,
+            &mut slide_rels_xml,
+            &mut content_types_xml,
+            &mut cloned.package.binary_overrides,
+            image_slots,
+            image_fit,
+        )?;
+        cloned
+            .package
+            .overrides
+            .insert(new_slide_part.clone(), slide_xml);
+        cloned
+            .package
+            .overrides
+            .insert(relationships_part_for(&new_slide_part), slide_rels_xml);
+        cloned
+            .package
+            .overrides
+            .insert("[Content_Types].xml".to_string(), content_types_xml);
         return Ok(NewSlideFromLayoutMutation {
             package: cloned.package,
             layout: layout_selector.to_string(),
@@ -545,17 +625,28 @@ fn build_new_slide_from_layout_mutation(
     )?;
 
     let layout_target = relationship_target_from_source_to_target(&new_slide_uri, &layout.part_uri);
-    let slide_rels_xml = render_relationships_xml(&[RelationshipEntry {
+    let mut slide_rels_xml = render_relationships_xml(&[RelationshipEntry {
         id: "rId1".to_string(),
         rel_type: SLIDE_LAYOUT_REL_TYPE.to_string(),
         target: layout_target,
         target_mode: String::new(),
     }]);
-    let content_types = ensure_content_type_override(
+    let mut content_types = ensure_content_type_override(
         zip_text(file, "[Content_Types].xml")?,
         &new_slide_part,
         SLIDE_CONTENT_TYPE,
     );
+    let mut binary_overrides = BTreeMap::new();
+    apply_image_slot_assignments(
+        file,
+        &new_slide_part,
+        &mut slide_xml,
+        &mut slide_rels_xml,
+        &mut content_types,
+        &mut binary_overrides,
+        image_slots,
+        image_fit,
+    )?;
 
     let mut overrides = BTreeMap::new();
     overrides.insert(new_slide_part.clone(), slide_xml);
@@ -570,6 +661,7 @@ fn build_new_slide_from_layout_mutation(
     Ok(NewSlideFromLayoutMutation {
         package: PptxPackageMutation {
             overrides,
+            binary_overrides,
             removals: BTreeSet::new(),
         },
         layout: layout_selector.to_string(),
@@ -835,12 +927,22 @@ fn stage_slide_mutation(
             })?
             .to_string()
     };
-    copy_zip_with_part_overrides_and_removals(
-        file,
-        &write_path,
-        &mutation.overrides,
-        &mutation.removals,
-    )?;
+    if mutation.binary_overrides.is_empty() {
+        copy_zip_with_part_overrides_and_removals(
+            file,
+            &write_path,
+            &mutation.overrides,
+            &mutation.removals,
+        )?;
+    } else {
+        copy_zip_with_binary_part_overrides_and_removals(
+            file,
+            &write_path,
+            &mutation.overrides,
+            &mutation.binary_overrides,
+            &mutation.removals,
+        )?;
+    }
     if !options.no_validate {
         validate(&write_path, true)?;
     }
@@ -1361,12 +1463,7 @@ fn parse_text_assignments(values: &[String]) -> CliResult<Vec<(String, String)>>
 }
 
 fn reject_deferred_new_slide_flags(args: &[String]) -> CliResult<()> {
-    for name in [
-        "--set-rich-text",
-        "--set-image",
-        "--set-image-coords",
-        "--set-image-slot",
-    ] {
+    for name in ["--set-rich-text", "--set-image", "--set-image-coords"] {
         if value_flag_present(args, name) {
             return Err(CliError::invalid_args(format!(
                 "pptx new-slide-from-layout {name} is deferred in the Rust port; use --set-text for this slice"
@@ -1374,7 +1471,6 @@ fn reject_deferred_new_slide_flags(args: &[String]) -> CliResult<()> {
         }
     }
     for name in [
-        "--image-fit",
         "--level",
         "--align",
         "--bullet-mode",
@@ -1391,6 +1487,223 @@ fn reject_deferred_new_slide_flags(args: &[String]) -> CliResult<()> {
         }
     }
     Ok(())
+}
+
+fn parse_image_slot_assignments(values: &[String]) -> CliResult<Vec<ImageSlotAssignment>> {
+    let mut assignments = Vec::new();
+    for value in values {
+        if value.trim().is_empty() || value == "[]" {
+            continue;
+        }
+        let Some((target, image_path)) = value.split_once('=') else {
+            return Err(CliError::invalid_args(format!(
+                "invalid --set-image-slot value {value:?} (expected key=path)"
+            )));
+        };
+        let target = target.trim();
+        let image_path = image_path.trim();
+        if target.is_empty() || image_path.is_empty() {
+            return Err(CliError::invalid_args(format!(
+                "invalid --set-image-slot value {value:?} (expected key=path)"
+            )));
+        }
+        if !Path::new(image_path).exists() {
+            return Err(CliError::file_not_found(format!(
+                "file not found: {image_path}"
+            )));
+        }
+        assignments.push(ImageSlotAssignment {
+            target: target.to_string(),
+            image_path: image_path.to_string(),
+        });
+    }
+    Ok(assignments)
+}
+
+fn normalize_image_fit(mode: &str) -> CliResult<String> {
+    match mode.to_ascii_lowercase().as_str() {
+        "contain" | "fit" => Ok("contain".to_string()),
+        "cover" | "crop" => Ok("cover".to_string()),
+        "stretch" => Ok("stretch".to_string()),
+        other => Err(CliError::invalid_args(format!(
+            "invalid image fit {other:?} (must be 'cover', 'contain', or 'stretch')"
+        ))),
+    }
+}
+
+fn apply_image_slot_assignments(
+    file: &str,
+    slide_part: &str,
+    slide_xml: &mut String,
+    slide_rels_xml: &mut String,
+    content_types_xml: &mut String,
+    binary_overrides: &mut BTreeMap<String, Vec<u8>>,
+    assignments: &[ImageSlotAssignment],
+    image_fit: &str,
+) -> CliResult<()> {
+    for assignment in assignments {
+        let targets = text_shape_targets(slide_xml)?
+            .into_iter()
+            .filter(|shape| image_slot_matches(shape, &assignment.target))
+            .collect::<Vec<_>>();
+        let target = match targets.as_slice() {
+            [target] => target.clone(),
+            [] => {
+                return Err(CliError::target_not_found(format!(
+                    "target not found: {}",
+                    assignment.target
+                )));
+            }
+            _ => {
+                return Err(CliError::target_not_found(format!(
+                    "ambiguous target: {}",
+                    assignment.target
+                )));
+            }
+        };
+        let payload = load_image_slot_payload(file, target.shape_id, &assignment.image_path)?;
+        let rels = relationship_entries_from_xml(slide_rels_xml);
+        let relationship_id = allocate_relationship_id(&rels);
+        let rel_target = relationship_target_from_source_to_target(
+            &format!("/{slide_part}"),
+            &payload.image_part,
+        );
+        *slide_rels_xml = add_relationship_to_xml(
+            slide_rels_xml.clone(),
+            &relationship_id,
+            IMAGE_REL_TYPE,
+            &rel_target,
+        );
+        *content_types_xml = ensure_content_type_override(
+            std::mem::take(content_types_xml),
+            &payload.image_part,
+            &payload.content_type,
+        );
+        let picture_xml = image_slot_picture_xml(&target, &relationship_id, image_fit)?;
+        *slide_xml = replace_xml_span(slide_xml, target.span.start, target.span.end, &picture_xml);
+        binary_overrides.insert(
+            payload.image_part.trim_start_matches('/').to_string(),
+            payload.data,
+        );
+    }
+    Ok(())
+}
+
+fn image_slot_matches(shape: &TextShapeTarget, target: &str) -> bool {
+    if placeholder_role(&shape.placeholder_type) != "pic" {
+        return false;
+    }
+    text_shape_matches(shape, target)
+}
+
+fn load_image_slot_payload(
+    file: &str,
+    shape_id: u32,
+    image_path: &str,
+) -> CliResult<ImageSlotPayload> {
+    let data = fs::read(image_path)
+        .map_err(|err| CliError::unexpected(format!("failed to read image file: {err}")))?;
+    let content_type = image_content_type_from_path(image_path)?;
+    validate_image_payload(&content_type, &data)?;
+    let extension = image_extension_for_content_type(&content_type)?;
+    let image_part = allocate_image_part(file, shape_id, extension)?;
+    Ok(ImageSlotPayload {
+        image_part,
+        content_type,
+        data,
+    })
+}
+
+fn image_slot_picture_xml(
+    target: &TextShapeTarget,
+    rel_id: &str,
+    image_fit: &str,
+) -> CliResult<String> {
+    let bounds = target
+        .bounds
+        .ok_or_else(|| CliError::unexpected("picture placeholder bounds not found"))?;
+    let shape_name = if target.shape_name.is_empty() {
+        format!("Picture {}", target.shape_id)
+    } else {
+        target.shape_name.clone()
+    };
+    let fit_xml = if image_fit == "cover" {
+        r#"<a:tile tx="0" ty="0" sx="100000" sy="100000" flip="none" algn="ctr"/>"#
+    } else {
+        "<a:stretch><a:fillRect/></a:stretch>"
+    };
+    Ok(format!(
+        r#"<p:pic><p:nvPicPr><p:cNvPr id="{}" name="{}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="{}"/>{fit_xml}</p:blipFill><p:spPr><a:xfrm><a:off x="{}" y="{}"/><a:ext cx="{}" cy="{}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"#,
+        target.shape_id,
+        xml_attr_escape(&shape_name),
+        xml_attr_escape(rel_id),
+        bounds.x,
+        bounds.y,
+        bounds.cx,
+        bounds.cy
+    ))
+}
+
+fn image_content_type_from_path(path: &str) -> CliResult<String> {
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "png" => Ok("image/png".to_string()),
+        "jpg" | "jpeg" => Ok("image/jpeg".to_string()),
+        "gif" => Ok("image/gif".to_string()),
+        "bmp" => Ok("image/bmp".to_string()),
+        "tif" | "tiff" => Ok("image/tiff".to_string()),
+        _ => Err(CliError::invalid_args(format!(
+            "unsupported image content type for {path:?}"
+        ))),
+    }
+}
+
+fn image_extension_for_content_type(content_type: &str) -> CliResult<&'static str> {
+    match content_type {
+        "image/png" => Ok(".png"),
+        "image/jpeg" => Ok(".jpeg"),
+        "image/gif" => Ok(".gif"),
+        "image/bmp" => Ok(".bmp"),
+        "image/tiff" => Ok(".tiff"),
+        _ => Err(CliError::invalid_args(format!(
+            "unsupported image content type {content_type:?}"
+        ))),
+    }
+}
+
+fn validate_image_payload(content_type: &str, data: &[u8]) -> CliResult<()> {
+    let ok = match content_type {
+        "image/png" => data.starts_with(b"\x89PNG\r\n\x1a\n"),
+        "image/jpeg" => data.starts_with(&[0xff, 0xd8, 0xff]),
+        "image/gif" => data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a"),
+        _ => true,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(CliError::invalid_args(format!(
+            "image payload does not match content type {content_type}"
+        )))
+    }
+}
+
+fn allocate_image_part(file: &str, shape_id: u32, extension: &str) -> CliResult<String> {
+    let entries = zip_entry_names(file)?;
+    let base = format!("/ppt/media/image{shape_id}");
+    let mut candidate = format!("{base}{extension}");
+    let mut counter = 1_u32;
+    while entries
+        .iter()
+        .any(|entry| format!("/{}", entry.trim_start_matches('/')) == candidate)
+    {
+        candidate = format!("{base}_{counter}{extension}");
+        counter += 1;
+    }
+    Ok(candidate)
 }
 
 fn reset_slide_text_bodies(xml: &str) -> CliResult<String> {
@@ -1468,6 +1781,7 @@ fn text_shape_targets(xml: &str) -> CliResult<Vec<TextShapeTarget>> {
             shape_name: String::new(),
             placeholder_type: String::new(),
             placeholder_index: None,
+            bounds: None,
         };
         let mut reader = Reader::from_str(fragment);
         reader.config_mut().trim_text(true);
@@ -1487,6 +1801,40 @@ fn text_shape_targets(xml: &str) -> CliResult<Vec<TextShapeTarget>> {
                 {
                     target.placeholder_type = attr(&e, "type").unwrap_or_default();
                     target.placeholder_index = attr(&e, "idx").and_then(|value| value.parse().ok());
+                }
+                Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                    if local_name(e.name().as_ref()) == "off" =>
+                {
+                    let mut bounds = target.bounds.unwrap_or(ShapeBounds {
+                        x: 0,
+                        y: 0,
+                        cx: 0,
+                        cy: 0,
+                    });
+                    bounds.x = attr(&e, "x")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(bounds.x);
+                    bounds.y = attr(&e, "y")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(bounds.y);
+                    target.bounds = Some(bounds);
+                }
+                Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                    if local_name(e.name().as_ref()) == "ext" =>
+                {
+                    let mut bounds = target.bounds.unwrap_or(ShapeBounds {
+                        x: 0,
+                        y: 0,
+                        cx: 0,
+                        cy: 0,
+                    });
+                    bounds.cx = attr(&e, "cx")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(bounds.cx);
+                    bounds.cy = attr(&e, "cy")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(bounds.cy);
+                    target.bounds = Some(bounds);
                 }
                 Ok(Event::Eof) => break,
                 Err(err) => return Err(CliError::unexpected(err.to_string())),

@@ -5094,6 +5094,60 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
         rust_readback["shapes"][0]["textPreview"], "RustTitle",
         "new slide title text readback"
     );
+
+    let image_slot_fixture = "testdata/pptx/picture-placeholder/presentation.pptx";
+    let go_image_slot = temp_dir.join("go-new-slide-image-slot.pptx");
+    let rust_image_slot = temp_dir.join("rust-new-slide-image-slot.pptx");
+    let go_image_slot_str = go_image_slot.to_str().expect("go image slot path");
+    let rust_image_slot_str = rust_image_slot.to_str().expect("rust image slot path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "new-slide-from-layout",
+        image_slot_fixture,
+        "--layout",
+        "9",
+        "--set-image-slot",
+        "pic:1=testdata/pptx/template-branded/test-image.png",
+        "--image-fit",
+        "cover",
+        "--out",
+        go_image_slot_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "new-slide-from-layout",
+        image_slot_fixture,
+        "--layout",
+        "9",
+        "--set-image-slot",
+        "pic:1=testdata/pptx/template-branded/test-image.png",
+        "--image-fit",
+        "cover",
+        "--out",
+        rust_image_slot_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "new-slide image-slot exit");
+    assert_eq!(rust_stderr, go_stderr, "new-slide image-slot stderr");
+    let rust_json = rust_stdout.expect("rust new-slide image-slot stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_image_slot_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go new-slide image-slot stdout"),
+            go_image_slot_str,
+            "[OUT]"
+        ),
+        "new-slide image-slot stdout"
+    );
+    assert_eq!(
+        rust_json["destination"]["images"], 1,
+        "new slide image-slot readback image count"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 }
 
 #[test]
