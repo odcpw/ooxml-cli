@@ -12,6 +12,7 @@ use crate::docx_fields::*;
 use crate::docx_headers::*;
 use crate::docx_images::*;
 use crate::docx_mutation_core::*;
+use crate::docx_replace::*;
 use crate::docx_styles::*;
 use comments::dispatch_docx_comments;
 use paragraphs::dispatch_docx_paragraphs;
@@ -549,6 +550,59 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
                     dry_run: has_flag(rest, "--dry-run"),
                     in_place: has_flag(rest, "--in-place"),
                     no_validate: has_flag(rest, "--no-validate"),
+                },
+            )
+        }
+        [cmd, verb, file, rest @ ..] if cmd == "docx" && verb == "replace" => {
+            reject_unknown_flags(
+                rest,
+                &["--find", "--replace", "--expect-count", "--out", "--backup"],
+                &[
+                    "--regex",
+                    "--match-case",
+                    "--whole-word",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
+            )?;
+            let find = parse_string_flag(rest, "--find")?.unwrap_or_default();
+            if !value_flag_present(rest, "--find") || find.is_empty() {
+                return Err(CliError::invalid_args(
+                    "--find is required and cannot be empty",
+                ));
+            }
+            let replace = parse_string_flag(rest, "--replace")?.unwrap_or_default();
+            let expect_count = if value_flag_present(rest, "--expect-count") {
+                let value = parse_i64_flag(rest, "--expect-count")?.unwrap_or(0);
+                if value < 0 {
+                    return Err(CliError::invalid_args("--expect-count must be >= 0"));
+                }
+                Some(value as usize)
+            } else {
+                None
+            };
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            docx_replace(
+                file,
+                DocxReplaceOptions {
+                    find: &find,
+                    replace: &replace,
+                    regex: has_flag(rest, "--regex"),
+                    match_case: has_flag(rest, "--match-case"),
+                    whole_word: has_flag(rest, "--whole-word"),
+                    expect_count,
+                    mutation: DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: out.as_deref(),
+                        backup: backup.as_deref(),
+                        dry_run: has_flag(rest, "--dry-run"),
+                        in_place: has_flag(rest, "--in-place"),
+                        no_validate: has_flag(rest, "--no-validate"),
+                    },
                 },
             )
         }

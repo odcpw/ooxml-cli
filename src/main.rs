@@ -14,6 +14,7 @@ mod docx_headers;
 mod docx_images;
 mod docx_mutation_core;
 mod docx_paragraph_commands;
+mod docx_replace;
 mod docx_styles;
 mod docx_tables;
 mod docx_xml;

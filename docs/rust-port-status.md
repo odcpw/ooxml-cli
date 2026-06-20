@@ -9,6 +9,15 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust DOCX replace parity landed for direct `docx replace`. The slice performs
+  Go-shaped body find/replace over top-level paragraphs and table-cell
+  paragraphs, including split-run matches, literal/regex modes, match-case,
+  whole-word matching, `--expect-count`, dry-run, saved-output readback, and
+  validation behavior. Rust capabilities now advertise 190 Go-oracle command
+  paths, leaving a pinned 100-command gap; the DOCX parent/group paths remain
+  intentionally unadvertised because they are command groups rather than tested
+  Rust leaves. Proof: focused Go-vs-Rust DOCX replace tests, strict validation
+  for generated DOCX output, and focused capability ratchet tests.
 - Rust XLSX pivot/table formatting parity landed for direct
   `xlsx pivots list`, `xlsx pivots show`, `xlsx pivots create`, and
   `xlsx tables set-column-format`. The slice reads pivot-table metadata,
@@ -1419,7 +1428,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 171, and the harness pins the 119-command gap until
+  paths, Rust advertises 190, and the harness pins the 100-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

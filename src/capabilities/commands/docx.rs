@@ -4,6 +4,7 @@ mod fields;
 mod headers_footers;
 mod images;
 mod paragraphs;
+mod replace;
 mod styles;
 mod tables;
 
@@ -18,6 +19,7 @@ pub(super) fn commands() -> Vec<Value> {
     commands.extend(fields::commands());
     commands.extend(headers_footers::commands());
     commands.extend(images::commands());
+    commands.extend(replace::commands());
     commands.extend(tables::commands());
     commands
 }

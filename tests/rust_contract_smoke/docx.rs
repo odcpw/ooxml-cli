@@ -307,6 +307,172 @@ fn docx_blocks_match_go_oracle() {
 }
 
 #[test]
+fn docx_replace_matches_go_oracle() {
+    let cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "docx",
+            "replace",
+            "testdata/docx/split-runs/document.docx",
+            "--find",
+            "hello",
+            "--replace",
+            "hi",
+            "--expect-count",
+            "2",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "replace",
+            "testdata/docx/table/document.docx",
+            "--find",
+            "A",
+            "--replace",
+            "X",
+            "--match-case",
+            "--expect-count",
+            "2",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "replace",
+            "testdata/docx/minimal/document.docx",
+            "--find",
+            "ello",
+            "--replace",
+            "x",
+            "--whole-word",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "replace",
+            "testdata/docx/minimal/document.docx",
+            "--find",
+            r"w\w+d",
+            "--replace",
+            "planet",
+            "--regex",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "replace",
+            "testdata/docx/styled-headings/document.docx",
+            "--find",
+            "text",
+            "--replace",
+            "copy",
+            "--expect-count",
+            "5",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "replace",
+            "testdata/docx/minimal/document.docx",
+            "--find",
+            "(",
+            "--replace",
+            "x",
+            "--regex",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "docx",
+            "replace",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--find",
+            "x",
+            "--replace",
+            "y",
+            "--dry-run",
+        ],
+    ];
+
+    for args in cases {
+        assert_go_rust_match(&args);
+    }
+}
+
+#[test]
+fn docx_replace_saved_output_readback_and_validate_match_go_oracle() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-docx-replace-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx replace temp dir");
+
+    let go_out = temp_dir.join("go-replace.docx");
+    let rust_out = temp_dir.join("rust-replace.docx");
+    let go_out = go_out.to_string_lossy().to_string();
+    let rust_out = rust_out.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json",
+        "docx",
+        "replace",
+        "testdata/docx/split-runs/document.docx",
+        "--find",
+        "hello",
+        "--replace",
+        "hi",
+        "--expect-count",
+        "2",
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "docx",
+        "replace",
+        "testdata/docx/split-runs/document.docx",
+        "--find",
+        "hello",
+        "--replace",
+        "hi",
+        "--expect-count",
+        "2",
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "docx replace saved exit");
+    assert_eq!(rust_stderr, go_stderr, "docx replace saved stderr");
+    assert_eq!(rust_stdout, go_stdout, "docx replace saved stdout");
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_out]);
+    assert_eq!(validate_code, 0, "docx replace strict validate exit");
+    assert_eq!(validate_stderr, None, "docx replace strict validate stderr");
+
+    let (go_read_code, go_read_stdout, go_read_stderr) =
+        run_go_ooxml(&["--json", "docx", "text", &go_out]);
+    let (rust_read_code, rust_read_stdout, rust_read_stderr) =
+        run_ooxml(&["--json", "docx", "text", &rust_out]);
+    assert_eq!(rust_read_code, go_read_code, "docx replace readback exit");
+    assert_eq!(
+        rust_read_stderr, go_read_stderr,
+        "docx replace readback stderr"
+    );
+    assert_eq!(
+        scrub_file_fields(rust_read_stdout.expect("Rust replace readback")),
+        scrub_file_fields(go_read_stdout.expect("Go replace readback")),
+        "docx replace readback stdout"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_tables_show_matches_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
