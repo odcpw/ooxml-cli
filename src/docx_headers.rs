@@ -1,10 +1,12 @@
 mod paragraphs;
 mod parts;
+mod read;
 mod sections;
 mod selectors;
-use paragraphs::docx_header_footer_paragraphs;
 pub(crate) use parts::docx_header_footer_part_uris;
-use sections::{docx_header_footer_sections, normalize_docx_header_footer_type};
+use read::docx_header_footer_listing;
+pub(crate) use read::{docx_headers_footers_list, docx_headers_footers_show};
+use sections::normalize_docx_header_footer_type;
 pub(crate) use selectors::normalize_docx_header_footer_show_type;
 use selectors::{
     DocxHeaderFooterRefInfo, DocxHeaderFooterSelector,
@@ -20,140 +22,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use crate::{
-    CliError, CliResult, DOCX_W_NS, DocxParagraphMutationOptions, InspectPackageKind,
-    RelationshipEntry, XmlNamedRange, add_relationship_to_xml, allocate_relationship_id,
-    append_docx_text_children, attr, command_arg, detect_inspect_package_type,
-    docx_body_content_bounds, docx_body_prefix, docx_body_tag,
+    CliError, CliResult, DOCX_W_NS, DocxParagraphMutationOptions, RelationshipEntry, XmlNamedRange,
+    add_relationship_to_xml, allocate_relationship_id, append_docx_text_children, attr,
+    command_arg, docx_body_content_bounds, docx_body_prefix, docx_body_tag,
     docx_mutation_output_path_for_result, docx_paragraph_fragment_text, element_in_ns,
     ensure_content_type_override, ensure_docx_package_kind, ensure_docx_word_prefix,
-    find_docx_document_part, first_direct_xml_child_by_kind, has_flag, json_i64,
-    json_optional_string, local_name, package_type, parse_i64_flag, parse_string_flag,
-    reject_unknown_flags, relationship_entries, relationship_target_from_source_to_target,
+    find_docx_document_part, first_direct_xml_child_by_kind, json_i64, json_optional_string,
+    local_name, relationship_entries, relationship_target_from_source_to_target,
     relationships_part_for, resolve_relationship_target, validate_xlsx_mutation_output_flags,
     word_xml_tag, write_docx_package_mutation_output, xml_attr_escape, xml_direct_child_ranges,
     xml_fragment_bounds, xml_open_tag_from_start, xml_tag_prefix, zip_entry_names, zip_text,
 };
-
-pub(crate) fn docx_headers_footers_list(file: &str) -> CliResult<Value> {
-    let (document_uri, sections) = docx_header_footer_listing(file)?;
-    Ok(json!({
-        "file": file,
-        "documentPartUri": document_uri,
-        "sections": sections,
-    }))
-}
-
-fn docx_header_footer_listing(file: &str) -> CliResult<(String, Vec<Value>)> {
-    let entries = zip_entry_names(file)?;
-    let package_kind = detect_inspect_package_type(file, &entries);
-    if package_kind != InspectPackageKind::Docx {
-        let detected = match package_kind {
-            InspectPackageKind::Pptx => "pptx",
-            InspectPackageKind::Xlsx => "xlsx",
-            InspectPackageKind::Docx => "docx",
-            InspectPackageKind::Unknown => package_type(file)?,
-        };
-        return Err(CliError::unsupported_type(format!(
-            "file is not a DOCX document (detected: {detected})"
-        )));
-    }
-
-    let document_part = find_docx_document_part(file, &entries)?;
-    let document_uri = format!("/{}", document_part.trim_start_matches('/'));
-    let xml = zip_text(file, &document_part).map_err(|err| {
-        CliError::unexpected(format!(
-            "failed to list headers/footers: failed to read document part {document_uri}: {}",
-            err.message
-        ))
-    })?;
-    let rel_targets = relationship_entries(file, &relationships_part_for(&document_part))
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|rel| rel.target_mode != "External")
-        .map(|rel| {
-            (
-                rel.id,
-                resolve_relationship_target(&document_uri, &rel.target),
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    let sections = docx_header_footer_sections(file, &xml, &rel_targets)?;
-    Ok((document_uri, sections))
-}
-
-pub(crate) fn docx_headers_footers_show(
-    file: &str,
-    kind: &str,
-    rest: &[String],
-) -> CliResult<Value> {
-    reject_unknown_flags(rest, &["--id", "--type", "--section", "--selector"], &[])?;
-    let id = parse_string_flag(rest, "--id")?.unwrap_or_default();
-    let ref_type = parse_string_flag(rest, "--type")?.unwrap_or_else(|| "default".to_string());
-    let ref_type = normalize_docx_header_footer_show_type(&ref_type)?;
-    let section = parse_i64_flag(rest, "--section")?.unwrap_or(0);
-    if section < 0 {
-        return Err(CliError::invalid_args(
-            "--section must be >= 0 (0 means the last section)",
-        ));
-    }
-    let selector = parse_string_flag(rest, "--selector")?;
-    if selector.is_some()
-        && (has_flag(rest, "--id") || has_flag(rest, "--type") || has_flag(rest, "--section"))
-    {
-        return Err(CliError::invalid_args(
-            "cannot specify --selector with --id, --type, or --section",
-        ));
-    }
-
-    let (_document_uri, sections) = docx_header_footer_listing(file)?;
-    let target = if let Some(selector) = selector {
-        let parsed = parse_docx_header_footer_selector(kind, &selector)?;
-        resolve_docx_header_footer_selector(&sections, kind, &parsed)
-    } else if !id.is_empty() {
-        resolve_docx_header_footer_selector(
-            &sections,
-            kind,
-            &DocxHeaderFooterSelector {
-                kind: kind.to_string(),
-                id,
-                ref_type,
-                section,
-                ..DocxHeaderFooterSelector::default()
-            },
-        )
-    } else {
-        resolve_docx_header_footer_selector(
-            &sections,
-            kind,
-            &DocxHeaderFooterSelector {
-                kind: kind.to_string(),
-                ref_type,
-                section,
-                ..DocxHeaderFooterSelector::default()
-            },
-        )
-    }
-    .ok_or_else(|| CliError::target_not_found(format!("target not found: {kind}")))?;
-
-    if target.part_uri.is_empty() {
-        return Err(CliError::invalid_args(format!(
-            "{kind} reference {:?} does not resolve to a part",
-            target.id
-        )));
-    }
-    let paragraphs = docx_header_footer_paragraphs(file, &target)?;
-    Ok(json!({
-        "file": file,
-        "kind": target.kind,
-        "partUri": target.part_uri,
-        "id": target.id,
-        "type": target.ref_type,
-        "section": target.section,
-        "primarySelector": target.primary_selector,
-        "selectors": target.selectors,
-        "paragraphs": paragraphs,
-    }))
-}
 
 pub(crate) fn docx_header_footer_kind(group: &str) -> &'static str {
     if group == "footers" {

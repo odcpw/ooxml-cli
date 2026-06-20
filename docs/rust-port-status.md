@@ -284,6 +284,10 @@ Latest milestone, 2026-06-20:
   rendering moved from `src/docx_headers.rs` into
   `src/docx_headers/sections.rs`, keeping mutation orchestration in the facade
   and preserving header/footer list/show/serve contract coverage.
+- DOCX header/footer list/show command handling, package/type guards,
+  relationship target collection, selector resolution, and paragraph readback
+  wiring moved from `src/docx_headers.rs` into `src/docx_headers/read.rs`,
+  leaving set-text mutation orchestration in the header/footer facade.
 - DOCX table show/set-cell/clear-cell commands, table summary rendering,
   table-cell XML rewrites, and table readback command generation moved from
   `src/main.rs` into `src/docx_tables.rs`.
