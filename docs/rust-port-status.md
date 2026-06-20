@@ -9,6 +9,20 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX extract parity expanded for the remaining useful read/export leaves
+  `pptx extract images` and `pptx extract xml`. The slice writes Go-shaped image
+  extraction manifests and image artifacts, preserves the Go oracle's no-image
+  `images: null` shape, writes raw slide/layout/master XML extraction
+  directories with summary files, mirrors selector flags and representative
+  error envelopes, and keeps both commands as direct CLI exports rather than
+  serve/MCP inspect operations. Rust capabilities now advertise 128 Go-oracle
+  command paths, leaving a pinned 162-command gap. Proof: focused Go-vs-Rust
+  contract tests compare JSON and output artifacts for images/XML plus error
+  parity, focused capability ratchet/discovery tests, `cargo fmt --check`,
+  `cargo check --all-targets`, `cargo clippy --all-targets -- -D warnings`,
+  and `cargo test --all-targets` passed with 4 ZIP guard unit tests plus 128
+  Rust contract tests. No Office COM proof is required because this slice only
+  reads/export package parts without mutating Office files.
 - Rust XLSX hyperlinks parity landed for direct `xlsx hyperlinks list`,
   `xlsx hyperlinks show`, `xlsx hyperlinks add`,
   `xlsx hyperlinks update`, and `xlsx hyperlinks delete` with the Go aliases
@@ -1148,6 +1162,13 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   slide-filtered, empty-note, notes-body, out-of-range, and
   unsupported-package cases, plus serve `inspect` routing through the session
   path
+- `--json pptx extract images <pptx>` with Go-oracle comparison for image file
+  export manifests, duplicate output filename behavior, no-image `null`
+  manifests, output artifact byte checks, layout-image flag acceptance, and
+  representative invalid-slide errors
+- `--json pptx extract xml <pptx>` with Go-oracle comparison for slide, layout,
+  and master selectors, raw XML/summary output artifact byte checks, required
+  `--out` handling, and representative selector range errors
 - `--json xlsx cells extract <xlsx>` with Go-oracle comparison for default
   sparse extraction, dense `--include-empty` ranges, formulas, booleans, inline
   strings, and date-style cell metadata

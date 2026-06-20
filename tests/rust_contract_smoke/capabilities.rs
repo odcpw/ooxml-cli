@@ -14,6 +14,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml mcp", false);
     assert_command(&all_caps, "ooxml pptx extract text", false);
     assert_command(&all_caps, "ooxml pptx extract notes", false);
+    assert_command(&all_caps, "ooxml pptx extract images", false);
+    assert_command(&all_caps, "ooxml pptx extract xml", false);
     assert_command(&all_caps, "ooxml pptx notes show", false);
     assert_command(&all_caps, "ooxml pptx notes set", true);
     assert_command(&all_caps, "ooxml pptx notes clear", true);
@@ -106,6 +108,12 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command_target_kind(&all_caps, "ooxml pptx notes set", "slide");
     assert_object_kind_command(&all_caps, "slide", "ooxml pptx notes clear");
     assert_command_target_kind(&all_caps, "ooxml pptx notes clear", "slide");
+    assert_object_kind_command(&all_caps, "image", "ooxml pptx extract images");
+    assert_command_target_kind(&all_caps, "ooxml pptx extract images", "image");
+    assert_command_target_kind(&all_caps, "ooxml pptx extract images", "slide");
+    assert_object_kind_command(&all_caps, "slide", "ooxml pptx extract xml");
+    assert_object_kind_command(&all_caps, "layout", "ooxml pptx extract xml");
+    assert_object_kind_command(&all_caps, "master", "ooxml pptx extract xml");
     assert_object_kind_command(&all_caps, "table", "ooxml docx styles apply");
     assert_object_kind_command(&all_caps, "table", "ooxml docx tables insert-row");
     assert_command_target_kind(&all_caps, "ooxml docx tables insert-row", "table");
@@ -335,6 +343,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx tables insert-row", true);
     assert_command(&pptx_caps, "ooxml pptx extract text", false);
     assert_command(&pptx_caps, "ooxml pptx extract notes", false);
+    assert_command(&pptx_caps, "ooxml pptx extract images", false);
+    assert_command(&pptx_caps, "ooxml pptx extract xml", false);
     assert_command(&pptx_caps, "ooxml pptx notes show", false);
     assert_command(&pptx_caps, "ooxml pptx notes set", true);
     assert_command(&pptx_caps, "ooxml pptx notes clear", true);
@@ -550,6 +560,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let layout_caps = layout_stdout.expect("layout capabilities");
     assert_command(&layout_caps, "ooxml pptx layouts list", false);
     assert_command(&layout_caps, "ooxml pptx layouts show", false);
+    assert_command(&layout_caps, "ooxml pptx extract xml", false);
     assert_no_command(&layout_caps, "ooxml pptx tables show");
 
     let (master_code, master_stdout, master_stderr) =
@@ -559,6 +570,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let master_caps = master_stdout.expect("master capabilities");
     assert_command(&master_caps, "ooxml pptx masters list", false);
     assert_command(&master_caps, "ooxml pptx masters show", false);
+    assert_command(&master_caps, "ooxml pptx extract xml", false);
     assert_no_command(&master_caps, "ooxml pptx layouts show");
 
     let (placeholder_code, placeholder_stdout, placeholder_stderr) =
@@ -647,6 +659,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(image_code, 0);
     assert_eq!(image_stderr, None);
     let image_caps = image_stdout.expect("image capabilities");
+    assert_command(&image_caps, "ooxml pptx extract images", false);
     assert_command(&image_caps, "ooxml docx images list", false);
     assert_command(&image_caps, "ooxml docx images replace", false);
     assert_command(&image_caps, "ooxml docx images insert", false);
@@ -739,12 +752,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        126,
+        128,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        164,
+        162,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

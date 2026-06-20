@@ -1,4 +1,5 @@
 mod comments;
+mod extract;
 mod layouts;
 mod notes;
 mod shape_model;
@@ -7,6 +8,7 @@ mod tables;
 mod text;
 
 pub(crate) use comments::pptx_comments_list;
+pub(crate) use extract::{pptx_extract_images, pptx_extract_xml};
 pub(crate) use layouts::{
     pptx_layouts_list, pptx_layouts_show, pptx_masters_list, pptx_masters_show,
 };

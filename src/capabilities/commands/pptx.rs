@@ -327,6 +327,63 @@ pub(super) fn commands() -> Vec<Value> {
             )],
         ),
         capability_command(
+            "ooxml pptx extract images",
+            "images <file>",
+            "Extract slide image files and emit an extraction manifest.",
+            &["image", "slide"],
+            false,
+            Some("direct CLI export; writes image files to an output directory"),
+            vec![
+                flag(
+                    "--out",
+                    "out",
+                    "string",
+                    "output directory for extracted images; defaults to current directory",
+                ),
+                flag(
+                    "--slide",
+                    "slide",
+                    "int",
+                    "1-based slide number to extract; default all slides",
+                ),
+                flag(
+                    "--include-layout-images",
+                    "includeLayoutImages",
+                    "bool",
+                    "include image references from slide layouts",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml pptx extract xml",
+            "xml <file>",
+            "Extract raw slide, layout, and master XML files for debugging.",
+            &["slide", "layout", "master"],
+            false,
+            Some("direct CLI export; writes raw XML files to an output directory"),
+            vec![
+                flag(
+                    "--slide",
+                    "slide",
+                    "int",
+                    "1-based slide number to extract; repeatable",
+                ),
+                flag(
+                    "--layout",
+                    "layout",
+                    "int",
+                    "1-based layout number to extract; repeatable",
+                ),
+                flag(
+                    "--master",
+                    "master",
+                    "int",
+                    "1-based master number to extract; repeatable",
+                ),
+                flag("--out", "out", "string", "required output directory"),
+            ],
+        ),
+        capability_command(
             "ooxml pptx notes show",
             "show <file> --slide <n>",
             "Show speaker notes for one slide.",

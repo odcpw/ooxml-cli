@@ -137,6 +137,18 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
             pptx_extract_notes(file, rest)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "extract" && verb == "images" =>
+        {
+            reject_unknown_flags(rest, &["--out", "--slide"], &["--include-layout-images"])?;
+            pptx_extract_images(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "extract" && verb == "xml" =>
+        {
+            reject_unknown_flags(rest, &["--slide", "--layout", "--master", "--out"], &[])?;
+            pptx_extract_xml(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "notes" && verb == "show" =>
         {
             reject_unknown_flags(rest, &["--slide"], &[])?;

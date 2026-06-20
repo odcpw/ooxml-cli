@@ -2,6 +2,63 @@
 // baseline and process helpers remain in the parent integration test crate.
 use super::*;
 
+fn assert_export_dirs_match(go_dir: &std::path::Path, rust_dir: &std::path::Path) {
+    let go_files = sorted_export_files(go_dir);
+    let rust_files = sorted_export_files(rust_dir);
+    assert_eq!(rust_files, go_files, "exported file set");
+    for relative in go_files {
+        let go_bytes = std::fs::read(export_path(go_dir, &relative)).unwrap_or_else(|err| {
+            panic!("read Go exported artifact {relative}: {err}");
+        });
+        let rust_bytes = std::fs::read(export_path(rust_dir, &relative)).unwrap_or_else(|err| {
+            panic!("read Rust exported artifact {relative}: {err}");
+        });
+        assert_eq!(
+            rust_bytes, go_bytes,
+            "exported artifact bytes for {relative}"
+        );
+    }
+}
+
+fn export_path(root: &std::path::Path, relative: &str) -> std::path::PathBuf {
+    let mut path = root.to_path_buf();
+    for part in relative.split('/') {
+        path.push(part);
+    }
+    path
+}
+
+fn sorted_export_files(root: &std::path::Path) -> Vec<String> {
+    let mut files = Vec::new();
+    collect_export_files(root, root, &mut files);
+    files.sort();
+    files
+}
+
+fn collect_export_files(
+    root: &std::path::Path,
+    current: &std::path::Path,
+    files: &mut Vec<String>,
+) {
+    for entry in std::fs::read_dir(current).unwrap_or_else(|err| {
+        panic!("read export dir {}: {err}", current.display());
+    }) {
+        let path = entry.expect("export dir entry").path();
+        if path.is_dir() {
+            collect_export_files(root, &path, files);
+        } else {
+            let relative = path.strip_prefix(root).expect("relative export path");
+            files.push(
+                relative
+                    .components()
+                    .map(|part| part.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/"),
+            );
+        }
+    }
+}
+
 #[test]
 fn frozen_pptx_mutation_and_validate_match_go_baseline() {
     let baseline = baseline();
@@ -102,6 +159,202 @@ fn frozen_pptx_mutation_and_validate_match_go_baseline() {
         ),
         verify_expected
     );
+}
+
+#[test]
+fn pptx_extract_images_artifacts_null_manifest_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-extract-images-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("extract images temp dir");
+
+    let fixture = "testdata/pptx/slide-assembly-notes-media/presentation.pptx";
+    let go_dir = temp_dir.join("go-images");
+    let rust_dir = temp_dir.join("rust-images");
+    let go_dir_str = go_dir.to_str().expect("go image dir");
+    let rust_dir_str = rust_dir.to_str().expect("rust image dir");
+    let go_args = [
+        "--json", "pptx", "extract", "images", fixture, "--out", go_dir_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "extract",
+        "images",
+        fixture,
+        "--out",
+        rust_dir_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "extract images exit");
+    assert_eq!(rust_stderr, go_stderr, "extract images stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust extract images stdout"),
+            rust_dir_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_stdout.expect("go extract images stdout"),
+            go_dir_str,
+            "[OUT]"
+        ),
+        "extract images stdout"
+    );
+    assert_export_dirs_match(&go_dir, &rust_dir);
+
+    let empty_fixture = "testdata/pptx/minimal-title/presentation.pptx";
+    let go_empty_dir = temp_dir.join("go-empty-images");
+    let rust_empty_dir = temp_dir.join("rust-empty-images");
+    let go_empty_dir_str = go_empty_dir.to_str().expect("go empty image dir");
+    let rust_empty_dir_str = rust_empty_dir.to_str().expect("rust empty image dir");
+    let go_empty_args = [
+        "--json",
+        "pptx",
+        "extract",
+        "images",
+        empty_fixture,
+        "--include-layout-images",
+        "--out",
+        go_empty_dir_str,
+    ];
+    let rust_empty_args = [
+        "--json",
+        "pptx",
+        "extract",
+        "images",
+        empty_fixture,
+        "--include-layout-images",
+        "--out",
+        rust_empty_dir_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_empty_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_empty_args);
+    assert_eq!(rust_code, go_code, "extract images empty exit");
+    assert_eq!(rust_stderr, go_stderr, "extract images empty stderr");
+    let rust_empty_json = rust_stdout.expect("rust empty images stdout");
+    assert_eq!(rust_empty_json["images"], Value::Null);
+    assert_eq!(
+        scrub_path(rust_empty_json, rust_empty_dir_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go empty images stdout"),
+            go_empty_dir_str,
+            "[OUT]"
+        ),
+        "extract images empty stdout"
+    );
+    assert_export_dirs_match(&go_empty_dir, &rust_empty_dir);
+
+    let out_of_range = [
+        "--json",
+        "pptx",
+        "extract",
+        "images",
+        "testdata/pptx/minimal-title/presentation.pptx",
+        "--slide",
+        "99",
+        "--out",
+        go_empty_dir_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&out_of_range);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&out_of_range);
+    assert_eq!(rust_code, go_code, "extract images out-of-range exit");
+    assert_eq!(rust_stdout, go_stdout, "extract images out-of-range stdout");
+    assert_eq!(rust_stderr, go_stderr, "extract images out-of-range stderr");
+}
+
+#[test]
+fn pptx_extract_xml_artifacts_selectors_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-extract-xml-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("extract xml temp dir");
+
+    let fixture = "testdata/pptx/multi-layout/presentation.pptx";
+    let go_dir = temp_dir.join("go-xml");
+    let rust_dir = temp_dir.join("rust-xml");
+    let go_dir_str = go_dir.to_str().expect("go xml dir");
+    let rust_dir_str = rust_dir.to_str().expect("rust xml dir");
+    let go_args = [
+        "--json", "pptx", "extract", "xml", fixture, "--slide", "1", "--layout", "1", "--master",
+        "1", "--out", go_dir_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "extract",
+        "xml",
+        fixture,
+        "--slide",
+        "1",
+        "--layout",
+        "1",
+        "--master",
+        "1",
+        "--out",
+        rust_dir_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "extract xml exit");
+    assert_eq!(rust_stderr, go_stderr, "extract xml stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust extract xml stdout"),
+            rust_dir_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_stdout.expect("go extract xml stdout"),
+            go_dir_str,
+            "[OUT]"
+        ),
+        "extract xml stdout"
+    );
+    assert_export_dirs_match(&go_dir, &rust_dir);
+
+    let missing_out = [
+        "--json",
+        "pptx",
+        "extract",
+        "xml",
+        "testdata/pptx/minimal-title/presentation.pptx",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&missing_out);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&missing_out);
+    assert_eq!(rust_code, go_code, "extract xml missing out exit");
+    assert_eq!(rust_stdout, go_stdout, "extract xml missing out stdout");
+    assert_eq!(rust_stderr, go_stderr, "extract xml missing out stderr");
+
+    let bad_layout_dir = temp_dir.join("bad-layout");
+    let bad_layout_dir_str = bad_layout_dir.to_str().expect("bad layout dir");
+    let bad_layout = [
+        "--json",
+        "pptx",
+        "extract",
+        "xml",
+        "testdata/pptx/minimal-title/presentation.pptx",
+        "--layout",
+        "99",
+        "--out",
+        bad_layout_dir_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&bad_layout);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&bad_layout);
+    assert_eq!(rust_code, go_code, "extract xml bad layout exit");
+    assert_eq!(rust_stdout, go_stdout, "extract xml bad layout stdout");
+    assert_eq!(rust_stderr, go_stderr, "extract xml bad layout stderr");
 }
 
 #[test]
