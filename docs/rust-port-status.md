@@ -691,13 +691,20 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `serve` JSON-RPC op support for DOCX header/footer, field, paragraph, style,
   block, comment, and table mutations, proving the op-compatible DOCX mutation
   paths used by the web/agent session loop
+- Focused Rust-produced Office proof on 2026-06-20 generated representative
+  DOCX, XLSX, and PPTX outputs with `target\debug\ooxml.exe`; all three passed
+  Rust `validate --strict`, the .NET Open XML SDK validator
+  (`DocumentFormat.OpenXml` 3.5.1, Office2019 schema, zero errors), and desktop
+  Office COM open checks: Word 16.0 build 16.0.20026, Excel 16.0 build 20026,
+  and PowerPoint 16.0 build 20026 opened the files without failure.
 
 Still missing before parity can be claimed:
 
 - real render proof parity beyond the mocked frozen manifest path.
 - Full command-surface inventory parity.
 - Metamorphic and fuzz harnesses for OOXML package invariants.
-- Office/Open XML SDK/COM proof gates.
+- Broad release-grade Office/Open XML SDK/COM proof for the complete promoted
+  Rust surface, including macro/VBA gates once VBA commands are ported.
 
 Dependency note: live GitHub inspection of `https://github.com/Dicklesworthstone`
 found useful Rust infrastructure projects, but no direct OOXML/ZIP/XML package
