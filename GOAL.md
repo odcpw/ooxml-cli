@@ -50,9 +50,8 @@ history.
   - `ooxml conformance check` has a hidden Rust-native repair-invariant slice
     with local `--office-check` behavior, but remains unadvertised until the
     remaining Go full-report surface is ported. Current red-team blocker list:
-    `XLSX_WORKSHEET_HYPERLINK_REFERENCE`, `OOXML_RELS_READ_ERROR`,
-    `OOXML_OPEN_FAILED`, `OOXML_VALIDATE_FAILED`, and
-    `OOXML_REPAIR_INVARIANT_FAILED`.
+    `OOXML_RELS_READ_ERROR`, `OOXML_OPEN_FAILED`,
+    `OOXML_VALIDATE_FAILED`, and `OOXML_REPAIR_INVARIANT_FAILED`.
   - The hidden conformance invariant engine was split at `951a227` into focused
     Rust modules under `src/conformance_invariants/` for content types,
     relationships, spec tables, XML-part checks, shared types, and utilities.
@@ -72,7 +71,8 @@ history.
   - Table and pivot structural checks landed in Rust for table refs/counts,
     table columns, pivot table/cache fields, records, and index references.
   - Spreadsheet semantic checks landed in Rust for defined-name sheet/scope
-    references, calc-chain references, and worksheet cell style references.
+    references, calc-chain references, worksheet cell style references, and
+    worksheet hyperlink relationship references.
   - PPTX animation target checks landed in Rust for missing, invalid, negative,
     and missing-shape `spid` references.
   - Chart embedded-workbook open checks landed in Rust and were then split into

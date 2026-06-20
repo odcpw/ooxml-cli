@@ -21,11 +21,11 @@ Latest milestone, 2026-06-20:
   `cargo test --all-targets` with 4 unit tests plus 217 Rust contract tests.
   Capability promotion remains intentionally blocked: a read-only red-team
   audit found missing or divergent full-report behavior for
-  `XLSX_WORKSHEET_HYPERLINK_REFERENCE`, `OOXML_RELS_READ_ERROR`,
-  `OOXML_OPEN_FAILED`, `OOXML_VALIDATE_FAILED`, and
+  `OOXML_RELS_READ_ERROR`, `OOXML_OPEN_FAILED`, `OOXML_VALIDATE_FAILED`, and
   `OOXML_REPAIR_INVARIANT_FAILED`. Rust still advertises 289 Go-oracle command
   paths while Go advertises 290; the remaining unadvertised path is still
-  `ooxml conformance check`.
+  `ooxml conformance check`. The `XLSX_WORKSHEET_HYPERLINK_REFERENCE` blocker
+  has since been closed by a focused Go-vs-Rust worksheet hyperlink fixture.
 - Rust `conformance check` now includes the focused Go-oracle spreadsheet
   semantic-reference invariant slice. The checks live in
   `src/conformance_invariants/spreadsheet_semantics.rs` and cover workbook
