@@ -105,7 +105,12 @@ fn validate_diagnostics(file: &str) -> CliResult<Vec<Value>> {
         InspectPackageKind::Xlsx => {
             diagnostics.extend(validate_xlsx_required_parts(file, &entries, &entry_set)?);
         }
-        InspectPackageKind::Pptx | InspectPackageKind::Unknown => {}
+        InspectPackageKind::Pptx => {
+            diagnostics.extend(crate::validation_pptx::validate_pptx_semantics(
+                file, &entry_set,
+            )?);
+        }
+        InspectPackageKind::Unknown => {}
     }
 
     Ok(diagnostics)

@@ -48,6 +48,7 @@ mod selector_util;
 mod serve;
 mod template_workflow;
 mod validation;
+mod validation_pptx;
 mod vba;
 mod verify;
 mod xlsx_charts;
