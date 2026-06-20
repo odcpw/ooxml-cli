@@ -9,6 +9,18 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust agent-facing utility parity landed for read-only `doctor`, `find`,
+  `robot-docs`, shell `completion`, and static `conformance coverage` paths.
+  The slice adds JSON-or-text utility output support, real local doctor probes,
+  read-only semantic search over PPTX/XLSX/DOCX fixtures, Rust-filtered robot
+  docs that avoid Go-only commands, and Go-shaped conformance coverage data.
+  Rust capabilities now advertise 212 Go-oracle command paths, leaving a pinned
+  78-command gap. `find --to-ops`/`--apply`, `conformance check`, top-level
+  `completion`, top-level `conformance`, and `help` remain intentionally
+  unadvertised until the corresponding Go behavior can be ported without fake
+  aliases or mutation-output guesses. Proof: focused utility smoke tests,
+  Go-vs-Rust conformance coverage parity, focused capability ratchet/MCP
+  command-resource tests, and `cargo check`.
 - Rust PPTX chart authoring/data parity landed for direct
   `pptx charts create` and `pptx charts update-data`. The slice authors slide
   chart parts from inline matrices or XLSX ranges, wires slide/chart
@@ -1478,7 +1490,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 198, and the harness pins the 92-command gap until
+  paths, Rust advertises 212, and the harness pins the 78-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

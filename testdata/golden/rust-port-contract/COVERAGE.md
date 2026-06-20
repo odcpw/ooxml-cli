@@ -10,6 +10,7 @@
 | Serve | JSON-RPC open, op, inspect, validate, plan, commit, abort | `baseline.json` `serve.flow` |
 | MCP | initialize, tools, resources, command resource, session tools | `baseline.json` `mcp` |
 | Web smoke | smoke scripts route readback through `OOXML_BIN` | `baseline.json` `webSmoke` |
+| Agent utility commands | `doctor`, `find`, `robot-docs`, `completion`, and `conformance coverage` JSON/text contracts, capability advertisement, Go static coverage parity, and guide filtering for unported commands | `tests/rust_contract_smoke/utility.rs` |
 | Apply batch orchestration | Go-vs-Rust dry-run plan, real XLSX mutation/readback, session-owned arg rejection, and strict validation/readback of saved output | `tests/rust_contract_smoke/agent_surface.rs` `apply_*` |
 | PPTX placement | `pptx add-textbox`, `pptx place image`, `pptx place table`, and `pptx place table-from-xlsx` saved output, dry-run, readback, error envelopes, strict validation of table proof decks, and existing strict/Open XML SDK validation for earlier placement proof decks | `tests/rust_contract_smoke/pptx.rs` `pptx_add_textbox_*`, `pptx_place_image_*`, `pptx_place_table_*` |
 | PPTX layout and slide authoring | `pptx layouts clone`, `pptx masters add-placeholder`, `pptx clone-slide`, and `pptx new-slide-from-layout` saved output, dry-run, readback, error envelopes, and strict/Open XML SDK validation of proof decks | `tests/rust_contract_smoke/pptx.rs` `pptx_layout_*`, `pptx_slides_*`, `pptx_layout_slide_authoring_*` |

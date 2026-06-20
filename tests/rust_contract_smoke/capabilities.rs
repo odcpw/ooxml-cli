@@ -1227,12 +1227,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        198,
+        212,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        92,
+        78,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

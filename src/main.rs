@@ -1,4 +1,4 @@
-use serde_json::{Value, json};
+use serde_json::json;
 
 mod apply;
 mod capabilities;
@@ -6,6 +6,9 @@ mod cli_args;
 mod cli_core;
 mod cli_dispatch;
 mod command_text;
+mod completion;
+mod conformance;
+mod doctor;
 mod docx_block_commands;
 mod docx_block_readers;
 mod docx_comments;
@@ -18,6 +21,7 @@ mod docx_replace;
 mod docx_styles;
 mod docx_tables;
 mod docx_xml;
+mod find;
 mod inspect;
 mod json_util;
 mod mcp;
@@ -30,6 +34,7 @@ mod pptx_mutation;
 mod pptx_readback;
 mod pptx_render;
 mod pptx_template;
+mod robot_docs;
 mod runtime_util;
 mod selector_util;
 mod serve;
@@ -70,7 +75,7 @@ pub(crate) use cli_core::{
     EXIT_RENDER_FAILED, EXIT_SUCCESS, EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED,
     EXIT_UNSUPPORTED_TYPE, EXIT_VALIDATION_FAILED, GlobalFlags,
 };
-pub(crate) use cli_dispatch::{dispatch, require_docx_block_hash};
+pub(crate) use cli_dispatch::{DispatchBody, dispatch, require_docx_block_hash};
 pub(crate) use command_text::command_arg;
 pub(crate) use docx_block_commands::{
     docx_blocks_delete, docx_blocks_insert_after, docx_blocks_replace, docx_blocks_show, docx_text,
@@ -273,10 +278,20 @@ fn main() {
     }
     match run(&argv) {
         Ok(output) => {
-            println!(
-                "{}",
-                serde_json::to_string(&output.value).expect("serialize output")
-            );
+            match output.body {
+                DispatchBody::Json(value) => {
+                    println!(
+                        "{}",
+                        serde_json::to_string(&value).expect("serialize output")
+                    );
+                }
+                DispatchBody::Text(text) => {
+                    print!("{text}");
+                    if !text.ends_with('\n') {
+                        println!();
+                    }
+                }
+            }
             std::process::exit(output.exit_code);
         }
         Err(err) => {
@@ -294,13 +309,17 @@ fn main() {
 }
 
 struct RunOutput {
-    value: Value,
+    body: DispatchBody,
     exit_code: i32,
 }
 
 fn run(raw_args: &[String]) -> CliResult<RunOutput> {
     let (flags, args) = parse_global_flags(raw_args)?;
-    if !flags.json && !has_local_json_format(&args) && !is_validate_command(&args) {
+    if !flags.json
+        && !has_local_json_request(&args)
+        && !is_validate_command(&args)
+        && !is_text_utility_command(&args)
+    {
         return Err(CliError::invalid_args(
             "the Rust port currently supports the frozen --json contract slice only",
         ));
@@ -311,10 +330,13 @@ fn run(raw_args: &[String]) -> CliResult<RunOutput> {
         let (file, strict) = parse_validate_args(rest, flags.strict)?;
         let value = validate(file, strict)?;
         let exit_code = validate_exit_code(&value, strict);
-        return Ok(RunOutput { value, exit_code });
+        return Ok(RunOutput {
+            body: DispatchBody::Json(value),
+            exit_code,
+        });
     }
     dispatch(&flags, &args).map(|output| RunOutput {
-        value: output.value,
+        body: output.body,
         exit_code: output.exit_code,
     })
 }
@@ -354,11 +376,27 @@ fn parse_global_flags(raw_args: &[String]) -> CliResult<(GlobalFlags, Vec<String
     Ok((flags, args))
 }
 
-fn has_local_json_format(args: &[String]) -> bool {
-    args.windows(2)
-        .any(|pair| pair[0] == "--format" && pair[1] == "json")
+fn has_local_json_request(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "--json")
+        || args
+            .windows(2)
+            .any(|pair| (pair[0] == "--format" || pair[0] == "-f") && pair[1] == "json")
+        || args
+            .iter()
+            .any(|arg| arg == "--format=json" || arg == "-f=json")
 }
 
 fn is_validate_command(args: &[String]) -> bool {
     matches!(args, [cmd, ..] if cmd == "validate")
+}
+
+fn is_text_utility_command(args: &[String]) -> bool {
+    match args {
+        [cmd, ..] if cmd == "doctor" => true,
+        [cmd, ..] if cmd == "find" => true,
+        [cmd, ..] if cmd == "robot-docs" || cmd == "agent" => true,
+        [cmd, ..] if cmd == "completion" => true,
+        [cmd, sub, ..] if cmd == "conformance" && sub == "coverage" => true,
+        _ => false,
+    }
 }

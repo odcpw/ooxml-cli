@@ -18,12 +18,47 @@ use crate::{
     pptx_validate_layout,
 };
 
+pub(crate) enum DispatchBody {
+    Json(Value),
+    Text(String),
+}
+
 pub(crate) struct DispatchOutput {
-    pub(crate) value: Value,
+    pub(crate) body: DispatchBody,
     pub(crate) exit_code: i32,
 }
 
 pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {
+    if let [cmd, rest @ ..] = args
+        && cmd == "doctor"
+    {
+        return crate::doctor::doctor(flags, rest);
+    }
+    if let [cmd, rest @ ..] = args
+        && cmd == "find"
+    {
+        return crate::find::find(flags, rest);
+    }
+    if let [cmd, rest @ ..] = args
+        && cmd == "robot-docs"
+    {
+        return crate::robot_docs::robot_docs(flags, rest);
+    }
+    if let [cmd, rest @ ..] = args
+        && cmd == "agent"
+    {
+        return crate::robot_docs::agent_alias(flags, rest);
+    }
+    if let [cmd, rest @ ..] = args
+        && cmd == "completion"
+    {
+        return crate::completion::completion(rest);
+    }
+    if let [cmd, rest @ ..] = args
+        && cmd == "conformance"
+    {
+        return crate::conformance::conformance(flags, rest);
+    }
     if let [family, verb, file, rest @ ..] = args
         && family == "vba"
         && verb == "office-check"
@@ -31,10 +66,13 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
         reject_unknown_flags(rest, &["--out-dir"], &[])?;
         let out_dir = parse_string_flag(rest, "--out-dir")?;
         let (value, exit_code) = vba_office_check(file, out_dir.as_deref())?;
-        return Ok(DispatchOutput { value, exit_code });
+        return Ok(DispatchOutput {
+            body: DispatchBody::Json(value),
+            exit_code,
+        });
     }
     dispatch_value(flags, args).map(|value| DispatchOutput {
-        value,
+        body: DispatchBody::Json(value),
         exit_code: EXIT_SUCCESS,
     })
 }
