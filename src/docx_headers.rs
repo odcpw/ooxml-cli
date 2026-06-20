@@ -1,4 +1,6 @@
+mod parts;
 mod selectors;
+pub(crate) use parts::docx_header_footer_part_uris;
 pub(crate) use selectors::normalize_docx_header_footer_show_type;
 use selectors::{
     DocxHeaderFooterRefInfo, DocxHeaderFooterSelector,
@@ -17,123 +19,18 @@ use std::path::Path;
 use crate::{
     CliError, CliResult, DOCX_W_NS, DocxParagraphMutationOptions, InspectPackageKind,
     RelationshipEntry, XmlNamedRange, add_relationship_to_xml, allocate_relationship_id,
-    append_docx_text_children, attr, attr_bound_ns, attr_prefixed_ns, command_arg,
-    content_type_for_part, decode_xml_text, detect_inspect_package_type, docx_body_content_bounds,
-    docx_body_prefix, docx_body_tag, docx_mutation_output_path_for_result,
-    docx_paragraph_fragment_text, docx_word_attr_ns, element_in_ns, ensure_content_type_override,
-    ensure_docx_package_kind, ensure_docx_word_prefix, find_docx_document_part,
-    first_direct_xml_child_by_kind, has_flag, json_i64, json_optional_string, local_name,
-    package_type, parse_i64_flag, parse_string_flag, reject_unknown_flags, relationship_entries,
-    relationship_target_from_source_to_target, relationships_part_for, resolve_relationship_target,
-    validate_xlsx_mutation_output_flags, word_xml_tag, write_docx_package_mutation_output,
-    xml_attr_escape, xml_direct_child_ranges, xml_fragment_bounds, xml_general_ref,
-    xml_open_tag_from_start, xml_tag_prefix, zip_entry_names, zip_text,
+    append_docx_text_children, attr, attr_bound_ns, command_arg, content_type_for_part,
+    decode_xml_text, detect_inspect_package_type, docx_body_content_bounds, docx_body_prefix,
+    docx_body_tag, docx_mutation_output_path_for_result, docx_paragraph_fragment_text,
+    docx_word_attr_ns, element_in_ns, ensure_content_type_override, ensure_docx_package_kind,
+    ensure_docx_word_prefix, find_docx_document_part, first_direct_xml_child_by_kind, has_flag,
+    json_i64, json_optional_string, local_name, package_type, parse_i64_flag, parse_string_flag,
+    reject_unknown_flags, relationship_entries, relationship_target_from_source_to_target,
+    relationships_part_for, resolve_relationship_target, validate_xlsx_mutation_output_flags,
+    word_xml_tag, write_docx_package_mutation_output, xml_attr_escape, xml_direct_child_ranges,
+    xml_fragment_bounds, xml_general_ref, xml_open_tag_from_start, xml_tag_prefix, zip_entry_names,
+    zip_text,
 };
-pub(crate) fn docx_header_footer_part_uris(
-    file: &str,
-    document_part: &str,
-    document_uri: &str,
-    document_xml: &str,
-) -> CliResult<Vec<String>> {
-    let rels_part = relationships_part_for(document_part);
-    let rel_targets = relationship_entries(file, &rels_part)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|rel| rel.target_mode != "External")
-        .map(|rel| {
-            (
-                rel.id,
-                resolve_relationship_target(document_uri, &rel.target),
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-
-    let mut reader = NsReader::from_str(document_xml);
-    let mut stack: Vec<String> = Vec::new();
-    let mut section_uris = Vec::new();
-    let mut seen = BTreeSet::new();
-    let mut in_direct_section = false;
-
-    loop {
-        match reader.read_event() {
-            Ok(Event::Start(e)) => {
-                let name = local_name(e.name().as_ref()).to_string();
-                let parent = stack.last().map(String::as_str);
-                let grandparent = stack
-                    .len()
-                    .checked_sub(2)
-                    .and_then(|index| stack.get(index))
-                    .map(String::as_str);
-                let is_word = element_in_ns(reader.resolver(), &e, DOCX_W_NS);
-                if is_word
-                    && name == "sectPr"
-                    && (parent == Some("body") || parent == Some("pPr") && grandparent == Some("p"))
-                {
-                    in_direct_section = true;
-                } else if in_direct_section
-                    && is_word
-                    && matches!(name.as_str(), "headerReference" | "footerReference")
-                    && let Some(part_uri) =
-                        docx_header_footer_ref_part_uri(&e, reader.resolver(), &rel_targets)
-                    && seen.insert(part_uri.clone())
-                {
-                    section_uris.push(part_uri);
-                }
-                stack.push(name);
-            }
-            Ok(Event::Empty(e)) => {
-                let name = local_name(e.name().as_ref()).to_string();
-                let parent = stack.last().map(String::as_str);
-                let grandparent = stack
-                    .len()
-                    .checked_sub(2)
-                    .and_then(|index| stack.get(index))
-                    .map(String::as_str);
-                let is_word = element_in_ns(reader.resolver(), &e, DOCX_W_NS);
-                if is_word
-                    && name == "sectPr"
-                    && (parent == Some("body") || parent == Some("pPr") && grandparent == Some("p"))
-                {
-                    // Empty section properties have no references.
-                } else if in_direct_section
-                    && is_word
-                    && matches!(name.as_str(), "headerReference" | "footerReference")
-                    && let Some(part_uri) =
-                        docx_header_footer_ref_part_uri(&e, reader.resolver(), &rel_targets)
-                    && seen.insert(part_uri.clone())
-                {
-                    section_uris.push(part_uri);
-                }
-            }
-            Ok(Event::End(e)) => {
-                let name = local_name(e.name().as_ref()).to_string();
-                if name == "sectPr" {
-                    in_direct_section = false;
-                }
-                stack.pop();
-            }
-            Ok(Event::Eof) => break,
-            Err(err) => return Err(CliError::unexpected(err.to_string())),
-            _ => {}
-        }
-    }
-    Ok(section_uris)
-}
-
-fn docx_header_footer_ref_part_uri(
-    element: &BytesStart<'_>,
-    resolver: &NamespaceResolver,
-    rel_targets: &BTreeMap<String, String>,
-) -> Option<String> {
-    let id = attr_prefixed_ns(
-        element,
-        resolver,
-        b"r",
-        b"http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-        b"id",
-    )?;
-    rel_targets.get(&id).cloned()
-}
 
 pub(crate) fn docx_headers_footers_list(file: &str) -> CliResult<Value> {
     let (document_uri, sections) = docx_header_footer_listing(file)?;

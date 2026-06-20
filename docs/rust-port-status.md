@@ -210,6 +210,10 @@ Latest milestone, 2026-06-20:
   paragraph-selector generation moved from `src/docx_headers.rs` into
   `src/docx_headers/selectors.rs`, leaving the command facade and mutation
   orchestration in `src/docx_headers.rs`.
+- DOCX header/footer part-URI discovery moved from `src/docx_headers.rs` into
+  `src/docx_headers/parts.rs`, preserving the existing crate-facing
+  `docx_header_footer_part_uris` facade while keeping the relationship
+  reference helper private to the child module.
 - DOCX table show/set-cell/clear-cell commands, table summary rendering,
   table-cell XML rewrites, and table readback command generation moved from
   `src/main.rs` into `src/docx_tables.rs`.
@@ -225,6 +229,9 @@ Latest milestone, 2026-06-20:
   summaries, sparse/dense cell row rendering, cell/range parsing, and column
   naming moved from `src/main.rs` into `src/xlsx_model.rs`; XLSX sheet selector
   generation and relationship-target normalization are part of that model layer.
+- XLSX A1 cell/range parsing, `RangeBounds`, range containment, and column-name
+  rendering moved from `src/xlsx_model.rs` into `src/xlsx_model/range.rs`,
+  leaving `src/xlsx_model.rs` as the facade for existing crate imports.
 - XLSX range/cell mutation commands, range formatting, calc-chain
   invalidation, style XML mutation, sheet-data rewrites, and mutation readback
   command generation moved from `src/main.rs` into `src/xlsx_mutation.rs`.
@@ -249,14 +256,13 @@ Latest milestone, 2026-06-20:
 - Serve `xlsx cells set` now delegates to the shared `xlsx_cells_set`
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
-- Proof after the latest hardening slice: `cargo fmt --check`, `cargo check
-  --all-targets`, `cargo test --all-targets zip_io`, `cargo test --test
-  rust_contract_smoke validate_rejects_corrupted_docx_and_xlsx_like_go_oracle
-  -- --exact`, `cargo clippy --all-targets -- -D warnings`, and `cargo test
-  --all-targets` all pass with 4 ZIP guard unit tests plus 78 Rust contract
-  tests. Office COM proof was not run for this slice because no generated
-  Office output shape changed; the change rejects malicious/oversized input and
-  existing valid mutation-output paths remained covered by the contract suite.
+- Proof after the latest de-monolithization slice: `cargo fmt --check`, `cargo
+  check --all-targets`, targeted Go-oracle checks for `xlsx ranges set`, `xlsx
+  cells extract`, DOCX header/footer listing, and DOCX field listing, `cargo
+  clippy --all-targets -- -D warnings`, and `cargo test --all-targets` all pass
+  with 4 ZIP guard unit tests plus 78 Rust contract tests. Office COM proof was
+  not run for these splits because they are pure parser/readback moves and do
+  not alter generated Office output shape.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
