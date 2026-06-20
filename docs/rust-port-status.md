@@ -252,6 +252,10 @@ Latest milestone, 2026-06-20:
   style type filtering, and list/show JSON rendering moved from
   `src/docx_styles.rs` into `src/docx_styles/read.rs`, leaving style apply
   validation and XML mutation in the DOCX styles facade.
+- DOCX style apply XML rewriting, style child rendering, table/paragraph/run
+  style fragment mutation, and previous-style fragment readback moved from
+  `src/docx_styles.rs` into `src/docx_styles/mutation.rs`, leaving the facade
+  focused on command orchestration, target validation, and result shaping.
 - DOCX field listing, field insertion, cached-result mutation, field-location
   parsing, simple/complex field detection, and field XML rewrite helpers moved
   from `src/main.rs` into `src/docx_fields.rs`.
