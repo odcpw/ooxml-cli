@@ -7,7 +7,9 @@ use crate::cli_args::{
 };
 use crate::cli_core::{CliError, CliResult};
 use crate::docx_mutation_core::{DocxParagraphMutationOptions, resolve_required_docx_table_text};
-use crate::docx_tables::{docx_tables_clear_cell, docx_tables_set_cell, docx_tables_show};
+use crate::docx_tables::{
+    docx_tables_clear_cell, docx_tables_delete_row, docx_tables_set_cell, docx_tables_show,
+};
 
 pub(super) fn dispatch_docx_tables(args: &[String]) -> CliResult<Value> {
     match args {
@@ -114,6 +116,42 @@ pub(super) fn dispatch_docx_tables(args: &[String]) -> CliResult<Value> {
                 table as usize,
                 row as usize,
                 col as usize,
+                &expect_hash,
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "tables" && verb == "delete-row" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--table", "--row", "--expect-hash", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let table = parse_i64_flag(rest, "--table")?.unwrap_or(0);
+            let row = parse_i64_flag(rest, "--row")?.unwrap_or(0);
+            validate_positive_i64(table, "--table")?;
+            validate_positive_i64(row, "--row")?;
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            require_docx_block_hash(&expect_hash)?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_tables_delete_row(
+                file,
+                table as usize,
+                row as usize,
                 &expect_hash,
                 DocxParagraphMutationOptions {
                     text: None,

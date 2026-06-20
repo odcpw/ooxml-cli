@@ -9,6 +9,19 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust DOCX table row deletion parity landed for direct
+  `docx tables delete-row`. The slice deletes one hash-guarded main-document
+  table row, rejects merged tables and last-row deletion like the Go oracle,
+  emits the existing table validate/show/list readback commands, and is wired
+  through DOCX serve operation dispatch to match the advertised op-compatible
+  leaf. Rust capabilities now advertise 79 Go-oracle command paths, leaving a
+  pinned 211-command gap. Proof: `cargo fmt --check`, `cargo check
+  --all-targets`, focused `cargo test --test rust_contract_smoke
+  docx_tables_delete_row -- --nocapture`, and focused capability subset test;
+  focused serve session test covering set-cell, clear-cell, delete-row, commit,
+  strict validation, and readback; strict repo validation, Open XML SDK
+  Office2019 schema validation (zero errors), and Word COM open oracle on the
+  generated row-deleted DOCX.
 - Merged current `origin/master` hardening, including OPC inflate limits, CFB
   traversal guards, and new Go ingest fuzz harnesses.
 - Mirrored the Go OPC inflate hardening in Rust shared ZIP I/O: package opens
@@ -705,11 +718,15 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   dimensions, merged-cell detection, cell text, detailed table objects, empty
   no-table documents, bad selectors, missing main-document parts, and
   unsupported package-type rejection
-- `--json docx tables set-cell <docx>` and
+- `--json docx tables set-cell <docx>`,
   `--json docx tables clear-cell <docx>` with Go-oracle comparison for
   hash-guarded cell mutation JSON, output/readback command fields, strict
   validation, selected-table readback, previous cell text, dry-run shape, and
   serve operation/inspect routing through the session path
+- `--json docx tables delete-row <docx>` with Go-oracle comparison for
+  hash-guarded row deletion JSON, output/readback command fields, strict
+  validation, selected-table readback, dry-run shape, row-target errors, and
+  merged-table/last-row rejection
 - `--json docx text <xlsx>` unsupported-type rejection with direct Go-oracle
   comparison for exit code, stderr JSON, and empty stdout
 - JSON error envelope for an invalid slide number
@@ -746,7 +763,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 77, and the harness pins the 213-command gap until
+  paths, Rust advertises 79, and the harness pins the 211-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

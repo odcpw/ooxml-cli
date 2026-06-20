@@ -91,7 +91,9 @@ pub(crate) use docx_styles::{
     DocxStyleApplyOptions, DocxStyleTarget, docx_styles_apply, docx_styles_list, docx_styles_show,
     normalize_docx_style_target,
 };
-pub(crate) use docx_tables::{docx_tables_clear_cell, docx_tables_set_cell, docx_tables_show};
+pub(crate) use docx_tables::{
+    docx_tables_clear_cell, docx_tables_delete_row, docx_tables_set_cell, docx_tables_show,
+};
 pub(crate) use docx_xml::{
     DOCX_W_NS, DOCX_W14_NS, XmlNamedRange, XmlRange, append_docx_body_paragraph_xml,
     append_docx_text_children, docx_all_para_ids, docx_block_has_section_properties,

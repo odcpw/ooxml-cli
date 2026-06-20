@@ -103,5 +103,38 @@ pub(super) fn commands() -> Vec<Value> {
                 ),
             ],
         ),
+        capability_command(
+            "ooxml docx tables delete-row",
+            "delete-row <file>",
+            "Delete one main-document DOCX table row.",
+            &["table"],
+            true,
+            None,
+            vec![
+                flag("--table", "table", "int", "1-based table number"),
+                flag("--row", "row", "int", "1-based table row"),
+                flag(
+                    "--expect-hash",
+                    "expectHash",
+                    "string",
+                    "expected sha256: table block hash from docx tables show or docx blocks",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
+        ),
     ]
 }

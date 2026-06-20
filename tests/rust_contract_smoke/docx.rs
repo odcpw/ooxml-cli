@@ -675,6 +675,253 @@ fn docx_tables_set_clear_cell_match_go_oracle() {
 }
 
 #[test]
+fn docx_tables_delete_row_matches_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-docx-tables-delete-row-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx tables delete-row temp dir");
+
+    let document = "testdata/docx/table/document.docx";
+    let (hash_code, hash_stdout, hash_stderr) =
+        run_go_ooxml(&["--json", "docx", "tables", "show", document, "--table", "1"]);
+    assert_eq!(hash_code, 0, "oracle table hash lookup exit");
+    assert_eq!(hash_stderr, None, "oracle table hash lookup stderr");
+    let table_hash = hash_stdout.expect("oracle table JSON")["tables"][0]["contentHash"]
+        .as_str()
+        .expect("table hash")
+        .to_string();
+
+    let go_delete_out = temp_dir
+        .join("tables-delete-row-go.docx")
+        .to_string_lossy()
+        .to_string();
+    let rust_delete_out = temp_dir
+        .join("tables-delete-row-rust.docx")
+        .to_string_lossy()
+        .to_string();
+    let go_delete_args = [
+        "--json",
+        "docx",
+        "tables",
+        "delete-row",
+        document,
+        "--table",
+        "1",
+        "--row",
+        "1",
+        "--expect-hash",
+        &table_hash,
+        "--out",
+        &go_delete_out,
+    ];
+    let rust_delete_args = [
+        "--json",
+        "docx",
+        "tables",
+        "delete-row",
+        document,
+        "--table",
+        "1",
+        "--row",
+        "1",
+        "--expect-hash",
+        &table_hash,
+        "--out",
+        &rust_delete_out,
+    ];
+    let (go_delete_code, go_delete_stdout, go_delete_stderr) = run_go_ooxml(&go_delete_args);
+    let (rust_delete_code, rust_delete_stdout, rust_delete_stderr) = run_ooxml(&rust_delete_args);
+    assert_eq!(rust_delete_code, go_delete_code, "delete-row exit");
+    assert_eq!(rust_delete_stderr, go_delete_stderr, "delete-row stderr");
+    let go_delete_json = scrub_path(
+        go_delete_stdout.expect("Go delete-row stdout"),
+        &go_delete_out,
+        "[DELETE_OUT]",
+    );
+    let rust_delete_json = scrub_path(
+        rust_delete_stdout.expect("Rust delete-row stdout"),
+        &rust_delete_out,
+        "[DELETE_OUT]",
+    );
+    assert_eq!(rust_delete_json, go_delete_json, "delete-row stdout");
+    assert_eq!(rust_delete_json["row"], Value::from(1));
+    assert_eq!(rust_delete_json["rows"], Value::from(1));
+    assert_eq!(rust_delete_json["cols"], Value::from(2));
+
+    let (delete_validate_code, _delete_validate_stdout, delete_validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_delete_out]);
+    assert_eq!(delete_validate_code, 0, "delete-row validate exit");
+    assert_eq!(delete_validate_stderr, None, "delete-row validate stderr");
+
+    let (go_read_code, go_read_stdout, go_read_stderr) = run_go_ooxml(&[
+        "--json",
+        "docx",
+        "tables",
+        "show",
+        &go_delete_out,
+        "--table",
+        "1",
+    ]);
+    let (rust_read_code, rust_read_stdout, rust_read_stderr) = run_ooxml(&[
+        "--json",
+        "docx",
+        "tables",
+        "show",
+        &rust_delete_out,
+        "--table",
+        "1",
+    ]);
+    assert_eq!(rust_read_code, go_read_code, "delete readback exit");
+    assert_eq!(rust_read_stderr, go_read_stderr, "delete readback stderr");
+    let go_read_table = scrub_path(
+        go_read_stdout.expect("Go delete readback JSON")["tables"][0].clone(),
+        &go_delete_out,
+        "[DELETE_OUT]",
+    );
+    let rust_read_table = scrub_path(
+        rust_read_stdout.expect("Rust delete readback JSON")["tables"][0].clone(),
+        &rust_delete_out,
+        "[DELETE_OUT]",
+    );
+    assert_eq!(rust_read_table, go_read_table, "delete readback table");
+    assert_eq!(
+        rust_read_table["cells"][0][0],
+        Value::String("A2".to_string())
+    );
+
+    let dry_args = [
+        "--json",
+        "docx",
+        "tables",
+        "delete-row",
+        document,
+        "--table",
+        "1",
+        "--row",
+        "2",
+        "--expect-hash",
+        &table_hash,
+        "--dry-run",
+    ];
+    let (go_dry_code, go_dry_stdout, go_dry_stderr) = run_go_ooxml(&dry_args);
+    let (rust_dry_code, rust_dry_stdout, rust_dry_stderr) = run_ooxml(&dry_args);
+    assert_eq!(rust_dry_code, go_dry_code, "delete-row dry-run exit");
+    assert_eq!(rust_dry_stderr, go_dry_stderr, "delete-row dry-run stderr");
+    let dry_json = rust_dry_stdout.expect("Rust delete-row dry-run stdout");
+    assert_eq!(
+        dry_json,
+        go_dry_stdout.expect("Go delete-row dry-run stdout"),
+        "delete-row dry-run stdout"
+    );
+    assert_eq!(dry_json["dryRun"], Value::Bool(true));
+    assert!(dry_json.get("output").is_none(), "dry-run omits output");
+
+    let delete_hash = rust_delete_json["contentHash"]
+        .as_str()
+        .expect("delete-row content hash")
+        .to_string();
+    let (go_last_code, go_last_stdout, go_last_stderr) = run_go_ooxml(&[
+        "--json",
+        "docx",
+        "tables",
+        "delete-row",
+        &go_delete_out,
+        "--table",
+        "1",
+        "--row",
+        "1",
+        "--expect-hash",
+        &delete_hash,
+        "--dry-run",
+    ]);
+    let (rust_last_code, rust_last_stdout, rust_last_stderr) = run_ooxml(&[
+        "--json",
+        "docx",
+        "tables",
+        "delete-row",
+        &rust_delete_out,
+        "--table",
+        "1",
+        "--row",
+        "1",
+        "--expect-hash",
+        &delete_hash,
+        "--dry-run",
+    ]);
+    assert_eq!(rust_last_code, go_last_code, "last-row delete exit");
+    assert_eq!(rust_last_stdout, go_last_stdout, "last-row delete stdout");
+    assert_eq!(rust_last_stderr, go_last_stderr, "last-row delete stderr");
+
+    let bad_out = temp_dir.join("bad.docx").to_string_lossy().to_string();
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "tables",
+        "delete-row",
+        document,
+        "--table",
+        "1",
+        "--row",
+        "9",
+        "--expect-hash",
+        &table_hash,
+        "--out",
+        &bad_out,
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "tables",
+        "delete-row",
+        document,
+        "--table",
+        "1",
+        "--row",
+        "1",
+        "--expect-hash",
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "--out",
+        &bad_out,
+    ]);
+
+    let merged_document = "testdata/docx/merged-table/document.docx";
+    let (merged_hash_code, merged_hash_stdout, merged_hash_stderr) = run_go_ooxml(&[
+        "--json",
+        "docx",
+        "tables",
+        "show",
+        merged_document,
+        "--table",
+        "1",
+    ]);
+    assert_eq!(merged_hash_code, 0, "merged table hash lookup exit");
+    assert_eq!(merged_hash_stderr, None, "merged table hash lookup stderr");
+    let merged_hash = merged_hash_stdout.expect("merged table JSON")["tables"][0]["contentHash"]
+        .as_str()
+        .expect("merged table hash")
+        .to_string();
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "tables",
+        "delete-row",
+        merged_document,
+        "--table",
+        "1",
+        "--row",
+        "1",
+        "--expect-hash",
+        &merged_hash,
+        "--out",
+        &bad_out,
+    ]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_paragraphs_append_matches_go_oracle() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-docx-paragraphs-{}", std::process::id()));

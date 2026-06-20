@@ -3,8 +3,8 @@ use serde_json::{Value, json};
 use super::super::super::op::{ServeOp, push_serve_plan_string_flag};
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, docx_tables_clear_cell,
-    docx_tables_set_cell, json_i64, json_optional_string, require_docx_block_hash,
-    resolve_required_docx_table_text, validate_positive_i64,
+    docx_tables_delete_row, docx_tables_set_cell, json_i64, json_optional_string,
+    require_docx_block_hash, resolve_required_docx_table_text, validate_positive_i64,
 };
 
 pub(super) fn serve_docx_tables_op(
@@ -125,6 +125,51 @@ pub(super) fn serve_docx_tables_op(
                 json!(row.to_string()),
                 json!("--col"),
                 json!(col.to_string()),
+            ];
+            push_serve_plan_string_flag(
+                &mut plan_flags,
+                "--expect-hash",
+                Some(expect_hash.as_str()),
+            );
+            ServeOp::DocxTablesOp {
+                command: command.to_string(),
+                plan_flags,
+                readback_file: working.to_string(),
+                readback,
+            }
+        }
+        "docx tables delete-row" => {
+            let table = json_i64(args, "table")?
+                .ok_or_else(|| CliError::invalid_args("table is required"))?;
+            let row =
+                json_i64(args, "row")?.ok_or_else(|| CliError::invalid_args("row is required"))?;
+            validate_positive_i64(table, "--table")?;
+            validate_positive_i64(row, "--row")?;
+            let expect_hash = json_optional_string(args, "expect-hash")
+                .or_else(|| json_optional_string(args, "expectHash"))
+                .unwrap_or_default();
+            require_docx_block_hash(&expect_hash)?;
+            let readback = docx_tables_delete_row(
+                working,
+                table as usize,
+                row as usize,
+                &expect_hash,
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    in_place: true,
+                    no_validate: true,
+                },
+            )?;
+            let mut plan_flags = vec![
+                json!("--table"),
+                json!(table.to_string()),
+                json!("--row"),
+                json!(row.to_string()),
             ];
             push_serve_plan_string_flag(
                 &mut plan_flags,
