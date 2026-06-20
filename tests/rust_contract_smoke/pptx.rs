@@ -406,6 +406,419 @@ fn pptx_place_image_saved_readback_dry_run_and_errors_match_go_oracle() {
 }
 
 #[test]
+fn pptx_place_table_saved_dry_run_readback_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-place-table-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("place table temp dir");
+
+    let fixture = "testdata/pptx/minimal-title/presentation.pptx";
+    let csv = temp_dir.join("data.csv");
+    fs::write(&csv, "Region,Amount\nNorth,42").expect("write csv table data");
+    let csv_str = csv.to_str().expect("csv data path");
+    let json_data = temp_dir.join("data.json");
+    fs::write(&json_data, r#"[["Region","Amount"],["South",55]]"#).expect("write json table data");
+    let json_data_str = json_data.to_str().expect("json data path");
+
+    let go_out = temp_dir.join("go-place-table.pptx");
+    let rust_out = temp_dir.join("rust-place-table.pptx");
+    let go_out_str = go_out.to_str().expect("go place table output");
+    let rust_out_str = rust_out.to_str().expect("rust place table output");
+    let go_args = [
+        "--json",
+        "pptx",
+        "place",
+        "table",
+        fixture,
+        "--slide",
+        "1",
+        "--data",
+        csv_str,
+        "--format",
+        "csv",
+        "--x",
+        "0",
+        "--y",
+        "0",
+        "--cx",
+        "3000000",
+        "--header",
+        "--name",
+        "Revenue Table",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "place",
+        "table",
+        fixture,
+        "--slide",
+        "1",
+        "--data",
+        csv_str,
+        "--format",
+        "csv",
+        "--x",
+        "0",
+        "--y",
+        "0",
+        "--cx",
+        "3000000",
+        "--header",
+        "--name",
+        "Revenue Table",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "place table saved exit");
+    assert_eq!(rust_stderr, go_stderr, "place table saved stderr");
+    assert_eq!(
+        rust_stdout.expect("rust place table stdout"),
+        go_stdout.expect("go place table stdout"),
+        "place table saved stdout"
+    );
+    assert!(go_out.exists(), "Go place table output missing");
+    assert!(rust_out.exists(), "Rust place table output missing");
+
+    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+        "--json", "pptx", "tables", "show", go_out_str, "--slide", "1", "--target", "table:1",
+    ]);
+    let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "tables",
+        "show",
+        rust_out_str,
+        "--slide",
+        "1",
+        "--target",
+        "table:1",
+    ]);
+    assert_eq!(rust_show_code, go_show_code, "place table readback exit");
+    assert_eq!(
+        rust_show_stderr, go_show_stderr,
+        "place table readback stderr"
+    );
+    assert_eq!(
+        scrub_path(
+            rust_show_stdout.expect("rust place table readback"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_show_stdout.expect("go place table readback"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "place table readback stdout"
+    );
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "validate", "--strict", rust_out_str]);
+    assert_eq!(validate_code, 0, "place table validate exit");
+    assert_eq!(validate_stderr, None, "place table validate stderr");
+
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "place",
+        "table",
+        fixture,
+        "--slide",
+        "1",
+        "--data",
+        json_data_str,
+        "--format",
+        "json",
+        "--x",
+        "0",
+        "--y",
+        "0",
+        "--cx",
+        "2000000",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "place table dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "place table dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust place table dry-run"),
+        go_stdout.expect("go place table dry-run"),
+        "place table dry-run stdout"
+    );
+
+    for args in [
+        vec![
+            "--json",
+            "pptx",
+            "place",
+            "table",
+            fixture,
+            "--slide",
+            "1",
+            "--data",
+            csv_str,
+            "--format",
+            "tsv",
+            "--cx",
+            "1000",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "place",
+            "table",
+            fixture,
+            "--slide",
+            "1",
+            "--data",
+            csv_str,
+            "--cx",
+            "0",
+            "--dry-run",
+        ],
+    ] {
+        assert_go_rust_json_match(&args, "place table representative error");
+    }
+}
+
+#[test]
+fn pptx_place_table_from_xlsx_saved_dry_run_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-place-table-xlsx-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("place table xlsx temp dir");
+
+    let fixture = "testdata/pptx/minimal-title/presentation.pptx";
+    let workbook = temp_dir.join("source-range.xlsx");
+    write_simple_xlsx_with_sheet_xml(&workbook, pptx_update_source_sheet_xml_4x4());
+    let workbook_str = workbook.to_str().expect("source workbook path");
+    let table_workbook = temp_dir.join("source-table.xlsx");
+    write_pptx_update_table_xlsx(&table_workbook);
+    let table_workbook_str = table_workbook.to_str().expect("source table workbook path");
+
+    let go_out = temp_dir.join("go-place-table-from-xlsx.pptx");
+    let rust_out = temp_dir.join("rust-place-table-from-xlsx.pptx");
+    let go_out_str = go_out.to_str().expect("go place table xlsx output");
+    let rust_out_str = rust_out.to_str().expect("rust place table xlsx output");
+    let go_args = [
+        "--json",
+        "pptx",
+        "place",
+        "table-from-xlsx",
+        fixture,
+        "--workbook",
+        workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--formula-mode",
+        "formula",
+        "--expect-source-range",
+        "A1:B2",
+        "--slide",
+        "1",
+        "--x",
+        "0",
+        "--y",
+        "0",
+        "--cx",
+        "3000000",
+        "--header",
+        "--name",
+        "Revenue Table",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "place",
+        "table-from-xlsx",
+        fixture,
+        "--workbook",
+        workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--formula-mode",
+        "formula",
+        "--expect-source-range",
+        "A1:B2",
+        "--slide",
+        "1",
+        "--x",
+        "0",
+        "--y",
+        "0",
+        "--cx",
+        "3000000",
+        "--header",
+        "--name",
+        "Revenue Table",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "place table-from-xlsx saved exit");
+    assert_eq!(rust_stderr, go_stderr, "place table-from-xlsx saved stderr");
+    let rust_json = rust_stdout.expect("rust place table-from-xlsx stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go place table-from-xlsx stdout"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "place table-from-xlsx saved stdout"
+    );
+    assert_eq!(rust_json["destination"]["cells"][0][0], "=SUM(B1:C1)");
+    assert!(go_out.exists(), "Go place table-from-xlsx output missing");
+    assert!(
+        rust_out.exists(),
+        "Rust place table-from-xlsx output missing"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "place",
+        "table-from-xlsx",
+        fixture,
+        "--workbook",
+        table_workbook_str,
+        "--table",
+        "Sales",
+        "--expect-source-range",
+        "A1:C3",
+        "--slide",
+        "1",
+        "--x",
+        "0",
+        "--y",
+        "0",
+        "--cx",
+        "3000000",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "place table-from-xlsx dry-run exit");
+    assert_eq!(
+        rust_stderr, go_stderr,
+        "place table-from-xlsx dry-run stderr"
+    );
+    assert_eq!(
+        rust_stdout.expect("rust place table-from-xlsx dry-run"),
+        go_stdout.expect("go place table-from-xlsx dry-run"),
+        "place table-from-xlsx dry-run stdout"
+    );
+
+    let bad_out = temp_dir.join("bad.pptx");
+    let bad_out_str = bad_out.to_str().expect("bad output path");
+    for args in [
+        vec![
+            "--json",
+            "pptx",
+            "place",
+            "table-from-xlsx",
+            fixture,
+            "--workbook",
+            workbook_str,
+            "--range",
+            "A1",
+            "--slide",
+            "1",
+            "--cx",
+            "1000",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "place",
+            "table-from-xlsx",
+            fixture,
+            "--workbook",
+            workbook_str,
+            "--sheet",
+            "Sheet1",
+            "--range",
+            "A1:B2",
+            "--max-cells",
+            "1",
+            "--slide",
+            "1",
+            "--cx",
+            "1000",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "place",
+            "table-from-xlsx",
+            fixture,
+            "--workbook",
+            workbook_str,
+            "--sheet",
+            "Sheet1",
+            "--range",
+            "A1:B2",
+            "--expect-source-range",
+            "A1:C2",
+            "--slide",
+            "1",
+            "--cx",
+            "1000",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "place",
+            "table-from-xlsx",
+            workbook_str,
+            "--workbook",
+            workbook_str,
+            "--sheet",
+            "Sheet1",
+            "--range",
+            "A1",
+            "--slide",
+            "1",
+            "--cx",
+            "1000",
+            "--out",
+            bad_out_str,
+        ],
+    ] {
+        assert_go_rust_json_match(&args, "place table-from-xlsx representative error");
+    }
+}
+
+#[test]
 fn pptx_charts_list_show_json_and_errors_match_go_oracle() {
     let fixture = "testdata/pptx/chart-simple/presentation.pptx";
     let list_args = ["--json", "pptx", "charts", "list", fixture];

@@ -394,13 +394,13 @@ fn parse_layout_shapes(xml: &str) -> Vec<LayoutShape> {
                 if name == "t" {
                     in_text = false;
                 }
-                if in_tx_body && name == "p" {
-                    if let Some(paragraph) = current_paragraph.take()
-                        && let Some(shape) = current.as_mut()
-                    {
-                        let text = shape.text.get_or_insert_with(TextBlock::default);
-                        text.paragraphs.push(paragraph);
-                    }
+                if in_tx_body
+                    && name == "p"
+                    && let Some(paragraph) = current_paragraph.take()
+                    && let Some(shape) = current.as_mut()
+                {
+                    let text = shape.text.get_or_insert_with(TextBlock::default);
+                    text.paragraphs.push(paragraph);
                 }
                 if in_tx_body && name == "txBody" {
                     in_tx_body = false;

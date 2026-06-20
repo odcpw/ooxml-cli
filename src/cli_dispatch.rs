@@ -254,6 +254,77 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             pptx_place_image(file, rest)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "place" && verb == "table" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--data",
+                    "--format",
+                    "--x",
+                    "--y",
+                    "--cx",
+                    "--cy",
+                    "--name",
+                    "--header-color",
+                    "--band1-color",
+                    "--band2-color",
+                    "--font-size",
+                    "--border-color",
+                    "--border-width",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--header",
+                    "--banded-rows",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
+            )?;
+            pptx_place_table(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "place" && verb == "table-from-xlsx" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--workbook",
+                    "--sheet",
+                    "--range",
+                    "--table",
+                    "--max-cells",
+                    "--formula-mode",
+                    "--expect-source-range",
+                    "--x",
+                    "--y",
+                    "--cx",
+                    "--cy",
+                    "--name",
+                    "--header-color",
+                    "--band1-color",
+                    "--band2-color",
+                    "--font-size",
+                    "--border-color",
+                    "--border-width",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--header",
+                    "--banded-rows",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
+            )?;
+            pptx_place_table_from_xlsx(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "animations" && verb == "list" =>
         {
             reject_unknown_flags(rest, &[], &[])?;

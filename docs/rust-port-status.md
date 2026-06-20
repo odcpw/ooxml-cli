@@ -9,6 +9,19 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX table placement parity landed for direct `pptx place table` and
+  `pptx place table-from-xlsx`. The slice creates table graphic frames from
+  CSV/JSON data and XLSX ranges/tables, preserves Go-shaped saved-output,
+  dry-run, readback, validation-command, and representative error behavior, and
+  keeps `pptx text set` out of scope for the separate text-run mutation surface.
+  Rust capabilities now advertise 194 Go-oracle command paths, leaving a pinned
+  96-command gap; these placement commands are advertised with
+  `opCompatible=false` because serve/MCP operation dispatch is not wired for
+  the new Rust leaves yet. Proof: focused Go-vs-Rust table placement tests,
+  focused capability ratchet tests, strict validation for generated proof
+  decks, `cargo fmt --check`, `cargo check --all-targets`, `cargo clippy
+  --all-targets -- -D warnings`, and the targeted `cargo test --test
+  rust_contract_smoke ...` invocations for this slice.
 - Rust PPTX template/layout QA read-only parity landed for direct
   `pptx template inspect` and `pptx validate-layout`. The slice inspects
   captured template manifests, reports slide density, text overflows, and shape
@@ -1439,7 +1452,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 192, and the harness pins the 98-command gap until
+  paths, Rust advertises 194, and the harness pins the 96-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

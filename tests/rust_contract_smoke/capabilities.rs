@@ -36,6 +36,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx shapes get", false);
     assert_command(&all_caps, "ooxml pptx add-textbox", false);
     assert_command(&all_caps, "ooxml pptx place image", false);
+    assert_command(&all_caps, "ooxml pptx place table", false);
+    assert_command(&all_caps, "ooxml pptx place table-from-xlsx", false);
     assert_command(&all_caps, "ooxml pptx shapes set-bounds", false);
     assert_command(&all_caps, "ooxml pptx shapes delete", false);
     assert_command(&all_caps, "ooxml pptx animations list", false);
@@ -187,6 +189,18 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command_target_kind(&all_caps, "ooxml pptx replace images", "image");
     assert_command_target_kind(&all_caps, "ooxml pptx replace images", "slide");
     assert_command_target_kind(&all_caps, "ooxml pptx replace images", "shape");
+    for path in ["ooxml pptx place table", "ooxml pptx place table-from-xlsx"] {
+        assert_object_kind_command(&all_caps, "slide", path);
+        assert_object_kind_command(&all_caps, "shape", path);
+        assert_object_kind_command(&all_caps, "table", path);
+        assert_command_target_kind(&all_caps, path, "slide");
+        assert_command_target_kind(&all_caps, path, "shape");
+        assert_command_target_kind(&all_caps, path, "table");
+    }
+    assert_object_kind_command(&all_caps, "sheet", "ooxml pptx place table-from-xlsx");
+    assert_object_kind_command(&all_caps, "range", "ooxml pptx place table-from-xlsx");
+    assert_command_target_kind(&all_caps, "ooxml pptx place table-from-xlsx", "sheet");
+    assert_command_target_kind(&all_caps, "ooxml pptx place table-from-xlsx", "range");
     assert_object_kind_command(&all_caps, "media", "ooxml pptx media list");
     assert_command_target_kind(&all_caps, "ooxml pptx media list", "media");
     assert_command_target_kind(&all_caps, "ooxml pptx media list", "slide");
@@ -591,6 +605,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx shapes get", false);
     assert_command(&pptx_caps, "ooxml pptx add-textbox", false);
     assert_command(&pptx_caps, "ooxml pptx place image", false);
+    assert_command(&pptx_caps, "ooxml pptx place table", false);
+    assert_command(&pptx_caps, "ooxml pptx place table-from-xlsx", false);
     assert_command(&pptx_caps, "ooxml pptx shapes set-bounds", false);
     assert_command(&pptx_caps, "ooxml pptx shapes delete", false);
     assert_command(&pptx_caps, "ooxml pptx animations list", false);
@@ -792,6 +808,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&range_caps, "ooxml xlsx hyperlinks update", true);
     assert_command(&range_caps, "ooxml xlsx hyperlinks delete", true);
     assert_command(&range_caps, "ooxml pptx tables update-from-xlsx", true);
+    assert_command(&range_caps, "ooxml pptx place table-from-xlsx", false);
     assert_command(&range_caps, "ooxml pptx replace text-from-xlsx", false);
     assert_command(&range_caps, "ooxml pptx replace text-map-from-xlsx", false);
     assert_command(&range_caps, "ooxml xlsx ranges export", false);
@@ -815,6 +832,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(table_code, 0);
     assert_eq!(table_stderr, None);
     let table_caps = table_stdout.expect("table capabilities");
+    assert_command(&table_caps, "ooxml pptx place table", false);
+    assert_command(&table_caps, "ooxml pptx place table-from-xlsx", false);
     assert_command(&table_caps, "ooxml pptx tables show", false);
     assert_command(&table_caps, "ooxml pptx tables set-cell", true);
     assert_command(&table_caps, "ooxml pptx tables delete-row", true);
@@ -1187,12 +1206,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        192,
+        194,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        98,
+        96,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

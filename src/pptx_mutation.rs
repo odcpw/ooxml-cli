@@ -24,7 +24,9 @@ pub(crate) use layouts::{
     pptx_layouts_rename, pptx_layouts_set_bounds, pptx_masters_add_placeholder,
 };
 pub(crate) use notes::{pptx_notes_clear, pptx_notes_set};
-pub(crate) use placement::{pptx_add_textbox, pptx_place_image};
+pub(crate) use placement::{
+    pptx_add_textbox, pptx_place_image, pptx_place_table, pptx_place_table_from_xlsx,
+};
 pub(crate) use replace::{
     pptx_replace_images, pptx_replace_text_from_xlsx, pptx_replace_text_map_from_xlsx,
     pptx_replace_text_occurrences,
