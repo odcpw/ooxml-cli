@@ -18,8 +18,9 @@ history.
 - Go reference branch: `codex/ooxml-go-reference`.
 - Current `origin/master` includes hardening commit
   `acf3961 Fix two CFB unbounded-memory DoS bugs; harden OPC loader; add ingest fuzz harnesses`.
-- The Rust branch is divergent from `master` and must ingest that hardening before
-  future parity claims.
+- Current verification on 2026-06-20 showed `origin/master` at `acf3961`, with
+  `origin/master` and `acf3961` both ancestors of `codex/ooxml-rust-port`.
+  No master hardening merge/rebase is pending unless `origin/master` advances.
 - Rust toolchain is installed on this Windows box:
   `rustc 1.96.0`, `cargo 1.96.0`, MSVC Build Tools with `link.exe`.
 - Go is installed: `go1.26.4 windows/amd64`.
@@ -30,15 +31,12 @@ history.
   - `src/main.rs` is a large monolith and must not keep growing.
   - `tests/rust_contract_smoke.rs` contains the Go-vs-Rust contract harness.
 - Last setup checks:
-  - `cargo check` passed.
+  - `cargo check --all-targets` passed.
   - `cargo fmt --check` passed.
-  - `cargo test --no-run` passed.
-  - `cargo test -- --list` listed 77 Rust integration tests.
-  - `cargo clippy --all-targets -- -D warnings` currently fails on existing lint
-    issues and must be fixed before the branch is considered clean.
-  - The Go frozen-contract golden test exposed Windows scrubber drift around temp
-    paths and `diagnostics: null` versus `[]`; that harness drift must be fixed
-    before using the golden as a green proof on Windows.
+  - `cargo clippy --all-targets -- -D warnings` passed.
+  - `cargo test --all-targets` passed with 78 Rust contract tests.
+  - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
+    green on Windows.
 
 ## Definition of Done
 
@@ -142,7 +140,7 @@ for independent review prompts when the decision is hard to reverse.
 
 Parallelism rules:
 
-1. Split work into independent lanes: harness repair, master hardening merge,
+1. Split work into independent lanes: harness repair, master hardening tracking,
    de-monolithization planning, DOCX surface, XLSX surface, PPTX surface,
    serve/MCP surface, Office proof gates, fuzz/metamorphic gates.
 2. Read-only scouting can run aggressively in parallel.
@@ -162,8 +160,8 @@ Parallelism rules:
 Suggested parallel lanes:
 
 - Lane A: Windows proof loop and golden scrubber reliability.
-- Lane B: merge/rebase `master` hardening into the Rust branch and resolve
-  conflicts safely.
+- Lane B: track `master` hardening; merge/rebase only when `origin/master` is no
+  longer an ancestor of the Rust branch, then resolve conflicts safely.
 - Lane C: de-monolithization census and seam plan for `src/main.rs`.
 - Lane D: Rust clippy and hygiene fixes that do not change behavior.
 - Lane E: command-surface inventory gap analysis against Go capabilities.
@@ -286,9 +284,10 @@ Fix the proof loop before expanding Rust surface:
   - `cargo test --no-run`
   - targeted golden contract checks
 
-### Phase 2: Ingest Current Go Hardening
+### Phase 2: Track Current Go Hardening
 
-- Merge or rebase current `origin/master` into `codex/ooxml-rust-port`.
+- Verify current `origin/master` is an ancestor of `codex/ooxml-rust-port`.
+- Merge or rebase only if new `origin/master` hardening is not yet present.
 - Preserve Go as oracle and avoid broad Go churn.
 - Resolve conflicts with priority on security and ingest hardening.
 - Re-run relevant Rust and Go-oracle checks.

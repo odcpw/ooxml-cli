@@ -82,6 +82,11 @@ Latest milestone, 2026-06-20:
 - PPTX text extraction, text JSON rendering, and slide text snapshots moved from
   `src/pptx_readback.rs` into `src/pptx_readback/text.rs`, leaving `pptx diff`
   at the readback facade while sharing the same shape model parser.
+- PPTX shared shape model types, shape parsing, selector generation, placeholder
+  metadata, bounds rendering, and slide object counting moved from
+  `src/pptx_readback.rs` into `src/pptx_readback/shape_model.rs`, removing the
+  readback facade as a hidden dependency hub for text, notes, layouts, and
+  tables.
 - PPTX master/layout/theme readback moved from `src/pptx_readback.rs` into
   `src/pptx_readback/layouts.rs`, preserving the existing crate-facing
   `pptx masters` and `pptx layouts` command facade.
@@ -237,10 +242,15 @@ Latest milestone, 2026-06-20:
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
 - Proof after the latest split: `cargo check --all-targets`, `cargo test --test
-  rust_contract_smoke docx_blocks`, `cargo test --test rust_contract_smoke
-  serve_inspect_supports_docx_read_commands -- --exact`, `cargo clippy
-  --all-targets -- -D warnings`, and `cargo test --all-targets` all pass with
-  78 Rust contract tests.
+  rust_contract_smoke web_smoke_binary_readback_checks_are_supported -- --exact`,
+  `cargo test --test rust_contract_smoke
+  serve_pptx_generic_web_agent_edit_path_works -- --exact`, `cargo test --test
+  rust_contract_smoke frozen_pptx_mutation_and_validate_match_go_baseline --
+  --exact`, `cargo test --test rust_contract_smoke
+  frozen_cli_slice_matches_go_baseline -- --exact`, `cargo test --test
+  rust_contract_smoke frozen_serve_flow_matches_go_baseline -- --exact`,
+  `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
+  `cargo test --all-targets` all pass with 78 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
