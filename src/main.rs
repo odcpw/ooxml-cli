@@ -36,6 +36,7 @@ mod pptx_mutation;
 mod pptx_readback;
 mod pptx_render;
 mod pptx_template;
+mod pptx_translate;
 mod robot_docs;
 mod runtime_util;
 mod selector_util;
@@ -69,8 +70,8 @@ mod zip_io;
 
 pub(crate) use apply::apply;
 pub(crate) use cli_args::{
-    has_flag, parse_i64_flag, parse_string_flag, parse_u32_flag, parse_u32_flags,
-    parse_validate_args, reject_unknown_flags, validate_positive_i64,
+    has_flag, parse_i64_flag, parse_string_flag, parse_string_flags, parse_u32_flag,
+    parse_u32_flags, parse_validate_args, reject_unknown_flags, validate_positive_i64,
 };
 pub(crate) use cli_core::{
     CliError, CliResult, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS, EXIT_PARTIAL_SUCCESS,
@@ -166,6 +167,7 @@ pub(crate) use pptx_readback::{
     pptx_slides_list, pptx_tables_show,
 };
 pub(crate) use pptx_template::pptx_template_inspect;
+pub(crate) use pptx_translate::{pptx_translate_apply, pptx_translate_export};
 pub(crate) use runtime_util::{
     chrono_like_counter, current_utc_rfc3339, docx_mutation_temp_path, package_mutation_temp_path,
     xlsx_ranges_set_temp_path,

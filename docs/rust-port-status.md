@@ -9,6 +9,21 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX translation workflow parity landed for direct
+  `pptx translate export` and `pptx translate apply`. The slice exports
+  Go-shaped translation manifests for slide text and speaker notes, applies
+  target text back to PPTX runs with Go-compatible stale handling
+  (`skip`/`warn`/`error`), preserves invalid manifest/package guard behavior,
+  and keeps unrelated template/import/VBA/XLSX-binding surfaces out of scope.
+  Rust capabilities now advertise 216 Go-oracle command paths, leaving a
+  pinned 74-command gap; both translate leaves are direct CLI paths with
+  `opCompatible=false` because serve/MCP operation dispatch is not wired for
+  this workflow. Proof: focused Go-vs-Rust translate export/apply contract
+  tests, focused capability ratchet tests, strict validation and readback for
+  a generated proof deck, Open XML SDK Office2019 schema validation
+  (`Valid: true`, `ErrorCount: 0`), desktop PowerPoint COM open proof
+  (`1 passed, 0 failed`; PowerPoint 16.0 build 20026), `cargo fmt --check`,
+  and `cargo clippy --all-targets -- -D warnings`.
 - Rust utility/root help surfaces landed for `ooxml`, `ooxml help`,
   top-level `completion`, top-level `conformance`, and parent/group help paths
   such as `docx`, `xlsx`, `pptx`, `pptx slides`, `pptx layouts`,
@@ -1527,7 +1542,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 214, and the harness pins the 76-command gap until
+  paths, Rust advertises 216, and the harness pins the 74-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

@@ -52,6 +52,59 @@ fn scrub_created_at(value: Value) -> Value {
     }
 }
 
+fn scrub_translation_exported_at(value: Value) -> Value {
+    match value {
+        Value::Object(mut map) => {
+            for (key, item) in map.iter_mut() {
+                if key == "exportedAt" && item.as_str().is_some() {
+                    *item = Value::String("[EXPORTED_AT]".to_string());
+                } else {
+                    *item = scrub_translation_exported_at(item.take());
+                }
+            }
+            Value::Object(map)
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .map(scrub_translation_exported_at)
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+fn run_ooxml_raw(args: &[&str]) -> (i32, String, String) {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args(args)
+        .output()
+        .expect("run Rust ooxml raw");
+    (
+        output.status.code().unwrap_or(-1),
+        String::from_utf8(output.stdout).expect("Rust stdout utf8"),
+        String::from_utf8(output.stderr).expect("Rust stderr utf8"),
+    )
+}
+
+fn run_go_ooxml_raw(args: &[&str]) -> (i32, String, String) {
+    let output = std::process::Command::new(go_ooxml_binary())
+        .args(args)
+        .env("GOCACHE", go_cache_dir())
+        .output()
+        .expect("run Go ooxml oracle raw");
+    (
+        output.status.code().unwrap_or(-1),
+        String::from_utf8(output.stdout).expect("Go stdout utf8"),
+        String::from_utf8(output.stderr).expect("Go stderr utf8"),
+    )
+}
+
+fn parse_raw_json(text: &str) -> Value {
+    serde_json::from_str(text.trim()).unwrap_or_else(|err| {
+        panic!("invalid raw JSON {err}: {text}");
+    })
+}
+
 fn collect_export_files(
     root: &std::path::Path,
     current: &std::path::Path,
@@ -73,6 +126,286 @@ fn collect_export_files(
                     .join("/"),
             );
         }
+    }
+}
+
+#[test]
+fn pptx_translate_export_matches_go_oracle() {
+    for args in [
+        vec![
+            "--json",
+            "pptx",
+            "translate",
+            "export",
+            "testdata/pptx/minimal-title/presentation.pptx",
+            "--source-lang",
+            "en-US",
+            "--target-lang",
+            "fr-FR",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "translate",
+            "export",
+            "testdata/pptx/notes-slide/presentation.pptx",
+            "--include-notes",
+            "--source-lang",
+            "en-US",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "translate",
+            "export",
+            "testdata/pptx/minimal-title/presentation.pptx",
+            "--slide",
+            "99",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "translate",
+            "export",
+            "testdata/pptx/minimal-title/presentation.pptx",
+            "--source-lang",
+            "xx_BAD",
+            "--target-lang",
+            "??",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "translate",
+            "export",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+    ] {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "translate export exit for {args:?}");
+        assert_eq!(
+            rust_stderr, go_stderr,
+            "translate export stderr for {args:?}"
+        );
+        assert_eq!(
+            rust_stdout.map(scrub_translation_exported_at),
+            go_stdout.map(scrub_translation_exported_at),
+            "translate export stdout for {args:?}"
+        );
+    }
+}
+
+#[test]
+fn pptx_translate_apply_saved_stale_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-translate-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("translate temp dir");
+
+    let go_input = temp_dir.join("go-input.pptx");
+    let rust_input = temp_dir.join("rust-input.pptx");
+    let xlsx_input = temp_dir.join("input.xlsx");
+    std::fs::copy("testdata/pptx/minimal-title/presentation.pptx", &go_input)
+        .expect("copy Go translate fixture");
+    std::fs::copy("testdata/pptx/minimal-title/presentation.pptx", &rust_input)
+        .expect("copy Rust translate fixture");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &xlsx_input)
+        .expect("copy xlsx translate fixture");
+
+    let manifest_path = temp_dir.join("manifest.json");
+    let stale_manifest_path = temp_dir.join("stale.json");
+    let invalid_manifest_path = temp_dir.join("invalid-id.json");
+    std::fs::write(
+        &manifest_path,
+        r#"{"metadata":{"version":"1.0.0","exportedAt":"2026-06-20T00:00:00Z","sourceLanguage":"en-US","targetLanguage":"fr-FR","deckName":"presentation.pptx","slideCount":1,"entryCount":1},"entries":[{"id":"slide:0_title_p0_r0","type":"title","sourceText":"Minimal Title Slide","targetText":"Titre minimal","slideId":0,"slideNumber":1,"placeholderKey":"title","shapeId":2,"shapeName":"Title 1","paragraphIndex":0,"runIndex":0,"segmentType":"text"}]}"#,
+    )
+    .expect("write translate manifest");
+    std::fs::write(
+        &stale_manifest_path,
+        r#"{"metadata":{"version":"1.0.0","exportedAt":"2026-06-20T00:00:00Z","slideCount":1,"entryCount":1},"entries":[{"id":"slide:0_title_p0_r0","type":"title","sourceText":"Old source","targetText":"Titre stale","slideId":0,"slideNumber":1,"placeholderKey":"title","shapeId":2,"shapeName":"Title 1","paragraphIndex":0,"runIndex":0,"segmentType":"text"}]}"#,
+    )
+    .expect("write stale translate manifest");
+    std::fs::write(
+        &invalid_manifest_path,
+        r#"{"metadata":{"version":"1.0.0","exportedAt":"2026-06-20T00:00:00Z"},"entries":[{"id":"bad","type":"title","sourceText":"Minimal Title Slide","targetText":"Titre","slideId":0,"slideNumber":1,"paragraphIndex":0,"runIndex":0}]}"#,
+    )
+    .expect("write invalid translate manifest");
+
+    let go_out = temp_dir.join("go-out.pptx");
+    let rust_out = temp_dir.join("rust-out.pptx");
+    let go_input_str = go_input.to_str().expect("go input");
+    let rust_input_str = rust_input.to_str().expect("rust input");
+    let xlsx_input_str = xlsx_input.to_str().expect("xlsx input");
+    let manifest_str = manifest_path.to_str().expect("manifest path");
+    let stale_manifest_str = stale_manifest_path.to_str().expect("stale manifest path");
+    let invalid_manifest_str = invalid_manifest_path
+        .to_str()
+        .expect("invalid manifest path");
+    let go_out_str = go_out.to_str().expect("go output");
+    let rust_out_str = rust_out.to_str().expect("rust output");
+
+    let go_args = [
+        "--json",
+        "pptx",
+        "translate",
+        "apply",
+        go_input_str,
+        manifest_str,
+        "--output",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "translate",
+        "apply",
+        rust_input_str,
+        manifest_str,
+        "--output",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "translate apply saved exit");
+    assert_eq!(rust_stderr, go_stderr, "translate apply saved stderr");
+    assert_eq!(rust_stdout, go_stdout, "translate apply saved stdout");
+    assert!(go_out.exists(), "Go translate output missing");
+    assert!(rust_out.exists(), "Rust translate output missing");
+
+    let (go_code, go_stdout, go_stderr) =
+        run_go_ooxml(&["--json", "pptx", "extract", "text", go_out_str]);
+    let (rust_code, rust_stdout, rust_stderr) =
+        run_ooxml(&["--json", "pptx", "extract", "text", rust_out_str]);
+    assert_eq!(rust_code, go_code, "translate apply readback exit");
+    assert_eq!(rust_stderr, go_stderr, "translate apply readback stderr");
+    assert_eq!(
+        scrub_paths(
+            rust_stdout.expect("rust translate readback"),
+            &[(rust_out_str, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go translate readback"),
+            &[(go_out_str, "[OUT]")]
+        ),
+        "translate apply readback stdout"
+    );
+
+    let (validate_code, validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "validate", "--strict", rust_out_str]);
+    assert_eq!(validate_code, 0, "translate output strict validate exit");
+    assert_eq!(
+        validate_stderr, None,
+        "translate output strict validate stderr"
+    );
+    assert_eq!(
+        validate_stdout.expect("translate output strict validate")["valid"],
+        Value::Bool(true)
+    );
+
+    for stale_mode in [None, Some("warn"), Some("error")] {
+        let stale_label = stale_mode.unwrap_or("skip");
+        let rust_stale_out = temp_dir.join(format!("rust-stale-{stale_label}.pptx"));
+        let go_stale_out = temp_dir.join(format!("go-stale-{stale_label}.pptx"));
+        let rust_stale_out_str = rust_stale_out.to_str().expect("rust stale output");
+        let go_stale_out_str = go_stale_out.to_str().expect("go stale output");
+        let mut go_args = vec![
+            "--json",
+            "pptx",
+            "translate",
+            "apply",
+            go_input_str,
+            stale_manifest_str,
+        ];
+        let mut rust_args = vec![
+            "--json",
+            "pptx",
+            "translate",
+            "apply",
+            rust_input_str,
+            stale_manifest_str,
+        ];
+        if let Some(mode) = stale_mode {
+            go_args.extend(["--stale", mode]);
+            rust_args.extend(["--stale", mode]);
+        }
+        go_args.extend(["--output", go_stale_out_str]);
+        rust_args.extend(["--output", rust_stale_out_str]);
+
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(&go_args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(&rust_args);
+        assert_eq!(rust_code, go_code, "translate stale {stale_mode:?} exit");
+        assert_eq!(
+            rust_stderr, go_stderr,
+            "translate stale {stale_mode:?} stderr"
+        );
+        if go_stdout.trim().is_empty() || rust_stdout.trim().is_empty() {
+            assert_eq!(
+                rust_stdout, go_stdout,
+                "translate stale {stale_mode:?} stdout"
+            );
+        } else {
+            assert_eq!(
+                parse_raw_json(&rust_stdout),
+                parse_raw_json(&go_stdout),
+                "translate stale {stale_mode:?} stdout"
+            );
+        }
+    }
+
+    for args in [
+        vec![
+            "--json",
+            "pptx",
+            "translate",
+            "apply",
+            rust_input_str,
+            manifest_str,
+            "--stale",
+            "explode",
+            "--output",
+            rust_out_str,
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "translate",
+            "apply",
+            rust_input_str,
+            invalid_manifest_str,
+            "--output",
+            rust_out_str,
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "translate",
+            "apply",
+            xlsx_input_str,
+            manifest_str,
+            "--output",
+            rust_out_str,
+        ],
+    ] {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(
+            rust_code, go_code,
+            "translate apply error exit for {args:?}"
+        );
+        assert_eq!(
+            rust_stderr, go_stderr,
+            "translate apply error stderr for {args:?}"
+        );
+        assert_eq!(
+            rust_stdout, go_stdout,
+            "translate apply error stdout for {args:?}"
+        );
     }
 }
 

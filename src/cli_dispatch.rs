@@ -15,7 +15,7 @@ use crate::vba::*;
 use crate::verify::verify;
 use crate::{
     apply, diff, pptx_media_add, pptx_media_list, pptx_media_replace, pptx_template_inspect,
-    pptx_validate_layout,
+    pptx_translate_apply, pptx_translate_export, pptx_validate_layout,
 };
 
 pub(crate) enum DispatchBody {
@@ -1245,6 +1245,33 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
                 ],
             )?;
             pptx_text_set(file, rest)
+        }
+        [family, group, verb] if family == "pptx" && group == "translate" && verb == "export" => {
+            Err(CliError::invalid_args("accepts 1 arg(s), received 0"))
+        }
+        [family, group, verb] if family == "pptx" && group == "translate" && verb == "apply" => {
+            Err(CliError::invalid_args("accepts 2 arg(s), received 0"))
+        }
+        [family, group, verb, _file]
+            if family == "pptx" && group == "translate" && verb == "apply" =>
+        {
+            Err(CliError::invalid_args("accepts 2 arg(s), received 1"))
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "translate" && verb == "export" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--slide", "--source-lang", "--target-lang", "--format"],
+                &["--include-notes"],
+            )?;
+            pptx_translate_export(file, rest)
+        }
+        [family, group, verb, file, manifest, rest @ ..]
+            if family == "pptx" && group == "translate" && verb == "apply" =>
+        {
+            reject_unknown_flags(rest, &["--stale", "--output"], &[])?;
+            pptx_translate_apply(file, manifest, rest)
         }
         [family, group, verb]
             if family == "pptx"

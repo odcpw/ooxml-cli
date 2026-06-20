@@ -42,7 +42,7 @@ history.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
   - Current capability ratchet: Go advertises 290 command paths, Rust
-    advertises 214, leaving 76 unported paths.
+    advertises 216, leaving 74 unported paths.
 
 ## Definition of Done
 

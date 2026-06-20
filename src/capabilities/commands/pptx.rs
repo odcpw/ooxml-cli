@@ -437,6 +437,53 @@ pub(super) fn commands() -> Vec<Value> {
             ],
         ),
         capability_command(
+            "ooxml pptx translate export",
+            "export <file>",
+            "Export PPTX slide and notes text to a translation manifest.",
+            &["slide", "shape"],
+            false,
+            Some("read-only translation workflow; serve/MCP op support is not wired yet"),
+            vec![
+                flag("--slide", "slide", "int", "repeatable 1-based slide number"),
+                flag(
+                    "--include-notes",
+                    "includeNotes",
+                    "bool",
+                    "include speaker notes",
+                ),
+                flag(
+                    "--source-lang",
+                    "sourceLang",
+                    "string",
+                    "source language tag",
+                ),
+                flag(
+                    "--target-lang",
+                    "targetLang",
+                    "string",
+                    "target language tag",
+                ),
+                flag("--format", "format", "string", "json"),
+            ],
+        ),
+        capability_command(
+            "ooxml pptx translate apply",
+            "apply <file> <manifest>",
+            "Apply a translation manifest to PPTX slide text.",
+            &["slide", "shape"],
+            false,
+            Some("direct CLI translation mutation; serve/MCP op support is not wired yet"),
+            vec![
+                flag(
+                    "--stale",
+                    "stale",
+                    "string",
+                    "stale source handling: skip, warn, or error",
+                ),
+                flag("--output", "output", "string", "output file path"),
+            ],
+        ),
+        capability_command(
             "ooxml pptx place image",
             "image <file> --slide <n> --image <path> --x <emu> --y <emu> --cx <emu> --cy <emu>",
             "Place a new image shape on a slide at explicit EMU bounds.",

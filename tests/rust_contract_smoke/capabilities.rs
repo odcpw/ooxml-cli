@@ -37,6 +37,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx shapes get", false);
     assert_command(&all_caps, "ooxml pptx add-textbox", false);
     assert_command(&all_caps, "ooxml pptx text set", false);
+    assert_command(&all_caps, "ooxml pptx translate export", false);
+    assert_command(&all_caps, "ooxml pptx translate apply", false);
     assert_command(&all_caps, "ooxml pptx place image", false);
     assert_command(&all_caps, "ooxml pptx place table", false);
     assert_command(&all_caps, "ooxml pptx place table-from-xlsx", false);
@@ -249,6 +251,12 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "hyperlink", "ooxml pptx text set");
     assert_command_target_kind(&all_caps, "ooxml pptx text set", "style");
     assert_command_target_kind(&all_caps, "ooxml pptx text set", "hyperlink");
+    for path in ["ooxml pptx translate export", "ooxml pptx translate apply"] {
+        assert_object_kind_command(&all_caps, "slide", path);
+        assert_object_kind_command(&all_caps, "shape", path);
+        assert_command_target_kind(&all_caps, path, "slide");
+        assert_command_target_kind(&all_caps, path, "shape");
+    }
     assert_object_kind_command(&all_caps, "chart", "ooxml pptx charts list");
     assert_object_kind_command(&all_caps, "chart", "ooxml pptx charts show");
     assert_object_kind_command(&all_caps, "chart", "ooxml pptx charts create");
@@ -628,6 +636,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx place table-from-xlsx", false);
     assert_command(&pptx_caps, "ooxml pptx shapes set-bounds", false);
     assert_command(&pptx_caps, "ooxml pptx shapes delete", false);
+    assert_command(&pptx_caps, "ooxml pptx translate export", false);
+    assert_command(&pptx_caps, "ooxml pptx translate apply", false);
     assert_command(&pptx_caps, "ooxml pptx animations list", false);
     assert_command(&pptx_caps, "ooxml pptx animations add", false);
     assert_command(&pptx_caps, "ooxml pptx animations remove", false);
@@ -1235,12 +1245,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        214,
+        216,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        76,
+        74,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
