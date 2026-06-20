@@ -130,6 +130,11 @@ Latest milestone, 2026-06-20:
   `src/serve/op_dispatch.rs` into `src/serve/op_dispatch/docx.rs`, leaving the
   top-level serve op dispatcher as family routing plus the remaining PPTX text
   replacement operation.
+- DOCX serve operation dispatch for table `set-cell` and `clear-cell` moved
+  from `src/serve/op_dispatch/docx.rs` into
+  `src/serve/op_dispatch/docx/tables.rs`, preserving table coordinate
+  validation, plan flag ordering, `DocxTablesOp` readback shaping, and
+  unsupported-command fallback behavior.
 - The top-level serve op dispatcher now routes XLSX and DOCX commands by
   family prefix, leaving exact command matching and unsupported-command
   fallbacks inside each child dispatcher.

@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 use std::fs;
 
+mod tables;
+
 use super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
 use crate::{
     CliError, CliResult, DocxCommentEditSpec, DocxHeaderFooterSetTextOptions,
@@ -8,11 +10,10 @@ use crate::{
     docx_blocks_delete, docx_blocks_insert_after, docx_blocks_replace, docx_comments_add,
     docx_comments_edit, docx_comments_remove, docx_fields_insert, docx_fields_set_result,
     docx_headers_footers_set_text, docx_paragraphs_append, docx_paragraphs_clear,
-    docx_paragraphs_insert, docx_paragraphs_set, docx_styles_apply, docx_tables_clear_cell,
-    docx_tables_set_cell, json_bool, json_i64, json_optional_string, json_string,
-    normalize_docx_header_footer_show_type, normalize_docx_style_target, require_docx_block_hash,
-    resolve_required_docx_paragraph_set_text, resolve_required_docx_table_text,
-    validate_positive_i64,
+    docx_paragraphs_insert, docx_paragraphs_set, docx_styles_apply, json_bool, json_i64,
+    json_optional_string, json_string, normalize_docx_header_footer_show_type,
+    normalize_docx_style_target, require_docx_block_hash, resolve_required_docx_paragraph_set_text,
+    resolve_required_docx_table_text,
 };
 
 pub(super) fn serve_docx_op(working: &str, command: &str, args: &Value) -> CliResult<ServeOp> {
@@ -808,130 +809,8 @@ pub(super) fn serve_docx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "docx tables set-cell" => {
-            let table = json_i64(args, "table")?
-                .ok_or_else(|| CliError::invalid_args("table is required"))?;
-            let row =
-                json_i64(args, "row")?.ok_or_else(|| CliError::invalid_args("row is required"))?;
-            let col =
-                json_i64(args, "col")?.ok_or_else(|| CliError::invalid_args("col is required"))?;
-            validate_positive_i64(table, "--table")?;
-            validate_positive_i64(row, "--row")?;
-            validate_positive_i64(col, "--col")?;
-            let expect_hash = json_optional_string(args, "expect-hash")
-                .or_else(|| json_optional_string(args, "expectHash"))
-                .unwrap_or_default();
-            require_docx_block_hash(&expect_hash)?;
-            let text_changed = args.get("text").is_some();
-            let text_file_changed =
-                args.get("text-file").is_some() || args.get("textFile").is_some();
-            let text = json_optional_string(args, "text");
-            let text_file = json_optional_string(args, "text-file")
-                .or_else(|| json_optional_string(args, "textFile"));
-            let resolved_text = resolve_required_docx_table_text(
-                text.as_deref(),
-                text_file.as_deref(),
-                text_changed,
-                text_file_changed,
-            )?;
-            let readback = docx_tables_set_cell(
-                working,
-                table as usize,
-                row as usize,
-                col as usize,
-                &expect_hash,
-                &resolved_text,
-                DocxParagraphMutationOptions {
-                    text: None,
-                    text_file: None,
-                    style: "",
-                    out: None,
-                    backup: None,
-                    dry_run: false,
-                    in_place: true,
-                    no_validate: true,
-                },
-            )?;
-            let mut plan_flags = vec![
-                json!("--table"),
-                json!(table.to_string()),
-                json!("--row"),
-                json!(row.to_string()),
-                json!("--col"),
-                json!(col.to_string()),
-            ];
-            push_serve_plan_string_flag(
-                &mut plan_flags,
-                "--expect-hash",
-                Some(expect_hash.as_str()),
-            );
-            if text_changed {
-                push_serve_plan_string_flag(
-                    &mut plan_flags,
-                    "--text",
-                    Some(resolved_text.as_str()),
-                );
-            }
-            if text_file_changed {
-                push_serve_plan_string_flag(&mut plan_flags, "--text-file", text_file.as_deref());
-            }
-            ServeOp::DocxTablesOp {
-                command: command.to_string(),
-                plan_flags,
-                readback_file: working.to_string(),
-                readback,
-            }
-        }
-        "docx tables clear-cell" => {
-            let table = json_i64(args, "table")?
-                .ok_or_else(|| CliError::invalid_args("table is required"))?;
-            let row =
-                json_i64(args, "row")?.ok_or_else(|| CliError::invalid_args("row is required"))?;
-            let col =
-                json_i64(args, "col")?.ok_or_else(|| CliError::invalid_args("col is required"))?;
-            validate_positive_i64(table, "--table")?;
-            validate_positive_i64(row, "--row")?;
-            validate_positive_i64(col, "--col")?;
-            let expect_hash = json_optional_string(args, "expect-hash")
-                .or_else(|| json_optional_string(args, "expectHash"))
-                .unwrap_or_default();
-            require_docx_block_hash(&expect_hash)?;
-            let readback = docx_tables_clear_cell(
-                working,
-                table as usize,
-                row as usize,
-                col as usize,
-                &expect_hash,
-                DocxParagraphMutationOptions {
-                    text: None,
-                    text_file: None,
-                    style: "",
-                    out: None,
-                    backup: None,
-                    dry_run: false,
-                    in_place: true,
-                    no_validate: true,
-                },
-            )?;
-            let mut plan_flags = vec![
-                json!("--table"),
-                json!(table.to_string()),
-                json!("--row"),
-                json!(row.to_string()),
-                json!("--col"),
-                json!(col.to_string()),
-            ];
-            push_serve_plan_string_flag(
-                &mut plan_flags,
-                "--expect-hash",
-                Some(expect_hash.as_str()),
-            );
-            ServeOp::DocxTablesOp {
-                command: command.to_string(),
-                plan_flags,
-                readback_file: working.to_string(),
-                readback,
-            }
+        family_command if family_command.starts_with("docx tables ") => {
+            tables::serve_docx_tables_op(working, family_command, args)?
         }
         _ => {
             return Err(CliError::invalid_args(format!(
