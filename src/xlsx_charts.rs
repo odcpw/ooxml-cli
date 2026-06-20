@@ -1,16 +1,20 @@
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
 use crate::{
-    CliError, CliResult, WorkbookSheet, add_selector, command_arg, copy_zip_with_part_override,
-    decode_xml_text, local_name, relationship_entries, relationships_part_for,
-    resolve_relationship_target, resolve_sheet, selector_candidates, validate,
-    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_ranges_set_temp_path,
-    xlsx_sheet_selectors, xml_attr_escape, xml_escape, zip_text,
+    CliError, CliResult, RangeBounds, RelationshipEntry, WorkbookSheet, XlsxRangeExportOptions,
+    add_relationship_to_xml, add_selector, allocate_relationship_id, check_range_max_cells,
+    col_name, command_arg, copy_zip_with_part_override, copy_zip_with_part_overrides,
+    decode_xml_text, ensure_content_type_override, local_name, parse_cell_ref, parse_range,
+    relationship_entries, relationship_entries_from_xml, relationship_target_from_source_to_target,
+    relationships_part_for, resolve_relationship_target, resolve_sheet, select_xlsx_table,
+    selector_candidates, validate, validate_xlsx_mutation_output_flags, workbook_sheets,
+    xlsx_range_export_with_options, xlsx_ranges_set_temp_path, xlsx_sheet_selectors, xlsx_tables,
+    xml_attr_escape, xml_escape, zip_entry_names, zip_text,
 };
 
 const REL_WORKSHEET: &str =
@@ -20,6 +24,13 @@ const REL_DRAWING: &str =
 const REL_CHART: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart";
 const NS_CHART: &str = "http://schemas.openxmlformats.org/drawingml/2006/chart";
 const NS_DRAWING_MAIN: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
+const NS_RELATIONSHIPS: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const NS_SPREADSHEET_DRAWING: &str =
+    "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
+const CONTENT_TYPE_CHART: &str =
+    "application/vnd.openxmlformats-officedocument.drawingml.chart+xml";
+const CONTENT_TYPE_DRAWING: &str = "application/vnd.openxmlformats-officedocument.drawing+xml";
 
 const CHART_CHILD_ORDER: &[&str] = &[
     "title",
@@ -187,6 +198,45 @@ const VAL_AXIS_CHILD_ORDER: &[&str] = &[
     "extLst",
 ];
 const TX_PR_CHILD_ORDER: &[&str] = &["bodyPr", "lstStyle", "p"];
+const WORKSHEET_CHILD_ORDER: &[&str] = &[
+    "sheetPr",
+    "dimension",
+    "sheetViews",
+    "sheetFormatPr",
+    "cols",
+    "sheetData",
+    "sheetCalcPr",
+    "sheetProtection",
+    "protectedRanges",
+    "scenarios",
+    "autoFilter",
+    "sortState",
+    "dataConsolidate",
+    "customSheetViews",
+    "mergeCells",
+    "phoneticPr",
+    "conditionalFormatting",
+    "dataValidations",
+    "hyperlinks",
+    "printOptions",
+    "pageMargins",
+    "pageSetup",
+    "headerFooter",
+    "rowBreaks",
+    "colBreaks",
+    "customProperties",
+    "cellWatches",
+    "ignoredErrors",
+    "smartTags",
+    "drawing",
+    "drawingHF",
+    "picture",
+    "oleObjects",
+    "controls",
+    "webPublishItems",
+    "tableParts",
+    "extLst",
+];
 
 #[derive(Clone)]
 struct ChartRef {
@@ -262,6 +312,43 @@ struct XmlNode {
     raw_attrs: Vec<XmlAttr>,
     text: String,
     children: Vec<XmlNode>,
+}
+
+#[derive(Clone)]
+pub(crate) struct XlsxChartCreateOptions<'a> {
+    pub(crate) chart_type: Option<&'a str>,
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) range: Option<&'a str>,
+    pub(crate) table: Option<&'a str>,
+    pub(crate) title: Option<&'a str>,
+    pub(crate) anchor: Option<&'a str>,
+    pub(crate) expect_source_range: Option<&'a str>,
+    pub(crate) max_cells: i64,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct XlsxChartUpdateSourceOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) chart: Option<&'a str>,
+    pub(crate) series: i64,
+    pub(crate) role: Option<&'a str>,
+    pub(crate) source_sheet: Option<&'a str>,
+    pub(crate) source_range: Option<&'a str>,
+    pub(crate) formula: Option<&'a str>,
+    pub(crate) cache: Option<&'a str>,
+    pub(crate) expect_source_range: Option<&'a str>,
+    pub(crate) expect_formula: Option<&'a str>,
+    pub(crate) max_cells: i64,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
 }
 
 #[derive(Clone)]
@@ -414,6 +501,227 @@ pub(crate) fn xlsx_charts_show(
     let charts = load_xlsx_charts(file, sheet_selector)?;
     let chart = select_xlsx_chart(&charts, chart_selector.unwrap_or_default())?;
     Ok(xlsx_charts_result(file, vec![chart]))
+}
+
+pub(crate) fn xlsx_charts_create(
+    file: &str,
+    options: XlsxChartCreateOptions<'_>,
+) -> CliResult<Value> {
+    ensure_xlsx_file_exists(file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let chart_type = parse_create_chart_type(options.chart_type)?;
+    let source = resolve_chart_create_source(file, &options)?;
+    if let Some(expect_range) = options
+        .expect_source_range
+        .filter(|value| !value.trim().is_empty())
+        && !source.range.eq_ignore_ascii_case(expect_range.trim())
+    {
+        return Err(CliError::invalid_args(format!(
+            "source range mismatch: expected {} but found {}",
+            expect_range, source.range
+        )));
+    }
+    let (anchor_from, anchor_to) = resolve_chart_create_anchor(options.anchor, source.bounds)?;
+    let artifacts = build_chart_create_artifacts(
+        file,
+        &source,
+        &chart_type,
+        options.title.unwrap_or_default(),
+        anchor_from,
+        anchor_to,
+    )
+    .map_err(|err| CliError::invalid_args(format!("failed to create chart: {}", err.message)))?;
+
+    let output_path = options.out.filter(|value| !value.trim().is_empty());
+    let commit_path = if options.in_place {
+        Some(file)
+    } else {
+        output_path
+    };
+    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
+        xlsx_ranges_set_temp_path(file)
+    } else {
+        output_path
+            .ok_or_else(|| {
+                CliError::invalid_args(
+                    "must specify exactly one of --out, --in-place, or --dry-run",
+                )
+            })?
+            .to_string()
+    };
+
+    copy_zip_with_part_overrides(file, &readback_path, &artifacts.overrides)?;
+    if !options.no_validate {
+        validate(&readback_path, true)?;
+    }
+
+    if options.dry_run {
+        let _ = fs::remove_file(&readback_path);
+    } else if options.in_place || output_path == Some(file) {
+        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
+            fs::copy(file, backup_path)
+                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+        }
+        fs::rename(&readback_path, file)
+            .or_else(|_| {
+                fs::copy(&readback_path, file)?;
+                fs::remove_file(&readback_path)
+            })
+            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    }
+
+    Ok(xlsx_chart_create_result(
+        file,
+        &source,
+        &artifacts,
+        commit_path,
+        options.dry_run,
+    ))
+}
+
+pub(crate) fn xlsx_charts_update_source(
+    file: &str,
+    options: XlsxChartUpdateSourceOptions<'_>,
+) -> CliResult<Value> {
+    ensure_xlsx_file_exists(file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    if options.series < 1 {
+        return Err(CliError::invalid_args("--series must be >= 1"));
+    }
+    let role = normalize_chart_source_role(options.role.unwrap_or("values"))?;
+    let cache_mode = normalize_chart_cache_mode(options.cache.unwrap_or("auto"))?;
+    if options.max_cells < 0 {
+        return Err(CliError::invalid_args("--max-cells must be >= 0"));
+    }
+    let formula_changed = options
+        .formula
+        .is_some_and(|value| !value.trim().is_empty());
+    let range_changed = options
+        .source_range
+        .is_some_and(|value| !value.trim().is_empty());
+    if formula_changed == range_changed {
+        return Err(CliError::invalid_args(
+            "must specify exactly one of --formula or --source-range",
+        ));
+    }
+
+    let workbook_xml = zip_text(file, "xl/workbook.xml")?;
+    let sheets = workbook_sheets(&workbook_xml)?;
+    let charts = load_xlsx_charts(file, options.sheet)?;
+    let selected = select_xlsx_chart(&charts, options.chart.unwrap_or_default())?;
+    let current_source = chart_series_source_by_role(&selected, options.series as usize, &role)?;
+    let resolved_source = resolve_chart_update_source(file, &sheets, &current_source, &options)?;
+    let rows = resolved_source.bounds.row_count();
+    let cols = resolved_source.bounds.col_count();
+    if rows != 1 && cols != 1 {
+        return Err(CliError::invalid_args(format!(
+            "chart source range {} is {}x{}; update-source currently requires a one-row or one-column series range",
+            resolved_source.range, rows, cols
+        )));
+    }
+
+    let cache_update = if cache_mode == ChartCacheMode::Auto {
+        collect_chart_cache_points(
+            file,
+            &resolved_source.sheet,
+            &resolved_source.range,
+            resolved_source.bounds,
+            &current_source.ref_kind,
+            options.max_cells,
+        )?
+    } else {
+        ChartCacheUpdate::default()
+    };
+
+    let chart_part = selected.part_uri.trim_start_matches('/').to_string();
+    let chart_xml = zip_text(file, &chart_part)?;
+    let mut root = parse_xml_node(&chart_xml)?;
+    if root.name != "chartSpace" {
+        return Err(CliError::unexpected(format!(
+            "chart part {} root element not found",
+            selected.part_uri
+        )));
+    }
+    let ctx = ensure_chart_xml_namespaces(&mut root);
+    let mutation = apply_chart_update_source(
+        &mut root,
+        &ctx,
+        options.series as usize,
+        &role,
+        &resolved_source.formula,
+        cache_mode,
+        &cache_update,
+        options.expect_formula,
+        options.expect_source_range,
+    )?;
+    let updated_xml = render_xml_document(&root);
+
+    let output_path = options.out.filter(|value| !value.trim().is_empty());
+    let commit_path = if options.in_place {
+        Some(file)
+    } else {
+        output_path
+    };
+    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
+        xlsx_ranges_set_temp_path(file)
+    } else {
+        output_path
+            .ok_or_else(|| {
+                CliError::invalid_args(
+                    "must specify exactly one of --out, --in-place, or --dry-run",
+                )
+            })?
+            .to_string()
+    };
+
+    copy_zip_with_part_override(file, &readback_path, &chart_part, &updated_xml)?;
+    if !options.no_validate {
+        validate(&readback_path, true)?;
+    }
+    let readback_charts = load_xlsx_charts(&readback_path, options.sheet)?;
+    let readback = select_xlsx_chart(&readback_charts, &format!("part:{}", selected.part_uri))?;
+    let chart_item = xlsx_chart_item_for_update(commit_path, &readback);
+
+    if options.dry_run {
+        let _ = fs::remove_file(&readback_path);
+    } else if options.in_place || output_path == Some(file) {
+        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
+            fs::copy(file, backup_path)
+                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+        }
+        fs::rename(&readback_path, file)
+            .or_else(|_| {
+                fs::copy(&readback_path, file)?;
+                fs::remove_file(&readback_path)
+            })
+            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    }
+
+    Ok(xlsx_chart_update_source_result(
+        ChartUpdateSourceResultInput {
+            file,
+            output: commit_path,
+            dry_run: options.dry_run,
+            sheet_selector: options.sheet,
+            chart_selector: options.chart,
+            series: options.series,
+            role: &role,
+            chart_item,
+            mutation: &mutation,
+            source: &resolved_source,
+            cache_update: &cache_update,
+        },
+    ))
 }
 
 pub(crate) fn xlsx_charts_set_title(
@@ -938,6 +1246,1727 @@ struct ChartAxisFlags {
     minor_gridlines: bool,
     tick_label_font: ChartFontOptions,
     title_font: ChartFontOptions,
+}
+
+#[derive(Clone)]
+struct ChartSourceCell {
+    value: String,
+    kind: String,
+    null: bool,
+    number_format_code: String,
+}
+
+struct ChartCreateSource {
+    sheet: String,
+    sheet_number: u32,
+    range: String,
+    bounds: RangeBounds,
+    cells: Vec<Vec<ChartSourceCell>>,
+}
+
+struct BuiltChartSeries {
+    name: String,
+    name_ref: String,
+    cats: Vec<String>,
+    cat_ref: String,
+    values: Vec<String>,
+    val_ref: String,
+}
+
+struct ChartCreateArtifacts {
+    chart_uri: String,
+    drawing_uri: String,
+    chart_type: String,
+    title: String,
+    series_count: usize,
+    categories: usize,
+    anchor: String,
+    warnings: Vec<String>,
+    overrides: BTreeMap<String, String>,
+}
+
+#[derive(Clone)]
+struct ChartSourceRole {
+    canonical: String,
+    element: &'static str,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ChartCacheMode {
+    Auto,
+    Clear,
+    Keep,
+}
+
+#[derive(Clone)]
+struct ChartCachePoint {
+    index: i64,
+    value: String,
+}
+
+#[derive(Clone, Default)]
+struct ChartCacheUpdate {
+    points: Vec<ChartCachePoint>,
+    skipped: i64,
+    format_code: String,
+    warnings: Vec<String>,
+}
+
+struct ResolvedChartUpdateSource {
+    sheet: String,
+    range: String,
+    formula: String,
+    bounds: RangeBounds,
+}
+
+struct ChartSourceMutation {
+    previous_formula: String,
+    formula: String,
+    ref_kind: String,
+    cache_type: String,
+    cache_point_count: i64,
+    cache_preview: Vec<String>,
+    cache_skipped: i64,
+    warnings: Vec<String>,
+}
+
+fn ensure_xlsx_file_exists(file: &str) -> CliResult<()> {
+    if Path::new(file).exists() {
+        Ok(())
+    } else {
+        Err(CliError::file_not_found(format!("file not found: {file}")))
+    }
+}
+
+fn parse_create_chart_type(value: Option<&str>) -> CliResult<String> {
+    let chart_type = value.unwrap_or_default().trim().to_ascii_lowercase();
+    if chart_type.is_empty() {
+        return Err(CliError::invalid_args(
+            "--type is required (bar, line, area, pie, scatter)",
+        ));
+    }
+    match chart_type.as_str() {
+        "bar" | "line" | "area" | "pie" | "scatter" => Ok(chart_type),
+        _ => Err(CliError::invalid_args(format!(
+            "failed to create chart: invalid chart type {chart_type:?} (bar, line, area, pie, scatter)"
+        ))),
+    }
+}
+
+fn resolve_chart_create_source(
+    file: &str,
+    options: &XlsxChartCreateOptions<'_>,
+) -> CliResult<ChartCreateSource> {
+    let source_sheet = options.sheet.unwrap_or_default().trim().to_string();
+    let source_range = options.range.unwrap_or_default().trim().to_string();
+    let source_table = options.table.unwrap_or_default().trim().to_string();
+    if !source_range.is_empty() && !source_table.is_empty() {
+        return Err(CliError::invalid_args(
+            "specify only one of --range or --table",
+        ));
+    }
+    if source_range.is_empty() && source_table.is_empty() {
+        return Err(CliError::invalid_args("must specify --range or --table"));
+    }
+    let (sheet, range) = if !source_table.is_empty() {
+        let tables = xlsx_tables(
+            file,
+            if source_sheet.is_empty() {
+                None
+            } else {
+                Some(source_sheet.as_str())
+            },
+        )?;
+        let table = select_xlsx_table(&tables, &source_table)?;
+        (table.sheet, table.range)
+    } else {
+        if source_sheet.is_empty() {
+            return Err(CliError::invalid_args(
+                "--sheet is required when using --range",
+            ));
+        }
+        (source_sheet, source_range)
+    };
+    let bounds = parse_range(&range)
+        .map_err(|err| CliError::invalid_args(format!("invalid --range: {}", err.message)))?
+        .normalized();
+    check_range_max_cells(&range, bounds, options.max_cells)?;
+    let exported = xlsx_range_export_with_options(
+        file,
+        &sheet,
+        &range,
+        XlsxRangeExportOptions {
+            include_types: true,
+            include_formulas: true,
+            include_formats: false,
+            data_out: None,
+            max_cells: options.max_cells,
+        },
+    )?;
+    let sheet_number = exported
+        .get("sheetNumber")
+        .and_then(Value::as_u64)
+        .unwrap_or(0) as u32;
+    let canonical_sheet = exported
+        .get("sheet")
+        .and_then(Value::as_str)
+        .unwrap_or(&sheet)
+        .to_string();
+    let canonical_range = exported
+        .get("range")
+        .and_then(Value::as_str)
+        .unwrap_or(&range)
+        .to_string();
+    let cells = chart_cells_from_range_export(&exported)?;
+    Ok(ChartCreateSource {
+        sheet: canonical_sheet,
+        sheet_number,
+        range: canonical_range,
+        bounds,
+        cells,
+    })
+}
+
+fn chart_cells_from_range_export(exported: &Value) -> CliResult<Vec<Vec<ChartSourceCell>>> {
+    let values = exported
+        .get("values")
+        .and_then(Value::as_array)
+        .ok_or_else(|| CliError::unexpected("range export omitted values"))?;
+    let types = exported.get("types").and_then(Value::as_array);
+    let number_format_codes = exported.get("numberFormatCodes").and_then(Value::as_array);
+    let mut cells = Vec::new();
+    for (row_idx, row) in values.iter().enumerate() {
+        let row = row
+            .as_array()
+            .ok_or_else(|| CliError::unexpected("range export value row is not an array"))?;
+        let type_row = types
+            .and_then(|rows| rows.get(row_idx))
+            .and_then(Value::as_array);
+        let format_row = number_format_codes
+            .and_then(|rows| rows.get(row_idx))
+            .and_then(Value::as_array);
+        let mut out_row = Vec::new();
+        for (col_idx, value) in row.iter().enumerate() {
+            out_row.push(ChartSourceCell {
+                value: json_value_to_cell_text(value),
+                kind: type_row
+                    .and_then(|row| row.get(col_idx))
+                    .and_then(Value::as_str)
+                    .unwrap_or("empty")
+                    .to_string(),
+                null: value.is_null(),
+                number_format_code: format_row
+                    .and_then(|row| row.get(col_idx))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            });
+        }
+        cells.push(out_row);
+    }
+    Ok(cells)
+}
+
+fn json_value_to_cell_text(value: &Value) -> String {
+    match value {
+        Value::Null => String::new(),
+        Value::String(text) => text.clone(),
+        Value::Number(number) => number.to_string(),
+        Value::Bool(value) => value.to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn resolve_chart_create_anchor(
+    anchor: Option<&str>,
+    source_bounds: RangeBounds,
+) -> CliResult<((u32, u32), (u32, u32))> {
+    let from = if let Some(anchor) = anchor.filter(|value| !value.trim().is_empty()) {
+        parse_cell_ref(anchor)
+            .map_err(|err| CliError::invalid_args(format!("invalid --anchor: {}", err.message)))?
+    } else {
+        (source_bounds.max_col() + 2, source_bounds.min_row())
+    };
+    Ok(((from.0, from.1), (from.0 + 8, from.1 + 15)))
+}
+
+fn build_chart_create_artifacts(
+    file: &str,
+    source: &ChartCreateSource,
+    chart_type: &str,
+    title: &str,
+    anchor_from: (u32, u32),
+    anchor_to: (u32, u32),
+) -> CliResult<ChartCreateArtifacts> {
+    let workbook_xml = zip_text(file, "xl/workbook.xml")?;
+    let workbook_sheets = workbook_sheets(&workbook_xml)?;
+    let workbook_rels = relationship_entries(file, "xl/_rels/workbook.xml.rels")?;
+    let sheet = resolve_sheet(&workbook_sheets, &source.sheet)?;
+    let sheet_part_uri = sheet_part_uri_for_chart(&sheet, &workbook_rels).ok_or_else(|| {
+        CliError::unexpected(format!("sheet {:?} has no worksheet part URI", sheet.name))
+    })?;
+
+    let (chart_xml, series_count, categories, warnings) =
+        build_chart_part_xml(chart_type, title, source)?;
+    let mut entries = zip_entry_names(file)?.into_iter().collect::<BTreeSet<_>>();
+    let chart_uri = allocate_numbered_package_part(&mut entries, "/xl/charts/chart", ".xml");
+    let mut overrides = BTreeMap::new();
+    let mut content_types = zip_text(file, "[Content_Types].xml")?;
+    content_types = ensure_content_type_override(content_types, &chart_uri, CONTENT_TYPE_CHART);
+
+    let (drawing_uri, drawing_overrides) = build_or_update_chart_drawing(
+        file,
+        &sheet_part_uri,
+        &chart_uri,
+        anchor_from,
+        anchor_to,
+        &mut entries,
+    )?;
+    if !zip_entry_names(file)?
+        .iter()
+        .any(|entry| format!("/{}", entry.trim_start_matches('/')) == drawing_uri)
+    {
+        content_types =
+            ensure_content_type_override(content_types, &drawing_uri, CONTENT_TYPE_DRAWING);
+    }
+
+    overrides.insert("[Content_Types].xml".to_string(), content_types);
+    overrides.insert(part_name(&chart_uri), chart_xml);
+    overrides.extend(drawing_overrides);
+
+    Ok(ChartCreateArtifacts {
+        chart_uri,
+        drawing_uri,
+        chart_type: chart_type.to_string(),
+        title: title.trim().to_string(),
+        series_count,
+        categories,
+        anchor: format!(
+            "{}{}:{}{}",
+            col_name(anchor_from.0),
+            anchor_from.1,
+            col_name(anchor_to.0),
+            anchor_to.1
+        ),
+        warnings,
+        overrides,
+    })
+}
+
+fn build_or_update_chart_drawing(
+    file: &str,
+    sheet_part_uri: &str,
+    chart_uri: &str,
+    anchor_from: (u32, u32),
+    anchor_to: (u32, u32),
+    entries: &mut BTreeSet<String>,
+) -> CliResult<(String, BTreeMap<String, String>)> {
+    let mut overrides = BTreeMap::new();
+    if let Some((drawing_uri, _drawing_rid)) = worksheet_drawing_part(file, sheet_part_uri)? {
+        let drawing_xml = zip_text(file, drawing_uri.trim_start_matches('/'))?;
+        let mut drawing_root = parse_xml_node(&drawing_xml)?;
+        if drawing_root.name != "wsDr" {
+            return Err(CliError::unexpected(format!(
+                "drawing part {drawing_uri} root element not found"
+            )));
+        }
+        ensure_drawing_xml_namespaces(&mut drawing_root);
+        let drawing_rels_part = relationships_part_for(&drawing_uri);
+        let drawing_rels_xml =
+            optional_zip_text(file, &drawing_rels_part)?.unwrap_or_else(empty_relationships_xml);
+        let drawing_rels = relationship_entries_from_xml(&drawing_rels_xml);
+        let chart_rid = allocate_relationship_id(&drawing_rels);
+        let drawing_rels_xml = add_relationship_to_xml(
+            drawing_rels_xml,
+            &chart_rid,
+            REL_CHART,
+            &relationship_target_from_source_to_target(&drawing_uri, chart_uri),
+        );
+        let anchor = build_chart_anchor_node(
+            drawing_root_prefix(&drawing_root).as_str(),
+            anchor_from,
+            anchor_to,
+            &chart_rid,
+            next_drawing_object_id(&drawing_root),
+            next_chart_number(&drawing_root),
+        );
+        add_drawing_anchor(&mut drawing_root, anchor);
+        overrides.insert(part_name(&drawing_uri), render_xml_document(&drawing_root));
+        overrides.insert(drawing_rels_part, drawing_rels_xml);
+        return Ok((drawing_uri, overrides));
+    }
+
+    let drawing_uri = allocate_numbered_package_part(entries, "/xl/drawings/drawing", ".xml");
+    let chart_rid = "rId1".to_string();
+    let drawing_xml = build_drawing_part_xml(anchor_from, anchor_to, &chart_rid);
+    let drawing_rels_xml = render_relationships_xml(&[(
+        chart_rid.as_str(),
+        REL_CHART,
+        relationship_target_from_source_to_target(&drawing_uri, chart_uri),
+    )]);
+    let worksheet_rels_part = relationships_part_for(sheet_part_uri);
+    let worksheet_rels_xml =
+        optional_zip_text(file, &worksheet_rels_part)?.unwrap_or_else(empty_relationships_xml);
+    let worksheet_rels = relationship_entries_from_xml(&worksheet_rels_xml);
+    let drawing_rid = allocate_relationship_id(&worksheet_rels);
+    let worksheet_rels_xml = add_relationship_to_xml(
+        worksheet_rels_xml,
+        &drawing_rid,
+        REL_DRAWING,
+        &relationship_target_from_source_to_target(sheet_part_uri, &drawing_uri),
+    );
+    let worksheet_xml = zip_text(file, sheet_part_uri.trim_start_matches('/'))?;
+    let worksheet_xml = add_worksheet_drawing_ref(&worksheet_xml, sheet_part_uri, &drawing_rid)?;
+
+    overrides.insert(part_name(&drawing_uri), drawing_xml);
+    overrides.insert(relationships_part_for(&drawing_uri), drawing_rels_xml);
+    overrides.insert(worksheet_rels_part, worksheet_rels_xml);
+    overrides.insert(part_name(sheet_part_uri), worksheet_xml);
+    Ok((drawing_uri, overrides))
+}
+
+fn build_chart_part_xml(
+    chart_type: &str,
+    title: &str,
+    source: &ChartCreateSource,
+) -> CliResult<(String, usize, usize, Vec<String>)> {
+    let (mut series, categories, mut warnings) = build_chart_series(source)?;
+    if series.is_empty() {
+        return Err(CliError::invalid_args(
+            "source range produced no chart series",
+        ));
+    }
+    if chart_type == "pie" && series.len() > 1 {
+        series.truncate(1);
+        warnings.push("pie chart uses only the first series".to_string());
+    }
+    let mut xml = format!(
+        r#"<c:chartSpace xmlns:c="{NS_CHART}" xmlns:a="{NS_DRAWING_MAIN}" xmlns:r="{NS_RELATIONSHIPS}"><c:chart>"#
+    );
+    if !title.trim().is_empty() {
+        xml.push_str(&build_chart_title_xml(title));
+        xml.push_str(r#"<c:autoTitleDeleted val="0"/>"#);
+    } else {
+        xml.push_str(r#"<c:autoTitleDeleted val="1"/>"#);
+    }
+    xml.push_str(r#"<c:plotArea><c:layout/>"#);
+    xml.push_str(&build_plot_xml(chart_type, &series));
+    if chart_type != "pie" {
+        xml.push_str(&build_cat_axis_xml(chart_type));
+        xml.push_str(&build_val_axis_xml());
+    }
+    xml.push_str(r#"</c:plotArea><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>"#);
+    Ok((xml, series.len(), categories, warnings))
+}
+
+fn build_chart_series(
+    source: &ChartCreateSource,
+) -> CliResult<(Vec<BuiltChartSeries>, usize, Vec<String>)> {
+    if source.cells.is_empty() {
+        return Err(CliError::invalid_args("source range is empty"));
+    }
+    let bounds = source.bounds.normalized();
+    let rows = bounds.row_count();
+    let cols = bounds.col_count();
+    let has_header = rows > 1;
+    let data_start_row = if has_header {
+        bounds.min_row() + 1
+    } else {
+        bounds.min_row()
+    };
+    if data_start_row > bounds.max_row() {
+        return Err(CliError::invalid_args("source range has no data rows"));
+    }
+    let has_categories = cols > 1;
+    let cat_col = bounds.min_col();
+    let mut cats = Vec::new();
+    if has_categories {
+        for row in data_start_row..=bounds.max_row() {
+            cats.push(chart_cell_at(source, row, cat_col).value);
+        }
+    }
+    let cat_ref = absolute_chart_ref(
+        &source.sheet,
+        cat_col,
+        data_start_row,
+        cat_col,
+        bounds.max_row(),
+    );
+    let first_series_col = if has_categories {
+        bounds.min_col() + 1
+    } else {
+        bounds.min_col()
+    };
+    let mut coerced = 0;
+    let mut series = Vec::new();
+    for col in first_series_col..=bounds.max_col() {
+        let mut item = BuiltChartSeries {
+            name: String::new(),
+            name_ref: String::new(),
+            cats: cats.clone(),
+            cat_ref: cat_ref.clone(),
+            values: Vec::new(),
+            val_ref: absolute_chart_ref(&source.sheet, col, data_start_row, col, bounds.max_row()),
+        };
+        if has_header {
+            item.name = chart_cell_at(source, bounds.min_row(), col).value;
+            item.name_ref =
+                absolute_chart_ref(&source.sheet, col, bounds.min_row(), col, bounds.min_row());
+        }
+        for row in data_start_row..=bounds.max_row() {
+            let (value, was_coerced) = numeric_text_coerced(&chart_cell_at(source, row, col));
+            if was_coerced {
+                coerced += 1;
+            }
+            item.values.push(value);
+        }
+        series.push(item);
+    }
+    let mut warnings = Vec::new();
+    if !has_categories {
+        warnings.push("single-column source: no categories axis".to_string());
+    }
+    if coerced > 0 {
+        warnings.push(format!("{coerced} non-numeric value(s) treated as 0"));
+    }
+    Ok((series, cats.len(), warnings))
+}
+
+fn chart_cell_at(source: &ChartCreateSource, row: u32, col: u32) -> ChartSourceCell {
+    let bounds = source.bounds.normalized();
+    let row_idx = row.saturating_sub(bounds.min_row()) as usize;
+    let col_idx = col.saturating_sub(bounds.min_col()) as usize;
+    source
+        .cells
+        .get(row_idx)
+        .and_then(|row| row.get(col_idx))
+        .cloned()
+        .unwrap_or(ChartSourceCell {
+            value: String::new(),
+            kind: "empty".to_string(),
+            null: true,
+            number_format_code: String::new(),
+        })
+}
+
+fn numeric_text_coerced(cell: &ChartSourceCell) -> (String, bool) {
+    if cell.null || cell.value.is_empty() {
+        return ("0".to_string(), false);
+    }
+    if cell.value.trim().parse::<f64>().is_ok() {
+        return (cell.value.clone(), false);
+    }
+    ("0".to_string(), true)
+}
+
+fn build_chart_title_xml(title: &str) -> String {
+    format!(
+        "<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>{}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>",
+        xml_escape(title)
+    )
+}
+
+fn build_plot_xml(chart_type: &str, series: &[BuiltChartSeries]) -> String {
+    let mut xml = String::new();
+    match chart_type {
+        "bar" => {
+            xml.push_str(r#"<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>"#);
+            for (idx, item) in series.iter().enumerate() {
+                xml.push_str(&build_category_series_xml(idx, item));
+            }
+            xml.push_str(r#"<c:axId val="111111111"/><c:axId val="222222222"/></c:barChart>"#);
+        }
+        "line" => {
+            xml.push_str(r#"<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>"#);
+            for (idx, item) in series.iter().enumerate() {
+                xml.push_str(&build_category_series_xml(idx, item));
+            }
+            xml.push_str(r#"<c:marker val="1"/><c:axId val="111111111"/><c:axId val="222222222"/></c:lineChart>"#);
+        }
+        "area" => {
+            xml.push_str(r#"<c:areaChart><c:grouping val="standard"/><c:varyColors val="0"/>"#);
+            for (idx, item) in series.iter().enumerate() {
+                xml.push_str(&build_category_series_xml(idx, item));
+            }
+            xml.push_str(r#"<c:axId val="111111111"/><c:axId val="222222222"/></c:areaChart>"#);
+        }
+        "pie" => {
+            xml.push_str(r#"<c:pieChart><c:varyColors val="1"/>"#);
+            for (idx, item) in series.iter().enumerate() {
+                xml.push_str(&build_category_series_xml(idx, item));
+            }
+            xml.push_str(r#"<c:firstSliceAng val="0"/></c:pieChart>"#);
+        }
+        "scatter" => {
+            xml.push_str(
+                r#"<c:scatterChart><c:scatterStyle val="lineMarker"/><c:varyColors val="0"/>"#,
+            );
+            for (idx, item) in series.iter().enumerate() {
+                xml.push_str(&build_scatter_series_xml(idx, item));
+            }
+            xml.push_str(r#"<c:axId val="111111111"/><c:axId val="222222222"/></c:scatterChart>"#);
+        }
+        _ => {}
+    }
+    xml
+}
+
+fn build_series_header_xml(idx: usize, series: &BuiltChartSeries) -> String {
+    let mut xml = format!(r#"<c:ser><c:idx val="{idx}"/><c:order val="{idx}"/>"#);
+    if !series.name_ref.is_empty() {
+        xml.push_str("<c:tx>");
+        xml.push_str(&build_str_ref_xml(
+            &series.name_ref,
+            std::slice::from_ref(&series.name),
+        ));
+        xml.push_str("</c:tx>");
+    }
+    xml
+}
+
+fn build_category_series_xml(idx: usize, series: &BuiltChartSeries) -> String {
+    let mut xml = build_series_header_xml(idx, series);
+    if !series.cat_ref.is_empty() && !series.cats.is_empty() {
+        xml.push_str("<c:cat>");
+        xml.push_str(&build_str_ref_xml(&series.cat_ref, &series.cats));
+        xml.push_str("</c:cat>");
+    }
+    xml.push_str("<c:val>");
+    xml.push_str(&build_num_ref_xml(
+        &series.val_ref,
+        &series.values,
+        "General",
+    ));
+    xml.push_str("</c:val></c:ser>");
+    xml
+}
+
+fn build_scatter_series_xml(idx: usize, series: &BuiltChartSeries) -> String {
+    let mut xml = build_series_header_xml(idx, series);
+    xml.push_str("<c:xVal>");
+    if !series.cat_ref.is_empty() && !series.cats.is_empty() {
+        xml.push_str(&build_num_ref_xml(
+            &series.cat_ref,
+            &numeric_axis(&series.cats),
+            "General",
+        ));
+    } else {
+        xml.push_str(&build_num_ref_xml(
+            &series.val_ref,
+            &series.values,
+            "General",
+        ));
+    }
+    xml.push_str("</c:xVal><c:yVal>");
+    xml.push_str(&build_num_ref_xml(
+        &series.val_ref,
+        &series.values,
+        "General",
+    ));
+    xml.push_str("</c:yVal></c:ser>");
+    xml
+}
+
+fn numeric_axis(values: &[String]) -> Vec<String> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(idx, value)| {
+            if !value.trim().is_empty() && value.trim().parse::<f64>().is_ok() {
+                value.clone()
+            } else {
+                (idx + 1).to_string()
+            }
+        })
+        .collect()
+}
+
+fn build_str_ref_xml(reference: &str, values: &[String]) -> String {
+    let mut xml = format!(
+        "<c:strRef><c:f>{}</c:f><c:strCache><c:ptCount val=\"{}\"/>",
+        xml_escape(reference),
+        values.len()
+    );
+    for (idx, value) in values.iter().enumerate() {
+        xml.push_str(&format!(
+            "<c:pt idx=\"{idx}\"><c:v>{}</c:v></c:pt>",
+            xml_escape(value)
+        ));
+    }
+    xml.push_str("</c:strCache></c:strRef>");
+    xml
+}
+
+fn build_num_ref_xml(reference: &str, values: &[String], format_code: &str) -> String {
+    let mut xml = format!(
+        "<c:numRef><c:f>{}</c:f><c:numCache><c:formatCode>{}</c:formatCode><c:ptCount val=\"{}\"/>",
+        xml_escape(reference),
+        xml_escape(format_code),
+        values.len()
+    );
+    for (idx, value) in values.iter().enumerate() {
+        xml.push_str(&format!(
+            "<c:pt idx=\"{idx}\"><c:v>{}</c:v></c:pt>",
+            xml_escape(value)
+        ));
+    }
+    xml.push_str("</c:numCache></c:numRef>");
+    xml
+}
+
+fn build_cat_axis_xml(chart_type: &str) -> String {
+    let axis = if chart_type == "scatter" {
+        "valAx"
+    } else {
+        "catAx"
+    };
+    format!(
+        r#"<c:{axis}><c:axId val="111111111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:crossAx val="222222222"/></c:{axis}>"#
+    )
+}
+
+fn build_val_axis_xml() -> String {
+    r#"<c:valAx><c:axId val="222222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:crossAx val="111111111"/></c:valAx>"#.to_string()
+}
+
+fn absolute_chart_ref(sheet: &str, col1: u32, row1: u32, col2: u32, row2: u32) -> String {
+    let sheet = quote_chart_sheet_always(sheet);
+    if col1 == col2 && row1 == row2 {
+        format!("{sheet}!${}${row1}", col_name(col1))
+    } else {
+        format!(
+            "{sheet}!${}${row1}:${}${row2}",
+            col_name(col1),
+            col_name(col2)
+        )
+    }
+}
+
+fn quote_chart_sheet_always(sheet: &str) -> String {
+    format!("'{}'", sheet.replace('\'', "''"))
+}
+
+fn local_update_formula(sheet: &str, range: &str) -> String {
+    format!(
+        "{}!{}",
+        quote_formula_sheet_if_needed(sheet),
+        absolute_formula_range(range)
+    )
+}
+
+fn quote_formula_sheet_if_needed(sheet: &str) -> String {
+    if is_simple_formula_sheet_name(sheet) {
+        sheet.to_string()
+    } else {
+        format!("'{}'", sheet.replace('\'', "''"))
+    }
+}
+
+fn is_simple_formula_sheet_name(sheet: &str) -> bool {
+    if sheet.is_empty() {
+        return false;
+    }
+    for (idx, ch) in sheet.chars().enumerate() {
+        if ch.is_ascii_alphabetic() || ch == '_' {
+            continue;
+        }
+        if idx > 0 && ch.is_ascii_digit() {
+            continue;
+        }
+        return false;
+    }
+    true
+}
+
+fn absolute_formula_range(range: &str) -> String {
+    let Some(normalized) = normalize_formula_range(range) else {
+        return range.to_string();
+    };
+    normalized
+        .split(':')
+        .map(|cell| {
+            parse_formula_cell(cell)
+                .map(|mut parsed| {
+                    parsed.abs_column = true;
+                    parsed.abs_row = true;
+                    format_formula_cell(parsed)
+                })
+                .unwrap_or_else(|| cell.to_string())
+        })
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+fn worksheet_drawing_part(file: &str, sheet_part_uri: &str) -> CliResult<Option<(String, String)>> {
+    let sheet_xml = zip_text(file, sheet_part_uri.trim_start_matches('/'))?;
+    let ids = worksheet_drawing_relationship_ids(&sheet_xml, sheet_part_uri)?;
+    let Some(drawing_rid) = ids.into_iter().next() else {
+        return Ok(None);
+    };
+    let sheet_rels = relationship_entries(file, &relationships_part_for(sheet_part_uri))?;
+    let rel = sheet_rels
+        .iter()
+        .find(|rel| rel.id == drawing_rid)
+        .ok_or_else(|| {
+            CliError::unexpected(format!(
+                "worksheet {sheet_part_uri} drawing relationship {drawing_rid} not found"
+            ))
+        })?;
+    if rel.target_mode == "External" {
+        return Err(CliError::unexpected(format!(
+            "worksheet {sheet_part_uri} drawing relationship {drawing_rid} is external"
+        )));
+    }
+    if rel.rel_type != REL_DRAWING {
+        return Err(CliError::unexpected(format!(
+            "worksheet {sheet_part_uri} relationship {drawing_rid} is {}, expected drawing",
+            rel.rel_type
+        )));
+    }
+    Ok(Some((
+        resolve_relationship_target(sheet_part_uri, &rel.target),
+        drawing_rid,
+    )))
+}
+
+fn ensure_drawing_xml_namespaces(root: &mut XmlNode) {
+    let prefix = drawing_root_prefix(root);
+    root.ensure_namespace(&prefix, NS_SPREADSHEET_DRAWING);
+    root.ensure_namespace("a", NS_DRAWING_MAIN);
+    root.ensure_namespace("r", NS_RELATIONSHIPS);
+    root.ensure_namespace("c", NS_CHART);
+}
+
+fn drawing_root_prefix(root: &XmlNode) -> String {
+    root.namespace_prefix_for(NS_SPREADSHEET_DRAWING)
+        .unwrap_or_else(|| prefix_from_qname(&root.qname).unwrap_or("xdr").to_string())
+}
+
+fn build_drawing_part_xml(from: (u32, u32), to: (u32, u32), chart_rid: &str) -> String {
+    let mut root = XmlNode::new("xdr:wsDr".to_string());
+    root.set_attr("xmlns:xdr", NS_SPREADSHEET_DRAWING);
+    root.set_attr("xmlns:a", NS_DRAWING_MAIN);
+    root.set_attr("xmlns:r", NS_RELATIONSHIPS);
+    root.set_attr("xmlns:c", NS_CHART);
+    root.children
+        .push(build_chart_anchor_node("xdr", from, to, chart_rid, 2, 1));
+    render_xml_document(&root)
+}
+
+fn build_chart_anchor_node(
+    prefix: &str,
+    from: (u32, u32),
+    to: (u32, u32),
+    chart_rid: &str,
+    object_id: i64,
+    chart_number: i64,
+) -> XmlNode {
+    let prefix = if prefix.trim().is_empty() {
+        "xdr"
+    } else {
+        prefix
+    };
+    let mut anchor = XmlNode::new(prefixed_qname(prefix, "twoCellAnchor"));
+    anchor.set_attr("editAs", "oneCell");
+    anchor.children.push(build_anchor_marker_node(
+        prefix,
+        "from",
+        from.0 - 1,
+        from.1 - 1,
+    ));
+    anchor
+        .children
+        .push(build_anchor_marker_node(prefix, "to", to.0 - 1, to.1 - 1));
+
+    let mut frame = XmlNode::new(prefixed_qname(prefix, "graphicFrame"));
+    frame.set_attr("macro", "");
+    let mut nv = XmlNode::new(prefixed_qname(prefix, "nvGraphicFramePr"));
+    let mut c_nv_pr = XmlNode::new(prefixed_qname(prefix, "cNvPr"));
+    c_nv_pr.set_attr("id", &object_id.max(1).to_string());
+    c_nv_pr.set_attr("name", &format!("Chart {}", chart_number.max(1)));
+    nv.children.push(c_nv_pr);
+    nv.children
+        .push(XmlNode::new(prefixed_qname(prefix, "cNvGraphicFramePr")));
+    frame.children.push(nv);
+
+    let mut xfrm = XmlNode::new(prefixed_qname(prefix, "xfrm"));
+    let mut off = XmlNode::new("a:off".to_string());
+    off.set_attr("x", "0");
+    off.set_attr("y", "0");
+    let mut ext = XmlNode::new("a:ext".to_string());
+    ext.set_attr("cx", "0");
+    ext.set_attr("cy", "0");
+    xfrm.children.push(off);
+    xfrm.children.push(ext);
+    frame.children.push(xfrm);
+
+    let mut graphic = XmlNode::new("a:graphic".to_string());
+    let mut graphic_data = XmlNode::new("a:graphicData".to_string());
+    graphic_data.set_attr("uri", NS_CHART);
+    let mut chart = XmlNode::new("c:chart".to_string());
+    chart.set_attr("r:id", chart_rid);
+    graphic_data.children.push(chart);
+    graphic.children.push(graphic_data);
+    frame.children.push(graphic);
+    anchor.children.push(frame);
+    anchor
+        .children
+        .push(XmlNode::new(prefixed_qname(prefix, "clientData")));
+    anchor
+}
+
+fn build_anchor_marker_node(prefix: &str, name: &str, col0: u32, row0: u32) -> XmlNode {
+    let mut marker = XmlNode::new(prefixed_qname(prefix, name));
+    let mut col = XmlNode::new(prefixed_qname(prefix, "col"));
+    col.text = col0.to_string();
+    let mut col_off = XmlNode::new(prefixed_qname(prefix, "colOff"));
+    col_off.text = "0".to_string();
+    let mut row = XmlNode::new(prefixed_qname(prefix, "row"));
+    row.text = row0.to_string();
+    let mut row_off = XmlNode::new(prefixed_qname(prefix, "rowOff"));
+    row_off.text = "0".to_string();
+    marker.children.extend([col, col_off, row, row_off]);
+    marker
+}
+
+fn add_drawing_anchor(root: &mut XmlNode, anchor: XmlNode) {
+    if let Some(index) = root
+        .children
+        .iter()
+        .position(|child| child.name == "extLst")
+    {
+        root.children.insert(index, anchor);
+    } else {
+        root.children.push(anchor);
+    }
+}
+
+fn next_drawing_object_id(root: &XmlNode) -> i64 {
+    descendants(root, "cNvPr")
+        .into_iter()
+        .filter_map(|node| {
+            node.attr("id")
+                .and_then(|value| value.trim().parse::<i64>().ok())
+        })
+        .max()
+        .unwrap_or(1)
+        + 1
+}
+
+fn next_chart_number(root: &XmlNode) -> i64 {
+    let mut count = 0;
+    for anchor in &root.children {
+        if matches!(
+            anchor.name.as_str(),
+            "twoCellAnchor" | "oneCellAnchor" | "absoluteAnchor"
+        ) && first_descendant(anchor, "chart").is_some()
+        {
+            count += 1;
+        }
+    }
+    count + 1
+}
+
+fn add_worksheet_drawing_ref(xml: &str, sheet_part_uri: &str, rid: &str) -> CliResult<String> {
+    let mut root = parse_xml_node(xml)?;
+    if root.name != "worksheet" {
+        return Err(CliError::unexpected(format!(
+            "worksheet part {sheet_part_uri} root element not found"
+        )));
+    }
+    if let Some(existing) = direct_child(&root, "drawing") {
+        if existing.attr("id") == Some(rid) {
+            return Ok(render_xml_document(&root));
+        }
+        return Err(CliError::unexpected(format!(
+            "worksheet already has drawing relationship {}",
+            existing.attr("id").unwrap_or_default()
+        )));
+    }
+    root.ensure_namespace("r", NS_RELATIONSHIPS);
+    let prefix = prefix_from_qname(&root.qname)
+        .unwrap_or_default()
+        .to_string();
+    let mut drawing = XmlNode::new(prefixed_qname(&prefix, "drawing"));
+    drawing.set_attr("r:id", rid);
+    insert_child_in_order(&mut root, drawing, WORKSHEET_CHILD_ORDER);
+    Ok(render_xml_document(&root))
+}
+
+fn render_relationships_xml(relationships: &[(&str, &str, String)]) -> String {
+    let mut xml = r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#.to_string();
+    for (id, rel_type, target) in relationships {
+        xml.push_str(&format!(
+            r#"<Relationship Id="{}" Type="{}" Target="{}"/>"#,
+            xml_attr_escape(id),
+            xml_attr_escape(rel_type),
+            xml_attr_escape(target)
+        ));
+    }
+    xml.push_str("</Relationships>");
+    xml
+}
+
+fn xlsx_chart_create_result(
+    file: &str,
+    source: &ChartCreateSource,
+    artifacts: &ChartCreateArtifacts,
+    output: Option<&str>,
+    dry_run: bool,
+) -> Value {
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("sheet".to_string(), json!(source.sheet));
+    result.insert("sheetNumber".to_string(), json!(source.sheet_number));
+    result.insert("chartType".to_string(), json!(artifacts.chart_type));
+    insert_nonempty_string(&mut result, "title", &artifacts.title);
+    result.insert("chartPartUri".to_string(), json!(artifacts.chart_uri));
+    result.insert("drawingPartUri".to_string(), json!(artifacts.drawing_uri));
+    result.insert("seriesCount".to_string(), json!(artifacts.series_count));
+    result.insert("categories".to_string(), json!(artifacts.categories));
+    result.insert("anchor".to_string(), json!(artifacts.anchor));
+    result.insert("sourceSheet".to_string(), json!(source.sheet));
+    result.insert("sourceRange".to_string(), json!(source.range));
+    if !artifacts.warnings.is_empty() {
+        result.insert("warnings".to_string(), json!(artifacts.warnings));
+    }
+    if let Some(output) = output {
+        result.insert("output".to_string(), json!(output));
+    }
+    result.insert("dryRun".to_string(), json!(dry_run));
+    if let Some(output) = output {
+        result.insert(
+            "validateCommand".to_string(),
+            json!(format!("ooxml validate --strict {}", command_arg(output))),
+        );
+        result.insert(
+            "chartsListCommand".to_string(),
+            json!(format!(
+                "ooxml --json xlsx charts list {}",
+                command_arg(output)
+            )),
+        );
+    }
+    Value::Object(result)
+}
+
+fn normalize_chart_source_role(value: &str) -> CliResult<ChartSourceRole> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "name" | "tx" | "series-name" | "seriesname" => Ok(ChartSourceRole {
+            canonical: "name".to_string(),
+            element: "tx",
+        }),
+        "categories" | "category" | "cat" | "cats" => Ok(ChartSourceRole {
+            canonical: "categories".to_string(),
+            element: "cat",
+        }),
+        "values" | "value" | "val" | "vals" => Ok(ChartSourceRole {
+            canonical: "values".to_string(),
+            element: "val",
+        }),
+        "xvalues" | "x" | "xval" | "x-val" | "x-values" => Ok(ChartSourceRole {
+            canonical: "xValues".to_string(),
+            element: "xVal",
+        }),
+        "yvalues" | "y" | "yval" | "y-val" | "y-values" => Ok(ChartSourceRole {
+            canonical: "yValues".to_string(),
+            element: "yVal",
+        }),
+        "bubblesize" | "bubble" | "bubble-size" => Ok(ChartSourceRole {
+            canonical: "bubbleSize".to_string(),
+            element: "bubbleSize",
+        }),
+        _ => Err(CliError::invalid_args(format!(
+            "invalid chart source role {value:?} (must be name, categories, values, xValues, yValues, or bubbleSize)"
+        ))),
+    }
+}
+
+fn normalize_chart_cache_mode(value: &str) -> CliResult<ChartCacheMode> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" | "auto" => Ok(ChartCacheMode::Auto),
+        "clear" => Ok(ChartCacheMode::Clear),
+        "keep" => Ok(ChartCacheMode::Keep),
+        _ => Err(CliError::invalid_args(
+            "--cache must be auto, clear, or keep",
+        )),
+    }
+}
+
+fn chart_series_source_by_role(
+    chart: &ChartRef,
+    series_number: usize,
+    role: &ChartSourceRole,
+) -> CliResult<ChartDataSource> {
+    if series_number == 0 || series_number > chart.series.len() {
+        return Err(CliError::invalid_args(format!(
+            "series {series_number} is out of range (1-{})",
+            chart.series.len()
+        )));
+    }
+    let series = &chart.series[series_number - 1];
+    let source = match role.canonical.as_str() {
+        "name" => series.name.as_ref(),
+        "categories" => series.categories.as_ref(),
+        "values" => series.values.as_ref(),
+        "xValues" => series.x_values.as_ref(),
+        "yValues" => series.y_values.as_ref(),
+        "bubbleSize" => series.bubble_size.as_ref(),
+        _ => None,
+    };
+    let source = source.ok_or_else(|| {
+        CliError::invalid_args(format!(
+            "series {series_number} has no {} source",
+            role.canonical
+        ))
+    })?;
+    if source.ref_kind.is_empty() {
+        return Err(CliError::invalid_args(format!(
+            "series {series_number} {} source is not a cell reference",
+            role.canonical
+        )));
+    }
+    Ok(source.clone())
+}
+
+fn resolve_chart_update_source(
+    file: &str,
+    sheets: &[WorkbookSheet],
+    current_source: &ChartDataSource,
+    options: &XlsxChartUpdateSourceOptions<'_>,
+) -> CliResult<ResolvedChartUpdateSource> {
+    if let Some(formula) = options.formula.filter(|value| !value.trim().is_empty()) {
+        let (sheet, range) = parse_local_range_formula(formula).ok_or_else(|| {
+            CliError::invalid_args(
+                "--formula must be a simple local worksheet A1 range such as Data!$B$2:$B$10",
+            )
+        })?;
+        let bounds = parse_range(&range)
+            .map_err(|err| {
+                CliError::invalid_args(format!("invalid --formula range: {}", err.message))
+            })?
+            .normalized();
+        let sheet_ref = resolve_sheet_for_chart_cli(sheets, &sheet)?;
+        return Ok(ResolvedChartUpdateSource {
+            formula: local_update_formula(&sheet_ref.name, &range),
+            sheet: sheet_ref.name,
+            range,
+            bounds,
+        });
+    }
+
+    let source_range = options.source_range.unwrap_or_default().trim();
+    let bounds = parse_range(source_range)
+        .map_err(|err| CliError::invalid_args(format!("invalid --source-range: {}", err.message)))?
+        .normalized();
+    let range = normalize_formula_range(source_range)
+        .ok_or_else(|| CliError::invalid_args("invalid --source-range"))?;
+    let mut sheet = options.source_sheet.unwrap_or_default().trim().to_string();
+    if sheet.is_empty() {
+        sheet = current_source.sheet.clone();
+    }
+    if sheet.is_empty() {
+        return Err(CliError::invalid_args(
+            "--source-sheet is required when the current chart source has no local worksheet sheet",
+        ));
+    }
+    let workbook_xml = zip_text(file, "xl/workbook.xml")?;
+    let workbook_sheets = workbook_sheets(&workbook_xml)?;
+    let sheet_ref = resolve_sheet_for_chart_cli(&workbook_sheets, &sheet)?;
+    Ok(ResolvedChartUpdateSource {
+        formula: local_update_formula(&sheet_ref.name, &range),
+        sheet: sheet_ref.name,
+        range,
+        bounds,
+    })
+}
+
+fn parse_local_range_formula(formula: &str) -> Option<(String, String)> {
+    let (sheet, range) = split_sheet_range_formula(formula);
+    if sheet.is_empty() || range.is_empty() {
+        None
+    } else {
+        Some((sheet, range))
+    }
+}
+
+fn collect_chart_cache_points(
+    file: &str,
+    sheet: &str,
+    range: &str,
+    bounds: RangeBounds,
+    ref_kind: &str,
+    max_cells: i64,
+) -> CliResult<ChartCacheUpdate> {
+    check_range_max_cells(range, bounds, max_cells)?;
+    let exported = xlsx_range_export_with_options(
+        file,
+        sheet,
+        range,
+        XlsxRangeExportOptions {
+            include_types: true,
+            include_formulas: false,
+            include_formats: true,
+            data_out: None,
+            max_cells,
+        },
+    )?;
+    let cells = chart_cells_from_range_export(&exported)?;
+    let mut points = Vec::new();
+    let mut skipped = 0_i64;
+    let mut flat_index = 0_i64;
+    let mut format_counts = BTreeMap::<String, i64>::new();
+    for row in cells {
+        for cell in row {
+            if let Some(value) = chart_cache_value_from_cell(&cell, ref_kind) {
+                if ref_kind == "numRef" && !cell.number_format_code.is_empty() {
+                    *format_counts
+                        .entry(cell.number_format_code.clone())
+                        .or_default() += 1;
+                }
+                points.push(ChartCachePoint {
+                    index: flat_index,
+                    value,
+                });
+            } else {
+                skipped += 1;
+            }
+            flat_index += 1;
+        }
+    }
+    if ref_kind == "numRef" && points.is_empty() {
+        return Err(CliError::invalid_args(format!(
+            "source range {range} has no numeric values for a numeric chart source"
+        )));
+    }
+    let mut warnings = Vec::new();
+    if skipped > 0 {
+        warnings.push(format!(
+            "skipped {skipped} source cell(s) that could not be represented in the {ref_kind} chart cache"
+        ));
+    }
+    Ok(ChartCacheUpdate {
+        points,
+        skipped,
+        format_code: dominant_format_code(&format_counts),
+        warnings,
+    })
+}
+
+fn chart_cache_value_from_cell(cell: &ChartSourceCell, ref_kind: &str) -> Option<String> {
+    if ref_kind == "numRef" {
+        if cell.kind != "number" && cell.kind != "date" {
+            return None;
+        }
+        let value = cell.value.trim();
+        if value.is_empty() || value.parse::<f64>().is_err() {
+            return None;
+        }
+        return Some(value.to_string());
+    }
+    if cell.kind == "error" {
+        None
+    } else {
+        Some(cell.value.clone())
+    }
+}
+
+fn dominant_format_code(counts: &BTreeMap<String, i64>) -> String {
+    let mut best = String::new();
+    let mut best_count = 0_i64;
+    for (format, count) in counts {
+        if *count > best_count || (*count == best_count && (best.is_empty() || format < &best)) {
+            best = format.clone();
+            best_count = *count;
+        }
+    }
+    best
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_chart_update_source(
+    root: &mut XmlNode,
+    ctx: &ChartXmlContext,
+    series_number: usize,
+    role: &ChartSourceRole,
+    formula: &str,
+    cache_mode: ChartCacheMode,
+    cache_update: &ChartCacheUpdate,
+    expect_formula: Option<&str>,
+    expect_source_range: Option<&str>,
+) -> CliResult<ChartSourceMutation> {
+    if first_descendant(root, "pivotSource").is_some() {
+        return Err(CliError::invalid_args(
+            "failed to update chart source: pivot-backed chart sources are not supported",
+        ));
+    }
+    let series_paths = series_node_paths(root);
+    if series_number == 0 || series_number > series_paths.len() {
+        return Err(CliError::invalid_args(format!(
+            "failed to update chart source: series {series_number} is out of range (1-{})",
+            series_paths.len()
+        )));
+    }
+    let (chart_type_index, series_index) = series_paths[series_number - 1];
+    let plot_area = first_descendant_mut(root, "plotArea")
+        .ok_or_else(|| CliError::unexpected("chart part has no plotArea"))?;
+    let series = &mut plot_area.children[chart_type_index].children[series_index];
+    let role_index = child_index(series, role.element).ok_or_else(|| {
+        CliError::invalid_args(format!(
+            "failed to update chart source: series {series_number} has no {} source (available roles: {})",
+            role.canonical,
+            series_roles(series).join(", ")
+        ))
+    })?;
+    let role_elem = &mut series.children[role_index];
+    let (source_index, ref_kind) = source_ref_child_index(role_elem).map_err(|message| {
+        CliError::invalid_args(format!("failed to update chart source: {message}"))
+    })?;
+    if ref_kind == "multiLvlStrRef" {
+        return Err(CliError::invalid_args(
+            "failed to update chart source: multi-level category sources are not supported",
+        ));
+    }
+    let source_ref = &mut role_elem.children[source_index];
+    let formula_index = child_index(source_ref, "f");
+    let previous_formula = formula_index
+        .map(|index| node_text_trimmed(&source_ref.children[index]))
+        .unwrap_or_default();
+    check_expected_chart_source(&previous_formula, expect_formula, expect_source_range)?;
+    let formula_index = if let Some(index) = formula_index {
+        index
+    } else {
+        source_ref.children.insert(0, XmlNode::new(ctx.c("f")));
+        0
+    };
+    source_ref.children[formula_index].text = normalize_formula_text(formula);
+
+    let cache_index = source_ref.children.iter().position(|child| {
+        matches!(
+            child.name.as_str(),
+            "strCache" | "numCache" | "multiLvlStrCache"
+        )
+    });
+    let mut cache_type = String::new();
+    let mut cache_point_count = 0_i64;
+    let mut cache_preview = Vec::new();
+    match cache_mode {
+        ChartCacheMode::Clear => {
+            if let Some(index) = cache_index {
+                source_ref.children.remove(index);
+            }
+        }
+        ChartCacheMode::Keep => {
+            if let Some(index) = cache_index {
+                let cache = &source_ref.children[index];
+                cache_type = cache.name.clone();
+                cache_point_count = cache_point_count_from_node(cache);
+                cache_preview = cache_preview_from_node(cache, 5);
+            }
+        }
+        ChartCacheMode::Auto => {
+            if let Some(index) = cache_index {
+                source_ref.children.remove(index);
+            }
+            cache_type = if ref_kind == "numRef" {
+                "numCache".to_string()
+            } else {
+                "strCache".to_string()
+            };
+            let cache = build_cache_node(ctx, &cache_type, cache_update);
+            let insert_at = child_index(source_ref, "f")
+                .map(|index| index + 1)
+                .unwrap_or(0);
+            source_ref.children.insert(insert_at, cache);
+            cache_point_count = cache_update.points.len() as i64;
+            cache_preview = cache_update
+                .points
+                .iter()
+                .take(5)
+                .map(|point| point.value.clone())
+                .collect();
+        }
+    }
+    let sibling_counts = sibling_point_counts(series);
+    let mut warnings = cache_update.warnings.clone();
+    if cache_mode == ChartCacheMode::Keep {
+        warnings.push(
+            "stored chart cache was kept from the previous source and may not match the updated formula"
+                .to_string(),
+        );
+    }
+    if cache_mode == ChartCacheMode::Clear {
+        warnings.push(
+            "stored chart cache was removed; spreadsheet applications may refresh it on open"
+                .to_string(),
+        );
+    }
+    let edited_count = sibling_counts.get(&role.canonical).copied().unwrap_or(0);
+    if comparable_point_role(&role.canonical) && edited_count > 0 {
+        for (sibling_role, count) in sibling_counts {
+            if sibling_role == role.canonical
+                || !comparable_point_role(&sibling_role)
+                || count == 0
+                || count == edited_count
+            {
+                continue;
+            }
+            warnings.push(format!(
+                "{} now has {} point(s) but {} has {}; chart may misrender until related sources are updated",
+                role.canonical, edited_count, sibling_role, count
+            ));
+        }
+    }
+    Ok(ChartSourceMutation {
+        previous_formula,
+        formula: normalize_formula_text(formula),
+        ref_kind,
+        cache_type,
+        cache_point_count,
+        cache_preview,
+        cache_skipped: cache_update.skipped,
+        warnings: unique_sorted_warnings(&warnings),
+    })
+}
+
+fn source_ref_child_index(role_elem: &XmlNode) -> Result<(usize, String), String> {
+    for name in ["numRef", "strRef", "multiLvlStrRef"] {
+        if let Some(index) = child_index(role_elem, name) {
+            return Ok((index, name.to_string()));
+        }
+    }
+    if direct_child(role_elem, "v").is_some() {
+        return Err(
+            "series source is a literal value, not a cell reference; setting literal chart sources is not supported"
+                .to_string(),
+        );
+    }
+    Err("series source has no supported reference".to_string())
+}
+
+fn check_expected_chart_source(
+    previous_formula: &str,
+    expect_formula: Option<&str>,
+    expect_range: Option<&str>,
+) -> CliResult<()> {
+    if let Some(expected) = expect_formula.filter(|value| !value.trim().is_empty()) {
+        let expected = normalize_formula_text(expected);
+        if normalize_formula_text(previous_formula) != expected {
+            return Err(CliError::invalid_args(format!(
+                "failed to update chart source: chart source formula mismatch: expected {expected} but found {previous_formula}"
+            )));
+        }
+    }
+    if let Some(expect_range) = expect_range.filter(|value| !value.trim().is_empty()) {
+        let (_, current_range) = split_sheet_range_formula(previous_formula);
+        if current_range.is_empty() {
+            return Err(CliError::invalid_args(format!(
+                "failed to update chart source: current chart source formula {previous_formula:?} is not a supported local A1 range"
+            )));
+        }
+        let expected_range = normalize_formula_range(expect_range).ok_or_else(|| {
+            CliError::invalid_args(format!(
+                "failed to update chart source: invalid expected source range {expect_range:?}"
+            ))
+        })?;
+        if current_range != expected_range {
+            return Err(CliError::invalid_args(format!(
+                "failed to update chart source: chart source range mismatch: expected {expected_range} but found {current_range}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn normalize_formula_text(value: &str) -> String {
+    value.trim().trim_start_matches('=').trim().to_string()
+}
+
+fn build_cache_node(
+    ctx: &ChartXmlContext,
+    cache_type: &str,
+    cache_update: &ChartCacheUpdate,
+) -> XmlNode {
+    let mut cache = XmlNode::new(ctx.c(cache_type));
+    if cache_type == "numCache" {
+        let mut format = XmlNode::new(ctx.c("formatCode"));
+        format.text = if cache_update.format_code.trim().is_empty() {
+            "General".to_string()
+        } else {
+            cache_update.format_code.clone()
+        };
+        cache.children.push(format);
+    }
+    let mut pt_count = XmlNode::new(ctx.c("ptCount"));
+    pt_count.set_attr("val", &cache_update.points.len().to_string());
+    cache.children.push(pt_count);
+    for point in &cache_update.points {
+        let mut pt = XmlNode::new(ctx.c("pt"));
+        pt.set_attr("idx", &point.index.to_string());
+        let mut value = XmlNode::new(ctx.c("v"));
+        value.text = point.value.clone();
+        pt.children.push(value);
+        cache.children.push(pt);
+    }
+    cache
+}
+
+fn cache_point_count_from_node(cache: &XmlNode) -> i64 {
+    direct_child(cache, "ptCount")
+        .and_then(attr_val_i64)
+        .unwrap_or_else(|| descendants(cache, "pt").len() as i64)
+}
+
+fn cache_preview_from_node(cache: &XmlNode, limit: usize) -> Vec<String> {
+    descendants(cache, "pt")
+        .into_iter()
+        .filter_map(|point| direct_child(point, "v").map(node_text))
+        .take(limit)
+        .collect()
+}
+
+fn sibling_point_counts(series: &XmlNode) -> BTreeMap<String, i64> {
+    let mut result = BTreeMap::new();
+    for role_name in [
+        "name",
+        "categories",
+        "values",
+        "xValues",
+        "yValues",
+        "bubbleSize",
+    ] {
+        let Ok(role) = normalize_chart_source_role(role_name) else {
+            continue;
+        };
+        let Some(role_elem) = direct_child(series, role.element) else {
+            continue;
+        };
+        let Ok((source_index, _)) = source_ref_child_index(role_elem) else {
+            continue;
+        };
+        let source = &role_elem.children[source_index];
+        let Some(cache) = first_cache_child(source) else {
+            continue;
+        };
+        result.insert(role.canonical, cache_point_count_from_node(cache));
+    }
+    result
+}
+
+fn series_roles(series: &XmlNode) -> Vec<String> {
+    let mut roles = Vec::new();
+    for role_name in [
+        "name",
+        "categories",
+        "values",
+        "xValues",
+        "yValues",
+        "bubbleSize",
+    ] {
+        if let Ok(role) = normalize_chart_source_role(role_name)
+            && direct_child(series, role.element).is_some()
+        {
+            roles.push(role.canonical);
+        }
+    }
+    if roles.is_empty() {
+        vec!["none".to_string()]
+    } else {
+        roles
+    }
+}
+
+fn comparable_point_role(role: &str) -> bool {
+    role != "name"
+}
+
+fn unique_sorted_warnings(warnings: &[String]) -> Vec<String> {
+    let mut set = BTreeSet::new();
+    for warning in warnings {
+        let warning = warning.trim();
+        if !warning.is_empty() {
+            set.insert(warning.to_string());
+        }
+    }
+    set.into_iter().collect()
+}
+
+struct ChartUpdateSourceResultInput<'a> {
+    file: &'a str,
+    output: Option<&'a str>,
+    dry_run: bool,
+    sheet_selector: Option<&'a str>,
+    chart_selector: Option<&'a str>,
+    series: i64,
+    role: &'a ChartSourceRole,
+    chart_item: Value,
+    mutation: &'a ChartSourceMutation,
+    source: &'a ResolvedChartUpdateSource,
+    cache_update: &'a ChartCacheUpdate,
+}
+
+fn xlsx_chart_update_source_result(input: ChartUpdateSourceResultInput<'_>) -> Value {
+    let ChartUpdateSourceResultInput {
+        file,
+        output,
+        dry_run,
+        sheet_selector,
+        chart_selector,
+        series,
+        role,
+        mut chart_item,
+        mutation,
+        source,
+        cache_update,
+    } = input;
+    let mut result = Map::new();
+    if let Some(object) = chart_item.as_object_mut() {
+        object.remove("style");
+    }
+    result.insert("file".to_string(), json!(file));
+    if let Some(output) = output {
+        result.insert("output".to_string(), json!(output));
+    }
+    result.insert("dryRun".to_string(), json!(dry_run));
+    result.insert("action".to_string(), json!("xlsx.chart.update-source"));
+    result.insert("chart".to_string(), chart_item.clone());
+    result.insert("series".to_string(), json!(series));
+    result.insert("role".to_string(), json!(role.canonical));
+    insert_nonempty_string(&mut result, "previousFormula", &mutation.previous_formula);
+    result.insert("formula".to_string(), json!(mutation.formula));
+    result.insert("sheet".to_string(), json!(source.sheet));
+    result.insert("range".to_string(), json!(source.range));
+    result.insert("refKind".to_string(), json!(mutation.ref_kind));
+    insert_nonempty_string(&mut result, "cacheType", &mutation.cache_type);
+    result.insert(
+        "cachePointCount".to_string(),
+        json!(mutation.cache_point_count),
+    );
+    insert_nonempty_array(
+        &mut result,
+        "cachePreview",
+        mutation
+            .cache_preview
+            .iter()
+            .map(|value| json!(value))
+            .collect(),
+    );
+    if mutation.cache_skipped > 0 {
+        result.insert("cacheSkipped".to_string(), json!(mutation.cache_skipped));
+    } else if cache_update.skipped > 0 {
+        result.insert("cacheSkipped".to_string(), json!(cache_update.skipped));
+    }
+    result.insert("cacheVerified".to_string(), json!(false));
+    if !mutation.warnings.is_empty() {
+        result.insert("warnings".to_string(), json!(mutation.warnings));
+    }
+    let selector = xlsx_chart_selector_for_update_template(&chart_item, chart_selector);
+    if let Some(output) = output {
+        result.insert(
+            "validateCommand".to_string(),
+            json!(format!("ooxml validate --strict {}", command_arg(output))),
+        );
+        result.insert(
+            "chartShowCommand".to_string(),
+            json!(xlsx_chart_show_command_for_update(
+                output,
+                sheet_selector,
+                &selector
+            )),
+        );
+        result.insert(
+            "rangesExportCommand".to_string(),
+            json!(xlsx_ranges_export_command(
+                output,
+                &source.sheet,
+                &source.range
+            )),
+        );
+        result.insert(
+            "sourceRangeExportCommand".to_string(),
+            json!(xlsx_ranges_export_command(
+                file,
+                &source.sheet,
+                &source.range
+            )),
+        );
+    } else {
+        let placeholder = "<out.xlsx>";
+        result.insert(
+            "validateCommandTemplate".to_string(),
+            json!(format!(
+                "ooxml validate --strict {}",
+                command_arg(placeholder)
+            )),
+        );
+        result.insert(
+            "chartShowCommandTemplate".to_string(),
+            json!(xlsx_chart_show_command_for_update(
+                placeholder,
+                sheet_selector,
+                &selector
+            )),
+        );
+        result.insert(
+            "rangesExportCommandTemplate".to_string(),
+            json!(xlsx_ranges_export_command(
+                placeholder,
+                &source.sheet,
+                &source.range
+            )),
+        );
+        result.insert(
+            "sourceRangeExportCommandDryRun".to_string(),
+            json!(xlsx_ranges_export_command(
+                file,
+                &source.sheet,
+                &source.range
+            )),
+        );
+    }
+    result.insert(
+        "storedCacheContract".to_string(),
+        json!(
+            "stored chart cache values are written from worksheet cell values but not recalculated or verified by Excel"
+        ),
+    );
+    Value::Object(result)
+}
+
+fn xlsx_chart_selector_for_update_template(chart_item: &Value, fallback: Option<&str>) -> String {
+    chart_item
+        .get("primarySelector")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            fallback
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "chart:1".to_string())
+}
+
+fn xlsx_chart_show_command_for_update(
+    file: &str,
+    sheet_selector: Option<&str>,
+    chart_selector: &str,
+) -> String {
+    let mut args = vec![
+        "ooxml".to_string(),
+        "--json".to_string(),
+        "xlsx".to_string(),
+        "charts".to_string(),
+        "show".to_string(),
+        command_arg(file),
+    ];
+    if let Some(sheet) = sheet_selector.filter(|value| !value.trim().is_empty()) {
+        args.push("--sheet".to_string());
+        args.push(command_arg(sheet));
+    }
+    args.push("--chart".to_string());
+    args.push(command_arg(chart_selector));
+    args.join(" ")
 }
 
 fn run_xlsx_chart_style_mutation<F>(
@@ -3559,6 +5588,48 @@ fn resolve_workbook_target_uri(target: &str) -> String {
     } else {
         resolve_relationship_target("/xl/workbook.xml", target)
     }
+}
+
+fn optional_zip_text(file: &str, part: &str) -> CliResult<Option<String>> {
+    match zip_text(file, part) {
+        Ok(text) => Ok(Some(text)),
+        Err(err) if err.message.starts_with("missing zip part ") => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+fn sheet_part_uri_for_chart(
+    sheet: &WorkbookSheet,
+    workbook_rels: &[RelationshipEntry],
+) -> Option<String> {
+    workbook_rels
+        .iter()
+        .find(|rel| rel.id == sheet.rel_id && rel.rel_type == REL_WORKSHEET)
+        .map(|rel| resolve_relationship_target("/xl/workbook.xml", &rel.target))
+}
+
+fn allocate_numbered_package_part(
+    entries: &mut BTreeSet<String>,
+    prefix: &str,
+    suffix: &str,
+) -> String {
+    let mut number = 1_u32;
+    loop {
+        let part = format!("{prefix}{number}{suffix}");
+        if !entries.contains(part.trim_start_matches('/')) {
+            entries.insert(part.trim_start_matches('/').to_string());
+            return part;
+        }
+        number += 1;
+    }
+}
+
+fn part_name(part_uri: &str) -> String {
+    part_uri.trim_start_matches('/').to_string()
+}
+
+fn empty_relationships_xml() -> String {
+    r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
 }
 
 fn ensure_chart_xml_namespaces(root: &mut XmlNode) -> ChartXmlContext {

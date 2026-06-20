@@ -12,30 +12,32 @@ use crate::xlsx_names::*;
 use crate::xlsx_ranges::*;
 use crate::xlsx_sheets::*;
 use crate::{
-    XlsxChartConvertTypeOptions, XlsxChartCopyStyleOptions, XlsxChartSetAxisOptions,
-    XlsxChartSetFillOptions, XlsxChartSetLegendOptions, XlsxChartSetSeriesStyleOptions,
-    XlsxChartSetTitleOptions, XlsxColWidthsSetOptions, XlsxColsDeleteOptions,
-    XlsxColsInsertOptions, XlsxCommentsAddOptions, XlsxCommentsRemoveOptions,
-    XlsxCommentsUpdateOptions, XlsxDataValidationFields, XlsxDataValidationMutationOptions,
-    XlsxFiltersSortsAddColumnFilterOptions, XlsxFiltersSortsClearAutoFilterOptions,
-    XlsxFiltersSortsClearColumnFilterOptions, XlsxFiltersSortsClearSortOptions,
-    XlsxFiltersSortsSetAutoFilterOptions, XlsxFiltersSortsSetSortOptions, XlsxHyperlinkAddOptions,
-    XlsxHyperlinkDeleteOptions, XlsxHyperlinkUpdateOptions, XlsxPivotsCreateOptions,
-    XlsxRowHeightsSetOptions, XlsxRowsDeleteOptions, XlsxRowsInsertOptions, XlsxSheetsAddOptions,
-    XlsxSheetsDeleteOptions, XlsxSheetsMoveOptions, XlsxSheetsRenameOptions,
-    xlsx_charts_convert_type, xlsx_charts_copy_style, xlsx_charts_list, xlsx_charts_set_axis,
+    XlsxChartConvertTypeOptions, XlsxChartCopyStyleOptions, XlsxChartCreateOptions,
+    XlsxChartSetAxisOptions, XlsxChartSetFillOptions, XlsxChartSetLegendOptions,
+    XlsxChartSetSeriesStyleOptions, XlsxChartSetTitleOptions, XlsxChartUpdateSourceOptions,
+    XlsxColWidthsSetOptions, XlsxColsDeleteOptions, XlsxColsInsertOptions, XlsxCommentsAddOptions,
+    XlsxCommentsRemoveOptions, XlsxCommentsUpdateOptions, XlsxDataValidationFields,
+    XlsxDataValidationMutationOptions, XlsxFiltersSortsAddColumnFilterOptions,
+    XlsxFiltersSortsClearAutoFilterOptions, XlsxFiltersSortsClearColumnFilterOptions,
+    XlsxFiltersSortsClearSortOptions, XlsxFiltersSortsSetAutoFilterOptions,
+    XlsxFiltersSortsSetSortOptions, XlsxHyperlinkAddOptions, XlsxHyperlinkDeleteOptions,
+    XlsxHyperlinkUpdateOptions, XlsxPivotsCreateOptions, XlsxRowHeightsSetOptions,
+    XlsxRowsDeleteOptions, XlsxRowsInsertOptions, XlsxSheetsAddOptions, XlsxSheetsDeleteOptions,
+    XlsxSheetsMoveOptions, XlsxSheetsRenameOptions, xlsx_charts_convert_type,
+    xlsx_charts_copy_style, xlsx_charts_create, xlsx_charts_list, xlsx_charts_set_axis,
     xlsx_charts_set_chart_area_fill, xlsx_charts_set_legend, xlsx_charts_set_plot_area_fill,
-    xlsx_charts_set_series_style, xlsx_charts_set_title, xlsx_charts_show, xlsx_cols_delete,
-    xlsx_cols_insert, xlsx_colwidths_set, xlsx_colwidths_show, xlsx_comments_add,
-    xlsx_comments_list, xlsx_comments_remove, xlsx_comments_update, xlsx_data_validations_create,
-    xlsx_data_validations_delete, xlsx_data_validations_list, xlsx_data_validations_show,
-    xlsx_data_validations_update, xlsx_filters_sorts_add_column_filter,
-    xlsx_filters_sorts_clear_autofilter, xlsx_filters_sorts_clear_column_filter,
-    xlsx_filters_sorts_clear_sort, xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_set_sort,
-    xlsx_filters_sorts_show, xlsx_hyperlinks_add, xlsx_hyperlinks_delete, xlsx_hyperlinks_list,
-    xlsx_hyperlinks_show, xlsx_hyperlinks_update, xlsx_pivots_create, xlsx_pivots_list,
-    xlsx_pivots_show, xlsx_rowheights_set, xlsx_rowheights_show, xlsx_rows_delete,
-    xlsx_rows_insert, xlsx_sheets_add, xlsx_sheets_delete, xlsx_sheets_move, xlsx_sheets_rename,
+    xlsx_charts_set_series_style, xlsx_charts_set_title, xlsx_charts_show,
+    xlsx_charts_update_source, xlsx_cols_delete, xlsx_cols_insert, xlsx_colwidths_set,
+    xlsx_colwidths_show, xlsx_comments_add, xlsx_comments_list, xlsx_comments_remove,
+    xlsx_comments_update, xlsx_data_validations_create, xlsx_data_validations_delete,
+    xlsx_data_validations_list, xlsx_data_validations_show, xlsx_data_validations_update,
+    xlsx_filters_sorts_add_column_filter, xlsx_filters_sorts_clear_autofilter,
+    xlsx_filters_sorts_clear_column_filter, xlsx_filters_sorts_clear_sort,
+    xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_set_sort, xlsx_filters_sorts_show,
+    xlsx_hyperlinks_add, xlsx_hyperlinks_delete, xlsx_hyperlinks_list, xlsx_hyperlinks_show,
+    xlsx_hyperlinks_update, xlsx_pivots_create, xlsx_pivots_list, xlsx_pivots_show,
+    xlsx_rowheights_set, xlsx_rowheights_show, xlsx_rows_delete, xlsx_rows_insert, xlsx_sheets_add,
+    xlsx_sheets_delete, xlsx_sheets_move, xlsx_sheets_rename,
 };
 
 pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
@@ -581,6 +583,111 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
             let sheet = parse_string_flag(rest, "--sheet")?;
             let chart = parse_string_flag(rest, "--chart")?;
             xlsx_charts_show(file, sheet.as_deref(), chart.as_deref())
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "charts" && verb == "create" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--type",
+                    "--sheet",
+                    "--range",
+                    "--table",
+                    "--title",
+                    "--anchor",
+                    "--expect-source-range",
+                    "--max-cells",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let chart_type = parse_string_flag(rest, "--type")?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let range = parse_string_flag(rest, "--range")?;
+            let table = parse_string_flag(rest, "--table")?;
+            let title = parse_string_flag(rest, "--title")?;
+            let anchor = parse_string_flag(rest, "--anchor")?;
+            let expect_source_range = parse_string_flag(rest, "--expect-source-range")?;
+            let max_cells = parse_i64_flag(rest, "--max-cells")?.unwrap_or(100000);
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_charts_create(
+                file,
+                XlsxChartCreateOptions {
+                    chart_type: chart_type.as_deref(),
+                    sheet: sheet.as_deref(),
+                    range: range.as_deref(),
+                    table: table.as_deref(),
+                    title: title.as_deref(),
+                    anchor: anchor.as_deref(),
+                    expect_source_range: expect_source_range.as_deref(),
+                    max_cells,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "charts" && verb == "update-source" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--chart",
+                    "--series",
+                    "--role",
+                    "--source-sheet",
+                    "--source-range",
+                    "--formula",
+                    "--cache",
+                    "--expect-source-range",
+                    "--expect-formula",
+                    "--max-cells",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let chart = parse_string_flag(rest, "--chart")?;
+            let series = parse_i64_flag(rest, "--series")?.unwrap_or(1);
+            let role = parse_string_flag(rest, "--role")?;
+            let source_sheet = parse_string_flag(rest, "--source-sheet")?;
+            let source_range = parse_string_flag(rest, "--source-range")?;
+            let formula = parse_string_flag(rest, "--formula")?;
+            let cache = parse_string_flag(rest, "--cache")?;
+            let expect_source_range = parse_string_flag(rest, "--expect-source-range")?;
+            let expect_formula = parse_string_flag(rest, "--expect-formula")?;
+            let max_cells = parse_i64_flag(rest, "--max-cells")?.unwrap_or(100000);
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_charts_update_source(
+                file,
+                XlsxChartUpdateSourceOptions {
+                    sheet: sheet.as_deref(),
+                    chart: chart.as_deref(),
+                    series,
+                    role: role.as_deref(),
+                    source_sheet: source_sheet.as_deref(),
+                    source_range: source_range.as_deref(),
+                    formula: formula.as_deref(),
+                    cache: cache.as_deref(),
+                    expect_source_range: expect_source_range.as_deref(),
+                    expect_formula: expect_formula.as_deref(),
+                    max_cells,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
         }
         [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "charts" && verb == "set-title" =>

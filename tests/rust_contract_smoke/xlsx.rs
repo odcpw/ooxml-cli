@@ -458,6 +458,253 @@ fn xlsx_charts_remaining_mutations_match_go_oracle() {
 }
 
 #[test]
+fn xlsx_charts_create_and_update_source_dry_runs_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-chart-create-dry-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let source_path = temp_dir.join("chart-source.xlsx");
+    write_simple_xlsx_with_sheet_xml(
+        &source_path,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="str"><v>Region</v></c><c r="B1" t="str"><v>Sales</v></c></row>
+    <row r="2"><c r="A2" t="str"><v>North</v></c><c r="B2"><v>42</v></c></row>
+    <row r="3"><c r="A3" t="str"><v>South</v></c><c r="B3"><v>58</v></c></row>
+    <row r="4"><c r="A4" t="str"><v>East</v></c><c r="B4"><v>30</v></c></row>
+  </sheetData>
+</worksheet>"#,
+    );
+    let source = source_path.to_string_lossy().to_string();
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "charts",
+        "create",
+        &source,
+        "--type",
+        "bar",
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B4",
+        "--title",
+        "Sales",
+        "--anchor",
+        "D1",
+        "--dry-run",
+    ]);
+
+    let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "charts",
+        "update-source",
+        workbook,
+        "--chart",
+        "chart:1",
+        "--series",
+        "1",
+        "--role",
+        "values",
+        "--source-sheet",
+        "Data",
+        "--source-range",
+        "$B$2:$B$3",
+        "--expect-source-range",
+        "$B$2:$B$4",
+        "--dry-run",
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "charts",
+        "update-source",
+        workbook,
+        "--chart",
+        "chart:1",
+        "--series",
+        "1",
+        "--role",
+        "values",
+        "--source-sheet",
+        "Data",
+        "--source-range",
+        "$B$2:$B$3",
+        "--expect-source-range",
+        "$B$2:$B$99",
+        "--dry-run",
+    ]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_charts_create_and_update_source_saved_outputs_validate_and_read_back() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-chart-create-update-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="str"><v>Region</v></c><c r="B1" t="str"><v>Sales</v></c></row>
+    <row r="2"><c r="A2" t="str"><v>North</v></c><c r="B2"><v>42</v></c></row>
+    <row r="3"><c r="A3" t="str"><v>South</v></c><c r="B3"><v>58</v></c></row>
+    <row r="4"><c r="A4" t="str"><v>East</v></c><c r="B4"><v>30</v></c></row>
+  </sheetData>
+</worksheet>"#;
+    let go_create_in_path = temp_dir.join("go-create-in.xlsx");
+    let rust_create_in_path = temp_dir.join("rust-create-in.xlsx");
+    let go_create_out_path = temp_dir.join("go-create-out.xlsx");
+    let rust_create_out_path = temp_dir.join("rust-create-out.xlsx");
+    write_simple_xlsx_with_sheet_xml(&go_create_in_path, sheet_xml);
+    write_simple_xlsx_with_sheet_xml(&rust_create_in_path, sheet_xml);
+
+    let go_create_in = go_create_in_path.to_string_lossy().to_string();
+    let rust_create_in = rust_create_in_path.to_string_lossy().to_string();
+    let go_create_out = go_create_out_path.to_string_lossy().to_string();
+    let rust_create_out = rust_create_out_path.to_string_lossy().to_string();
+    let create_go_args = [
+        "--json",
+        "xlsx",
+        "charts",
+        "create",
+        &go_create_in,
+        "--type",
+        "bar",
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B4",
+        "--title",
+        "Sales",
+        "--anchor",
+        "D1",
+        "--out",
+        &go_create_out,
+    ];
+    let create_rust_args = [
+        "--json",
+        "xlsx",
+        "charts",
+        "create",
+        &rust_create_in,
+        "--type",
+        "bar",
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B4",
+        "--title",
+        "Sales",
+        "--anchor",
+        "D1",
+        "--out",
+        &rust_create_out,
+    ];
+    let create_replacements = [
+        (go_create_in.as_str(), "[IN]"),
+        (rust_create_in.as_str(), "[IN]"),
+        (go_create_out.as_str(), "[OUT]"),
+        (rust_create_out.as_str(), "[OUT]"),
+    ];
+    let rust_create = assert_xlsx_structure_command_matches(
+        "xlsx charts create",
+        &create_go_args,
+        &create_rust_args,
+        &create_replacements,
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_create, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_create, "chartsListCommand");
+    let created_chart_xml = read_zip_string(&rust_create_out_path, "xl/charts/chart1.xml");
+    assert!(created_chart_xml.contains("barChart"));
+    assert!(created_chart_xml.contains("'Sheet1'!$B$2:$B$4"));
+
+    let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
+    let go_update_in_path = temp_dir.join("go-update-in.xlsx");
+    let rust_update_in_path = temp_dir.join("rust-update-in.xlsx");
+    let go_update_out_path = temp_dir.join("go-update-out.xlsx");
+    let rust_update_out_path = temp_dir.join("rust-update-out.xlsx");
+    fs::copy(workbook, &go_update_in_path).expect("go update input");
+    fs::copy(workbook, &rust_update_in_path).expect("rust update input");
+    let go_update_in = go_update_in_path.to_string_lossy().to_string();
+    let rust_update_in = rust_update_in_path.to_string_lossy().to_string();
+    let go_update_out = go_update_out_path.to_string_lossy().to_string();
+    let rust_update_out = rust_update_out_path.to_string_lossy().to_string();
+    let update_go_args = [
+        "--json",
+        "xlsx",
+        "charts",
+        "update-source",
+        &go_update_in,
+        "--chart",
+        "chart:1",
+        "--series",
+        "1",
+        "--role",
+        "values",
+        "--source-sheet",
+        "Data",
+        "--source-range",
+        "$B$2:$B$3",
+        "--expect-source-range",
+        "$B$2:$B$4",
+        "--out",
+        &go_update_out,
+    ];
+    let update_rust_args = [
+        "--json",
+        "xlsx",
+        "charts",
+        "update-source",
+        &rust_update_in,
+        "--chart",
+        "chart:1",
+        "--series",
+        "1",
+        "--role",
+        "values",
+        "--source-sheet",
+        "Data",
+        "--source-range",
+        "$B$2:$B$3",
+        "--expect-source-range",
+        "$B$2:$B$4",
+        "--out",
+        &rust_update_out,
+    ];
+    let update_replacements = [
+        (go_update_in.as_str(), "[IN]"),
+        (rust_update_in.as_str(), "[IN]"),
+        (go_update_out.as_str(), "[OUT]"),
+        (rust_update_out.as_str(), "[OUT]"),
+    ];
+    let rust_update = assert_xlsx_structure_command_matches(
+        "xlsx charts update-source",
+        &update_go_args,
+        &update_rust_args,
+        &update_replacements,
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_update, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_update, "chartShowCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_update, "rangesExportCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_update, "sourceRangeExportCommand");
+    let updated_chart_xml = read_zip_string(&rust_update_out_path, "xl/charts/chart1.xml");
+    assert!(updated_chart_xml.contains("Data!$B$2:$B$3"));
+    assert!(updated_chart_xml.contains(r#"<c:ptCount val="2"/>"#));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_charts_style_saved_outputs_validate_and_read_back() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-chart-style-{}",

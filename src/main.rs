@@ -166,12 +166,13 @@ pub(crate) use selector_util::{add_selector, selector_candidates};
 pub(crate) use serve::{ServeState, run_serve_stdio};
 pub(crate) use validation::{validate, validate_exit_code};
 pub(crate) use xlsx_charts::{
-    XlsxChartConvertTypeOptions, XlsxChartCopyStyleOptions, XlsxChartSetAxisOptions,
-    XlsxChartSetFillOptions, XlsxChartSetLegendOptions, XlsxChartSetSeriesStyleOptions,
-    XlsxChartSetTitleOptions, xlsx_charts_convert_type, xlsx_charts_copy_style, xlsx_charts_list,
+    XlsxChartConvertTypeOptions, XlsxChartCopyStyleOptions, XlsxChartCreateOptions,
+    XlsxChartSetAxisOptions, XlsxChartSetFillOptions, XlsxChartSetLegendOptions,
+    XlsxChartSetSeriesStyleOptions, XlsxChartSetTitleOptions, XlsxChartUpdateSourceOptions,
+    xlsx_charts_convert_type, xlsx_charts_copy_style, xlsx_charts_create, xlsx_charts_list,
     xlsx_charts_set_axis, xlsx_charts_set_chart_area_fill, xlsx_charts_set_legend,
     xlsx_charts_set_plot_area_fill, xlsx_charts_set_series_style, xlsx_charts_set_title,
-    xlsx_charts_show,
+    xlsx_charts_show, xlsx_charts_update_source,
 };
 pub(crate) use xlsx_comments::{
     XlsxCommentsAddOptions, XlsxCommentsRemoveOptions, XlsxCommentsUpdateOptions,

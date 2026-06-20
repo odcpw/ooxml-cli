@@ -501,6 +501,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     for path in [
         "ooxml xlsx charts list",
         "ooxml xlsx charts show",
+        "ooxml xlsx charts create",
+        "ooxml xlsx charts update-source",
         "ooxml xlsx charts convert-type",
     ] {
         assert_object_kind_command(&all_caps, "chart", path);
@@ -724,6 +726,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx hyperlinks delete", true);
     assert_command(&xlsx_caps, "ooxml xlsx charts list", false);
     assert_command(&xlsx_caps, "ooxml xlsx charts show", false);
+    assert_command(&xlsx_caps, "ooxml xlsx charts create", false);
+    assert_command(&xlsx_caps, "ooxml xlsx charts update-source", false);
     assert_command(&xlsx_caps, "ooxml xlsx charts set-title", false);
     assert_command(&xlsx_caps, "ooxml xlsx charts set-legend", false);
     assert_command(&xlsx_caps, "ooxml xlsx charts set-chart-area-fill", false);
@@ -943,6 +947,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let chart_caps = chart_stdout.expect("chart capabilities");
     assert_command(&chart_caps, "ooxml xlsx charts list", false);
     assert_command(&chart_caps, "ooxml xlsx charts show", false);
+    assert_command(&chart_caps, "ooxml xlsx charts create", false);
+    assert_command(&chart_caps, "ooxml xlsx charts update-source", false);
     assert_command(&chart_caps, "ooxml xlsx charts set-title", false);
     assert_command(&chart_caps, "ooxml xlsx charts set-legend", false);
     assert_command(&chart_caps, "ooxml xlsx charts set-chart-area-fill", false);
@@ -1206,12 +1212,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        194,
+        196,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        96,
+        94,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
