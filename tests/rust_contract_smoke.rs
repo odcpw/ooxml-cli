@@ -1154,6 +1154,9 @@ mod conformance_chart_structure;
 #[path = "rust_contract_smoke/conformance_pptx_animations.rs"]
 mod conformance_pptx_animations;
 
+#[path = "rust_contract_smoke/conformance_relationships.rs"]
+mod conformance_relationships;
+
 #[path = "rust_contract_smoke/conformance_embedded_workbook.rs"]
 mod conformance_embedded_workbook;
 

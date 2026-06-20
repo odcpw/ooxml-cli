@@ -25,7 +25,9 @@ use image_payloads::check_part_image_payload_invariants;
 use package::{check_zip_entry_metadata, read_zip_entry_metadata};
 use pptx_animations::check_part_pptx_animation_invariants;
 use references::check_reference_list_invariants;
-use relationships::{check_package_relationship_closure, parse_relationship_part};
+use relationships::{
+    RelationshipPartError, check_package_relationship_closure, parse_relationship_part,
+};
 use spec::check_known_part_content_type;
 use spreadsheet_semantics::{
     check_part_spreadsheet_semantic_invariants, collect_spreadsheet_semantic_context,
@@ -58,7 +60,11 @@ pub(crate) fn check_repair_invariants(file: &str) -> CliResult<Vec<Value>> {
         if is_rels_uri(&part.uri) {
             match parse_relationship_part(file, &part.entry_name) {
                 Ok(_) => {}
-                Err(err) => diagnostics.push(diag(
+                Err(RelationshipPartError::Read(err)) => diagnostics.push(diag(
+                    "OOXML_RELS_READ_ERROR",
+                    format!("failed to read relationships part {}: {err}", part.uri),
+                )),
+                Err(RelationshipPartError::Parse(err)) => diagnostics.push(diag(
                     "OOXML_RELS_PARSE_ERROR",
                     format!("failed to parse relationships part {}: {err}", part.uri),
                 )),
