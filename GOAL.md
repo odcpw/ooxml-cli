@@ -48,10 +48,11 @@ history.
     advertises 289, leaving 1 unported path after the exact `pptx diff`
     integration: `ooxml conformance check`.
   - `ooxml conformance check` has a hidden Rust-native repair-invariant slice
-    with local `--office-check` behavior, but remains unadvertised until the
-    remaining Go full-report surface is ported. Current red-team blocker list:
-    `OOXML_RELS_READ_ERROR`, `OOXML_OPEN_FAILED`,
-    `OOXML_VALIDATE_FAILED`, and `OOXML_REPAIR_INVARIANT_FAILED`.
+    with local `--office-check` behavior, but remains unadvertised until a
+    fresh promotion audit confirms that the previous red-team blockers are
+    closed. Recently closed blocker set: `XLSX_WORKSHEET_HYPERLINK_REFERENCE`,
+    `OOXML_RELS_READ_ERROR`, `OOXML_OPEN_FAILED`, `OOXML_VALIDATE_FAILED`, and
+    `OOXML_REPAIR_INVARIANT_FAILED`.
   - The hidden conformance invariant engine was split at `951a227` into focused
     Rust modules under `src/conformance_invariants/` for content types,
     relationships, spec tables, XML-part checks, shared types, and utilities.

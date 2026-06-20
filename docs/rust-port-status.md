@@ -26,6 +26,15 @@ Latest milestone, 2026-06-20:
   paths while Go advertises 290; the remaining unadvertised path is still
   `ooxml conformance check`. The `XLSX_WORKSHEET_HYPERLINK_REFERENCE` blocker
   has since been closed by a focused Go-vs-Rust worksheet hyperlink fixture.
+- The follow-up conformance blocker closure landed Rust parity work for
+  worksheet hyperlink relationship references, relationship-part read-error
+  classification/static coverage, and Go-shaped conformance lifecycle wrapper
+  reports for package-open, validation, and unexpected repair-invariant errors.
+  Proof: focused worksheet hyperlink, wrapper-report, relationship read-error,
+  and coverage tests; the combined `conformance_check` subset with 17 tests;
+  `cargo fmt --check`; and `cargo clippy --all-targets -- -D warnings`.
+  `ooxml conformance check` remains unadvertised pending a fresh promotion
+  audit rather than assumption from the closed blocker list.
 - Rust `conformance check` now includes the focused Go-oracle spreadsheet
   semantic-reference invariant slice. The checks live in
   `src/conformance_invariants/spreadsheet_semantics.rs` and cover workbook
