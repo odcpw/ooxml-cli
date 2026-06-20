@@ -2,6 +2,7 @@ use serde_json::Value;
 
 use crate::{CliResult, zip_entry_names, zip_entry_set};
 
+mod chart_structure;
 mod content_types;
 mod deep_relationships;
 mod image_payloads;
@@ -13,6 +14,7 @@ mod types;
 mod util;
 mod xml_parts;
 
+use chart_structure::check_chart_structure_invariants;
 use content_types::{check_content_types_coverage, collect_parts, parse_content_types};
 use deep_relationships::check_part_deep_relationship_invariants;
 use image_payloads::check_part_image_payload_invariants;
@@ -54,6 +56,7 @@ pub(crate) fn check_repair_invariants(file: &str) -> CliResult<Vec<Value>> {
             continue;
         }
         diagnostics.extend(check_part_xml_invariants(file, part)?);
+        diagnostics.extend(check_chart_structure_invariants(file, part));
         diagnostics.extend(check_part_deep_relationship_invariants(
             file, part, &entry_set, &parts,
         )?);
