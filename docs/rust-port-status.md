@@ -363,6 +363,10 @@ Latest milestone, 2026-06-20:
   into `src/docx_xml/paragraph_ids.rs`, keeping para-id stamping, namespace
   insertion, existing-id scanning, and id minting behind the same `docx_xml`
   facade for paragraph and style mutation paths.
+- DOCX XML text readback helpers moved from `src/docx_xml.rs` into
+  `src/docx_xml/text_read.rs`, keeping fragment text extraction and
+  namespace-aware Word attribute reads behind the same `docx_xml` facade for
+  fields and header/footer readback paths.
 - XLSX range export, JSON range rendering, data-out writing, data-format
   normalization, and range max-cell guards moved from `src/main.rs` into
   `src/xlsx_ranges.rs`.
