@@ -207,6 +207,10 @@ Latest milestone, 2026-06-20:
   into `src/docx_comments/handles.rs`, preserving a single `pub(super)`
   resolver entry point while keeping handle parsing private to the child
   module.
+- DOCX comment XML rendering, comment-part append, new-comment id selection,
+  and document comment marker insertion moved from `src/docx_comments.rs` into
+  `src/docx_comments/render.rs`, keeping mutation entrypoints in the facade and
+  preserving direct DOCX/serve comment contract coverage.
 - DOCX body block readers, rich block reports, paragraph/table text extraction,
   run formatting capture, namespace-aware paragraph handles, and block content
   hashing moved from `src/main.rs` into `src/docx_block_readers.rs`.
