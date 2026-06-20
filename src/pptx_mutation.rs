@@ -1,5 +1,6 @@
 mod charts;
 mod comments;
+mod layouts;
 mod notes;
 mod replace;
 mod shapes;
@@ -11,6 +12,10 @@ pub(crate) use charts::{
     pptx_charts_set_series_style, pptx_charts_set_title,
 };
 pub(crate) use comments::{pptx_comments_add, pptx_comments_edit, pptx_comments_remove};
+pub(crate) use layouts::{
+    pptx_layouts_add_placeholder, pptx_layouts_delete_shape, pptx_layouts_rename,
+    pptx_layouts_set_bounds,
+};
 pub(crate) use notes::{pptx_notes_clear, pptx_notes_set};
 pub(crate) use replace::{pptx_replace_images, pptx_replace_text_occurrences};
 pub(crate) use shapes::{pptx_shapes_delete, pptx_shapes_set_bounds};

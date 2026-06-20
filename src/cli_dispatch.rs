@@ -415,6 +415,49 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             pptx_layouts_show(file, &layout)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "layouts" && verb == "rename" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--layout", "--name", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_layouts_rename(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "layouts" && verb == "set-bounds" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--layout", "--target", "--bounds", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_layouts_set_bounds(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "layouts" && verb == "delete-shape" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--layout", "--target", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_layouts_delete_shape(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "layouts" && verb == "add-placeholder" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--layout", "--type", "--bounds", "--idx", "--size", "--orient", "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_layouts_add_placeholder(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "charts" && verb == "list" =>
         {
             reject_unknown_flags(rest, &["--slide"], &[])?;

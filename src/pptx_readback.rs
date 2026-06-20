@@ -12,7 +12,8 @@ pub(crate) use charts::{pptx_charts_list, pptx_charts_show};
 pub(crate) use comments::pptx_comments_list;
 pub(crate) use extract::{pptx_extract_images, pptx_extract_xml};
 pub(crate) use layouts::{
-    pptx_layouts_list, pptx_layouts_show, pptx_masters_list, pptx_masters_show,
+    PptxLayoutInfo, pptx_find_layout, pptx_layout_shape_entries, pptx_layouts_list,
+    pptx_layouts_show, pptx_masters_list, pptx_masters_show, pptx_presentation_layouts,
 };
 pub(crate) use notes::{pptx_extract_notes, pptx_notes_show};
 use shape_model::{

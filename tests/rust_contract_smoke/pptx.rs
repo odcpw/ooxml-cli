@@ -1492,6 +1492,361 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
 }
 
 #[test]
+fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-layouts-mutation-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx layouts mutation temp dir");
+
+    let fixture = "testdata/pptx/title-content/presentation.pptx";
+
+    let go_rename = temp_dir.join("go-rename.pptx");
+    let rust_rename = temp_dir.join("rust-rename.pptx");
+    let go_rename_str = go_rename.to_str().expect("go rename path");
+    let rust_rename_str = rust_rename.to_str().expect("rust rename path");
+    let go_rename_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "rename",
+        fixture,
+        "--layout",
+        "2",
+        "--name",
+        "RustLayoutRenamed",
+        "--out",
+        go_rename_str,
+    ];
+    let rust_rename_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "rename",
+        fixture,
+        "--layout",
+        "2",
+        "--name",
+        "RustLayoutRenamed",
+        "--out",
+        rust_rename_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_rename_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_rename_args);
+    assert_eq!(rust_code, go_code, "layout rename exit");
+    assert_eq!(rust_stderr, go_stderr, "layout rename stderr");
+    let rust_rename_json = rust_stdout.expect("rust layout rename stdout");
+    assert_eq!(
+        scrub_path(rust_rename_json.clone(), rust_rename_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go layout rename stdout"),
+            go_rename_str,
+            "[OUT]"
+        ),
+        "layout rename stdout"
+    );
+    assert!(go_rename.exists(), "Go layout rename output missing");
+    assert!(rust_rename.exists(), "Rust layout rename output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_rename_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_rename_json, "validateCommand");
+
+    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+        "--json",
+        "pptx",
+        "layouts",
+        "show",
+        go_rename_str,
+        "--layout",
+        "RustLayoutRenamed",
+    ]);
+    let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "layouts",
+        "show",
+        rust_rename_str,
+        "--layout",
+        "RustLayoutRenamed",
+    ]);
+    assert_eq!(rust_show_code, go_show_code, "layout rename readback exit");
+    assert_eq!(
+        rust_show_stderr, go_show_stderr,
+        "layout rename readback stderr"
+    );
+    assert_eq!(
+        rust_show_stdout.expect("rust layout rename readback"),
+        go_show_stdout.expect("go layout rename readback"),
+        "layout rename readback stdout"
+    );
+
+    let go_bounds = temp_dir.join("go-bounds.pptx");
+    let rust_bounds = temp_dir.join("rust-bounds.pptx");
+    let go_bounds_str = go_bounds.to_str().expect("go bounds path");
+    let rust_bounds_str = rust_bounds.to_str().expect("rust bounds path");
+    let go_bounds_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "set-bounds",
+        fixture,
+        "--layout",
+        "2",
+        "--target",
+        "shape:3",
+        "--bounds",
+        "111111,222222,333333,444444",
+        "--out",
+        go_bounds_str,
+    ];
+    let rust_bounds_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "set-bounds",
+        fixture,
+        "--layout",
+        "2",
+        "--target",
+        "shape:3",
+        "--bounds",
+        "111111,222222,333333,444444",
+        "--out",
+        rust_bounds_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_bounds_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_bounds_args);
+    assert_eq!(rust_code, go_code, "layout set-bounds exit");
+    assert_eq!(rust_stderr, go_stderr, "layout set-bounds stderr");
+    let rust_bounds_json = rust_stdout.expect("rust layout set-bounds stdout");
+    assert_eq!(
+        scrub_path(rust_bounds_json.clone(), rust_bounds_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go layout set-bounds stdout"),
+            go_bounds_str,
+            "[OUT]"
+        ),
+        "layout set-bounds stdout"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_bounds_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_bounds_json, "validateCommand");
+    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+        "--json",
+        "pptx",
+        "layouts",
+        "show",
+        go_bounds_str,
+        "--layout",
+        "2",
+    ]);
+    let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "layouts",
+        "show",
+        rust_bounds_str,
+        "--layout",
+        "2",
+    ]);
+    assert_eq!(
+        rust_show_code, go_show_code,
+        "layout set-bounds readback exit"
+    );
+    assert_eq!(
+        rust_show_stderr, go_show_stderr,
+        "layout set-bounds readback stderr"
+    );
+    assert_eq!(
+        rust_show_stdout.expect("rust layout set-bounds readback"),
+        go_show_stdout.expect("go layout set-bounds readback"),
+        "layout set-bounds readback stdout"
+    );
+
+    let go_delete = temp_dir.join("go-delete.pptx");
+    let rust_delete = temp_dir.join("rust-delete.pptx");
+    let go_delete_str = go_delete.to_str().expect("go delete path");
+    let rust_delete_str = rust_delete.to_str().expect("rust delete path");
+    let go_delete_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "delete-shape",
+        fixture,
+        "--layout",
+        "2",
+        "--target",
+        "shape:3",
+        "--out",
+        go_delete_str,
+    ];
+    let rust_delete_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "delete-shape",
+        fixture,
+        "--layout",
+        "2",
+        "--target",
+        "shape:3",
+        "--out",
+        rust_delete_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_delete_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_delete_args);
+    assert_eq!(rust_code, go_code, "layout delete-shape exit");
+    assert_eq!(rust_stderr, go_stderr, "layout delete-shape stderr");
+    let rust_delete_json = rust_stdout.expect("rust layout delete-shape stdout");
+    assert_eq!(
+        scrub_path(rust_delete_json.clone(), rust_delete_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go layout delete-shape stdout"),
+            go_delete_str,
+            "[OUT]"
+        ),
+        "layout delete-shape stdout"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_delete_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_delete_json, "validateCommand");
+    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+        "--json",
+        "pptx",
+        "layouts",
+        "show",
+        go_delete_str,
+        "--layout",
+        "2",
+    ]);
+    let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "layouts",
+        "show",
+        rust_delete_str,
+        "--layout",
+        "2",
+    ]);
+    assert_eq!(
+        rust_show_code, go_show_code,
+        "layout delete-shape readback exit"
+    );
+    assert_eq!(
+        rust_show_stderr, go_show_stderr,
+        "layout delete-shape readback stderr"
+    );
+    assert_eq!(
+        rust_show_stdout.expect("rust layout delete-shape readback"),
+        go_show_stdout.expect("go layout delete-shape readback"),
+        "layout delete-shape readback stdout"
+    );
+
+    let go_add = temp_dir.join("go-add-placeholder.pptx");
+    let rust_add = temp_dir.join("rust-add-placeholder.pptx");
+    let go_add_str = go_add.to_str().expect("go add-placeholder path");
+    let rust_add_str = rust_add.to_str().expect("rust add-placeholder path");
+    let go_add_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "add-placeholder",
+        fixture,
+        "--layout",
+        "7",
+        "--type",
+        "pic",
+        "--idx",
+        "0",
+        "--bounds",
+        "1000,2000,3000,4000",
+        "--out",
+        go_add_str,
+    ];
+    let rust_add_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "add-placeholder",
+        fixture,
+        "--layout",
+        "7",
+        "--type",
+        "pic",
+        "--idx",
+        "0",
+        "--bounds",
+        "1000,2000,3000,4000",
+        "--out",
+        rust_add_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_add_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_add_args);
+    assert_eq!(rust_code, go_code, "layout add-placeholder exit");
+    assert_eq!(rust_stderr, go_stderr, "layout add-placeholder stderr");
+    let rust_add_json = rust_stdout.expect("rust layout add-placeholder stdout");
+    assert_eq!(
+        scrub_path(rust_add_json.clone(), rust_add_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go layout add-placeholder stdout"),
+            go_add_str,
+            "[OUT]"
+        ),
+        "layout add-placeholder stdout"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_add_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_add_json, "validateCommand");
+    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+        "--json", "pptx", "layouts", "show", go_add_str, "--layout", "7",
+    ]);
+    let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "layouts",
+        "show",
+        rust_add_str,
+        "--layout",
+        "7",
+    ]);
+    assert_eq!(
+        rust_show_code, go_show_code,
+        "layout add-placeholder readback exit"
+    );
+    assert_eq!(
+        rust_show_stderr, go_show_stderr,
+        "layout add-placeholder readback stderr"
+    );
+    assert_eq!(
+        rust_show_stdout.expect("rust layout add-placeholder readback"),
+        go_show_stdout.expect("go layout add-placeholder readback"),
+        "layout add-placeholder readback stdout"
+    );
+
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "rename",
+        fixture,
+        "--layout",
+        "2",
+        "--name",
+        "DryRunLayout",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "layout rename dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "layout rename dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust layout rename dry-run stdout"),
+        go_stdout.expect("go layout rename dry-run stdout"),
+        "layout rename dry-run stdout"
+    );
+}
+
+#[test]
 fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

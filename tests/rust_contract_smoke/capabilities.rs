@@ -427,6 +427,25 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "cell", "ooxml xlsx cells set-batch");
     assert_command_target_kind(&all_caps, "ooxml xlsx cells clear", "cell");
     assert_command_target_kind(&all_caps, "ooxml xlsx cells set-batch", "cell");
+    for path in [
+        "ooxml pptx layouts rename",
+        "ooxml pptx layouts set-bounds",
+        "ooxml pptx layouts delete-shape",
+        "ooxml pptx layouts add-placeholder",
+    ] {
+        assert_object_kind_command(&all_caps, "layout", path);
+        assert_command_target_kind(&all_caps, path, "layout");
+    }
+    assert_object_kind_command(
+        &all_caps,
+        "placeholder",
+        "ooxml pptx layouts add-placeholder",
+    );
+    assert_command_target_kind(
+        &all_caps,
+        "ooxml pptx layouts add-placeholder",
+        "placeholder",
+    );
 
     let (pptx_code, pptx_stdout, pptx_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "pptx"]);
@@ -451,6 +470,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx masters show", false);
     assert_command(&pptx_caps, "ooxml pptx layouts list", false);
     assert_command(&pptx_caps, "ooxml pptx layouts show", false);
+    assert_command(&pptx_caps, "ooxml pptx layouts rename", false);
+    assert_command(&pptx_caps, "ooxml pptx layouts set-bounds", false);
+    assert_command(&pptx_caps, "ooxml pptx layouts delete-shape", false);
+    assert_command(&pptx_caps, "ooxml pptx layouts add-placeholder", false);
     assert_command(&pptx_caps, "ooxml pptx charts list", false);
     assert_command(&pptx_caps, "ooxml pptx charts show", false);
     assert_command(&pptx_caps, "ooxml pptx charts set-title", false);
@@ -750,6 +773,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let layout_caps = layout_stdout.expect("layout capabilities");
     assert_command(&layout_caps, "ooxml pptx layouts list", false);
     assert_command(&layout_caps, "ooxml pptx layouts show", false);
+    assert_command(&layout_caps, "ooxml pptx layouts rename", false);
+    assert_command(&layout_caps, "ooxml pptx layouts set-bounds", false);
+    assert_command(&layout_caps, "ooxml pptx layouts delete-shape", false);
+    assert_command(&layout_caps, "ooxml pptx layouts add-placeholder", false);
     assert_command(&layout_caps, "ooxml pptx extract xml", false);
     assert_no_command(&layout_caps, "ooxml pptx tables show");
 
@@ -771,6 +798,13 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&placeholder_caps, "ooxml pptx masters show", false);
     assert_command(&placeholder_caps, "ooxml pptx layouts list", false);
     assert_command(&placeholder_caps, "ooxml pptx layouts show", false);
+    assert_command(&placeholder_caps, "ooxml pptx layouts set-bounds", false);
+    assert_command(&placeholder_caps, "ooxml pptx layouts delete-shape", false);
+    assert_command(
+        &placeholder_caps,
+        "ooxml pptx layouts add-placeholder",
+        false,
+    );
 
     let (paragraph_code, paragraph_stdout, paragraph_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "paragraph"]);
@@ -954,12 +988,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        157,
+        161,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        133,
+        129,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

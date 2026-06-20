@@ -3,7 +3,7 @@ use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
-use super::{bounds_json, pptx_shape_models};
+use super::{bounds_json, pptx_selector_targets_from_shapes, pptx_shape_models};
 use crate::{
     CliError, CliResult, attr, attr_exact, local_name, package_type, relationship_entries,
     relationships, relationships_part_for, resolve_relationship_target, zip_text,
@@ -17,15 +17,15 @@ struct PptxMasterRef {
 }
 
 #[derive(Clone)]
-struct PptxLayoutInfo {
-    id: String,
-    name: String,
-    part_uri: String,
-    master_id: String,
-    theme_uri: String,
-    preserve: bool,
-    user_drawn: bool,
-    placeholders: Vec<Value>,
+pub(crate) struct PptxLayoutInfo {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) part_uri: String,
+    pub(crate) master_id: String,
+    pub(crate) theme_uri: String,
+    pub(crate) preserve: bool,
+    pub(crate) user_drawn: bool,
+    pub(crate) placeholders: Vec<Value>,
 }
 
 pub(crate) fn pptx_masters_list(file: &str) -> CliResult<Value> {
@@ -231,7 +231,7 @@ pub(crate) fn pptx_layouts_show(file: &str, selector: &str) -> CliResult<Value> 
     Ok(Value::Object(output))
 }
 
-fn pptx_presentation_layouts(file: &str) -> CliResult<Vec<PptxLayoutInfo>> {
+pub(crate) fn pptx_presentation_layouts(file: &str) -> CliResult<Vec<PptxLayoutInfo>> {
     let masters = pptx_presentation_masters(file)?;
     let mut master_uri_to_id = BTreeMap::<String, String>::new();
     let mut master_uri_to_theme = BTreeMap::<String, String>::new();
@@ -438,7 +438,55 @@ fn pptx_layout_selectors(number: usize, name: &str) -> Vec<String> {
     selectors
 }
 
-fn pptx_find_layout<'a>(
+pub(crate) fn pptx_layout_shape_entries(
+    file: &str,
+    selector: &str,
+    include_bounds: bool,
+) -> CliResult<(PptxLayoutInfo, Vec<Value>)> {
+    let layouts = pptx_presentation_layouts(file)?;
+    let layout = pptx_find_layout(&layouts, selector)
+        .ok_or_else(|| CliError::invalid_args(format!("layout not found: {selector}")))?
+        .clone();
+    let xml = zip_text(file, layout.part_uri.trim_start_matches('/'))?;
+    let shapes = pptx_shape_models(&xml);
+    let targets = pptx_selector_targets_from_shapes(&shapes);
+    let entries = shapes
+        .iter()
+        .zip(targets)
+        .map(|(shape, target)| {
+            let mut entry = target.as_object().cloned().unwrap_or_default();
+            if let Some(placeholder) = shape.placeholder.as_ref() {
+                let literal_type = placeholder.literal_type.as_str();
+                let index = placeholder.index.unwrap_or(0);
+                let key = if literal_type.is_empty() {
+                    if shape.id != 0 {
+                        format!("shape:{}", shape.id)
+                    } else {
+                        "unknown".to_string()
+                    }
+                } else if placeholder.index.is_some() {
+                    format!("{literal_type}:{index}")
+                } else {
+                    literal_type.to_string()
+                };
+                if let Some(selectors) = entry.get_mut("selectors").and_then(Value::as_array_mut)
+                    && !selectors
+                        .iter()
+                        .any(|selector| selector.as_str() == Some(&key))
+                {
+                    selectors.push(json!(key));
+                }
+            }
+            if include_bounds && let Some(bounds) = shape.bounds.as_ref() {
+                entry.insert("bounds".to_string(), bounds_json(bounds));
+            }
+            Value::Object(entry)
+        })
+        .collect();
+    Ok((layout, entries))
+}
+
+pub(crate) fn pptx_find_layout<'a>(
     layouts: &'a [PptxLayoutInfo],
     selector: &str,
 ) -> Option<&'a PptxLayoutInfo> {
