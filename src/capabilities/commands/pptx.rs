@@ -420,6 +420,58 @@ pub(super) fn commands() -> Vec<Value> {
             ],
         ),
         capability_command(
+            "ooxml pptx xlsx-bindings apply",
+            "apply <file> --workbook <bindings.xlsx> (--range <A1:Z9>|--table <name>) --out <pptx>",
+            "Apply XLSX-driven PPTX binding rows to a PowerPoint deck.",
+            &[
+                "template", "slide", "shape", "sheet", "range", "table", "image",
+            ],
+            false,
+            Some("direct CLI mutation; serve/MCP op support is not wired for binding batches yet"),
+            vec![
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "plan and validate without writing",
+                ),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write back to the input file",
+                ),
+                flag(
+                    "--max-cells",
+                    "maxCells",
+                    "int",
+                    "maximum binding/source cells to read",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict validation of the mutated package",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag("--range", "range", "string", "binding A1 range"),
+                flag("--sheet", "sheet", "string", "binding sheet selector"),
+                flag(
+                    "--table",
+                    "table",
+                    "string",
+                    "binding workbook table selector",
+                ),
+                flag(
+                    "--workbook",
+                    "workbook",
+                    "string",
+                    "XLSX workbook containing binding rows",
+                ),
+            ],
+        ),
+        capability_command(
             "ooxml pptx shapes show",
             "show <file> --slide <n>",
             "Show targetable shapes on a slide.",

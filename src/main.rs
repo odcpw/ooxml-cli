@@ -172,7 +172,7 @@ pub(crate) use pptx_readback::{
 };
 pub(crate) use pptx_template::{pptx_template_capture, pptx_template_inspect};
 pub(crate) use pptx_translate::{pptx_translate_apply, pptx_translate_export};
-pub(crate) use pptx_xlsx_bindings::pptx_xlsx_bindings_plan;
+pub(crate) use pptx_xlsx_bindings::{pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan};
 pub(crate) use runtime_util::{
     chrono_like_counter, current_utc_rfc3339, docx_mutation_temp_path, package_mutation_temp_path,
     xlsx_ranges_set_temp_path,

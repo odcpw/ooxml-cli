@@ -1717,6 +1717,149 @@ fn template_tokens_profiles_and_xlsx_binding_plan_match_go_oracle() {
 }
 
 #[test]
+fn pptx_xlsx_bindings_apply_saved_dry_run_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-xlsx-bindings-apply-{}-{suffix}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&temp_dir).expect("xlsx bindings apply temp dir");
+
+    let fixture = "testdata/pptx/title-content/presentation.pptx";
+    let workbook = temp_dir.join("bindings.xlsx");
+    write_xlsx_bindings_workbook(&workbook, "subtitle");
+    let workbook_str = workbook.to_string_lossy().to_string();
+    let go_out = temp_dir.join("go-bindings.pptx");
+    let rust_out = temp_dir.join("rust-bindings.pptx");
+    let go_out_str = go_out.to_str().expect("go bindings output");
+    let rust_out_str = rust_out.to_str().expect("rust bindings output");
+
+    let go_args = [
+        "--json",
+        "pptx",
+        "xlsx-bindings",
+        "apply",
+        fixture,
+        "--workbook",
+        &workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:P3",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "xlsx-bindings",
+        "apply",
+        fixture,
+        "--workbook",
+        &workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:P3",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "xlsx-bindings apply saved exit");
+    assert_eq!(rust_stderr, go_stderr, "xlsx-bindings apply saved stderr");
+    let go_json = go_stdout.expect("go xlsx-bindings apply saved");
+    let rust_json = rust_stdout.expect("rust xlsx-bindings apply saved");
+    assert_eq!(
+        scrub_paths(rust_json.clone(), &[(rust_out_str, "[OUT]")]),
+        scrub_paths(go_json, &[(go_out_str, "[OUT]")]),
+        "xlsx-bindings apply saved stdout"
+    );
+    assert!(go_out.exists(), "Go xlsx-bindings output missing");
+    assert!(rust_out.exists(), "Rust xlsx-bindings output missing");
+    let (validate_code, validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "validate", "--strict", rust_out_str]);
+    assert_eq!(validate_code, 0, "bindings output strict validate exit");
+    assert_eq!(
+        validate_stderr, None,
+        "bindings output strict validate stderr"
+    );
+    assert_eq!(
+        validate_stdout.expect("bindings strict validate")["valid"],
+        Value::Bool(true)
+    );
+
+    let (go_read_code, go_read_stdout, go_read_stderr) =
+        run_go_ooxml(&["--json", "pptx", "extract", "text", go_out_str]);
+    let (rust_read_code, rust_read_stdout, rust_read_stderr) =
+        run_ooxml(&["--json", "pptx", "extract", "text", rust_out_str]);
+    assert_eq!(rust_read_code, go_read_code, "bindings readback exit");
+    assert_eq!(rust_read_stderr, go_read_stderr, "bindings readback stderr");
+    assert_eq!(
+        scrub_path(
+            rust_read_stdout.expect("rust bindings readback"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_read_stdout.expect("go bindings readback"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "bindings readback stdout"
+    );
+
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "xlsx-bindings",
+        "apply",
+        fixture,
+        "--workbook",
+        &workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:P3",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "xlsx-bindings apply dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "xlsx-bindings apply dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust xlsx-bindings dry-run"),
+        go_stdout.expect("go xlsx-bindings dry-run"),
+        "xlsx-bindings apply dry-run stdout"
+    );
+
+    assert_go_rust_json_match(
+        &[
+            "--json",
+            "pptx",
+            "xlsx-bindings",
+            "apply",
+            fixture,
+            "--workbook",
+            &workbook_str,
+            "--sheet",
+            "Sheet1",
+            "--range",
+            "A1:P3",
+            "--dry-run",
+            "--out",
+            rust_out_str,
+        ],
+        "xlsx-bindings apply dry-run out error",
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn pptx_template_capture_produces_manifest_for_readable_deck() {
     let (code, stdout, stderr) = run_ooxml(&[
         "--json",

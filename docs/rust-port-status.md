@@ -9,6 +9,18 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust `pptx xlsx-bindings apply` parity landed as the real executable binding
+  workflow leaf. The slice reuses the existing Rust binding planner and PPTX
+  mutation leaves, preserves Go-shaped saved-output, dry-run, readback,
+  validation, and error envelopes, keeps `pptx xlsx-bindings` as an
+  unadvertised parent group, and advertises only the executable apply command
+  for `template`, `slide`, `shape`, `sheet`, `range`, `table`, and `image`
+  targets. Rust capabilities now advertise 232 Go-oracle command paths,
+  leaving a pinned 58-command gap. Proof: focused Go-vs-Rust contract tests for
+  saved apply, dry-run, readback, and dry-run/output errors; capability ratchet
+  tests; strict OOXML validation for generated Rust output; Open XML SDK
+  validation and desktop PowerPoint COM open proof for the generated deck; plus
+  the lane fmt/clippy checks.
 - Rust PPTX cross-package import/merge authoring parity landed for direct
   `pptx slides import-slide`, `pptx slides merge`, `pptx layouts import`, and
   `pptx masters import`. The slice copies real PPTX package parts, rewrites
@@ -28,11 +40,11 @@ Latest milestone, 2026-06-20:
   `template profile inspect`, `pptx template capture`, and `pptx
   xlsx-bindings plan`. The slice classifies `template`, `template profile`,
   `pptx template`, and `pptx xlsx-bindings` as parent groups, keeps `pptx
-  template compile`, `pptx xlsx-bindings apply`, and `template apply`
-  unadvertised until their mutation behavior is fully proofed, and preserves
-  Go-shaped token/profile JSON plus mixed binding plan JSON for text/bounds
-  rows. Rust capabilities now advertise 227 Go-oracle command paths, leaving a
-  pinned 63-command gap. Proof: focused Go-vs-Rust contract tests for
+  template compile` and `template apply` unadvertised until their mutation
+  behavior is fully proofed, and preserves Go-shaped token/profile JSON plus
+  mixed binding plan JSON for text/bounds rows. Rust capabilities advertised
+  227 Go-oracle command paths at this milestone, leaving a pinned 63-command
+  gap. Proof: focused Go-vs-Rust contract tests for
   tokens/profile/profile inspect/xlsx-binding plan success and duplicate-target
   errors, Rust structural capture-manifest test, focused capability ratchet
   tests, `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
@@ -1600,7 +1612,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 231, and the harness pins the 59-command gap until
+  paths, Rust advertises 232, and the harness pins the 58-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

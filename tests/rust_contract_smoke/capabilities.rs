@@ -32,6 +32,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx template inspect", false);
     assert_command(&all_caps, "ooxml pptx template capture", false);
     assert_command(&all_caps, "ooxml pptx xlsx-bindings plan", false);
+    assert_command(&all_caps, "ooxml pptx xlsx-bindings apply", false);
     assert_command(&all_caps, "ooxml pptx notes show", false);
     assert_command(&all_caps, "ooxml pptx notes set", true);
     assert_command(&all_caps, "ooxml pptx notes clear", true);
@@ -347,6 +348,12 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command_target_kind(&all_caps, "ooxml pptx tables update-from-xlsx", "table");
     assert_command_target_kind(&all_caps, "ooxml pptx tables update-from-xlsx", "sheet");
     assert_command_target_kind(&all_caps, "ooxml pptx tables update-from-xlsx", "range");
+    for kind in [
+        "template", "slide", "shape", "sheet", "range", "table", "image",
+    ] {
+        assert_object_kind_command(&all_caps, kind, "ooxml pptx xlsx-bindings apply");
+        assert_command_target_kind(&all_caps, "ooxml pptx xlsx-bindings apply", kind);
+    }
     assert_object_kind_command(&all_caps, "table", "ooxml docx styles apply");
     assert_object_kind_command(&all_caps, "table", "ooxml docx tables insert-row");
     assert_command_target_kind(&all_caps, "ooxml docx tables insert-row", "table");
@@ -742,6 +749,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx replace text-from-xlsx", false);
     assert_command(&pptx_caps, "ooxml pptx replace text-map-from-xlsx", false);
     assert_command(&pptx_caps, "ooxml pptx replace images", false);
+    assert_command(&pptx_caps, "ooxml pptx xlsx-bindings apply", false);
 
     let (template_code, template_stdout, template_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "template"]);
@@ -754,6 +762,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&template_caps, "ooxml pptx template inspect", false);
     assert_command(&template_caps, "ooxml pptx template capture", false);
     assert_command(&template_caps, "ooxml pptx xlsx-bindings plan", false);
+    assert_command(&template_caps, "ooxml pptx xlsx-bindings apply", false);
     assert_no_command(&template_caps, "ooxml template apply");
 
     let (package_code, package_stdout, package_stderr) =
@@ -907,6 +916,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&range_caps, "ooxml pptx place table-from-xlsx", false);
     assert_command(&range_caps, "ooxml pptx replace text-from-xlsx", false);
     assert_command(&range_caps, "ooxml pptx replace text-map-from-xlsx", false);
+    assert_command(&range_caps, "ooxml pptx xlsx-bindings apply", false);
     assert_command(&range_caps, "ooxml pptx charts create", false);
     assert_command(&range_caps, "ooxml xlsx ranges export", false);
     assert_command(&range_caps, "ooxml xlsx ranges set-style", false);
@@ -938,6 +948,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml pptx tables delete-col", true);
     assert_command(&table_caps, "ooxml pptx tables insert-col", true);
     assert_command(&table_caps, "ooxml pptx tables update-from-xlsx", true);
+    assert_command(&table_caps, "ooxml pptx xlsx-bindings apply", false);
     assert_command(&table_caps, "ooxml xlsx filters-sorts show", false);
     assert_command(
         &table_caps,
@@ -1227,6 +1238,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&image_caps, "ooxml pptx extract images", false);
     assert_command(&image_caps, "ooxml pptx place image", false);
     assert_command(&image_caps, "ooxml pptx replace images", false);
+    assert_command(&image_caps, "ooxml pptx xlsx-bindings apply", false);
     assert_command(&image_caps, "ooxml docx images list", false);
     assert_command(&image_caps, "ooxml docx images replace", false);
     assert_command(&image_caps, "ooxml docx images insert", false);
@@ -1325,12 +1337,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        231,
+        232,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        59,
+        58,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

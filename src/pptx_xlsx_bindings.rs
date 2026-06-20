@@ -2,9 +2,14 @@ use serde_json::{Map, Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::pptx_mutation::{
+    pptx_place_image, pptx_place_table_from_xlsx, pptx_replace_images, pptx_replace_text_from_xlsx,
+    pptx_shapes_set_bounds, pptx_tables_update_from_xlsx,
+};
 use crate::{
-    CliError, CliResult, XlsxRangeExportOptions, XlsxTableExportOptions, command_arg,
-    parse_i64_flag, parse_string_flag, pptx_shapes_show, pptx_tables_show, reject_unknown_flags,
+    CliError, CliResult, XlsxRangeExportOptions, XlsxTableExportOptions, command_arg, has_flag,
+    package_mutation_temp_path, parse_i64_flag, parse_string_flag, pptx_shapes_show,
+    pptx_tables_show, reject_unknown_flags, validate, validate_xlsx_mutation_output_flags,
     xlsx_range_export_with_options, xlsx_tables_export,
 };
 
@@ -42,12 +47,119 @@ struct LoadedSource {
     values: Vec<Vec<String>>,
 }
 
+struct BindingPlan {
+    binding_source: Value,
+    rows: Vec<BindingRow>,
+    operations: Vec<Value>,
+}
+
+struct ApplyOptions {
+    out: Option<String>,
+    backup: Option<String>,
+    dry_run: bool,
+    in_place: bool,
+    no_validate: bool,
+}
+
 pub(crate) fn pptx_xlsx_bindings_plan(file: &str, args: &[String]) -> CliResult<Value> {
     reject_unknown_flags(
         args,
         &["--max-cells", "--range", "--sheet", "--table", "--workbook"],
         &[],
     )?;
+    let plan = prepare_binding_plan_from_args(file, args)?;
+    Ok(json!({
+        "file": file,
+        "bindingSource": plan.binding_source,
+        "operations": plan.operations,
+    }))
+}
+
+pub(crate) fn pptx_xlsx_bindings_apply(file: &str, args: &[String]) -> CliResult<Value> {
+    reject_unknown_flags(
+        args,
+        &[
+            "--backup",
+            "--max-cells",
+            "--out",
+            "--range",
+            "--sheet",
+            "--table",
+            "--workbook",
+        ],
+        &["--dry-run", "--in-place", "--no-validate"],
+    )?;
+    let options = ApplyOptions {
+        out: parse_string_flag(args, "--out")?,
+        backup: parse_string_flag(args, "--backup")?,
+        dry_run: has_flag(args, "--dry-run"),
+        in_place: has_flag(args, "--in-place"),
+        no_validate: has_flag(args, "--no-validate"),
+    };
+    validate_xlsx_mutation_output_flags(
+        options.out.as_deref(),
+        options.in_place,
+        options.backup.as_deref(),
+        options.dry_run,
+    )?;
+    let workbook = parse_workbook_arg(args)?;
+    let max_cells = parse_i64_flag(args, "--max-cells")?.unwrap_or(100_000);
+    let plan = prepare_binding_plan_from_args(file, args)?;
+    let output = apply_output_path(file, &options);
+    let command_target = output.as_deref().unwrap_or("<out.pptx>");
+    let mut current = file.to_string();
+    let mut temp_paths = Vec::<String>::new();
+    let mut operations = Vec::<Value>::new();
+
+    for (row, planned) in plan.rows.iter().zip(plan.operations.iter()) {
+        let step_out = package_mutation_temp_path(file, "pptx-xlsx-bindings");
+        let leaf = apply_binding_leaf(&current, &workbook, max_cells, row, planned, &step_out)?;
+        if current != file {
+            let _ = fs::remove_file(&current);
+        }
+        current = step_out.clone();
+        temp_paths.push(step_out);
+        operations.push(applied_operation(
+            planned,
+            &leaf,
+            row,
+            command_target,
+            options.dry_run,
+        )?);
+    }
+
+    if current != file {
+        if !options.no_validate {
+            validate(&current, true)?;
+        }
+        if options.dry_run {
+            let _ = fs::remove_file(&current);
+        } else {
+            commit_apply_output(file, &current, output.as_deref(), &options)?;
+        }
+    } else if !options.no_validate {
+        validate(file, true)?;
+    }
+    for path in temp_paths {
+        if path != current {
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    if let Some(output) = output {
+        result.insert("output".to_string(), json!(output));
+    }
+    if options.dry_run {
+        result.insert("dryRun".to_string(), json!(true));
+    }
+    result.insert("bindingSource".to_string(), plan.binding_source);
+    result.insert("operations".to_string(), Value::Array(operations));
+    Ok(Value::Object(result))
+}
+
+fn prepare_binding_plan_from_args(file: &str, args: &[String]) -> CliResult<BindingPlan> {
     let workbook = parse_string_flag(args, "--workbook")?
         .ok_or_else(|| CliError::invalid_args("--workbook is required"))?;
     if !Path::new(&workbook).exists() {
@@ -63,7 +175,7 @@ pub(crate) fn pptx_xlsx_bindings_plan(file: &str, args: &[String]) -> CliResult<
     let rows = parse_binding_rows(&binding_source.values)?;
     let mut operations = Vec::<Value>::new();
     let mut seen_destinations = std::collections::BTreeMap::<String, usize>::new();
-    for row in rows {
+    for row in &rows {
         let op = plan_binding_row(file, &workbook, max_cells, row.clone())?;
         if let Some(key) = duplicate_target_key(&op)
             && let Some(previous) = seen_destinations.insert(key.clone(), row.source_row)
@@ -75,11 +187,343 @@ pub(crate) fn pptx_xlsx_bindings_plan(file: &str, args: &[String]) -> CliResult<
         }
         operations.push(op);
     }
-    Ok(json!({
-        "file": file,
-        "bindingSource": binding_source.source,
-        "operations": operations,
+    Ok(BindingPlan {
+        binding_source: binding_source.source,
+        rows,
+        operations,
+    })
+}
+
+fn parse_workbook_arg(args: &[String]) -> CliResult<String> {
+    let workbook = parse_string_flag(args, "--workbook")?
+        .ok_or_else(|| CliError::invalid_args("--workbook is required"))?;
+    if !Path::new(&workbook).exists() {
+        return Err(CliError::file_not_found(format!(
+            "file not found: {workbook}"
+        )));
+    }
+    Ok(workbook)
+}
+
+fn apply_output_path(file: &str, options: &ApplyOptions) -> Option<String> {
+    if options.dry_run {
+        None
+    } else if options.in_place {
+        Some(file.to_string())
+    } else {
+        options
+            .out
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .map(ToString::to_string)
+    }
+}
+
+fn commit_apply_output(
+    file: &str,
+    staged_path: &str,
+    output: Option<&str>,
+    options: &ApplyOptions,
+) -> CliResult<()> {
+    let target = output.ok_or_else(|| {
+        CliError::invalid_args("must specify exactly one of --out, --in-place, or --dry-run")
+    })?;
+    if (options.in_place || target == file)
+        && let Some(backup) = options
+            .backup
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+    {
+        fs::copy(file, backup)
+            .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+    }
+    fs::rename(staged_path, target)
+        .or_else(|_| {
+            fs::copy(staged_path, target)?;
+            fs::remove_file(staged_path)
+        })
+        .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    Ok(())
+}
+
+fn apply_binding_leaf(
+    input: &str,
+    workbook: &str,
+    max_cells: i64,
+    row: &BindingRow,
+    planned: &Value,
+    out: &str,
+) -> CliResult<Value> {
+    let mut args = Vec::<String>::new();
+    match row.op.as_str() {
+        "replace-text" => {
+            append_source_args(&mut args, workbook, row, planned);
+            push_flag(&mut args, "--slide", row.slide.to_string());
+            push_flag(&mut args, "--target", row.target.clone());
+            if !row.mode.is_empty() {
+                push_flag(&mut args, "--mode", row.mode.clone());
+            }
+            if !row.row_sep.is_empty() {
+                push_flag(&mut args, "--row-sep", row.row_sep.clone());
+            }
+            if !row.col_sep.is_empty() {
+                push_flag(&mut args, "--col-sep", row.col_sep.clone());
+            }
+            append_formula_and_guard_args(&mut args, row, max_cells);
+            append_write_args(&mut args, out);
+            pptx_replace_text_from_xlsx(input, &args)
+        }
+        "update-table" => {
+            append_source_args(&mut args, workbook, row, planned);
+            push_flag(&mut args, "--slide", row.slide.to_string());
+            push_flag(&mut args, "--target", row.target.clone());
+            append_formula_and_guard_args(&mut args, row, max_cells);
+            append_write_args(&mut args, out);
+            pptx_tables_update_from_xlsx(input, &args)
+        }
+        "place-table" => {
+            append_source_args(&mut args, workbook, row, planned);
+            push_flag(&mut args, "--slide", row.slide.to_string());
+            push_flag(&mut args, "--x", row.x.to_string());
+            push_flag(&mut args, "--y", row.y.to_string());
+            push_flag(&mut args, "--cx", row.cx.to_string());
+            if row.cy > 0 {
+                push_flag(&mut args, "--cy", row.cy.to_string());
+            }
+            if !row.name.is_empty() {
+                push_flag(&mut args, "--name", row.name.clone());
+            }
+            if row.header {
+                args.push("--header".to_string());
+            }
+            append_formula_and_guard_args(&mut args, row, max_cells);
+            append_write_args(&mut args, out);
+            pptx_place_table_from_xlsx(input, &args)
+        }
+        "place-image" => {
+            push_flag(&mut args, "--slide", row.slide.to_string());
+            push_flag(&mut args, "--image", resolved_image_arg(planned, row));
+            push_flag(&mut args, "--x", row.x.to_string());
+            push_flag(&mut args, "--y", row.y.to_string());
+            push_flag(&mut args, "--cx", row.cx.to_string());
+            push_flag(&mut args, "--cy", row.cy.to_string());
+            if !row.fit_mode.is_empty() {
+                push_flag(&mut args, "--fit-mode", row.fit_mode.clone());
+            }
+            if !row.name.is_empty() {
+                push_flag(&mut args, "--name", row.name.clone());
+            }
+            append_write_args(&mut args, out);
+            pptx_place_image(input, &args)
+        }
+        "replace-image" => {
+            push_flag(&mut args, "--slide", row.slide.to_string());
+            let target = planned
+                .get("destination")
+                .and_then(|destination| destination.get("primarySelector"))
+                .and_then(Value::as_str)
+                .unwrap_or(&row.target);
+            push_flag(&mut args, "--target", target.to_string());
+            push_flag(&mut args, "--image", resolved_image_arg(planned, row));
+            if !row.fit_mode.is_empty() {
+                push_flag(&mut args, "--fit-mode", row.fit_mode.clone());
+            }
+            append_write_args(&mut args, out);
+            pptx_replace_images(input, &args)
+        }
+        "set-bounds" => {
+            push_flag(&mut args, "--slide", row.slide.to_string());
+            let target = planned
+                .get("destination")
+                .and_then(|destination| destination.get("primarySelector"))
+                .and_then(Value::as_str)
+                .unwrap_or(&row.target);
+            push_flag(&mut args, "--target", target.to_string());
+            push_flag(
+                &mut args,
+                "--bounds",
+                format!("{},{},{},{}", row.x, row.y, row.cx, row.cy),
+            );
+            append_write_args(&mut args, out);
+            pptx_shapes_set_bounds(input, &args)
+        }
+        _ => Err(row_error(
+            row,
+            "op must be replace-text, update-table, place-table, place-image, replace-image, or set-bounds",
+        )),
+    }
+}
+
+fn append_source_args(args: &mut Vec<String>, workbook: &str, row: &BindingRow, planned: &Value) {
+    push_flag(args, "--workbook", workbook.to_string());
+    if !row.source_table.is_empty() && row.op != "replace-text" {
+        push_flag(args, "--table", row.source_table.clone());
+        if !row.source_sheet.is_empty() {
+            push_flag(args, "--sheet", row.source_sheet.clone());
+        }
+        return;
+    }
+    let source = planned.get("source").unwrap_or(&Value::Null);
+    let sheet = if !row.source_sheet.is_empty() {
+        row.source_sheet.as_str()
+    } else {
+        source.get("sheet").and_then(Value::as_str).unwrap_or("")
+    };
+    let range = if !row.source_range.is_empty() {
+        row.source_range.as_str()
+    } else {
+        source.get("range").and_then(Value::as_str).unwrap_or("")
+    };
+    push_flag(args, "--sheet", sheet.to_string());
+    push_flag(args, "--range", range.to_string());
+}
+
+fn append_formula_and_guard_args(args: &mut Vec<String>, row: &BindingRow, max_cells: i64) {
+    if !row.expect_source_range.is_empty() {
+        push_flag(
+            args,
+            "--expect-source-range",
+            row.expect_source_range.clone(),
+        );
+    }
+    if !row.formula_mode.is_empty() {
+        push_flag(args, "--formula-mode", row.formula_mode.clone());
+    }
+    if max_cells != 100_000 {
+        push_flag(args, "--max-cells", max_cells.to_string());
+    }
+}
+
+fn append_write_args(args: &mut Vec<String>, out: &str) {
+    push_flag(args, "--out", out.to_string());
+    args.push("--no-validate".to_string());
+}
+
+fn push_flag(args: &mut Vec<String>, name: &str, value: String) {
+    args.push(name.to_string());
+    args.push(value);
+}
+
+fn resolved_image_arg(planned: &Value, row: &BindingRow) -> String {
+    planned
+        .get("image")
+        .and_then(|image| image.get("resolvedPath"))
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(&row.image_path)
+        .to_string()
+}
+
+fn applied_operation(
+    planned: &Value,
+    leaf: &Value,
+    row: &BindingRow,
+    command_target: &str,
+    dry_run: bool,
+) -> CliResult<Value> {
+    let mut operation = planned
+        .as_object()
+        .cloned()
+        .ok_or_else(|| CliError::unexpected("binding plan operation is not an object"))?;
+    operation.insert(
+        "status".to_string(),
+        json!(if dry_run { "dry-run" } else { "applied" }),
+    );
+    if let Some(source) = leaf.get("source") {
+        operation.insert("source".to_string(), source.clone());
+    }
+    if let Some(text) = leaf.get("text") {
+        operation.insert("text".to_string(), text.clone());
+    }
+    if let Some(update) = leaf.get("update") {
+        operation.insert("update".to_string(), update.clone());
+    }
+    if let Some(bounds) = leaf_bounds(row, leaf) {
+        operation.insert("bounds".to_string(), bounds);
+    }
+    if let Some(image) = applied_image(planned, leaf) {
+        operation.insert("image".to_string(), image);
+    }
+    let mut destination = leaf
+        .get("destination")
+        .cloned()
+        .ok_or_else(|| CliError::unexpected("binding mutation result missing destination"))?;
+    if row.op == "set-bounds"
+        && let Some(map) = destination.as_object_mut()
+    {
+        map.remove("textPreview");
+    }
+    rewrite_destination_file(&mut destination, command_target, dry_run);
+    operation.insert("destination".to_string(), destination.clone());
+    operation.insert(
+        "readbackCommand".to_string(),
+        json!(binding_readback_command(row, &destination, command_target)),
+    );
+    Ok(Value::Object(operation))
+}
+
+fn leaf_bounds(row: &BindingRow, leaf: &Value) -> Option<Value> {
+    if row.op != "set-bounds" {
+        return leaf.get("bounds").cloned();
+    }
+    Some(json!({
+        "x": leaf.get("newX").and_then(Value::as_i64).unwrap_or(row.x),
+        "y": leaf.get("newY").and_then(Value::as_i64).unwrap_or(row.y),
+        "cx": leaf.get("newCx").and_then(Value::as_i64).unwrap_or(row.cx),
+        "cy": leaf.get("newCy").and_then(Value::as_i64).unwrap_or(row.cy),
     }))
+}
+
+fn applied_image(planned: &Value, leaf: &Value) -> Option<Value> {
+    let mut image = planned.get("image")?.as_object()?.clone();
+    for (leaf_key, image_key) in [
+        ("relationshipId", "relationshipId"),
+        ("targetUri", "targetUri"),
+        ("oldTargetUri", "oldTargetUri"),
+        ("oldContentType", "oldContentType"),
+        ("newTargetUri", "newTargetUri"),
+        ("newContentType", "newContentType"),
+    ] {
+        if let Some(value) = leaf.get(leaf_key)
+            && !value.is_null()
+        {
+            image.insert(image_key.to_string(), value.clone());
+        }
+    }
+    if image.get("targetUri").is_none()
+        && let Some(value) = leaf.get("newTargetUri")
+    {
+        image.insert("targetUri".to_string(), value.clone());
+    }
+    Some(Value::Object(image))
+}
+
+fn rewrite_destination_file(destination: &mut Value, command_target: &str, dry_run: bool) {
+    if let Some(map) = destination.as_object_mut() {
+        if dry_run {
+            map.remove("file");
+        } else {
+            map.insert("file".to_string(), json!(command_target));
+        }
+    }
+}
+
+fn binding_readback_command(row: &BindingRow, destination: &Value, command_target: &str) -> String {
+    let selector = primary_selector(destination);
+    match row.op.as_str() {
+        "update-table" | "place-table" => format!(
+            "ooxml --json pptx tables show {command_target} --slide {} --target {selector}",
+            row.slide
+        ),
+        "replace-text" => format!(
+            "ooxml --json pptx shapes get {command_target} --slide {} --target {selector} --include-text",
+            row.slide
+        ),
+        _ => format!(
+            "ooxml --json pptx shapes get {command_target} --slide {} --target {selector} --include-bounds",
+            row.slide
+        ),
+    }
 }
 
 fn plan_binding_row(

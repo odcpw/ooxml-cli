@@ -37,15 +37,13 @@ history.
   - `cargo check --all-targets` passed.
   - `cargo fmt --check` passed.
   - `cargo clippy --all-targets -- -D warnings` passed.
-  - `cargo test --all-targets` passed with 4 unit tests and 194 Rust contract
-    tests after the `pptx slides import-slide`, `pptx slides merge`,
-    `pptx layouts import`, and `pptx masters import` integration.
+  - `cargo test --all-targets` passed with 4 unit tests and 195 Rust contract
+    tests after the `pptx xlsx-bindings apply` integration.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
   - Current capability ratchet: Go advertises 290 command paths, Rust
-    advertises 231, leaving 59 unported paths after the `pptx slides
-    import-slide`, `pptx slides merge`, `pptx layouts import`, and
-    `pptx masters import` integration.
+    advertises 232, leaving 58 unported paths after the `pptx xlsx-bindings
+    apply` integration.
 
 ## Definition of Done
 

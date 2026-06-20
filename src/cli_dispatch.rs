@@ -16,7 +16,8 @@ use crate::verify::verify;
 use crate::{
     apply, diff, pptx_media_add, pptx_media_list, pptx_media_replace, pptx_template_capture,
     pptx_template_inspect, pptx_translate_apply, pptx_translate_export, pptx_validate_layout,
-    pptx_xlsx_bindings_plan, template_profile_inspect, template_profile_save, template_tokens,
+    pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan, template_profile_inspect,
+    template_profile_save, template_tokens,
 };
 
 pub(crate) enum DispatchBody {
@@ -364,6 +365,11 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             if family == "pptx" && group == "xlsx-bindings" && verb == "plan" =>
         {
             pptx_xlsx_bindings_plan(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "xlsx-bindings" && verb == "apply" =>
+        {
+            pptx_xlsx_bindings_apply(file, rest)
         }
         [family, verb, file, rest @ ..] if family == "pptx" && verb == "add-textbox" => {
             reject_unknown_flags(
