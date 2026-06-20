@@ -680,6 +680,9 @@ $explicitBinaryPath = $BinaryPath -ne ""
 if ($BinaryPath -eq "") {
     $BinaryPath = Join-Path $binDir "ooxml.exe"
 }
+else {
+    $BinaryPath = [System.IO.Path]::GetFullPath($BinaryPath)
+}
 
 if (-not $SkipBuild) {
     if ($explicitBinaryPath) {
