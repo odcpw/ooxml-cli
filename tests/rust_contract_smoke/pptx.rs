@@ -3872,6 +3872,224 @@ fn pptx_replace_images_saved_readback_dry_run_and_errors_match_go_oracle() {
 }
 
 #[test]
+fn pptx_replace_images_for_slides_saved_dry_run_and_invalid_cases_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-replace-images-for-slides-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("replace images for-slides temp dir");
+
+    let fixture = "testdata/pptx/picture-placeholder/presentation.pptx";
+    let image = "testdata/test_image.png";
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "images",
+        fixture,
+        "--for-slides",
+        "1-2",
+        "--target",
+        "shape:2",
+        "--image",
+        image,
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "replace images for-slides dry-run exit");
+    assert_eq!(
+        rust_stderr, go_stderr,
+        "replace images for-slides dry-run stderr"
+    );
+    assert_eq!(
+        rust_stdout.expect("rust replace images for-slides dry-run"),
+        go_stdout.expect("go replace images for-slides dry-run"),
+        "replace images for-slides dry-run stdout"
+    );
+
+    let go_out = temp_dir.join("go-for-slides.pptx");
+    let rust_out = temp_dir.join("rust-for-slides.pptx");
+    let go_out_str = go_out.to_str().expect("go for-slides output path");
+    let rust_out_str = rust_out.to_str().expect("rust for-slides output path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "images",
+        fixture,
+        "--for-slides",
+        "1-2",
+        "--target",
+        "shape:2",
+        "--image",
+        image,
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "replace",
+        "images",
+        fixture,
+        "--for-slides",
+        "1-2",
+        "--target",
+        "shape:2",
+        "--image",
+        image,
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "replace images for-slides saved exit");
+    assert_eq!(
+        rust_stderr, go_stderr,
+        "replace images for-slides saved stderr"
+    );
+    assert_eq!(
+        rust_stdout.expect("rust replace images for-slides saved"),
+        go_stdout.expect("go replace images for-slides saved"),
+        "replace images for-slides saved stdout"
+    );
+    assert!(go_out.exists(), "Go for-slides output missing");
+    assert!(rust_out.exists(), "Rust for-slides output missing");
+
+    let (validate_code, validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "validate", rust_out_str, "--strict"]);
+    assert_eq!(validate_code, 0, "strict validate exit");
+    assert!(validate_stdout.is_some(), "strict validate stdout");
+    assert_eq!(validate_stderr, None, "strict validate stderr");
+    let (conformance_code, conformance_stdout, conformance_stderr) =
+        run_ooxml(&["--json", "conformance", "check", rust_out_str]);
+    assert_eq!(conformance_code, 0, "conformance check exit");
+    assert!(conformance_stdout.is_some(), "conformance check stdout");
+    assert_eq!(conformance_stderr, None, "conformance check stderr");
+
+    let go_dir = temp_dir.join("go-for-slides-extract");
+    let rust_dir = temp_dir.join("rust-for-slides-extract");
+    let go_dir_str = go_dir.to_str().expect("go for-slides extract dir");
+    let rust_dir_str = rust_dir.to_str().expect("rust for-slides extract dir");
+    let (go_extract_code, go_extract_stdout, go_extract_stderr) = run_go_ooxml(&[
+        "--json", "pptx", "extract", "images", go_out_str, "--out", go_dir_str,
+    ]);
+    let (rust_extract_code, rust_extract_stdout, rust_extract_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "extract",
+        "images",
+        rust_out_str,
+        "--out",
+        rust_dir_str,
+    ]);
+    assert_eq!(
+        rust_extract_code, go_extract_code,
+        "for-slides image readback exit"
+    );
+    assert_eq!(
+        rust_extract_stderr, go_extract_stderr,
+        "for-slides image readback stderr"
+    );
+    assert_eq!(
+        scrub_paths(
+            rust_extract_stdout.expect("rust for-slides image readback"),
+            &[(rust_out_str, "[PPTX]"), (rust_dir_str, "[OUT]")]
+        ),
+        scrub_paths(
+            go_extract_stdout.expect("go for-slides image readback"),
+            &[(go_out_str, "[PPTX]"), (go_dir_str, "[OUT]")]
+        ),
+        "for-slides image readback stdout"
+    );
+    assert_export_dirs_match(&go_dir, &rust_dir);
+
+    for (name, args) in [
+        (
+            "combined slide and for-slides",
+            vec![
+                "--json",
+                "pptx",
+                "replace",
+                "images",
+                fixture,
+                "--slide",
+                "2",
+                "--for-slides",
+                "1-2",
+                "--target",
+                "shape:2",
+                "--image",
+                image,
+                "--dry-run",
+            ],
+        ),
+        (
+            "invalid for-slides range",
+            vec![
+                "--json",
+                "pptx",
+                "replace",
+                "images",
+                fixture,
+                "--for-slides",
+                "2-1",
+                "--target",
+                "shape:2",
+                "--image",
+                image,
+                "--dry-run",
+            ],
+        ),
+        (
+            "handle target with for-slides",
+            vec![
+                "--json",
+                "pptx",
+                "replace",
+                "images",
+                fixture,
+                "--for-slides",
+                "2",
+                "--target",
+                "H:pptx/s:257/shape:n:2",
+                "--image",
+                image,
+                "--dry-run",
+            ],
+        ),
+        (
+            "unsupported selector is per-slide batch error",
+            vec![
+                "--json",
+                "pptx",
+                "replace",
+                "images",
+                fixture,
+                "--for-slides",
+                "2",
+                "--target",
+                "body",
+                "--image",
+                image,
+                "--dry-run",
+            ],
+        ),
+    ] {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "{name} exit");
+        assert_eq!(rust_stdout, go_stdout, "{name} stdout");
+        assert_eq!(rust_stderr, go_stderr, "{name} stderr");
+    }
+}
+
+#[test]
 fn pptx_extract_xml_artifacts_selectors_and_errors_match_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

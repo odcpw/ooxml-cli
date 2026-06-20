@@ -95,18 +95,24 @@ pub(crate) fn pptx_replace_images(file: &str, args: &[String]) -> CliResult<Valu
             "cannot specify both --slide and --for-slides",
         ));
     }
-    if !crate::parse_string_flag(args, "--for-slides")?
-        .unwrap_or_default()
-        .is_empty()
+    if target.starts_with("H:pptx/")
+        && (value_flag_present(args, "--slide") || value_flag_present(args, "--for-slides"))
     {
-        return Err(CliError::invalid_args(
-            "pptx replace images --for-slides is deferred in the Rust port; use --slide for this slice",
-        ));
-    }
-    if target.starts_with("H:pptx/") && value_flag_present(args, "--slide") {
         return Err(CliError::invalid_args(
             "--slide / --for-slides cannot be combined with a handle target",
         ));
+    }
+    let for_slides = crate::parse_string_flag(args, "--for-slides")?.unwrap_or_default();
+    if value_flag_present(args, "--for-slides") {
+        return replace_images_for_slides(
+            file,
+            &target,
+            &for_slides,
+            &image_data,
+            &new_content_type,
+            &fit_mode,
+            options,
+        );
     }
     let slide = if value_flag_present(args, "--slide") {
         let slide = crate::parse_i64_flag(args, "--slide")?.unwrap_or(0);
@@ -1614,6 +1620,28 @@ struct ImageReplacePlan {
     relationship_id: String,
 }
 
+struct ImageBatchReplacePlan {
+    slides: Vec<ImageBatchSlideResult>,
+    text_overrides: BTreeMap<String, String>,
+    binary_overrides: BTreeMap<String, Vec<u8>>,
+    success_count: usize,
+    not_found_count: usize,
+    error_count: usize,
+}
+
+struct ImageBatchSlideResult {
+    slide: u32,
+    success: bool,
+    not_found: bool,
+    error: String,
+    plan: Option<ImageReplacePlan>,
+}
+
+struct ImageBatchSelector {
+    normalized: String,
+    unsupported_error: Option<String>,
+}
+
 fn replace_image(
     file: &str,
     target_selector: &str,
@@ -1742,6 +1770,320 @@ fn plan_image_replace(
     Err(CliError::target_not_found(format!(
         "picture shape not found: {target_selector}; discover with `ooxml --json pptx slides show <file> --include-bounds`"
     )))
+}
+
+fn replace_images_for_slides(
+    file: &str,
+    target_selector: &str,
+    for_slides: &str,
+    image_data: &[u8],
+    new_content_type: &str,
+    fit_mode: &str,
+    options: PptxReplaceMutationOptions,
+) -> CliResult<Value> {
+    ensure_pptx(file)?;
+    let selector = parse_image_batch_selector(target_selector)?;
+    let selected_slides = parse_image_batch_slide_spec(for_slides).map_err(|message| {
+        CliError::invalid_args(format!("invalid slide specification: {message}"))
+    })?;
+    if selected_slides.is_empty() {
+        return Err(CliError::invalid_args(
+            "no valid slides specified in --for-slides",
+        ));
+    }
+    let slides = pptx_slide_refs_for_replace(file)?;
+    let plan = plan_image_batch_replace(
+        file,
+        &slides,
+        &selected_slides,
+        &selector,
+        image_data,
+        new_content_type,
+        fit_mode,
+    );
+    write_replace_mutation(file, &plan.text_overrides, &plan.binary_overrides, &options)?;
+    Ok(image_batch_replace_result_json(&selector.normalized, &plan))
+}
+
+fn plan_image_batch_replace(
+    file: &str,
+    slides: &[PptxSlideRef],
+    selected_slides: &[u32],
+    selector: &ImageBatchSelector,
+    image_data: &[u8],
+    new_content_type: &str,
+    fit_mode: &str,
+) -> ImageBatchReplacePlan {
+    let mut plan = ImageBatchReplacePlan {
+        slides: Vec::with_capacity(selected_slides.len()),
+        text_overrides: BTreeMap::new(),
+        binary_overrides: BTreeMap::new(),
+        success_count: 0,
+        not_found_count: 0,
+        error_count: 0,
+    };
+
+    for &slide in selected_slides {
+        if slide < 1 || slide as usize > slides.len() {
+            plan.not_found_count += 1;
+            plan.slides.push(ImageBatchSlideResult {
+                slide,
+                success: false,
+                not_found: true,
+                error: format!(
+                    "slide {slide} not found (presentation has {} slides)",
+                    slides.len()
+                ),
+                plan: None,
+            });
+            continue;
+        }
+        if let Some(message) = selector.unsupported_error.as_deref() {
+            plan.error_count += 1;
+            plan.slides.push(ImageBatchSlideResult {
+                slide,
+                success: false,
+                not_found: false,
+                error: message.to_string(),
+                plan: None,
+            });
+            continue;
+        }
+        match plan_image_replace(
+            file,
+            slides,
+            &selector.normalized,
+            Some(slide),
+            new_content_type,
+            fit_mode,
+        ) {
+            Ok(replace_plan) => {
+                plan.success_count += 1;
+                plan.text_overrides.insert(
+                    slides[replace_plan.slide as usize - 1].part.clone(),
+                    replace_plan.slide_xml.clone(),
+                );
+                plan.text_overrides.insert(
+                    replace_plan.rels_part.clone(),
+                    replace_plan.rels_xml.clone(),
+                );
+                plan.binary_overrides.insert(
+                    replace_plan
+                        .new_target_uri
+                        .trim_start_matches('/')
+                        .to_string(),
+                    image_data.to_vec(),
+                );
+                plan.slides.push(ImageBatchSlideResult {
+                    slide,
+                    success: true,
+                    not_found: false,
+                    error: String::new(),
+                    plan: Some(replace_plan),
+                });
+            }
+            Err(err) if err.code == "target_not_found" => {
+                plan.not_found_count += 1;
+                plan.slides.push(ImageBatchSlideResult {
+                    slide,
+                    success: false,
+                    not_found: true,
+                    error: String::new(),
+                    plan: None,
+                });
+            }
+            Err(err) => {
+                plan.error_count += 1;
+                plan.slides.push(ImageBatchSlideResult {
+                    slide,
+                    success: false,
+                    not_found: false,
+                    error: err.message,
+                    plan: None,
+                });
+            }
+        }
+    }
+
+    if plan.success_count > 0
+        && let Ok(content_types) = zip_text(file, "[Content_Types].xml")
+    {
+        let content_types = plan
+            .slides
+            .iter()
+            .filter_map(|item| item.plan.as_ref())
+            .fold(content_types, |content_types, item| {
+                ensure_content_type_override(
+                    content_types,
+                    &item.new_target_uri,
+                    &item.new_content_type,
+                )
+            });
+        plan.text_overrides
+            .insert("[Content_Types].xml".to_string(), content_types);
+    }
+
+    plan
+}
+
+fn image_batch_replace_result_json(target_selector: &str, plan: &ImageBatchReplacePlan) -> Value {
+    json!({
+        "target": target_selector,
+        "totalSlides": plan.slides.len(),
+        "successCount": plan.success_count,
+        "notFoundCount": plan.not_found_count,
+        "errorCount": plan.error_count,
+        "results": plan.slides.iter().map(image_batch_slide_result_json).collect::<Vec<_>>(),
+    })
+}
+
+fn image_batch_slide_result_json(item: &ImageBatchSlideResult) -> Value {
+    json!({
+        "SlideNumber": item.slide,
+        "Success": item.success,
+        "NotFound": item.not_found,
+        "Error": item.error,
+        "Result": item.plan.as_ref().map(|plan| {
+            json!({
+                "ShapeID": plan.target.shape_id,
+                "ShapeName": plan.target.shape_name,
+                "OldTargetURI": plan.old_target_uri,
+                "OldContentType": plan.old_content_type,
+                "NewTargetURI": plan.new_target_uri,
+                "NewContentType": plan.new_content_type,
+                "RelationshipID": plan.relationship_id,
+            })
+        }),
+    })
+}
+
+fn parse_image_batch_selector(target_selector: &str) -> CliResult<ImageBatchSelector> {
+    let trimmed = target_selector.trim();
+    if trimmed.is_empty() {
+        return Err(CliError::invalid_args(
+            "invalid target selector: selector cannot be empty",
+        ));
+    }
+    if let Some(raw) = trimmed.strip_prefix("shape:") {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return Err(CliError::invalid_args(
+                "invalid target selector: shape ID selector cannot be empty after 'shape:'",
+            ));
+        }
+        let id = raw.parse::<i64>().map_err(|err| {
+            CliError::invalid_args(format!("invalid target selector: invalid shape ID: {err}"))
+        })?;
+        if id < 0 {
+            return Err(CliError::invalid_args(format!(
+                "invalid target selector: shape ID must be non-negative, got {id}"
+            )));
+        }
+        return Ok(ImageBatchSelector {
+            normalized: format!("shape:{id}"),
+            unsupported_error: None,
+        });
+    }
+    if let Some(name) = trimmed.strip_prefix('~') {
+        if name.is_empty() {
+            return Err(CliError::invalid_args(
+                "invalid target selector: shape name selector cannot be empty after ~",
+            ));
+        }
+        return Ok(ImageBatchSelector {
+            normalized: format!("~{name}"),
+            unsupported_error: None,
+        });
+    }
+    let unsupported_type = if trimmed.starts_with('@') {
+        match trimmed.trim_start_matches('@').trim() {
+            "*" | "all-placeholders" => "*selectors.WildcardAllPlaceholdersSelector",
+            "all-shapes" | "all-shapes-nonph" => "*selectors.WildcardAllShapesSelector",
+            "all-pictures" => "*selectors.WildcardAllPicturesSelector",
+            "all-tables" => "*selectors.WildcardAllTablesSelector",
+            _ => "*selectors.PlaceholderTypeSelector",
+        }
+    } else if trimmed.starts_with('#') {
+        "*selectors.PlaceholderIndexSelector"
+    } else if is_image_batch_slide_selector(trimmed) {
+        if trimmed.contains(',') || trimmed.contains('-') {
+            "*selectors.SlideRangeSelector"
+        } else {
+            "*selectors.SlideNumberSelector"
+        }
+    } else {
+        "*selectors.PlaceholderKeySelector"
+    };
+    Ok(ImageBatchSelector {
+        normalized: trimmed.to_string(),
+        unsupported_error: Some(format!(
+            "selector type {unsupported_type} is not supported for image replacement (use shape ID or name)"
+        )),
+    })
+}
+
+fn is_image_batch_slide_selector(value: &str) -> bool {
+    value.contains(',')
+        || (!value.starts_with('-') && value.contains('-'))
+        || value.chars().all(|ch| ch.is_ascii_digit())
+}
+
+fn parse_image_batch_slide_spec(value: &str) -> Result<Vec<u32>, String> {
+    let spec = value.trim();
+    if spec.is_empty() {
+        return Err("empty specification".to_string());
+    }
+    let mut slides = Vec::new();
+    let mut seen = BTreeSet::<u32>::new();
+    for part in spec
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+    {
+        if part.contains('-') {
+            let range_parts = part.split('-').collect::<Vec<_>>();
+            if range_parts.len() != 2 {
+                return Err(format!("invalid range format: {part}"));
+            }
+            let start_raw = range_parts[0].trim();
+            let end_raw = range_parts[1].trim();
+            let start = start_raw
+                .parse::<i64>()
+                .map_err(|_| format!("invalid range start: {start_raw}"))?;
+            if start <= 0 {
+                return Err(format!("invalid range start: {start_raw}"));
+            }
+            let end = end_raw
+                .parse::<i64>()
+                .map_err(|_| format!("invalid range end: {end_raw}"))?;
+            if end <= 0 {
+                return Err(format!("invalid range end: {end_raw}"));
+            }
+            if start > end {
+                return Err(format!(
+                    "range start ({start}) cannot be greater than end ({end})"
+                ));
+            }
+            for slide in start as u32..=end as u32 {
+                if seen.insert(slide) {
+                    slides.push(slide);
+                }
+            }
+        } else {
+            let slide = part
+                .parse::<i64>()
+                .map_err(|_| format!("invalid slide number: {part}"))?;
+            if slide <= 0 {
+                return Err(format!("invalid slide number: {part}"));
+            }
+            let slide = slide as u32;
+            if seen.insert(slide) {
+                slides.push(slide);
+            }
+        }
+    }
+    slides.sort_unstable();
+    Ok(slides)
 }
 
 fn image_target_not_found(target_selector: &str, slide: u32, file: &str) -> CliError {
