@@ -2,6 +2,7 @@ pub(crate) mod animations;
 mod charts;
 mod comments;
 mod extract;
+mod fields;
 mod layouts;
 mod notes;
 mod shape_model;
@@ -13,6 +14,7 @@ pub(crate) use animations::pptx_animations_list;
 pub(crate) use charts::{pptx_charts_list, pptx_charts_show};
 pub(crate) use comments::pptx_comments_list;
 pub(crate) use extract::{pptx_extract_images, pptx_extract_xml};
+pub(crate) use fields::pptx_fields_inspect;
 pub(crate) use layouts::{
     PptxLayoutInfo, pptx_find_layout, pptx_layout_shape_entries, pptx_layouts_list,
     pptx_layouts_show, pptx_masters_list, pptx_masters_show, pptx_presentation_layouts,

@@ -39,6 +39,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx text set", false);
     assert_command(&all_caps, "ooxml pptx translate export", false);
     assert_command(&all_caps, "ooxml pptx translate apply", false);
+    assert_command(&all_caps, "ooxml pptx fields inspect", false);
+    assert_command(&all_caps, "ooxml pptx fields set", false);
+    assert_command(&all_caps, "ooxml pptx theme update", false);
     assert_command(&all_caps, "ooxml pptx place image", false);
     assert_command(&all_caps, "ooxml pptx place table", false);
     assert_command(&all_caps, "ooxml pptx place table-from-xlsx", false);
@@ -164,6 +167,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
         assert_command_target_kind(&all_caps, path, "shape");
     }
     assert_object_kind_command(&all_caps, "field", "ooxml docx fields list");
+    assert_object_kind_command(&all_caps, "field", "ooxml pptx fields inspect");
+    assert_object_kind_command(&all_caps, "field", "ooxml pptx fields set");
+    assert_command_target_kind(&all_caps, "ooxml pptx fields inspect", "field");
+    assert_command_target_kind(&all_caps, "ooxml pptx fields set", "field");
+    assert_command_target_kind(&all_caps, "ooxml pptx theme update", "style");
     assert_object_kind_command(&all_caps, "package", "ooxml apply");
     assert_object_kind_command(&all_caps, "field", "ooxml docx fields insert");
     assert_object_kind_command(&all_caps, "field", "ooxml docx fields set-result");
@@ -1078,6 +1086,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(style_code, 0);
     assert_eq!(style_stderr, None);
     let style_caps = style_stdout.expect("style capabilities");
+    assert_command(&style_caps, "ooxml pptx theme update", false);
     assert_command(&style_caps, "ooxml pptx charts set-title", false);
     assert_command(&style_caps, "ooxml pptx charts set-legend", false);
     assert_command(&style_caps, "ooxml pptx charts set-chart-area-fill", false);
@@ -1115,6 +1124,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(field_code, 0);
     assert_eq!(field_stderr, None);
     let field_caps = field_stdout.expect("field capabilities");
+    assert_command(&field_caps, "ooxml pptx fields inspect", false);
+    assert_command(&field_caps, "ooxml pptx fields set", false);
     assert_command(&field_caps, "ooxml docx fields list", false);
     assert_command(&field_caps, "ooxml docx fields insert", true);
     assert_command(&field_caps, "ooxml docx fields set-result", true);
@@ -1134,6 +1145,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(footer_code, 0);
     assert_eq!(footer_stderr, None);
     let footer_caps = footer_stdout.expect("footer capabilities");
+    assert_command(&footer_caps, "ooxml pptx fields inspect", false);
+    assert_command(&footer_caps, "ooxml pptx fields set", false);
     assert_command(&footer_caps, "ooxml docx headers list", false);
     assert_command(&footer_caps, "ooxml docx footers list", false);
     assert_command(&footer_caps, "ooxml docx footers show", false);
@@ -1245,12 +1258,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        216,
+        219,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        74,
+        71,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

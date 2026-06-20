@@ -1,6 +1,7 @@
 mod animations;
 mod charts;
 mod comments;
+mod fields;
 mod layouts;
 mod notes;
 mod placement;
@@ -9,6 +10,7 @@ mod shapes;
 mod slides;
 mod tables;
 mod text;
+mod theme;
 
 pub(crate) use animations::{
     pptx_animations_add, pptx_animations_prune_stale, pptx_animations_remove,
@@ -20,6 +22,7 @@ pub(crate) use charts::{
     pptx_charts_set_series_style, pptx_charts_set_title, pptx_charts_update_data,
 };
 pub(crate) use comments::{pptx_comments_add, pptx_comments_edit, pptx_comments_remove};
+pub(crate) use fields::pptx_fields_set;
 pub(crate) use layouts::{
     pptx_layouts_add_placeholder, pptx_layouts_clone, pptx_layouts_delete_shape,
     pptx_layouts_rename, pptx_layouts_set_bounds, pptx_masters_add_placeholder,
@@ -42,6 +45,7 @@ pub(crate) use tables::{
     pptx_tables_set_cell, pptx_tables_update_from_xlsx,
 };
 pub(crate) use text::pptx_text_set;
+pub(crate) use theme::pptx_theme_update;
 
 use serde_json::{Value, json};
 use std::fs;

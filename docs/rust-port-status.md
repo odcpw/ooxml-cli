@@ -9,6 +9,19 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX field readback/mutation and deck theme update parity landed for
+  `pptx fields inspect`, `pptx fields set`, and `pptx theme update`. The slice
+  reports master header/footer defaults plus slide footer/date/slide-number
+  placeholders, updates master `<p:hf>` visibility plus existing footer/date
+  placeholders, and updates deck theme colors and Latin major/minor fonts while
+  preserving the current Go oracle's slide-mode theme error behavior. Rust
+  capabilities now advertise 219 Go-oracle command paths, leaving a pinned
+  71-command gap; the `pptx fields` and `pptx theme` command groups remain
+  unadvertised because only their executable leaves are real Rust behavior.
+  Proof: focused Go-vs-Rust fields/theme saved-output, dry-run, readback, and
+  error contract tests; focused capability ratchet tests; strict validation,
+  Open XML SDK validation, and desktop PowerPoint COM proof for generated proof
+  decks; plus the lane fmt/clippy checks.
 - Rust PPTX translation workflow parity landed for direct
   `pptx translate export` and `pptx translate apply`. The slice exports
   Go-shaped translation manifests for slide text and speaker notes, applies
@@ -1542,7 +1555,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 216, and the harness pins the 74-command gap until
+  paths, Rust advertises 219, and the harness pins the 71-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

@@ -5088,6 +5088,367 @@ fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_go_oracle() {
 }
 
 #[test]
+fn pptx_fields_inspect_set_readback_dry_run_and_errors_match_go_oracle() {
+    let header_footer_fixture = "testdata/pptx/header-footer/presentation.pptx";
+    let title_content_fixture = "testdata/pptx/title-content/presentation.pptx";
+
+    assert_go_rust_json_match(
+        &["--json", "pptx", "fields", "inspect", header_footer_fixture],
+        "fields inspect header-footer",
+    );
+    assert_go_rust_json_match(
+        &["--json", "pptx", "fields", "inspect", title_content_fixture],
+        "fields inspect no-header-footer",
+    );
+
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-fields-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx fields temp dir");
+
+    let go_out = temp_dir.join("go-fields-set.pptx");
+    let rust_out = temp_dir.join("rust-fields-set.pptx");
+    let go_out_str = go_out.to_str().expect("go fields set path");
+    let rust_out_str = rust_out.to_str().expect("rust fields set path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "fields",
+        "set",
+        header_footer_fixture,
+        "--footer",
+        "Confidential",
+        "--show-slide-number=false",
+        "--date-format",
+        "date-only",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "fields",
+        "set",
+        header_footer_fixture,
+        "--footer",
+        "Confidential",
+        "--show-slide-number=false",
+        "--date-format",
+        "date-only",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "fields set saved exit");
+    assert_eq!(rust_stderr, go_stderr, "fields set saved stderr");
+    let rust_json = rust_stdout.expect("rust fields set stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go fields set stdout"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "fields set saved stdout"
+    );
+    assert!(go_out.exists(), "Go fields set output missing");
+    assert!(rust_out.exists(), "Rust fields set output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let (go_read_code, go_read_stdout, go_read_stderr) =
+        run_go_ooxml(&["--json", "pptx", "fields", "inspect", go_out_str]);
+    let (rust_read_code, rust_read_stdout, rust_read_stderr) =
+        run_ooxml(&["--json", "pptx", "fields", "inspect", rust_out_str]);
+    assert_eq!(rust_read_code, go_read_code, "fields readback exit");
+    assert_eq!(rust_read_stderr, go_read_stderr, "fields readback stderr");
+    assert_eq!(
+        rust_read_stdout.expect("rust fields readback"),
+        go_read_stdout.expect("go fields readback"),
+        "fields readback stdout"
+    );
+
+    for (label, args) in [
+        (
+            "fields set dry-run",
+            vec![
+                "--json",
+                "pptx",
+                "fields",
+                "set",
+                header_footer_fixture,
+                "--footer",
+                "Confidential",
+                "--show-slide-number=false",
+                "--date-format",
+                "date-only",
+                "--dry-run",
+            ],
+        ),
+        (
+            "fields set creates master hf dry-run",
+            vec![
+                "--json",
+                "pptx",
+                "fields",
+                "set",
+                title_content_fixture,
+                "--show-footer=false",
+                "--dry-run",
+            ],
+        ),
+        (
+            "fields set no flags",
+            vec![
+                "--json",
+                "pptx",
+                "fields",
+                "set",
+                header_footer_fixture,
+                "--dry-run",
+            ],
+        ),
+        (
+            "fields set invalid date format",
+            vec![
+                "--json",
+                "pptx",
+                "fields",
+                "set",
+                header_footer_fixture,
+                "--date-format",
+                "bogus",
+                "--dry-run",
+            ],
+        ),
+        (
+            "fields inspect unsupported xlsx",
+            vec![
+                "--json",
+                "pptx",
+                "fields",
+                "inspect",
+                "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            ],
+        ),
+        (
+            "fields set unsupported xlsx",
+            vec![
+                "--json",
+                "pptx",
+                "fields",
+                "set",
+                "testdata/xlsx/minimal-workbook/workbook.xlsx",
+                "--footer",
+                "Confidential",
+                "--dry-run",
+            ],
+        ),
+    ] {
+        assert_go_rust_json_match(&args, label);
+    }
+}
+
+#[test]
+fn pptx_theme_update_deck_readback_dry_run_and_errors_match_go_oracle() {
+    let fixture = "testdata/pptx/multi-layout/presentation.pptx";
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-theme-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx theme temp dir");
+
+    assert_go_rust_json_match(
+        &[
+            "--json",
+            "pptx",
+            "theme",
+            "update",
+            fixture,
+            "--color",
+            "accent1=FF0000",
+            "--major-font",
+            "Georgia",
+            "--minor-font",
+            "Verdana",
+            "--dry-run",
+        ],
+        "theme update dry-run",
+    );
+
+    let go_out = temp_dir.join("go-theme-update.pptx");
+    let rust_out = temp_dir.join("rust-theme-update.pptx");
+    let go_out_str = go_out.to_str().expect("go theme update path");
+    let rust_out_str = rust_out.to_str().expect("rust theme update path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "theme",
+        "update",
+        fixture,
+        "--color",
+        "accent1=FF0000",
+        "--major-font",
+        "Georgia",
+        "--minor-font",
+        "Verdana",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "theme",
+        "update",
+        fixture,
+        "--color",
+        "accent1=FF0000",
+        "--major-font",
+        "Georgia",
+        "--minor-font",
+        "Verdana",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "theme update saved exit");
+    assert_eq!(rust_stderr, go_stderr, "theme update saved stderr");
+    assert_eq!(
+        rust_stdout.expect("rust theme update stdout"),
+        go_stdout.expect("go theme update stdout"),
+        "theme update saved stdout"
+    );
+    assert!(go_out.exists(), "Go theme update output missing");
+    assert!(rust_out.exists(), "Rust theme update output missing");
+
+    let (go_read_code, go_read_stdout, go_read_stderr) = run_go_ooxml(&[
+        "--json", "pptx", "masters", "show", go_out_str, "--master", "1",
+    ]);
+    let (rust_read_code, rust_read_stdout, rust_read_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "masters",
+        "show",
+        rust_out_str,
+        "--master",
+        "1",
+    ]);
+    assert_eq!(rust_read_code, go_read_code, "theme readback exit");
+    assert_eq!(rust_read_stderr, go_read_stderr, "theme readback stderr");
+    assert_eq!(
+        rust_read_stdout.expect("rust theme readback"),
+        go_read_stdout.expect("go theme readback"),
+        "theme readback stdout"
+    );
+
+    for (label, args) in [
+        (
+            "theme update no updates",
+            vec!["--json", "pptx", "theme", "update", fixture, "--dry-run"],
+        ),
+        (
+            "theme update invalid color format",
+            vec![
+                "--json",
+                "pptx",
+                "theme",
+                "update",
+                fixture,
+                "--color",
+                "accent1",
+                "--dry-run",
+            ],
+        ),
+        (
+            "theme update invalid color name",
+            vec![
+                "--json",
+                "pptx",
+                "theme",
+                "update",
+                fixture,
+                "--color",
+                "bad=FF0000",
+                "--dry-run",
+            ],
+        ),
+        (
+            "theme update invalid hex",
+            vec![
+                "--json",
+                "pptx",
+                "theme",
+                "update",
+                fixture,
+                "--color",
+                "accent1=ZZZZZZ",
+                "--dry-run",
+            ],
+        ),
+        (
+            "theme update slide color oracle error",
+            vec![
+                "--json",
+                "pptx",
+                "theme",
+                "update",
+                fixture,
+                "--mode",
+                "slide",
+                "--slide",
+                "1",
+                "--color",
+                "accent1=FF0000",
+                "--dry-run",
+            ],
+        ),
+        (
+            "theme update slide font unsupported",
+            vec![
+                "--json",
+                "pptx",
+                "theme",
+                "update",
+                fixture,
+                "--mode",
+                "slide",
+                "--slide",
+                "1",
+                "--major-font",
+                "Georgia",
+                "--dry-run",
+            ],
+        ),
+        (
+            "theme update unsupported xlsx",
+            vec![
+                "--json",
+                "pptx",
+                "theme",
+                "update",
+                "testdata/xlsx/minimal-workbook/workbook.xlsx",
+                "--color",
+                "accent1=FF0000",
+                "--dry-run",
+            ],
+        ),
+    ] {
+        assert_go_rust_json_match(&args, label);
+    }
+}
+
+#[test]
 fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

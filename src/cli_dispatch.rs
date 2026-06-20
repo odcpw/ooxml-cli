@@ -727,6 +727,48 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             pptx_comments_remove(file, rest)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "fields" && verb == "inspect" =>
+        {
+            reject_unknown_flags(rest, &[], &[])?;
+            pptx_fields_inspect(file)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "fields" && verb == "set" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--footer", "--date-format", "--out", "--backup"],
+                &[
+                    "--show-footer",
+                    "--show-slide-number",
+                    "--show-date",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
+            )?;
+            pptx_fields_set(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "theme" && verb == "update" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--color",
+                    "--major-font",
+                    "--minor-font",
+                    "--mode",
+                    "--slide",
+                    "--for-slides",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_theme_update(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "masters" && verb == "list" =>
         {
             reject_unknown_flags(rest, &[], &[])?;
