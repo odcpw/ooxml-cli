@@ -11,6 +11,10 @@ Latest milestone, 2026-06-20:
 
 - Merged current `origin/master` hardening, including OPC inflate limits, CFB
   traversal guards, and new Go ingest fuzz harnesses.
+- Mirrored the Go OPC inflate hardening in Rust shared ZIP I/O: package opens
+  now reject oversized declared uncompressed ZIP parts and total packages,
+  `zip_text` reads through a hard cap, and ZIP mutation-copy paths stream
+  existing entries through the same per-part ceiling.
 - Repaired the Windows Rust contract comparator for quoted and JSON-escaped
   temp paths after the merge, keeping the frozen Go contract stable on Windows.
 - First de-monolithization seam landed: the Rust capability inventory moved from
@@ -245,14 +249,14 @@ Latest milestone, 2026-06-20:
 - Serve `xlsx cells set` now delegates to the shared `xlsx_cells_set`
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
-- Proof after the latest split: `cargo check --all-targets`, `cargo test --test
-  rust_contract_smoke docx_fields_list_matches_go_oracle -- --exact`, `cargo
-  test --test rust_contract_smoke docx_fields_insert_and_set_result_match_go_oracle
-  -- --exact`, `cargo test --test rust_contract_smoke
-  serve_op_supports_docx_fields_editing -- --exact`, `cargo test --test
-  rust_contract_smoke serve_inspect_supports_docx_read_commands -- --exact`,
-  `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
-  `cargo test --all-targets` all pass with 78 Rust contract tests.
+- Proof after the latest hardening slice: `cargo fmt --check`, `cargo check
+  --all-targets`, `cargo test --all-targets zip_io`, `cargo test --test
+  rust_contract_smoke validate_rejects_corrupted_docx_and_xlsx_like_go_oracle
+  -- --exact`, `cargo clippy --all-targets -- -D warnings`, and `cargo test
+  --all-targets` all pass with 4 ZIP guard unit tests plus 78 Rust contract
+  tests. Office COM proof was not run for this slice because no generated
+  Office output shape changed; the change rejects malicious/oversized input and
+  existing valid mutation-output paths remained covered by the contract suite.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
