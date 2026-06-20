@@ -401,6 +401,10 @@ Latest milestone, 2026-06-20:
   `src/xlsx_mutation/format.rs` into
   `src/xlsx_mutation/format/number_format.rs`, keeping the set-format facade
   focused on package orchestration and style XML mutation.
+- XLSX set-format styles relationship discovery and default `xl/styles.xml`
+  scaffolding moved from `src/xlsx_mutation/format.rs` into
+  `src/xlsx_mutation/format/styles_part.rs`, isolating package plumbing from
+  style collection mutation.
 - XLSX single-cell mutation, handle resolution, previous-value reporting, and
   emitted readback command generation moved from `src/xlsx_mutation.rs` into
   `src/xlsx_mutation/cells.rs`, sharing the same range-write and recalculation

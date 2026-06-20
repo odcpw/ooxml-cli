@@ -1,4 +1,5 @@
 mod number_format;
+mod styles_part;
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -12,14 +13,14 @@ use super::{
     resolve_xlsx_sheet_context, validate_xlsx_mutation_output_flags, xlsx_range_destination_json,
 };
 use crate::{
-    CliError, CliResult, RangeBounds, XlsxCellSpan, allocate_relationship_id, attr,
-    check_range_max_cells, col_name, copy_zip_with_part_overrides, ensure_content_type_override,
-    local_name, normalize_xl_target, parse_cli_range, parse_xlsx_row_spans, range_bounds_ref,
-    rebuild_xlsx_sheet_data, relationship_entries, render_xlsx_row, render_xml_attrs, validate,
-    xlsx_ranges_set_temp_path, xlsx_sheet_data_span, xlsx_used_range_from_cell_refs,
-    xml_attr_escape, xml_attrs, zip_text,
+    CliError, CliResult, RangeBounds, XlsxCellSpan, attr, check_range_max_cells, col_name,
+    copy_zip_with_part_overrides, ensure_content_type_override, local_name, parse_cli_range,
+    parse_xlsx_row_spans, range_bounds_ref, rebuild_xlsx_sheet_data, render_xlsx_row,
+    render_xml_attrs, validate, xlsx_ranges_set_temp_path, xlsx_sheet_data_span,
+    xlsx_used_range_from_cell_refs, xml_attr_escape, xml_attrs, zip_text,
 };
 use number_format::{XlsxNumberFormatSpec, resolve_xlsx_number_format};
+use styles_part::{default_xlsx_styles_xml, resolve_or_add_xlsx_styles_part};
 
 pub(crate) struct XlsxRangesSetFormatOptions<'a> {
     pub(crate) sheet: &'a str,
@@ -162,42 +163,6 @@ pub(crate) fn xlsx_ranges_set_format(
         &range,
     );
     Ok(Value::Object(result))
-}
-
-fn resolve_or_add_xlsx_styles_part(file: &str) -> CliResult<(String, Option<String>)> {
-    let rels_part = "xl/_rels/workbook.xml.rels";
-    let rels_xml = zip_text(file, rels_part)?;
-    let rels = relationship_entries(file, rels_part)?;
-    for rel in &rels {
-        if rel.target_mode == "External" {
-            continue;
-        }
-        if rel.rel_type
-            == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
-        {
-            return Ok((normalize_xl_target(&rel.target), None));
-        }
-    }
-    let next_id = allocate_relationship_id(&rels);
-    let rel = format!(
-        r#"<Relationship Id="{next_id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>"#
-    );
-    let updated = if let Some(pos) = rels_xml.rfind("</Relationships>") {
-        let mut out = String::with_capacity(rels_xml.len() + rel.len());
-        out.push_str(&rels_xml[..pos]);
-        out.push_str(&rel);
-        out.push_str(&rels_xml[pos..]);
-        out
-    } else {
-        format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
-        )
-    };
-    Ok(("xl/styles.xml".to_string(), Some(updated)))
-}
-
-fn default_xlsx_styles_xml() -> String {
-    r#"<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font/></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>"#.to_string()
 }
 
 fn ensure_xlsx_number_format(
