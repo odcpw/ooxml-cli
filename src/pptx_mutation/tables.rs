@@ -8,7 +8,8 @@ use crate::{
     CliError, CliResult, XmlNamedRange, attr, attr_exact, command_arg, copy_zip_with_part_override,
     decode_xml_text, local_name, needs_xml_space_preserve, package_mutation_temp_path,
     package_type, pptx_tables_show, relationship_entries_from_xml, resolve_relationship_target,
-    validate, validate_xlsx_mutation_output_flags, xml_direct_child_ranges, xml_escape, zip_text,
+    validate, validate_xlsx_mutation_output_flags, xml_attr_escape, xml_direct_child_ranges,
+    xml_escape, zip_text,
 };
 
 #[derive(Clone)]
@@ -32,6 +33,13 @@ struct XmlSpan {
 }
 
 struct DeleteRowMutation {
+    slide_part: String,
+    updated_xml: String,
+    resolved_table_id: u32,
+    cell_count: usize,
+}
+
+struct InsertRowMutation {
     slide_part: String,
     updated_xml: String,
     resolved_table_id: u32,
@@ -135,6 +143,43 @@ pub(crate) fn pptx_tables_delete_row(file: &str, args: &[String]) -> CliResult<V
     )
 }
 
+pub(crate) fn pptx_tables_insert_row(file: &str, args: &[String]) -> CliResult<Value> {
+    let slide = crate::parse_i64_flag(args, "--slide")?.unwrap_or(0);
+    let at = crate::parse_i64_flag(args, "--at")?.unwrap_or(0);
+    if slide < 1 {
+        return Err(CliError::invalid_args("--slide must be >= 1"));
+    }
+    if at < 1 {
+        return Err(CliError::invalid_args("--at must be >= 1"));
+    }
+    let table_id = crate::parse_i64_flag(args, "--table-id")?.unwrap_or(0);
+    if table_id < 0 {
+        return Err(CliError::invalid_args(
+            "--table-id must be a positive integer",
+        ));
+    }
+    let target = crate::parse_string_flag(args, "--target")?;
+    if table_id > 0 && target.as_deref().unwrap_or_default().trim() != "" {
+        return Err(CliError::invalid_args(
+            "specify only one of --target or --table-id",
+        ));
+    }
+    if table_id == 0 && target.as_deref().unwrap_or_default().trim() == "" {
+        return Err(CliError::invalid_args(
+            "must specify --target or --table-id",
+        ));
+    }
+    let options = parse_table_mutation_options(args)?;
+    insert_pptx_table_row(
+        file,
+        slide as u32,
+        table_id as u32,
+        target.as_deref(),
+        at as usize,
+        options,
+    )
+}
+
 fn value_flag_present(args: &[String], name: &str) -> bool {
     args.iter()
         .any(|arg| arg == name || arg.starts_with(&format!("{name}=")))
@@ -206,6 +251,47 @@ fn delete_pptx_table_row(
         file,
         slide,
         row,
+        &mutation,
+        output_path.as_deref(),
+        &mut destination,
+    );
+    finish_table_mutation(file, &staged_path, &options, output_path.as_deref())?;
+    Ok(result)
+}
+
+fn insert_pptx_table_row(
+    file: &str,
+    slide: u32,
+    table_id: u32,
+    target: Option<&str>,
+    at: usize,
+    options: PptxTableMutationOptions,
+) -> CliResult<Value> {
+    let detected = package_type(file)?;
+    if detected != "pptx" {
+        return Err(CliError::unsupported_type(format!(
+            "file is not a PPTX document (detected: {detected})"
+        )));
+    }
+    let resolved_table_id = if table_id > 0 {
+        table_id
+    } else {
+        resolve_pptx_table_target_for_mutation(file, slide, target)?
+    };
+    let mutation = build_insert_row_mutation(file, slide, resolved_table_id, at)?;
+    let output_path = table_mutation_output_path(file, &options);
+    let staged_path =
+        stage_table_mutation(file, &mutation.slide_part, &mutation.updated_xml, &options)?;
+    let mut destination = read_table_destination(
+        &staged_path,
+        slide,
+        mutation.resolved_table_id,
+        output_path.as_deref(),
+    )?;
+    let result = insert_row_result_json(
+        file,
+        slide,
+        at,
         &mutation,
         output_path.as_deref(),
         &mut destination,
@@ -319,6 +405,34 @@ fn build_delete_row_mutation(
     })
 }
 
+fn build_insert_row_mutation(
+    file: &str,
+    slide: u32,
+    table_id: u32,
+    at: usize,
+) -> CliResult<InsertRowMutation> {
+    let slides = pptx_slide_refs_for_table_mutation(file)?;
+    let slide_ref = slides.get(slide as usize - 1).ok_or_else(|| {
+        CliError::invalid_args(format!(
+            "slide number {slide} out of range (1-{})",
+            slides.len()
+        ))
+    })?;
+    let slide_xml = zip_text(file, &slide_ref.part)?;
+    let table_span = find_table_span_for_shape(&slide_xml, table_id)?.ok_or_else(|| {
+        CliError::target_not_found(format!(
+            "target not found: table with ID {table_id} not found"
+        ))
+    })?;
+    let (updated_xml, cell_count) = insert_table_row_into_slide_xml(&slide_xml, table_span, at)?;
+    Ok(InsertRowMutation {
+        slide_part: slide_ref.part.clone(),
+        updated_xml,
+        resolved_table_id: table_id,
+        cell_count,
+    })
+}
+
 fn build_set_cell_mutation(
     file: &str,
     slide: u32,
@@ -390,6 +504,53 @@ fn delete_table_row_from_slide_xml(
     Ok((updated, cells.len()))
 }
 
+fn insert_table_row_into_slide_xml(
+    slide_xml: &str,
+    table_span: XmlSpan,
+    at: usize,
+) -> CliResult<(String, usize)> {
+    let table_fragment = &slide_xml[table_span.start..table_span.end];
+    let prefix = drawing_prefix(table_fragment);
+    let (content_start, content_end) = element_content_bounds(table_fragment)?;
+    let children = xml_direct_child_ranges(table_fragment, content_start, content_end)?;
+    let rows: Vec<XmlNamedRange> = children
+        .iter()
+        .filter(|child| child.kind == "tr")
+        .cloned()
+        .collect();
+    if at < 1 || at > rows.len() + 1 {
+        return Err(CliError::target_not_found(
+            "target not found: insert row index out of range",
+        ));
+    }
+    if at <= rows.len() {
+        let row_fragment = &table_fragment[rows[at - 1].start..rows[at - 1].end];
+        reject_unsafe_row_insert_target(row_fragment, at - 1)?;
+    }
+
+    let cell_count = if let Some(first_row) = rows.first() {
+        count_row_cells(&table_fragment[first_row.start..first_row.end])?
+    } else if let Some(tbl_grid) = children.iter().find(|child| child.kind == "tblGrid") {
+        count_grid_columns(&table_fragment[tbl_grid.start..tbl_grid.end])?
+    } else {
+        0
+    };
+    let height = adjacent_table_row_height(table_fragment, &rows, at)?;
+    let new_row = render_empty_table_row(&prefix, height.as_deref(), cell_count);
+    let insert_at = if at <= rows.len() {
+        rows[at - 1].start
+    } else {
+        content_end
+    };
+
+    let global_start = table_span.start + insert_at;
+    let mut updated = String::with_capacity(slide_xml.len() + new_row.len());
+    updated.push_str(&slide_xml[..global_start]);
+    updated.push_str(&new_row);
+    updated.push_str(&slide_xml[global_start..]);
+    Ok((updated, cell_count))
+}
+
 fn set_table_cell_text_in_slide_xml(
     slide_xml: &str,
     table_span: XmlSpan,
@@ -449,6 +610,93 @@ fn reject_unsafe_row_delete_cell(cell_fragment: &str, row_index: usize) -> CliRe
         )));
     }
     Ok(())
+}
+
+fn reject_unsafe_row_insert_target(row_fragment: &str, row_index: usize) -> CliResult<()> {
+    let (content_start, content_end) = element_content_bounds(row_fragment)?;
+    let cells: Vec<XmlNamedRange> =
+        xml_direct_child_ranges(row_fragment, content_start, content_end)?
+            .into_iter()
+            .filter(|child| child.kind == "tc")
+            .collect();
+    for cell in cells {
+        let attrs = first_element_attrs(&row_fragment[cell.start..cell.end])?;
+        if attrs.get("vMerge").map(String::as_str) == Some("1") {
+            return Err(CliError::invalid_args(format!(
+                "cannot insert row at {row_index}: would split a vertical merge"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn count_row_cells(row_fragment: &str) -> CliResult<usize> {
+    let (content_start, content_end) = element_content_bounds(row_fragment)?;
+    Ok(
+        xml_direct_child_ranges(row_fragment, content_start, content_end)?
+            .into_iter()
+            .filter(|child| child.kind == "tc")
+            .count(),
+    )
+}
+
+fn count_grid_columns(grid_fragment: &str) -> CliResult<usize> {
+    let (content_start, content_end) = element_content_bounds(grid_fragment)?;
+    Ok(
+        xml_direct_child_ranges(grid_fragment, content_start, content_end)?
+            .into_iter()
+            .filter(|child| child.kind == "gridCol")
+            .count(),
+    )
+}
+
+fn adjacent_table_row_height(
+    table_fragment: &str,
+    rows: &[XmlNamedRange],
+    at: usize,
+) -> CliResult<Option<String>> {
+    if rows.is_empty() {
+        return Ok(None);
+    }
+    let adjacent = if at > 1 && at - 2 < rows.len() {
+        &rows[at - 2]
+    } else {
+        &rows[0]
+    };
+    let attrs = first_element_attrs(&table_fragment[adjacent.start..adjacent.end])?;
+    Ok(attrs.get("h").filter(|value| !value.is_empty()).cloned())
+}
+
+fn render_empty_table_row(prefix: &str, height: Option<&str>, cell_count: usize) -> String {
+    let tr = drawing_tag(prefix, "tr");
+    let mut out = String::new();
+    out.push('<');
+    out.push_str(&tr);
+    if let Some(height) = height {
+        out.push_str(" h=\"");
+        out.push_str(&xml_attr_escape(height));
+        out.push('"');
+    }
+    out.push('>');
+    for _ in 0..cell_count {
+        out.push_str(&render_empty_table_cell(prefix));
+    }
+    out.push_str("</");
+    out.push_str(&tr);
+    out.push('>');
+    out
+}
+
+fn render_empty_table_cell(prefix: &str) -> String {
+    format!(
+        "<{tc}><{tx_body}><{body_pr}/><{lst_style}/><{p}/></{tx_body}><{tc_pr}/></{tc}>",
+        tc = drawing_tag(prefix, "tc"),
+        tx_body = drawing_tag(prefix, "txBody"),
+        body_pr = drawing_tag(prefix, "bodyPr"),
+        lst_style = drawing_tag(prefix, "lstStyle"),
+        p = drawing_tag(prefix, "p"),
+        tc_pr = drawing_tag(prefix, "tcPr"),
+    )
 }
 
 fn read_table_destination(
@@ -524,6 +772,40 @@ fn delete_row_result_json(
     result.insert("slide".to_string(), json!(slide));
     result.insert("tableId".to_string(), json!(mutation.resolved_table_id));
     result.insert("row".to_string(), json!(row));
+    result.insert("rows".to_string(), json!(rows));
+    result.insert("cols".to_string(), json!(cols));
+    result.insert("cellCount".to_string(), json!(mutation.cell_count));
+    let destination_value = destination.take();
+    add_pptx_table_readback_commands(&mut result, output_path, slide, &destination_value);
+    result.insert("destination".to_string(), destination_value);
+    Value::Object(result)
+}
+
+fn insert_row_result_json(
+    file: &str,
+    slide: u32,
+    at: usize,
+    mutation: &InsertRowMutation,
+    output_path: Option<&str>,
+    destination: &mut Value,
+) -> Value {
+    let rows = destination
+        .get("rows")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let cols = destination
+        .get("cols")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    if let Some(output_path) = output_path {
+        result.insert("output".to_string(), json!(output_path));
+    }
+    result.insert("dryRun".to_string(), json!(output_path.is_none()));
+    result.insert("slide".to_string(), json!(slide));
+    result.insert("tableId".to_string(), json!(mutation.resolved_table_id));
+    result.insert("at".to_string(), json!(at));
     result.insert("rows".to_string(), json!(rows));
     result.insert("cols".to_string(), json!(cols));
     result.insert("cellCount".to_string(), json!(mutation.cell_count));

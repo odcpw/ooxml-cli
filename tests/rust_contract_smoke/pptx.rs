@@ -913,6 +913,216 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
 }
 
 #[test]
+fn pptx_tables_insert_row_saved_readback_dry_run_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-insert-row-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx table insert-row temp dir");
+
+    let fixture = "testdata/pptx/table-slide/presentation.pptx";
+    let merged_fixture = "testdata/pptx/table-merged/presentation.pptx";
+    let go_out = temp_dir.join("go-insert-row.pptx");
+    let rust_out = temp_dir.join("rust-insert-row.pptx");
+    let go_out_str = go_out.to_str().expect("go insert-row path");
+    let rust_out_str = rust_out.to_str().expect("rust insert-row path");
+
+    let go_args = [
+        "--json",
+        "pptx",
+        "tables",
+        "insert-row",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "table:1",
+        "--at",
+        "2",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "tables",
+        "insert-row",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "table:1",
+        "--at",
+        "2",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "insert-row saved exit");
+    assert_eq!(rust_stderr, go_stderr, "insert-row saved stderr");
+    let rust_json = rust_stdout.expect("rust insert-row stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go insert-row stdout"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "insert-row saved stdout"
+    );
+    assert!(go_out.exists(), "Go insert-row output missing");
+    assert!(rust_out.exists(), "Rust insert-row output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+        "--json", "pptx", "tables", "show", go_out_str, "--slide", "2", "--target", "table:1",
+    ]);
+    let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "tables",
+        "show",
+        rust_out_str,
+        "--slide",
+        "2",
+        "--target",
+        "table:1",
+    ]);
+    assert_eq!(rust_show_code, go_show_code, "insert-row readback exit");
+    assert_eq!(
+        rust_show_stderr, go_show_stderr,
+        "insert-row readback stderr"
+    );
+    assert_eq!(
+        scrub_path(
+            rust_show_stdout.expect("rust insert-row readback"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_show_stdout.expect("go insert-row readback"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "insert-row readback stdout"
+    );
+
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "tables",
+        "insert-row",
+        fixture,
+        "--slide",
+        "2",
+        "--table-id",
+        "2",
+        "--at",
+        "2",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "insert-row dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "insert-row dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust insert-row dry-run stdout"),
+        go_stdout.expect("go insert-row dry-run stdout"),
+        "insert-row dry-run stdout"
+    );
+
+    let error_cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "insert-row",
+            fixture,
+            "--slide",
+            "2",
+            "--table-id",
+            "2",
+            "--at",
+            "99",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "insert-row",
+            fixture,
+            "--slide",
+            "2",
+            "--table-id",
+            "2",
+            "--at",
+            "0",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "insert-row",
+            fixture,
+            "--slide",
+            "2",
+            "--at",
+            "1",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "insert-row",
+            fixture,
+            "--slide",
+            "2",
+            "--table-id",
+            "99",
+            "--at",
+            "1",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "insert-row",
+            merged_fixture,
+            "--slide",
+            "2",
+            "--table-id",
+            "2",
+            "--at",
+            "3",
+            "--dry-run",
+        ],
+    ];
+    for args in error_cases {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "insert-row error exit for {args:?}");
+        assert_eq!(
+            rust_stdout, go_stdout,
+            "insert-row error stdout for {args:?}"
+        );
+        assert_eq!(
+            rust_stderr, go_stderr,
+            "insert-row error stderr for {args:?}"
+        );
+    }
+}
+
+#[test]
 fn pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

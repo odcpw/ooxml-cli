@@ -300,6 +300,23 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
             pptx_tables_delete_row(file, rest)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "tables" && verb == "insert-row" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--table-id",
+                    "--target",
+                    "--at",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_tables_insert_row(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "tables" && verb == "set-cell" =>
         {
             reject_unknown_flags(

@@ -20,4 +20,4 @@ date, and status before a milestone can claim parity.
 - **Notes:** this is not an accepted behavioral mismatch for an implemented
   command. It records that overall parity is not yet claimable while unported Go
   command paths remain absent from Rust. Current ratchet: Go advertises 290
-  command paths, Rust advertises 95, leaving 195 unported paths.
+  command paths, Rust advertises 96, leaving 194 unported paths.

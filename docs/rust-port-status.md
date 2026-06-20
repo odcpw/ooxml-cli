@@ -9,6 +9,22 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX table row insertion parity landed for direct
+  `pptx tables insert-row`. The slice inserts an empty row into a selected table
+  graphic frame, preserves generated destination/readback command fields,
+  rejects out-of-range insertion points and unsafe vertical-merge splits like
+  the Go oracle, and matches Go-oracle saved output, `pptx tables show`
+  readback, dry-run, and representative error behavior. Rust capabilities now
+  advertise 96 Go-oracle command paths, leaving a pinned 194-command gap; the
+  command is advertised with `opCompatible=false` because serve/MCP operation
+  dispatch for PPTX table mutations is not wired yet. Proof: `cargo fmt
+  --check`, `cargo check --all-targets`, focused `cargo test --test
+  rust_contract_smoke pptx_tables_insert_row -- --nocapture`, focused
+  capability ratchet/discovery tests, strict validation for the generated PPTX
+  proof file, Open XML SDK Office2019 schema validation (zero errors),
+  PowerPoint COM open oracle, `cargo clippy --all-targets -- -D warnings`, and
+  `cargo test --all-targets` passed with 4 ZIP guard unit tests plus 107 Rust
+  contract tests.
 - Rust XLSX comments parity landed for direct
   `xlsx comments list/add/update/remove` plus serve operations for
   add/update/remove and serve inspect for list. The slice creates and updates
@@ -919,7 +935,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 95, and the harness pins the 195-command gap until
+  paths, Rust advertises 96, and the harness pins the 194-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
