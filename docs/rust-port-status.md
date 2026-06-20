@@ -82,6 +82,9 @@ Latest milestone, 2026-06-20:
 - PPTX master/layout/theme readback moved from `src/pptx_readback.rs` into
   `src/pptx_readback/layouts.rs`, preserving the existing crate-facing
   `pptx masters` and `pptx layouts` command facade.
+- PPTX table readback and table-detail JSON rendering moved from
+  `src/pptx_readback.rs` into `src/pptx_readback/tables.rs`, reusing the shared
+  slide-part helper and shape model parser through the PPTX readback facade.
 - PPTX render orchestration, slide-list parsing, mock render output, and local
   `soffice`/`pdftoppm` invocation helpers moved from `src/main.rs` into
   `src/pptx_render.rs`, leaving PPTX text mutation and serve routing at the
@@ -225,9 +228,10 @@ Latest milestone, 2026-06-20:
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
 - Proof after the latest split: `cargo test --test rust_contract_smoke
-  capabilities`, `cargo test --test rust_contract_smoke
-  rust_capability_inventory_is_go_oracle_subset`, `cargo test --test
-  rust_contract_smoke mcp_command_resources_cover_advertised_rust_capabilities`,
+  frozen_cli_slice_matches_go_baseline -- --exact`, `cargo test --test
+  rust_contract_smoke frozen_serve_flow_matches_go_baseline -- --exact`,
+  `cargo test --test rust_contract_smoke
+  frozen_pptx_mutation_and_validate_match_go_baseline -- --exact`,
   `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
   `cargo test --all-targets` all pass with 78 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
