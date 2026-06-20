@@ -9,6 +9,21 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust XLSX chart style mutation parity landed for direct `xlsx charts
+  set-title`, `set-legend`, `set-chart-area-fill`, `set-plot-area-fill`, and
+  `set-series-style`. The slice mutates chart title text/font fields, legend
+  position/overlay, chart-area and plot-area fills, and per-series fill/line
+  styling while preserving Go-shaped saved-output, dry-run, readback, and error
+  behavior. Rust capabilities now advertise 152 Go-oracle command paths,
+  leaving a pinned 138-command gap; these commands are direct CLI mutations with
+  `opCompatible=false` because serve/MCP operation dispatch is not wired for
+  `xlsx charts` yet. Proof: focused Go-vs-Rust chart style mutation tests;
+  focused capability ratchet/discovery tests; strict validation for all five
+  generated proof workbooks; Open XML SDK Office2019 schema validation (zero
+  errors) for all five proof workbooks; Excel COM open oracle for all five proof
+  workbooks; `cargo fmt --check`; `cargo check --all-targets`; `cargo clippy
+  --all-targets -- -D warnings`; and `cargo test --all-targets` passed with 4
+  ZIP guard unit tests plus 144 Rust contract tests.
 - Rust PPTX replacement parity expanded for agent deck-editing workflows with
   direct CLI support for `pptx replace text-occurrences` and `pptx replace
   images`. The slice matches the Go oracle for occurrence dry-runs, stale
@@ -1243,7 +1258,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 147, and the harness pins the 143-command gap until
+  paths, Rust advertises 152, and the harness pins the 138-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

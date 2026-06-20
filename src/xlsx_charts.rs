@@ -2,11 +2,15 @@ use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
 
 use crate::{
-    CliError, CliResult, WorkbookSheet, add_selector, command_arg, decode_xml_text, local_name,
-    relationship_entries, relationships_part_for, resolve_relationship_target, resolve_sheet,
-    selector_candidates, workbook_sheets, xlsx_sheet_selectors, zip_text,
+    CliError, CliResult, WorkbookSheet, add_selector, command_arg, copy_zip_with_part_override,
+    decode_xml_text, local_name, relationship_entries, relationships_part_for,
+    resolve_relationship_target, resolve_sheet, selector_candidates, validate,
+    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_ranges_set_temp_path,
+    xlsx_sheet_selectors, xml_attr_escape, xml_escape, zip_text,
 };
 
 const REL_WORKSHEET: &str =
@@ -14,6 +18,125 @@ const REL_WORKSHEET: &str =
 const REL_DRAWING: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing";
 const REL_CHART: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart";
+const NS_CHART: &str = "http://schemas.openxmlformats.org/drawingml/2006/chart";
+const NS_DRAWING_MAIN: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+const CHART_CHILD_ORDER: &[&str] = &[
+    "title",
+    "autoTitleDeleted",
+    "pivotFmts",
+    "view3D",
+    "floor",
+    "sideWall",
+    "backWall",
+    "plotArea",
+    "legend",
+    "plotVisOnly",
+    "dispBlanksAs",
+    "showDLblsOverMax",
+    "extLst",
+];
+const TITLE_CHILD_ORDER: &[&str] = &["tx", "layout", "overlay", "spPr", "txPr", "extLst"];
+const LEGEND_CHILD_ORDER: &[&str] = &[
+    "legendPos",
+    "legendEntry",
+    "layout",
+    "overlay",
+    "spPr",
+    "txPr",
+    "extLst",
+];
+const SERIES_CHILD_ORDER: &[&str] = &[
+    "idx",
+    "order",
+    "tx",
+    "spPr",
+    "invertIfNegative",
+    "pictureOptions",
+    "explosion",
+    "marker",
+    "dPt",
+    "dLbls",
+    "trendline",
+    "errBars",
+    "cat",
+    "cPt",
+    "val",
+    "xVal",
+    "yVal",
+    "bubbleSize",
+    "bubble3D",
+    "shape",
+    "smooth",
+    "extLst",
+];
+const SHAPE_PROPS_CHILD_ORDER: &[&str] = &[
+    "xfrm",
+    "custGeom",
+    "prstGeom",
+    "noFill",
+    "solidFill",
+    "gradFill",
+    "blipFill",
+    "pattFill",
+    "grpFill",
+    "ln",
+    "effectLst",
+    "effectDag",
+    "scene3d",
+    "sp3d",
+    "extLst",
+];
+const LINE_CHILD_ORDER: &[&str] = &[
+    "noFill",
+    "solidFill",
+    "gradFill",
+    "pattFill",
+    "prstDash",
+    "custDash",
+    "round",
+    "bevel",
+    "miter",
+    "headEnd",
+    "tailEnd",
+    "extLst",
+];
+const MARKER_CHILD_ORDER: &[&str] = &["symbol", "size", "spPr", "extLst"];
+const PARAGRAPH_CHILD_ORDER: &[&str] = &["pPr", "r", "br", "fld", "endParaRPr"];
+const RUN_CHILD_ORDER: &[&str] = &["rPr", "t"];
+const RPR_CHILD_ORDER: &[&str] = &[
+    "ln",
+    "noFill",
+    "solidFill",
+    "gradFill",
+    "blipFill",
+    "pattFill",
+    "grpFill",
+    "effectLst",
+    "effectDag",
+    "highlight",
+    "uLnTx",
+    "uLn",
+    "uFillTx",
+    "uFill",
+    "latin",
+    "ea",
+    "cs",
+    "sym",
+    "hlinkClick",
+    "hlinkMouseOver",
+    "rtl",
+    "extLst",
+];
+const PLOT_AREA_CHILD_ORDER: &[&str] = &["spPr", "extLst"];
+const CHART_SPACE_CHILD_ORDER: &[&str] = &[
+    "spPr",
+    "txPr",
+    "externalData",
+    "printSettings",
+    "userShapes",
+    "extLst",
+];
 
 #[derive(Clone)]
 struct ChartRef {
@@ -75,11 +198,93 @@ struct ChartSeries {
 }
 
 #[derive(Clone, Debug)]
+struct XmlAttr {
+    qname: String,
+    local: String,
+    value: String,
+}
+
+#[derive(Clone, Debug)]
 struct XmlNode {
+    qname: String,
     name: String,
     attrs: BTreeMap<String, String>,
+    raw_attrs: Vec<XmlAttr>,
     text: String,
     children: Vec<XmlNode>,
+}
+
+#[derive(Clone)]
+pub(crate) struct XlsxChartSetTitleOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) chart: Option<&'a str>,
+    pub(crate) title: &'a str,
+    pub(crate) expect_title: Option<&'a str>,
+    pub(crate) expect_title_present: bool,
+    pub(crate) font_family: Option<&'a str>,
+    pub(crate) font_size_pt: Option<f64>,
+    pub(crate) font_color: Option<&'a str>,
+    pub(crate) font_bold: Option<bool>,
+    pub(crate) font_italic: Option<bool>,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct XlsxChartSetLegendOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) chart: Option<&'a str>,
+    pub(crate) position: Option<&'a str>,
+    pub(crate) position_present: bool,
+    pub(crate) overlay: Option<bool>,
+    pub(crate) expect_position: Option<&'a str>,
+    pub(crate) expect_position_present: bool,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+}
+
+#[derive(Clone)]
+pub(crate) enum XlsxChartFillTarget {
+    ChartArea,
+    PlotArea,
+}
+
+#[derive(Clone)]
+pub(crate) struct XlsxChartSetFillOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) chart: Option<&'a str>,
+    pub(crate) fill_color: &'a str,
+    pub(crate) expect_fill: Option<&'a str>,
+    pub(crate) expect_fill_present: bool,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct XlsxChartSetSeriesStyleOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) chart: Option<&'a str>,
+    pub(crate) series: i64,
+    pub(crate) fill_color: Option<&'a str>,
+    pub(crate) line_color: Option<&'a str>,
+    pub(crate) line_width_pt: Option<f64>,
+    pub(crate) marker_symbol: Option<&'a str>,
+    pub(crate) marker_size: Option<i64>,
+    pub(crate) expect_series_count: Option<i64>,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
 }
 
 pub(crate) fn xlsx_charts_list(file: &str, sheet_selector: Option<&str>) -> CliResult<Value> {
@@ -97,12 +302,502 @@ pub(crate) fn xlsx_charts_show(
     Ok(xlsx_charts_result(file, vec![chart]))
 }
 
+pub(crate) fn xlsx_charts_set_title(
+    file: &str,
+    options: XlsxChartSetTitleOptions<'_>,
+) -> CliResult<Value> {
+    let font = ChartFontOptions {
+        family: normalize_optional_nonempty(options.font_family, "--font-family")?,
+        size_pt: options.font_size_pt,
+        color: normalize_optional_hex(options.font_color)?,
+        bold: options.font_bold,
+        italic: options.font_italic,
+    };
+    if let Some(size) = font.size_pt
+        && size <= 0.0
+    {
+        return Err(CliError::invalid_args("--font-size must be greater than 0"));
+    }
+    let expect_title = if options.expect_title_present {
+        Some(options.expect_title.unwrap_or_default().to_string())
+    } else {
+        None
+    };
+    run_xlsx_chart_style_mutation(
+        file,
+        options.sheet,
+        options.chart,
+        "xlsx.chart.set-title",
+        XlsxChartOutputOptions::from_title(&options),
+        |root, ctx| {
+            let previous =
+                apply_chart_set_title(root, ctx, options.title, expect_title.as_deref(), &font)?;
+            Ok(ChartMutationExtra {
+                previous_title: Some(previous),
+                ..ChartMutationExtra::default()
+            })
+        },
+    )
+}
+
+pub(crate) fn xlsx_charts_set_legend(
+    file: &str,
+    options: XlsxChartSetLegendOptions<'_>,
+) -> CliResult<Value> {
+    if !options.position_present && options.overlay.is_none() {
+        return Err(CliError::invalid_args(
+            "set-legend requires --position and/or --overlay",
+        ));
+    }
+    let legend_position = if options.position_present {
+        Some(parse_chart_legend_position(
+            options.position.unwrap_or_default(),
+        )?)
+    } else {
+        None
+    };
+    if legend_position
+        .as_ref()
+        .is_some_and(|position| position.remove)
+        && options.overlay.is_some()
+    {
+        return Err(CliError::invalid_args(
+            "--overlay cannot be combined with --position none",
+        ));
+    }
+    let expect_position = if options.expect_position_present {
+        Some(parse_chart_expect_legend_position(
+            options.expect_position.unwrap_or_default(),
+        )?)
+    } else {
+        None
+    };
+    run_xlsx_chart_style_mutation(
+        file,
+        options.sheet,
+        options.chart,
+        "xlsx.chart.set-legend",
+        XlsxChartOutputOptions::from_legend(&options),
+        |root, ctx| {
+            let removed = apply_chart_set_legend(
+                root,
+                ctx,
+                legend_position.as_ref(),
+                options.overlay,
+                expect_position.as_deref(),
+            )?;
+            Ok(ChartMutationExtra {
+                legend_removed: removed,
+                ..ChartMutationExtra::default()
+            })
+        },
+    )
+}
+
+pub(crate) fn xlsx_charts_set_chart_area_fill(
+    file: &str,
+    options: XlsxChartSetFillOptions<'_>,
+) -> CliResult<Value> {
+    xlsx_charts_set_fill(file, options, XlsxChartFillTarget::ChartArea)
+}
+
+pub(crate) fn xlsx_charts_set_plot_area_fill(
+    file: &str,
+    options: XlsxChartSetFillOptions<'_>,
+) -> CliResult<Value> {
+    xlsx_charts_set_fill(file, options, XlsxChartFillTarget::PlotArea)
+}
+
+fn xlsx_charts_set_fill(
+    file: &str,
+    options: XlsxChartSetFillOptions<'_>,
+    target: XlsxChartFillTarget,
+) -> CliResult<Value> {
+    let fill = parse_chart_fill_color(options.fill_color)?;
+    let expect_fill = if options.expect_fill_present {
+        Some(resolve_chart_expect_fill(
+            options.expect_fill.unwrap_or_default(),
+        )?)
+    } else {
+        None
+    };
+    let action = match target {
+        XlsxChartFillTarget::ChartArea => "xlsx.chart.set-chart-area-fill",
+        XlsxChartFillTarget::PlotArea => "xlsx.chart.set-plot-area-fill",
+    };
+    run_xlsx_chart_style_mutation(
+        file,
+        options.sheet,
+        options.chart,
+        action,
+        XlsxChartOutputOptions::from_fill(&options),
+        |root, ctx| {
+            let (previous, new_fill) =
+                apply_chart_set_fill(root, ctx, &target, &fill, expect_fill.as_deref())?;
+            Ok(ChartMutationExtra {
+                previous_fill: if previous.is_empty() {
+                    None
+                } else {
+                    Some(previous)
+                },
+                new_fill: Some(new_fill),
+                ..ChartMutationExtra::default()
+            })
+        },
+    )
+}
+
+pub(crate) fn xlsx_charts_set_series_style(
+    file: &str,
+    options: XlsxChartSetSeriesStyleOptions<'_>,
+) -> CliResult<Value> {
+    if options.series < 1 {
+        return Err(CliError::invalid_args("--series must be >= 1"));
+    }
+    let style = ChartSeriesStyleOptions {
+        fill_color: normalize_optional_hex(options.fill_color)?,
+        line_color: normalize_optional_hex(options.line_color)?,
+        line_width_pt: options.line_width_pt,
+        marker_symbol: options
+            .marker_symbol
+            .map(parse_chart_marker_symbol)
+            .transpose()?,
+        marker_size: options.marker_size,
+    };
+    if let Some(width) = style.line_width_pt
+        && width <= 0.0
+    {
+        return Err(CliError::invalid_args(
+            "--line-width-pt must be greater than 0",
+        ));
+    }
+    if let Some(size) = style.marker_size
+        && !(2..=72).contains(&size)
+    {
+        return Err(CliError::invalid_args(
+            "--marker-size must be between 2 and 72",
+        ));
+    }
+    if style.is_empty() {
+        return Err(CliError::invalid_args(
+            "set-series-style requires at least one of --fill-color, --line-color, --line-width-pt, --marker-symbol, or --marker-size",
+        ));
+    }
+    if let Some(count) = options.expect_series_count
+        && count < 0
+    {
+        return Err(CliError::invalid_args("--expect-series-count must be >= 0"));
+    }
+    run_xlsx_chart_style_mutation(
+        file,
+        options.sheet,
+        options.chart,
+        "xlsx.chart.set-series-style",
+        XlsxChartOutputOptions::from_series(&options),
+        |root, ctx| {
+            apply_chart_set_series_style(
+                root,
+                ctx,
+                options.series as usize,
+                options.expect_series_count.map(|value| value as usize),
+                &style,
+            )?;
+            Ok(ChartMutationExtra {
+                series: Some(options.series),
+                ..ChartMutationExtra::default()
+            })
+        },
+    )
+}
+
 fn xlsx_charts_result(file: &str, charts: Vec<ChartRef>) -> Value {
     json!({
         "file": file,
         "validateCommand": format!("ooxml validate --strict {}", command_arg(file)),
         "charts": charts.iter().map(|chart| xlsx_chart_item(file, chart)).collect::<Vec<_>>(),
     })
+}
+
+#[derive(Clone)]
+struct XlsxChartOutputOptions<'a> {
+    out: Option<&'a str>,
+    backup: Option<&'a str>,
+    dry_run: bool,
+    no_validate: bool,
+    in_place: bool,
+}
+
+impl<'a> XlsxChartOutputOptions<'a> {
+    fn from_title(options: &'a XlsxChartSetTitleOptions<'a>) -> Self {
+        Self {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+        }
+    }
+
+    fn from_legend(options: &'a XlsxChartSetLegendOptions<'a>) -> Self {
+        Self {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+        }
+    }
+
+    fn from_fill(options: &'a XlsxChartSetFillOptions<'a>) -> Self {
+        Self {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+        }
+    }
+
+    fn from_series(options: &'a XlsxChartSetSeriesStyleOptions<'a>) -> Self {
+        Self {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+        }
+    }
+}
+
+#[derive(Default)]
+struct ChartMutationExtra {
+    previous_title: Option<String>,
+    legend_removed: bool,
+    series: Option<i64>,
+    previous_fill: Option<String>,
+    new_fill: Option<String>,
+}
+
+struct ChartStyleResultArgs<'a> {
+    file: &'a str,
+    output: Option<&'a str>,
+    dry_run: bool,
+    action: &'a str,
+    chart_item: Value,
+    sheet_selector: Option<&'a str>,
+    chart: &'a ChartRef,
+    extra: ChartMutationExtra,
+}
+
+#[derive(Clone)]
+struct ChartXmlContext {
+    chart_prefix: String,
+    drawing_prefix: String,
+}
+
+#[derive(Clone)]
+struct ChartFontOptions {
+    family: Option<String>,
+    size_pt: Option<f64>,
+    color: Option<String>,
+    bold: Option<bool>,
+    italic: Option<bool>,
+}
+
+impl ChartFontOptions {
+    fn is_empty(&self) -> bool {
+        self.family.is_none()
+            && self.size_pt.is_none()
+            && self.color.is_none()
+            && self.bold.is_none()
+            && self.italic.is_none()
+    }
+}
+
+#[derive(Clone)]
+struct LegendPosition {
+    code: String,
+    remove: bool,
+}
+
+#[derive(Clone)]
+struct ChartFillOptions {
+    color: String,
+    no_fill: bool,
+}
+
+#[derive(Clone)]
+struct ChartSeriesStyleOptions {
+    fill_color: Option<String>,
+    line_color: Option<String>,
+    line_width_pt: Option<f64>,
+    marker_symbol: Option<String>,
+    marker_size: Option<i64>,
+}
+
+impl ChartSeriesStyleOptions {
+    fn is_empty(&self) -> bool {
+        self.fill_color.is_none()
+            && self.line_color.is_none()
+            && self.line_width_pt.is_none()
+            && self.marker_symbol.is_none()
+            && self.marker_size.is_none()
+    }
+}
+
+fn run_xlsx_chart_style_mutation<F>(
+    file: &str,
+    sheet_selector: Option<&str>,
+    chart_selector: Option<&str>,
+    action: &str,
+    output_options: XlsxChartOutputOptions<'_>,
+    apply: F,
+) -> CliResult<Value>
+where
+    F: FnOnce(&mut XmlNode, &ChartXmlContext) -> CliResult<ChartMutationExtra>,
+{
+    if !Path::new(file).exists() {
+        return Err(CliError::file_not_found(format!("file not found: {file}")));
+    }
+    validate_xlsx_mutation_output_flags(
+        output_options.out,
+        output_options.in_place,
+        output_options.backup,
+        output_options.dry_run,
+    )?;
+
+    let charts = load_xlsx_charts(file, sheet_selector)?;
+    let selected = select_xlsx_chart(&charts, chart_selector.unwrap_or_default())?;
+    let chart_part = selected.part_uri.trim_start_matches('/').to_string();
+    let chart_xml = zip_text(file, &chart_part)?;
+    let mut root = parse_xml_node(&chart_xml)?;
+    if root.name != "chartSpace" {
+        return Err(CliError::unexpected(format!(
+            "chart part {} root element not found",
+            selected.part_uri
+        )));
+    }
+    let ctx = ensure_chart_xml_namespaces(&mut root);
+    let extra = apply(&mut root, &ctx)?;
+    let updated_xml = render_xml_document(&root);
+
+    let output_path = output_options.out.filter(|value| !value.trim().is_empty());
+    let commit_path = if output_options.in_place {
+        Some(file)
+    } else {
+        output_path
+    };
+    let readback_path =
+        if output_options.dry_run || output_options.in_place || output_path == Some(file) {
+            xlsx_ranges_set_temp_path(file)
+        } else {
+            output_path
+                .ok_or_else(|| {
+                    CliError::invalid_args(
+                        "must specify exactly one of --out, --in-place, or --dry-run",
+                    )
+                })?
+                .to_string()
+        };
+
+    copy_zip_with_part_override(file, &readback_path, &chart_part, &updated_xml)?;
+    if !output_options.no_validate {
+        validate(&readback_path, true)?;
+    }
+
+    let readback_charts = load_xlsx_charts(&readback_path, sheet_selector)?;
+    let readback = select_xlsx_chart(&readback_charts, &format!("part:{}", selected.part_uri))?;
+    let chart_item = xlsx_chart_item_for_update(commit_path, &readback);
+
+    if output_options.dry_run {
+        let _ = fs::remove_file(&readback_path);
+    } else if output_options.in_place || output_path == Some(file) {
+        if let Some(backup_path) = output_options
+            .backup
+            .filter(|value| !value.trim().is_empty())
+        {
+            fs::copy(file, backup_path)
+                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+        }
+        fs::rename(&readback_path, file)
+            .or_else(|_| {
+                fs::copy(&readback_path, file)?;
+                fs::remove_file(&readback_path)
+            })
+            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    }
+
+    Ok(xlsx_chart_style_result(ChartStyleResultArgs {
+        file,
+        output: commit_path,
+        dry_run: output_options.dry_run,
+        action,
+        chart_item,
+        sheet_selector,
+        chart: &readback,
+        extra,
+    }))
+}
+
+fn xlsx_chart_style_result(args: ChartStyleResultArgs<'_>) -> Value {
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(args.file));
+    if let Some(output) = args.output {
+        result.insert("output".to_string(), json!(output));
+    }
+    result.insert("dryRun".to_string(), json!(args.dry_run));
+    result.insert("action".to_string(), json!(args.action));
+    result.insert("chart".to_string(), args.chart_item);
+    if let Some(previous_title) = args.extra.previous_title {
+        result.insert("previousTitle".to_string(), json!(previous_title));
+    }
+    if args.extra.legend_removed {
+        result.insert("legendRemoved".to_string(), json!(true));
+    }
+    if let Some(series) = args.extra.series {
+        result.insert("series".to_string(), json!(series));
+    }
+    if let Some(previous_fill) = args.extra.previous_fill {
+        result.insert("previousFill".to_string(), json!(previous_fill));
+    }
+    if let Some(new_fill) = args.extra.new_fill {
+        result.insert("newFill".to_string(), json!(new_fill));
+    }
+
+    let selector = if args.chart.primary_selector.trim().is_empty() {
+        "chart:1"
+    } else {
+        args.chart.primary_selector.as_str()
+    };
+    let sheet = args
+        .sheet_selector
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(&args.chart.sheet);
+    let target = args.output.unwrap_or("<out.xlsx>");
+    let validate_key = if args.output.is_some() {
+        "validateCommand"
+    } else {
+        "validateCommandTemplate"
+    };
+    let show_key = if args.output.is_some() {
+        "chartShowCommand"
+    } else {
+        "chartShowCommandTemplate"
+    };
+    result.insert(
+        validate_key.to_string(),
+        json!(format!("ooxml validate --strict {}", command_arg(target))),
+    );
+    result.insert(
+        show_key.to_string(),
+        json!(format!(
+            "ooxml --json xlsx charts show {} --sheet {} --chart {}",
+            command_arg(target),
+            command_arg(sheet),
+            command_arg(selector)
+        )),
+    );
+    Value::Object(result)
 }
 
 fn load_xlsx_charts(file: &str, sheet_selector: Option<&str>) -> CliResult<Vec<ChartRef>> {
@@ -472,6 +1167,17 @@ fn xlsx_chart_item(file: &str, chart: &ChartRef) -> Value {
         item.insert("style".to_string(), style.clone());
     }
     Value::Object(item)
+}
+
+fn xlsx_chart_item_for_update(file: Option<&str>, chart: &ChartRef) -> Value {
+    let mut item = xlsx_chart_item(file.unwrap_or_default(), chart);
+    if file.is_none()
+        && let Some(object) = item.as_object_mut()
+    {
+        object.remove("showCommand");
+        object.remove("sourceExportCommands");
+    }
+    item
 }
 
 fn xlsx_chart_source_export_commands(file: &str, chart: &ChartRef) -> Vec<Value> {
@@ -878,7 +1584,7 @@ fn inspect_axis_tick_label_font(axis: &XmlNode) -> Option<Value> {
 fn inspect_font(r_pr: &XmlNode) -> Option<Value> {
     let mut object = Map::new();
     if let Some(size) = r_pr.attr("sz").and_then(|value| value.parse::<f64>().ok()) {
-        object.insert("sizePt".to_string(), json!(size / 100.0));
+        object.insert("sizePt".to_string(), json_f64(size / 100.0));
     }
     if let Some(value) = r_pr.attr("b") {
         object.insert("bold".to_string(), json!(parse_ooxml_bool(value)));
@@ -946,14 +1652,14 @@ fn inspect_axes(plot_area: &XmlNode) -> Vec<Value> {
         }
         if let Some(scaling) = direct_child(child, "scaling") {
             if let Some(min) = direct_child(scaling, "min").and_then(attr_val_f64) {
-                axis.insert("min".to_string(), json!(min));
+                axis.insert("min".to_string(), json_f64(min));
             }
             if let Some(max) = direct_child(scaling, "max").and_then(attr_val_f64) {
-                axis.insert("max".to_string(), json!(max));
+                axis.insert("max".to_string(), json_f64(max));
             }
         }
         if let Some(unit) = direct_child(child, "majorUnit").and_then(attr_val_f64) {
-            axis.insert("majorUnit".to_string(), json!(unit));
+            axis.insert("majorUnit".to_string(), json_f64(unit));
         }
         axis.insert(
             "majorGridlines".to_string(),
@@ -990,7 +1696,7 @@ fn inspect_series_style(series: &XmlNode, number: usize) -> Value {
                 insert_nonempty_string_value(&mut object, "lineColor", inspect_fill(line));
             }
             if let Some(width) = line.attr("w").and_then(|value| value.parse::<f64>().ok()) {
-                object.insert("lineWidthPt".to_string(), json!(width / 12700.0));
+                object.insert("lineWidthPt".to_string(), json_f64(width / 12700.0));
             }
         }
     }
@@ -1032,6 +1738,379 @@ fn inspect_fill(holder: &XmlNode) -> String {
         return format!("scheme:{}", value.trim());
     }
     String::new()
+}
+
+fn normalize_optional_nonempty(value: Option<&str>, flag: &str) -> CliResult<Option<String>> {
+    match value {
+        Some(value) if value.trim().is_empty() => {
+            Err(CliError::invalid_args(format!("{flag} must not be empty")))
+        }
+        Some(value) => Ok(Some(value.trim().to_string())),
+        None => Ok(None),
+    }
+}
+
+fn normalize_optional_hex(value: Option<&str>) -> CliResult<Option<String>> {
+    value.map(normalize_hex_color).transpose()
+}
+
+fn normalize_hex_color(value: &str) -> CliResult<String> {
+    let trimmed = value.trim();
+    let trimmed = trimmed.strip_prefix('#').unwrap_or(trimmed);
+    let upper = trimmed.to_ascii_uppercase();
+    if upper.len() != 6 || !upper.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(CliError::invalid_args(format!(
+            "color {value:?} must be a 6-digit hex like #1F77B4"
+        )));
+    }
+    Ok(upper)
+}
+
+fn parse_chart_legend_position(value: &str) -> CliResult<LegendPosition> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized == "none" {
+        return Ok(LegendPosition {
+            code: String::new(),
+            remove: true,
+        });
+    }
+    let code = match normalized.as_str() {
+        "right" | "r" => "r",
+        "left" | "l" => "l",
+        "top" | "t" => "t",
+        "bottom" | "b" => "b",
+        "tr" => "tr",
+        _ => {
+            return Err(CliError::invalid_args(
+                "--position must be right, left, top, bottom, or none",
+            ));
+        }
+    };
+    Ok(LegendPosition {
+        code: code.to_string(),
+        remove: false,
+    })
+}
+
+fn parse_chart_expect_legend_position(value: &str) -> CliResult<String> {
+    let parsed = parse_chart_legend_position(value).map_err(|_| {
+        CliError::invalid_args("--expect-position must be right, left, top, bottom, or none")
+    })?;
+    Ok(if parsed.remove {
+        String::new()
+    } else {
+        parsed.code
+    })
+}
+
+fn parse_chart_fill_color(value: &str) -> CliResult<ChartFillOptions> {
+    if value.trim().eq_ignore_ascii_case("none") {
+        return Ok(ChartFillOptions {
+            color: String::new(),
+            no_fill: true,
+        });
+    }
+    Ok(ChartFillOptions {
+        color: normalize_hex_color(value)?,
+        no_fill: false,
+    })
+}
+
+fn resolve_chart_expect_fill(value: &str) -> CliResult<String> {
+    if value.trim().is_empty() || value.trim().eq_ignore_ascii_case("none") {
+        return Ok(String::new());
+    }
+    if value.trim().to_ascii_lowercase().starts_with("scheme:") {
+        return Ok(value.trim().to_string());
+    }
+    normalize_hex_color(value)
+}
+
+fn parse_chart_marker_symbol(value: &str) -> CliResult<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "circle" | "square" | "diamond" | "triangle" | "none" => Ok(normalized),
+        _ => Err(CliError::invalid_args(
+            "--marker-symbol must be circle, square, diamond, triangle, or none",
+        )),
+    }
+}
+
+fn apply_chart_set_title(
+    root: &mut XmlNode,
+    ctx: &ChartXmlContext,
+    title_text_value: &str,
+    expect_title: Option<&str>,
+    font: &ChartFontOptions,
+) -> CliResult<String> {
+    let chart_index = child_index(root, "chart")
+        .ok_or_else(|| CliError::unexpected("chart part has no chart element"))?;
+    let chart = &mut root.children[chart_index];
+    let previous = direct_child(chart, "title")
+        .map(title_text)
+        .unwrap_or_default();
+    if let Some(expected) = expect_title
+        && previous.trim() != expected.trim()
+    {
+        return Err(CliError::invalid_args(format!(
+            "chart title mismatch: expected {expected:?} but found {previous:?}"
+        )));
+    }
+    let title_index = ensure_child_index(chart, "title", ctx.c("title"), CHART_CHILD_ORDER);
+    let title = &mut chart.children[title_index];
+    if direct_child(title, "tx")
+        .and_then(|tx| direct_child(tx, "strRef"))
+        .is_some()
+    {
+        return Err(CliError::invalid_args(
+            "title is linked to a cell; setting literal title text is not supported",
+        ));
+    }
+    replace_title_text_tree(title, ctx, title_text_value, font);
+    set_or_create_val_child(chart, ctx, "autoTitleDeleted", "0", CHART_CHILD_ORDER);
+    Ok(previous)
+}
+
+fn replace_title_text_tree(
+    title: &mut XmlNode,
+    ctx: &ChartXmlContext,
+    text: &str,
+    font: &ChartFontOptions,
+) {
+    title.children.retain(|child| child.name != "tx");
+    let mut tx = XmlNode::new(ctx.c("tx"));
+    let mut rich = XmlNode::new(ctx.c("rich"));
+    rich.children.push(XmlNode::new(ctx.a("bodyPr")));
+    rich.children.push(XmlNode::new(ctx.a("lstStyle")));
+    let mut paragraph = XmlNode::new(ctx.a("p"));
+    let mut run = XmlNode::new(ctx.a("r"));
+    if !font.is_empty() {
+        let mut r_pr = XmlNode::new(ctx.a("rPr"));
+        apply_font_to_rpr(&mut r_pr, ctx, font);
+        insert_child_in_order(&mut run, r_pr, RUN_CHILD_ORDER);
+    }
+    let mut text_node = XmlNode::new(ctx.a("t"));
+    text_node.text = text.to_string();
+    insert_child_in_order(&mut run, text_node, RUN_CHILD_ORDER);
+    insert_child_in_order(&mut paragraph, run, PARAGRAPH_CHILD_ORDER);
+    rich.children.push(paragraph);
+    tx.children.push(rich);
+    insert_child_in_order(title, tx, TITLE_CHILD_ORDER);
+}
+
+fn apply_font_to_rpr(r_pr: &mut XmlNode, ctx: &ChartXmlContext, font: &ChartFontOptions) {
+    if let Some(size) = font.size_pt {
+        r_pr.set_attr("sz", &((size * 100.0 + 0.5) as i64).to_string());
+    }
+    if let Some(bold) = font.bold {
+        r_pr.set_attr("b", bool_attr(bold));
+    }
+    if let Some(italic) = font.italic {
+        r_pr.set_attr("i", bool_attr(italic));
+    }
+    if let Some(color) = font.color.as_deref() {
+        set_solid_fill(r_pr, ctx, color, RPR_CHILD_ORDER);
+    }
+    if let Some(family) = font.family.as_deref() {
+        let latin_index = ensure_child_index(r_pr, "latin", ctx.a("latin"), RPR_CHILD_ORDER);
+        r_pr.children[latin_index].set_attr("typeface", family);
+    }
+}
+
+fn apply_chart_set_legend(
+    root: &mut XmlNode,
+    ctx: &ChartXmlContext,
+    position: Option<&LegendPosition>,
+    overlay: Option<bool>,
+    expect_position: Option<&str>,
+) -> CliResult<bool> {
+    let chart_index = child_index(root, "chart")
+        .ok_or_else(|| CliError::unexpected("chart part has no chart element"))?;
+    let chart = &mut root.children[chart_index];
+    let previous = direct_child(chart, "legend")
+        .and_then(|legend| direct_child(legend, "legendPos"))
+        .and_then(|pos| pos.attr("val"))
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    if let Some(expected) = expect_position
+        && !previous.eq_ignore_ascii_case(expected.trim())
+    {
+        return Err(CliError::invalid_args(format!(
+            "legend position mismatch: expected {expected:?} but found {previous:?}"
+        )));
+    }
+    if position.is_some_and(|value| value.remove) {
+        chart.children.retain(|child| child.name != "legend");
+        return Ok(true);
+    }
+    let legend_index = ensure_child_index(chart, "legend", ctx.c("legend"), CHART_CHILD_ORDER);
+    let legend = &mut chart.children[legend_index];
+    if let Some(position) = position {
+        set_or_create_val_child(legend, ctx, "legendPos", &position.code, LEGEND_CHILD_ORDER);
+    } else if direct_child(legend, "legendPos").is_none() {
+        set_or_create_val_child(legend, ctx, "legendPos", "r", LEGEND_CHILD_ORDER);
+    }
+    if let Some(overlay) = overlay {
+        set_or_create_val_child(
+            legend,
+            ctx,
+            "overlay",
+            bool_attr(overlay),
+            LEGEND_CHILD_ORDER,
+        );
+    }
+    Ok(false)
+}
+
+fn apply_chart_set_fill(
+    root: &mut XmlNode,
+    ctx: &ChartXmlContext,
+    target: &XlsxChartFillTarget,
+    fill: &ChartFillOptions,
+    expect_fill: Option<&str>,
+) -> CliResult<(String, String)> {
+    let (holder, order) = match target {
+        XlsxChartFillTarget::ChartArea => (root, CHART_SPACE_CHILD_ORDER),
+        XlsxChartFillTarget::PlotArea => {
+            let plot_area = first_descendant_mut(root, "plotArea")
+                .ok_or_else(|| CliError::unexpected("chart part has no plotArea"))?;
+            (plot_area, PLOT_AREA_CHILD_ORDER)
+        }
+    };
+    let previous = direct_child(holder, "spPr")
+        .map(inspect_fill)
+        .unwrap_or_default();
+    if let Some(expected) = expect_fill
+        && !fill_matches(&previous, expected)
+    {
+        let have = if previous.is_empty() {
+            "none".to_string()
+        } else {
+            previous.clone()
+        };
+        return Err(CliError::invalid_args(format!(
+            "fill mismatch: expected {expected:?} but found {have:?}"
+        )));
+    }
+    let sp_pr_index = ensure_child_index(holder, "spPr", ctx.c("spPr"), order);
+    let sp_pr = &mut holder.children[sp_pr_index];
+    if fill.no_fill {
+        remove_fill_group_children(sp_pr);
+        insert_child_in_order(
+            sp_pr,
+            XmlNode::new(ctx.a("noFill")),
+            SHAPE_PROPS_CHILD_ORDER,
+        );
+        Ok((previous, String::new()))
+    } else {
+        set_solid_fill(sp_pr, ctx, &fill.color, SHAPE_PROPS_CHILD_ORDER);
+        Ok((previous, fill.color.clone()))
+    }
+}
+
+fn apply_chart_set_series_style(
+    root: &mut XmlNode,
+    ctx: &ChartXmlContext,
+    series_number: usize,
+    expect_series_count: Option<usize>,
+    style: &ChartSeriesStyleOptions,
+) -> CliResult<()> {
+    let series_paths = series_node_paths(root);
+    if let Some(expected) = expect_series_count
+        && expected != series_paths.len()
+    {
+        return Err(CliError::invalid_args(format!(
+            "series count mismatch: expected {expected} but found {}",
+            series_paths.len()
+        )));
+    }
+    if series_number < 1 || series_number > series_paths.len() {
+        return Err(CliError::invalid_args(format!(
+            "series {series_number} is out of range (1-{})",
+            series_paths.len()
+        )));
+    }
+    let (chart_type_index, series_index) = series_paths[series_number - 1];
+    let plot_area = first_descendant_mut(root, "plotArea")
+        .ok_or_else(|| CliError::unexpected("chart part has no plotArea"))?;
+    let chart_type = &mut plot_area.children[chart_type_index];
+    let parent_type = chart_type.name.clone();
+    let series = &mut chart_type.children[series_index];
+
+    if style.fill_color.is_some() || style.line_color.is_some() || style.line_width_pt.is_some() {
+        let sp_pr_index = ensure_child_index(series, "spPr", ctx.c("spPr"), SERIES_CHILD_ORDER);
+        let sp_pr = &mut series.children[sp_pr_index];
+        if let Some(color) = style.fill_color.as_deref() {
+            set_solid_fill(sp_pr, ctx, color, SHAPE_PROPS_CHILD_ORDER);
+        }
+        if style.line_color.is_some() || style.line_width_pt.is_some() {
+            let line_index = ensure_child_index(sp_pr, "ln", ctx.a("ln"), SHAPE_PROPS_CHILD_ORDER);
+            let line = &mut sp_pr.children[line_index];
+            if let Some(width) = style.line_width_pt {
+                line.set_attr("w", &((width * 12700.0 + 0.5) as i64).to_string());
+            }
+            if let Some(color) = style.line_color.as_deref() {
+                set_solid_fill(line, ctx, color, LINE_CHILD_ORDER);
+            }
+        }
+    }
+
+    if style.marker_symbol.is_some() || style.marker_size.is_some() {
+        if !matches!(
+            parent_type.as_str(),
+            "lineChart" | "scatterChart" | "radarChart"
+        ) {
+            return Err(CliError::invalid_args(format!(
+                "series {series_number} belongs to a {}, which does not support markers",
+                if parent_type.is_empty() {
+                    "chart of this type"
+                } else {
+                    parent_type.as_str()
+                }
+            )));
+        }
+        let marker_index =
+            ensure_child_index(series, "marker", ctx.c("marker"), SERIES_CHILD_ORDER);
+        let marker = &mut series.children[marker_index];
+        if let Some(symbol) = style.marker_symbol.as_deref() {
+            set_or_create_val_child(marker, ctx, "symbol", symbol, MARKER_CHILD_ORDER);
+        }
+        if let Some(size) = style.marker_size {
+            set_or_create_val_child(marker, ctx, "size", &size.to_string(), MARKER_CHILD_ORDER);
+        }
+    }
+    Ok(())
+}
+
+fn set_solid_fill(holder: &mut XmlNode, ctx: &ChartXmlContext, color: &str, order: &[&str]) {
+    remove_fill_group_children(holder);
+    let mut solid = XmlNode::new(ctx.a("solidFill"));
+    let mut srgb = XmlNode::new(ctx.a("srgbClr"));
+    srgb.set_attr("val", color);
+    solid.children.push(srgb);
+    insert_child_in_order(holder, solid, order);
+}
+
+fn remove_fill_group_children(holder: &mut XmlNode) {
+    holder.children.retain(|child| {
+        !matches!(
+            child.name.as_str(),
+            "noFill" | "solidFill" | "gradFill" | "blipFill" | "pattFill" | "grpFill"
+        )
+    });
+}
+
+fn fill_matches(current: &str, expected: &str) -> bool {
+    if expected.trim().is_empty() || expected.trim().eq_ignore_ascii_case("none") {
+        current.is_empty()
+    } else {
+        current.eq_ignore_ascii_case(expected.trim())
+    }
+}
+
+fn bool_attr(value: bool) -> &'static str {
+    if value { "1" } else { "0" }
 }
 
 fn series_name_text(tx: &XmlNode) -> String {
@@ -1204,6 +2283,152 @@ fn resolve_workbook_target_uri(target: &str) -> String {
     }
 }
 
+fn ensure_chart_xml_namespaces(root: &mut XmlNode) -> ChartXmlContext {
+    let chart_prefix = root
+        .namespace_prefix_for(NS_CHART)
+        .unwrap_or_else(|| prefix_from_qname(&root.qname).unwrap_or("c").to_string());
+    let drawing_prefix = root
+        .namespace_prefix_for(NS_DRAWING_MAIN)
+        .unwrap_or_else(|| "a".to_string());
+    if !chart_prefix.is_empty() {
+        root.ensure_namespace(&chart_prefix, NS_CHART);
+    }
+    if !drawing_prefix.is_empty() {
+        root.ensure_namespace(&drawing_prefix, NS_DRAWING_MAIN);
+    }
+    ChartXmlContext {
+        chart_prefix,
+        drawing_prefix,
+    }
+}
+
+impl ChartXmlContext {
+    fn c(&self, local: &str) -> String {
+        prefixed_qname(&self.chart_prefix, local)
+    }
+
+    fn a(&self, local: &str) -> String {
+        prefixed_qname(&self.drawing_prefix, local)
+    }
+}
+
+fn prefixed_qname(prefix: &str, local: &str) -> String {
+    if prefix.is_empty() {
+        local.to_string()
+    } else {
+        format!("{prefix}:{local}")
+    }
+}
+
+fn prefix_from_qname(qname: &str) -> Option<&str> {
+    qname.split_once(':').map(|(prefix, _)| prefix)
+}
+
+fn child_index(node: &XmlNode, name: &str) -> Option<usize> {
+    node.children.iter().position(|child| child.name == name)
+}
+
+fn ensure_child_index(parent: &mut XmlNode, name: &str, qname: String, order: &[&str]) -> usize {
+    if let Some(index) = child_index(parent, name) {
+        return index;
+    }
+    insert_child_in_order(parent, XmlNode::new(qname), order);
+    child_index(parent, name).expect("inserted child")
+}
+
+fn set_or_create_val_child(
+    parent: &mut XmlNode,
+    ctx: &ChartXmlContext,
+    name: &str,
+    value: &str,
+    order: &[&str],
+) {
+    if let Some(index) = child_index(parent, name) {
+        parent.children[index].set_attr("val", value);
+        return;
+    }
+    let mut child = XmlNode::new(ctx.c(name));
+    child.set_attr("val", value);
+    insert_child_in_order(parent, child, order);
+}
+
+fn insert_child_in_order(parent: &mut XmlNode, child: XmlNode, order: &[&str]) {
+    if let Some(child_rank) = order.iter().position(|name| *name == child.name)
+        && let Some(index) = parent.children.iter().position(|existing| {
+            order
+                .iter()
+                .position(|name| *name == existing.name)
+                .is_some_and(|rank| rank > child_rank)
+        })
+    {
+        parent.children.insert(index, child);
+        return;
+    }
+    parent.children.push(child);
+}
+
+fn first_descendant_mut<'a>(node: &'a mut XmlNode, name: &str) -> Option<&'a mut XmlNode> {
+    if node.name == name {
+        return Some(node);
+    }
+    for child in &mut node.children {
+        if let Some(found) = first_descendant_mut(child, name) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn series_node_paths(root: &XmlNode) -> Vec<(usize, usize)> {
+    let Some(plot_area) = first_descendant(root, "plotArea") else {
+        return Vec::new();
+    };
+    let mut paths = Vec::new();
+    for (chart_type_index, chart_type) in plot_area.children.iter().enumerate() {
+        if !chart_type.name.ends_with("Chart") {
+            continue;
+        }
+        for (series_index, series) in chart_type.children.iter().enumerate() {
+            if series.name == "ser" {
+                paths.push((chart_type_index, series_index));
+            }
+        }
+    }
+    paths
+}
+
+fn render_xml_document(root: &XmlNode) -> String {
+    let mut out = String::new();
+    render_xml_node(root, &mut out);
+    out
+}
+
+fn render_xml_node(node: &XmlNode, out: &mut String) {
+    out.push('<');
+    out.push_str(&node.qname);
+    for attr in &node.raw_attrs {
+        out.push(' ');
+        out.push_str(&attr.qname);
+        out.push_str("=\"");
+        out.push_str(&xml_attr_escape(&attr.value));
+        out.push('"');
+    }
+    if node.text.is_empty() && node.children.is_empty() {
+        out.push_str("/>");
+        return;
+    }
+    out.push('>');
+    if !node.text.is_empty() {
+        out.push_str(&xml_escape(&node.text));
+    }
+    for child in &node.children {
+        render_xml_node(child, out);
+    }
+    out.push_str("</");
+    out.push_str(&node.qname);
+    out.push('>');
+}
+
 fn parse_xml_node(xml: &str) -> CliResult<XmlNode> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(false);
@@ -1262,20 +2487,37 @@ fn attach_xml_node(
 }
 
 impl XmlNode {
-    fn from_start(e: &BytesStart<'_>) -> Self {
-        let attrs = e
-            .attributes()
-            .flatten()
-            .map(|attr| {
-                (
-                    local_name(attr.key.as_ref()).to_string(),
-                    decode_xml_text(attr.value.as_ref()),
-                )
-            })
-            .collect();
+    fn new(qname: String) -> Self {
         Self {
+            name: local_name(qname.as_bytes()).to_string(),
+            qname,
+            attrs: BTreeMap::new(),
+            raw_attrs: Vec::new(),
+            text: String::new(),
+            children: Vec::new(),
+        }
+    }
+
+    fn from_start(e: &BytesStart<'_>) -> Self {
+        let qname = String::from_utf8_lossy(e.name().as_ref()).to_string();
+        let mut attrs = BTreeMap::new();
+        let mut raw_attrs = Vec::new();
+        for attr in e.attributes().with_checks(false).flatten() {
+            let attr_qname = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+            let local = local_name(attr.key.as_ref()).to_string();
+            let value = decode_xml_text(attr.value.as_ref());
+            attrs.insert(local.clone(), value.clone());
+            raw_attrs.push(XmlAttr {
+                qname: attr_qname,
+                local,
+                value,
+            });
+        }
+        Self {
+            qname,
             name: local_name(e.name().as_ref()).to_string(),
             attrs,
+            raw_attrs,
             text: String::new(),
             children: Vec::new(),
         }
@@ -1283,6 +2525,52 @@ impl XmlNode {
 
     fn attr(&self, name: &str) -> Option<&str> {
         self.attrs.get(name).map(String::as_str)
+    }
+
+    fn set_attr(&mut self, name: &str, value: &str) {
+        let local = local_name(name.as_bytes()).to_string();
+        if let Some(attr) = self
+            .raw_attrs
+            .iter_mut()
+            .find(|attr| attr.qname == name || attr.local == local)
+        {
+            attr.value = value.to_string();
+        } else {
+            self.raw_attrs.push(XmlAttr {
+                qname: name.to_string(),
+                local: local.clone(),
+                value: value.to_string(),
+            });
+        }
+        self.attrs.insert(local, value.to_string());
+    }
+
+    fn ensure_namespace(&mut self, prefix: &str, uri: &str) {
+        if prefix.is_empty()
+            || self.raw_attrs.iter().any(|attr| {
+                attr.qname.starts_with("xmlns:")
+                    && attr.qname.trim_start_matches("xmlns:") == prefix
+                    && attr.value == uri
+            })
+        {
+            return;
+        }
+        self.set_attr(&format!("xmlns:{prefix}"), uri);
+    }
+
+    fn namespace_prefix_for(&self, uri: &str) -> Option<String> {
+        self.raw_attrs.iter().find_map(|attr| {
+            if attr.value != uri {
+                return None;
+            }
+            if attr.qname == "xmlns" {
+                Some(String::new())
+            } else {
+                attr.qname
+                    .strip_prefix("xmlns:")
+                    .map(|prefix| prefix.to_string())
+            }
+        })
     }
 }
 
@@ -1374,5 +2662,13 @@ fn insert_nonzero_i64(object: &mut Map<String, Value>, key: &str, value: i64) {
 fn insert_nonempty_array(object: &mut Map<String, Value>, key: &str, values: Vec<Value>) {
     if !values.is_empty() {
         object.insert(key.to_string(), Value::Array(values));
+    }
+}
+
+fn json_f64(value: f64) -> Value {
+    if value.is_finite() && value.fract() == 0.0 {
+        json!(value as i64)
+    } else {
+        json!(value)
     }
 }

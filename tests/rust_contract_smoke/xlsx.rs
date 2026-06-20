@@ -232,6 +232,302 @@ fn xlsx_charts_empty_and_errors_match_go_oracle() {
     ]);
 }
 
+#[test]
+fn xlsx_charts_style_mutations_match_go_oracle() {
+    let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
+    for args in [
+        vec![
+            "--json",
+            "xlsx",
+            "charts",
+            "set-title",
+            workbook,
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+            "--title",
+            "Styled Revenue",
+            "--font-family",
+            "Aptos",
+            "--font-size",
+            "14",
+            "--font-bold=true",
+            "--font-color",
+            "2255AA",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "charts",
+            "set-legend",
+            workbook,
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+            "--position",
+            "bottom",
+            "--overlay=false",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "charts",
+            "set-chart-area-fill",
+            workbook,
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+            "--fill-color",
+            "FFEEDD",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "charts",
+            "set-plot-area-fill",
+            workbook,
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+            "--fill-color",
+            "CCEEFF",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "charts",
+            "set-series-style",
+            workbook,
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+            "--series",
+            "1",
+            "--fill-color",
+            "FF8800",
+            "--line-color",
+            "114477",
+            "--line-width-pt",
+            "2",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "charts",
+            "set-series-style",
+            workbook,
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+            "--series",
+            "1",
+            "--marker-symbol",
+            "circle",
+            "--dry-run",
+        ],
+    ] {
+        assert_go_rust_match(&args);
+    }
+}
+
+#[test]
+fn xlsx_charts_style_saved_outputs_validate_and_read_back() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-chart-style-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let cases: Vec<(&str, Vec<&str>, Vec<&str>)> = vec![
+        (
+            "set-title",
+            vec![
+                "set-title",
+                "--sheet",
+                "Data",
+                "--chart",
+                "chart:1",
+                "--title",
+                "Styled Revenue",
+                "--font-family",
+                "Aptos",
+                "--font-size",
+                "14",
+                "--font-bold=true",
+                "--font-color",
+                "2255AA",
+            ],
+            vec!["Styled Revenue", "2255AA", "Aptos"],
+        ),
+        (
+            "set-legend",
+            vec![
+                "set-legend",
+                "--sheet",
+                "Data",
+                "--chart",
+                "chart:1",
+                "--position",
+                "bottom",
+                "--overlay=false",
+            ],
+            vec![r#"legendPos val="b""#, r#"overlay val="0""#],
+        ),
+        (
+            "set-chart-area-fill",
+            vec![
+                "set-chart-area-fill",
+                "--sheet",
+                "Data",
+                "--chart",
+                "chart:1",
+                "--fill-color",
+                "FFEEDD",
+            ],
+            vec!["FFEEDD"],
+        ),
+        (
+            "set-plot-area-fill",
+            vec![
+                "set-plot-area-fill",
+                "--sheet",
+                "Data",
+                "--chart",
+                "chart:1",
+                "--fill-color",
+                "CCEEFF",
+            ],
+            vec!["CCEEFF"],
+        ),
+        (
+            "set-series-style",
+            vec![
+                "set-series-style",
+                "--sheet",
+                "Data",
+                "--chart",
+                "chart:1",
+                "--series",
+                "1",
+                "--fill-color",
+                "FF8800",
+                "--line-color",
+                "114477",
+                "--line-width-pt",
+                "2",
+            ],
+            vec!["FF8800", "114477", r#"w="25400""#],
+        ),
+    ];
+
+    for (label, flags, xml_needles) in cases {
+        let go_in_path = temp_dir.join(format!("{label}-go-input.xlsx"));
+        let rust_in_path = temp_dir.join(format!("{label}-rust-input.xlsx"));
+        let go_out_path = temp_dir.join(format!("{label}-go-out.xlsx"));
+        let rust_out_path = temp_dir.join(format!("{label}-rust-out.xlsx"));
+        fs::copy("testdata/xlsx/chart-workbook/workbook.xlsx", &go_in_path).expect("go input");
+        fs::copy("testdata/xlsx/chart-workbook/workbook.xlsx", &rust_in_path).expect("rust input");
+
+        let go_in = go_in_path.to_string_lossy().to_string();
+        let rust_in = rust_in_path.to_string_lossy().to_string();
+        let go_out = go_out_path.to_string_lossy().to_string();
+        let rust_out = rust_out_path.to_string_lossy().to_string();
+
+        let mut go_args = vec![
+            "--json".to_string(),
+            "xlsx".to_string(),
+            "charts".to_string(),
+            flags[0].to_string(),
+            go_in.clone(),
+        ];
+        go_args.extend(flags.iter().skip(1).map(|value| value.to_string()));
+        go_args.extend(["--out".to_string(), go_out.clone()]);
+
+        let mut rust_args = vec![
+            "--json".to_string(),
+            "xlsx".to_string(),
+            "charts".to_string(),
+            flags[0].to_string(),
+            rust_in.clone(),
+        ];
+        rust_args.extend(flags.iter().skip(1).map(|value| value.to_string()));
+        rust_args.extend(["--out".to_string(), rust_out.clone()]);
+
+        let go_refs = go_args.iter().map(String::as_str).collect::<Vec<_>>();
+        let rust_refs = rust_args.iter().map(String::as_str).collect::<Vec<_>>();
+        let replacements = [
+            (go_in.as_str(), "[IN]"),
+            (rust_in.as_str(), "[IN]"),
+            (go_out.as_str(), "[OUT]"),
+            (rust_out.as_str(), "[OUT]"),
+        ];
+        assert_xlsx_structure_command_matches(label, &go_refs, &rust_refs, &replacements);
+        assert_xlsx_chart_style_valid_strict(&rust_out);
+
+        let show_go_args = [
+            "--json",
+            "xlsx",
+            "charts",
+            "show",
+            go_out.as_str(),
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+        ];
+        let show_rust_args = [
+            "--json",
+            "xlsx",
+            "charts",
+            "show",
+            rust_out.as_str(),
+            "--sheet",
+            "Data",
+            "--chart",
+            "chart:1",
+        ];
+        assert_xlsx_structure_command_matches(
+            &format!("{label} readback"),
+            &show_go_args,
+            &show_rust_args,
+            &[(go_out.as_str(), "[OUT]"), (rust_out.as_str(), "[OUT]")],
+        );
+
+        let chart_xml = read_zip_string(&rust_out_path, "xl/charts/chart1.xml");
+        for needle in xml_needles {
+            assert!(
+                chart_xml.contains(needle),
+                "{label} chart XML contains {needle}"
+            );
+        }
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn assert_xlsx_chart_style_valid_strict(path: &str) {
+    let (code, stdout, stderr) = run_ooxml(&["--json", "--strict", "validate", path]);
+    assert_eq!(code, 0, "strict validate exit for {path}");
+    assert_eq!(stderr, None, "strict validate stderr for {path}");
+    assert_eq!(
+        stdout.expect("strict validate stdout")["valid"],
+        Value::Bool(true),
+        "strict validate result for {path}"
+    );
+}
+
 fn assert_xlsx_structure_command_matches(
     label: &str,
     go_args: &[&str],

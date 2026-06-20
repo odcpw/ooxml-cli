@@ -12,15 +12,18 @@ use crate::xlsx_names::*;
 use crate::xlsx_ranges::*;
 use crate::xlsx_sheets::*;
 use crate::{
-    XlsxColWidthsSetOptions, XlsxColsDeleteOptions, XlsxColsInsertOptions, XlsxCommentsAddOptions,
-    XlsxCommentsRemoveOptions, XlsxCommentsUpdateOptions, XlsxDataValidationFields,
-    XlsxDataValidationMutationOptions, XlsxFiltersSortsAddColumnFilterOptions,
-    XlsxFiltersSortsClearAutoFilterOptions, XlsxFiltersSortsClearColumnFilterOptions,
-    XlsxFiltersSortsClearSortOptions, XlsxFiltersSortsSetAutoFilterOptions,
-    XlsxFiltersSortsSetSortOptions, XlsxHyperlinkAddOptions, XlsxHyperlinkDeleteOptions,
-    XlsxHyperlinkUpdateOptions, XlsxRowHeightsSetOptions, XlsxRowsDeleteOptions,
-    XlsxRowsInsertOptions, XlsxSheetsAddOptions, XlsxSheetsDeleteOptions, XlsxSheetsMoveOptions,
-    XlsxSheetsRenameOptions, xlsx_charts_list, xlsx_charts_show, xlsx_cols_delete,
+    XlsxChartSetFillOptions, XlsxChartSetLegendOptions, XlsxChartSetSeriesStyleOptions,
+    XlsxChartSetTitleOptions, XlsxColWidthsSetOptions, XlsxColsDeleteOptions,
+    XlsxColsInsertOptions, XlsxCommentsAddOptions, XlsxCommentsRemoveOptions,
+    XlsxCommentsUpdateOptions, XlsxDataValidationFields, XlsxDataValidationMutationOptions,
+    XlsxFiltersSortsAddColumnFilterOptions, XlsxFiltersSortsClearAutoFilterOptions,
+    XlsxFiltersSortsClearColumnFilterOptions, XlsxFiltersSortsClearSortOptions,
+    XlsxFiltersSortsSetAutoFilterOptions, XlsxFiltersSortsSetSortOptions, XlsxHyperlinkAddOptions,
+    XlsxHyperlinkDeleteOptions, XlsxHyperlinkUpdateOptions, XlsxRowHeightsSetOptions,
+    XlsxRowsDeleteOptions, XlsxRowsInsertOptions, XlsxSheetsAddOptions, XlsxSheetsDeleteOptions,
+    XlsxSheetsMoveOptions, XlsxSheetsRenameOptions, xlsx_charts_list,
+    xlsx_charts_set_chart_area_fill, xlsx_charts_set_legend, xlsx_charts_set_plot_area_fill,
+    xlsx_charts_set_series_style, xlsx_charts_set_title, xlsx_charts_show, xlsx_cols_delete,
     xlsx_cols_insert, xlsx_colwidths_set, xlsx_colwidths_show, xlsx_comments_add,
     xlsx_comments_list, xlsx_comments_remove, xlsx_comments_update, xlsx_data_validations_create,
     xlsx_data_validations_delete, xlsx_data_validations_list, xlsx_data_validations_show,
@@ -501,6 +504,194 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
             let sheet = parse_string_flag(rest, "--sheet")?;
             let chart = parse_string_flag(rest, "--chart")?;
             xlsx_charts_show(file, sheet.as_deref(), chart.as_deref())
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "charts" && verb == "set-title" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--chart",
+                    "--title",
+                    "--expect-title",
+                    "--font-family",
+                    "--font-size",
+                    "--font-color",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--font-bold",
+                    "--font-italic",
+                    "--dry-run",
+                    "--no-validate",
+                    "--in-place",
+                ],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let chart = parse_string_flag(rest, "--chart")?;
+            let title = parse_string_flag(rest, "--title")?
+                .ok_or_else(|| CliError::invalid_args("--title is required"))?;
+            let expect_title = parse_string_flag(rest, "--expect-title")?;
+            let font_family = parse_string_flag(rest, "--font-family")?;
+            let font_size = parse_f64_flag(rest, "--font-size")?;
+            let font_color = parse_string_flag(rest, "--font-color")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_charts_set_title(
+                file,
+                XlsxChartSetTitleOptions {
+                    sheet: sheet.as_deref(),
+                    chart: chart.as_deref(),
+                    title: &title,
+                    expect_title: expect_title.as_deref(),
+                    expect_title_present: value_flag_present(rest, "--expect-title"),
+                    font_family: font_family.as_deref(),
+                    font_size_pt: font_size,
+                    font_color: font_color.as_deref(),
+                    font_bold: parse_bool_flag(rest, "--font-bold")?,
+                    font_italic: parse_bool_flag(rest, "--font-italic")?,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "charts" && verb == "set-legend" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--chart",
+                    "--position",
+                    "--expect-position",
+                    "--out",
+                    "--backup",
+                ],
+                &["--overlay", "--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let chart = parse_string_flag(rest, "--chart")?;
+            let position = parse_string_flag(rest, "--position")?;
+            let expect_position = parse_string_flag(rest, "--expect-position")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_charts_set_legend(
+                file,
+                XlsxChartSetLegendOptions {
+                    sheet: sheet.as_deref(),
+                    chart: chart.as_deref(),
+                    position: position.as_deref(),
+                    position_present: value_flag_present(rest, "--position"),
+                    overlay: parse_bool_flag(rest, "--overlay")?,
+                    expect_position: expect_position.as_deref(),
+                    expect_position_present: value_flag_present(rest, "--expect-position"),
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx"
+                && group == "charts"
+                && (verb == "set-chart-area-fill" || verb == "set-plot-area-fill") =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--chart",
+                    "--fill-color",
+                    "--expect-fill",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let chart = parse_string_flag(rest, "--chart")?;
+            let fill_color = parse_string_flag(rest, "--fill-color")?.ok_or_else(|| {
+                CliError::invalid_args("--fill-color is required (a #RRGGBB color or none)")
+            })?;
+            let expect_fill = parse_string_flag(rest, "--expect-fill")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let options = XlsxChartSetFillOptions {
+                sheet: sheet.as_deref(),
+                chart: chart.as_deref(),
+                fill_color: &fill_color,
+                expect_fill: expect_fill.as_deref(),
+                expect_fill_present: value_flag_present(rest, "--expect-fill"),
+                out: out.as_deref(),
+                backup: backup.as_deref(),
+                dry_run: has_flag(rest, "--dry-run"),
+                no_validate: has_flag(rest, "--no-validate"),
+                in_place: has_flag(rest, "--in-place"),
+            };
+            if verb == "set-chart-area-fill" {
+                xlsx_charts_set_chart_area_fill(file, options)
+            } else {
+                xlsx_charts_set_plot_area_fill(file, options)
+            }
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "charts" && verb == "set-series-style" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--chart",
+                    "--series",
+                    "--fill-color",
+                    "--line-color",
+                    "--line-width-pt",
+                    "--marker-symbol",
+                    "--marker-size",
+                    "--expect-series-count",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let chart = parse_string_flag(rest, "--chart")?;
+            let series = parse_i64_flag(rest, "--series")?.unwrap_or(1);
+            let fill_color = parse_string_flag(rest, "--fill-color")?;
+            let line_color = parse_string_flag(rest, "--line-color")?;
+            let line_width_pt = parse_f64_flag(rest, "--line-width-pt")?;
+            let marker_symbol = parse_string_flag(rest, "--marker-symbol")?;
+            let marker_size = parse_i64_flag(rest, "--marker-size")?;
+            let expect_series_count = parse_i64_flag(rest, "--expect-series-count")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_charts_set_series_style(
+                file,
+                XlsxChartSetSeriesStyleOptions {
+                    sheet: sheet.as_deref(),
+                    chart: chart.as_deref(),
+                    series,
+                    fill_color: fill_color.as_deref(),
+                    line_color: line_color.as_deref(),
+                    line_width_pt,
+                    marker_symbol: marker_symbol.as_deref(),
+                    marker_size,
+                    expect_series_count,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
         }
         [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "comments" && verb == "list" =>
