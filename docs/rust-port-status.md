@@ -432,10 +432,17 @@ Latest milestone, 2026-06-20:
 - Proof after the latest de-monolithization slice: `cargo fmt --check`, `cargo
   check --all-targets`, targeted Go-oracle checks for `xlsx workbook metadata`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
-  all pass with 4 ZIP guard unit tests plus 78 Rust contract tests. A generated
+  all pass with 4 ZIP guard unit tests plus 79 Rust contract tests. A generated
   metadata-update XLSX passed `ooxml --json validate --strict`, Microsoft Open
   XML SDK validation (`Valid: true`, `ErrorCount: 0`), and desktop Excel COM
   open proof (`1 passed, 0 failed`).
+- The opaque Rust VBA package implementation split from `src/vba.rs` into
+  `src/vba/` child modules for model/spec data, package inspection, package XML
+  rewrites, mutation transactions, and JSON/readback rendering. This was a
+  behavior-preserving split: `cargo fmt --check`, `cargo check --all-targets`,
+  `cargo clippy --all-targets -- -D warnings`, focused VBA Go-oracle parity,
+  capability subset tests, and `cargo test --all-targets` all passed after the
+  move.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
