@@ -349,6 +349,11 @@ Latest milestone, 2026-06-20:
   `w14:paraId` stamping, and namespace helpers moved from `src/main.rs` into
   `src/docx_xml.rs`, while existing command modules keep importing through the
   crate facade.
+- DOCX table scaffold helpers moved from `src/docx_xml.rs` into
+  `src/docx_xml/table_scaffold.rs`, keeping
+  `ensure_docx_body_table_scaffolds_xml` and
+  `ensure_docx_table_scaffold_fragment` available through the same
+  `docx_xml` facade while leaving generic XML range walkers in place.
 - XLSX range export, JSON range rendering, data-out writing, data-format
   normalization, and range max-cell guards moved from `src/main.rs` into
   `src/xlsx_ranges.rs`.
