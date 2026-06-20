@@ -117,6 +117,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "image",
         "media",
         "table",
+        "pivot",
         "name",
         "data-validation",
         "hyperlink",
@@ -289,6 +290,28 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "table", "ooxml xlsx tables append-records");
     assert_object_kind_command(&all_caps, "range", "ooxml xlsx tables append-records");
     assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx tables append-records");
+    assert_object_kind_command(&all_caps, "table", "ooxml xlsx tables set-column-format");
+    assert_object_kind_command(&all_caps, "range", "ooxml xlsx tables set-column-format");
+    assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx tables set-column-format");
+    assert_object_kind_command(&all_caps, "style", "ooxml xlsx tables set-column-format");
+    assert_command_target_kind(&all_caps, "ooxml xlsx tables set-column-format", "table");
+    assert_command_target_kind(&all_caps, "ooxml xlsx tables set-column-format", "range");
+    assert_command_target_kind(&all_caps, "ooxml xlsx tables set-column-format", "sheet");
+    assert_command_target_kind(&all_caps, "ooxml xlsx tables set-column-format", "style");
+    for path in [
+        "ooxml xlsx pivots list",
+        "ooxml xlsx pivots show",
+        "ooxml xlsx pivots create",
+    ] {
+        assert_object_kind_command(&all_caps, "pivot", path);
+        assert_object_kind_command(&all_caps, "sheet", path);
+        assert_object_kind_command(&all_caps, "range", path);
+        assert_object_kind_command(&all_caps, "table", path);
+        assert_command_target_kind(&all_caps, path, "pivot");
+        assert_command_target_kind(&all_caps, path, "sheet");
+        assert_command_target_kind(&all_caps, path, "range");
+        assert_command_target_kind(&all_caps, path, "table");
+    }
     assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx colwidths show");
     assert_object_kind_command(&all_caps, "range", "ooxml xlsx colwidths show");
     assert_command_target_kind(&all_caps, "ooxml xlsx colwidths show", "sheet");
@@ -693,6 +716,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx tables export", false);
     assert_command(&xlsx_caps, "ooxml xlsx tables append-rows", true);
     assert_command(&xlsx_caps, "ooxml xlsx tables append-records", true);
+    assert_command(&xlsx_caps, "ooxml xlsx tables set-column-format", false);
+    assert_command(&xlsx_caps, "ooxml xlsx pivots list", false);
+    assert_command(&xlsx_caps, "ooxml xlsx pivots show", false);
+    assert_command(&xlsx_caps, "ooxml xlsx pivots create", false);
     assert_command(&xlsx_caps, "ooxml xlsx names list", false);
     assert_command(&xlsx_caps, "ooxml xlsx names show", false);
     assert_command(&xlsx_caps, "ooxml xlsx names add", true);
@@ -755,6 +782,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&range_caps, "ooxml xlsx ranges set-style", false);
     assert_command(&range_caps, "ooxml xlsx cells clear", false);
     assert_command(&range_caps, "ooxml xlsx cells set-batch", false);
+    assert_command(&range_caps, "ooxml xlsx tables set-column-format", false);
+    assert_command(&range_caps, "ooxml xlsx pivots create", false);
 
     let (cell_code, cell_stdout, cell_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "cell"]);
@@ -793,6 +822,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml xlsx tables export", false);
     assert_command(&table_caps, "ooxml xlsx tables append-rows", true);
     assert_command(&table_caps, "ooxml xlsx tables append-records", true);
+    assert_command(&table_caps, "ooxml xlsx tables set-column-format", false);
+    assert_command(&table_caps, "ooxml xlsx pivots list", false);
+    assert_command(&table_caps, "ooxml xlsx pivots show", false);
+    assert_command(&table_caps, "ooxml xlsx pivots create", false);
     assert_command(&table_caps, "ooxml docx tables set-cell", true);
     assert_command(&table_caps, "ooxml docx tables clear-cell", true);
     assert_command(&table_caps, "ooxml docx tables insert-row", true);
@@ -895,8 +928,19 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&style_caps, "ooxml xlsx charts set-series-style", false);
     assert_command(&style_caps, "ooxml xlsx charts copy-style", false);
     assert_command(&style_caps, "ooxml xlsx charts set-axis", false);
+    assert_command(&style_caps, "ooxml xlsx tables set-column-format", false);
     assert_no_command(&style_caps, "ooxml xlsx charts show");
     assert_no_command(&style_caps, "ooxml xlsx charts convert-type");
+
+    let (pivot_code, pivot_stdout, pivot_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "pivot"]);
+    assert_eq!(pivot_code, 0);
+    assert_eq!(pivot_stderr, None);
+    let pivot_caps = pivot_stdout.expect("pivot capabilities");
+    assert_command(&pivot_caps, "ooxml xlsx pivots list", false);
+    assert_command(&pivot_caps, "ooxml xlsx pivots show", false);
+    assert_command(&pivot_caps, "ooxml xlsx pivots create", false);
+    assert_no_command(&pivot_caps, "ooxml xlsx tables list");
 
     let (layout_code, layout_stdout, layout_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "layout"]);
@@ -1124,12 +1168,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        185,
+        189,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        105,
+        101,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

@@ -9,6 +9,21 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust XLSX pivot/table formatting parity landed for direct
+  `xlsx pivots list`, `xlsx pivots show`, `xlsx pivots create`, and
+  `xlsx tables set-column-format`. The slice reads pivot-table metadata,
+  creates pivot table/cache package parts against existing ranges, and promotes
+  table column formatting capability while preserving Go-shaped saved-output,
+  dry-run, readback, and error behavior. Rust capabilities now advertise 189
+  Go-oracle command paths, leaving a pinned 101-command gap; these commands are
+  direct CLI workbook/table leaves with `opCompatible=false` because serve/MCP
+  operation dispatch is not wired for pivot/table-format mutations yet. Proof:
+  focused Go-vs-Rust pivot/table/workbook tests; focused capability
+  ratchet/MCP command-resource tests; strict validation for generated pivot
+  proof workbooks; Open XML SDK Office2019 schema validation for generated
+  proof workbooks; Excel COM open oracle for generated proof workbooks; `cargo
+  fmt --check`; `cargo check --all-targets`; `cargo clippy --all-targets -- -D
+  warnings`; and `cargo test --all-targets`.
 - Rust PPTX chart remaining style/type leaf parity landed for direct
   `pptx charts set-axis`, `pptx charts convert-type`, and
   `pptx charts copy-style`. The slice edits chart axis

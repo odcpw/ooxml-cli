@@ -1702,6 +1702,131 @@ pub(super) fn commands() -> Vec<Value> {
     commands.extend(tables::commands());
     commands.extend(vec![
         capability_command(
+            "ooxml xlsx pivots list",
+            "list <file>",
+            "List workbook PivotTables, cache sources, selectors, and generated readback commands.",
+            &["pivot", "sheet", "range", "table"],
+            false,
+            Some("read-only command; call via inspect/list in direct CLI"),
+            vec![flag("--sheet", "sheet", "string", "sheet selector")],
+        ),
+        capability_command(
+            "ooxml xlsx pivots show",
+            "show <file>",
+            "Show one PivotTable with cache fields, source range, axis fields, and selectors.",
+            &["pivot", "sheet", "range", "table"],
+            false,
+            Some("read-only command; call via inspect/list in direct CLI"),
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag(
+                    "--pivot",
+                    "pivot",
+                    "string",
+                    "pivot selector from pivots list",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml xlsx pivots create",
+            "create <file>",
+            "Author a new PivotTable from a source table or worksheet range.",
+            &["pivot", "sheet", "range", "table"],
+            false,
+            Some("direct CLI mutation; serve/MCP operation dispatch is not wired for this command"),
+            vec![
+                flag(
+                    "--sheet",
+                    "sheet",
+                    "string",
+                    "source sheet selector for --range or table disambiguation",
+                ),
+                flag(
+                    "--range",
+                    "range",
+                    "string",
+                    "source A1 range with a header row",
+                ),
+                flag("--table", "table", "string", "source table selector"),
+                flag(
+                    "--target-sheet",
+                    "targetSheet",
+                    "string",
+                    "sheet to place the pivot on; defaults to the source sheet",
+                ),
+                flag(
+                    "--anchor",
+                    "anchor",
+                    "string",
+                    "top-left pivot anchor cell; defaults right of the source range",
+                ),
+                flag("--name", "name", "string", "pivot table name"),
+                flag(
+                    "--rows",
+                    "rows",
+                    "string",
+                    "comma-separated row field names",
+                ),
+                flag(
+                    "--cols",
+                    "cols",
+                    "string",
+                    "comma-separated column field names",
+                ),
+                flag(
+                    "--filters",
+                    "filters",
+                    "string",
+                    "comma-separated filter/page field names",
+                ),
+                flag(
+                    "--values",
+                    "values",
+                    "string",
+                    "comma-separated value field specs such as Amount or Amount:sum",
+                ),
+                flag(
+                    "--expect-source-range",
+                    "expectSourceRange",
+                    "string",
+                    "guard: require the resolved source range to match",
+                ),
+                flag(
+                    "--max-cells",
+                    "maxCells",
+                    "number",
+                    "maximum source cells to read",
+                ),
+                flag("--out", "out", "string", "write edited workbook"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "edit the workbook in place",
+                ),
+                flag(
+                    "--backup",
+                    "backup",
+                    "string",
+                    "backup file path for --in-place",
+                ),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "validate mutation without writing",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict validation",
+                ),
+            ],
+        ),
+    ]);
+    commands.extend(vec![
+        capability_command(
             "ooxml xlsx workbook metadata inspect",
             "inspect <file>",
             "Inspect workbook core/app properties and calc settings.",

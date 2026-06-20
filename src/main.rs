@@ -45,6 +45,7 @@ mod xlsx_metadata;
 mod xlsx_model;
 mod xlsx_mutation;
 mod xlsx_names;
+mod xlsx_pivots;
 mod xlsx_ranges;
 mod xlsx_sheet_lifecycle;
 mod xlsx_sheet_xml;
@@ -211,6 +212,9 @@ pub(crate) use xlsx_mutation::{
     validate_xlsx_mutation_output_flags, xlsx_cells_set, xlsx_ranges_set, xlsx_ranges_set_format,
 };
 pub(crate) use xlsx_names::{xlsx_names_list, xlsx_names_show};
+pub(crate) use xlsx_pivots::{
+    XlsxPivotsCreateOptions, xlsx_pivots_create, xlsx_pivots_list, xlsx_pivots_show,
+};
 pub(crate) use xlsx_ranges::{
     XlsxRangeExportOptions, check_range_max_cells, normalize_xlsx_ranges_set_data_format,
     require_json_data_format, xlsx_range_export_with_options,
