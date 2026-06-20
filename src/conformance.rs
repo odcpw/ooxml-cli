@@ -2,8 +2,8 @@ use serde_json::{Map, Value, json};
 
 use crate::cli_dispatch::{DispatchBody, DispatchOutput};
 use crate::{
-    CliError, CliResult, EXIT_SUCCESS, EXIT_VALIDATION_FAILED, GlobalFlags, has_flag, package_type,
-    reject_unknown_flags,
+    CliError, CliResult, EXIT_SUCCESS, EXIT_VALIDATION_FAILED, GlobalFlags, has_flag,
+    reject_unknown_flags, zip_bytes, zip_entry_names,
 };
 
 pub(crate) fn conformance(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {
@@ -91,21 +91,54 @@ fn check_report(
     office_check_out_dir: Option<&str>,
 ) -> CliResult<Value> {
     let mut checks = Vec::new();
+
+    let entries = match open_package_entries(file) {
+        Ok(entries) => entries,
+        Err(err) => {
+            checks.push(failed_wrapper_check(
+                "package-open",
+                "OOXML_OPEN_FAILED",
+                conformance_open_error_message(&err),
+            ));
+            return Ok(finish_report(file, "unknown", checks));
+        }
+    };
+
     checks.push(json!({"name": "package-open", "status": "passed"}));
-    let family = package_type(file)?;
+    let family = package_type_from_entries(&entries);
 
-    let validation_report = crate::validation::validate(file, false)?;
-    let validation_diagnostics = diagnostics_from_report(&validation_report);
-    checks.push(check_with_diagnostics(
-        "repo-validation",
-        validation_diagnostics,
-    ));
+    match crate::validation::validate(file, false) {
+        Ok(validation_report) => {
+            let validation_diagnostics = diagnostics_from_report(&validation_report);
+            checks.push(check_with_diagnostics(
+                "repo-validation",
+                validation_diagnostics,
+            ));
+        }
+        Err(err) => {
+            checks.push(failed_wrapper_check(
+                "repo-validation",
+                "OOXML_VALIDATE_FAILED",
+                err.message,
+            ));
+        }
+    }
 
-    let invariant_diagnostics = crate::conformance_invariants::check_repair_invariants(file)?;
-    checks.push(check_with_diagnostics(
-        "repair-invariants",
-        invariant_diagnostics,
-    ));
+    match crate::conformance_invariants::check_repair_invariants(file) {
+        Ok(invariant_diagnostics) => {
+            checks.push(check_with_diagnostics(
+                "repair-invariants",
+                invariant_diagnostics,
+            ));
+        }
+        Err(err) => {
+            checks.push(failed_wrapper_check(
+                "repair-invariants",
+                "OOXML_REPAIR_INVARIANT_FAILED",
+                err.message,
+            ));
+        }
+    }
 
     if run_office_check {
         checks.push(crate::conformance_office::conformance_office_open_check(
@@ -116,6 +149,33 @@ fn check_report(
     }
 
     Ok(finish_report(file, family, checks))
+}
+
+fn open_package_entries(file: &str) -> CliResult<Vec<String>> {
+    let entries = zip_entry_names(file)?;
+    for entry in entries.iter().filter(|entry| !entry.ends_with('/')) {
+        zip_bytes(file, entry)?;
+    }
+    Ok(entries)
+}
+
+fn package_type_from_entries(entries: &[String]) -> &'static str {
+    if entries.iter().any(|name| name == "ppt/presentation.xml") {
+        "pptx"
+    } else if entries.iter().any(|name| name == "xl/workbook.xml") {
+        "xlsx"
+    } else if entries.iter().any(|name| name == "word/document.xml") {
+        "docx"
+    } else {
+        "unknown"
+    }
+}
+
+fn conformance_open_error_message(err: &CliError) -> String {
+    if err.message.starts_with("invalid Zip archive") {
+        return "failed to read zip: zip: not a valid zip file".to_string();
+    }
+    err.message.clone()
 }
 
 fn optional_string_flag<'a>(args: &'a [String], name: &str) -> CliResult<Option<&'a str>> {
@@ -154,6 +214,18 @@ fn check_with_diagnostics(name: &str, diagnostics: Vec<Value>) -> Value {
         check.insert("diagnostics".to_string(), Value::Array(diagnostics));
     }
     Value::Object(check)
+}
+
+fn failed_wrapper_check(name: &str, code: &str, message: impl Into<String>) -> Value {
+    json!({
+        "name": name,
+        "status": "failed",
+        "diagnostics": [{
+            "code": code,
+            "severity": "error",
+            "message": message.into(),
+        }],
+    })
 }
 
 fn diagnostic_status(diagnostics: &[Value]) -> &'static str {

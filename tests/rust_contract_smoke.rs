@@ -1163,6 +1163,9 @@ mod conformance_table_pivot;
 #[path = "rust_contract_smoke/conformance_spreadsheet_semantics.rs"]
 mod conformance_spreadsheet_semantics;
 
+#[path = "rust_contract_smoke/conformance_wrapper_reports.rs"]
+mod conformance_wrapper_reports;
+
 #[path = "rust_contract_smoke/vba.rs"]
 mod vba;
 
