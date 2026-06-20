@@ -1,14 +1,41 @@
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
 use crate::{
-    CliError, CliResult, InspectPackageKind, attr, detect_inspect_package_type, local_name,
-    package_type, pptx_charts_list, pptx_masters_list, pptx_masters_show, reject_unknown_flags,
-    xlsx_charts_list, zip_entry_names, zip_text,
+    CliError, CliResult, InspectPackageKind, attr, copy_zip_with_part_overrides,
+    detect_inspect_package_type, has_flag, local_name, package_mutation_temp_path, package_type,
+    parse_string_flag, pptx_charts_list, pptx_masters_list, pptx_masters_show,
+    reject_unknown_flags, validate, validate_xlsx_mutation_output_flags, xlsx_charts_list,
+    xml_attr_escape, xml_direct_child_ranges, xml_fragment_bounds, xml_token_name, zip_entry_names,
+    zip_text,
 };
+
+const TEMPLATE_COLOR_ORDER: &[(&str, &str)] = &[
+    ("dk1", "dark1"),
+    ("lt1", "light1"),
+    ("dk2", "dark2"),
+    ("lt2", "light2"),
+    ("accent1", "accent1"),
+    ("accent2", "accent2"),
+    ("accent3", "accent3"),
+    ("accent4", "accent4"),
+    ("accent5", "accent5"),
+    ("accent6", "accent6"),
+    ("hlink", "hypLink"),
+    ("folHlink", "folLink"),
+];
+
+const DECORATIVE_TEMPLATE_KEYS: &[&str] = &[
+    "gradients",
+    "animations",
+    "3dFormats",
+    "conditionalFormats",
+    "transitions",
+];
 
 pub(crate) fn template_tokens(file: &str, args: &[String]) -> CliResult<Value> {
     reject_unknown_flags(args, &["--for"], &[])?;
@@ -56,6 +83,185 @@ pub(crate) fn template_profile_inspect(profile_path: &str) -> CliResult<Value> {
         .map_err(|err| CliError::unexpected(format!("failed to parse profile: {err}")))?;
     validate_profile(&profile)?;
     Ok(profile)
+}
+
+pub(crate) fn template_apply(file: &str, args: &[String]) -> CliResult<Value> {
+    reject_unknown_flags(
+        args,
+        &[
+            "--for",
+            "--from",
+            "--tokens",
+            "--profile",
+            "--out",
+            "--backup",
+        ],
+        &[
+            "--target-colors",
+            "--target-fonts",
+            "--target-charts",
+            "--target-text-styles",
+            "--target-ranges",
+            "--dry-run",
+            "--in-place",
+            "--no-validate",
+        ],
+    )?;
+    let target_kind = resolve_template_kind(
+        file,
+        parse_string_flag(args, "--for")?.as_deref(),
+        "template apply supports PPTX/POTX and XLSX/XLTX files",
+    )?;
+    let from = parse_string_flag(args, "--from")?;
+    let tokens_path = parse_string_flag(args, "--tokens")?;
+    let profile_path = parse_string_flag(args, "--profile")?;
+    let out = parse_string_flag(args, "--out")?;
+    let backup = parse_string_flag(args, "--backup")?;
+    let dry_run = has_flag(args, "--dry-run");
+    let in_place = has_flag(args, "--in-place");
+    let no_validate = has_flag(args, "--no-validate");
+    validate_xlsx_mutation_output_flags(out.as_deref(), in_place, backup.as_deref(), dry_run)?;
+
+    let source_count = [&from, &tokens_path, &profile_path]
+        .iter()
+        .filter(|value| value.as_deref().is_some_and(|path| !path.trim().is_empty()))
+        .count();
+    if source_count != 1 {
+        return Err(CliError::invalid_args(
+            "must specify exactly one of --from, --tokens, or --profile",
+        ));
+    }
+
+    let target_colors = has_flag(args, "--target-colors");
+    let target_fonts = has_flag(args, "--target-fonts");
+    let target_charts = has_flag(args, "--target-charts");
+    let target_text_styles = has_flag(args, "--target-text-styles");
+    let target_ranges = has_flag(args, "--target-ranges");
+    let explicit_targets =
+        target_colors || target_fonts || target_charts || target_text_styles || target_ranges;
+    let want_colors = if explicit_targets {
+        target_colors
+    } else {
+        true
+    };
+    let want_fonts = if explicit_targets { target_fonts } else { true };
+    if target_charts {
+        return Err(CliError::invalid_args(
+            "template apply --target-charts is not yet implemented in the Rust port",
+        ));
+    }
+    if target_text_styles {
+        return Err(CliError::invalid_args(
+            "template apply --target-text-styles is not yet implemented in the Rust port",
+        ));
+    }
+
+    let (tokens, profile_source, profile_name) = load_apply_tokens(
+        target_kind,
+        from.as_deref(),
+        tokens_path.as_deref(),
+        profile_path.as_deref(),
+    )?;
+    let colors = if want_colors {
+        theme_color_updates_from_tokens(&tokens, target_kind)?
+    } else {
+        Vec::new()
+    };
+    let fonts = if want_fonts {
+        theme_font_updates_from_tokens(&tokens, target_kind)
+    } else {
+        ThemeFontUpdates::default()
+    };
+
+    let mut applied_colors = Vec::<Value>::new();
+    let mut applied_font_parts = Vec::<Value>::new();
+    let mut skipped = Vec::<String>::new();
+    let mut overrides = BTreeMap::<String, String>::new();
+    if want_colors || want_fonts {
+        for part in template_theme_parts(file, target_kind)? {
+            let part_uri = format!("/{}", part.trim_start_matches('/'));
+            let xml = zip_text(file, &part)?;
+            let current_theme = parse_theme_xml(&xml).unwrap_or_else(|| json!({}));
+            let part_result =
+                apply_theme_updates_to_part(&xml, &part_uri, &current_theme, &colors, &fonts)?;
+            applied_colors.extend(part_result.applied_colors);
+            if let Some(font_part) = part_result.applied_font_part {
+                applied_font_parts.push(font_part);
+            }
+            skipped.extend(part_result.skipped);
+            if part_result.updated_xml != xml {
+                overrides.insert(part, part_result.updated_xml);
+            }
+        }
+    }
+
+    if target_ranges {
+        skipped.push(
+            "ranges: range/cell style transfer is not supported (no per-range style in the token model)"
+                .to_string(),
+        );
+    }
+
+    let total_updates = applied_colors.len() + applied_font_parts.len();
+    let ranges_only = explicit_targets
+        && target_ranges
+        && !target_colors
+        && !target_fonts
+        && !target_charts
+        && !target_text_styles;
+    let output_path = if !dry_run && !ranges_only {
+        let output = write_template_apply_output(
+            file,
+            out.as_deref(),
+            backup.as_deref(),
+            in_place,
+            no_validate,
+            &overrides,
+        )?;
+        Some(output)
+    } else {
+        None
+    };
+
+    let mut applied = Map::new();
+    applied.insert("colors".to_string(), Value::Array(applied_colors));
+    if !applied_font_parts.is_empty() {
+        let mut fonts_json = Map::new();
+        if let Some(major_font) = fonts.major_font.as_deref() {
+            fonts_json.insert("majorFont".to_string(), json!(major_font));
+        }
+        if let Some(minor_font) = fonts.minor_font.as_deref() {
+            fonts_json.insert("minorFont".to_string(), json!(minor_font));
+        }
+        applied.insert("fonts".to_string(), Value::Object(fonts_json));
+        applied.insert("fontParts".to_string(), Value::Array(applied_font_parts));
+    }
+    applied.insert("charts".to_string(), Value::Array(Vec::new()));
+    applied.insert("textStyles".to_string(), Value::Array(Vec::new()));
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    if let Some(output_path) = output_path {
+        result.insert("output".to_string(), json!(output_path));
+    }
+    result.insert("dryRun".to_string(), json!(dry_run));
+    result.insert("changed".to_string(), json!(total_updates > 0));
+    result.insert("targetType".to_string(), json!(target_kind));
+    result.insert("profileSource".to_string(), json!(profile_source));
+    if let Some(profile_name) = profile_name.filter(|value| !value.trim().is_empty()) {
+        result.insert("profileName".to_string(), json!(profile_name));
+    }
+    result.insert(
+        "schemaVersion".to_string(),
+        tokens
+            .get("schemaVersion")
+            .cloned()
+            .unwrap_or_else(|| json!("1.0")),
+    );
+    result.insert("applied".to_string(), Value::Object(applied));
+    result.insert("skipped".to_string(), json!(skipped));
+    result.insert("totalUpdates".to_string(), json!(total_updates));
+    Ok(Value::Object(result))
 }
 
 fn template_tokens_for_kind(file: &str, kind: &str) -> CliResult<Value> {
@@ -517,6 +723,619 @@ fn parse_theme_xml(xml: &str) -> Option<Value> {
         theme.insert("fontScheme".to_string(), Value::Object(font_scheme));
     }
     Some(Value::Object(theme))
+}
+
+#[derive(Default)]
+struct ThemeFontUpdates {
+    major_font: Option<String>,
+    minor_font: Option<String>,
+}
+
+struct ThemeColorUpdate {
+    ooxml_name: &'static str,
+    json_name: &'static str,
+    hex: String,
+}
+
+struct ThemePartApplyResult {
+    updated_xml: String,
+    applied_colors: Vec<Value>,
+    applied_font_part: Option<Value>,
+    skipped: Vec<String>,
+}
+
+fn load_apply_tokens(
+    target_kind: &str,
+    from: Option<&str>,
+    tokens_path: Option<&str>,
+    profile_path: Option<&str>,
+) -> CliResult<(Value, String, Option<String>)> {
+    if let Some(from) = from.filter(|value| !value.trim().is_empty()) {
+        let source_kind = resolve_template_kind(
+            from,
+            None,
+            "template apply --from supports PPTX/POTX and XLSX/XLTX files",
+        )?;
+        let tokens = template_tokens_for_kind(from, source_kind)?;
+        return Ok((tokens, from.to_string(), None));
+    }
+    if let Some(tokens_path) = tokens_path.filter(|value| !value.trim().is_empty()) {
+        let tokens = read_json_file(tokens_path, "tokens")?;
+        reject_decorative_apply_tokens(&tokens)?;
+        let profile_name = tokens
+            .get("source")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        return Ok((tokens, tokens_path.to_string(), profile_name));
+    }
+    if let Some(profile_path) = profile_path.filter(|value| !value.trim().is_empty()) {
+        let profile = template_profile_inspect(profile_path)?;
+        let profile_name = profile
+            .get("metadata")
+            .and_then(|metadata| metadata.get("name"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        let tokens = tokens_from_profile(&profile, target_kind);
+        return Ok((tokens, profile_path.to_string(), profile_name));
+    }
+    Err(CliError::invalid_args(
+        "must specify exactly one of --from, --tokens, or --profile",
+    ))
+}
+
+fn read_json_file(path: &str, label: &str) -> CliResult<Value> {
+    let text = fs::read_to_string(path).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            CliError::file_not_found(format!("file not found: {path}"))
+        } else {
+            CliError::unexpected(format!("failed to read {label}: {err}"))
+        }
+    })?;
+    serde_json::from_str(&text)
+        .map_err(|err| CliError::unexpected(format!("failed to parse {label}: {err}")))
+}
+
+fn reject_decorative_apply_tokens(tokens: &Value) -> CliResult<()> {
+    for key in DECORATIVE_TEMPLATE_KEYS {
+        if tokens.get(*key).is_some() {
+            return Err(CliError::invalid_args(format!(
+                "template apply cannot apply decorative token key {key:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn tokens_from_profile(profile: &Value, target_kind: &str) -> Value {
+    let mut target = Map::new();
+    if let Some(theme) = profile.get("design").and_then(|design| design.get("theme")) {
+        target.insert("theme".to_string(), theme.clone());
+    }
+    if target_kind == "pptx" {
+        target.insert(
+            "defaultTextStyles".to_string(),
+            profile
+                .get("design")
+                .and_then(|design| design.get("placeholders"))
+                .cloned()
+                .unwrap_or_else(|| Value::Array(Vec::new())),
+        );
+        target.insert("tableStyles".to_string(), Value::Array(Vec::new()));
+        target.insert("chartStyles".to_string(), Value::Array(Vec::new()));
+    } else {
+        target.insert("namedCellStyles".to_string(), Value::Array(Vec::new()));
+        target.insert("chartStyles".to_string(), Value::Array(Vec::new()));
+    }
+    let source = profile
+        .get("metadata")
+        .and_then(|metadata| metadata.get("sourceFile"))
+        .and_then(Value::as_str)
+        .unwrap_or("profile");
+    json!({
+        "schemaVersion": profile
+            .get("schemaVersion")
+            .cloned()
+            .unwrap_or_else(|| json!("1.0")),
+        "type": target_kind,
+        "source": source,
+        target_kind: Value::Object(target),
+    })
+}
+
+fn theme_color_updates_from_tokens(
+    tokens: &Value,
+    target_kind: &str,
+) -> CliResult<Vec<ThemeColorUpdate>> {
+    let Some(color_scheme) = tokens
+        .get(target_kind)
+        .and_then(|target| target.get("theme"))
+        .and_then(|theme| theme.get("colorScheme"))
+        .and_then(Value::as_object)
+    else {
+        return Ok(Vec::new());
+    };
+    let mut updates = Vec::new();
+    for (ooxml_name, json_name) in TEMPLATE_COLOR_ORDER {
+        let Some(hex) = color_scheme.get(*json_name).and_then(Value::as_str) else {
+            continue;
+        };
+        if !is_hex_color(hex) {
+            return Err(CliError::invalid_args(format!(
+                "invalid theme color {json_name}={hex:?}"
+            )));
+        }
+        updates.push(ThemeColorUpdate {
+            ooxml_name,
+            json_name,
+            hex: hex.to_ascii_uppercase(),
+        });
+    }
+    Ok(updates)
+}
+
+fn theme_font_updates_from_tokens(tokens: &Value, target_kind: &str) -> ThemeFontUpdates {
+    let font_scheme = tokens
+        .get(target_kind)
+        .and_then(|target| target.get("theme"))
+        .and_then(|theme| theme.get("fontScheme"));
+    ThemeFontUpdates {
+        major_font: font_scheme
+            .and_then(|fonts| fonts.get("majorFont"))
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(ToOwned::to_owned),
+        minor_font: font_scheme
+            .and_then(|fonts| fonts.get("minorFont"))
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(ToOwned::to_owned),
+    }
+}
+
+fn template_theme_parts(file: &str, target_kind: &str) -> CliResult<Vec<String>> {
+    let prefix = match target_kind {
+        "pptx" => "ppt/theme/",
+        "xlsx" => "xl/theme/",
+        other => {
+            return Err(CliError::unsupported_type(format!(
+                "template apply supports PPTX/POTX and XLSX/XLTX files (detected: {other})"
+            )));
+        }
+    };
+    let mut parts = zip_entry_names(file)?
+        .into_iter()
+        .filter(|entry| entry.starts_with(prefix) && entry.ends_with(".xml"))
+        .collect::<Vec<_>>();
+    parts.sort();
+    if parts.is_empty() {
+        return Err(CliError::unexpected(format!(
+            "no theme part found for {target_kind} package"
+        )));
+    }
+    Ok(parts)
+}
+
+fn apply_theme_updates_to_part(
+    xml: &str,
+    part_uri: &str,
+    current_theme: &Value,
+    colors: &[ThemeColorUpdate],
+    fonts: &ThemeFontUpdates,
+) -> CliResult<ThemePartApplyResult> {
+    let mut updated = xml.to_string();
+    let mut applied_colors = Vec::new();
+    let mut skipped = Vec::new();
+    let current_colors = current_theme.get("colorScheme").and_then(Value::as_object);
+    for color in colors {
+        let current = current_colors
+            .and_then(|scheme| scheme.get(color.json_name))
+            .and_then(Value::as_str);
+        if current.is_some_and(|value| value.eq_ignore_ascii_case(&color.hex)) {
+            skipped.push(format!(
+                "color {} in {part_uri}: already set to #{}",
+                color.ooxml_name, color.hex
+            ));
+            continue;
+        }
+        updated = update_theme_color(&updated, color.ooxml_name, &color.hex).map_err(|err| {
+            CliError::invalid_args(format!(
+                "failed to update theme color {} in {part_uri}: {err}",
+                color.ooxml_name
+            ))
+        })?;
+        applied_colors.push(json!({
+            "partUri": part_uri,
+            "colorName": color.ooxml_name,
+            "hexValue": color.hex,
+        }));
+    }
+
+    let current_fonts = current_theme.get("fontScheme").and_then(Value::as_object);
+    let major_current = current_fonts
+        .and_then(|scheme| scheme.get("majorFont"))
+        .and_then(Value::as_str);
+    let minor_current = current_fonts
+        .and_then(|scheme| scheme.get("minorFont"))
+        .and_then(Value::as_str);
+    let major_changed = fonts
+        .major_font
+        .as_deref()
+        .is_some_and(|font| major_current != Some(font));
+    let minor_changed = fonts
+        .minor_font
+        .as_deref()
+        .is_some_and(|font| minor_current != Some(font));
+    let font_part = if major_changed || minor_changed {
+        updated = update_theme_font(
+            &updated,
+            fonts.major_font.as_deref(),
+            fonts.minor_font.as_deref(),
+        )
+        .map_err(|err| {
+            CliError::invalid_args(format!("failed to update theme fonts in {part_uri}: {err}"))
+        })?;
+        let mut font_json = Map::new();
+        font_json.insert("partUri".to_string(), json!(part_uri));
+        if let Some(major_font) = fonts.major_font.as_deref() {
+            font_json.insert("majorFont".to_string(), json!(major_font));
+        }
+        if let Some(minor_font) = fonts.minor_font.as_deref() {
+            font_json.insert("minorFont".to_string(), json!(minor_font));
+        }
+        Some(Value::Object(font_json))
+    } else if fonts.major_font.is_some() || fonts.minor_font.is_some() {
+        skipped.push(format!("{part_uri}: fonts already up to date"));
+        None
+    } else {
+        None
+    };
+
+    Ok(ThemePartApplyResult {
+        updated_xml: updated,
+        applied_colors,
+        applied_font_part: font_part,
+        skipped,
+    })
+}
+
+fn write_template_apply_output(
+    file: &str,
+    out: Option<&str>,
+    backup: Option<&str>,
+    in_place: bool,
+    no_validate: bool,
+    overrides: &BTreeMap<String, String>,
+) -> CliResult<String> {
+    let output_path = out.filter(|value| !value.trim().is_empty());
+    let write_path = if in_place || output_path == Some(file) {
+        package_mutation_temp_path(file, "template-apply")
+    } else {
+        output_path
+            .ok_or_else(|| {
+                CliError::invalid_args(
+                    "must specify exactly one of --out, --in-place, or --dry-run",
+                )
+            })?
+            .to_string()
+    };
+    copy_zip_with_part_overrides(file, &write_path, overrides)?;
+    if !no_validate {
+        validate(&write_path, true)?;
+    }
+    if in_place || output_path == Some(file) {
+        if let Some(backup_path) = backup.filter(|value| !value.trim().is_empty()) {
+            fs::copy(file, backup_path)
+                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
+        }
+        fs::rename(&write_path, file)
+            .or_else(|_| {
+                fs::copy(&write_path, file)?;
+                fs::remove_file(&write_path)
+            })
+            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+        Ok(file.to_string())
+    } else {
+        Ok(write_path)
+    }
+}
+
+fn update_theme_color(xml: &str, color_name: &str, hex: &str) -> Result<String, String> {
+    let theme_elements =
+        first_element_span(xml, "themeElements", 0, xml.len()).ok_or("themeElements not found")?;
+    let color_scheme = first_element_span(xml, "clrScheme", theme_elements.0, theme_elements.1)
+        .ok_or("clrScheme not found")?;
+    let color_span = first_element_span(xml, color_name, color_scheme.0, color_scheme.1)
+        .ok_or_else(|| format!("theme color {color_name} not found"))?;
+    let color_xml = &xml[color_span.0..color_span.1];
+    let updated_color = rewrite_theme_color_element(color_xml, hex)?;
+    Ok(replace_span(
+        xml,
+        color_span.0,
+        color_span.1,
+        &updated_color,
+    ))
+}
+
+fn rewrite_theme_color_element(color_xml: &str, hex: &str) -> Result<String, String> {
+    let (open_end, tag_name, close_start, self_closing) =
+        xml_fragment_bounds(color_xml).map_err(|err| err.message)?;
+    let prefix = tag_prefix(&tag_name);
+    let srgb_tag = qualified_name(&prefix, "srgbClr");
+    let srgb = format!("<{srgb_tag} val=\"{}\"/>", xml_attr_escape(hex));
+    if self_closing {
+        let open_tag = xml_open_tag(color_xml, open_end);
+        return Ok(format!("{open_tag}{srgb}</{tag_name}>"));
+    }
+    let children =
+        xml_direct_child_ranges(color_xml, open_end + 1, close_start).map_err(|err| err.message)?;
+    let mut out = String::new();
+    out.push_str(&color_xml[..=open_end]);
+    for child in children {
+        if child.kind != "srgbClr" && child.kind != "sysClr" {
+            out.push_str(&color_xml[child.start..child.end]);
+        }
+    }
+    out.push_str(&srgb);
+    out.push_str(&color_xml[close_start..]);
+    Ok(out)
+}
+
+fn update_theme_font(
+    xml: &str,
+    major_font: Option<&str>,
+    minor_font: Option<&str>,
+) -> Result<String, String> {
+    let theme_elements =
+        first_element_span(xml, "themeElements", 0, xml.len()).ok_or("themeElements not found")?;
+    let font_scheme = first_element_span(xml, "fontScheme", theme_elements.0, theme_elements.1)
+        .ok_or("fontScheme not found")?;
+    let mut updated = xml.to_string();
+    if let Some(major_font) = major_font {
+        updated = set_theme_latin_font(&updated, font_scheme, "majorFont", major_font)?;
+    }
+    if let Some(minor_font) = minor_font {
+        updated = set_theme_latin_font(&updated, font_scheme, "minorFont", minor_font)?;
+    }
+    Ok(updated)
+}
+
+fn set_theme_latin_font(
+    xml: &str,
+    font_scheme_span: (usize, usize),
+    font_kind: &str,
+    typeface: &str,
+) -> Result<String, String> {
+    let font_span = first_element_span(xml, font_kind, font_scheme_span.0, font_scheme_span.1)
+        .ok_or_else(|| format!("{font_kind} element not found"))?;
+    let font_xml = &xml[font_span.0..font_span.1];
+    let (open_end, tag_name, close_start, self_closing) =
+        xml_fragment_bounds(font_xml).map_err(|err| err.message)?;
+    if self_closing {
+        return Err(format!("{font_kind} element is self-closing"));
+    }
+    let prefix = tag_prefix(&tag_name);
+    let children =
+        xml_direct_child_ranges(font_xml, open_end + 1, close_start).map_err(|err| err.message)?;
+    let updated_font = if let Some(latin) = children.iter().find(|child| child.kind == "latin") {
+        set_attr_on_element(font_xml, latin.start, "typeface", typeface)
+            .map_err(|err| err.message)?
+    } else {
+        let latin = format!(
+            "<{} typeface=\"{}\"/>",
+            qualified_name(&prefix, "latin"),
+            xml_attr_escape(typeface)
+        );
+        insert_at_index(font_xml, open_end + 1, &latin)
+    };
+    Ok(replace_span(xml, font_span.0, font_span.1, &updated_font))
+}
+
+fn first_element_span(
+    xml: &str,
+    wanted: &str,
+    range_start: usize,
+    range_end: usize,
+) -> Option<(usize, usize)> {
+    let mut cursor = range_start;
+    while cursor < range_end {
+        let relative_start = xml[cursor..range_end].find('<')?;
+        let tag_start = cursor + relative_start;
+        let relative_end = xml[tag_start..range_end].find('>')?;
+        let tag_end = tag_start + relative_end;
+        let token = xml[tag_start + 1..tag_end].trim_start();
+        if token.starts_with('/') || token.starts_with('?') || token.starts_with('!') {
+            cursor = tag_end + 1;
+            continue;
+        }
+        let name = xml_token_name(token)?;
+        let self_closing = token.trim_end().ends_with('/');
+        if local_name(name.as_bytes()) == wanted {
+            if self_closing {
+                return Some((tag_start, tag_end + 1));
+            }
+            return find_matching_element_end(xml, wanted, tag_end + 1, range_end)
+                .map(|end| (tag_start, end));
+        }
+        cursor = tag_end + 1;
+    }
+    None
+}
+
+fn find_matching_element_end(
+    xml: &str,
+    wanted: &str,
+    range_start: usize,
+    range_end: usize,
+) -> Option<usize> {
+    let mut depth = 1usize;
+    let mut cursor = range_start;
+    while cursor < range_end {
+        let relative_start = xml[cursor..range_end].find('<')?;
+        let tag_start = cursor + relative_start;
+        let relative_end = xml[tag_start..range_end].find('>')?;
+        let tag_end = tag_start + relative_end;
+        let token = xml[tag_start + 1..tag_end].trim_start();
+        if token.starts_with('?') || token.starts_with('!') {
+            cursor = tag_end + 1;
+            continue;
+        }
+        if let Some(name) = xml_token_name(token)
+            && local_name(name.as_bytes()) == wanted
+        {
+            if token.starts_with('/') {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(tag_end + 1);
+                }
+            } else if !token.trim_end().ends_with('/') {
+                depth += 1;
+            }
+        }
+        cursor = tag_end + 1;
+    }
+    None
+}
+
+fn set_attr_on_element(
+    xml: &str,
+    element_start: usize,
+    attr_name: &str,
+    value: &str,
+) -> CliResult<String> {
+    let tag_end = xml[element_start..]
+        .find('>')
+        .map(|offset| element_start + offset + 1)
+        .ok_or_else(|| CliError::unexpected("invalid XML start tag"))?;
+    let start_tag = &xml[element_start..tag_end];
+    let replacement = set_attr_on_start_tag(start_tag, attr_name, value)?;
+    Ok(replace_span(xml, element_start, tag_end, &replacement))
+}
+
+fn set_attr_on_start_tag(start_tag: &str, attr_name: &str, value: &str) -> CliResult<String> {
+    let Some(open_end) = start_tag.find('>') else {
+        return Err(CliError::unexpected("invalid XML start tag"));
+    };
+    let Some(token_name) = xml_token_name(&start_tag[1..open_end]) else {
+        return Err(CliError::unexpected("invalid XML start tag"));
+    };
+    let mut cursor = 1 + token_name.len();
+    while cursor < open_end {
+        while cursor < open_end && start_tag.as_bytes()[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= open_end || start_tag.as_bytes()[cursor] == b'/' {
+            break;
+        }
+        let name_start = cursor;
+        while cursor < open_end {
+            let byte = start_tag.as_bytes()[cursor];
+            if byte == b'=' || byte.is_ascii_whitespace() || byte == b'/' {
+                break;
+            }
+            cursor += 1;
+        }
+        let name_end = cursor;
+        while cursor < open_end && start_tag.as_bytes()[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= open_end || start_tag.as_bytes()[cursor] != b'=' {
+            continue;
+        }
+        cursor += 1;
+        while cursor < open_end && start_tag.as_bytes()[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= open_end {
+            break;
+        }
+        let quote = start_tag.as_bytes()[cursor];
+        if quote != b'"' && quote != b'\'' {
+            continue;
+        }
+        cursor += 1;
+        let value_start = cursor;
+        while cursor < open_end && start_tag.as_bytes()[cursor] != quote {
+            cursor += 1;
+        }
+        if cursor >= open_end {
+            break;
+        }
+        let value_end = cursor;
+        cursor += 1;
+        let existing_name = &start_tag[name_start..name_end];
+        if local_name(existing_name.as_bytes()) == attr_name {
+            if &start_tag[value_start..value_end] == value {
+                return Ok(start_tag.to_string());
+            }
+            let mut out = String::with_capacity(start_tag.len() + value.len());
+            out.push_str(&start_tag[..value_start]);
+            out.push_str(&xml_attr_escape(value));
+            out.push_str(&start_tag[value_end..]);
+            return Ok(out);
+        }
+    }
+
+    let insert_at = if start_tag[..open_end].trim_end().ends_with('/') {
+        start_tag[..open_end]
+            .rfind('/')
+            .ok_or_else(|| CliError::unexpected("invalid XML start tag"))?
+    } else {
+        open_end
+    };
+    let mut out = String::with_capacity(start_tag.len() + attr_name.len() + value.len() + 4);
+    out.push_str(&start_tag[..insert_at]);
+    out.push(' ');
+    out.push_str(attr_name);
+    out.push_str("=\"");
+    out.push_str(&xml_attr_escape(value));
+    out.push('"');
+    out.push_str(&start_tag[insert_at..]);
+    Ok(out)
+}
+
+fn xml_open_tag(fragment: &str, open_end: usize) -> String {
+    let start_tag = &fragment[..=open_end];
+    if !start_tag.trim_end().ends_with("/>") {
+        return start_tag.to_string();
+    }
+    let slash = start_tag
+        .rfind('/')
+        .unwrap_or_else(|| start_tag.len().saturating_sub(1));
+    let mut out = String::new();
+    out.push_str(&start_tag[..slash]);
+    out.push('>');
+    out
+}
+
+fn replace_span(xml: &str, start: usize, end: usize, replacement: &str) -> String {
+    let mut out = String::with_capacity(xml.len() - (end - start) + replacement.len());
+    out.push_str(&xml[..start]);
+    out.push_str(replacement);
+    out.push_str(&xml[end..]);
+    out
+}
+
+fn insert_at_index(xml: &str, index: usize, insertion: &str) -> String {
+    let mut out = String::with_capacity(xml.len() + insertion.len());
+    out.push_str(&xml[..index]);
+    out.push_str(insertion);
+    out.push_str(&xml[index..]);
+    out
+}
+
+fn tag_prefix(tag_name: &str) -> String {
+    tag_name
+        .split_once(':')
+        .map(|(prefix, _)| prefix.to_string())
+        .unwrap_or_default()
+}
+
+fn qualified_name(prefix: &str, local: &str) -> String {
+    if prefix.is_empty() {
+        local.to_string()
+    } else {
+        format!("{prefix}:{local}")
+    }
 }
 
 fn insert_theme_color(color_scheme: &mut Map<String, Value>, key: &str, value: String) {

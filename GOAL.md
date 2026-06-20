@@ -37,13 +37,15 @@ history.
   - `cargo check --all-targets` passed.
   - `cargo fmt --check` passed.
   - `cargo clippy --all-targets -- -D warnings` passed.
-  - `cargo test --all-targets` passed with 4 unit tests and 195 Rust contract
-    tests after the `pptx xlsx-bindings apply` integration.
+  - `cargo test --all-targets` passed with 4 unit tests and 203 Rust contract
+    tests after the template leaf integration.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
   - Current capability ratchet: Go advertises 290 command paths, Rust
-    advertises 232, leaving 58 unported paths after the `pptx xlsx-bindings
-    apply` integration.
+    advertises 288, leaving 2 unported paths after the template leaf
+    integration: `ooxml conformance check` and `ooxml pptx diff`.
+  - Open XML SDK validation and desktop PowerPoint COM open proof passed for the
+    generated `template apply` and `pptx template compile` decks.
 
 ## Definition of Done
 

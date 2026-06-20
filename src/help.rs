@@ -18,6 +18,18 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
         &[],
     ),
     (
+        &["template"],
+        "Extract and apply design tokens across PPTX/XLSX templates.",
+        "Cross-family design-token commands.",
+        &[],
+    ),
+    (
+        &["template", "profile"],
+        "Save and inspect portable design profiles.",
+        "Portable, versioned design profiles.",
+        &[],
+    ),
+    (
         &["conformance"],
         "Show Rust-supported conformance reports.",
         "Rust currently exposes static conformance coverage. Go's repair-invariant `conformance check` is intentionally unported until Rust can reproduce it without wrapping validation as a placeholder.",
@@ -157,8 +169,8 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
     ),
     (
         &["pptx", "template"],
-        "Inspect PPTX template manifests.",
-        "Only template inspect is implemented in Rust today.",
+        "Work with template manifests and compilation.",
+        "Commands for capturing, inspecting, and compiling presentations from template manifests.",
         &[],
     ),
     (

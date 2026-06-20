@@ -9,6 +9,21 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust template leaf parity landed for the useful, proofed portions of
+  `template apply`, `template profile`, and `pptx template compile`. The slice
+  advertises `template`, `template profile`, and `pptx template` as Go-matching
+  parent groups with `opCompatible=false`; implements `template apply` theme
+  color/font transfer for PPTX/XLSX with Go-shaped dry-run, saved-output,
+  ranges-skip, validation, and error envelopes; and implements `pptx template
+  compile` for the proven manifest/spec text and bullets workflow with strict
+  PPTX validation and readback proof. Rust capabilities now advertise 288
+  Go-oracle command paths, leaving a pinned 2-command gap. Proof: focused
+  Go-vs-Rust template contract tests for parent help behavior, apply dry-run,
+  saved output, ranges skip, missing-flag errors, and compile output/readback;
+  focused capability ratchet tests; strict OOXML validation for generated Rust
+  PPTX outputs; Open XML SDK validation and desktop PowerPoint COM open proof
+  for the generated template-apply and template-compile decks; plus the lane
+  fmt/clippy checks.
 - Rust `pptx xlsx-bindings apply` parity landed as the real executable binding
   workflow leaf. The slice reuses the existing Rust binding planner and PPTX
   mutation leaves, preserves Go-shaped saved-output, dry-run, readback,
@@ -38,10 +53,11 @@ Latest milestone, 2026-06-20:
 - Rust template/binding workflow parity landed for bounded read-only and
   artifact-producing leaves: `template tokens`, `template profile save`,
   `template profile inspect`, `pptx template capture`, and `pptx
-  xlsx-bindings plan`. The slice classifies `template`, `template profile`,
-  `pptx template`, and `pptx xlsx-bindings` as parent groups, keeps `pptx
-  template compile` and `template apply` unadvertised until their mutation
-  behavior is fully proofed, and preserves Go-shaped token/profile JSON plus
+  xlsx-bindings plan`. At that milestone the slice classified `template`,
+  `template profile`, `pptx template`, and `pptx xlsx-bindings` as parent
+  groups, kept `pptx template compile` and `template apply` unadvertised until
+  their mutation behavior was proofed later, and preserved Go-shaped
+  token/profile JSON plus
   mixed binding plan JSON for text/bounds rows. Rust capabilities advertised
   227 Go-oracle command paths at this milestone, leaving a pinned 63-command
   gap. Proof: focused Go-vs-Rust contract tests for

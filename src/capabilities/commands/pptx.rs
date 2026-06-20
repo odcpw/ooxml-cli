@@ -335,12 +335,21 @@ pub(super) fn commands() -> Vec<Value> {
             vec![],
         ),
         capability_command(
+            "ooxml pptx template",
+            "template",
+            "Work with template manifests and compilation.",
+            &[],
+            false,
+            Some("it is a command group, not a leaf mutation command"),
+            vec![],
+        ),
+        capability_command(
             "ooxml pptx template inspect",
             "inspect <manifest-file>",
             "Inspect a captured template manifest.",
             &["template"],
             false,
-            Some("read-only command; PPTX template compile is not ported yet"),
+            Some("read-only command; call the compile leaf for generation"),
             vec![flag(
                 "--format",
                 "format",
@@ -354,7 +363,7 @@ pub(super) fn commands() -> Vec<Value> {
             "Capture a PPTX/POTX deck into a template manifest.",
             &["template", "slide", "shape"],
             false,
-            Some("read-only manifest extraction; PPTX template compile is not ported yet"),
+            Some("read-only manifest extraction"),
             vec![
                 flag("--author", "author", "string", "template author"),
                 flag(
@@ -388,6 +397,35 @@ pub(super) fn commands() -> Vec<Value> {
                     "string",
                     "semantic template version, e.g. 1.0.0",
                 ),
+            ],
+        ),
+        capability_command(
+            "ooxml pptx template compile",
+            "compile <manifest> <spec> --archetype <pptx> --out <pptx>",
+            "Compile a presentation from a template manifest and specification.",
+            &["template", "slide", "shape"],
+            false,
+            Some("it does not accept the mutation output flags injected by the op engine"),
+            vec![
+                flag(
+                    "--archetype",
+                    "archetype",
+                    "string",
+                    "path to archetype PPTX file",
+                ),
+                flag(
+                    "--continue-on-error",
+                    "continueOnError",
+                    "bool",
+                    "continue compilation even if individual slots fail",
+                ),
+                flag(
+                    "--image-base-dir",
+                    "imageBaseDir",
+                    "string",
+                    "base directory for relative image paths in spec",
+                ),
+                flag("--out", "out", "string", "output PPTX file path"),
             ],
         ),
         capability_command(

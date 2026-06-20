@@ -72,7 +72,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml help", false);
     assert_command(&all_caps, "ooxml apply", false);
     assert_command(&all_caps, "ooxml diff", false);
+    assert_command(&all_caps, "ooxml template", false);
+    assert_command(&all_caps, "ooxml template apply", true);
     assert_command(&all_caps, "ooxml template tokens", false);
+    assert_command(&all_caps, "ooxml template profile", false);
     assert_command(&all_caps, "ooxml template profile save", false);
     assert_command(&all_caps, "ooxml template profile inspect", false);
     assert_command(&all_caps, "ooxml serve", false);
@@ -95,8 +98,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx clone-slide", false);
     assert_command(&all_caps, "ooxml pptx new-slide-from-layout", false);
     assert_command(&all_caps, "ooxml pptx validate-layout", false);
+    assert_command(&all_caps, "ooxml pptx template", false);
     assert_command(&all_caps, "ooxml pptx template inspect", false);
     assert_command(&all_caps, "ooxml pptx template capture", false);
+    assert_command(&all_caps, "ooxml pptx template compile", false);
     assert_command(&all_caps, "ooxml pptx xlsx-bindings plan", false);
     assert_command(&all_caps, "ooxml pptx xlsx-bindings apply", false);
     assert_command(&all_caps, "ooxml pptx notes show", false);
@@ -758,7 +763,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx slides import-slide", false);
     assert_command(&pptx_caps, "ooxml pptx slides merge", false);
     assert_command(&pptx_caps, "ooxml pptx validate-layout", false);
+    assert_command(&pptx_caps, "ooxml pptx template", false);
     assert_command(&pptx_caps, "ooxml pptx template inspect", false);
+    assert_command(&pptx_caps, "ooxml pptx template capture", false);
+    assert_command(&pptx_caps, "ooxml pptx template compile", false);
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
     assert_command(&pptx_caps, "ooxml pptx shapes get", false);
     assert_command(&pptx_caps, "ooxml pptx add-textbox", false);
@@ -827,13 +835,17 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(template_stderr, None);
     let template_caps = template_stdout.expect("template capabilities");
     assert_command(&template_caps, "ooxml template tokens", false);
+    assert_command(&template_caps, "ooxml template", false);
+    assert_command(&template_caps, "ooxml template apply", true);
+    assert_command(&template_caps, "ooxml template profile", false);
     assert_command(&template_caps, "ooxml template profile save", false);
     assert_command(&template_caps, "ooxml template profile inspect", false);
+    assert_command(&template_caps, "ooxml pptx template", false);
     assert_command(&template_caps, "ooxml pptx template inspect", false);
     assert_command(&template_caps, "ooxml pptx template capture", false);
+    assert_command(&template_caps, "ooxml pptx template compile", false);
     assert_command(&template_caps, "ooxml pptx xlsx-bindings plan", false);
     assert_command(&template_caps, "ooxml pptx xlsx-bindings apply", false);
-    assert_no_command(&template_caps, "ooxml template apply");
 
     let (package_code, package_stdout, package_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "package"]);
@@ -841,6 +853,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(package_stderr, None);
     let package_caps = package_stdout.expect("package capabilities");
     assert_command(&package_caps, "ooxml diff", false);
+    assert_command(&package_caps, "ooxml template apply", true);
     assert_no_command(&package_caps, "ooxml docx blocks");
 
     let (xlsx_code, xlsx_stdout, xlsx_stderr) =
@@ -1542,12 +1555,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        284,
+        288,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        6,
+        2,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

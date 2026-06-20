@@ -170,7 +170,9 @@ pub(crate) use pptx_readback::{
     pptx_masters_list, pptx_masters_show, pptx_notes_show, pptx_shapes_show, pptx_slide_selectors,
     pptx_slide_show, pptx_slides_list, pptx_tables_show,
 };
-pub(crate) use pptx_template::{pptx_template_capture, pptx_template_inspect};
+pub(crate) use pptx_template::{
+    pptx_template_capture, pptx_template_compile, pptx_template_inspect,
+};
 pub(crate) use pptx_translate::{pptx_translate_apply, pptx_translate_export};
 pub(crate) use pptx_xlsx_bindings::{pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan};
 pub(crate) use runtime_util::{
@@ -180,7 +182,7 @@ pub(crate) use runtime_util::{
 pub(crate) use selector_util::{add_selector, selector_candidates};
 pub(crate) use serve::{ServeState, run_serve_stdio};
 pub(crate) use template_workflow::{
-    template_profile_inspect, template_profile_save, template_tokens,
+    template_apply, template_profile_inspect, template_profile_save, template_tokens,
 };
 pub(crate) use validation::{validate, validate_exit_code};
 pub(crate) use xlsx_charts::{
