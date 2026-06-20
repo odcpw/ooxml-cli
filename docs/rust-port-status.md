@@ -264,6 +264,10 @@ Latest milestone, 2026-06-20:
   `src/docx_headers/parts.rs`, preserving the existing crate-facing
   `docx_header_footer_part_uris` facade while keeping the relationship
   reference helper private to the child module.
+- DOCX header/footer paragraph extraction and JSON rendering moved from
+  `src/docx_headers.rs` into `src/docx_headers/paragraphs.rs`, leaving the
+  facade responsible for list/show/set-text orchestration while preserving the
+  direct DOCX and serve header/footer contract coverage.
 - DOCX table show/set-cell/clear-cell commands, table summary rendering,
   table-cell XML rewrites, and table readback command generation moved from
   `src/main.rs` into `src/docx_tables.rs`.
