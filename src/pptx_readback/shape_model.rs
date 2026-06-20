@@ -170,7 +170,11 @@ pub(super) fn pptx_selector_targets_from_shapes(shapes: &[Shape]) -> Vec<Value> 
                 let mut inferred = Map::new();
                 inferred.insert("key".to_string(), json!("body"));
                 inferred.insert("role".to_string(), json!("body"));
-                inferred.insert("typeSource".to_string(), json!("name"));
+                if let Some(index) = shape.placeholder.as_ref().and_then(|ph| ph.index) {
+                    inferred.insert("index".to_string(), json!(index));
+                }
+                inferred.insert("resolvedType".to_string(), json!("body"));
+                inferred.insert("typeSource".to_string(), json!("master"));
                 placeholder = Some(inferred);
             }
             let placeholder_key = placeholder

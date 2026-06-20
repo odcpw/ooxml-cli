@@ -312,6 +312,34 @@ pub(crate) fn pptx_shapes_show(
     Ok(Value::Object(output))
 }
 
+pub(crate) fn pptx_shapes_get(
+    file: &str,
+    slide: u32,
+    target: &str,
+    include_text: bool,
+    include_bounds: bool,
+) -> CliResult<Value> {
+    if target.trim().is_empty() {
+        return Err(CliError::invalid_args("--target is required"));
+    }
+    let mut output = pptx_shapes_show(file, slide, include_text, include_bounds)?;
+    let shapes = output
+        .get("shapes")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let selected = select_pptx_shape_entry(&shapes, target).ok_or_else(|| {
+        CliError::target_not_found(format!(
+            "target not found: target not found: {target} (available selectors: {})",
+            pptx_available_shape_selectors(&shapes).join(", ")
+        ))
+    })?;
+    if let Some(map) = output.as_object_mut() {
+        map.insert("shapes".to_string(), Value::Array(vec![selected]));
+    }
+    Ok(output)
+}
+
 pub(crate) fn pptx_all_slides(file: &str) -> Vec<u32> {
     zip_text(file, "ppt/presentation.xml")
         .map(|xml| (1..=pptx_slide_refs(&xml).len() as u32).collect())
@@ -547,6 +575,48 @@ fn pptx_shape_show_entries(
             Value::Object(entry)
         })
         .collect()
+}
+
+fn select_pptx_shape_entry(shapes: &[Value], target: &str) -> Option<Value> {
+    let mut matches = shapes
+        .iter()
+        .filter(|shape| pptx_shape_entry_matches(shape, target));
+    let selected = matches.next()?.clone();
+    if matches.next().is_some() {
+        None
+    } else {
+        Some(selected)
+    }
+}
+
+pub(crate) fn pptx_shape_entry_matches(shape: &Value, target: &str) -> bool {
+    shape
+        .get("primarySelector")
+        .and_then(Value::as_str)
+        .is_some_and(|selector| selector == target)
+        || shape
+            .get("selectors")
+            .and_then(Value::as_array)
+            .is_some_and(|selectors| {
+                selectors
+                    .iter()
+                    .any(|selector| selector.as_str() == Some(target))
+            })
+}
+
+pub(crate) fn pptx_available_shape_selectors(shapes: &[Value]) -> Vec<String> {
+    let mut selectors = Vec::<String>::new();
+    for shape in shapes {
+        if let Some(values) = shape.get("selectors").and_then(Value::as_array) {
+            for value in values {
+                if let Some(selector) = value.as_str() {
+                    crate::add_selector(&mut selectors, selector.to_string());
+                }
+            }
+        }
+    }
+    selectors.sort();
+    selectors
 }
 
 fn image_ref_json(rel_id: &str, target_uri: &str, content_type: &str) -> Value {

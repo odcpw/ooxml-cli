@@ -115,11 +115,48 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "shapes" && verb == "show" =>
         {
+            reject_unknown_flags(rest, &["--slide"], &["--include-text", "--include-bounds"])?;
             let slide = parse_u32_flag(rest, "--slide")?
                 .ok_or_else(|| CliError::invalid_args("required flag(s) \"slide\" not set"))?;
             let include_text = has_flag(rest, "--include-text");
             let include_bounds = has_flag(rest, "--include-bounds");
             pptx_shapes_show(file, slide, include_text, include_bounds)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "shapes" && verb == "get" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--slide", "--target"],
+                &["--include-text", "--include-bounds"],
+            )?;
+            let slide = parse_u32_flag(rest, "--slide")?
+                .ok_or_else(|| CliError::invalid_args("required flag(s) \"slide\" not set"))?;
+            let target = parse_string_flag(rest, "--target")?
+                .ok_or_else(|| CliError::invalid_args("required flag(s) \"target\" not set"))?;
+            let include_text = has_flag(rest, "--include-text");
+            let include_bounds = has_flag(rest, "--include-bounds");
+            pptx_shapes_get(file, slide, &target, include_text, include_bounds)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "shapes" && verb == "set-bounds" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--slide", "--target", "--bounds", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_shapes_set_bounds(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "shapes" && verb == "delete" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--slide", "--target", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_shapes_delete(file, rest)
         }
         [family, group, verb, file] if family == "pptx" && group == "slides" && verb == "list" => {
             pptx_slides_list(file)

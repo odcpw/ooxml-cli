@@ -41,8 +41,8 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
         "objectKinds": ["package", "slide", "shape", "master", "layout", "placeholder", "sheet", "range", "data-validation", "cell", "hyperlink", "table", "name", "block", "paragraph", "style", "comment", "chart", "field", "header", "footer", "image", "module"],
         "objectKindsIndex": {
             "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml docx text", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update", "ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba inspect-bin", "ooxml vba list", "ooxml vba extract", "ooxml vba attach", "ooxml vba remove"],
-            "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx slides delete", "ooxml pptx slides move", "ooxml pptx slides reorder", "ooxml pptx shapes show", "ooxml pptx layouts list", "ooxml pptx layouts show", "ooxml pptx tables show", "ooxml pptx tables set-cell", "ooxml pptx tables delete-row", "ooxml pptx tables insert-row", "ooxml pptx tables delete-col", "ooxml pptx tables insert-col", "ooxml pptx tables update-from-xlsx", "ooxml pptx extract text", "ooxml pptx extract notes", "ooxml pptx extract images", "ooxml pptx extract xml", "ooxml pptx notes show", "ooxml pptx notes set", "ooxml pptx notes clear", "ooxml pptx comments list", "ooxml pptx replace text", "ooxml pptx render"],
-            "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx extract text", "ooxml pptx replace text"],
+            "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx slides delete", "ooxml pptx slides move", "ooxml pptx slides reorder", "ooxml pptx shapes show", "ooxml pptx shapes get", "ooxml pptx shapes set-bounds", "ooxml pptx shapes delete", "ooxml pptx layouts list", "ooxml pptx layouts show", "ooxml pptx tables show", "ooxml pptx tables set-cell", "ooxml pptx tables delete-row", "ooxml pptx tables insert-row", "ooxml pptx tables delete-col", "ooxml pptx tables insert-col", "ooxml pptx tables update-from-xlsx", "ooxml pptx extract text", "ooxml pptx extract notes", "ooxml pptx extract images", "ooxml pptx extract xml", "ooxml pptx notes show", "ooxml pptx notes set", "ooxml pptx notes clear", "ooxml pptx comments list", "ooxml pptx replace text", "ooxml pptx render"],
+            "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx shapes get", "ooxml pptx shapes set-bounds", "ooxml pptx shapes delete", "ooxml pptx extract text", "ooxml pptx replace text"],
             "master": ["ooxml pptx masters list", "ooxml pptx masters show", "ooxml pptx extract xml"],
             "layout": ["ooxml pptx layouts list", "ooxml pptx layouts show", "ooxml pptx extract xml"],
             "placeholder": ["ooxml pptx masters show", "ooxml pptx layouts list", "ooxml pptx layouts show"],
@@ -81,6 +81,8 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
                     "ooxml --json pptx slides selectors deck.pptx --slide 1",
                     "ooxml --json pptx slides show deck.pptx --slide 1 --include-text",
                     "ooxml --json pptx shapes show deck.pptx --slide 1 --include-text --include-bounds",
+                    "ooxml --json pptx shapes get deck.pptx --slide 1 --target title --include-text --include-bounds",
+                    "ooxml --json pptx shapes set-bounds deck.pptx --slide 1 --target title --bounds 914400,914400,6000000,1000000 --out edited.pptx",
                     "ooxml --json pptx replace text deck.pptx --slide 1 --target title --text NEW --out edited.pptx",
                     "ooxml validate --strict edited.pptx"
                 ]

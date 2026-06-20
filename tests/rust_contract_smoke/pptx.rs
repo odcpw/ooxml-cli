@@ -559,6 +559,336 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
 }
 
 #[test]
+fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-shapes-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx shapes temp dir");
+
+    let fixture = "testdata/pptx/title-content/presentation.pptx";
+    let get_args = [
+        "--json",
+        "pptx",
+        "shapes",
+        "get",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "body",
+        "--include-text",
+        "--include-bounds",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&get_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&get_args);
+    assert_eq!(rust_code, go_code, "shapes get exit");
+    assert_eq!(rust_stderr, go_stderr, "shapes get stderr");
+    assert_eq!(
+        rust_stdout.expect("rust shapes get stdout"),
+        go_stdout.expect("go shapes get stdout"),
+        "shapes get stdout"
+    );
+
+    let go_bounds_out = temp_dir.join("go-set-bounds.pptx");
+    let rust_bounds_out = temp_dir.join("rust-set-bounds.pptx");
+    let go_bounds_out_str = go_bounds_out.to_str().expect("go set-bounds path");
+    let rust_bounds_out_str = rust_bounds_out.to_str().expect("rust set-bounds path");
+    let go_set_args = [
+        "--json",
+        "pptx",
+        "shapes",
+        "set-bounds",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "body",
+        "--bounds",
+        "111111,222222,333333,444444",
+        "--out",
+        go_bounds_out_str,
+    ];
+    let rust_set_args = [
+        "--json",
+        "pptx",
+        "shapes",
+        "set-bounds",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "body",
+        "--bounds",
+        "111111,222222,333333,444444",
+        "--out",
+        rust_bounds_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_set_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_set_args);
+    assert_eq!(rust_code, go_code, "set-bounds saved exit");
+    assert_eq!(rust_stderr, go_stderr, "set-bounds saved stderr");
+    let rust_set_json = rust_stdout.expect("rust set-bounds stdout");
+    assert_eq!(
+        scrub_path(rust_set_json.clone(), rust_bounds_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go set-bounds stdout"),
+            go_bounds_out_str,
+            "[OUT]"
+        ),
+        "set-bounds saved stdout"
+    );
+    assert!(go_bounds_out.exists(), "Go set-bounds output missing");
+    assert!(rust_bounds_out.exists(), "Rust set-bounds output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_set_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_set_json, "validateCommand");
+
+    let (go_read_code, go_read_stdout, go_read_stderr) = run_go_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "get",
+        go_bounds_out_str,
+        "--slide",
+        "2",
+        "--target",
+        "body",
+        "--include-text",
+        "--include-bounds",
+    ]);
+    let (rust_read_code, rust_read_stdout, rust_read_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "get",
+        rust_bounds_out_str,
+        "--slide",
+        "2",
+        "--target",
+        "body",
+        "--include-text",
+        "--include-bounds",
+    ]);
+    assert_eq!(rust_read_code, go_read_code, "set-bounds readback exit");
+    assert_eq!(
+        rust_read_stderr, go_read_stderr,
+        "set-bounds readback stderr"
+    );
+    assert_eq!(
+        scrub_path(
+            rust_read_stdout.expect("rust set-bounds readback"),
+            rust_bounds_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_read_stdout.expect("go set-bounds readback"),
+            go_bounds_out_str,
+            "[OUT]"
+        ),
+        "set-bounds readback stdout"
+    );
+
+    let set_dry_run_args = [
+        "--json",
+        "pptx",
+        "shapes",
+        "set-bounds",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "body",
+        "--bounds",
+        "555555,666666,777777,888888",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&set_dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&set_dry_run_args);
+    assert_eq!(rust_code, go_code, "set-bounds dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "set-bounds dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust set-bounds dry-run stdout"),
+        go_stdout.expect("go set-bounds dry-run stdout"),
+        "set-bounds dry-run stdout"
+    );
+
+    let go_delete_out = temp_dir.join("go-delete-shape.pptx");
+    let rust_delete_out = temp_dir.join("rust-delete-shape.pptx");
+    let go_delete_out_str = go_delete_out.to_str().expect("go delete path");
+    let rust_delete_out_str = rust_delete_out.to_str().expect("rust delete path");
+    let go_delete_args = [
+        "--json",
+        "pptx",
+        "shapes",
+        "delete",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "title",
+        "--out",
+        go_delete_out_str,
+    ];
+    let rust_delete_args = [
+        "--json",
+        "pptx",
+        "shapes",
+        "delete",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "title",
+        "--out",
+        rust_delete_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_delete_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_delete_args);
+    assert_eq!(rust_code, go_code, "delete saved exit");
+    assert_eq!(rust_stderr, go_stderr, "delete saved stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust delete stdout"),
+            rust_delete_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_stdout.expect("go delete stdout"),
+            go_delete_out_str,
+            "[OUT]"
+        ),
+        "delete saved stdout"
+    );
+    assert!(go_delete_out.exists(), "Go delete output missing");
+    assert!(rust_delete_out.exists(), "Rust delete output missing");
+    let (validate_code, validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "validate", "--strict", rust_delete_out_str]);
+    assert_eq!(validate_code, 0, "delete strict validate exit");
+    assert_eq!(validate_stderr, None, "delete strict validate stderr");
+    assert!(validate_stdout.is_some(), "delete strict validate stdout");
+
+    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "show",
+        go_delete_out_str,
+        "--slide",
+        "2",
+        "--include-text",
+        "--include-bounds",
+    ]);
+    let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "show",
+        rust_delete_out_str,
+        "--slide",
+        "2",
+        "--include-text",
+        "--include-bounds",
+    ]);
+    assert_eq!(rust_show_code, go_show_code, "delete readback show exit");
+    assert_eq!(
+        rust_show_stderr, go_show_stderr,
+        "delete readback show stderr"
+    );
+    assert_eq!(
+        scrub_path(
+            rust_show_stdout.expect("rust delete readback show"),
+            rust_delete_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_show_stdout.expect("go delete readback show"),
+            go_delete_out_str,
+            "[OUT]"
+        ),
+        "delete readback show stdout"
+    );
+
+    let delete_dry_run_args = [
+        "--json",
+        "pptx",
+        "shapes",
+        "delete",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "title",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&delete_dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&delete_dry_run_args);
+    assert_eq!(rust_code, go_code, "delete dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "delete dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust delete dry-run stdout"),
+        go_stdout.expect("go delete dry-run stdout"),
+        "delete dry-run stdout"
+    );
+
+    let error_cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json", "pptx", "shapes", "get", fixture, "--slide", "2", "--target", "missing",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "shapes",
+            "set-bounds",
+            fixture,
+            "--slide",
+            "2",
+            "--target",
+            "missing",
+            "--bounds",
+            "1,2,3,4",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "shapes",
+            "set-bounds",
+            fixture,
+            "--slide",
+            "2",
+            "--target",
+            "body",
+            "--bounds",
+            "bad",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "shapes",
+            "delete",
+            fixture,
+            "--slide",
+            "2",
+            "--target",
+            "missing",
+            "--dry-run",
+        ],
+    ];
+    for args in error_cases {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "shape error exit for {args:?}");
+        assert_eq!(rust_stdout, go_stdout, "shape error stdout for {args:?}");
+        assert_eq!(rust_stderr, go_stderr, "shape error stderr for {args:?}");
+    }
+}
+
+#[test]
 fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

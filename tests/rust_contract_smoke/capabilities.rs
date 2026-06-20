@@ -26,6 +26,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx masters show", false);
     assert_command(&all_caps, "ooxml pptx layouts list", false);
     assert_command(&all_caps, "ooxml pptx layouts show", false);
+    assert_command(&all_caps, "ooxml pptx shapes get", false);
+    assert_command(&all_caps, "ooxml pptx shapes set-bounds", false);
+    assert_command(&all_caps, "ooxml pptx shapes delete", false);
     assert_command(&all_caps, "ooxml pptx tables show", false);
     assert_command(&all_caps, "ooxml pptx tables set-cell", true);
     assert_command(&all_caps, "ooxml pptx tables delete-row", true);
@@ -121,6 +124,17 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "slide", "ooxml pptx extract xml");
     assert_object_kind_command(&all_caps, "layout", "ooxml pptx extract xml");
     assert_object_kind_command(&all_caps, "master", "ooxml pptx extract xml");
+    for path in [
+        "ooxml pptx shapes show",
+        "ooxml pptx shapes get",
+        "ooxml pptx shapes set-bounds",
+        "ooxml pptx shapes delete",
+    ] {
+        assert_object_kind_command(&all_caps, "slide", path);
+        assert_object_kind_command(&all_caps, "shape", path);
+        assert_command_target_kind(&all_caps, path, "slide");
+        assert_command_target_kind(&all_caps, path, "shape");
+    }
     assert_object_kind_command(&all_caps, "table", "ooxml pptx tables delete-col");
     assert_command_target_kind(&all_caps, "ooxml pptx tables delete-col", "slide");
     assert_command_target_kind(&all_caps, "ooxml pptx tables delete-col", "table");
@@ -380,6 +394,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx slides move", false);
     assert_command(&pptx_caps, "ooxml pptx slides reorder", false);
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
+    assert_command(&pptx_caps, "ooxml pptx shapes get", false);
+    assert_command(&pptx_caps, "ooxml pptx shapes set-bounds", false);
+    assert_command(&pptx_caps, "ooxml pptx shapes delete", false);
     assert_command(&pptx_caps, "ooxml pptx masters list", false);
     assert_command(&pptx_caps, "ooxml pptx masters show", false);
     assert_command(&pptx_caps, "ooxml pptx layouts list", false);
@@ -831,12 +848,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        138,
+        141,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        152,
+        149,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
