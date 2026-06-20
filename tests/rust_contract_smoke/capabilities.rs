@@ -47,6 +47,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx comments add", false);
     assert_command(&all_caps, "ooxml pptx comments edit", false);
     assert_command(&all_caps, "ooxml pptx comments remove", false);
+    assert_command(&all_caps, "ooxml pptx media list", false);
+    assert_command(&all_caps, "ooxml pptx media add", false);
+    assert_command(&all_caps, "ooxml pptx media replace", false);
     assert_command(&all_caps, "ooxml pptx replace text-occurrences", false);
     assert_command(&all_caps, "ooxml pptx replace text-from-xlsx", false);
     assert_command(&all_caps, "ooxml pptx replace text-map-from-xlsx", false);
@@ -96,6 +99,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "header",
         "footer",
         "image",
+        "media",
         "table",
         "name",
         "data-validation",
@@ -138,6 +142,16 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command_target_kind(&all_caps, "ooxml pptx replace images", "image");
     assert_command_target_kind(&all_caps, "ooxml pptx replace images", "slide");
     assert_command_target_kind(&all_caps, "ooxml pptx replace images", "shape");
+    assert_object_kind_command(&all_caps, "media", "ooxml pptx media list");
+    assert_command_target_kind(&all_caps, "ooxml pptx media list", "media");
+    assert_command_target_kind(&all_caps, "ooxml pptx media list", "slide");
+    assert_object_kind_command(&all_caps, "media", "ooxml pptx media add");
+    assert_command_target_kind(&all_caps, "ooxml pptx media add", "media");
+    assert_command_target_kind(&all_caps, "ooxml pptx media add", "slide");
+    assert_object_kind_command(&all_caps, "media", "ooxml pptx media replace");
+    assert_command_target_kind(&all_caps, "ooxml pptx media replace", "media");
+    assert_command_target_kind(&all_caps, "ooxml pptx media replace", "slide");
+    assert_command_target_kind(&all_caps, "ooxml pptx media replace", "shape");
     assert_object_kind_command(&all_caps, "slide", "ooxml pptx replace text-occurrences");
     assert_object_kind_command(&all_caps, "shape", "ooxml pptx replace text-occurrences");
     for path in [
@@ -1007,12 +1021,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        163,
+        166,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        127,
+        124,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

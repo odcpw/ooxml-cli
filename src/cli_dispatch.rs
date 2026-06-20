@@ -13,6 +13,7 @@ use crate::pptx_render::pptx_render;
 use crate::validation::validate;
 use crate::vba::*;
 use crate::verify::verify;
+use crate::{pptx_media_add, pptx_media_list, pptx_media_replace};
 
 pub(crate) struct DispatchOutput {
     pub(crate) value: Value,
@@ -277,6 +278,73 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         {
             reject_unknown_flags(rest, &["--slide", "--layout", "--master", "--out"], &[])?;
             pptx_extract_xml(file, rest)
+        }
+        [family, group, verb]
+            if family == "pptx"
+                && group == "media"
+                && matches!(verb.as_str(), "list" | "add" | "replace") =>
+        {
+            Err(CliError::invalid_args("accepts 1 arg(s), received 0"))
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "media" && verb == "list" =>
+        {
+            reject_unknown_flags(rest, &["--slide"], &[])?;
+            let slide = parse_i64_flag(rest, "--slide")?.unwrap_or(0);
+            pptx_media_list(file, slide)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "media" && verb == "add" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--file",
+                    "--kind",
+                    "--poster",
+                    "--name",
+                    "--x",
+                    "--y",
+                    "--cx",
+                    "--cy",
+                    "--play-trigger",
+                    "--volume",
+                    "--insert-after-shape",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--play-cmd",
+                    "--mute",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
+            )?;
+            pptx_media_add(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "media" && verb == "replace" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--shape",
+                    "--shape-name",
+                    "--file",
+                    "--kind",
+                    "--poster",
+                    "--volume",
+                    "--expect-shape-name",
+                    "--expect-media-kind",
+                    "--out",
+                    "--backup",
+                ],
+                &["--mute", "--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_media_replace(file, rest)
         }
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "notes" && verb == "show" =>

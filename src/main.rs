@@ -22,6 +22,7 @@ mod mcp;
 mod mcp_support;
 mod opc;
 mod package_discovery;
+mod pptx_media;
 mod pptx_mutation;
 mod pptx_readback;
 mod pptx_render;
@@ -141,6 +142,7 @@ pub(crate) use package_discovery::{
     is_xlsx_styles_part, is_xlsx_table_part, is_xlsx_theme_part, is_xlsx_worksheet_part,
     package_type,
 };
+pub(crate) use pptx_media::{pptx_media_add, pptx_media_list, pptx_media_replace};
 pub(crate) use pptx_mutation::{pptx_replace_text_in_place, pptx_replace_text_readback};
 pub(crate) use pptx_readback::{
     pptx_all_slides, pptx_comments_list, pptx_diff, pptx_extract_notes, pptx_extract_text,
