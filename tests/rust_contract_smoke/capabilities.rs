@@ -16,6 +16,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx extract notes", false);
     assert_command(&all_caps, "ooxml pptx extract images", false);
     assert_command(&all_caps, "ooxml pptx extract xml", false);
+    assert_command(&all_caps, "ooxml pptx slides delete", false);
+    assert_command(&all_caps, "ooxml pptx slides move", false);
+    assert_command(&all_caps, "ooxml pptx slides reorder", false);
     assert_command(&all_caps, "ooxml pptx notes show", false);
     assert_command(&all_caps, "ooxml pptx notes set", true);
     assert_command(&all_caps, "ooxml pptx notes clear", true);
@@ -123,6 +126,12 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "table", "ooxml pptx tables insert-col");
     assert_command_target_kind(&all_caps, "ooxml pptx tables insert-col", "slide");
     assert_command_target_kind(&all_caps, "ooxml pptx tables insert-col", "table");
+    assert_object_kind_command(&all_caps, "slide", "ooxml pptx slides delete");
+    assert_command_target_kind(&all_caps, "ooxml pptx slides delete", "slide");
+    assert_object_kind_command(&all_caps, "slide", "ooxml pptx slides move");
+    assert_command_target_kind(&all_caps, "ooxml pptx slides move", "slide");
+    assert_object_kind_command(&all_caps, "slide", "ooxml pptx slides reorder");
+    assert_command_target_kind(&all_caps, "ooxml pptx slides reorder", "slide");
     assert_object_kind_command(&all_caps, "table", "ooxml pptx tables update-from-xlsx");
     assert_object_kind_command(&all_caps, "sheet", "ooxml pptx tables update-from-xlsx");
     assert_object_kind_command(&all_caps, "range", "ooxml pptx tables update-from-xlsx");
@@ -348,6 +357,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx slides list", false);
     assert_command(&pptx_caps, "ooxml pptx slides selectors", false);
     assert_command(&pptx_caps, "ooxml pptx slides show", false);
+    assert_command(&pptx_caps, "ooxml pptx slides delete", false);
+    assert_command(&pptx_caps, "ooxml pptx slides move", false);
+    assert_command(&pptx_caps, "ooxml pptx slides reorder", false);
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
     assert_command(&pptx_caps, "ooxml pptx masters list", false);
     assert_command(&pptx_caps, "ooxml pptx masters show", false);
@@ -775,12 +787,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        131,
+        134,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        159,
+        156,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

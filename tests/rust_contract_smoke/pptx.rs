@@ -559,6 +559,347 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
 }
 
 #[test]
+fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-slides-lifecycle-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx slides lifecycle temp dir");
+
+    let multi_fixture = "testdata/pptx/slide-assembly-multi/presentation.pptx";
+    let notes_fixture = "testdata/pptx/notes-slide/presentation.pptx";
+
+    let go_move = temp_dir.join("go-move.pptx");
+    let rust_move = temp_dir.join("rust-move.pptx");
+    let go_move_str = go_move.to_str().expect("go move path");
+    let rust_move_str = rust_move.to_str().expect("rust move path");
+    let go_move_args = [
+        "--json",
+        "pptx",
+        "slides",
+        "move",
+        multi_fixture,
+        "1",
+        "3",
+        "--out",
+        go_move_str,
+    ];
+    let rust_move_args = [
+        "--json",
+        "pptx",
+        "slides",
+        "move",
+        multi_fixture,
+        "1",
+        "3",
+        "--out",
+        rust_move_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_move_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_move_args);
+    assert_eq!(rust_code, go_code, "slides move exit");
+    assert_eq!(rust_stderr, go_stderr, "slides move stderr");
+    let rust_move_json = rust_stdout.expect("rust slides move stdout");
+    assert_eq!(
+        scrub_path(rust_move_json.clone(), rust_move_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go slides move stdout"),
+            go_move_str,
+            "[OUT]"
+        ),
+        "slides move stdout"
+    );
+    assert!(go_move.exists(), "Go slides move output missing");
+    assert!(rust_move.exists(), "Rust slides move output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_move_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_move_json, "slidesListCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_move_json, "validateCommand");
+    assert_go_rust_json_match_with_path_scrub(
+        &["--json", "pptx", "slides", "list", go_move_str],
+        &["--json", "pptx", "slides", "list", rust_move_str],
+        go_move_str,
+        rust_move_str,
+        "slides move readback list",
+    );
+    assert_go_rust_json_match_with_path_scrub(
+        &["--json", "validate", "--strict", go_move_str],
+        &["--json", "validate", "--strict", rust_move_str],
+        go_move_str,
+        rust_move_str,
+        "slides move strict validate",
+    );
+
+    let move_dry_run = [
+        "--json",
+        "pptx",
+        "slides",
+        "move",
+        multi_fixture,
+        "1",
+        "3",
+        "--dry-run",
+    ];
+    assert_go_rust_json_match(&move_dry_run, "slides move dry-run");
+
+    let move_no_op_dry_run = [
+        "--json",
+        "pptx",
+        "slides",
+        "move",
+        multi_fixture,
+        "2",
+        "2",
+        "--dry-run",
+    ];
+    assert_go_rust_json_match(&move_no_op_dry_run, "slides move no-op dry-run");
+
+    let go_delete = temp_dir.join("go-delete.pptx");
+    let rust_delete = temp_dir.join("rust-delete.pptx");
+    let go_delete_str = go_delete.to_str().expect("go delete path");
+    let rust_delete_str = rust_delete.to_str().expect("rust delete path");
+    let go_delete_args = [
+        "--json",
+        "pptx",
+        "slides",
+        "delete",
+        notes_fixture,
+        "2",
+        "--out",
+        go_delete_str,
+    ];
+    let rust_delete_args = [
+        "--json",
+        "pptx",
+        "slides",
+        "delete",
+        notes_fixture,
+        "2",
+        "--out",
+        rust_delete_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_delete_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_delete_args);
+    assert_eq!(rust_code, go_code, "slides delete exit");
+    assert_eq!(rust_stderr, go_stderr, "slides delete stderr");
+    let rust_delete_json = rust_stdout.expect("rust slides delete stdout");
+    assert_eq!(
+        scrub_path(rust_delete_json.clone(), rust_delete_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go slides delete stdout"),
+            go_delete_str,
+            "[OUT]"
+        ),
+        "slides delete stdout"
+    );
+    assert!(go_delete.exists(), "Go slides delete output missing");
+    assert!(rust_delete.exists(), "Rust slides delete output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_delete_json, "slidesListCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_delete_json, "validateCommand");
+    assert_go_rust_json_match_with_path_scrub(
+        &["--json", "pptx", "slides", "list", go_delete_str],
+        &["--json", "pptx", "slides", "list", rust_delete_str],
+        go_delete_str,
+        rust_delete_str,
+        "slides delete readback list",
+    );
+    assert_go_rust_json_match_with_path_scrub(
+        &["--json", "validate", "--strict", go_delete_str],
+        &["--json", "validate", "--strict", rust_delete_str],
+        go_delete_str,
+        rust_delete_str,
+        "slides delete strict validate",
+    );
+
+    let delete_dry_run = [
+        "--json",
+        "pptx",
+        "slides",
+        "delete",
+        notes_fixture,
+        "2",
+        "--dry-run",
+    ];
+    assert_go_rust_json_match(&delete_dry_run, "slides delete dry-run");
+
+    let go_reorder = temp_dir.join("go-reorder.pptx");
+    let rust_reorder = temp_dir.join("rust-reorder.pptx");
+    let go_reorder_str = go_reorder.to_str().expect("go reorder path");
+    let rust_reorder_str = rust_reorder.to_str().expect("rust reorder path");
+    let go_reorder_args = [
+        "--json",
+        "pptx",
+        "slides",
+        "reorder",
+        multi_fixture,
+        "3,1,2,4,5",
+        "--out",
+        go_reorder_str,
+    ];
+    let rust_reorder_args = [
+        "--json",
+        "pptx",
+        "slides",
+        "reorder",
+        multi_fixture,
+        "3,1,2,4,5",
+        "--out",
+        rust_reorder_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_reorder_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_reorder_args);
+    assert_eq!(rust_code, go_code, "slides reorder exit");
+    assert_eq!(rust_stderr, go_stderr, "slides reorder stderr");
+    let rust_reorder_json = rust_stdout.expect("rust slides reorder stdout");
+    assert_eq!(
+        scrub_path(rust_reorder_json.clone(), rust_reorder_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go slides reorder stdout"),
+            go_reorder_str,
+            "[OUT]"
+        ),
+        "slides reorder stdout"
+    );
+    assert!(go_reorder.exists(), "Go slides reorder output missing");
+    assert!(rust_reorder.exists(), "Rust slides reorder output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_reorder_json, "slidesListCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_reorder_json, "validateCommand");
+    assert_go_rust_json_match_with_path_scrub(
+        &["--json", "pptx", "slides", "list", go_reorder_str],
+        &["--json", "pptx", "slides", "list", rust_reorder_str],
+        go_reorder_str,
+        rust_reorder_str,
+        "slides reorder readback list",
+    );
+    assert_go_rust_json_match_with_path_scrub(
+        &["--json", "validate", "--strict", go_reorder_str],
+        &["--json", "validate", "--strict", rust_reorder_str],
+        go_reorder_str,
+        rust_reorder_str,
+        "slides reorder strict validate",
+    );
+
+    let reorder_dry_run = [
+        "--json",
+        "pptx",
+        "slides",
+        "reorder",
+        multi_fixture,
+        "3,1,2,4,5",
+        "--dry-run",
+    ];
+    assert_go_rust_json_match(&reorder_dry_run, "slides reorder dry-run");
+
+    for (label, args) in [
+        (
+            "slides move from out-of-range",
+            vec![
+                "--json",
+                "pptx",
+                "slides",
+                "move",
+                multi_fixture,
+                "9",
+                "1",
+                "--dry-run",
+            ],
+        ),
+        (
+            "slides move to out-of-range",
+            vec![
+                "--json",
+                "pptx",
+                "slides",
+                "move",
+                multi_fixture,
+                "1",
+                "9",
+                "--dry-run",
+            ],
+        ),
+        (
+            "slides delete out-of-range",
+            vec![
+                "--json",
+                "pptx",
+                "slides",
+                "delete",
+                notes_fixture,
+                "9",
+                "--dry-run",
+            ],
+        ),
+        (
+            "slides reorder wrong length",
+            vec![
+                "--json",
+                "pptx",
+                "slides",
+                "reorder",
+                multi_fixture,
+                "3,1,2",
+                "--dry-run",
+            ],
+        ),
+        (
+            "slides reorder duplicate",
+            vec![
+                "--json",
+                "pptx",
+                "slides",
+                "reorder",
+                multi_fixture,
+                "1,1,2,3,4",
+                "--dry-run",
+            ],
+        ),
+        (
+            "slides reorder out-of-range",
+            vec![
+                "--json",
+                "pptx",
+                "slides",
+                "reorder",
+                multi_fixture,
+                "9,1,2,3,4",
+                "--dry-run",
+            ],
+        ),
+    ] {
+        assert_go_rust_json_match(&args, label);
+    }
+}
+
+fn assert_go_rust_json_match(args: &[&str], label: &str) {
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(args);
+    assert_eq!(rust_code, go_code, "{label} exit");
+    assert_eq!(rust_stdout, go_stdout, "{label} stdout");
+    assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+}
+
+fn assert_go_rust_json_match_with_path_scrub(
+    go_args: &[&str],
+    rust_args: &[&str],
+    go_path: &str,
+    rust_path: &str,
+    label: &str,
+) {
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(rust_args);
+    assert_eq!(rust_code, go_code, "{label} exit");
+    assert_eq!(
+        scrub_path(rust_stdout.expect("rust stdout"), rust_path, "[OUT]"),
+        scrub_path(go_stdout.expect("go stdout"), go_path, "[OUT]"),
+        "{label} stdout"
+    );
+    assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+}
+
+#[test]
 fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

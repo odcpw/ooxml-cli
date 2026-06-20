@@ -124,6 +124,46 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
         [family, group, verb, file] if family == "pptx" && group == "slides" && verb == "list" => {
             pptx_slides_list(file)
         }
+        [family, group, verb, file, slide, rest @ ..]
+            if family == "pptx" && group == "slides" && verb == "delete" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let slide = parse_pptx_slide_lifecycle_position(slide, "slide number")?;
+            pptx_slides_delete(file, slide, rest)
+        }
+        [
+            family,
+            group,
+            verb,
+            file,
+            from_position,
+            to_position,
+            rest @ ..,
+        ] if family == "pptx" && group == "slides" && verb == "move" => {
+            reject_unknown_flags(
+                rest,
+                &["--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let from_position =
+                parse_pptx_slide_lifecycle_position(from_position, "from-position")?;
+            let to_position = parse_pptx_slide_lifecycle_position(to_position, "to-position")?;
+            pptx_slides_move(file, from_position, to_position, rest)
+        }
+        [family, group, verb, file, order, rest @ ..]
+            if family == "pptx" && group == "slides" && verb == "reorder" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_slides_reorder(file, order, rest)
+        }
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "extract" && verb == "text" =>
         {
@@ -434,6 +474,12 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
             args.join(" ")
         ))),
     }
+}
+
+fn parse_pptx_slide_lifecycle_position(value: &str, label: &str) -> CliResult<i64> {
+    value.parse::<i64>().map_err(|_| {
+        CliError::invalid_args(format!("invalid {label}: {value} (expected an integer)"))
+    })
 }
 
 pub(crate) fn require_docx_block_hash(value: &str) -> CliResult<()> {
