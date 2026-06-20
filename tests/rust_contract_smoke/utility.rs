@@ -130,7 +130,7 @@ fn meta_parent_capabilities_are_go_oracle_paths_with_rust_reasons() {
     );
     assert!(
         command_by_path(&rust_caps, "ooxml conformance check").is_none(),
-        "Rust must not advertise conformance check until repair invariants are ported"
+        "Rust must not advertise conformance check until office-open and full parity are promoted"
     );
 }
 
@@ -455,6 +455,39 @@ fn conformance_check_matches_go_for_repair_invariant_failures() {
 }
 
 #[test]
+fn conformance_check_matches_go_for_invalid_zip_timestamp() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-conformance-zip-metadata-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("conformance zip metadata temp dir");
+
+    let bad_timestamp = temp_dir.join("workbook-invalid-zip-timestamp.xlsx");
+    rewrite_zip_fixture(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &bad_timestamp,
+        |name, data| Some((name.to_string(), data)),
+    );
+    zero_zip_entry_timestamp(&bad_timestamp, "xl/worksheets/sheet1.xml");
+    assert_go_rust_conformance_check_match(&bad_timestamp);
+
+    let bad_timestamp_arg = bad_timestamp.to_string_lossy().to_string();
+    let (code, stdout, stderr) =
+        run_ooxml(&["--json", "conformance", "check", bad_timestamp_arg.as_str()]);
+    assert_ne!(code, 0);
+    assert_eq!(stderr, None);
+    let report = stdout.expect("invalid zip timestamp report");
+    assert_eq!(report["status"], "failed");
+    assert!(
+        serde_json::to_string(&report)
+            .expect("report JSON")
+            .contains("OOXML_ZIP_TIMESTAMP_INVALID"),
+        "report should include zip timestamp diagnostic: {report}"
+    );
+}
+
+#[test]
 fn conformance_coverage_matches_go_static_report() {
     assert_go_rust_match(&["--json", "conformance", "coverage"]);
 }
@@ -471,6 +504,78 @@ fn assert_go_rust_conformance_check_match(file: &Path) {
         go_stdout.map(scrub_file_fields),
         "stdout for {file}"
     );
+}
+
+fn zero_zip_entry_timestamp(path: &Path, target_name: &str) {
+    let mut data = fs::read(path).expect("read zip for timestamp mutation");
+    let local_found = zero_zip_timestamp_in_headers(
+        &mut data,
+        target_name,
+        &[0x50, 0x4b, 0x03, 0x04],
+        30,
+        26,
+        28,
+        10,
+    );
+    let central_found = zero_zip_timestamp_in_headers(
+        &mut data,
+        target_name,
+        &[0x50, 0x4b, 0x01, 0x02],
+        46,
+        28,
+        30,
+        12,
+    );
+    assert!(
+        local_found && central_found,
+        "expected to patch local and central ZIP headers for {target_name}"
+    );
+    fs::write(path, data).expect("write zip timestamp mutation");
+}
+
+fn zero_zip_timestamp_in_headers(
+    data: &mut [u8],
+    target_name: &str,
+    signature: &[u8; 4],
+    header_len: usize,
+    name_len_offset: usize,
+    extra_len_offset: usize,
+    time_offset: usize,
+) -> bool {
+    let mut found = false;
+    let mut i = 0;
+    while i + header_len <= data.len() {
+        if &data[i..i + 4] != signature {
+            i += 1;
+            continue;
+        }
+        let name_len = read_u16_le(data, i + name_len_offset) as usize;
+        let extra_len = read_u16_le(data, i + extra_len_offset) as usize;
+        let comment_len = if header_len == 46 {
+            read_u16_le(data, i + 32) as usize
+        } else {
+            0
+        };
+        let name_start = i + header_len;
+        let name_end = name_start.saturating_add(name_len);
+        let header_end = name_end
+            .saturating_add(extra_len)
+            .saturating_add(comment_len);
+        if header_end > data.len() {
+            i += 1;
+            continue;
+        }
+        if &data[name_start..name_end] == target_name.as_bytes() {
+            data[i + time_offset..i + time_offset + 4].fill(0);
+            found = true;
+        }
+        i = header_end.max(i + 1);
+    }
+    found
+}
+
+fn read_u16_le(data: &[u8], offset: usize) -> u16 {
+    u16::from_le_bytes([data[offset], data[offset + 1]])
 }
 
 fn command_by_path<'a>(capabilities: &'a Value, path: &str) -> Option<&'a Value> {
