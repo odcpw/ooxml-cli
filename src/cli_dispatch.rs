@@ -14,8 +14,9 @@ use crate::validation::validate;
 use crate::vba::*;
 use crate::verify::verify;
 use crate::{
-    apply, diff, pptx_media_add, pptx_media_list, pptx_media_replace, pptx_template_inspect,
-    pptx_translate_apply, pptx_translate_export, pptx_validate_layout,
+    apply, diff, pptx_media_add, pptx_media_list, pptx_media_replace, pptx_template_capture,
+    pptx_template_inspect, pptx_translate_apply, pptx_translate_export, pptx_validate_layout,
+    pptx_xlsx_bindings_plan, template_profile_inspect, template_profile_save, template_tokens,
 };
 
 pub(crate) enum DispatchBody {
@@ -85,6 +86,20 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [cmd] if cmd == "version" => Ok(json!({"tool": "ooxml", "version": "0.0.1"})),
         [cmd, rest @ ..] if cmd == "capabilities" => capabilities::capabilities(rest),
         [cmd, file, rest @ ..] if cmd == "apply" => apply(file, rest),
+        [cmd, verb, file, rest @ ..] if cmd == "template" && verb == "tokens" => {
+            template_tokens(file, rest)
+        }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "template" && group == "profile" && verb == "save" =>
+        {
+            template_profile_save(file, rest)
+        }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "template" && group == "profile" && verb == "inspect" =>
+        {
+            reject_unknown_flags(rest, &[], &[])?;
+            template_profile_inspect(file)
+        }
         [cmd, file] if cmd == "inspect" => inspect(file),
         [cmd, baseline, candidate, rest @ ..] if cmd == "diff" => diff(baseline, candidate, rest),
         [cmd, rest @ ..] if cmd == "validate" => {
@@ -339,6 +354,16 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         {
             reject_unknown_flags(rest, &["--format"], &[])?;
             pptx_template_inspect(manifest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "template" && verb == "capture" =>
+        {
+            pptx_template_capture(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "xlsx-bindings" && verb == "plan" =>
+        {
+            pptx_xlsx_bindings_plan(file, rest)
         }
         [family, verb, file, rest @ ..] if family == "pptx" && verb == "add-textbox" => {
             reject_unknown_flags(

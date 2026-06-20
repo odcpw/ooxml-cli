@@ -37,10 +37,12 @@ mod pptx_readback;
 mod pptx_render;
 mod pptx_template;
 mod pptx_translate;
+mod pptx_xlsx_bindings;
 mod robot_docs;
 mod runtime_util;
 mod selector_util;
 mod serve;
+mod template_workflow;
 mod validation;
 mod vba;
 mod verify;
@@ -161,19 +163,23 @@ pub(crate) use pptx_layout_qa::pptx_validate_layout;
 pub(crate) use pptx_media::{pptx_media_add, pptx_media_list, pptx_media_replace};
 pub(crate) use pptx_mutation::{pptx_replace_text_in_place, pptx_replace_text_readback};
 pub(crate) use pptx_readback::{
-    pptx_all_slides, pptx_comments_list, pptx_diff, pptx_extract_notes, pptx_extract_text,
-    pptx_extract_text_json_args, pptx_layouts_list, pptx_layouts_show, pptx_masters_list,
-    pptx_masters_show, pptx_notes_show, pptx_shapes_show, pptx_slide_selectors, pptx_slide_show,
-    pptx_slides_list, pptx_tables_show,
+    pptx_all_slides, pptx_charts_list, pptx_comments_list, pptx_diff, pptx_extract_notes,
+    pptx_extract_text, pptx_extract_text_json_args, pptx_layouts_list, pptx_layouts_show,
+    pptx_masters_list, pptx_masters_show, pptx_notes_show, pptx_shapes_show, pptx_slide_selectors,
+    pptx_slide_show, pptx_slides_list, pptx_tables_show,
 };
-pub(crate) use pptx_template::pptx_template_inspect;
+pub(crate) use pptx_template::{pptx_template_capture, pptx_template_inspect};
 pub(crate) use pptx_translate::{pptx_translate_apply, pptx_translate_export};
+pub(crate) use pptx_xlsx_bindings::pptx_xlsx_bindings_plan;
 pub(crate) use runtime_util::{
     chrono_like_counter, current_utc_rfc3339, docx_mutation_temp_path, package_mutation_temp_path,
     xlsx_ranges_set_temp_path,
 };
 pub(crate) use selector_util::{add_selector, selector_candidates};
 pub(crate) use serve::{ServeState, run_serve_stdio};
+pub(crate) use template_workflow::{
+    template_profile_inspect, template_profile_save, template_tokens,
+};
 pub(crate) use validation::{validate, validate_exit_code};
 pub(crate) use xlsx_charts::{
     XlsxChartConvertTypeOptions, XlsxChartCopyStyleOptions, XlsxChartCreateOptions,

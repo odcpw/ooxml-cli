@@ -1603,6 +1603,233 @@ fn pptx_template_inspect_and_validate_layout_match_go_oracle() {
 }
 
 #[test]
+fn template_tokens_profiles_and_xlsx_binding_plan_match_go_oracle() {
+    assert_go_rust_json_match(
+        &[
+            "--json",
+            "template",
+            "tokens",
+            "testdata/pptx/theme-custom-colors/presentation.pptx",
+        ],
+        "template tokens pptx theme",
+    );
+    assert_go_rust_json_match(
+        &[
+            "--json",
+            "template",
+            "tokens",
+            "testdata/pptx/chart-simple/presentation.pptx",
+        ],
+        "template tokens pptx charts",
+    );
+    assert_go_rust_json_match(
+        &[
+            "--json",
+            "template",
+            "tokens",
+            "testdata/xlsx/chart-workbook/workbook.xlsx",
+        ],
+        "template tokens xlsx charts",
+    );
+    assert_go_rust_json_match(
+        &[
+            "--json",
+            "template",
+            "profile",
+            "save",
+            "testdata/pptx/theme-custom-colors/presentation.pptx",
+            "--name",
+            "Theme",
+            "--description",
+            "Demo",
+        ],
+        "template profile save stdout",
+    );
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-template-bindings-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("template binding temp dir");
+    let profile_path = temp_dir.join("profile.json");
+    let profile_str = profile_path.to_string_lossy().to_string();
+    let (save_code, save_stdout, save_stderr) = run_go_ooxml(&[
+        "--json",
+        "template",
+        "profile",
+        "save",
+        "testdata/pptx/theme-custom-colors/presentation.pptx",
+        "--name",
+        "Theme",
+        "--description",
+        "Demo",
+    ]);
+    assert_eq!(save_code, 0, "go profile save for inspect fixture");
+    assert_eq!(save_stderr, None, "go profile save stderr");
+    fs::write(
+        &profile_path,
+        serde_json::to_vec_pretty(&save_stdout.expect("go profile save stdout")).unwrap(),
+    )
+    .expect("write profile fixture");
+    assert_go_rust_json_match(
+        &["--json", "template", "profile", "inspect", &profile_str],
+        "template profile inspect",
+    );
+
+    let workbook = temp_dir.join("bindings.xlsx");
+    write_xlsx_bindings_workbook(&workbook, "subtitle");
+    let workbook_str = workbook.to_string_lossy().to_string();
+    let plan_args = [
+        "--json",
+        "pptx",
+        "xlsx-bindings",
+        "plan",
+        "testdata/pptx/title-content/presentation.pptx",
+        "--workbook",
+        &workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:P3",
+    ];
+    assert_go_rust_json_match(&plan_args, "pptx xlsx-bindings plan");
+
+    let duplicate_workbook = temp_dir.join("duplicate-bindings.xlsx");
+    write_xlsx_bindings_workbook(&duplicate_workbook, "title");
+    let duplicate_workbook_str = duplicate_workbook.to_string_lossy().to_string();
+    let duplicate_args = [
+        "--json",
+        "pptx",
+        "xlsx-bindings",
+        "plan",
+        "testdata/pptx/title-content/presentation.pptx",
+        "--workbook",
+        &duplicate_workbook_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:P3",
+    ];
+    assert_go_rust_json_match(&duplicate_args, "pptx xlsx-bindings duplicate target");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn pptx_template_capture_produces_manifest_for_readable_deck() {
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "template",
+        "capture",
+        "testdata/pptx/title-content/presentation.pptx",
+        "--name",
+        "Captured",
+        "--slides",
+        "1",
+        "--version",
+        "1.2.3",
+    ]);
+    assert_eq!(code, 0, "capture exit");
+    assert_eq!(stderr, None, "capture stderr");
+    let manifest = stdout.expect("capture manifest");
+    assert_eq!(
+        manifest["manifestVersion"],
+        Value::String("1.0.0".to_string())
+    );
+    assert_eq!(manifest["name"], Value::String("Captured".to_string()));
+    assert_eq!(manifest["version"]["major"], Value::from(1));
+    assert_eq!(manifest["version"]["minor"], Value::from(2));
+    assert_eq!(manifest["version"]["patch"], Value::from(3));
+    let archetypes = manifest["archetypes"].as_array().expect("archetypes");
+    assert_eq!(archetypes.len(), 1);
+    assert_eq!(archetypes[0]["sourceSlideNumber"], Value::from(1));
+    assert!(
+        archetypes[0]["slots"]
+            .as_array()
+            .expect("slots")
+            .iter()
+            .any(|slot| slot["id"] == Value::String("title".to_string()))
+    );
+}
+
+fn write_xlsx_bindings_workbook(path: &Path, second_target: &str) {
+    let header = [
+        ("A", "id"),
+        ("B", "op"),
+        ("C", "slide"),
+        ("D", "target"),
+        ("E", "sourceSheet"),
+        ("F", "sourceRange"),
+        ("G", "mode"),
+        ("H", "rowSep"),
+        ("I", "colSep"),
+        ("J", "formulaMode"),
+        ("K", "x"),
+        ("L", "y"),
+        ("M", "cx"),
+        ("N", "cy"),
+        ("O", "name"),
+        ("P", "header"),
+    ];
+    let row1 = header
+        .iter()
+        .map(|(col, value)| inline_str_cell(&format!("{col}1"), value))
+        .collect::<String>();
+    let row2 = [
+        ("A2", "title"),
+        ("B2", "replace-text"),
+        ("C2", "1"),
+        ("D2", "title"),
+        ("E2", "Sheet1"),
+        ("F2", "AA1"),
+        ("G2", "preserve-format"),
+        ("H2", "\\n"),
+        ("I2", " | "),
+        ("J2", "value"),
+    ]
+    .iter()
+    .map(|(cell, value)| inline_str_cell(cell, value))
+    .collect::<String>();
+    let row3 = [
+        ("A3", "move"),
+        ("B3", "set-bounds"),
+        ("C3", "1"),
+        ("D3", second_target),
+        ("K3", "100"),
+        ("L3", "200"),
+        ("M3", "3000000"),
+        ("N3", "1000000"),
+    ]
+    .iter()
+    .map(|(cell, value)| inline_str_cell(cell, value))
+    .collect::<String>();
+    let sheet_xml = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:AA3"/>
+  <sheetData>
+    <row r="1">{row1}<c r="AA1" t="inlineStr"><is><t>Bound Title</t></is></c></row>
+    <row r="2">{row2}</row>
+    <row r="3">{row3}</row>
+  </sheetData>
+</worksheet>"#
+    );
+    write_simple_xlsx_with_sheet_xml(path, &sheet_xml);
+}
+
+fn inline_str_cell(cell: &str, value: &str) -> String {
+    format!(
+        r#"<c r="{cell}" t="inlineStr"><is><t>{}</t></is></c>"#,
+        value
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    )
+}
+
+#[test]
 fn pptx_animations_mutations_match_go_oracle_and_validate() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -37,14 +37,13 @@ history.
   - `cargo check --all-targets` passed.
   - `cargo fmt --check` passed.
   - `cargo clippy --all-targets -- -D warnings` passed.
-  - `cargo test --all-targets` passed with 4 unit tests and 191 Rust contract
-    tests after the `vba add-module`, `vba replace-module`, and
-    `vba remove-module` integration.
+  - `cargo test --all-targets` passed with 4 unit tests and 193 Rust contract
+    tests after the `template` and `pptx xlsx-bindings` read-only integration.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
   - Current capability ratchet: Go advertises 290 command paths, Rust
-    advertises 222, leaving 68 unported paths after the `vba add-module`,
-    `vba replace-module`, and `vba remove-module` integration.
+    advertises 227, leaving 63 unported paths after the `template` and
+    `pptx xlsx-bindings` read-only integration.
 
 ## Definition of Done
 
