@@ -176,6 +176,9 @@ Latest milestone, 2026-06-20:
 - Serve/session contract tests moved from `tests/rust_contract_smoke.rs` into
   `tests/rust_contract_smoke/serve.rs`, keeping shared JSON-RPC and scrub
   helpers in the parent harness while preserving the 78-test contract count.
+- DOCX command-family parity tests moved from `tests/rust_contract_smoke.rs`
+  into `tests/rust_contract_smoke/docx.rs`, preserving shared Go-oracle helper
+  access and the 78-test contract count.
 - XLSX formula recalculation metadata updates, calcChain content-type cleanup,
   workbook relationship cleanup, and calcChain part removal moved from
   `src/xlsx_mutation.rs` into `src/xlsx_formula_recalc.rs`, with the mutation
