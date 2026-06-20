@@ -1145,6 +1145,9 @@ mod capabilities;
 #[path = "rust_contract_smoke/utility.rs"]
 mod utility;
 
+#[path = "rust_contract_smoke/conformance_image_payloads.rs"]
+mod conformance_image_payloads;
+
 #[path = "rust_contract_smoke/vba.rs"]
 mod vba;
 

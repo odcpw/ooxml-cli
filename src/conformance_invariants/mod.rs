@@ -4,6 +4,7 @@ use crate::{CliResult, zip_entry_names, zip_entry_set};
 
 mod content_types;
 mod deep_relationships;
+mod image_payloads;
 mod package;
 mod references;
 mod relationships;
@@ -14,6 +15,7 @@ mod xml_parts;
 
 use content_types::{check_content_types_coverage, collect_parts, parse_content_types};
 use deep_relationships::check_part_deep_relationship_invariants;
+use image_payloads::check_part_image_payload_invariants;
 use package::{check_zip_entry_metadata, read_zip_entry_metadata};
 use references::check_reference_list_invariants;
 use relationships::{check_package_relationship_closure, parse_relationship_part};
@@ -53,6 +55,9 @@ pub(crate) fn check_repair_invariants(file: &str) -> CliResult<Vec<Value>> {
         }
         diagnostics.extend(check_part_xml_invariants(file, part)?);
         diagnostics.extend(check_part_deep_relationship_invariants(
+            file, part, &entry_set, &parts,
+        )?);
+        diagnostics.extend(check_part_image_payload_invariants(
             file, part, &entry_set, &parts,
         )?);
     }
