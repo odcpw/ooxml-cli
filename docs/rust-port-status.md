@@ -137,6 +137,10 @@ Latest milestone, 2026-06-20:
   image, table, and paragraph commands moved from `src/cli_dispatch.rs` into
   `src/cli_dispatch/docx.rs`, leaving the top-level CLI dispatcher responsible
   for core command routing plus PPTX/XLSX families.
+- DOCX CLI table command dispatch for `show`, `set-cell`, and `clear-cell`
+  moved from `src/cli_dispatch/docx.rs` into
+  `src/cli_dispatch/docx/tables.rs`, preserving exact table flag validation,
+  mutation option wiring, and unsupported-command fallback text.
 - The static capability command inventory moved from
   `src/capabilities/commands.rs` into family modules under
   `src/capabilities/commands/`, preserving the emitted command order as core,
