@@ -37,8 +37,8 @@ history.
   - `cargo check --all-targets` passed.
   - `cargo fmt --check` passed.
   - `cargo clippy --all-targets -- -D warnings` passed.
-  - `cargo test --all-targets` passed with 4 unit tests and 206 Rust contract
-    tests after the hidden conformance invariant slice.
+  - `cargo test --all-targets` passed with 4 unit tests and 207 Rust contract
+    tests after the hidden conformance ZIP-timestamp invariant slice.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
   - Current capability ratchet: Go advertises 290 command paths, Rust
@@ -51,6 +51,8 @@ history.
     Rust modules under `src/conformance_invariants/` for content types,
     relationships, spec tables, XML-part checks, shared types, and utilities.
     This is the base for the next parallel conformance worker lanes.
+  - ZIP central-directory timestamp repair checks landed in Rust after the
+    split and match the Go oracle on a synthetic invalid-timestamp workbook.
   - Open XML SDK validation and desktop PowerPoint COM open proof passed for the
     generated `template apply` and `pptx template compile` decks.
 

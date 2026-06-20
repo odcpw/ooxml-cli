@@ -9,6 +9,16 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust `conformance check` now includes the Go-oracle ZIP central-directory
+  timestamp repair invariant for package parts, surfaced through a focused
+  `src/conformance_invariants/package.rs` module. `--office-check` remains
+  explicitly unsupported and the command remains hidden until full invariant
+  parity and Office-open semantics are promoted. Proof: focused
+  Go-vs-Rust invalid-ZIP-timestamp conformance test, focused capability tests,
+  `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
+  `cargo test --all-targets` with 4 unit tests plus 207 Rust contract tests.
+  No command-count change: Rust still advertises 289 Go-oracle paths and keeps
+  `ooxml conformance check` hidden.
 - The hidden Rust `conformance check` invariant engine was de-monolithized from
   a fresh 1,392-line accumulation file into focused modules under
   `src/conformance_invariants/`: `content_types`, `relationships`, `spec`,
