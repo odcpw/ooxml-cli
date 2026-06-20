@@ -10,7 +10,7 @@ pub(super) fn commands() -> Vec<Value> {
             "ooxml xlsx sheets list",
             "list <file>",
             "List workbook sheets and selectors.",
-            &["sheet"],
+            &["sheet", "range"],
             false,
             Some("read-only command; call via inspect in serve/MCP"),
             vec![],
@@ -23,6 +23,18 @@ pub(super) fn commands() -> Vec<Value> {
             false,
             Some("read-only command; call via inspect in serve/MCP"),
             vec![flag("--sheet", "sheet", "string", "sheet selector")],
+        ),
+        capability_command(
+            "ooxml xlsx colwidths show",
+            "show <file> --sheet <sheet> --range <columns>",
+            "Show resolved worksheet column widths for a column range.",
+            &["sheet"],
+            false,
+            Some("read-only command; direct CLI parity only in the current Rust slice"),
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag("--range", "range", "string", "column span such as B or B:D"),
+            ],
         ),
         capability_command(
             "ooxml xlsx names list",

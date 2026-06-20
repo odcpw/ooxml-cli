@@ -9,6 +9,18 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust XLSX column-width readback parity landed for direct
+  `xlsx colwidths show`. The slice reports default and explicit worksheet
+  column widths, hidden/custom flags, normalized column spans, uniformity, and
+  the generated `colwidths set` command template from a focused
+  `src/xlsx_dimensions.rs` module. It is read-only, so no Office/Open XML
+  mutation proof is required. Rust capabilities now advertise 80 Go-oracle
+  command paths, leaving a pinned 210-command gap. Proof: `cargo fmt --check`,
+  `cargo check --all-targets`, focused `cargo test --test rust_contract_smoke
+  xlsx_colwidths_show -- --nocapture`, focused capability ratchet/discovery
+  tests, `cargo clippy --all-targets -- -D warnings`, and `cargo test
+  --all-targets` passed with 4 ZIP guard unit tests plus 93 Rust contract
+  tests.
 - Rust DOCX table row deletion parity landed for direct
   `docx tables delete-row`. The slice deletes one hash-guarded main-document
   table row, rejects merged tables and last-row deletion like the Go oracle,
@@ -763,7 +775,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 79, and the harness pins the 211-command gap until
+  paths, Rust advertises 80, and the harness pins the 210-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -822,6 +834,10 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   commands, dry-run behavior, invalid row/column bounds, stale
   `--expect-state` guards, unfrozen clear errors, capability indexing, strict
   validation, Open XML SDK schema validation, and desktop Excel COM open proof
+- `--json xlsx colwidths show <xlsx>` with Go-oracle comparison for default
+  widths, explicit/custom/hidden `<col>` spans, default column-width overrides,
+  reversed range normalization, generated set-command templates, and capability
+  indexing
 - `--json xlsx tables list <xlsx>` and `--json xlsx tables show <xlsx>` with
   Go-oracle comparison for generated table workbooks, table metadata, columns,
   bridge command templates, `capabilities --for table`, and stable table

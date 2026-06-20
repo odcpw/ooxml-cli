@@ -31,6 +31,7 @@ mod serve;
 mod validation;
 mod vba;
 mod verify;
+mod xlsx_dimensions;
 mod xlsx_formula_recalc;
 mod xlsx_freeze;
 mod xlsx_metadata;
@@ -145,6 +146,7 @@ pub(crate) use runtime_util::{
 pub(crate) use selector_util::{add_selector, selector_candidates};
 pub(crate) use serve::{ServeState, run_serve_stdio};
 pub(crate) use validation::{validate, validate_exit_code};
+pub(crate) use xlsx_dimensions::xlsx_colwidths_show;
 pub(crate) use xlsx_formula_recalc::add_xlsx_formula_recalc_package_updates;
 pub(crate) use xlsx_metadata::{
     XlsxWorkbookMetadataUpdateOptions, xlsx_workbook_metadata_inspect,

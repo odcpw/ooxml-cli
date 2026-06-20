@@ -63,6 +63,64 @@ fn xlsx_ranges_export_matches_go_oracle() {
 }
 
 #[test]
+fn xlsx_colwidths_show_matches_go_oracle() {
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "colwidths",
+        "show",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "1",
+        "--range",
+        "A:C",
+    ]);
+
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-colwidths-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let workbook = temp_dir.join("widths.xlsx");
+    write_simple_xlsx_with_sheet_xml(
+        &workbook,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetFormatPr defaultColWidth="11"/>
+  <cols>
+    <col min="2" max="3" width="18.5" customWidth="1"/>
+    <col min="4" max="4" width="0" hidden="1"/>
+  </cols>
+  <sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData>
+</worksheet>"#,
+    );
+    let workbook = workbook.to_string_lossy().to_string();
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "colwidths",
+        "show",
+        &workbook,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "D:A",
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "colwidths",
+        "show",
+        &workbook,
+        "--sheet",
+        "1",
+        "--range",
+        "A1",
+    ]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_ranges_set_matches_go_oracle_and_saved_output() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-xlsx-ranges-set-{}", std::process::id()));

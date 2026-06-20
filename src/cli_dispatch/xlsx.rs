@@ -5,6 +5,7 @@ use serde_json::Value;
 use self::tables::dispatch_xlsx_tables;
 use crate::cli_args::*;
 use crate::cli_core::{CliError, CliResult};
+use crate::xlsx_colwidths_show;
 use crate::xlsx_freeze::*;
 use crate::xlsx_metadata::*;
 use crate::xlsx_mutation::*;
@@ -170,6 +171,15 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
                 && verb == "inspect" =>
         {
             xlsx_workbook_metadata_inspect(file)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "colwidths" && verb == "show" =>
+        {
+            reject_unknown_flags(rest, &["--sheet", "--range"], &[])?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let range = parse_string_flag(rest, "--range")?
+                .ok_or_else(|| CliError::invalid_args("--range is required (e.g. B or B:D)"))?;
+            xlsx_colwidths_show(file, sheet.as_deref(), &range)
         }
         [family, group, subgroup, verb, file, rest @ ..]
             if family == "xlsx"

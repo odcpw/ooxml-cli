@@ -98,6 +98,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "table", "ooxml xlsx tables append-records");
     assert_object_kind_command(&all_caps, "range", "ooxml xlsx tables append-records");
     assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx tables append-records");
+    assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx colwidths show");
+    assert_object_kind_command(&all_caps, "range", "ooxml xlsx colwidths show");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names list");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names show");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names add");
@@ -145,6 +147,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let xlsx_caps = xlsx_stdout.expect("xlsx capabilities");
     assert_command(&xlsx_caps, "ooxml xlsx sheets list", false);
     assert_command(&xlsx_caps, "ooxml xlsx sheets show", false);
+    assert_command(&xlsx_caps, "ooxml xlsx colwidths show", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set-format", true);
@@ -376,10 +379,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 79, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 80, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        211,
+        210,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
