@@ -490,14 +490,15 @@ Latest milestone, 2026-06-20:
   existing table, expands the table and autoFilter ranges, reuses the shared
   XLSX range writer for cell XML/formula handling, rejects totals/calculated
   columns/unsafe overwrites, and emits validation, range readback, and table
-  readback commands matching the Go oracle. Direct Rust capabilities remain
-  unchanged because the frozen Go capability inventory does not advertise
-  `append-rows`; `xlsx tables list/show` already emit the command template and
-  it is now executable in Rust. Proof: `cargo fmt --check`, `cargo
-  check --all-targets`, focused `xlsx_tables_append_rows` Go-oracle tests,
-  focused `xlsx_tables` tests, the Go capability subset ratchet, `cargo clippy
-  --all-targets -- -D warnings`, and `cargo test --all-targets` passed with 4
-  ZIP guard unit tests plus 85 Rust contract tests. A Rust-generated appended
+  readback commands matching the Go oracle. Rust capabilities still do not
+  advertise `append-rows` because serve/MCP operation routing has not yet been
+  promoted for that path; `xlsx tables list/show` already emit the command
+  template and it is executable in Rust direct CLI. Proof: `cargo fmt
+  --check`, `cargo check --all-targets`, focused `xlsx_tables_append_rows`
+  Go-oracle tests, focused `xlsx_tables` tests, the Go capability subset
+  ratchet, `cargo clippy --all-targets -- -D warnings`, and `cargo test
+  --all-targets` passed with 4 ZIP guard unit tests plus 85 Rust contract tests.
+  A Rust-generated appended
   workbook at `.tmp\xlsx-tables-append-rows\rust-append-rows.xlsx` passed Rust
   `validate --strict`, Microsoft Open XML SDK validation (`Valid: true`,
   `ErrorCount: 0`), and desktop Excel COM open proof (`1 passed, 0 failed`).
@@ -519,6 +520,16 @@ Latest milestone, 2026-06-20:
   `validate --strict`, Microsoft Open XML SDK validation (`Valid: true`,
   `ErrorCount: 0`, schema `Office2019`), and desktop Excel COM open proof
   (`1 passed, 0 failed`).
+- XLSX table CLI dispatch and XLSX table capability metadata split into focused
+  child modules at `src/cli_dispatch/xlsx/tables.rs` and
+  `src/capabilities/commands/xlsx/tables.rs`. This was an isomorphic
+  de-monolithization slice only: command routing, unsupported-command errors,
+  capability order, and MCP command resources are unchanged. Proof: `cargo
+  fmt --check`, `cargo check --all-targets`, `cargo clippy --all-targets -- -D
+  warnings`, focused `xlsx_tables` Go-oracle/serve tests, focused capability
+  subset/MCP tests, and `cargo test --all-targets` passed with 4 ZIP guard unit
+  tests plus 88 Rust contract tests. Office/Open XML proof was not rerun because
+  no OOXML output behavior changed.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented

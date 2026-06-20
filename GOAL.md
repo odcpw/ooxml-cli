@@ -28,7 +28,10 @@ history.
 - GitHub CLI is authenticated as `odcpw`.
 - Current Rust crate:
   - `Cargo.toml` package `ooxml-rs-port`, binary `ooxml`.
-  - `src/main.rs` is a large monolith and must not keep growing.
+  - `src/main.rs` is now a slim entrypoint/facade after the first
+    de-monolithization waves. Current growth pressure is in command-family
+    dispatch, capability metadata, OOXML mutation modules, and large contract
+    test shards.
   - `tests/rust_contract_smoke.rs` contains the Go-vs-Rust contract harness.
 - Last setup checks:
   - `cargo check --all-targets` passed.
@@ -83,8 +86,9 @@ The Rust port is done when all of the following are true:
   oracle doubt.
 - Do not claim parity unless the current evidence proves it.
 - Do not add new Rust feature surface on top of a broken proof loop.
-- Do not keep piling logic into `src/main.rs`. New work must either happen after
-  de-monolithization or as part of a safe split plan.
+- Do not keep piling logic into `src/main.rs` or newly extracted accumulation
+  zones. New work must either use existing focused modules or happen as part of
+  a safe split plan.
 - Do not split the Rust monolith aesthetically. Splits must be isomorphic:
   behavior identical, public command/API behavior identical, performance not
   meaningfully worse, compile behavior neutral or better.
@@ -110,8 +114,8 @@ Use installed skills explicitly with `$` names when doing work under this goal:
 - `$running-the-gauntlet-on-your-rust-port`: use the three-pillar lens:
   conformance, surface parity, and performance. Do not run the full gauntlet
   unless explicitly chosen; use the discipline continuously.
-- `$de-monolithize-your-codebase-isomorphically`: split `src/main.rs` and any
-  test monoliths only through proven seams and proof gates.
+- `$de-monolithize-your-codebase-isomorphically`: split remaining Rust and test
+  accumulation points only through proven seams and proof gates.
 - `$simplify-and-refactor-code-isomorphically`: simplify after behavior is
   locked by tests; no speculative rewrites.
 - `$multi-pass-bug-hunting`: run audit, fix, rescan loops on the Rust subject and
@@ -162,7 +166,8 @@ Suggested parallel lanes:
 - Lane A: Windows proof loop and golden scrubber reliability.
 - Lane B: track `master` hardening; merge/rebase only when `origin/master` is no
   longer an ancestor of the Rust branch, then resolve conflicts safely.
-- Lane C: de-monolithization census and seam plan for `src/main.rs`.
+- Lane C: de-monolithization census and seam plan for current Rust/test
+  accumulation points.
 - Lane D: Rust clippy and hygiene fixes that do not change behavior.
 - Lane E: command-surface inventory gap analysis against Go capabilities.
 - Lane F: Office/Open XML proof gate smoke commands and documentation.
@@ -225,8 +230,9 @@ suites concurrently.
 
 ## De-Monolithization Direction
 
-The current Rust implementation was allowed to pile into `src/main.rs`. That is
-acceptable for bootstrapping but not for a first-class port.
+The Rust implementation was allowed to pile into `src/main.rs` during
+bootstrapping. The entrypoint is now slimmed down, but the same discipline
+applies to newly extracted accumulation points.
 
 Use `$de-monolithize-your-codebase-isomorphically` before expanding major new
 feature surface. The goal is not to "make files prettier"; the goal is to make
@@ -295,7 +301,8 @@ Fix the proof loop before expanding Rust surface:
 ### Phase 3: De-Monolithize Safely
 
 - Run a monolith census of Rust files and tests.
-- Produce a seam plan for `src/main.rs`.
+- Produce a seam plan for the current Rust and contract-test accumulation
+  points.
 - Generate Grok review prompt for the seam plan if the split strategy is not
   obvious.
 - Extract the first proven seams with no behavior change.
