@@ -294,6 +294,10 @@ Latest milestone, 2026-06-20:
 - XLSX A1 cell/range parsing, `RangeBounds`, range containment, and column-name
   rendering moved from `src/xlsx_model.rs` into `src/xlsx_model/range.rs`,
   leaving `src/xlsx_model.rs` as the facade for existing crate imports.
+- XLSX sorted cell entries, used-range JSON/ref rendering, and sparse/dense row
+  JSON rendering moved from `src/xlsx_model.rs` into
+  `src/xlsx_model/render.rs`, preserving the sheet/cell readback facade and
+  Go-oracle coverage for `xlsx cells extract` and `xlsx sheets show`.
 - XLSX style readback, built-in number-format lookup, and date-style detection
   moved from `src/xlsx_model.rs` into `src/xlsx_model/styles.rs`, preserving
   the existing `XlsxStyle`, `xlsx_styles`, and `builtin_num_format_code` crate
