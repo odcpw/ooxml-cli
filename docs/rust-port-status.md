@@ -397,6 +397,10 @@ Latest milestone, 2026-06-20:
   scaffolding, and cell style XML updates moved from `src/xlsx_mutation.rs`
   into `src/xlsx_mutation/format.rs`, leaving shared worksheet write helpers in
   the mutation facade.
+- XLSX range set-format number-format preset/custom-code resolution moved from
+  `src/xlsx_mutation/format.rs` into
+  `src/xlsx_mutation/format/number_format.rs`, keeping the set-format facade
+  focused on package orchestration and style XML mutation.
 - XLSX single-cell mutation, handle resolution, previous-value reporting, and
   emitted readback command generation moved from `src/xlsx_mutation.rs` into
   `src/xlsx_mutation/cells.rs`, sharing the same range-write and recalculation
