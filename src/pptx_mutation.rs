@@ -1,6 +1,8 @@
 mod notes;
+mod tables;
 
 pub(crate) use notes::{pptx_notes_clear, pptx_notes_set};
+pub(crate) use tables::pptx_tables_delete_row;
 
 use serde_json::{Value, json};
 use std::fs;

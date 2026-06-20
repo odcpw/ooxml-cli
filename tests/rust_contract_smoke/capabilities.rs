@@ -20,6 +20,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx layouts list", false);
     assert_command(&all_caps, "ooxml pptx layouts show", false);
     assert_command(&all_caps, "ooxml pptx tables show", false);
+    assert_command(&all_caps, "ooxml pptx tables delete-row", false);
     assert_command(&all_caps, "ooxml pptx comments list", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx fields insert", true);
@@ -77,6 +78,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "paragraph", "ooxml docx paragraphs set");
     assert_object_kind_command(&all_caps, "paragraph", "ooxml docx paragraphs clear");
     assert_object_kind_command(&all_caps, "paragraph", "ooxml docx styles apply");
+    assert_object_kind_command(&all_caps, "table", "ooxml pptx tables delete-row");
+    assert_command_target_kind(&all_caps, "ooxml pptx tables delete-row", "slide");
+    assert_command_target_kind(&all_caps, "ooxml pptx tables delete-row", "table");
     assert_object_kind_command(&all_caps, "table", "ooxml docx styles apply");
     assert_object_kind_command(&all_caps, "table", "ooxml docx tables delete-row");
     assert_object_kind_command(&all_caps, "style", "ooxml docx styles list");
@@ -133,6 +137,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx layouts list", false);
     assert_command(&pptx_caps, "ooxml pptx layouts show", false);
     assert_command(&pptx_caps, "ooxml pptx tables show", false);
+    assert_command(&pptx_caps, "ooxml pptx tables delete-row", false);
     assert_command(&pptx_caps, "ooxml pptx extract text", false);
     assert_command(&pptx_caps, "ooxml pptx extract notes", false);
     assert_command(&pptx_caps, "ooxml pptx notes show", false);
@@ -191,6 +196,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(table_stderr, None);
     let table_caps = table_stdout.expect("table capabilities");
     assert_command(&table_caps, "ooxml pptx tables show", false);
+    assert_command(&table_caps, "ooxml pptx tables delete-row", false);
     assert_command(&table_caps, "ooxml xlsx tables list", false);
     assert_command(&table_caps, "ooxml xlsx tables show", false);
     assert_command(&table_caps, "ooxml xlsx tables export", false);
@@ -394,10 +400,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 81, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 82, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        209,
+        208,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

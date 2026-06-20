@@ -9,6 +9,21 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX table row deletion parity landed for direct
+  `pptx tables delete-row`. The slice deletes one row from a selected table
+  graphic frame, rejects unsafe/out-of-range rows like the Go oracle, emits
+  destination readback plus validate/render command templates, and has
+  Go-vs-Rust coverage for saved mutation, `pptx tables show` readback,
+  dry-run, and error behavior. Rust capabilities now advertise 82 Go-oracle
+  command paths, leaving a pinned 208-command gap; the command is advertised
+  with `opCompatible=false` because serve/MCP operation dispatch for PPTX table
+  mutations is not wired yet. Proof: `cargo fmt --check`, `cargo check
+  --all-targets`, focused `cargo test --test rust_contract_smoke
+  pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_go_oracle --
+  --nocapture`, focused capability ratchet/MCP resource tests, strict repo
+  validation for a generated PPTX, Open XML SDK Office2019 schema validation
+  (zero errors), PowerPoint COM open oracle, `cargo clippy --all-targets --
+  -D warnings`, and `cargo test --all-targets`.
 - Rust PPTX speaker-notes mutation parity landed for direct
   `pptx notes set` and `pptx notes clear`. The slice can create a missing
   notes slide and notes master relationship graph, update existing notes,
@@ -800,7 +815,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 81, and the harness pins the 209-command gap until
+  paths, Rust advertises 82, and the harness pins the 208-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

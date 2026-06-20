@@ -304,3 +304,185 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
     assert_eq!(rust_stdout, go_stdout, "notes set out-of-range stdout");
     assert_eq!(rust_stderr, go_stderr, "notes set out-of-range stderr");
 }
+
+#[test]
+fn pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-delete-row-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx table temp dir");
+
+    let fixture = "testdata/pptx/table-slide/presentation.pptx";
+    let go_out = temp_dir.join("go-delete-row.pptx");
+    let rust_out = temp_dir.join("rust-delete-row.pptx");
+    let go_out_str = go_out.to_str().expect("go delete-row path");
+    let rust_out_str = rust_out.to_str().expect("rust delete-row path");
+
+    let go_args = [
+        "--json",
+        "pptx",
+        "tables",
+        "delete-row",
+        fixture,
+        "--slide",
+        "2",
+        "--table-id",
+        "2",
+        "--row",
+        "2",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "tables",
+        "delete-row",
+        fixture,
+        "--slide",
+        "2",
+        "--table-id",
+        "2",
+        "--row",
+        "2",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "delete-row saved exit");
+    assert_eq!(rust_stderr, go_stderr, "delete-row saved stderr");
+    let rust_json = rust_stdout.expect("rust delete-row stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go delete-row stdout"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "delete-row saved stdout"
+    );
+    assert!(go_out.exists(), "Go delete-row output missing");
+    assert!(rust_out.exists(), "Rust delete-row output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+        "--json", "pptx", "tables", "show", go_out_str, "--slide", "2", "--target", "table:1",
+    ]);
+    let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "tables",
+        "show",
+        rust_out_str,
+        "--slide",
+        "2",
+        "--target",
+        "table:1",
+    ]);
+    assert_eq!(rust_show_code, go_show_code, "delete-row readback exit");
+    assert_eq!(
+        rust_show_stderr, go_show_stderr,
+        "delete-row readback stderr"
+    );
+    assert_eq!(
+        scrub_path(
+            rust_show_stdout.expect("rust delete-row readback"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_show_stdout.expect("go delete-row readback"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "delete-row readback stdout"
+    );
+
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "tables",
+        "delete-row",
+        fixture,
+        "--slide",
+        "2",
+        "--table-id",
+        "2",
+        "--row",
+        "2",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "delete-row dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "delete-row dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust delete-row dry-run stdout"),
+        go_stdout.expect("go delete-row dry-run stdout"),
+        "delete-row dry-run stdout"
+    );
+
+    for args in [
+        [
+            "--json",
+            "pptx",
+            "tables",
+            "delete-row",
+            fixture,
+            "--slide",
+            "2",
+            "--table-id",
+            "2",
+            "--row",
+            "99",
+            "--dry-run",
+        ],
+        [
+            "--json",
+            "pptx",
+            "tables",
+            "delete-row",
+            fixture,
+            "--slide",
+            "2",
+            "--table-id",
+            "2",
+            "--row",
+            "0",
+            "--dry-run",
+        ],
+        [
+            "--json",
+            "pptx",
+            "tables",
+            "delete-row",
+            fixture,
+            "--slide",
+            "2",
+            "--table-id",
+            "99",
+            "--row",
+            "1",
+            "--dry-run",
+        ],
+    ] {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "delete-row error exit for {args:?}");
+        assert_eq!(
+            rust_stdout, go_stdout,
+            "delete-row error stdout for {args:?}"
+        );
+        assert_eq!(
+            rust_stderr, go_stderr,
+            "delete-row error stderr for {args:?}"
+        );
+    }
+}

@@ -224,6 +224,23 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
             )
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "tables" && verb == "delete-row" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--table-id",
+                    "--target",
+                    "--row",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_tables_delete_row(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "replace" && verb == "text" =>
         {
             pptx_replace_text(file, rest)
