@@ -33,12 +33,14 @@ pub(crate) use commands::{
     xlsx_charts_set_plot_area_fill, xlsx_charts_set_series_style, xlsx_charts_set_title,
     xlsx_charts_show, xlsx_charts_update_source,
 };
+pub(crate) use model::TemplateChartStylePatch;
 pub(crate) use options::{
     XlsxChartConvertTypeOptions, XlsxChartCopyStyleOptions, XlsxChartCreateOptions,
     XlsxChartFillTarget, XlsxChartSetAxisOptions, XlsxChartSetFillOptions,
     XlsxChartSetLegendOptions, XlsxChartSetSeriesStyleOptions, XlsxChartSetTitleOptions,
     XlsxChartUpdateSourceOptions,
 };
+pub(crate) use style::apply_template_chart_series_style_xml;
 
 pub(in crate::xlsx_charts) use create::*;
 pub(in crate::xlsx_charts) use model::*;

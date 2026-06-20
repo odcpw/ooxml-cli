@@ -1954,6 +1954,146 @@ fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_go_oracle()
 }
 
 #[test]
+fn template_apply_pptx_chart_and_text_style_targets_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-template-targets-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("template targets temp dir");
+
+    let tokens_path = temp_dir.join("targets.json");
+    fs::write(&tokens_path, template_apply_chart_text_tokens_json())
+        .expect("write template target tokens");
+    let tokens_str = tokens_path.to_string_lossy().to_string();
+
+    let chart_target = "testdata/pptx/chart-simple/presentation.pptx";
+    let go_chart_out = temp_dir.join("go-chart.pptx");
+    let rust_chart_out = temp_dir.join("rust-chart.pptx");
+    let go_chart_out_str = go_chart_out.to_string_lossy().to_string();
+    let rust_chart_out_str = rust_chart_out.to_string_lossy().to_string();
+    let go_chart_args = [
+        "--json",
+        "template",
+        "apply",
+        chart_target,
+        "--tokens",
+        &tokens_str,
+        "--target-charts",
+        "--out",
+        &go_chart_out_str,
+    ];
+    let rust_chart_args = [
+        "--json",
+        "template",
+        "apply",
+        chart_target,
+        "--tokens",
+        &tokens_str,
+        "--target-charts",
+        "--out",
+        &rust_chart_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_chart_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_chart_args);
+    assert_eq!(rust_code, go_code, "template apply PPTX charts exit");
+    assert_eq!(rust_stderr, go_stderr, "template apply PPTX charts stderr");
+    assert_eq!(
+        scrub_paths(
+            rust_stdout.expect("rust PPTX chart apply stdout"),
+            &[(&tokens_str, "[TOKENS]"), (&rust_chart_out_str, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go PPTX chart apply stdout"),
+            &[(&tokens_str, "[TOKENS]"), (&go_chart_out_str, "[OUT]")]
+        ),
+        "template apply PPTX charts stdout"
+    );
+    assert_strict_validate_succeeds(&rust_chart_out_str, "template apply PPTX chart output");
+    assert_conformance_check_runs(&rust_chart_out_str, "template apply PPTX chart output");
+    let (_, chart_show, chart_show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "charts",
+        "show",
+        &rust_chart_out_str,
+        "--chart",
+        "chart:1",
+    ]);
+    assert_eq!(chart_show_stderr, None, "PPTX chart readback stderr");
+    let chart_show = chart_show.expect("PPTX chart readback");
+    assert_eq!(
+        chart_show["charts"][0]["style"]["series"][0]["fillColor"],
+        serde_json::json!("FF0000")
+    );
+    assert_eq!(
+        chart_show["charts"][0]["style"]["series"][0]["lineColor"],
+        serde_json::json!("00FF00")
+    );
+
+    let text_target = "testdata/pptx/minimal-title/presentation.pptx";
+    let go_text_out = temp_dir.join("go-text-styles.pptx");
+    let rust_text_out = temp_dir.join("rust-text-styles.pptx");
+    let go_text_out_str = go_text_out.to_string_lossy().to_string();
+    let rust_text_out_str = rust_text_out.to_string_lossy().to_string();
+    let go_text_args = [
+        "--json",
+        "template",
+        "apply",
+        text_target,
+        "--tokens",
+        &tokens_str,
+        "--target-text-styles",
+        "--out",
+        &go_text_out_str,
+    ];
+    let rust_text_args = [
+        "--json",
+        "template",
+        "apply",
+        text_target,
+        "--tokens",
+        &tokens_str,
+        "--target-text-styles",
+        "--out",
+        &rust_text_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_text_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_text_args);
+    assert_eq!(rust_code, go_code, "template apply text styles exit");
+    assert_eq!(rust_stderr, go_stderr, "template apply text styles stderr");
+    assert_eq!(
+        scrub_paths(
+            rust_stdout.expect("rust text styles apply stdout"),
+            &[(&tokens_str, "[TOKENS]"), (&rust_text_out_str, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go text styles apply stdout"),
+            &[(&tokens_str, "[TOKENS]"), (&go_text_out_str, "[OUT]")]
+        ),
+        "template apply text styles stdout"
+    );
+    assert_strict_validate_succeeds(&rust_text_out_str, "template apply text style output");
+    let (_, text_tokens, text_tokens_stderr) =
+        run_ooxml(&["--json", "template", "tokens", &rust_text_out_str]);
+    assert_eq!(text_tokens_stderr, None, "text style token readback stderr");
+    let text_tokens = text_tokens.expect("text style token readback");
+    let styles = text_tokens["pptx"]["defaultTextStyles"]
+        .as_array()
+        .expect("default text styles");
+    assert!(
+        styles.iter().any(|style| {
+            style["role"] == serde_json::json!("title")
+                && style["fontRef"] == serde_json::json!("major")
+                && style["colorRef"] == serde_json::json!("accent1")
+        }),
+        "updated title style should read back"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn pptx_template_compile_simple_matches_go_oracle_and_validates() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-template-compile-{}",
@@ -2059,6 +2199,59 @@ fn assert_strict_validate_succeeds(path: &str, label: &str) {
     assert_eq!(code, 0, "{label} strict validate exit");
     assert_eq!(stderr, None, "{label} strict validate stderr");
     assert!(stdout.is_some(), "{label} strict validate stdout");
+}
+
+fn assert_conformance_check_runs(path: &str, label: &str) {
+    let (_, stdout, stderr) = run_ooxml(&["--json", "conformance", "check", path]);
+    assert_eq!(stderr, None, "{label} conformance check stderr");
+    assert!(stdout.is_some(), "{label} conformance check stdout");
+}
+
+fn template_apply_chart_text_tokens_json() -> &'static str {
+    r#"{
+  "schemaVersion": "1.0",
+  "type": "pptx",
+  "source": "template-targets",
+  "pptx": {
+    "theme": null,
+    "defaultTextStyles": [
+      {
+        "masterRef": "/template/master.xml",
+        "role": "title",
+        "fontRef": "major",
+        "sizePt": 31,
+        "colorRef": "accent1"
+      },
+      {
+        "masterRef": "/template/master.xml",
+        "role": "body",
+        "fontRef": "minor",
+        "sizePt": 19,
+        "color": "FF00AA"
+      }
+    ],
+    "tableStyles": [],
+    "chartStyles": [
+      {
+        "partUri": "/template/chart.xml",
+        "seriesFillColor": "FF0000",
+        "seriesLineColor": "00FF00"
+      }
+    ]
+  },
+  "xlsx": {
+    "theme": null,
+    "namedCellStyles": [],
+    "chartStyles": [
+      {
+        "partUri": "/template/chart.xml",
+        "seriesFillColor": "FF0000",
+        "seriesLineColor": "00FF00"
+      }
+    ]
+  }
+}
+"#
 }
 
 fn scrub_template_compile_result(value: Value, output_path: &str) -> Value {

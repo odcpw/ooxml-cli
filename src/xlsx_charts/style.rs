@@ -1,5 +1,94 @@
 use super::*;
 
+pub(crate) fn apply_template_chart_series_style_xml(
+    xml: &str,
+    chart_uri: &str,
+    fill_color: Option<&str>,
+    line_color: Option<&str>,
+) -> CliResult<TemplateChartStylePatch> {
+    let mut root = parse_xml_node(xml)?;
+    if root.name != "chartSpace" {
+        return Err(CliError::unexpected(format!(
+            "chart part {chart_uri} root element not found"
+        )));
+    }
+    let before_style = inspect_chart_style(&root, chart_uri);
+    if chart_series_matches(&before_style, fill_color, line_color) {
+        return Ok(TemplateChartStylePatch {
+            updated_xml: xml.to_string(),
+            already_styled: true,
+            series_fill_color: fill_color.map(ToOwned::to_owned),
+            series_line_color: line_color.map(ToOwned::to_owned),
+        });
+    }
+
+    let ctx = ensure_chart_xml_namespaces(&mut root);
+    apply_chart_set_series_style(
+        &mut root,
+        &ctx,
+        1,
+        None,
+        &ChartSeriesStyleOptions {
+            fill_color: fill_color.map(ToOwned::to_owned),
+            line_color: line_color.map(ToOwned::to_owned),
+            line_width_pt: None,
+            marker_symbol: None,
+            marker_size: None,
+        },
+    )?;
+    let after_style = inspect_chart_style(&root, chart_uri);
+    let first_series = after_style
+        .get("series")
+        .and_then(Value::as_array)
+        .and_then(|series| series.first());
+    Ok(TemplateChartStylePatch {
+        updated_xml: render_xml_document(&root),
+        already_styled: false,
+        series_fill_color: first_series
+            .and_then(|series| series.get("fillColor"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        series_line_color: first_series
+            .and_then(|series| series.get("lineColor"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+    })
+}
+
+fn chart_series_matches(style: &Value, fill_color: Option<&str>, line_color: Option<&str>) -> bool {
+    let Some(first_series) = style
+        .get("series")
+        .and_then(Value::as_array)
+        .and_then(|series| series.first())
+    else {
+        return false;
+    };
+    if let Some(fill_color) = fill_color {
+        let current = first_series
+            .get("fillColor")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !equal_hex_or_scheme(current, fill_color) {
+            return false;
+        }
+    }
+    if let Some(line_color) = line_color {
+        let current = first_series
+            .get("lineColor")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !equal_hex_or_scheme(current, line_color) {
+            return false;
+        }
+    }
+    fill_color.is_some() || line_color.is_some()
+}
+
+fn equal_hex_or_scheme(left: &str, right: &str) -> bool {
+    left.trim_start_matches('#')
+        .eq_ignore_ascii_case(right.trim_start_matches('#'))
+}
+
 pub(super) fn run_xlsx_chart_style_mutation<F>(
     file: &str,
     sheet_selector: Option<&str>,

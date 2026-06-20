@@ -402,6 +402,13 @@ pub(super) struct ChartMutationExtra {
     pub(super) warnings: Vec<String>,
 }
 
+pub(crate) struct TemplateChartStylePatch {
+    pub(crate) updated_xml: String,
+    pub(crate) already_styled: bool,
+    pub(crate) series_fill_color: Option<String>,
+    pub(crate) series_line_color: Option<String>,
+}
+
 pub(super) struct ChartStyleResultArgs<'a> {
     pub(super) file: &'a str,
     pub(super) output: Option<&'a str>,

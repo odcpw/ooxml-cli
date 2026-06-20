@@ -881,6 +881,140 @@ fn xlsx_charts_style_saved_outputs_validate_and_read_back() {
 }
 
 #[test]
+fn template_apply_xlsx_chart_target_matches_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-template-xlsx-chart-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("template xlsx chart temp dir");
+
+    let tokens_path = temp_dir.join("chart-tokens.json");
+    fs::write(&tokens_path, template_apply_xlsx_chart_tokens_json())
+        .expect("write xlsx chart template tokens");
+    let tokens_str = tokens_path.to_string_lossy().to_string();
+    let target = "testdata/xlsx/chart-workbook/workbook.xlsx";
+    let go_out = temp_dir.join("go-chart.xlsx");
+    let rust_out = temp_dir.join("rust-chart.xlsx");
+    let go_out_str = go_out.to_string_lossy().to_string();
+    let rust_out_str = rust_out.to_string_lossy().to_string();
+    let go_args = [
+        "--json",
+        "template",
+        "apply",
+        target,
+        "--tokens",
+        &tokens_str,
+        "--target-charts",
+        "--out",
+        &go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "template",
+        "apply",
+        target,
+        "--tokens",
+        &tokens_str,
+        "--target-charts",
+        "--out",
+        &rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "template apply XLSX charts exit");
+    assert_eq!(rust_stderr, go_stderr, "template apply XLSX charts stderr");
+    assert_eq!(
+        scrub_paths(
+            rust_stdout.expect("rust XLSX chart apply stdout"),
+            &[(&tokens_str, "[TOKENS]"), (&rust_out_str, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go XLSX chart apply stdout"),
+            &[(&tokens_str, "[TOKENS]"), (&go_out_str, "[OUT]")]
+        ),
+        "template apply XLSX charts stdout"
+    );
+    let (validate_code, validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "validate", "--strict", &rust_out_str]);
+    assert_eq!(
+        validate_code, 0,
+        "template apply XLSX chart strict validate exit"
+    );
+    assert_eq!(
+        validate_stderr, None,
+        "template apply XLSX chart strict validate stderr"
+    );
+    assert_eq!(
+        validate_stdout.expect("template apply XLSX chart strict validate")["valid"],
+        Value::Bool(true)
+    );
+    let (_, conformance_stdout, conformance_stderr) =
+        run_ooxml(&["--json", "conformance", "check", &rust_out_str]);
+    assert_eq!(
+        conformance_stderr, None,
+        "template apply XLSX chart conformance stderr"
+    );
+    assert!(
+        conformance_stdout.is_some(),
+        "template apply XLSX chart conformance stdout"
+    );
+    let (_, chart_show, chart_show_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "charts",
+        "show",
+        &rust_out_str,
+        "--chart",
+        "chart:1",
+    ]);
+    assert_eq!(chart_show_stderr, None, "XLSX chart readback stderr");
+    let chart_show = chart_show.expect("XLSX chart readback");
+    assert_eq!(
+        chart_show["charts"][0]["style"]["series"][0]["fillColor"],
+        serde_json::json!("FF0000")
+    );
+    assert_eq!(
+        chart_show["charts"][0]["style"]["series"][0]["lineColor"],
+        serde_json::json!("00FF00")
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn template_apply_xlsx_chart_tokens_json() -> &'static str {
+    r#"{
+  "schemaVersion": "1.0",
+  "type": "xlsx",
+  "source": "xlsx-chart-target",
+  "pptx": {
+    "theme": null,
+    "defaultTextStyles": [],
+    "tableStyles": [],
+    "chartStyles": [
+      {
+        "partUri": "/template/chart.xml",
+        "seriesFillColor": "FF0000",
+        "seriesLineColor": "00FF00"
+      }
+    ]
+  },
+  "xlsx": {
+    "theme": null,
+    "namedCellStyles": [],
+    "chartStyles": [
+      {
+        "partUri": "/template/chart.xml",
+        "seriesFillColor": "FF0000",
+        "seriesLineColor": "00FF00"
+      }
+    ]
+  }
+}
+"#
+}
+
+#[test]
 fn xlsx_charts_remaining_saved_outputs_validate_and_read_back() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-xlsx-chart-rest-{}", std::process::id()));

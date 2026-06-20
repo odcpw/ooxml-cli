@@ -9,9 +9,9 @@ use crate::{
     CliError, CliResult, InspectPackageKind, attr, copy_zip_with_part_overrides,
     detect_inspect_package_type, has_flag, local_name, package_mutation_temp_path, package_type,
     parse_string_flag, pptx_charts_list, pptx_masters_list, pptx_masters_show,
-    reject_unknown_flags, validate, validate_xlsx_mutation_output_flags, xlsx_charts_list,
-    xml_attr_escape, xml_direct_child_ranges, xml_fragment_bounds, xml_token_name, zip_entry_names,
-    zip_text,
+    reject_unknown_flags, validate, validate_xlsx_mutation_output_flags,
+    xlsx_charts::apply_template_chart_series_style_xml, xlsx_charts_list, xml_attr_escape,
+    xml_direct_child_ranges, xml_fragment_bounds, xml_token_name, zip_entry_names, zip_text,
 };
 
 const TEMPLATE_COLOR_ORDER: &[(&str, &str)] = &[
@@ -145,16 +145,8 @@ pub(crate) fn template_apply(file: &str, args: &[String]) -> CliResult<Value> {
         true
     };
     let want_fonts = if explicit_targets { target_fonts } else { true };
-    if target_charts {
-        return Err(CliError::invalid_args(
-            "template apply --target-charts is not yet implemented in the Rust port",
-        ));
-    }
-    if target_text_styles {
-        return Err(CliError::invalid_args(
-            "template apply --target-text-styles is not yet implemented in the Rust port",
-        ));
-    }
+    let want_charts = target_charts;
+    let want_text_styles = target_text_styles;
 
     let (tokens, profile_source, profile_name) = load_apply_tokens(
         target_kind,
@@ -172,10 +164,23 @@ pub(crate) fn template_apply(file: &str, args: &[String]) -> CliResult<Value> {
     } else {
         ThemeFontUpdates::default()
     };
+    let chart = if want_charts {
+        representative_chart_update_from_tokens(&tokens, target_kind)?
+    } else {
+        None
+    };
+    let text_styles = if want_text_styles {
+        text_style_updates_from_tokens(&tokens, target_kind)?
+    } else {
+        Vec::new()
+    };
 
     let mut applied_colors = Vec::<Value>::new();
     let mut applied_font_parts = Vec::<Value>::new();
+    let mut applied_charts = Vec::<Value>::new();
+    let mut applied_text_styles = Vec::<Value>::new();
     let mut skipped = Vec::<String>::new();
+    let mut warnings = Vec::<String>::new();
     let mut overrides = BTreeMap::<String, String>::new();
     if want_colors || want_fonts {
         for part in template_theme_parts(file, target_kind)? {
@@ -195,6 +200,94 @@ pub(crate) fn template_apply(file: &str, args: &[String]) -> CliResult<Value> {
         }
     }
 
+    if want_charts {
+        if let Some(chart) = chart {
+            let chart_parts = template_chart_parts(file, target_kind)?;
+            if chart_parts.is_empty() {
+                skipped.push("charts: target has no chart parts".to_string());
+            }
+            for part in chart_parts {
+                let part_uri = format!("/{}", part.trim_start_matches('/'));
+                let xml = zip_text(file, &part)?;
+                match apply_template_chart_series_style_xml(
+                    &xml,
+                    &part_uri,
+                    chart.series_fill_color.as_deref(),
+                    chart.series_line_color.as_deref(),
+                ) {
+                    Ok(patch) if patch.already_styled => {
+                        skipped.push(format!(
+                            "chart {part_uri}: series 1 already has requested styling"
+                        ));
+                    }
+                    Ok(patch) => {
+                        let mut applied = Map::new();
+                        applied.insert("partUri".to_string(), json!(part_uri));
+                        if let Some(fill) = patch.series_fill_color {
+                            applied.insert("seriesFillColor".to_string(), json!(fill));
+                        }
+                        if let Some(line) = patch.series_line_color {
+                            applied.insert("seriesLineColor".to_string(), json!(line));
+                        }
+                        applied_charts.push(Value::Object(applied));
+                        if patch.updated_xml != xml {
+                            overrides.insert(part, patch.updated_xml);
+                        }
+                    }
+                    Err(err) => skipped.push(format!("chart {part_uri}: {}", err.message)),
+                }
+            }
+        } else {
+            skipped.push(
+                "charts: source has no chart style with a series fill/line color".to_string(),
+            );
+        }
+    }
+
+    if want_text_styles {
+        if target_kind != "pptx" {
+            skipped.push("text styles: target is not a PPTX package".to_string());
+        } else if text_styles.is_empty() {
+            skipped.push("text styles: source has no PPTX master default text styles".to_string());
+        } else {
+            let planned_styles = representative_text_styles_by_role(text_styles, &mut warnings);
+            for part in template_pptx_master_parts(file)? {
+                let part_uri = format!("/{}", part.trim_start_matches('/'));
+                let xml = zip_text(file, &part)?;
+                let current_styles = pptx_master_default_text_styles(file, &part_uri)?;
+                let mut updated_xml = xml.clone();
+                for style in &planned_styles {
+                    let current = current_styles
+                        .iter()
+                        .find(|current| {
+                            current.get("role").and_then(Value::as_str) == Some(style.role.as_str())
+                        })
+                        .and_then(DefaultTextStyleUpdate::from_value)
+                        .unwrap_or_else(|| DefaultTextStyleUpdate::empty(&style.role));
+                    if current.matches_desired(style) {
+                        skipped.push(format!(
+                            "text style {} in {part_uri}: already up to date",
+                            style.role
+                        ));
+                        continue;
+                    }
+                    let merged = current.merged_with(style);
+                    updated_xml =
+                        update_master_default_text_style(&updated_xml, &merged).map_err(|err| {
+                            CliError::invalid_args(format!(
+                                "failed to update text style {} in {part_uri}: {err}",
+                                style.role
+                            ))
+                        })?;
+                    applied_text_styles.push(merged.applied_json(&part_uri, style));
+                }
+                if updated_xml != xml {
+                    overrides.insert(part, updated_xml);
+                }
+            }
+        }
+    }
+
     if target_ranges {
         skipped.push(
             "ranges: range/cell style transfer is not supported (no per-range style in the token model)"
@@ -202,7 +295,10 @@ pub(crate) fn template_apply(file: &str, args: &[String]) -> CliResult<Value> {
         );
     }
 
-    let total_updates = applied_colors.len() + applied_font_parts.len();
+    let total_updates = applied_colors.len()
+        + applied_font_parts.len()
+        + applied_charts.len()
+        + applied_text_styles.len();
     let ranges_only = explicit_targets
         && target_ranges
         && !target_colors
@@ -236,8 +332,8 @@ pub(crate) fn template_apply(file: &str, args: &[String]) -> CliResult<Value> {
         applied.insert("fonts".to_string(), Value::Object(fonts_json));
         applied.insert("fontParts".to_string(), Value::Array(applied_font_parts));
     }
-    applied.insert("charts".to_string(), Value::Array(Vec::new()));
-    applied.insert("textStyles".to_string(), Value::Array(Vec::new()));
+    applied.insert("charts".to_string(), Value::Array(applied_charts));
+    applied.insert("textStyles".to_string(), Value::Array(applied_text_styles));
 
     let mut result = Map::new();
     result.insert("file".to_string(), json!(file));
@@ -259,7 +355,12 @@ pub(crate) fn template_apply(file: &str, args: &[String]) -> CliResult<Value> {
             .unwrap_or_else(|| json!("1.0")),
     );
     result.insert("applied".to_string(), Value::Object(applied));
+    skipped.sort();
+    warnings.sort();
     result.insert("skipped".to_string(), json!(skipped));
+    if !warnings.is_empty() {
+        result.insert("warnings".to_string(), json!(warnings));
+    }
     result.insert("totalUpdates".to_string(), json!(total_updates));
     Ok(Value::Object(result))
 }
@@ -612,6 +713,29 @@ fn chart_style_summaries(charts: &Value) -> Vec<Value> {
             {
                 out.insert("chartType".to_string(), json!(chart_type));
             }
+            if let Some(first_series) = chart
+                .get("style")
+                .and_then(|style| style.get("series"))
+                .and_then(Value::as_array)
+                .and_then(|series| series.first())
+            {
+                if let Some(fill) = first_series.get("fillColor").and_then(Value::as_str)
+                    && is_hex_color(fill)
+                {
+                    out.insert(
+                        "seriesFillColor".to_string(),
+                        json!(fill.to_ascii_uppercase()),
+                    );
+                }
+                if let Some(line) = first_series.get("lineColor").and_then(Value::as_str)
+                    && is_hex_color(line)
+                {
+                    out.insert(
+                        "seriesLineColor".to_string(),
+                        json!(line.to_ascii_uppercase()),
+                    );
+                }
+            }
             Some(Value::Object(out))
         })
         .collect()
@@ -729,6 +853,23 @@ fn parse_theme_xml(xml: &str) -> Option<Value> {
 struct ThemeFontUpdates {
     major_font: Option<String>,
     minor_font: Option<String>,
+}
+
+#[derive(Clone)]
+struct ChartStyleUpdate {
+    series_fill_color: Option<String>,
+    series_line_color: Option<String>,
+}
+
+#[derive(Clone, Default)]
+struct DefaultTextStyleUpdate {
+    master_ref: Option<String>,
+    role: String,
+    font_ref: Option<String>,
+    font_name: Option<String>,
+    size_pt: Option<f64>,
+    color: Option<String>,
+    color_ref: Option<String>,
 }
 
 struct ThemeColorUpdate {
@@ -892,6 +1033,126 @@ fn theme_font_updates_from_tokens(tokens: &Value, target_kind: &str) -> ThemeFon
     }
 }
 
+fn representative_chart_update_from_tokens(
+    tokens: &Value,
+    target_kind: &str,
+) -> CliResult<Option<ChartStyleUpdate>> {
+    let Some(chart_styles) = tokens
+        .get(target_kind)
+        .and_then(|target| target.get("chartStyles"))
+        .and_then(Value::as_array)
+    else {
+        return Ok(None);
+    };
+    for style in chart_styles {
+        let fill = style
+            .get("seriesFillColor")
+            .and_then(Value::as_str)
+            .filter(|value| is_hex_color(value))
+            .map(|value| value.to_ascii_uppercase());
+        let line = style
+            .get("seriesLineColor")
+            .and_then(Value::as_str)
+            .filter(|value| is_hex_color(value))
+            .map(|value| value.to_ascii_uppercase());
+        if fill.is_some() || line.is_some() {
+            return Ok(Some(ChartStyleUpdate {
+                series_fill_color: fill,
+                series_line_color: line,
+            }));
+        }
+    }
+    Ok(None)
+}
+
+fn text_style_updates_from_tokens(
+    tokens: &Value,
+    target_kind: &str,
+) -> CliResult<Vec<DefaultTextStyleUpdate>> {
+    let Some(styles) = tokens
+        .get(target_kind)
+        .and_then(|target| target.get("defaultTextStyles"))
+        .and_then(Value::as_array)
+    else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::new();
+    for style in styles {
+        if let Some(style) = DefaultTextStyleUpdate::from_value(style) {
+            if !matches!(style.role.as_str(), "title" | "body" | "other") {
+                continue;
+            }
+            if style.is_empty_payload() {
+                continue;
+            }
+            if let Some(font_ref) = style.font_ref.as_deref()
+                && font_ref != "major"
+                && font_ref != "minor"
+            {
+                continue;
+            }
+            if let Some(color) = style.color.as_deref()
+                && !is_hex_color(color)
+            {
+                continue;
+            }
+            if let Some(color_ref) = style.color_ref.as_deref()
+                && !is_valid_text_style_color_ref(color_ref)
+            {
+                continue;
+            }
+            if style.color.is_some() && style.color_ref.is_some() {
+                continue;
+            }
+            out.push(style);
+        }
+    }
+    Ok(out)
+}
+
+fn representative_text_styles_by_role(
+    styles: Vec<DefaultTextStyleUpdate>,
+    warnings: &mut Vec<String>,
+) -> Vec<DefaultTextStyleUpdate> {
+    let mut by_role = BTreeMap::<String, DefaultTextStyleUpdate>::new();
+    for style in styles {
+        if by_role.contains_key(&style.role) {
+            warnings.push(format!(
+                "text styles: multiple source {} defaults found; using the first for every target master",
+                style.role
+            ));
+            continue;
+        }
+        by_role.insert(style.role.clone(), style);
+    }
+    ["title", "body", "other"]
+        .into_iter()
+        .filter_map(|role| by_role.remove(role))
+        .collect()
+}
+
+fn is_valid_text_style_color_ref(value: &str) -> bool {
+    matches!(
+        value,
+        "tx1"
+            | "tx2"
+            | "bg1"
+            | "bg2"
+            | "dk1"
+            | "dk2"
+            | "lt1"
+            | "lt2"
+            | "accent1"
+            | "accent2"
+            | "accent3"
+            | "accent4"
+            | "accent5"
+            | "accent6"
+            | "hlink"
+            | "folHlink"
+    )
+}
+
 fn template_theme_parts(file: &str, target_kind: &str) -> CliResult<Vec<String>> {
     let prefix = match target_kind {
         "pptx" => "ppt/theme/",
@@ -912,6 +1173,35 @@ fn template_theme_parts(file: &str, target_kind: &str) -> CliResult<Vec<String>>
             "no theme part found for {target_kind} package"
         )));
     }
+    Ok(parts)
+}
+
+fn template_chart_parts(file: &str, target_kind: &str) -> CliResult<Vec<String>> {
+    let prefix = if target_kind == "xlsx" {
+        "xl/charts/chart"
+    } else {
+        "ppt/charts/chart"
+    };
+    let mut parts = zip_entry_names(file)?
+        .into_iter()
+        .filter(|entry| {
+            entry.starts_with(prefix) && entry.ends_with(".xml") && !entry.contains("/_rels/")
+        })
+        .collect::<Vec<_>>();
+    parts.sort();
+    Ok(parts)
+}
+
+fn template_pptx_master_parts(file: &str) -> CliResult<Vec<String>> {
+    let mut parts = zip_entry_names(file)?
+        .into_iter()
+        .filter(|entry| {
+            entry.starts_with("ppt/slideMasters/slideMaster")
+                && entry.ends_with(".xml")
+                && !entry.contains("/_rels/")
+        })
+        .collect::<Vec<_>>();
+    parts.sort();
     Ok(parts)
 }
 
@@ -996,6 +1286,484 @@ fn apply_theme_updates_to_part(
         applied_font_part: font_part,
         skipped,
     })
+}
+
+impl DefaultTextStyleUpdate {
+    fn empty(role: &str) -> Self {
+        Self {
+            role: role.to_string(),
+            ..Self::default()
+        }
+    }
+
+    fn from_value(value: &Value) -> Option<Self> {
+        let role = value
+            .get("role")
+            .and_then(Value::as_str)?
+            .trim()
+            .to_ascii_lowercase();
+        Some(Self {
+            master_ref: value
+                .get("masterRef")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(ToOwned::to_owned),
+            role,
+            font_ref: value
+                .get("fontRef")
+                .and_then(Value::as_str)
+                .map(|value| value.trim().to_ascii_lowercase())
+                .filter(|value| !value.is_empty()),
+            font_name: value
+                .get("fontName")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned),
+            size_pt: value.get("sizePt").and_then(Value::as_f64),
+            color: value
+                .get("color")
+                .and_then(Value::as_str)
+                .map(|value| value.trim().trim_start_matches('#').to_ascii_uppercase())
+                .filter(|value| !value.is_empty()),
+            color_ref: value
+                .get("colorRef")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned),
+        })
+    }
+
+    fn is_empty_payload(&self) -> bool {
+        self.size_pt.unwrap_or_default() <= 0.0
+            && self.font_ref.is_none()
+            && self.font_name.is_none()
+            && self.color.is_none()
+            && self.color_ref.is_none()
+    }
+
+    fn matches_desired(&self, desired: &Self) -> bool {
+        if let Some(size_pt) = desired.size_pt
+            && self.size_pt != Some(size_pt)
+        {
+            return false;
+        }
+        if let Some(font_ref) = desired.font_ref.as_deref()
+            && self.font_ref.as_deref() != Some(font_ref)
+        {
+            return false;
+        }
+        if let Some(font_name) = desired.font_name.as_deref()
+            && self.font_name.as_deref() != Some(font_name)
+        {
+            return false;
+        }
+        if let Some(color_ref) = desired.color_ref.as_deref()
+            && self.color_ref.as_deref() != Some(color_ref)
+        {
+            return false;
+        }
+        if let Some(color) = desired.color.as_deref()
+            && !self
+                .color
+                .as_deref()
+                .is_some_and(|current| current.eq_ignore_ascii_case(color))
+        {
+            return false;
+        }
+        !desired.is_empty_payload()
+    }
+
+    fn merged_with(&self, desired: &Self) -> Self {
+        let mut merged = self.clone();
+        merged.master_ref = desired.master_ref.clone();
+        merged.role = desired.role.clone();
+        if desired.size_pt.unwrap_or_default() > 0.0 {
+            merged.size_pt = desired.size_pt;
+        }
+        if desired.font_ref.is_some() {
+            merged.font_ref = desired.font_ref.clone();
+            merged.font_name = None;
+        }
+        if desired.font_name.is_some() {
+            merged.font_name = desired.font_name.clone();
+            merged.font_ref = None;
+        }
+        if desired.color_ref.is_some() {
+            merged.color_ref = desired.color_ref.clone();
+            merged.color = None;
+        }
+        if desired.color.is_some() {
+            merged.color = desired.color.clone();
+            merged.color_ref = None;
+        }
+        merged
+    }
+
+    fn applied_json(&self, master_part_uri: &str, source: &Self) -> Value {
+        let mut object = Map::new();
+        object.insert("masterPartUri".to_string(), json!(master_part_uri));
+        object.insert("role".to_string(), json!(self.role));
+        if let Some(master_ref) = source.master_ref.as_deref() {
+            object.insert("sourceMasterRef".to_string(), json!(master_ref));
+        }
+        if let Some(font_ref) = source.font_ref.as_deref() {
+            object.insert("fontRef".to_string(), json!(font_ref));
+        }
+        if let Some(font_name) = source.font_name.as_deref() {
+            object.insert("fontName".to_string(), json!(font_name));
+        }
+        if let Some(size_pt) = source.size_pt
+            && size_pt > 0.0
+        {
+            object.insert("sizePt".to_string(), json_number(size_pt));
+        }
+        if let Some(color) = source.color.as_deref() {
+            object.insert("color".to_string(), json!(color.to_ascii_uppercase()));
+        }
+        if let Some(color_ref) = source.color_ref.as_deref() {
+            object.insert("colorRef".to_string(), json!(color_ref));
+        }
+        Value::Object(object)
+    }
+}
+
+fn update_master_default_text_style(
+    xml: &str,
+    style: &DefaultTextStyleUpdate,
+) -> Result<String, String> {
+    let tx_styles_span = first_element_span(xml, "txStyles", 0, xml.len());
+    let (mut updated, tx_styles_span) = if let Some(span) = tx_styles_span {
+        (xml.to_string(), span)
+    } else {
+        let root_open_end = xml.find('>').ok_or("slide master root tag not found")?;
+        let insert_at = first_element_span(xml, "extLst", root_open_end + 1, xml.len())
+            .map(|span| span.0)
+            .unwrap_or_else(|| {
+                xml.rfind("</")
+                    .unwrap_or_else(|| root_open_end.saturating_add(1))
+            });
+        let prefix = root_prefix(xml, root_open_end);
+        let drawing_prefix =
+            namespace_prefix(xml, "http://schemas.openxmlformats.org/drawingml/2006/main")
+                .unwrap_or_else(|| "a".to_string());
+        let tx_styles = format!(
+            "<{}><{}><{}></{}></{}><{}><{}></{}></{}><{}><{}></{}></{}></{}>",
+            qualified_name(&prefix, "txStyles"),
+            qualified_name(&prefix, "titleStyle"),
+            qualified_name(&drawing_prefix, "lvl1pPr"),
+            qualified_name(&drawing_prefix, "lvl1pPr"),
+            qualified_name(&prefix, "titleStyle"),
+            qualified_name(&prefix, "bodyStyle"),
+            qualified_name(&drawing_prefix, "lvl1pPr"),
+            qualified_name(&drawing_prefix, "lvl1pPr"),
+            qualified_name(&prefix, "bodyStyle"),
+            qualified_name(&prefix, "otherStyle"),
+            qualified_name(&drawing_prefix, "lvl1pPr"),
+            qualified_name(&drawing_prefix, "lvl1pPr"),
+            qualified_name(&prefix, "otherStyle"),
+            qualified_name(&prefix, "txStyles")
+        );
+        let updated = insert_at_index(xml, insert_at, &tx_styles);
+        let span = first_element_span(&updated, "txStyles", 0, updated.len())
+            .ok_or("created txStyles element not found")?;
+        (updated, span)
+    };
+
+    let style_element = match style.role.as_str() {
+        "title" => "titleStyle",
+        "body" => "bodyStyle",
+        "other" => "otherStyle",
+        _ => return Err(format!("unsupported text style role {}", style.role)),
+    };
+    if first_element_span(&updated, style_element, tx_styles_span.0, tx_styles_span.1).is_none() {
+        let tx_xml = &updated[tx_styles_span.0..tx_styles_span.1];
+        let (open_end, tag_name, close_start, self_closing) =
+            xml_fragment_bounds(tx_xml).map_err(|err| err.message)?;
+        if self_closing {
+            return Err("txStyles element is self-closing".to_string());
+        }
+        let prefix = tag_prefix(&tag_name);
+        let drawing_prefix = namespace_prefix(
+            &updated,
+            "http://schemas.openxmlformats.org/drawingml/2006/main",
+        )
+        .unwrap_or_else(|| "a".to_string());
+        let new_style = format!(
+            "<{}><{}></{}></{}>",
+            qualified_name(&prefix, style_element),
+            qualified_name(&drawing_prefix, "lvl1pPr"),
+            qualified_name(&drawing_prefix, "lvl1pPr"),
+            qualified_name(&prefix, style_element)
+        );
+        let insertion =
+            tx_styles_child_insert_index(tx_xml, open_end + 1, close_start, style_element)?;
+        let updated_tx = insert_at_index(tx_xml, insertion, &new_style);
+        updated = replace_span(&updated, tx_styles_span.0, tx_styles_span.1, &updated_tx);
+    }
+    let tx_styles_span = first_element_span(&updated, "txStyles", 0, updated.len())
+        .ok_or("txStyles element not found")?;
+    let style_span =
+        first_element_span(&updated, style_element, tx_styles_span.0, tx_styles_span.1)
+            .ok_or("style element not found")?;
+    let style_xml = &updated[style_span.0..style_span.1];
+    let lvl_span = first_element_span(style_xml, "lvl1pPr", 0, style_xml.len())
+        .ok_or("lvl1pPr element not found")?;
+    let updated_style = update_level_paragraph_default_run(style_xml, lvl_span, style)?;
+    Ok(replace_span(
+        &updated,
+        style_span.0,
+        style_span.1,
+        &updated_style,
+    ))
+}
+
+fn update_level_paragraph_default_run(
+    style_xml: &str,
+    lvl_span: (usize, usize),
+    style: &DefaultTextStyleUpdate,
+) -> Result<String, String> {
+    let lvl_xml = &style_xml[lvl_span.0..lvl_span.1];
+    let (lvl_open_end, lvl_tag, lvl_close_start, lvl_self_closing) =
+        xml_fragment_bounds(lvl_xml).map_err(|err| err.message)?;
+    if lvl_self_closing {
+        return Err("lvl1pPr element is self-closing".to_string());
+    }
+    let drawing_prefix = tag_prefix(&lvl_tag);
+    let def_span = first_element_span(lvl_xml, "defRPr", lvl_open_end + 1, lvl_close_start);
+    let updated_lvl = if let Some(def_span) = def_span {
+        let def_xml = &lvl_xml[def_span.0..def_span.1];
+        let updated_def = update_default_run_properties(def_xml, style)?;
+        replace_span(lvl_xml, def_span.0, def_span.1, &updated_def)
+    } else {
+        let def = build_default_run_properties(&drawing_prefix, style);
+        insert_at_index(lvl_xml, lvl_close_start, &def)
+    };
+    Ok(replace_span(
+        style_xml,
+        lvl_span.0,
+        lvl_span.1,
+        &updated_lvl,
+    ))
+}
+
+fn update_default_run_properties(
+    def_xml: &str,
+    style: &DefaultTextStyleUpdate,
+) -> Result<String, String> {
+    let (open_end, tag_name, close_start, self_closing) =
+        xml_fragment_bounds(def_xml).map_err(|err| err.message)?;
+    let prefix = tag_prefix(&tag_name);
+    let mut updated = def_xml.to_string();
+    if self_closing {
+        updated = xml_open_tag(def_xml, open_end);
+        updated.push_str(&format!("</{tag_name}>"));
+    }
+    if let Some(size_pt) = style.size_pt
+        && size_pt > 0.0
+    {
+        updated = set_attr_on_element(
+            &updated,
+            0,
+            "sz",
+            &((size_pt * 100.0 + 0.5) as i64).to_string(),
+        )
+        .map_err(|err| err.message)?;
+    }
+    if style.color.is_some() || style.color_ref.is_some() {
+        updated = set_default_run_solid_fill(&updated, &prefix, style)?;
+    }
+    let typeface = default_text_style_typeface(style);
+    if let Some(typeface) = typeface.as_deref() {
+        updated = set_default_run_typeface(&updated, &prefix, "latin", typeface)?;
+        updated =
+            set_default_run_typeface(&updated, &prefix, "ea", &script_typeface(typeface, "ea"))?;
+        updated =
+            set_default_run_typeface(&updated, &prefix, "cs", &script_typeface(typeface, "cs"))?;
+    }
+    let _ = close_start;
+    Ok(updated)
+}
+
+fn build_default_run_properties(prefix: &str, style: &DefaultTextStyleUpdate) -> String {
+    let mut out = String::new();
+    out.push('<');
+    out.push_str(&qualified_name(prefix, "defRPr"));
+    if let Some(size_pt) = style.size_pt
+        && size_pt > 0.0
+    {
+        out.push_str(&format!(" sz=\"{}\"", (size_pt * 100.0 + 0.5) as i64));
+    }
+    out.push_str(" kern=\"1200\">");
+    if style.color.is_some() || style.color_ref.is_some() {
+        out.push_str(&solid_fill_xml(prefix, style));
+    }
+    if let Some(typeface) = default_text_style_typeface(style) {
+        out.push_str(&font_xml(prefix, "latin", &typeface));
+        out.push_str(&font_xml(prefix, "ea", &script_typeface(&typeface, "ea")));
+        out.push_str(&font_xml(prefix, "cs", &script_typeface(&typeface, "cs")));
+    }
+    out.push_str("</");
+    out.push_str(&qualified_name(prefix, "defRPr"));
+    out.push('>');
+    out
+}
+
+fn set_default_run_solid_fill(
+    def_xml: &str,
+    prefix: &str,
+    style: &DefaultTextStyleUpdate,
+) -> Result<String, String> {
+    let (open_end, _tag_name, close_start, self_closing) =
+        xml_fragment_bounds(def_xml).map_err(|err| err.message)?;
+    if self_closing {
+        return Err("defRPr element is self-closing".to_string());
+    }
+    let children =
+        xml_direct_child_ranges(def_xml, open_end + 1, close_start).map_err(|err| err.message)?;
+    let mut out = String::new();
+    out.push_str(&def_xml[..=open_end]);
+    for child in children {
+        if child.kind != "solidFill" && child.kind != "noFill" {
+            out.push_str(&def_xml[child.start..child.end]);
+        }
+    }
+    out.push_str(&solid_fill_xml(prefix, style));
+    out.push_str(&def_xml[close_start..]);
+    Ok(out)
+}
+
+fn set_default_run_typeface(
+    def_xml: &str,
+    prefix: &str,
+    local: &str,
+    typeface: &str,
+) -> Result<String, String> {
+    let (open_end, _tag_name, close_start, self_closing) =
+        xml_fragment_bounds(def_xml).map_err(|err| err.message)?;
+    if self_closing {
+        return Err("defRPr element is self-closing".to_string());
+    }
+    if let Some(span) = first_element_span(def_xml, local, open_end + 1, close_start) {
+        set_attr_on_element(def_xml, span.0, "typeface", typeface).map_err(|err| err.message)
+    } else {
+        let insertion = default_run_child_insert_index(def_xml, open_end + 1, close_start, local)?;
+        Ok(insert_at_index(
+            def_xml,
+            insertion,
+            &font_xml(prefix, local, typeface),
+        ))
+    }
+}
+
+fn solid_fill_xml(prefix: &str, style: &DefaultTextStyleUpdate) -> String {
+    let fill_tag = qualified_name(prefix, "solidFill");
+    if let Some(color_ref) = style.color_ref.as_deref() {
+        let scheme_tag = qualified_name(prefix, "schemeClr");
+        format!(
+            "<{fill_tag}><{scheme_tag} val=\"{}\"/></{fill_tag}>",
+            xml_attr_escape(color_ref)
+        )
+    } else {
+        let srgb_tag = qualified_name(prefix, "srgbClr");
+        format!(
+            "<{fill_tag}><{srgb_tag} val=\"{}\"/></{fill_tag}>",
+            xml_attr_escape(style.color.as_deref().unwrap_or_default())
+        )
+    }
+}
+
+fn font_xml(prefix: &str, local: &str, typeface: &str) -> String {
+    format!(
+        "<{} typeface=\"{}\"/>",
+        qualified_name(prefix, local),
+        xml_attr_escape(typeface)
+    )
+}
+
+fn default_text_style_typeface(style: &DefaultTextStyleUpdate) -> Option<String> {
+    match style.font_ref.as_deref() {
+        Some("major") => Some("+mj-lt".to_string()),
+        Some("minor") => Some("+mn-lt".to_string()),
+        _ => style.font_name.clone(),
+    }
+}
+
+fn script_typeface(typeface: &str, script: &str) -> String {
+    match (typeface, script) {
+        ("+mj-lt", "ea") => "+mj-ea".to_string(),
+        ("+mj-lt", "cs") => "+mj-cs".to_string(),
+        ("+mn-lt", "ea") => "+mn-ea".to_string(),
+        ("+mn-lt", "cs") => "+mn-cs".to_string(),
+        _ => typeface.to_string(),
+    }
+}
+
+fn tx_styles_child_insert_index(
+    xml: &str,
+    start: usize,
+    end: usize,
+    child: &str,
+) -> Result<usize, String> {
+    let order = ["titleStyle", "bodyStyle", "otherStyle", "extLst"];
+    ordered_child_insert_index(xml, start, end, child, &order)
+}
+
+fn default_run_child_insert_index(
+    xml: &str,
+    start: usize,
+    end: usize,
+    child: &str,
+) -> Result<usize, String> {
+    let order = [
+        "ln",
+        "noFill",
+        "solidFill",
+        "gradFill",
+        "blipFill",
+        "pattFill",
+        "grpFill",
+        "effectLst",
+        "effectDag",
+        "highlight",
+        "uLnTx",
+        "uLn",
+        "uFillTx",
+        "uFill",
+        "latin",
+        "ea",
+        "cs",
+        "sym",
+        "hlinkClick",
+        "hlinkMouseOver",
+        "rtl",
+        "extLst",
+    ];
+    ordered_child_insert_index(xml, start, end, child, &order)
+}
+
+fn ordered_child_insert_index(
+    xml: &str,
+    start: usize,
+    end: usize,
+    child: &str,
+    order: &[&str],
+) -> Result<usize, String> {
+    let child_rank = order.iter().position(|name| *name == child);
+    let children = xml_direct_child_ranges(xml, start, end).map_err(|err| err.message)?;
+    if let Some(child_rank) = child_rank {
+        for existing in children {
+            if order
+                .iter()
+                .position(|name| *name == existing.kind)
+                .is_some_and(|rank| rank > child_rank)
+            {
+                return Ok(existing.start);
+            }
+        }
+    }
+    Ok(end)
 }
 
 fn write_template_apply_output(
@@ -1330,6 +2098,33 @@ fn tag_prefix(tag_name: &str) -> String {
         .unwrap_or_default()
 }
 
+fn root_prefix(xml: &str, root_open_end: usize) -> String {
+    xml_token_name(xml[1..root_open_end].trim_start())
+        .map(tag_prefix)
+        .unwrap_or_default()
+}
+
+fn namespace_prefix(xml: &str, uri: &str) -> Option<String> {
+    let root_open_end = xml.find('>')?;
+    let root_tag = &xml[..root_open_end];
+    for quote in ['"', '\''] {
+        let needle = format!("{quote}{uri}{quote}");
+        let Some(value_start) = root_tag.find(&needle) else {
+            continue;
+        };
+        let before = &root_tag[..value_start];
+        let eq = before.rfind('=')?;
+        let attr_name = before[..eq].split_whitespace().last()?;
+        if attr_name == "xmlns" {
+            return Some(String::new());
+        }
+        if let Some(prefix) = attr_name.strip_prefix("xmlns:") {
+            return Some(prefix.to_string());
+        }
+    }
+    None
+}
+
 fn qualified_name(prefix: &str, local: &str) -> String {
     if prefix.is_empty() {
         local.to_string()
@@ -1378,4 +2173,12 @@ fn file_name(file: &str) -> String {
 
 fn is_hex_color(value: &str) -> bool {
     value.len() == 6 && value.chars().all(|ch| ch.is_ascii_hexdigit())
+}
+
+fn json_number(value: f64) -> Value {
+    if (value.fract()).abs() < f64::EPSILON {
+        json!(value as i64)
+    } else {
+        json!(value)
+    }
 }
