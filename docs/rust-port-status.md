@@ -152,6 +152,12 @@ Latest milestone, 2026-06-20:
   validation, required text resolution, plan flag ordering,
   `DocxParagraphsOp` readback shaping, and unsupported-command fallback
   behavior.
+- DOCX serve operation dispatch for style `apply` moved from
+  `src/serve/op_dispatch/docx.rs` into
+  `src/serve/op_dispatch/docx/styles.rs`, preserving paragraph/table target
+  validation, handle/index exclusivity, style validation flags, plan flag
+  ordering, `DocxStylesOp` readback shaping, and unsupported-command fallback
+  behavior.
 - The top-level serve op dispatcher now routes XLSX and DOCX commands by
   family prefix, leaving exact command matching and unsupported-command
   fallbacks inside each child dispatcher.
