@@ -444,6 +444,89 @@ pub(super) fn commands() -> Vec<Value> {
             ],
         ),
         capability_command(
+            "ooxml xlsx data-validations list",
+            "list <file> [--sheet <sheet>]",
+            "List worksheet data-validation rules and their target ranges.",
+            &["data-validation", "range", "sheet"],
+            false,
+            Some("read-only command; call via direct CLI in the current Rust slice"),
+            vec![flag("--sheet", "sheet", "string", "sheet selector")],
+        ),
+        capability_command(
+            "ooxml xlsx data-validations show",
+            "show <file> --range <sqref> [--sheet <sheet>]",
+            "Show the validation rule that targets a specific worksheet range.",
+            &["data-validation", "range", "sheet"],
+            false,
+            Some("read-only command; call via direct CLI in the current Rust slice"),
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag("--range", "range", "string", "target sqref such as A2:A20"),
+            ],
+        ),
+        capability_command(
+            "ooxml xlsx data-validations create",
+            "create <file> --range <sqref> --type <type>",
+            "Create a worksheet data-validation rule such as a dropdown list or numeric constraint.",
+            &["data-validation", "range", "sheet"],
+            true,
+            None,
+            xlsx_data_validation_mutation_flags(false),
+        ),
+        capability_command(
+            "ooxml xlsx data-validations update",
+            "update <file> --range <sqref>",
+            "Update an existing worksheet data-validation rule with optional type/formula guards.",
+            &["data-validation", "range", "sheet"],
+            true,
+            None,
+            xlsx_data_validation_mutation_flags(true),
+        ),
+        capability_command(
+            "ooxml xlsx data-validations delete",
+            "delete <file> --range <sqref>",
+            "Delete a worksheet data-validation rule by target range with optional type/formula guards.",
+            &["data-validation", "range", "sheet"],
+            true,
+            None,
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag("--range", "range", "string", "target sqref such as A2:A20"),
+                flag(
+                    "--expect-type",
+                    "expectType",
+                    "string",
+                    "guard: require the current validation type to match",
+                ),
+                flag(
+                    "--expect-formula1",
+                    "expectFormula1",
+                    "string",
+                    "guard: require the current formula1 to match",
+                ),
+                flag("--out", "out", "string", "write edited workbook"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "edit the workbook in place",
+                ),
+                flag(
+                    "--backup",
+                    "backup",
+                    "string",
+                    "backup file path for --in-place",
+                ),
+                flag("--dry-run", "dryRun", "bool", "validate without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
+        ),
+        capability_command(
             "ooxml xlsx filters-sorts show",
             "show <file> [--sheet <sheet>] [--table <table>]",
             "Display worksheet or table autoFilter state and worksheet sortState.",
@@ -1369,4 +1452,122 @@ pub(super) fn commands() -> Vec<Value> {
         ),
     ]);
     commands
+}
+
+fn xlsx_data_validation_mutation_flags(include_guards: bool) -> Vec<Value> {
+    let mut flags = vec![
+        flag("--sheet", "sheet", "string", "sheet selector"),
+        flag(
+            "--range",
+            "range",
+            "string",
+            "target sqref; space-separated ranges are accepted",
+        ),
+        flag(
+            "--type",
+            "type",
+            "string",
+            "validation type: list, whole, decimal, date, time, textLength, or custom",
+        ),
+        flag(
+            "--list-values",
+            "listValues",
+            "string",
+            "comma-separated inline values for list validations",
+        ),
+        flag(
+            "--list-range",
+            "listRange",
+            "string",
+            "worksheet range source for list validations",
+        ),
+        flag(
+            "--operator",
+            "operator",
+            "string",
+            "operator such as between, equal, greaterThan, or lessThanOrEqual",
+        ),
+        flag("--formula1", "formula1", "string", "first formula or bound"),
+        flag(
+            "--formula2",
+            "formula2",
+            "string",
+            "second formula or bound for between/notBetween",
+        ),
+        flag("--allow-blank", "allowBlank", "bool", "allow blank cells"),
+        flag(
+            "--show-input-message",
+            "showInputMessage",
+            "bool",
+            "show the input prompt",
+        ),
+        flag(
+            "--input-title",
+            "inputTitle",
+            "string",
+            "input prompt title",
+        ),
+        flag(
+            "--input-message",
+            "inputMessage",
+            "string",
+            "input prompt message",
+        ),
+        flag(
+            "--show-error-message",
+            "showErrorMessage",
+            "bool",
+            "show the error alert",
+        ),
+        flag("--error-title", "errorTitle", "string", "error alert title"),
+        flag(
+            "--error-message",
+            "errorMessage",
+            "string",
+            "error alert message",
+        ),
+        flag(
+            "--error-style",
+            "errorStyle",
+            "string",
+            "error alert style: stop, warning, or information",
+        ),
+    ];
+    if include_guards {
+        flags.push(flag(
+            "--expect-type",
+            "expectType",
+            "string",
+            "guard: require the current validation type to match",
+        ));
+        flags.push(flag(
+            "--expect-formula1",
+            "expectFormula1",
+            "string",
+            "guard: require the current formula1 to match",
+        ));
+    }
+    flags.extend([
+        flag("--out", "out", "string", "write edited workbook"),
+        flag(
+            "--in-place",
+            "inPlace",
+            "bool",
+            "edit the workbook in place",
+        ),
+        flag(
+            "--backup",
+            "backup",
+            "string",
+            "backup file path for --in-place",
+        ),
+        flag("--dry-run", "dryRun", "bool", "validate without writing"),
+        flag(
+            "--no-validate",
+            "noValidate",
+            "bool",
+            "skip post-write validation",
+        ),
+    ]);
+    flags
 }

@@ -32,6 +32,7 @@ mod validation;
 mod vba;
 mod verify;
 mod xlsx_comments;
+mod xlsx_data_validations;
 mod xlsx_dimensions;
 mod xlsx_filters_sorts;
 mod xlsx_formula_recalc;
@@ -154,6 +155,11 @@ pub(crate) use validation::{validate, validate_exit_code};
 pub(crate) use xlsx_comments::{
     XlsxCommentsAddOptions, XlsxCommentsRemoveOptions, XlsxCommentsUpdateOptions,
     xlsx_comments_add, xlsx_comments_list, xlsx_comments_remove, xlsx_comments_update,
+};
+pub(crate) use xlsx_data_validations::{
+    XlsxDataValidationFields, XlsxDataValidationMutationOptions, xlsx_data_validations_create,
+    xlsx_data_validations_delete, xlsx_data_validations_list, xlsx_data_validations_show,
+    xlsx_data_validations_update,
 };
 pub(crate) use xlsx_dimensions::{
     XlsxColWidthsSetOptions, XlsxRowHeightsSetOptions, xlsx_colwidths_set, xlsx_colwidths_show,

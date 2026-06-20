@@ -74,6 +74,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "image",
         "table",
         "name",
+        "data-validation",
         "master",
         "layout",
         "placeholder",
@@ -240,6 +241,37 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "cell", "ooxml xlsx comments remove");
     assert_command_target_kind(&all_caps, "ooxml xlsx comments add", "comment");
     assert_command_target_kind(&all_caps, "ooxml xlsx comments add", "cell");
+    assert_object_kind_command(
+        &all_caps,
+        "data-validation",
+        "ooxml xlsx data-validations list",
+    );
+    assert_object_kind_command(
+        &all_caps,
+        "data-validation",
+        "ooxml xlsx data-validations show",
+    );
+    assert_object_kind_command(
+        &all_caps,
+        "data-validation",
+        "ooxml xlsx data-validations create",
+    );
+    assert_object_kind_command(
+        &all_caps,
+        "data-validation",
+        "ooxml xlsx data-validations update",
+    );
+    assert_object_kind_command(
+        &all_caps,
+        "data-validation",
+        "ooxml xlsx data-validations delete",
+    );
+    assert_command_target_kind(
+        &all_caps,
+        "ooxml xlsx data-validations create",
+        "data-validation",
+    );
+    assert_command_target_kind(&all_caps, "ooxml xlsx data-validations show", "range");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names list");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names show");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names add");
@@ -329,6 +361,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx comments add", true);
     assert_command(&xlsx_caps, "ooxml xlsx comments update", true);
     assert_command(&xlsx_caps, "ooxml xlsx comments remove", true);
+    assert_command(&xlsx_caps, "ooxml xlsx data-validations list", false);
+    assert_command(&xlsx_caps, "ooxml xlsx data-validations show", false);
+    assert_command(&xlsx_caps, "ooxml xlsx data-validations create", true);
+    assert_command(&xlsx_caps, "ooxml xlsx data-validations update", true);
+    assert_command(&xlsx_caps, "ooxml xlsx data-validations delete", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set-format", true);
@@ -383,6 +420,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     );
     assert_command(&range_caps, "ooxml xlsx filters-sorts set-sort", false);
     assert_command(&range_caps, "ooxml xlsx filters-sorts clear-sort", false);
+    assert_command(&range_caps, "ooxml xlsx data-validations list", false);
+    assert_command(&range_caps, "ooxml xlsx data-validations show", false);
+    assert_command(&range_caps, "ooxml xlsx data-validations create", true);
+    assert_command(&range_caps, "ooxml xlsx data-validations update", true);
+    assert_command(&range_caps, "ooxml xlsx data-validations delete", true);
     assert_command(&range_caps, "ooxml xlsx ranges export", false);
 
     let (table_code, table_stdout, table_stderr) =
@@ -430,6 +472,18 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&name_caps, "ooxml xlsx names rename", true);
     assert_command(&name_caps, "ooxml xlsx names delete", true);
     assert_no_command(&name_caps, "ooxml xlsx tables list");
+
+    let (dv_code, dv_stdout, dv_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "data-validation"]);
+    assert_eq!(dv_code, 0);
+    assert_eq!(dv_stderr, None);
+    let dv_caps = dv_stdout.expect("data-validation capabilities");
+    assert_command(&dv_caps, "ooxml xlsx data-validations list", false);
+    assert_command(&dv_caps, "ooxml xlsx data-validations show", false);
+    assert_command(&dv_caps, "ooxml xlsx data-validations create", true);
+    assert_command(&dv_caps, "ooxml xlsx data-validations update", true);
+    assert_command(&dv_caps, "ooxml xlsx data-validations delete", true);
+    assert_no_command(&dv_caps, "ooxml xlsx tables list");
 
     let (layout_code, layout_stdout, layout_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "layout"]);
@@ -627,12 +681,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        112,
+        117,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        178,
+        173,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
