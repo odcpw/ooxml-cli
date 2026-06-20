@@ -30,6 +30,45 @@ pub(crate) struct XlsxFiltersSortsSetAutoFilterOptions<'a> {
     pub(crate) in_place: bool,
 }
 
+pub(crate) struct XlsxFiltersSortsClearAutoFilterOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) range: Option<&'a str>,
+    pub(crate) table: Option<&'a str>,
+    pub(crate) expect_range: Option<&'a str>,
+    pub(crate) expect_range_present: bool,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+}
+
+pub(crate) struct XlsxFiltersSortsAddColumnFilterOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) column: i64,
+    pub(crate) values: Option<&'a str>,
+    pub(crate) custom_op: Option<&'a str>,
+    pub(crate) custom_val1: Option<&'a str>,
+    pub(crate) custom_val2: Option<&'a str>,
+    pub(crate) custom_present: bool,
+    pub(crate) expect_filter: Option<&'a str>,
+    pub(crate) expect_filter_present: bool,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+}
+
+#[derive(Clone, Copy)]
+struct XlsxFiltersSortsOutputOptions<'a> {
+    out: Option<&'a str>,
+    backup: Option<&'a str>,
+    dry_run: bool,
+    no_validate: bool,
+    in_place: bool,
+}
+
 #[derive(Clone)]
 struct XmlRootBounds {
     start: usize,
@@ -195,8 +234,9 @@ pub(crate) fn xlsx_filters_sorts_set_autofilter(
             table_name: Some(target.table.display_name),
             part: target.table_part,
             updated_xml,
-            range,
-            auto_filter,
+            ref_text: Some(range),
+            auto_filter: Some(auto_filter),
+            sort_state: None,
         }
     } else {
         let (sheet, sheet_part, sheet_xml) = resolve_filters_sorts_sheet(file, options.sheet)?;
@@ -217,12 +257,160 @@ pub(crate) fn xlsx_filters_sorts_set_autofilter(
             table_name: None,
             part: sheet_part,
             updated_xml,
-            range,
-            auto_filter,
+            ref_text: Some(range),
+            auto_filter: Some(auto_filter),
+            sort_state: None,
         }
     };
 
-    write_filters_sorts_mutation_result(file, "set-autofilter", mutation, options)
+    write_filters_sorts_mutation_result(
+        file,
+        "set-autofilter",
+        mutation,
+        XlsxFiltersSortsOutputOptions {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+        },
+    )
+}
+
+pub(crate) fn xlsx_filters_sorts_clear_autofilter(
+    file: &str,
+    options: XlsxFiltersSortsClearAutoFilterOptions<'_>,
+) -> CliResult<Value> {
+    if !Path::new(file).exists() {
+        return Err(CliError::file_not_found(format!("file not found: {file}")));
+    }
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let _range_hint = options.range;
+
+    let use_table = options.table.is_some_and(|value| !value.trim().is_empty());
+    let mutation = if use_table {
+        let target = resolve_filters_sorts_table(file, options.sheet, options.table)?;
+        guard_expect_range(
+            read_auto_filter_state(&target.table_xml, "table")?.as_ref(),
+            options.expect_range_present,
+            options.expect_range,
+        )
+        .map_err(|err| map_filters_sorts_error("clear-autofilter", err))?;
+        let updated_xml = clear_autofilter_in_xml(&target.table_xml, "table")
+            .map_err(|err| map_filters_sorts_error("clear-autofilter", err))?;
+        XlsxFiltersSortsMutationTarget {
+            sheet_name: target.table.sheet,
+            sheet_number: target.table.sheet_number,
+            sheet_id: target.table.sheet_number,
+            table_name: Some(target.table.display_name),
+            part: target.table_part,
+            updated_xml,
+            ref_text: None,
+            auto_filter: None,
+            sort_state: None,
+        }
+    } else {
+        let (sheet, sheet_part, sheet_xml) = resolve_filters_sorts_sheet(file, options.sheet)?;
+        guard_expect_range(
+            read_auto_filter_state(&sheet_xml, "worksheet")?.as_ref(),
+            options.expect_range_present,
+            options.expect_range,
+        )
+        .map_err(|err| map_filters_sorts_error("clear-autofilter", err))?;
+        let updated_xml = clear_autofilter_in_xml(&sheet_xml, "worksheet")
+            .map_err(|err| map_filters_sorts_error("clear-autofilter", err))?;
+        XlsxFiltersSortsMutationTarget {
+            sheet_name: sheet.name,
+            sheet_number: sheet.position,
+            sheet_id: sheet.sheet_id,
+            table_name: None,
+            part: sheet_part,
+            updated_xml,
+            ref_text: None,
+            auto_filter: None,
+            sort_state: None,
+        }
+    };
+
+    write_filters_sorts_mutation_result(
+        file,
+        "clear-autofilter",
+        mutation,
+        XlsxFiltersSortsOutputOptions {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+        },
+    )
+}
+
+pub(crate) fn xlsx_filters_sorts_add_column_filter(
+    file: &str,
+    options: XlsxFiltersSortsAddColumnFilterOptions<'_>,
+) -> CliResult<Value> {
+    if !Path::new(file).exists() {
+        return Err(CliError::file_not_found(format!("file not found: {file}")));
+    }
+    let values = parse_filter_values(options.values);
+    if values.is_empty() && !options.custom_present {
+        return Err(CliError::invalid_args(
+            "provide --values and/or --custom-op",
+        ));
+    }
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+
+    let (sheet, sheet_part, sheet_xml) = resolve_filters_sorts_sheet(file, options.sheet)?;
+    let (updated_xml, auto_filter) = add_column_filter_in_xml(
+        &sheet_xml,
+        AddColumnFilterXmlSpec {
+            col_id: options.column,
+            values: &values,
+            custom_op: options.custom_op,
+            custom_val1: options.custom_val1,
+            custom_val2: options.custom_val2,
+            custom_present: options.custom_present,
+            expect_filter: options.expect_filter,
+            expect_filter_present: options.expect_filter_present,
+        },
+    )
+    .map_err(|err| map_filters_sorts_error("add-column-filter", err))?;
+    let ref_text = auto_filter.ref_text.clone();
+    let mutation = XlsxFiltersSortsMutationTarget {
+        sheet_name: sheet.name,
+        sheet_number: sheet.position,
+        sheet_id: sheet.sheet_id,
+        table_name: None,
+        part: sheet_part,
+        updated_xml,
+        ref_text: Some(ref_text),
+        auto_filter: Some(auto_filter),
+        sort_state: None,
+    };
+
+    write_filters_sorts_mutation_result(
+        file,
+        "add-column-filter",
+        mutation,
+        XlsxFiltersSortsOutputOptions {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+        },
+    )
 }
 
 struct XlsxFiltersSortsTableTarget {
@@ -239,15 +427,27 @@ struct XlsxFiltersSortsMutationTarget {
     table_name: Option<String>,
     part: String,
     updated_xml: String,
-    range: String,
-    auto_filter: AutoFilterState,
+    ref_text: Option<String>,
+    auto_filter: Option<AutoFilterState>,
+    sort_state: Option<SortState>,
+}
+
+struct AddColumnFilterXmlSpec<'a> {
+    col_id: i64,
+    values: &'a [String],
+    custom_op: Option<&'a str>,
+    custom_val1: Option<&'a str>,
+    custom_val2: Option<&'a str>,
+    custom_present: bool,
+    expect_filter: Option<&'a str>,
+    expect_filter_present: bool,
 }
 
 fn write_filters_sorts_mutation_result(
     file: &str,
     action: &str,
     mutation: XlsxFiltersSortsMutationTarget,
-    options: XlsxFiltersSortsSetAutoFilterOptions<'_>,
+    options: XlsxFiltersSortsOutputOptions<'_>,
 ) -> CliResult<Value> {
     let output_path = options.out.filter(|value| !value.trim().is_empty());
     let commit_path = if options.in_place {
@@ -294,12 +494,20 @@ fn write_filters_sorts_mutation_result(
         result.insert("table".to_string(), json!(table_name));
     }
     result.insert("action".to_string(), json!(action));
-    result.insert("ref".to_string(), json!(mutation.range));
+    if let Some(ref_text) = mutation
+        .ref_text
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        result.insert("ref".to_string(), json!(ref_text));
+    }
     result.insert("note".to_string(), json!(FILTERS_SORTS_NOTE));
-    result.insert(
-        "autoFilter".to_string(),
-        auto_filter_json(&mutation.auto_filter),
-    );
+    if let Some(auto_filter) = mutation.auto_filter.as_ref() {
+        result.insert("autoFilter".to_string(), auto_filter_json(auto_filter));
+    }
+    if let Some(sort_state) = mutation.sort_state.as_ref() {
+        result.insert("sortState".to_string(), sort_state_json(sort_state));
+    }
     if let Some(commit_path) = commit_path {
         result.insert("output".to_string(), json!(commit_path));
     }
@@ -452,6 +660,84 @@ fn set_autofilter_in_xml(
     ))
 }
 
+fn clear_autofilter_in_xml(xml: &str, root_kind: &str) -> CliResult<String> {
+    let root = xml_root_bounds(xml, root_kind)?;
+    let Some(existing) = direct_child_range(xml, &root, "autoFilter")? else {
+        return Err(CliError::invalid_args(
+            "worksheet has no autoFilter; run set-autofilter first",
+        ));
+    };
+    Ok(replace_xml_span(xml, existing.start, existing.end, ""))
+}
+
+fn add_column_filter_in_xml(
+    xml: &str,
+    spec: AddColumnFilterXmlSpec<'_>,
+) -> CliResult<(String, AutoFilterState)> {
+    if spec.col_id < 0 {
+        return Err(CliError::invalid_args("colId must be >= 0"));
+    }
+    let root = xml_root_bounds(xml, "worksheet")?;
+    let prefix = xml_tag_prefix(&root.tag_name);
+    let Some(auto_filter_range) = direct_child_range(xml, &root, "autoFilter")? else {
+        return Err(CliError::invalid_args(
+            "worksheet has no autoFilter; run set-autofilter first",
+        ));
+    };
+    let auto_filter_fragment = &xml[auto_filter_range.start..auto_filter_range.end];
+    let auto_filter = parse_auto_filter_fragment(auto_filter_fragment)?;
+    let col_count = auto_filter_column_count(&auto_filter)?;
+    if spec.col_id as u32 >= col_count {
+        return Err(CliError::invalid_args(format!(
+            "column ID exceeds range column count: colId {} not in 0-{}",
+            spec.col_id,
+            col_count.saturating_sub(1)
+        )));
+    }
+
+    let existing_range = find_filter_column_range(auto_filter_fragment, spec.col_id)?;
+    let existing_state = existing_range
+        .as_ref()
+        .map(|range| parse_filter_column_fragment(&auto_filter_fragment[range.start..range.end]))
+        .transpose()?;
+    guard_expect_filter(
+        existing_state.as_ref(),
+        spec.expect_filter_present,
+        spec.expect_filter,
+    )?;
+
+    let new_column = render_filter_column_fragment(
+        &prefix,
+        spec.col_id,
+        spec.values,
+        spec.custom_op,
+        spec.custom_val1,
+        spec.custom_val2,
+        spec.custom_present,
+    )?;
+    let base_fragment = if let Some(existing_range) = existing_range {
+        replace_xml_span(
+            auto_filter_fragment,
+            existing_range.start,
+            existing_range.end,
+            "",
+        )
+    } else {
+        auto_filter_fragment.to_string()
+    };
+    let updated_fragment = insert_filter_column_fragment(&base_fragment, &new_column, spec.col_id)?;
+    let updated_state = parse_auto_filter_fragment(&updated_fragment)?;
+    Ok((
+        replace_xml_span(
+            xml,
+            auto_filter_range.start,
+            auto_filter_range.end,
+            &updated_fragment,
+        ),
+        updated_state,
+    ))
+}
+
 fn read_auto_filter_state(xml: &str, root_kind: &str) -> CliResult<Option<AutoFilterState>> {
     let root = xml_root_bounds(xml, root_kind)?;
     let Some(auto_filter) = direct_child_range(xml, &root, "autoFilter")? else {
@@ -566,6 +852,259 @@ fn push_custom_filter_criterion(
         })
         .criteria
         .push(criterion);
+}
+
+fn auto_filter_column_count(auto_filter: &AutoFilterState) -> CliResult<u32> {
+    let bounds = parse_range(&auto_filter.ref_text).map_err(|err| {
+        CliError::invalid_args(format!(
+            "invalid autoFilter ref {:?}: {}",
+            auto_filter.ref_text, err.message
+        ))
+    })?;
+    Ok(bounds.normalized().col_count())
+}
+
+fn find_filter_column_range(
+    auto_filter_fragment: &str,
+    col_id: i64,
+) -> CliResult<Option<crate::XmlNamedRange>> {
+    let (open_end, _, close_start, self_closing) = xml_fragment_bounds(auto_filter_fragment)?;
+    if self_closing {
+        return Ok(None);
+    }
+    for child in xml_direct_child_ranges(auto_filter_fragment, open_end + 1, close_start)? {
+        if child.kind != "filterColumn" {
+            continue;
+        }
+        let (_, attrs, _, _) = first_element(&auto_filter_fragment[child.start..child.end])?;
+        if attr_local(&attrs, "colId").and_then(|value| value.parse::<i64>().ok()) == Some(col_id) {
+            return Ok(Some(child));
+        }
+    }
+    Ok(None)
+}
+
+fn insert_filter_column_fragment(
+    auto_filter_fragment: &str,
+    column_fragment: &str,
+    col_id: i64,
+) -> CliResult<String> {
+    let (open_end, tag_name, close_start, self_closing) =
+        xml_fragment_bounds(auto_filter_fragment)?;
+    if self_closing {
+        let start_tag = xml_open_tag_from_start(&auto_filter_fragment[..=open_end]);
+        let mut updated = String::new();
+        updated.push_str(&start_tag);
+        updated.push_str(column_fragment);
+        updated.push_str(&format!("</{tag_name}>"));
+        return Ok(updated);
+    }
+
+    let insert_at = xml_direct_child_ranges(auto_filter_fragment, open_end + 1, close_start)?
+        .into_iter()
+        .find(|child| {
+            if child.kind == "filterColumn" {
+                let Ok((_, attrs, _, _)) =
+                    first_element(&auto_filter_fragment[child.start..child.end])
+                else {
+                    return false;
+                };
+                return attr_local(&attrs, "colId")
+                    .and_then(|value| value.parse::<i64>().ok())
+                    .is_some_and(|existing_col_id| existing_col_id > col_id);
+            }
+            child.kind == "sortState"
+        })
+        .map(|child| child.start)
+        .unwrap_or(close_start);
+    Ok(replace_xml_span(
+        auto_filter_fragment,
+        insert_at,
+        insert_at,
+        column_fragment,
+    ))
+}
+
+fn render_filter_column_fragment(
+    prefix: &str,
+    col_id: i64,
+    values: &[String],
+    custom_op: Option<&str>,
+    custom_val1: Option<&str>,
+    custom_val2: Option<&str>,
+    custom_present: bool,
+) -> CliResult<String> {
+    let mut out = format!(
+        "<{} colId=\"{}\">",
+        element_name(prefix, "filterColumn"),
+        col_id
+    );
+    if !values.is_empty() {
+        out.push_str(&format!("<{}>", element_name(prefix, "filters")));
+        for value in values {
+            out.push_str(&format!(
+                "<{} val=\"{}\"/>",
+                element_name(prefix, "filter"),
+                xml_attr_escape(value)
+            ));
+        }
+        out.push_str(&format!("</{}>", element_name(prefix, "filters")));
+    }
+    if custom_present {
+        out.push_str(&render_custom_filters_fragment(
+            prefix,
+            custom_op.unwrap_or_default(),
+            custom_val1.unwrap_or_default(),
+            custom_val2.unwrap_or_default(),
+        )?);
+    }
+    out.push_str(&format!("</{}>", element_name(prefix, "filterColumn")));
+    Ok(out)
+}
+
+fn render_custom_filters_fragment(
+    prefix: &str,
+    op: &str,
+    val1: &str,
+    val2: &str,
+) -> CliResult<String> {
+    let normalized = normalize_custom_operator(op)?;
+    if val1.trim().is_empty() {
+        return Err(CliError::invalid_args(
+            "--custom-val1 is required for a custom filter",
+        ));
+    }
+    let name = element_name(prefix, "customFilters");
+    let mut out = if normalized == "between" {
+        format!("<{name} and=\"1\">")
+    } else {
+        format!("<{name}>")
+    };
+    match normalized.as_str() {
+        "between" => {
+            if val2.trim().is_empty() {
+                return Err(CliError::invalid_args(format!(
+                    "--custom-val2 is required for {op}"
+                )));
+            }
+            push_custom_filter_xml(prefix, &mut out, "greaterThanOrEqual", val1);
+            push_custom_filter_xml(prefix, &mut out, "lessThanOrEqual", val2);
+        }
+        "notBetween" => {
+            if val2.trim().is_empty() {
+                return Err(CliError::invalid_args(format!(
+                    "--custom-val2 is required for {op}"
+                )));
+            }
+            push_custom_filter_xml(prefix, &mut out, "lessThan", val1);
+            push_custom_filter_xml(prefix, &mut out, "greaterThan", val2);
+        }
+        operator => {
+            if !val2.trim().is_empty() {
+                return Err(CliError::invalid_args(
+                    "--custom-val2 is only valid with the between or notBetween operator",
+                ));
+            }
+            push_custom_filter_xml(prefix, &mut out, operator, val1);
+        }
+    }
+    out.push_str(&format!("</{}>", element_name(prefix, "customFilters")));
+    Ok(out)
+}
+
+fn push_custom_filter_xml(prefix: &str, out: &mut String, operator: &str, val: &str) {
+    out.push_str(&format!("<{}", element_name(prefix, "customFilter")));
+    if operator != "equal" {
+        out.push_str(&format!(" operator=\"{}\"", xml_attr_escape(operator)));
+    }
+    out.push_str(&format!(" val=\"{}\"/>", xml_attr_escape(val)));
+}
+
+fn normalize_custom_operator(op: &str) -> CliResult<String> {
+    let trimmed = op.trim();
+    if trimmed.is_empty() {
+        return Err(CliError::invalid_args("custom operator cannot be empty"));
+    }
+    let normalized = match trimmed.to_ascii_lowercase().as_str() {
+        "eq" | "equals" | "==" | "=" => "equal",
+        "ne" | "!=" | "<>" => "notEqual",
+        "lt" | "<" | "less-than" => "lessThan",
+        "le" | "lte" | "<=" | "less-than-or-equal" => "lessThanOrEqual",
+        "gt" | ">" | "greater-than" => "greaterThan",
+        "ge" | "gte" | ">=" | "greater-than-or-equal" => "greaterThanOrEqual",
+        "between" => "between",
+        "not-between" | "notbetween" => "notBetween",
+        _ => match trimmed {
+            "equal" | "notEqual" | "lessThan" | "lessThanOrEqual" | "greaterThan"
+            | "greaterThanOrEqual" => trimmed,
+            _ => {
+                return Err(CliError::invalid_args(format!(
+                    "invalid custom operator {op:?} (use one of equal,notEqual,lessThan,lessThanOrEqual,greaterThan,greaterThanOrEqual,between,notBetween)"
+                )));
+            }
+        },
+    };
+    Ok(normalized.to_string())
+}
+
+fn parse_filter_values(values: Option<&str>) -> Vec<String> {
+    let Some(values) = values.filter(|value| !value.trim().is_empty()) else {
+        return Vec::new();
+    };
+    let mut seen = BTreeMap::new();
+    let mut deduped = Vec::new();
+    for value in values
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if seen.insert(value.to_string(), true).is_none() {
+            deduped.push(value.to_string());
+        }
+    }
+    deduped
+}
+
+fn guard_expect_filter(
+    column: Option<&FilterColumnState>,
+    has_expect: bool,
+    expect: Option<&str>,
+) -> CliResult<()> {
+    if !has_expect {
+        return Ok(());
+    }
+    let current = column
+        .map(summarize_filter_column)
+        .unwrap_or_else(|| "none".to_string());
+    let want = expect.unwrap_or_default().trim();
+    if current != want {
+        return Err(CliError::invalid_args(format!(
+            "filter mismatch: expected {want:?}, found {current:?}"
+        )));
+    }
+    Ok(())
+}
+
+fn summarize_filter_column(column: &FilterColumnState) -> String {
+    if !column.values.is_empty() {
+        return format!("values:{}", column.values.join(","));
+    }
+    if let Some(custom_filter) = column.custom_filter.as_ref() {
+        let parts = custom_filter
+            .criteria
+            .iter()
+            .map(|criterion| {
+                let operator = if criterion.operator.is_empty() {
+                    "equal"
+                } else {
+                    &criterion.operator
+                };
+                format!("{}={}", operator, criterion.val)
+            })
+            .collect::<Vec<_>>();
+        return format!("custom:{}", parts.join(","));
+    }
+    "none".to_string()
 }
 
 fn parse_sort_state_fragment(fragment: &str) -> CliResult<SortState> {

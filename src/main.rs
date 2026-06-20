@@ -156,7 +156,9 @@ pub(crate) use xlsx_comments::{
 };
 pub(crate) use xlsx_dimensions::{xlsx_colwidths_show, xlsx_rowheights_show};
 pub(crate) use xlsx_filters_sorts::{
-    XlsxFiltersSortsSetAutoFilterOptions, xlsx_filters_sorts_set_autofilter,
+    XlsxFiltersSortsAddColumnFilterOptions, XlsxFiltersSortsClearAutoFilterOptions,
+    XlsxFiltersSortsSetAutoFilterOptions, xlsx_filters_sorts_add_column_filter,
+    xlsx_filters_sorts_clear_autofilter, xlsx_filters_sorts_set_autofilter,
     xlsx_filters_sorts_show,
 };
 pub(crate) use xlsx_formula_recalc::add_xlsx_formula_recalc_package_updates;

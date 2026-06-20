@@ -138,17 +138,42 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "sheet",
         "ooxml xlsx filters-sorts set-autofilter",
     );
+    assert_object_kind_command(
+        &all_caps,
+        "sheet",
+        "ooxml xlsx filters-sorts clear-autofilter",
+    );
+    assert_object_kind_command(
+        &all_caps,
+        "sheet",
+        "ooxml xlsx filters-sorts add-column-filter",
+    );
     assert_object_kind_command(&all_caps, "range", "ooxml xlsx filters-sorts show");
     assert_object_kind_command(
         &all_caps,
         "range",
         "ooxml xlsx filters-sorts set-autofilter",
     );
+    assert_object_kind_command(
+        &all_caps,
+        "range",
+        "ooxml xlsx filters-sorts clear-autofilter",
+    );
+    assert_object_kind_command(
+        &all_caps,
+        "range",
+        "ooxml xlsx filters-sorts add-column-filter",
+    );
     assert_object_kind_command(&all_caps, "table", "ooxml xlsx filters-sorts show");
     assert_object_kind_command(
         &all_caps,
         "table",
         "ooxml xlsx filters-sorts set-autofilter",
+    );
+    assert_object_kind_command(
+        &all_caps,
+        "table",
+        "ooxml xlsx filters-sorts clear-autofilter",
     );
     assert_command_target_kind(&all_caps, "ooxml xlsx filters-sorts show", "sheet");
     assert_command_target_kind(&all_caps, "ooxml xlsx filters-sorts show", "table");
@@ -161,6 +186,21 @@ fn capabilities_advertise_supported_web_agent_surface() {
         &all_caps,
         "ooxml xlsx filters-sorts set-autofilter",
         "table",
+    );
+    assert_command_target_kind(
+        &all_caps,
+        "ooxml xlsx filters-sorts clear-autofilter",
+        "range",
+    );
+    assert_command_target_kind(
+        &all_caps,
+        "ooxml xlsx filters-sorts clear-autofilter",
+        "table",
+    );
+    assert_command_target_kind(
+        &all_caps,
+        "ooxml xlsx filters-sorts add-column-filter",
+        "range",
     );
     assert_object_kind_command(&all_caps, "comment", "ooxml xlsx comments list");
     assert_object_kind_command(&all_caps, "comment", "ooxml xlsx comments add");
@@ -233,6 +273,16 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx rowheights show", false);
     assert_command(&xlsx_caps, "ooxml xlsx filters-sorts show", false);
     assert_command(&xlsx_caps, "ooxml xlsx filters-sorts set-autofilter", false);
+    assert_command(
+        &xlsx_caps,
+        "ooxml xlsx filters-sorts clear-autofilter",
+        false,
+    );
+    assert_command(
+        &xlsx_caps,
+        "ooxml xlsx filters-sorts add-column-filter",
+        false,
+    );
     assert_command(&xlsx_caps, "ooxml xlsx comments list", false);
     assert_command(&xlsx_caps, "ooxml xlsx comments add", true);
     assert_command(&xlsx_caps, "ooxml xlsx comments update", true);
@@ -271,6 +321,16 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "ooxml xlsx filters-sorts set-autofilter",
         false,
     );
+    assert_command(
+        &range_caps,
+        "ooxml xlsx filters-sorts clear-autofilter",
+        false,
+    );
+    assert_command(
+        &range_caps,
+        "ooxml xlsx filters-sorts add-column-filter",
+        false,
+    );
     assert_command(&range_caps, "ooxml xlsx ranges export", false);
 
     let (table_code, table_stdout, table_stderr) =
@@ -286,6 +346,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(
         &table_caps,
         "ooxml xlsx filters-sorts set-autofilter",
+        false,
+    );
+    assert_command(
+        &table_caps,
+        "ooxml xlsx filters-sorts clear-autofilter",
         false,
     );
     assert_command(&table_caps, "ooxml xlsx tables list", false);
@@ -505,10 +570,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 96, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 98, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        194,
+        192,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
