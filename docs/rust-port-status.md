@@ -288,6 +288,10 @@ Latest milestone, 2026-06-20:
   relationship target collection, selector resolution, and paragraph readback
   wiring moved from `src/docx_headers.rs` into `src/docx_headers/read.rs`,
   leaving set-text mutation orchestration in the header/footer facade.
+- DOCX header/footer paragraph text replacement, header/footer root-tag
+  parsing, previous-text capture, and set-text XML mutation moved from
+  `src/docx_headers.rs` into `src/docx_headers/text_mutation.rs`, preserving the
+  existing crate-facing root-tag helper for field edits.
 - DOCX table show/set-cell/clear-cell commands, table summary rendering,
   table-cell XML rewrites, and table readback command generation moved from
   `src/main.rs` into `src/docx_tables.rs`.
