@@ -1329,6 +1329,57 @@ fn pptx_charts_create_inline_saved_dry_run_and_errors_match_go_oracle() {
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "chartShowCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
+    let extlst_input = temp_dir.join("chart-create-extlst-input.pptx");
+    rewrite_zip_fixture(fixture, &extlst_input, |name, data| {
+        if name == "ppt/slides/slide1.xml" {
+            Some((
+                name.to_string(),
+                replace_ascii(
+                    data,
+                    "</p:spTree>",
+                    r#"<p:extLst><p:ext uri="{BB962C8B-B14F-4D97-AF65-F5344CB8AC3E}"><p14:creationId xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" val="{11111111-1111-1111-1111-111111111111}"/></p:ext></p:extLst></p:spTree>"#,
+                ),
+            ))
+        } else {
+            Some((name.to_string(), data))
+        }
+    });
+    let extlst_output = temp_dir.join("rust-create-before-extlst.pptx");
+    let extlst_input_str = extlst_input.to_str().expect("extLst input path");
+    let extlst_output_str = extlst_output.to_str().expect("extLst output path");
+    let (extlst_code, extlst_stdout, extlst_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "charts",
+        "create",
+        extlst_input_str,
+        "--slide",
+        "1",
+        "--type",
+        "bar",
+        "--title",
+        "ExtLst Chart",
+        "--values-json",
+        values,
+        "--out",
+        extlst_output_str,
+    ]);
+    assert_eq!(extlst_code, 0, "chart create before extLst exit");
+    assert_eq!(extlst_stderr, None, "chart create before extLst stderr");
+    let extlst_json = extlst_stdout.expect("chart create before extLst stdout");
+    assert_rust_emitted_ooxml_command_exits_zero(&extlst_json, "validateCommand");
+    let extlst_slide_xml = read_zip_string(&extlst_output, "ppt/slides/slide1.xml");
+    let chart_pos = extlst_slide_xml
+        .find("<p:graphicFrame")
+        .expect("chart graphicFrame in slide XML");
+    let extlst_pos = extlst_slide_xml
+        .find("<p:extLst")
+        .expect("spTree extLst in slide XML");
+    assert!(
+        chart_pos < extlst_pos,
+        "chart graphicFrame must be inserted before p:spTree p:extLst for Open XML SDK schema order"
+    );
+
     for args in [
         vec![
             "--json",

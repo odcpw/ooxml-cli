@@ -513,7 +513,12 @@ pub(super) fn add_chart_graphic_frame_to_slide(
     let sp_tree = root
         .first_descendant_mut("spTree")
         .ok_or_else(|| CliError::unexpected("shape tree not found in slide"))?;
-    sp_tree.children.push(frame);
+    let insert_at = sp_tree
+        .children
+        .iter()
+        .position(|child| child.local() == "extLst")
+        .unwrap_or(sp_tree.children.len());
+    sp_tree.children.insert(insert_at, frame);
     Ok((serialize_xml(&root), shape_id, shape_name))
 }
 
