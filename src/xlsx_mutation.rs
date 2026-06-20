@@ -3,7 +3,10 @@ mod format;
 mod ranges;
 pub(crate) use cells::{XlsxCellsSetOptions, xlsx_cells_set};
 pub(crate) use format::{XlsxRangesSetFormatOptions, xlsx_ranges_set_format};
-pub(crate) use ranges::{XlsxRangesSetOptions, xlsx_ranges_set};
+pub(crate) use ranges::{
+    XlsxRangesSetOptions, parse_xlsx_range_set_matrix, rectangularize_xlsx_matrix,
+    resolve_xlsx_ranges_set_values, validate_xlsx_null_policy, xlsx_ranges_set,
+};
 
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
@@ -16,22 +19,22 @@ use crate::{
     xlsx_sheet_selectors, xlsx_used_range_from_cell_refs, xml_escape, zip_text,
 };
 #[derive(Clone)]
-struct XlsxMatrixCell {
-    kind: String,
-    value: String,
-    formula: String,
-    null: bool,
+pub(crate) struct XlsxMatrixCell {
+    pub(crate) kind: String,
+    pub(crate) value: String,
+    pub(crate) formula: String,
+    pub(crate) null: bool,
 }
 
 #[derive(Default)]
-struct XlsxRangeSetStats {
-    updated: usize,
-    created: usize,
-    cleared: usize,
-    skipped: usize,
-    formula_count: usize,
-    formula_seen: bool,
-    formula_invalidated: bool,
+pub(crate) struct XlsxRangeSetStats {
+    pub(crate) updated: usize,
+    pub(crate) created: usize,
+    pub(crate) cleared: usize,
+    pub(crate) skipped: usize,
+    pub(crate) formula_count: usize,
+    pub(crate) formula_seen: bool,
+    pub(crate) formula_invalidated: bool,
 }
 
 pub(crate) fn validate_xlsx_mutation_output_flags(
@@ -85,7 +88,7 @@ fn resolve_xlsx_sheet_context(
     Ok((sheet, sheet_part))
 }
 
-fn set_xlsx_range_in_sheet_xml(
+pub(crate) fn set_xlsx_range_in_sheet_xml(
     xml: &str,
     bounds: RangeBounds,
     rows: &[Vec<XlsxMatrixCell>],
@@ -373,7 +376,7 @@ fn replace_xlsx_dimension(xml: &str, range: Option<&str>) -> String {
     xml.to_string()
 }
 
-fn xlsx_range_destination_json(
+pub(crate) fn xlsx_range_destination_json(
     readback_file: &str,
     destination_file: Option<&str>,
     sheet: &WorkbookSheet,
@@ -432,7 +435,7 @@ fn xlsx_range_destination_json(
     Ok(Value::Object(destination))
 }
 
-fn add_xlsx_range_mutation_commands(
+pub(crate) fn add_xlsx_range_mutation_commands(
     result: &mut Map<String, Value>,
     output_path: Option<&str>,
     sheet_selector: &str,

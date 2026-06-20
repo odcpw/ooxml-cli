@@ -485,6 +485,22 @@ Latest milestone, 2026-06-20:
   inspect/op tests, `cargo clippy --all-targets -- -D warnings`, and `cargo
   test --all-targets` all passed with 4 ZIP guard unit tests plus 83 Rust
   contract tests.
+- Rust XLSX table append-row parity landed for direct
+  `xlsx tables append-rows`. The slice appends JSON/CSV/TSV matrices below an
+  existing table, expands the table and autoFilter ranges, reuses the shared
+  XLSX range writer for cell XML/formula handling, rejects totals/calculated
+  columns/unsafe overwrites, and emits validation, range readback, and table
+  readback commands matching the Go oracle. Direct Rust capabilities remain
+  unchanged because the frozen Go capability inventory does not advertise
+  `append-rows`; `xlsx tables list/show` already emit the command template and
+  it is now executable in Rust. Proof: `cargo fmt --check`, `cargo
+  check --all-targets`, focused `xlsx_tables_append_rows` Go-oracle tests,
+  focused `xlsx_tables` tests, the Go capability subset ratchet, `cargo clippy
+  --all-targets -- -D warnings`, and `cargo test --all-targets` passed with 4
+  ZIP guard unit tests plus 85 Rust contract tests. A Rust-generated appended
+  workbook at `.tmp\xlsx-tables-append-rows\rust-append-rows.xlsx` passed Rust
+  `validate --strict`, Microsoft Open XML SDK validation (`Valid: true`,
+  `ErrorCount: 0`), and desktop Excel COM open proof (`1 passed, 0 failed`).
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
@@ -746,6 +762,14 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   export, typed export, formula matrices, `--data-out`, `--max-cells`, missing
   selectors, paths/sheet names with spaces, `capabilities --for table`, and
   serve inspect routing
+- `--json xlsx tables append-rows <xlsx>` with Go-oracle comparison for saved
+  mutation JSON, dry-run output, generated validation/range/table readback
+  commands, table and autoFilter range expansion, appended range readback,
+  invalid column-count errors, strict validation, Open XML SDK schema
+  validation, and desktop Excel COM open proof. This direct command is not yet
+  direct-advertised in Rust capabilities because the frozen Go capability
+  inventory omits the path; table list/show command templates remain the
+  discoverability path for now.
 - `--json xlsx workbook metadata inspect/update <xlsx>` with Go-oracle
   comparison for default inspection, saved mutation output, generated readback
   commands, dry-run, clearing, calc-mode/full-recalc flags, guard/error

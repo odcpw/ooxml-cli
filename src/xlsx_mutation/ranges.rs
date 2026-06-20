@@ -33,11 +33,11 @@ pub(crate) struct XlsxRangesSetOptions<'a> {
     pub(crate) overwrite_formulas: bool,
 }
 
-struct XlsxRangeSetMatrix {
-    range: Option<String>,
-    null_policy: Option<String>,
-    major_dimension: String,
-    rows: Vec<Vec<XlsxMatrixCell>>,
+pub(crate) struct XlsxRangeSetMatrix {
+    pub(crate) range: Option<String>,
+    pub(crate) null_policy: Option<String>,
+    pub(crate) major_dimension: String,
+    pub(crate) rows: Vec<Vec<XlsxMatrixCell>>,
 }
 
 pub(crate) fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> CliResult<Value> {
@@ -167,7 +167,7 @@ pub(crate) fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> 
     Ok(Value::Object(result))
 }
 
-fn resolve_xlsx_ranges_set_values(
+pub(crate) fn resolve_xlsx_ranges_set_values(
     values: Option<&str>,
     values_file: Option<&str>,
 ) -> CliResult<String> {
@@ -188,7 +188,10 @@ fn resolve_xlsx_ranges_set_values(
     }
 }
 
-fn parse_xlsx_range_set_matrix(data: &str, data_format: &str) -> CliResult<XlsxRangeSetMatrix> {
+pub(crate) fn parse_xlsx_range_set_matrix(
+    data: &str,
+    data_format: &str,
+) -> CliResult<XlsxRangeSetMatrix> {
     match data_format {
         "json" => parse_xlsx_range_set_json_matrix(data),
         "csv" => parse_xlsx_delimited_matrix(data, ','),
@@ -457,7 +460,10 @@ fn transpose_xlsx_matrix(rows: Vec<Vec<XlsxMatrixCell>>) -> CliResult<Vec<Vec<Xl
     Ok(out)
 }
 
-fn rectangularize_xlsx_matrix(rows: &mut Vec<Vec<XlsxMatrixCell>>, ragged: &str) -> CliResult<()> {
+pub(crate) fn rectangularize_xlsx_matrix(
+    rows: &mut Vec<Vec<XlsxMatrixCell>>,
+    ragged: &str,
+) -> CliResult<()> {
     if rows.is_empty() {
         return Err(CliError::invalid_args("values matrix cannot be empty"));
     }
@@ -502,7 +508,7 @@ fn rectangularize_xlsx_matrix(rows: &mut Vec<Vec<XlsxMatrixCell>>, ragged: &str)
     Ok(())
 }
 
-fn validate_xlsx_null_policy(policy: &str) -> CliResult<()> {
+pub(crate) fn validate_xlsx_null_policy(policy: &str) -> CliResult<()> {
     match policy.trim().to_ascii_lowercase().as_str() {
         "skip" | "clear" | "empty-string" => Ok(()),
         _ => Err(CliError::invalid_args(

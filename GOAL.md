@@ -34,7 +34,7 @@ history.
   - `cargo check --all-targets` passed.
   - `cargo fmt --check` passed.
   - `cargo clippy --all-targets -- -D warnings` passed.
-  - `cargo test --all-targets` passed with 83 Rust contract tests.
+  - `cargo test --all-targets` passed with 85 Rust contract tests.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
 

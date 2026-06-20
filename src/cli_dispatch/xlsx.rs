@@ -9,6 +9,7 @@ use crate::xlsx_names::*;
 use crate::xlsx_ranges::*;
 use crate::xlsx_sheets::*;
 use crate::xlsx_tables::*;
+use crate::{XlsxTablesAppendRowsOptions, xlsx_tables_append_rows};
 
 pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
     match args {
@@ -644,6 +645,61 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
                     max_cells,
                     include_types,
                     include_formulas,
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "tables" && verb == "append-rows" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--table",
+                    "--values",
+                    "--values-file",
+                    "--data-format",
+                    "--null-policy",
+                    "--ragged",
+                    "--max-cells",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--dry-run",
+                    "--no-validate",
+                    "--in-place",
+                    "--overwrite-formulas",
+                ],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let table = parse_string_flag(rest, "--table")?;
+            let values = parse_string_flag(rest, "--values")?;
+            let values_file = parse_string_flag(rest, "--values-file")?;
+            let data_format = parse_string_flag(rest, "--data-format")?;
+            let null_policy = parse_string_flag(rest, "--null-policy")?;
+            let ragged = parse_string_flag(rest, "--ragged")?;
+            let max_cells = parse_i64_flag(rest, "--max-cells")?.unwrap_or(100000);
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_tables_append_rows(
+                file,
+                XlsxTablesAppendRowsOptions {
+                    sheet: sheet.as_deref(),
+                    table: table.as_deref(),
+                    values: values.as_deref(),
+                    values_file: values_file.as_deref(),
+                    data_format: data_format.as_deref(),
+                    null_policy: null_policy.as_deref(),
+                    null_policy_present: value_flag_present(rest, "--null-policy"),
+                    ragged: ragged.as_deref(),
+                    max_cells,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                    overwrite_formulas: has_flag(rest, "--overwrite-formulas"),
                 },
             )
         }

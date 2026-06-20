@@ -10,36 +10,36 @@ use crate::{
 };
 
 #[derive(Clone, Default)]
-struct XlsxTableColumn {
-    id: u32,
-    name: String,
+pub(crate) struct XlsxTableColumn {
+    pub(crate) id: u32,
+    pub(crate) name: String,
 }
 
 #[derive(Clone, Default)]
-struct XlsxTableRef {
-    number: u32,
-    sheet: String,
-    sheet_number: u32,
-    sheet_part_uri: String,
-    relationship_id: String,
-    part_uri: String,
-    id: u32,
-    name: String,
-    display_name: String,
-    primary_selector: String,
-    selectors: Vec<String>,
-    range: String,
-    rows: u32,
-    cols: u32,
-    header_row_count: u32,
-    data_row_count: u32,
-    totals_row_count: u32,
-    style_name: String,
-    columns: Vec<XlsxTableColumn>,
+pub(crate) struct XlsxTableRef {
+    pub(crate) number: u32,
+    pub(crate) sheet: String,
+    pub(crate) sheet_number: u32,
+    pub(crate) sheet_part_uri: String,
+    pub(crate) relationship_id: String,
+    pub(crate) part_uri: String,
+    pub(crate) id: u32,
+    pub(crate) name: String,
+    pub(crate) display_name: String,
+    pub(crate) primary_selector: String,
+    pub(crate) selectors: Vec<String>,
+    pub(crate) range: String,
+    pub(crate) rows: u32,
+    pub(crate) cols: u32,
+    pub(crate) header_row_count: u32,
+    pub(crate) data_row_count: u32,
+    pub(crate) totals_row_count: u32,
+    pub(crate) style_name: String,
+    pub(crate) columns: Vec<XlsxTableColumn>,
 }
 
 impl XlsxTableRef {
-    fn apply_selectors(&mut self) {
+    pub(crate) fn apply_selectors(&mut self) {
         self.primary_selector = if self.id > 0 {
             format!("tableId:{}", self.id)
         } else if self.number > 0 {
@@ -175,7 +175,10 @@ pub(crate) fn xlsx_tables_export(
     )
 }
 
-fn xlsx_tables(file: &str, sheet_selector: Option<&str>) -> CliResult<Vec<XlsxTableRef>> {
+pub(crate) fn xlsx_tables(
+    file: &str,
+    sheet_selector: Option<&str>,
+) -> CliResult<Vec<XlsxTableRef>> {
     let workbook = zip_text(file, "xl/workbook.xml")?;
     let sheets = workbook_sheets(&workbook)?;
     let workbook_rels = relationship_entries(file, "xl/_rels/workbook.xml.rels")?;
@@ -272,7 +275,7 @@ fn xlsx_table_relationship_ids(sheet_xml: &str) -> CliResult<Vec<String>> {
     Ok(ids)
 }
 
-fn parse_xlsx_table_part(xml: &str, part_uri: &str) -> CliResult<XlsxTableRef> {
+pub(crate) fn parse_xlsx_table_part(xml: &str, part_uri: &str) -> CliResult<XlsxTableRef> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut table = XlsxTableRef::default();
@@ -410,7 +413,10 @@ fn xlsx_table_item_json(file: &str, table: &XlsxTableRef) -> Value {
     Value::Object(object)
 }
 
-fn select_xlsx_table(tables: &[XlsxTableRef], selector: &str) -> CliResult<XlsxTableRef> {
+pub(crate) fn select_xlsx_table(
+    tables: &[XlsxTableRef],
+    selector: &str,
+) -> CliResult<XlsxTableRef> {
     if tables.is_empty() {
         return Err(CliError::invalid_args("workbook has no tables"));
     }

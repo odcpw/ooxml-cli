@@ -2645,3 +2645,251 @@ fn xlsx_tables_export_matches_go_oracle() {
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
+
+#[test]
+fn xlsx_tables_append_rows_matches_go_oracle_and_saved_output() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-table-append-rows-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    let go_out_path = temp_dir.join("go-out.xlsx");
+    let rust_out_path = temp_dir.join("rust-out.xlsx");
+    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&rust_in_path);
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let go_out = go_out_path.to_string_lossy().to_string();
+    let rust_out = rust_out_path.to_string_lossy().to_string();
+    let values = r#"[["North",30],["South",40]]"#;
+
+    let go_args = [
+        "--json",
+        "xlsx",
+        "tables",
+        "append-rows",
+        &go_in,
+        "--table",
+        "Sales",
+        "--values",
+        values,
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "tables",
+        "append-rows",
+        &rust_in,
+        "--table",
+        "Sales",
+        "--values",
+        values,
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "append-rows exit");
+    assert_eq!(rust_stderr, go_stderr, "append-rows stderr");
+    let rust_result = rust_stdout.expect("rust append-rows stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_result.clone(),
+            &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go append-rows stdout"),
+            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+        ),
+        "append-rows stdout"
+    );
+
+    for field in [
+        "validateCommand",
+        "cellsExtractCommand",
+        "rangesExportCommand",
+        "tableShowCommand",
+        "tableExportCommand",
+    ] {
+        assert_rust_emitted_ooxml_command_succeeds(&rust_result, field);
+    }
+
+    let show_go = [
+        "--json", "xlsx", "tables", "show", &go_out, "--table", "Sales",
+    ];
+    let show_rust = [
+        "--json", "xlsx", "tables", "show", &rust_out, "--table", "Sales",
+    ];
+    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
+    assert_eq!(rust_code, go_code, "saved table show exit");
+    assert_eq!(rust_stderr, go_stderr, "saved table show stderr");
+    assert_eq!(
+        scrub_path(
+            rust_show.expect("rust saved table show"),
+            &rust_out,
+            "[OUT]"
+        ),
+        scrub_path(go_show.expect("go saved table show"), &go_out, "[OUT]"),
+        "saved table show"
+    );
+
+    let range_go = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &go_out,
+        "--sheet",
+        "Data",
+        "--range",
+        "A4:B5",
+        "--include-types",
+        "--include-formulas",
+    ];
+    let range_rust = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &rust_out,
+        "--sheet",
+        "Data",
+        "--range",
+        "A4:B5",
+        "--include-types",
+        "--include-formulas",
+    ];
+    let (go_code, go_range, go_stderr) = run_go_ooxml(&range_go);
+    let (rust_code, rust_range, rust_stderr) = run_ooxml(&range_rust);
+    assert_eq!(rust_code, go_code, "saved appended range export exit");
+    assert_eq!(rust_stderr, go_stderr, "saved appended range export stderr");
+    assert_eq!(
+        scrub_path(
+            rust_range.expect("rust saved appended range export"),
+            &rust_out,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_range.expect("go saved appended range export"),
+            &go_out,
+            "[OUT]"
+        ),
+        "saved appended range export"
+    );
+
+    let table_xml = read_zip_string(&rust_out_path, "xl/tables/table1.xml");
+    assert!(
+        table_xml.contains(r#"ref="A1:B5""#),
+        "Rust table ref was not expanded:\n{table_xml}"
+    );
+    let sheet_xml = read_zip_string(&rust_out_path, "xl/worksheets/sheet1.xml");
+    for wanted in [r#"r="A4""#, "North", r#"r="B5""#, "<v>40</v>"] {
+        assert!(
+            sheet_xml.contains(wanted),
+            "Rust worksheet missing {wanted:?} after append:\n{sheet_xml}"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_tables_append_rows_dry_run_and_errors_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-table-append-rows-dry-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&rust_in_path);
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let values = r#"[[{"formula":"SUM(B2:B3)"},"dry"]]"#;
+
+    let dry_go = [
+        "--json",
+        "xlsx",
+        "tables",
+        "append-rows",
+        &go_in,
+        "--table",
+        "Sales",
+        "--values",
+        values,
+        "--dry-run",
+    ];
+    let dry_rust = [
+        "--json",
+        "xlsx",
+        "tables",
+        "append-rows",
+        &rust_in,
+        "--table",
+        "Sales",
+        "--values",
+        values,
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
+    assert_eq!(rust_code, go_code, "append-rows dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "append-rows dry-run stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust append-rows dry-run stdout"),
+            &rust_in,
+            "[IN]"
+        ),
+        scrub_path(
+            go_stdout.expect("go append-rows dry-run stdout"),
+            &go_in,
+            "[IN]"
+        ),
+        "append-rows dry-run stdout"
+    );
+    assert!(
+        read_zip_string(&rust_in_path, "xl/tables/table1.xml").contains(r#"ref="A1:B3""#),
+        "dry-run changed Rust input table"
+    );
+
+    let bad_go = [
+        "--json",
+        "xlsx",
+        "tables",
+        "append-rows",
+        &go_in,
+        "--table",
+        "Sales",
+        "--values",
+        r#"[["Only one column"]]"#,
+        "--dry-run",
+    ];
+    let bad_rust = [
+        "--json",
+        "xlsx",
+        "tables",
+        "append-rows",
+        &rust_in,
+        "--table",
+        "Sales",
+        "--values",
+        r#"[["Only one column"]]"#,
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&bad_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&bad_rust);
+    assert_eq!(rust_code, go_code, "append-rows bad args exit");
+    assert_eq!(rust_stdout, go_stdout, "append-rows bad args stdout");
+    assert_eq!(rust_stderr, go_stderr, "append-rows bad args stderr");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
