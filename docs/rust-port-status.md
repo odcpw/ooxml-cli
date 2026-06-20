@@ -22,6 +22,18 @@ Latest milestone, 2026-06-20:
   open oracle for both outputs, `cargo clippy --all-targets -- -D warnings`,
   and `cargo test --all-targets` passed with 4 ZIP guard unit tests plus 94
   Rust contract tests.
+- Rust XLSX row-height readback parity landed for direct
+  `xlsx rowheights show`. The slice reports default and explicit worksheet row
+  heights, hidden/custom flags, normalized row spans, uniformity, and the
+  generated `rowheights set` command template through the shared
+  `src/xlsx_dimensions.rs` module. It is read-only, so no Office/Open XML
+  mutation proof is required. Rust capabilities now advertise 81 Go-oracle
+  command paths, leaving a pinned 209-command gap. Proof: `cargo fmt --check`,
+  `cargo check --all-targets`, focused `cargo test --test rust_contract_smoke
+  xlsx_rowheights_show -- --nocapture`, focused capability ratchet/discovery
+  tests, `cargo clippy --all-targets -- -D warnings`, and `cargo test
+  --all-targets` passed with 4 ZIP guard unit tests plus 95 Rust contract
+  tests.
 - Rust XLSX column-width readback parity landed for direct
   `xlsx colwidths show`. The slice reports default and explicit worksheet
   column widths, hidden/custom flags, normalized column spans, uniformity, and
@@ -788,7 +800,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 80, and the harness pins the 210-command gap until
+  paths, Rust advertises 81, and the harness pins the 209-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -851,6 +863,10 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   widths, explicit/custom/hidden `<col>` spans, default column-width overrides,
   reversed range normalization, generated set-command templates, and capability
   indexing
+- `--json xlsx rowheights show <xlsx>` with Go-oracle comparison for default
+  heights, explicit/custom/hidden `<row>` entries, default row-height
+  overrides, reversed range normalization, invalid row-range errors, generated
+  set-command templates, and capability indexing
 - `--json xlsx tables list <xlsx>` and `--json xlsx tables show <xlsx>` with
   Go-oracle comparison for generated table workbooks, table metadata, columns,
   bridge command templates, `capabilities --for table`, and stable table

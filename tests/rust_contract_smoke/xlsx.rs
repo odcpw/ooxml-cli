@@ -121,6 +121,65 @@ fn xlsx_colwidths_show_matches_go_oracle() {
 }
 
 #[test]
+fn xlsx_rowheights_show_matches_go_oracle() {
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "rowheights",
+        "show",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "1",
+        "--range",
+        "1:3",
+    ]);
+
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-rowheights-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let workbook = temp_dir.join("heights.xlsx");
+    write_simple_xlsx_with_sheet_xml(
+        &workbook,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetFormatPr defaultRowHeight="18"/>
+  <sheetData>
+    <row r="1"><c r="A1"><v>1</v></c></row>
+    <row r="2" ht="22.5" customHeight="1"><c r="A2"><v>2</v></c></row>
+    <row r="4" ht="0" hidden="1"/>
+    <row r="5" customHeight="1"/>
+  </sheetData>
+</worksheet>"#,
+    );
+    let workbook = workbook.to_string_lossy().to_string();
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "rowheights",
+        "show",
+        &workbook,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "5:2",
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "rowheights",
+        "show",
+        &workbook,
+        "--sheet",
+        "1",
+        "--range",
+        "2:bad",
+    ]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_ranges_set_matches_go_oracle_and_saved_output() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-xlsx-ranges-set-{}", std::process::id()));

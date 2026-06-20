@@ -102,6 +102,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "range", "ooxml xlsx colwidths show");
     assert_command_target_kind(&all_caps, "ooxml xlsx colwidths show", "sheet");
     assert_command_target_kind(&all_caps, "ooxml xlsx colwidths show", "range");
+    assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx rowheights show");
+    assert_object_kind_command(&all_caps, "range", "ooxml xlsx rowheights show");
+    assert_command_target_kind(&all_caps, "ooxml xlsx rowheights show", "sheet");
+    assert_command_target_kind(&all_caps, "ooxml xlsx rowheights show", "range");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names list");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names show");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names add");
@@ -150,6 +154,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx sheets list", false);
     assert_command(&xlsx_caps, "ooxml xlsx sheets show", false);
     assert_command(&xlsx_caps, "ooxml xlsx colwidths show", false);
+    assert_command(&xlsx_caps, "ooxml xlsx rowheights show", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set-format", true);
@@ -171,6 +176,14 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx names delete", true);
     assert_command(&xlsx_caps, "ooxml xlsx workbook metadata inspect", false);
     assert_command(&xlsx_caps, "ooxml xlsx workbook metadata update", true);
+
+    let (range_code, range_stdout, range_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "range"]);
+    assert_eq!(range_code, 0);
+    assert_eq!(range_stderr, None);
+    let range_caps = range_stdout.expect("range capabilities");
+    assert_command(&range_caps, "ooxml xlsx rowheights show", false);
+    assert_command(&range_caps, "ooxml xlsx ranges export", false);
 
     let (table_code, table_stdout, table_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "table"]);
@@ -381,10 +394,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 80, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 81, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        210,
+        209,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

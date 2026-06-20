@@ -37,6 +37,18 @@ pub(super) fn commands() -> Vec<Value> {
             ],
         ),
         capability_command(
+            "ooxml xlsx rowheights show",
+            "show <file> --sheet <sheet> --range <rows>",
+            "Show resolved worksheet row heights for a row range.",
+            &["sheet", "range"],
+            false,
+            Some("read-only command; direct CLI parity only in the current Rust slice"),
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag("--range", "range", "string", "row span such as 2 or 2:5"),
+            ],
+        ),
+        capability_command(
             "ooxml xlsx names list",
             "list <file> [--scope-sheet <sheet>]",
             "List workbook and sheet-local defined names with selectors.",

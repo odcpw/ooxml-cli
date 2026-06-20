@@ -5,13 +5,13 @@ use serde_json::Value;
 use self::tables::dispatch_xlsx_tables;
 use crate::cli_args::*;
 use crate::cli_core::{CliError, CliResult};
-use crate::xlsx_colwidths_show;
 use crate::xlsx_freeze::*;
 use crate::xlsx_metadata::*;
 use crate::xlsx_mutation::*;
 use crate::xlsx_names::*;
 use crate::xlsx_ranges::*;
 use crate::xlsx_sheets::*;
+use crate::{xlsx_colwidths_show, xlsx_rowheights_show};
 
 pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
     match args {
@@ -180,6 +180,15 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
             let range = parse_string_flag(rest, "--range")?
                 .ok_or_else(|| CliError::invalid_args("--range is required (e.g. B or B:D)"))?;
             xlsx_colwidths_show(file, sheet.as_deref(), &range)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "rowheights" && verb == "show" =>
+        {
+            reject_unknown_flags(rest, &["--sheet", "--range"], &[])?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let range = parse_string_flag(rest, "--range")?
+                .ok_or_else(|| CliError::invalid_args("--range is required (e.g. 2 or 2:5)"))?;
+            xlsx_rowheights_show(file, sheet.as_deref(), &range)
         }
         [family, group, subgroup, verb, file, rest @ ..]
             if family == "xlsx"
