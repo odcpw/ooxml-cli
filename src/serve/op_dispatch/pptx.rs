@@ -4,8 +4,9 @@ use super::super::op::ServeOp;
 use crate::{
     CliError, CliResult, json_i64,
     pptx_mutation::{
-        pptx_notes_clear, pptx_notes_set, pptx_tables_delete_row, pptx_tables_insert_row,
-        pptx_tables_set_cell,
+        pptx_notes_clear, pptx_notes_set, pptx_tables_delete_col, pptx_tables_delete_row,
+        pptx_tables_insert_col, pptx_tables_insert_row, pptx_tables_set_cell,
+        pptx_tables_update_from_xlsx,
     },
 };
 
@@ -54,6 +55,62 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
             push_cli_flag(&mut plan_args, "--at", &at.to_string());
 
             finish_pptx_tables_op(working, command, plan_args, pptx_tables_insert_row)?
+        }
+        "pptx tables delete-col" => {
+            let slide = required_i64(args, "slide")?;
+            let col = required_i64(args, "col")?;
+            let mut plan_args = pptx_table_target_args(args, slide)?;
+            push_cli_flag(&mut plan_args, "--col", &col.to_string());
+
+            finish_pptx_tables_op(working, command, plan_args, pptx_tables_delete_col)?
+        }
+        "pptx tables insert-col" => {
+            let slide = required_i64(args, "slide")?;
+            let at = required_i64(args, "at")?;
+            let mut plan_args = pptx_table_target_args(args, slide)?;
+            push_cli_flag(&mut plan_args, "--at", &at.to_string());
+            if let Some(width) = optional_i64_alias(args, "width-emu", "widthEmu")? {
+                push_cli_flag(&mut plan_args, "--width-emu", &width.to_string());
+            }
+
+            finish_pptx_tables_op(working, command, plan_args, pptx_tables_insert_col)?
+        }
+        "pptx tables update-from-xlsx" => {
+            let slide = required_i64(args, "slide")?;
+            let workbook = required_string(args, "workbook")?;
+            let mut plan_args = pptx_table_target_args(args, slide)?;
+            push_cli_flag(&mut plan_args, "--workbook", &workbook);
+            for (json_key, flag_name) in [
+                ("sheet", "--sheet"),
+                ("range", "--range"),
+                ("table", "--table"),
+                ("formula-mode", "--formula-mode"),
+                ("expect-source-range", "--expect-source-range"),
+            ] {
+                if let Some(value) = optional_string(args, json_key)?.0 {
+                    push_cli_flag(&mut plan_args, flag_name, &value);
+                }
+            }
+            for (json_key, alias, flag_name) in [
+                ("formulaMode", "formula-mode", "--formula-mode"),
+                (
+                    "expectSourceRange",
+                    "expect-source-range",
+                    "--expect-source-range",
+                ),
+            ] {
+                if optional_string(args, alias)?.1 {
+                    continue;
+                }
+                if let Some(value) = optional_string(args, json_key)?.0 {
+                    push_cli_flag(&mut plan_args, flag_name, &value);
+                }
+            }
+            if let Some(max_cells) = optional_i64_alias(args, "max-cells", "maxCells")? {
+                push_cli_flag(&mut plan_args, "--max-cells", &max_cells.to_string());
+            }
+
+            finish_pptx_tables_op(working, command, plan_args, pptx_tables_update_from_xlsx)?
         }
         "pptx notes set" => {
             let slide = required_i64(args, "slide")?;
@@ -139,6 +196,12 @@ fn pptx_table_target_args(args: &Value, slide: i64) -> CliResult<Vec<String>> {
 
 fn required_i64(args: &Value, key: &str) -> CliResult<i64> {
     json_i64(args, key)?.ok_or_else(|| CliError::invalid_args(format!("{key} is required")))
+}
+
+fn required_string(args: &Value, key: &str) -> CliResult<String> {
+    optional_string(args, key)?
+        .0
+        .ok_or_else(|| CliError::invalid_args(format!("{key} is required")))
 }
 
 fn optional_i64_alias(args: &Value, key: &str, alias: &str) -> CliResult<Option<i64>> {

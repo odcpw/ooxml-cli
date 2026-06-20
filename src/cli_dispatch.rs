@@ -347,6 +347,41 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
             pptx_tables_insert_row(file, rest)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "tables" && verb == "delete-col" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--table-id",
+                    "--target",
+                    "--col",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_tables_delete_col(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "tables" && verb == "insert-col" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--table-id",
+                    "--target",
+                    "--at",
+                    "--width-emu",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_tables_insert_col(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "tables" && verb == "set-cell" =>
         {
             reject_unknown_flags(
@@ -365,6 +400,29 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
                 &["--dry-run", "--in-place", "--no-validate"],
             )?;
             pptx_tables_set_cell(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "tables" && verb == "update-from-xlsx" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--table-id",
+                    "--target",
+                    "--workbook",
+                    "--sheet",
+                    "--range",
+                    "--table",
+                    "--max-cells",
+                    "--formula-mode",
+                    "--expect-source-range",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_tables_update_from_xlsx(file, rest)
         }
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "replace" && verb == "text" =>

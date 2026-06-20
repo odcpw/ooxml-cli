@@ -155,10 +155,24 @@ pub(super) fn pptx_selector_targets_from_shapes(shapes: &[Shape]) -> Vec<Value> 
             if is_table {
                 table_index += 1;
             }
-            let placeholder = shape
+            let mut placeholder = shape
                 .placeholder
                 .as_ref()
                 .and_then(pptx_selector_placeholder);
+            if placeholder.is_none()
+                && shape.kind == "sp"
+                && shape.has_text_body
+                && shape
+                    .name
+                    .to_ascii_lowercase()
+                    .contains("content placeholder")
+            {
+                let mut inferred = Map::new();
+                inferred.insert("key".to_string(), json!("body"));
+                inferred.insert("role".to_string(), json!("body"));
+                inferred.insert("typeSource".to_string(), json!("name"));
+                placeholder = Some(inferred);
+            }
             let placeholder_key = placeholder
                 .as_ref()
                 .and_then(|placeholder| placeholder.get("key"))

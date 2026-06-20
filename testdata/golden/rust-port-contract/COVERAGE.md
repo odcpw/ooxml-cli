@@ -11,6 +11,7 @@
 | MCP | initialize, tools, resources, command resource, session tools | `baseline.json` `mcp` |
 | Web smoke | smoke scripts route readback through `OOXML_BIN` | `baseline.json` `webSmoke` |
 | Focused PPTX table mutation | `pptx tables set-cell` saved output, dry-run, text-file, readback, and error envelopes | `cargo test --test rust_contract_smoke pptx_tables_set_cell` |
+| Focused PPTX table columns/XLSX update | `pptx tables insert-col`, `delete-col`, and `update-from-xlsx` saved output, readback, strict validation, dry-run, source guards, and error envelopes | `cargo test --test rust_contract_smoke pptx_tables_column`, `cargo test --test rust_contract_smoke pptx_tables_update_from_xlsx` |
 | XLSX filters/sorts | Go-vs-Rust differential tests for `xlsx filters-sorts show`, direct `set-autofilter`, saved readback, dry-run, error behavior, table target, and serve inspect | `tests/rust_contract_smoke/xlsx.rs`, `tests/rust_contract_smoke/serve.rs` |
 | XLSX data validations | Go-vs-Rust differential tests for `xlsx data-validations list/show/create/update/delete`, saved readback commands, dry-run, guard/error behavior, and strict validation of saved XLSX outputs | `tests/rust_contract_smoke/xlsx.rs` `xlsx_data_validations_*` |
 | DOCX image mutation | Go-vs-Rust saved replace/insert, strict validation/readback, dry-run, stale hash, and missing-target errors | `tests/rust_contract_smoke/docx.rs` `docx_images_replace_insert_match_go_oracle` |

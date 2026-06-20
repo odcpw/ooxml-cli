@@ -4,7 +4,10 @@ mod tables;
 
 pub(crate) use comments::{pptx_comments_add, pptx_comments_edit, pptx_comments_remove};
 pub(crate) use notes::{pptx_notes_clear, pptx_notes_set};
-pub(crate) use tables::{pptx_tables_delete_row, pptx_tables_insert_row, pptx_tables_set_cell};
+pub(crate) use tables::{
+    pptx_tables_delete_col, pptx_tables_delete_row, pptx_tables_insert_col, pptx_tables_insert_row,
+    pptx_tables_set_cell, pptx_tables_update_from_xlsx,
+};
 
 use serde_json::{Value, json};
 use std::fs;

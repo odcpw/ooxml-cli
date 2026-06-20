@@ -224,8 +224,8 @@ pub(crate) use xlsx_table_format::{
     XlsxTablesSetColumnFormatOptions, xlsx_tables_set_column_format,
 };
 pub(crate) use xlsx_tables::{
-    XlsxTableExportOptions, xlsx_source_command, xlsx_tables_export, xlsx_tables_list,
-    xlsx_tables_show,
+    XlsxTableExportOptions, select_xlsx_table, xlsx_source_command, xlsx_tables,
+    xlsx_tables_export, xlsx_tables_list, xlsx_tables_show,
 };
 pub(crate) use xml_util::{
     attr, attr_bound_ns, attr_exact, attr_prefixed_ns, decode_local_xml_attrs as xml_attrs,

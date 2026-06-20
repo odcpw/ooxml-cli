@@ -9,6 +9,22 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX table column and XLSX-backed update parity landed for
+  `pptx tables insert-col`, `pptx tables delete-col`, and
+  `pptx tables update-from-xlsx`. The slice inserts/deletes table columns with
+  Go-compatible dimensions, grid widths, merge-safety errors, readback command
+  fields, dry-run behavior, and strict validation. It also refreshes a PPTX
+  table from XLSX ranges or named tables, including formula/value mode,
+  expected-source-range guards, max-cell guards, dimension mismatch rejection,
+  merged-table rejection, capability discovery, and serve op dispatch for all
+  three leaves. Rust capabilities now advertise 131 Go-oracle command paths,
+  leaving a pinned 159-command gap. Proof: focused Go-vs-Rust table column and
+  update-from-XLSX contract tests, serve op tests, capability ratchet/discovery
+  tests, strict validation for generated PPTX proof files, Open XML SDK
+  Office2019 schema validation (zero errors) for proof files, PowerPoint COM
+  open oracle for proof files, `cargo fmt --check`, `cargo check --all-targets`,
+  `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
+  passed with 4 ZIP guard unit tests plus 130 Rust contract tests.
 - Rust PPTX extract parity expanded for the remaining useful read/export leaves
   `pptx extract images` and `pptx extract xml`. The slice writes Go-shaped image
   extraction manifests and image artifacts, preserves the Go oracle's no-image
@@ -1118,7 +1134,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 110, and the harness pins the 180-command gap until
+  paths, Rust advertises 131, and the harness pins the 159-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

@@ -3531,6 +3531,9 @@ fn serve_op_supports_pptx_table_mutations() {
     let input = "testdata/pptx/table-slide/presentation.pptx";
     let output = temp_dir.join("serve-pptx-tables-out.pptx");
     let output_str = output.to_str().expect("output path").to_string();
+    let workbook = temp_dir.join("serve-pptx-table-source.xlsx");
+    write_simple_xlsx_with_sheet_xml(&workbook, serve_pptx_update_source_sheet_xml_4x4());
+    let workbook_str = workbook.to_str().expect("workbook path").to_string();
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
         .arg("serve")
@@ -3698,10 +3701,109 @@ fn serve_op_supports_pptx_table_mutations() {
         Value::from(3)
     );
 
+    let insert_col_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            7,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx tables insert-col",
+                "args": {
+                    "slide": 2,
+                    "target": "table:1",
+                    "at": 2,
+                    "widthEmu": 1234567
+                },
+            }),
+        ),
+    );
+    assert!(
+        insert_col_response.get("error").is_none(),
+        "pptx tables insert-col op failed: {insert_col_response:?}"
+    );
+    assert_eq!(
+        insert_col_response["result"]["readback"]["at"],
+        Value::from(2)
+    );
+    assert_eq!(
+        insert_col_response["result"]["readback"]["cols"],
+        Value::from(4)
+    );
+    assert_eq!(
+        insert_col_response["result"]["readback"]["widthEmu"],
+        Value::from(1234567)
+    );
+
+    let delete_col_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            8,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx tables delete-col",
+                "args": {
+                    "slide": 2,
+                    "target": "table:1",
+                    "col": 2
+                },
+            }),
+        ),
+    );
+    assert!(
+        delete_col_response.get("error").is_none(),
+        "pptx tables delete-col op failed: {delete_col_response:?}"
+    );
+    assert_eq!(
+        delete_col_response["result"]["readback"]["col"],
+        Value::from(2)
+    );
+    assert_eq!(
+        delete_col_response["result"]["readback"]["cols"],
+        Value::from(3)
+    );
+
+    let update_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            9,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx tables update-from-xlsx",
+                "args": {
+                    "slide": 2,
+                    "target": "table:1",
+                    "workbook": workbook_str,
+                    "sheet": "Sheet1",
+                    "range": "A1:C3",
+                    "formulaMode": "formula",
+                    "expectSourceRange": "A1:C3"
+                },
+            }),
+        ),
+    );
+    assert!(
+        update_response.get("error").is_none(),
+        "pptx tables update-from-xlsx op failed: {update_response:?}"
+    );
+    assert_eq!(
+        update_response["result"]["readback"]["update"]["updatedCells"],
+        Value::from(9)
+    );
+    assert_eq!(
+        update_response["result"]["readback"]["destination"]["cells"][0][0],
+        Value::String("=SUM(B1:C1)".to_string())
+    );
+
     let plan_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
-        &rpc_request(7, "plan", serde_json::json!({"session": session})),
+        &rpc_request(10, "plan", serde_json::json!({"session": session})),
     );
     assert_eq!(
         plan_response["result"]["plan"][0]["argv"][0],
@@ -3723,11 +3825,23 @@ fn serve_op_supports_pptx_table_mutations() {
         plan_response["result"]["plan"][2]["argv"][2],
         Value::String("delete-row".to_string())
     );
+    assert_eq!(
+        plan_response["result"]["plan"][3]["argv"][2],
+        Value::String("insert-col".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][4]["argv"][2],
+        Value::String("delete-col".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][5]["argv"][2],
+        Value::String("update-from-xlsx".to_string())
+    );
 
     let validate_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
-        &rpc_request(8, "validate", serde_json::json!({"session": session})),
+        &rpc_request(11, "validate", serde_json::json!({"session": session})),
     );
     assert!(
         validate_response.get("error").is_none(),
@@ -3737,7 +3851,7 @@ fn serve_op_supports_pptx_table_mutations() {
     let commit_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
-        &rpc_request(9, "commit", serde_json::json!({"session": session})),
+        &rpc_request(12, "commit", serde_json::json!({"session": session})),
     );
     assert!(
         commit_response.get("error").is_none(),
@@ -3765,19 +3879,37 @@ fn serve_op_supports_pptx_table_mutations() {
     assert_eq!(tables_stderr, None, "pptx tables output readback stderr");
     let tables = tables_stdout.expect("pptx tables output readback");
     assert_eq!(tables["tables"][0]["rows"], Value::from(3));
+    assert_eq!(tables["tables"][0]["cols"], Value::from(3));
     assert_eq!(
-        tables["tables"][0]["cells"][1][1],
-        Value::String("Serve PPTX Cell".to_string())
+        tables["tables"][0]["cells"][0][0],
+        Value::String("=SUM(B1:C1)".to_string())
     );
     assert_eq!(
-        tables["tables"][0]["cells"][2][0],
-        Value::String("R2C0".to_string())
+        tables["tables"][0]["cells"][1][1],
+        Value::String("42".to_string())
+    );
+    assert_eq!(
+        tables["tables"][0]["cells"][2][2],
+        Value::String("done".to_string())
     );
 
     drop(stdin);
     let status = child.wait().expect("serve exit");
     assert!(status.success());
     let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn serve_pptx_update_source_sheet_xml_4x4() -> &'static str {
+    r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:D4"/>
+  <sheetData>
+    <row r="1"><c r="A1"><f>SUM(B1:C1)</f><v>7</v></c><c r="B1" t="inlineStr"><is><t>Header B</t></is></c><c r="C1" t="inlineStr"><is><t>Header C</t></is></c><c r="D1" t="inlineStr"><is><t>D</t></is></c></row>
+    <row r="2"><c r="A2" t="inlineStr"><is><t>North</t></is></c><c r="B2"><v>42</v></c><c r="C2" t="inlineStr"><is><t>ok</t></is></c><c r="D2" t="inlineStr"><is><t>H</t></is></c></row>
+    <row r="3"><c r="A3" t="inlineStr"><is><t>South</t></is></c><c r="B3"><v>55</v></c><c r="C3" t="inlineStr"><is><t>done</t></is></c><c r="D3" t="inlineStr"><is><t>L</t></is></c></row>
+    <row r="4"><c r="A4" t="inlineStr"><is><t>M</t></is></c><c r="B4" t="inlineStr"><is><t>N</t></is></c><c r="C4" t="inlineStr"><is><t>O</t></is></c><c r="D4" t="inlineStr"><is><t>P</t></is></c></row>
+  </sheetData>
+</worksheet>"#
 }
 
 #[test]

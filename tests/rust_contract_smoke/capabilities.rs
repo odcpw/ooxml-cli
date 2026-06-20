@@ -27,6 +27,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx tables set-cell", true);
     assert_command(&all_caps, "ooxml pptx tables delete-row", true);
     assert_command(&all_caps, "ooxml pptx tables insert-row", true);
+    assert_command(&all_caps, "ooxml pptx tables delete-col", true);
+    assert_command(&all_caps, "ooxml pptx tables insert-col", true);
+    assert_command(&all_caps, "ooxml pptx tables update-from-xlsx", true);
     assert_command(&all_caps, "ooxml pptx comments list", false);
     assert_command(&all_caps, "ooxml pptx comments add", false);
     assert_command(&all_caps, "ooxml pptx comments edit", false);
@@ -114,6 +117,19 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "slide", "ooxml pptx extract xml");
     assert_object_kind_command(&all_caps, "layout", "ooxml pptx extract xml");
     assert_object_kind_command(&all_caps, "master", "ooxml pptx extract xml");
+    assert_object_kind_command(&all_caps, "table", "ooxml pptx tables delete-col");
+    assert_command_target_kind(&all_caps, "ooxml pptx tables delete-col", "slide");
+    assert_command_target_kind(&all_caps, "ooxml pptx tables delete-col", "table");
+    assert_object_kind_command(&all_caps, "table", "ooxml pptx tables insert-col");
+    assert_command_target_kind(&all_caps, "ooxml pptx tables insert-col", "slide");
+    assert_command_target_kind(&all_caps, "ooxml pptx tables insert-col", "table");
+    assert_object_kind_command(&all_caps, "table", "ooxml pptx tables update-from-xlsx");
+    assert_object_kind_command(&all_caps, "sheet", "ooxml pptx tables update-from-xlsx");
+    assert_object_kind_command(&all_caps, "range", "ooxml pptx tables update-from-xlsx");
+    assert_command_target_kind(&all_caps, "ooxml pptx tables update-from-xlsx", "slide");
+    assert_command_target_kind(&all_caps, "ooxml pptx tables update-from-xlsx", "table");
+    assert_command_target_kind(&all_caps, "ooxml pptx tables update-from-xlsx", "sheet");
+    assert_command_target_kind(&all_caps, "ooxml pptx tables update-from-xlsx", "range");
     assert_object_kind_command(&all_caps, "table", "ooxml docx styles apply");
     assert_object_kind_command(&all_caps, "table", "ooxml docx tables insert-row");
     assert_command_target_kind(&all_caps, "ooxml docx tables insert-row", "table");
@@ -341,6 +357,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx tables set-cell", true);
     assert_command(&pptx_caps, "ooxml pptx tables delete-row", true);
     assert_command(&pptx_caps, "ooxml pptx tables insert-row", true);
+    assert_command(&pptx_caps, "ooxml pptx tables delete-col", true);
+    assert_command(&pptx_caps, "ooxml pptx tables insert-col", true);
+    assert_command(&pptx_caps, "ooxml pptx tables update-from-xlsx", true);
     assert_command(&pptx_caps, "ooxml pptx extract text", false);
     assert_command(&pptx_caps, "ooxml pptx extract notes", false);
     assert_command(&pptx_caps, "ooxml pptx extract images", false);
@@ -481,6 +500,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&range_caps, "ooxml xlsx hyperlinks add", true);
     assert_command(&range_caps, "ooxml xlsx hyperlinks update", true);
     assert_command(&range_caps, "ooxml xlsx hyperlinks delete", true);
+    assert_command(&range_caps, "ooxml pptx tables update-from-xlsx", true);
     assert_command(&range_caps, "ooxml xlsx ranges export", false);
 
     let (table_code, table_stdout, table_stderr) =
@@ -492,6 +512,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml pptx tables set-cell", true);
     assert_command(&table_caps, "ooxml pptx tables delete-row", true);
     assert_command(&table_caps, "ooxml pptx tables insert-row", true);
+    assert_command(&table_caps, "ooxml pptx tables delete-col", true);
+    assert_command(&table_caps, "ooxml pptx tables insert-col", true);
+    assert_command(&table_caps, "ooxml pptx tables update-from-xlsx", true);
     assert_command(&table_caps, "ooxml xlsx filters-sorts show", false);
     assert_command(
         &table_caps,
@@ -752,12 +775,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        128,
+        131,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        162,
+        159,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
