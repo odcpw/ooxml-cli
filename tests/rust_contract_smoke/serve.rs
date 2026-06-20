@@ -569,6 +569,73 @@ fn serve_inspect_supports_xlsx_sheets_show() {
 }
 
 #[test]
+fn serve_inspect_supports_xlsx_filters_sorts_show() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-serve-filters-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("filters.xlsx");
+    write_simple_xlsx_with_sheet_xml(
+        &input,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:B2"/>
+  <sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Name</t></is></c><c r="B1" t="inlineStr"><is><t>Amount</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>North</t></is></c><c r="B2"><v>10</v></c></row></sheetData>
+  <autoFilter ref="A1:B2"><filterColumn colId="0"><filters><filter val="North"/></filters></filterColumn></autoFilter>
+</worksheet>"#,
+    );
+    let input_str = input.to_str().expect("input path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(1, "open", serde_json::json!({"file": input_str}));
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let inspect = rpc_request(
+        2,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx filters-sorts show",
+            "args": {"sheet": "1"},
+        }),
+    );
+    let inspect_response = serve_roundtrip(&mut stdin, &mut reader, &inspect);
+    let working = inspect_response["result"]["file"]
+        .as_str()
+        .expect("working file");
+    let (code, expected, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        working,
+        "--sheet",
+        "1",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    assert_eq!(inspect_response["result"], expected.expect("show stdout"));
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_inspect_supports_xlsx_names() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-names-{}", std::process::id()));

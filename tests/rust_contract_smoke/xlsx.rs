@@ -180,6 +180,319 @@ fn xlsx_rowheights_show_matches_go_oracle() {
 }
 
 #[test]
+fn xlsx_filters_sorts_show_matches_go_oracle() {
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "1",
+    ]);
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-filters-show-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let workbook = temp_dir.join("filters.xlsx");
+    write_simple_xlsx_with_sheet_xml(
+        &workbook,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:C3"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Region</t></is></c><c r="B1" t="inlineStr"><is><t>Amount</t></is></c><c r="C1" t="inlineStr"><is><t>Status</t></is></c></row>
+    <row r="2"><c r="A2" t="inlineStr"><is><t>North</t></is></c><c r="B2"><v>15</v></c><c r="C2" t="inlineStr"><is><t>Open</t></is></c></row>
+    <row r="3"><c r="A3" t="inlineStr"><is><t>South</t></is></c><c r="B3"><v>25</v></c><c r="C3" t="inlineStr"><is><t>Closed</t></is></c></row>
+  </sheetData>
+  <autoFilter ref="A1:C3">
+    <filterColumn colId="0"><filters><filter val="North"/><filter val="South"/></filters></filterColumn>
+    <filterColumn colId="1"><customFilters and="1"><customFilter operator="greaterThanOrEqual" val="10"/><customFilter operator="lessThanOrEqual" val="20"/></customFilters></filterColumn>
+  </autoFilter>
+  <sortState ref="A1:C3"><sortCondition descending="1" ref="B1:B3"/></sortState>
+</worksheet>"#,
+    );
+    let workbook = workbook.to_string_lossy().to_string();
+    assert_go_rust_match(&[
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        &workbook,
+        "--sheet",
+        "Sheet1",
+    ]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_filters_sorts_set_autofilter_matches_go_oracle_and_saved_output() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-filters-set-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    let go_out_path = temp_dir.join("go-out.xlsx");
+    let rust_out_path = temp_dir.join("rust-out.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("go input");
+    fs::copy(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &rust_in_path,
+    )
+    .expect("rust input");
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let go_out = go_out_path.to_string_lossy().to_string();
+    let rust_out = rust_out_path.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-autofilter",
+        &go_in,
+        "--sheet",
+        "1",
+        "--range",
+        "A1:C1",
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-autofilter",
+        &rust_in,
+        "--sheet",
+        "1",
+        "--range",
+        "A1:C1",
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "set-autofilter exit");
+    assert_eq!(rust_stderr, go_stderr, "set-autofilter stderr");
+    let rust_result = rust_stdout.expect("rust set-autofilter stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_result.clone(),
+            &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go set-autofilter stdout"),
+            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+        ),
+        "set-autofilter stdout"
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_result, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_result, "showCommand");
+
+    let show_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        &go_out,
+        "--sheet",
+        "1",
+    ];
+    let show_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        &rust_out,
+        "--sheet",
+        "1",
+    ];
+    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
+    assert_eq!(rust_code, go_code, "saved show exit");
+    assert_eq!(rust_stderr, go_stderr, "saved show stderr");
+    assert_eq!(
+        scrub_path(rust_show.expect("rust saved show"), &rust_out, "[OUT]"),
+        scrub_path(go_show.expect("go saved show"), &go_out, "[OUT]"),
+        "saved show stdout"
+    );
+    assert!(
+        read_zip_string(&rust_out_path, "xl/worksheets/sheet1.xml").contains(r#"ref="A1:C1""#),
+        "Rust worksheet should contain autoFilter ref"
+    );
+
+    let dry_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-autofilter",
+        &go_in,
+        "--sheet",
+        "1",
+        "--range",
+        "A1:C1",
+        "--dry-run",
+    ];
+    let dry_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-autofilter",
+        &rust_in,
+        "--sheet",
+        "1",
+        "--range",
+        "A1:C1",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
+    assert_eq!(rust_code, go_code, "dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "dry-run stderr");
+    assert_eq!(
+        scrub_path(rust_stdout.expect("rust dry-run"), &rust_in, "[IN]"),
+        scrub_path(go_stdout.expect("go dry-run"), &go_in, "[IN]"),
+        "dry-run stdout"
+    );
+    assert!(
+        !read_zip_string(&rust_in_path, "xl/worksheets/sheet1.xml").contains("<autoFilter"),
+        "dry-run should not mutate source workbook"
+    );
+
+    let bad_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-autofilter",
+        &go_in,
+        "--sheet",
+        "1",
+        "--range",
+        "not-a-range",
+        "--dry-run",
+    ];
+    let bad_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-autofilter",
+        &rust_in,
+        "--sheet",
+        "1",
+        "--range",
+        "not-a-range",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&bad_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&bad_rust);
+    assert_eq!(rust_code, go_code, "invalid range exit");
+    assert_eq!(rust_stdout, go_stdout, "invalid range stdout");
+    assert_eq!(rust_stderr, go_stderr, "invalid range stderr");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_filters_sorts_set_autofilter_on_table_matches_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-filters-table-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-table-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-table-in.xlsx");
+    let go_out_path = temp_dir.join("go-table-out.xlsx");
+    let rust_out_path = temp_dir.join("rust-table-out.xlsx");
+    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&rust_in_path);
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let go_out = go_out_path.to_string_lossy().to_string();
+    let rust_out = rust_out_path.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-autofilter",
+        &go_in,
+        "--table",
+        "Sales",
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-autofilter",
+        &rust_in,
+        "--table",
+        "Sales",
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "table set-autofilter exit");
+    assert_eq!(rust_stderr, go_stderr, "table set-autofilter stderr");
+    assert_eq!(
+        scrub_paths(
+            rust_stdout.expect("rust table set-autofilter"),
+            &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go table set-autofilter"),
+            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+        ),
+        "table set-autofilter stdout"
+    );
+
+    let show_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        &go_out,
+        "--table",
+        "Sales",
+    ];
+    let show_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        &rust_out,
+        "--table",
+        "Sales",
+    ];
+    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
+    assert_eq!(rust_code, go_code, "table show exit");
+    assert_eq!(rust_stderr, go_stderr, "table show stderr");
+    assert_eq!(
+        scrub_path(rust_show.expect("rust table show"), &rust_out, "[OUT]"),
+        scrub_path(go_show.expect("go table show"), &go_out, "[OUT]"),
+        "table show stdout"
+    );
+    assert!(
+        read_zip_string(&rust_out_path, "xl/tables/table1.xml").contains(r#"ref="A1:B3""#),
+        "Rust table autoFilter should retain table range"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_ranges_set_matches_go_oracle_and_saved_output() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-xlsx-ranges-set-{}", std::process::id()));

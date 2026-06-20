@@ -9,6 +9,21 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust XLSX filters/sorts parity landed for direct
+  `xlsx filters-sorts show` and `xlsx filters-sorts set-autofilter`. The slice
+  reads worksheet/table autoFilter state plus worksheet sortState, adds or
+  replaces worksheet/table autoFilter refs, preserves existing filter columns
+  when only the ref changes, emits Go-matching honesty/readback/validation
+  command fields, and covers saved output, dry-run, invalid range, table target,
+  and serve inspect readback behavior with Go-vs-Rust contract tests. Rust
+  capabilities now advertise 86 Go-oracle command paths, leaving a pinned
+  204-command gap. Proof: `cargo fmt --check`, `cargo check --all-targets`,
+  focused `cargo test --test rust_contract_smoke xlsx_filters_sorts --
+  --nocapture`, focused serve inspect coverage, focused capability
+  ratchet/discovery tests, strict Rust validation for a generated XLSX, Open
+  XML SDK Office2019 schema validation (zero errors), Excel COM open oracle,
+  `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
+  passed with 4 ZIP guard unit tests plus 102 Rust contract tests.
 - Rust PPTX table cell mutation parity landed for direct
   `pptx tables set-cell`. The slice sets or clears one table cell by slide plus
   table selector/shape ID, preserves the existing table destination/readback
@@ -847,7 +862,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 82, and the harness pins the 208-command gap until
+  paths, Rust advertises 86, and the harness pins the 204-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -914,6 +929,12 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   heights, explicit/custom/hidden `<row>` entries, default row-height
   overrides, reversed range normalization, invalid row-range errors, generated
   set-command templates, and capability indexing
+- `--json xlsx filters-sorts show <xlsx>` and
+  `--json xlsx filters-sorts set-autofilter <xlsx>` with Go-oracle comparison
+  for worksheet/table autoFilter readback, worksheet sortState readback, saved
+  mutation JSON, generated validation/show readback commands, dry-run behavior,
+  invalid range errors, table-target default range behavior, capability
+  indexing, and serve inspect routing for show
 - `--json xlsx tables list <xlsx>` and `--json xlsx tables show <xlsx>` with
   Go-oracle comparison for generated table workbooks, table metadata, columns,
   bridge command templates, `capabilities --for table`, and stable table

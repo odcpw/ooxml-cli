@@ -11,6 +11,7 @@
 | MCP | initialize, tools, resources, command resource, session tools | `baseline.json` `mcp` |
 | Web smoke | smoke scripts route readback through `OOXML_BIN` | `baseline.json` `webSmoke` |
 | Focused PPTX table mutation | `pptx tables set-cell` saved output, dry-run, text-file, readback, and error envelopes | `cargo test --test rust_contract_smoke pptx_tables_set_cell` |
+| XLSX filters/sorts | Go-vs-Rust differential tests for `xlsx filters-sorts show`, direct `set-autofilter`, saved readback, dry-run, error behavior, table target, and serve inspect | `tests/rust_contract_smoke/xlsx.rs`, `tests/rust_contract_smoke/serve.rs` |
 
 Out of scope for this Linux-local freeze:
 

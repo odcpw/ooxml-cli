@@ -9,9 +9,9 @@ use crate::{
     pptx_extract_text, pptx_extract_text_json_args, pptx_layouts_list, pptx_layouts_show,
     pptx_masters_list, pptx_masters_show, pptx_notes_show, pptx_shapes_show, pptx_slide_selectors,
     pptx_slide_show, pptx_slides_list, pptx_tables_show, require_json_data_format,
-    xlsx_cells_extract, xlsx_names_list, xlsx_names_show, xlsx_range_export_with_options,
-    xlsx_sheets_list, xlsx_sheets_show, xlsx_tables_export, xlsx_tables_list, xlsx_tables_show,
-    xlsx_workbook_metadata_inspect,
+    xlsx_cells_extract, xlsx_filters_sorts_show, xlsx_names_list, xlsx_names_show,
+    xlsx_range_export_with_options, xlsx_sheets_list, xlsx_sheets_show, xlsx_tables_export,
+    xlsx_tables_list, xlsx_tables_show, xlsx_workbook_metadata_inspect,
 };
 
 pub(super) fn serve_inspect_command(
@@ -78,6 +78,11 @@ pub(super) fn serve_inspect_command(
         "xlsx sheets show" => {
             let sheet = json_optional_string(args, "sheet");
             xlsx_sheets_show(working, sheet.as_deref())
+        }
+        "xlsx filters-sorts show" => {
+            let sheet = json_optional_string(args, "sheet");
+            let table = json_optional_string(args, "table");
+            xlsx_filters_sorts_show(working, sheet.as_deref(), table.as_deref())
         }
         "xlsx names list" => {
             let scope_sheet = json_optional_string(args, "scope-sheet")

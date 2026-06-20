@@ -11,7 +11,10 @@ use crate::xlsx_mutation::*;
 use crate::xlsx_names::*;
 use crate::xlsx_ranges::*;
 use crate::xlsx_sheets::*;
-use crate::{xlsx_colwidths_show, xlsx_rowheights_show};
+use crate::{
+    XlsxFiltersSortsSetAutoFilterOptions, xlsx_colwidths_show, xlsx_filters_sorts_set_autofilter,
+    xlsx_filters_sorts_show, xlsx_rowheights_show,
+};
 
 pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
     match args {
@@ -189,6 +192,52 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
             let range = parse_string_flag(rest, "--range")?
                 .ok_or_else(|| CliError::invalid_args("--range is required (e.g. 2 or 2:5)"))?;
             xlsx_rowheights_show(file, sheet.as_deref(), &range)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "filters-sorts" && verb == "show" =>
+        {
+            reject_unknown_flags(rest, &["--sheet", "--range", "--table"], &[])?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let table = parse_string_flag(rest, "--table")?;
+            let _range_hint = parse_string_flag(rest, "--range")?;
+            xlsx_filters_sorts_show(file, sheet.as_deref(), table.as_deref())
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "filters-sorts" && verb == "set-autofilter" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--range",
+                    "--table",
+                    "--expect-range",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let range = parse_string_flag(rest, "--range")?;
+            let table = parse_string_flag(rest, "--table")?;
+            let expect_range = parse_string_flag(rest, "--expect-range")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_filters_sorts_set_autofilter(
+                file,
+                XlsxFiltersSortsSetAutoFilterOptions {
+                    sheet: sheet.as_deref(),
+                    range: range.as_deref(),
+                    table: table.as_deref(),
+                    expect_range: expect_range.as_deref(),
+                    expect_range_present: value_flag_present(rest, "--expect-range"),
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
         }
         [family, group, subgroup, verb, file, rest @ ..]
             if family == "xlsx"
