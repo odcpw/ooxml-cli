@@ -10,6 +10,7 @@
 | Serve | JSON-RPC open, op, inspect, validate, plan, commit, abort | `baseline.json` `serve.flow` |
 | MCP | initialize, tools, resources, command resource, session tools | `baseline.json` `mcp` |
 | Web smoke | smoke scripts route readback through `OOXML_BIN` | `baseline.json` `webSmoke` |
+| Focused PPTX table mutation | `pptx tables set-cell` saved output, dry-run, text-file, readback, and error envelopes | `cargo test --test rust_contract_smoke pptx_tables_set_cell` |
 
 Out of scope for this Linux-local freeze:
 

@@ -6,9 +6,9 @@ use std::fs;
 
 use crate::{
     CliError, CliResult, XmlNamedRange, attr, attr_exact, command_arg, copy_zip_with_part_override,
-    local_name, package_mutation_temp_path, package_type, pptx_tables_show,
-    relationship_entries_from_xml, resolve_relationship_target, validate,
-    validate_xlsx_mutation_output_flags, xml_direct_child_ranges, zip_text,
+    decode_xml_text, local_name, needs_xml_space_preserve, package_mutation_temp_path,
+    package_type, pptx_tables_show, relationship_entries_from_xml, resolve_relationship_target,
+    validate, validate_xlsx_mutation_output_flags, xml_direct_child_ranges, xml_escape, zip_text,
 };
 
 #[derive(Clone)]
@@ -36,6 +36,66 @@ struct DeleteRowMutation {
     updated_xml: String,
     resolved_table_id: u32,
     cell_count: usize,
+}
+
+struct SetCellMutation {
+    slide_part: String,
+    updated_xml: String,
+    resolved_table_id: u32,
+    previous_text: String,
+    text: String,
+}
+
+struct SetCellRequest<'a> {
+    file: &'a str,
+    slide: u32,
+    table_id: u32,
+    target: Option<&'a str>,
+    row: usize,
+    col: usize,
+    text: String,
+}
+
+pub(crate) fn pptx_tables_set_cell(file: &str, args: &[String]) -> CliResult<Value> {
+    let slide = crate::parse_i64_flag(args, "--slide")?.unwrap_or(0);
+    let row = crate::parse_i64_flag(args, "--row")?.unwrap_or(0);
+    let col = crate::parse_i64_flag(args, "--col")?.unwrap_or(0);
+    for (name, value) in [("--slide", slide), ("--row", row), ("--col", col)] {
+        if value < 1 {
+            return Err(CliError::invalid_args(format!("{name} must be >= 1")));
+        }
+    }
+    let table_id = crate::parse_i64_flag(args, "--table-id")?.unwrap_or(0);
+    if table_id < 0 {
+        return Err(CliError::invalid_args(
+            "--table-id must be a positive integer",
+        ));
+    }
+    let target = crate::parse_string_flag(args, "--target")?;
+    if table_id > 0 && target.as_deref().unwrap_or_default().trim() != "" {
+        return Err(CliError::invalid_args(
+            "specify only one of --target or --table-id",
+        ));
+    }
+    if table_id == 0 && target.as_deref().unwrap_or_default().trim() == "" {
+        return Err(CliError::invalid_args(
+            "must specify --target or --table-id",
+        ));
+    }
+    let text = resolve_required_pptx_table_text(args)?;
+    let options = parse_table_mutation_options(args)?;
+    set_pptx_table_cell(
+        SetCellRequest {
+            file,
+            slide: slide as u32,
+            table_id: table_id as u32,
+            target: target.as_deref(),
+            row: row as usize,
+            col: col as usize,
+            text,
+        },
+        options,
+    )
 }
 
 pub(crate) fn pptx_tables_delete_row(file: &str, args: &[String]) -> CliResult<Value> {
@@ -73,6 +133,28 @@ pub(crate) fn pptx_tables_delete_row(file: &str, args: &[String]) -> CliResult<V
         row as usize,
         options,
     )
+}
+
+fn value_flag_present(args: &[String], name: &str) -> bool {
+    args.iter()
+        .any(|arg| arg == name || arg.starts_with(&format!("{name}=")))
+}
+
+fn resolve_required_pptx_table_text(args: &[String]) -> CliResult<String> {
+    let text_changed = value_flag_present(args, "--text");
+    let text_file_changed = value_flag_present(args, "--text-file");
+    if text_changed == text_file_changed {
+        return Err(CliError::invalid_args(
+            "must specify exactly one of --text or --text-file",
+        ));
+    }
+    if text_changed {
+        return Ok(crate::parse_string_flag(args, "--text")?.unwrap_or_default());
+    }
+    let path = crate::parse_string_flag(args, "--text-file")?.unwrap_or_default();
+    fs::read(&path)
+        .map(|data| String::from_utf8_lossy(&data).to_string())
+        .map_err(|_| CliError::file_not_found(format!("file not found: {path}")))
 }
 
 fn parse_table_mutation_options(args: &[String]) -> CliResult<PptxTableMutationOptions> {
@@ -132,6 +214,55 @@ fn delete_pptx_table_row(
     Ok(result)
 }
 
+fn set_pptx_table_cell(
+    request: SetCellRequest<'_>,
+    options: PptxTableMutationOptions,
+) -> CliResult<Value> {
+    let detected = package_type(request.file)?;
+    if detected != "pptx" {
+        return Err(CliError::unsupported_type(format!(
+            "file is not a PPTX document (detected: {detected})"
+        )));
+    }
+    let resolved_table_id = if request.table_id > 0 {
+        request.table_id
+    } else {
+        resolve_pptx_table_target_for_mutation(request.file, request.slide, request.target)?
+    };
+    let mutation = build_set_cell_mutation(
+        request.file,
+        request.slide,
+        resolved_table_id,
+        request.row,
+        request.col,
+        request.text,
+    )?;
+    let output_path = table_mutation_output_path(request.file, &options);
+    let staged_path = stage_table_mutation(
+        request.file,
+        &mutation.slide_part,
+        &mutation.updated_xml,
+        &options,
+    )?;
+    let mut destination = read_table_destination(
+        &staged_path,
+        request.slide,
+        mutation.resolved_table_id,
+        output_path.as_deref(),
+    )?;
+    let result = set_cell_result_json(
+        request.file,
+        request.slide,
+        request.row,
+        request.col,
+        &mutation,
+        output_path.as_deref(),
+        &mut destination,
+    );
+    finish_table_mutation(request.file, &staged_path, &options, output_path.as_deref())?;
+    Ok(result)
+}
+
 fn resolve_pptx_table_target_for_mutation(
     file: &str,
     slide: u32,
@@ -188,6 +319,38 @@ fn build_delete_row_mutation(
     })
 }
 
+fn build_set_cell_mutation(
+    file: &str,
+    slide: u32,
+    table_id: u32,
+    row: usize,
+    col: usize,
+    text: String,
+) -> CliResult<SetCellMutation> {
+    let slides = pptx_slide_refs_for_table_mutation(file)?;
+    let slide_ref = slides.get(slide as usize - 1).ok_or_else(|| {
+        CliError::invalid_args(format!(
+            "slide number {slide} out of range (1-{})",
+            slides.len()
+        ))
+    })?;
+    let slide_xml = zip_text(file, &slide_ref.part)?;
+    let table_span = find_table_span_for_shape(&slide_xml, table_id)?.ok_or_else(|| {
+        CliError::target_not_found(format!(
+            "target not found: table with ID {table_id} not found"
+        ))
+    })?;
+    let (updated_xml, previous_text) =
+        set_table_cell_text_in_slide_xml(&slide_xml, table_span, row, col, &text)?;
+    Ok(SetCellMutation {
+        slide_part: slide_ref.part.clone(),
+        updated_xml,
+        resolved_table_id: table_id,
+        previous_text,
+        text,
+    })
+}
+
 fn delete_table_row_from_slide_xml(
     slide_xml: &str,
     table_span: XmlSpan,
@@ -225,6 +388,48 @@ fn delete_table_row_from_slide_xml(
     updated.push_str(&slide_xml[..global_start]);
     updated.push_str(&slide_xml[global_end..]);
     Ok((updated, cells.len()))
+}
+
+fn set_table_cell_text_in_slide_xml(
+    slide_xml: &str,
+    table_span: XmlSpan,
+    row: usize,
+    col: usize,
+    text: &str,
+) -> CliResult<(String, String)> {
+    let table_fragment = &slide_xml[table_span.start..table_span.end];
+    let prefix = drawing_prefix(table_fragment);
+    let (content_start, content_end) = element_content_bounds(table_fragment)?;
+    let rows: Vec<XmlNamedRange> =
+        xml_direct_child_ranges(table_fragment, content_start, content_end)?
+            .into_iter()
+            .filter(|child| child.kind == "tr")
+            .collect();
+    let row_range = rows
+        .get(row - 1)
+        .ok_or_else(|| CliError::target_not_found("target not found: row index out of range"))?;
+    let row_fragment = &table_fragment[row_range.start..row_range.end];
+    let (row_content_start, row_content_end) = element_content_bounds(row_fragment)?;
+    let cells: Vec<XmlNamedRange> =
+        xml_direct_child_ranges(row_fragment, row_content_start, row_content_end)?
+            .into_iter()
+            .filter(|child| child.kind == "tc")
+            .collect();
+    let cell_range = cells
+        .get(col - 1)
+        .ok_or_else(|| CliError::target_not_found("target not found: column index out of range"))?;
+    let cell_fragment = &row_fragment[cell_range.start..cell_range.end];
+    let previous_text = table_cell_text(cell_fragment)?;
+    let replacement = replace_table_cell_text(cell_fragment, &prefix, text)?;
+
+    let global_start = table_span.start + row_range.start + cell_range.start;
+    let global_end = table_span.start + row_range.start + cell_range.end;
+    let mut updated =
+        String::with_capacity(slide_xml.len() - (global_end - global_start) + replacement.len());
+    updated.push_str(&slide_xml[..global_start]);
+    updated.push_str(&replacement);
+    updated.push_str(&slide_xml[global_end..]);
+    Ok((updated, previous_text))
 }
 
 fn reject_unsafe_row_delete_cell(cell_fragment: &str, row_index: usize) -> CliResult<()> {
@@ -265,6 +470,33 @@ fn read_table_destination(
         map.insert("file".to_string(), json!(output_path));
     }
     Ok(table)
+}
+
+fn set_cell_result_json(
+    file: &str,
+    slide: u32,
+    row: usize,
+    col: usize,
+    mutation: &SetCellMutation,
+    output_path: Option<&str>,
+    destination: &mut Value,
+) -> Value {
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    if let Some(output_path) = output_path {
+        result.insert("output".to_string(), json!(output_path));
+    }
+    result.insert("dryRun".to_string(), json!(output_path.is_none()));
+    result.insert("slide".to_string(), json!(slide));
+    result.insert("tableId".to_string(), json!(mutation.resolved_table_id));
+    result.insert("row".to_string(), json!(row));
+    result.insert("col".to_string(), json!(col));
+    result.insert("text".to_string(), json!(mutation.text));
+    result.insert("previousText".to_string(), json!(mutation.previous_text));
+    let destination_value = destination.take();
+    add_pptx_table_readback_commands(&mut result, output_path, slide, &destination_value);
+    result.insert("destination".to_string(), destination_value);
+    Value::Object(result)
 }
 
 fn delete_row_result_json(
@@ -582,6 +814,203 @@ fn first_element_attrs(fragment: &str) -> CliResult<BTreeMap<String, String>> {
         }
     }
     Ok(BTreeMap::new())
+}
+
+fn drawing_prefix(table_fragment: &str) -> String {
+    let Some(open_end) = table_fragment.find('>') else {
+        return "a".to_string();
+    };
+    let tag_name = crate::xml_token_name(&table_fragment[1..open_end]).unwrap_or("a:tbl");
+    tag_name
+        .split_once(':')
+        .map(|(prefix, _)| prefix.to_string())
+        .filter(|prefix| !prefix.is_empty())
+        .unwrap_or_else(|| "a".to_string())
+}
+
+fn drawing_tag(prefix: &str, local: &str) -> String {
+    if prefix.is_empty() {
+        local.to_string()
+    } else {
+        format!("{prefix}:{local}")
+    }
+}
+
+fn replace_table_cell_text(cell_fragment: &str, prefix: &str, text: &str) -> CliResult<String> {
+    if let Some(tx_body) = direct_child_range(cell_fragment, "txBody")? {
+        let tx_body_fragment = &cell_fragment[tx_body.start..tx_body.end];
+        let r_pr_template = first_run_properties_fragment(tx_body_fragment)?;
+        let paragraph = render_table_cell_paragraph(prefix, text, r_pr_template.as_deref());
+        let updated_tx_body = replace_tx_body_paragraphs(tx_body_fragment, &paragraph)?;
+        let mut updated = String::with_capacity(
+            cell_fragment.len() - (tx_body.end - tx_body.start) + updated_tx_body.len(),
+        );
+        updated.push_str(&cell_fragment[..tx_body.start]);
+        updated.push_str(&updated_tx_body);
+        updated.push_str(&cell_fragment[tx_body.end..]);
+        return Ok(updated);
+    }
+
+    let paragraph = render_table_cell_paragraph(prefix, text, None);
+    let tx_body = format!(
+        "<{tx_body}><{body_pr}/><{lst_style}/>{paragraph}</{tx_body}>",
+        tx_body = drawing_tag(prefix, "txBody"),
+        body_pr = drawing_tag(prefix, "bodyPr"),
+        lst_style = drawing_tag(prefix, "lstStyle"),
+    );
+    insert_missing_tx_body(cell_fragment, &tx_body)
+}
+
+fn replace_tx_body_paragraphs(tx_body_fragment: &str, paragraph: &str) -> CliResult<String> {
+    let (content_start, content_end) = element_content_bounds(tx_body_fragment)?;
+    let paragraphs: Vec<XmlNamedRange> =
+        xml_direct_child_ranges(tx_body_fragment, content_start, content_end)?
+            .into_iter()
+            .filter(|child| child.kind == "p")
+            .collect();
+    let mut content = String::new();
+    let mut cursor = content_start;
+    for para in paragraphs {
+        content.push_str(&tx_body_fragment[cursor..para.start]);
+        cursor = para.end;
+    }
+    content.push_str(&tx_body_fragment[cursor..content_end]);
+    content.push_str(paragraph);
+
+    let mut updated = String::with_capacity(tx_body_fragment.len() + paragraph.len());
+    updated.push_str(&tx_body_fragment[..content_start]);
+    updated.push_str(&content);
+    updated.push_str(&tx_body_fragment[content_end..]);
+    Ok(updated)
+}
+
+fn insert_missing_tx_body(cell_fragment: &str, tx_body: &str) -> CliResult<String> {
+    let insert_at = if let Some(tc_pr) = direct_child_range(cell_fragment, "tcPr")? {
+        tc_pr.start
+    } else {
+        let (_content_start, content_end) = element_content_bounds(cell_fragment)?;
+        content_end
+    };
+    let mut updated = String::with_capacity(cell_fragment.len() + tx_body.len());
+    updated.push_str(&cell_fragment[..insert_at]);
+    updated.push_str(tx_body);
+    updated.push_str(&cell_fragment[insert_at..]);
+    Ok(updated)
+}
+
+fn direct_child_range(fragment: &str, wanted: &str) -> CliResult<Option<XmlNamedRange>> {
+    let (content_start, content_end) = element_content_bounds(fragment)?;
+    Ok(
+        xml_direct_child_ranges(fragment, content_start, content_end)?
+            .into_iter()
+            .find(|child| child.kind == wanted),
+    )
+}
+
+fn first_run_properties_fragment(tx_body_fragment: &str) -> CliResult<Option<String>> {
+    let Some(span) = find_first_element_span(tx_body_fragment, "rPr")? else {
+        return Ok(None);
+    };
+    Ok(Some(tx_body_fragment[span.start..span.end].to_string()))
+}
+
+fn render_table_cell_paragraph(prefix: &str, text: &str, r_pr_template: Option<&str>) -> String {
+    let p = drawing_tag(prefix, "p");
+    if text.is_empty() {
+        return format!("<{p}/>");
+    }
+
+    let r = drawing_tag(prefix, "r");
+    let t = drawing_tag(prefix, "t");
+    let br = drawing_tag(prefix, "br");
+    let mut out = String::new();
+    out.push('<');
+    out.push_str(&p);
+    out.push('>');
+    let lines: Vec<&str> = text.split('\n').collect();
+    for (line_index, line) in lines.iter().enumerate() {
+        if !line.is_empty() {
+            out.push('<');
+            out.push_str(&r);
+            out.push('>');
+            if let Some(r_pr) = r_pr_template {
+                out.push_str(r_pr);
+            }
+            out.push('<');
+            out.push_str(&t);
+            if needs_xml_space_preserve(line) {
+                out.push_str(" xml:space=\"preserve\"");
+            }
+            out.push('>');
+            out.push_str(&xml_escape(line));
+            out.push_str("</");
+            out.push_str(&t);
+            out.push('>');
+            out.push_str("</");
+            out.push_str(&r);
+            out.push('>');
+        }
+        if line_index < lines.len() - 1 {
+            out.push('<');
+            out.push_str(&r);
+            out.push_str("><");
+            out.push_str(&br);
+            out.push_str("/></");
+            out.push_str(&r);
+            out.push('>');
+        }
+    }
+    out.push_str("</");
+    out.push_str(&p);
+    out.push('>');
+    out
+}
+
+fn table_cell_text(cell_fragment: &str) -> CliResult<String> {
+    let Some(tx_body) = direct_child_range(cell_fragment, "txBody")? else {
+        return Ok(String::new());
+    };
+    let tx_body_fragment = &cell_fragment[tx_body.start..tx_body.end];
+    let (content_start, content_end) = element_content_bounds(tx_body_fragment)?;
+    let paragraphs: Vec<XmlNamedRange> =
+        xml_direct_child_ranges(tx_body_fragment, content_start, content_end)?
+            .into_iter()
+            .filter(|child| child.kind == "p")
+            .collect();
+    let mut out = String::new();
+    for (index, paragraph) in paragraphs.iter().enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        collect_drawing_text(&tx_body_fragment[paragraph.start..paragraph.end], &mut out)?;
+    }
+    Ok(out)
+}
+
+fn collect_drawing_text(fragment: &str, out: &mut String) -> CliResult<()> {
+    let mut reader = Reader::from_str(fragment);
+    reader.config_mut().trim_text(false);
+    let mut in_text = false;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "t" => {
+                in_text = true;
+            }
+            Ok(Event::End(e)) if local_name(e.name().as_ref()) == "t" => {
+                in_text = false;
+            }
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "br" => {
+                out.push('\n');
+            }
+            Ok(Event::Text(e)) if in_text => {
+                out.push_str(&decode_xml_text(e.as_ref()));
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn package_part_name(uri: &str) -> String {

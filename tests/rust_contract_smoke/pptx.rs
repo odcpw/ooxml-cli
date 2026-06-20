@@ -306,6 +306,265 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
 }
 
 #[test]
+fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-set-cell-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx table set-cell temp dir");
+
+    let fixture = "testdata/pptx/table-slide/presentation.pptx";
+    let go_out = temp_dir.join("go-set-cell.pptx");
+    let rust_out = temp_dir.join("rust-set-cell.pptx");
+    let go_out_str = go_out.to_str().expect("go set-cell path");
+    let rust_out_str = rust_out.to_str().expect("rust set-cell path");
+
+    let go_args = [
+        "--json",
+        "pptx",
+        "tables",
+        "set-cell",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "table:1",
+        "--row",
+        "2",
+        "--col",
+        "2",
+        "--text",
+        "Rust Port Cell",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "tables",
+        "set-cell",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "table:1",
+        "--row",
+        "2",
+        "--col",
+        "2",
+        "--text",
+        "Rust Port Cell",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "set-cell saved exit");
+    assert_eq!(rust_stderr, go_stderr, "set-cell saved stderr");
+    let rust_json = rust_stdout.expect("rust set-cell stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(go_stdout.expect("go set-cell stdout"), go_out_str, "[OUT]"),
+        "set-cell saved stdout"
+    );
+    assert!(go_out.exists(), "Go set-cell output missing");
+    assert!(rust_out.exists(), "Rust set-cell output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+        "--json", "pptx", "tables", "show", go_out_str, "--slide", "2", "--target", "table:1",
+    ]);
+    let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "tables",
+        "show",
+        rust_out_str,
+        "--slide",
+        "2",
+        "--target",
+        "table:1",
+    ]);
+    assert_eq!(rust_show_code, go_show_code, "set-cell readback exit");
+    assert_eq!(rust_show_stderr, go_show_stderr, "set-cell readback stderr");
+    assert_eq!(
+        scrub_path(
+            rust_show_stdout.expect("rust set-cell readback"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_show_stdout.expect("go set-cell readback"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "set-cell readback stdout"
+    );
+
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "tables",
+        "set-cell",
+        fixture,
+        "--slide",
+        "2",
+        "--table-id",
+        "2",
+        "--row",
+        "2",
+        "--col",
+        "2",
+        "--text",
+        "Dry Cell",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "set-cell dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "set-cell dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust set-cell dry-run stdout"),
+        go_stdout.expect("go set-cell dry-run stdout"),
+        "set-cell dry-run stdout"
+    );
+
+    let text_file = temp_dir.join("cell-text.txt");
+    std::fs::write(&text_file, "Text from file").expect("write set-cell text file");
+    let text_file_str = text_file.to_str().expect("text file path");
+    let text_file_args = [
+        "--json",
+        "pptx",
+        "tables",
+        "set-cell",
+        fixture,
+        "--slide",
+        "2",
+        "--table-id",
+        "2",
+        "--row",
+        "1",
+        "--col",
+        "1",
+        "--text-file",
+        text_file_str,
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&text_file_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&text_file_args);
+    assert_eq!(rust_code, go_code, "set-cell text-file dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "set-cell text-file dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust set-cell text-file dry-run stdout"),
+        go_stdout.expect("go set-cell text-file dry-run stdout"),
+        "set-cell text-file dry-run stdout"
+    );
+
+    let error_cases: Vec<Vec<&str>> = vec![
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "set-cell",
+            fixture,
+            "--slide",
+            "2",
+            "--table-id",
+            "2",
+            "--row",
+            "0",
+            "--col",
+            "1",
+            "--text",
+            "x",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "set-cell",
+            fixture,
+            "--slide",
+            "2",
+            "--table-id",
+            "2",
+            "--row",
+            "9",
+            "--col",
+            "1",
+            "--text",
+            "x",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "set-cell",
+            fixture,
+            "--slide",
+            "2",
+            "--row",
+            "1",
+            "--col",
+            "1",
+            "--text",
+            "x",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "set-cell",
+            fixture,
+            "--slide",
+            "2",
+            "--table-id",
+            "2",
+            "--row",
+            "1",
+            "--col",
+            "1",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "tables",
+            "set-cell",
+            fixture,
+            "--slide",
+            "2",
+            "--table-id",
+            "2",
+            "--row",
+            "1",
+            "--col",
+            "1",
+            "--text",
+            "x",
+            "--text-file",
+            text_file_str,
+            "--dry-run",
+        ],
+    ];
+    for args in error_cases {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+        assert_eq!(rust_code, go_code, "set-cell error exit for {args:?}");
+        assert_eq!(rust_stdout, go_stdout, "set-cell error stdout for {args:?}");
+        assert_eq!(rust_stderr, go_stderr, "set-cell error stderr for {args:?}");
+    }
+}
+
+#[test]
 fn pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

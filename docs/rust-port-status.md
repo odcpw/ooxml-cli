@@ -9,6 +9,22 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX table cell mutation parity landed for direct
+  `pptx tables set-cell`. The slice sets or clears one table cell by slide plus
+  table selector/shape ID, preserves the existing table destination/readback
+  command contract, supports `--text-file`, and matches Go-oracle saved output,
+  `pptx tables show` readback, dry-run, and representative error behavior. Rust
+  capabilities now advertise 84 Go-oracle command paths, leaving a pinned
+  206-command gap; the command is advertised with `opCompatible=false` because
+  serve/MCP operation dispatch for PPTX table mutations is not wired yet. Proof:
+  `cargo fmt --check`, `cargo check --all-targets`, `cargo clippy
+  --all-targets -- -D warnings`, focused `cargo test --test rust_contract_smoke
+  pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_oracle
+  -- --nocapture`, focused capability ratchet/MCP command-resource tests, Rust
+  strict validation for a generated PPTX with zero diagnostics, Open XML SDK
+  Office2019 schema validation (zero errors), PowerPoint COM open oracle, and
+  `cargo test --all-targets` passed with 4 ZIP guard unit tests plus 98 Rust
+  contract tests.
 - Rust DOCX table row insertion parity landed for direct
   `docx tables insert-row`. The slice clones an existing main-document table row
   structure, clears inserted cell text, rejects stale hashes, bad row targets,
