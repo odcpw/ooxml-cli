@@ -7,12 +7,12 @@ use std::path::Path;
 
 use crate::xlsx_tables::{XlsxTableRef, select_xlsx_table, xlsx_tables};
 use crate::{
-    CliError, CliResult, WorkbookSheet, command_arg, copy_zip_with_part_override, local_name,
-    normalize_xl_target, parse_range, range_bounds_ref, relationships, render_xml_attrs,
-    replace_xml_span, resolve_sheet, validate, validate_xlsx_mutation_output_flags,
-    workbook_sheets, xlsx_ranges_set_temp_path, xml_attr_escape, xml_attrs_map,
-    xml_direct_child_ranges, xml_fragment_bounds, xml_open_tag_from_start, xml_tag_prefix,
-    zip_text,
+    CliError, CliResult, RangeBounds, WorkbookSheet, command_arg, copy_zip_with_part_override,
+    local_name, normalize_xl_target, parse_range, range_bounds_ref, relationships,
+    render_xml_attrs, replace_xml_span, resolve_sheet, validate,
+    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_ranges_set_temp_path,
+    xml_attr_escape, xml_attrs_map, xml_direct_child_ranges, xml_fragment_bounds,
+    xml_open_tag_from_start, xml_tag_prefix, zip_text,
 };
 
 const FILTERS_SORTS_NOTE: &str = "Note: applying a filter or sort does NOT physically hide or reorder rows in the file. Excel/Calc re-evaluates the autoFilter/sortState when the workbook is opened.";
@@ -53,6 +53,39 @@ pub(crate) struct XlsxFiltersSortsAddColumnFilterOptions<'a> {
     pub(crate) custom_present: bool,
     pub(crate) expect_filter: Option<&'a str>,
     pub(crate) expect_filter_present: bool,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+}
+
+pub(crate) struct XlsxFiltersSortsClearColumnFilterOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) column: i64,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+}
+
+pub(crate) struct XlsxFiltersSortsSetSortOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) ref_range: Option<&'a str>,
+    pub(crate) column: Option<&'a str>,
+    pub(crate) descending: bool,
+    pub(crate) expect_sort: Option<&'a str>,
+    pub(crate) expect_sort_present: bool,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+}
+
+pub(crate) struct XlsxFiltersSortsClearSortOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
     pub(crate) out: Option<&'a str>,
     pub(crate) backup: Option<&'a str>,
     pub(crate) dry_run: bool,
@@ -413,6 +446,157 @@ pub(crate) fn xlsx_filters_sorts_add_column_filter(
     )
 }
 
+pub(crate) fn xlsx_filters_sorts_clear_column_filter(
+    file: &str,
+    options: XlsxFiltersSortsClearColumnFilterOptions<'_>,
+) -> CliResult<Value> {
+    if !Path::new(file).exists() {
+        return Err(CliError::file_not_found(format!("file not found: {file}")));
+    }
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+
+    let (sheet, sheet_part, sheet_xml) = resolve_filters_sorts_sheet(file, options.sheet)?;
+    let (updated_xml, auto_filter) = clear_column_filter_in_xml(&sheet_xml, options.column)
+        .map_err(|err| map_filters_sorts_error("clear-column-filter", err))?;
+    let ref_text = auto_filter.ref_text.clone();
+    let mutation = XlsxFiltersSortsMutationTarget {
+        sheet_name: sheet.name,
+        sheet_number: sheet.position,
+        sheet_id: sheet.sheet_id,
+        table_name: None,
+        part: sheet_part,
+        updated_xml,
+        ref_text: Some(ref_text),
+        auto_filter: Some(auto_filter),
+        sort_state: None,
+    };
+
+    write_filters_sorts_mutation_result(
+        file,
+        "clear-column-filter",
+        mutation,
+        XlsxFiltersSortsOutputOptions {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+        },
+    )
+}
+
+pub(crate) fn xlsx_filters_sorts_set_sort(
+    file: &str,
+    options: XlsxFiltersSortsSetSortOptions<'_>,
+) -> CliResult<Value> {
+    if !Path::new(file).exists() {
+        return Err(CliError::file_not_found(format!("file not found: {file}")));
+    }
+    if options
+        .ref_range
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err(CliError::invalid_args("--ref is required (e.g. A1:D10)"));
+    }
+    if options.column.is_none_or(|value| value.trim().is_empty()) {
+        return Err(CliError::invalid_args(
+            "--column is required (a column letter such as A)",
+        ));
+    }
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+
+    let (sheet, sheet_part, sheet_xml) = resolve_filters_sorts_sheet(file, options.sheet)?;
+    let (updated_xml, sort_state) = set_sort_in_xml(
+        &sheet_xml,
+        SetSortXmlSpec {
+            ref_range: options.ref_range.unwrap_or_default(),
+            column: options.column.unwrap_or_default(),
+            descending: options.descending,
+            expect_sort: options.expect_sort,
+            expect_sort_present: options.expect_sort_present,
+        },
+    )
+    .map_err(|err| map_filters_sorts_error("set-sort", err))?;
+    let ref_text = sort_state.ref_text.clone();
+    let mutation = XlsxFiltersSortsMutationTarget {
+        sheet_name: sheet.name,
+        sheet_number: sheet.position,
+        sheet_id: sheet.sheet_id,
+        table_name: None,
+        part: sheet_part,
+        updated_xml,
+        ref_text: Some(ref_text),
+        auto_filter: None,
+        sort_state: Some(sort_state),
+    };
+
+    write_filters_sorts_mutation_result(
+        file,
+        "set-sort",
+        mutation,
+        XlsxFiltersSortsOutputOptions {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+        },
+    )
+}
+
+pub(crate) fn xlsx_filters_sorts_clear_sort(
+    file: &str,
+    options: XlsxFiltersSortsClearSortOptions<'_>,
+) -> CliResult<Value> {
+    if !Path::new(file).exists() {
+        return Err(CliError::file_not_found(format!("file not found: {file}")));
+    }
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+
+    let (sheet, sheet_part, sheet_xml) = resolve_filters_sorts_sheet(file, options.sheet)?;
+    let updated_xml =
+        clear_sort_in_xml(&sheet_xml).map_err(|err| map_filters_sorts_error("clear-sort", err))?;
+    let mutation = XlsxFiltersSortsMutationTarget {
+        sheet_name: sheet.name,
+        sheet_number: sheet.position,
+        sheet_id: sheet.sheet_id,
+        table_name: None,
+        part: sheet_part,
+        updated_xml,
+        ref_text: None,
+        auto_filter: None,
+        sort_state: None,
+    };
+
+    write_filters_sorts_mutation_result(
+        file,
+        "clear-sort",
+        mutation,
+        XlsxFiltersSortsOutputOptions {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+        },
+    )
+}
+
 struct XlsxFiltersSortsTableTarget {
     table: XlsxTableRef,
     table_part: String,
@@ -441,6 +625,14 @@ struct AddColumnFilterXmlSpec<'a> {
     custom_present: bool,
     expect_filter: Option<&'a str>,
     expect_filter_present: bool,
+}
+
+struct SetSortXmlSpec<'a> {
+    ref_range: &'a str,
+    column: &'a str,
+    descending: bool,
+    expect_sort: Option<&'a str>,
+    expect_sort_present: bool,
 }
 
 fn write_filters_sorts_mutation_result(
@@ -735,6 +927,91 @@ fn add_column_filter_in_xml(
             &updated_fragment,
         ),
         updated_state,
+    ))
+}
+
+fn clear_column_filter_in_xml(xml: &str, col_id: i64) -> CliResult<(String, AutoFilterState)> {
+    let root = xml_root_bounds(xml, "worksheet")?;
+    let Some(auto_filter_range) = direct_child_range(xml, &root, "autoFilter")? else {
+        return Err(CliError::invalid_args(
+            "worksheet has no autoFilter; run set-autofilter first",
+        ));
+    };
+    let auto_filter_fragment = &xml[auto_filter_range.start..auto_filter_range.end];
+    let Some(existing_range) = find_filter_column_range(auto_filter_fragment, col_id)? else {
+        return Err(CliError::invalid_args(format!(
+            "column has no filter: colId {col_id}"
+        )));
+    };
+    let updated_fragment = replace_xml_span(
+        auto_filter_fragment,
+        existing_range.start,
+        existing_range.end,
+        "",
+    );
+    let updated_state = parse_auto_filter_fragment(&updated_fragment)?;
+    Ok((
+        replace_xml_span(
+            xml,
+            auto_filter_range.start,
+            auto_filter_range.end,
+            &updated_fragment,
+        ),
+        updated_state,
+    ))
+}
+
+fn set_sort_in_xml(xml: &str, spec: SetSortXmlSpec<'_>) -> CliResult<(String, SortState)> {
+    let sort_bounds = parse_range(spec.ref_range)
+        .map_err(|err| CliError::invalid_args(format!("invalid --ref: {}", err.message)))?;
+    let sort_ref = range_bounds_ref(sort_bounds);
+    let condition_ref = sort_condition_ref(sort_bounds, spec.column)?;
+    let root = xml_root_bounds(xml, "worksheet")?;
+    let prefix = xml_tag_prefix(&root.tag_name);
+    let existing_range = direct_child_range(xml, &root, "sortState")?;
+    let existing_state = existing_range
+        .as_ref()
+        .map(|range| parse_sort_state_fragment(&xml[range.start..range.end]))
+        .transpose()?;
+    guard_expect_sort(
+        existing_state.as_ref(),
+        spec.expect_sort_present,
+        spec.expect_sort,
+    )?;
+
+    let condition = render_sort_condition_fragment(&prefix, &condition_ref, spec.descending);
+    let sort_state_fragment = if let Some(existing_range) = existing_range.as_ref() {
+        let existing_fragment = &xml[existing_range.start..existing_range.end];
+        let updated_ref = replace_element_ref_attr(existing_fragment, &sort_ref)?;
+        let without_existing = remove_sort_condition_fragment(&updated_ref, &condition_ref)?;
+        append_sort_condition_fragment(&without_existing, &condition)?
+    } else {
+        render_sort_state_fragment(&prefix, &sort_ref, &condition)
+    };
+    let sort_state = parse_sort_state_fragment(&sort_state_fragment)?;
+    let updated_xml = if let Some(existing_range) = existing_range {
+        replace_xml_span(
+            xml,
+            existing_range.start,
+            existing_range.end,
+            &sort_state_fragment,
+        )
+    } else {
+        insert_ordered_child(xml, &root, "sortState", &sort_state_fragment)?
+    };
+    Ok((updated_xml, sort_state))
+}
+
+fn clear_sort_in_xml(xml: &str) -> CliResult<String> {
+    let root = xml_root_bounds(xml, "worksheet")?;
+    let Some(sort_state_range) = direct_child_range(xml, &root, "sortState")? else {
+        return Err(CliError::invalid_args("worksheet has no sortState"));
+    };
+    Ok(replace_xml_span(
+        xml,
+        sort_state_range.start,
+        sort_state_range.end,
+        "",
     ))
 }
 
@@ -1105,6 +1382,143 @@ fn summarize_filter_column(column: &FilterColumnState) -> String {
         return format!("custom:{}", parts.join(","));
     }
     "none".to_string()
+}
+
+fn sort_condition_ref(sort_bounds: RangeBounds, column: &str) -> CliResult<String> {
+    let col_idx = parse_sort_column_index(column)?;
+    let normalized = sort_bounds.normalized();
+    if col_idx < normalized.min_col() || col_idx > normalized.max_col() {
+        return Err(CliError::invalid_args(format!(
+            "column {} is outside sort ref {}",
+            column.to_ascii_uppercase(),
+            range_bounds_ref(sort_bounds)
+        )));
+    }
+    Ok(range_bounds_ref(RangeBounds {
+        start_col: col_idx,
+        start_row: normalized.min_row(),
+        end_col: col_idx,
+        end_row: normalized.max_row(),
+    }))
+}
+
+fn parse_sort_column_index(column: &str) -> CliResult<u32> {
+    let letters = column.trim();
+    if letters.is_empty() {
+        return Err(CliError::invalid_args(
+            "invalid --column: column letters cannot be empty",
+        ));
+    }
+    let mut index = 0u32;
+    for ch in letters.chars() {
+        let upper = ch.to_ascii_uppercase();
+        if !upper.is_ascii_uppercase() {
+            return Err(CliError::invalid_args(format!(
+                "invalid --column: invalid column letter {ch:?}"
+            )));
+        }
+        index = index * 26 + (upper as u32 - 'A' as u32 + 1);
+        if index > 16_384 {
+            return Err(CliError::invalid_args(format!(
+                "invalid --column: column {letters:?} out of XLSX bounds A-XFD"
+            )));
+        }
+    }
+    Ok(index)
+}
+
+fn guard_expect_sort(
+    state: Option<&SortState>,
+    has_expect: bool,
+    expect: Option<&str>,
+) -> CliResult<()> {
+    if !has_expect {
+        return Ok(());
+    }
+    let want = parse_range(expect.unwrap_or_default())
+        .map_err(|err| CliError::invalid_args(format!("invalid --expect-sort: {}", err.message)))
+        .map(range_bounds_ref)?;
+    let current = state
+        .map(|state| state.ref_text.as_str())
+        .unwrap_or_default();
+    let got = if current.is_empty() {
+        String::new()
+    } else {
+        parse_range(current)
+            .map(range_bounds_ref)
+            .unwrap_or_else(|_| current.to_string())
+    };
+    if got != want {
+        return Err(CliError::invalid_args(format!(
+            "sort ref mismatch: expected {want}, found {current:?}"
+        )));
+    }
+    Ok(())
+}
+
+fn render_sort_state_fragment(prefix: &str, sort_ref: &str, condition: &str) -> String {
+    format!(
+        "<{} ref=\"{}\">{}</{}>",
+        element_name(prefix, "sortState"),
+        xml_attr_escape(sort_ref),
+        condition,
+        element_name(prefix, "sortState")
+    )
+}
+
+fn render_sort_condition_fragment(prefix: &str, condition_ref: &str, descending: bool) -> String {
+    let name = element_name(prefix, "sortCondition");
+    if descending {
+        format!(
+            "<{name} descending=\"1\" ref=\"{}\"/>",
+            xml_attr_escape(condition_ref)
+        )
+    } else {
+        format!("<{name} ref=\"{}\"/>", xml_attr_escape(condition_ref))
+    }
+}
+
+fn remove_sort_condition_fragment(
+    sort_state_fragment: &str,
+    condition_ref: &str,
+) -> CliResult<String> {
+    let (open_end, _, close_start, self_closing) = xml_fragment_bounds(sort_state_fragment)?;
+    if self_closing {
+        return Ok(sort_state_fragment.to_string());
+    }
+    for child in xml_direct_child_ranges(sort_state_fragment, open_end + 1, close_start)? {
+        if child.kind != "sortCondition" {
+            continue;
+        }
+        let (_, attrs, _, _) = first_element(&sort_state_fragment[child.start..child.end])?;
+        if attr_local(&attrs, "ref").as_deref() == Some(condition_ref) {
+            return Ok(replace_xml_span(
+                sort_state_fragment,
+                child.start,
+                child.end,
+                "",
+            ));
+        }
+    }
+    Ok(sort_state_fragment.to_string())
+}
+
+fn append_sort_condition_fragment(sort_state_fragment: &str, condition: &str) -> CliResult<String> {
+    let (open_end, tag_name, close_start, self_closing) = xml_fragment_bounds(sort_state_fragment)?;
+    if self_closing {
+        let start_tag = xml_open_tag_from_start(&sort_state_fragment[..=open_end]);
+        let mut updated = String::new();
+        updated.push_str(&start_tag);
+        updated.push_str(condition);
+        updated.push_str(&format!("</{tag_name}>"));
+        return Ok(updated);
+    }
+    Ok(replace_xml_span(
+        sort_state_fragment,
+        close_start,
+        close_start,
+        condition,
+    ))
 }
 
 fn parse_sort_state_fragment(fragment: &str) -> CliResult<SortState> {

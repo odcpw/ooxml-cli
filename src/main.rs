@@ -160,9 +160,11 @@ pub(crate) use xlsx_dimensions::{
 };
 pub(crate) use xlsx_filters_sorts::{
     XlsxFiltersSortsAddColumnFilterOptions, XlsxFiltersSortsClearAutoFilterOptions,
-    XlsxFiltersSortsSetAutoFilterOptions, xlsx_filters_sorts_add_column_filter,
-    xlsx_filters_sorts_clear_autofilter, xlsx_filters_sorts_set_autofilter,
-    xlsx_filters_sorts_show,
+    XlsxFiltersSortsClearColumnFilterOptions, XlsxFiltersSortsClearSortOptions,
+    XlsxFiltersSortsSetAutoFilterOptions, XlsxFiltersSortsSetSortOptions,
+    xlsx_filters_sorts_add_column_filter, xlsx_filters_sorts_clear_autofilter,
+    xlsx_filters_sorts_clear_column_filter, xlsx_filters_sorts_clear_sort,
+    xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_set_sort, xlsx_filters_sorts_show,
 };
 pub(crate) use xlsx_formula_recalc::add_xlsx_formula_recalc_package_updates;
 pub(crate) use xlsx_metadata::{

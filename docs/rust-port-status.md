@@ -9,6 +9,23 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust XLSX filters/sorts remaining direct CLI parity landed for
+  `xlsx filters-sorts clear-column-filter`, `xlsx filters-sorts set-sort`, and
+  `xlsx filters-sorts clear-sort`. The slice removes worksheet filter-column
+  criteria, creates/appends/replaces worksheet sortState conditions with
+  Go-compatible single-column condition refs, clears worksheet sortState, and
+  preserves Go-shaped mutation JSON/readback/validation command fields with
+  dry-run and representative error parity. Rust capabilities now advertise 106
+  Go-oracle command paths, leaving a pinned 184-command gap. Serve mutation ops
+  remain intentionally unwired for this direct-CLI-only filters/sorts mutation
+  slice. Proof: `cargo fmt --check`, `cargo check --all-targets`, focused
+  `cargo test --test rust_contract_smoke xlsx_filters_sorts -- --nocapture`,
+  focused capability ratchet/discovery tests, strict validation for generated
+  clear-column-filter/set-sort/clear-sort XLSX proof files, Open XML SDK
+  Office2019 schema validation (zero errors) for the proof files, Excel COM
+  open oracle for all three proof files, `cargo clippy --all-targets -- -D
+  warnings`, and `cargo test --all-targets` passed with 4 ZIP guard unit tests
+  plus 115 Rust contract tests.
 - Rust PPTX table serve/MCP operation dispatch is wired for the already-ported
   `pptx tables set-cell`, `pptx tables delete-row`, and
   `pptx tables insert-row` direct CLI mutations. Serve ops now call the existing
@@ -1078,12 +1095,15 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `--json xlsx filters-sorts show <xlsx>`,
   `--json xlsx filters-sorts set-autofilter <xlsx>`,
   `--json xlsx filters-sorts clear-autofilter <xlsx>`, and
-  `--json xlsx filters-sorts add-column-filter <xlsx>` with Go-oracle
-  comparison for worksheet/table autoFilter readback, worksheet sortState
-  readback, saved mutation JSON, generated validation/show readback commands,
-  dry-run behavior, invalid range errors, table-target default range behavior,
-  column value/custom filters, stale range/filter guards, capability indexing,
-  and serve inspect routing for show
+  `--json xlsx filters-sorts add-column-filter <xlsx>`,
+  `--json xlsx filters-sorts clear-column-filter <xlsx>`,
+  `--json xlsx filters-sorts set-sort <xlsx>`, and
+  `--json xlsx filters-sorts clear-sort <xlsx>` with Go-oracle comparison for
+  worksheet/table autoFilter readback, worksheet sortState readback, saved
+  mutation JSON, generated validation/show readback commands, dry-run behavior,
+  invalid range errors, table-target default range behavior, column value/custom
+  filters, clearing column filters, sort condition refs, stale range/filter/sort
+  guards, capability indexing, and serve inspect routing for show
 - `--json xlsx tables list <xlsx>` and `--json xlsx tables show <xlsx>` with
   Go-oracle comparison for generated table workbooks, table metadata, columns,
   bridge command templates, `capabilities --for table`, and stable table

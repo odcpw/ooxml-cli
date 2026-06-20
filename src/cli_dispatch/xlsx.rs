@@ -14,12 +14,14 @@ use crate::xlsx_sheets::*;
 use crate::{
     XlsxColWidthsSetOptions, XlsxCommentsAddOptions, XlsxCommentsRemoveOptions,
     XlsxCommentsUpdateOptions, XlsxFiltersSortsAddColumnFilterOptions,
-    XlsxFiltersSortsClearAutoFilterOptions, XlsxFiltersSortsSetAutoFilterOptions,
-    XlsxRowHeightsSetOptions, xlsx_colwidths_set, xlsx_colwidths_show, xlsx_comments_add,
-    xlsx_comments_list, xlsx_comments_remove, xlsx_comments_update,
-    xlsx_filters_sorts_add_column_filter, xlsx_filters_sorts_clear_autofilter,
-    xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_show, xlsx_rowheights_set,
-    xlsx_rowheights_show,
+    XlsxFiltersSortsClearAutoFilterOptions, XlsxFiltersSortsClearColumnFilterOptions,
+    XlsxFiltersSortsClearSortOptions, XlsxFiltersSortsSetAutoFilterOptions,
+    XlsxFiltersSortsSetSortOptions, XlsxRowHeightsSetOptions, xlsx_colwidths_set,
+    xlsx_colwidths_show, xlsx_comments_add, xlsx_comments_list, xlsx_comments_remove,
+    xlsx_comments_update, xlsx_filters_sorts_add_column_filter,
+    xlsx_filters_sorts_clear_autofilter, xlsx_filters_sorts_clear_column_filter,
+    xlsx_filters_sorts_clear_sort, xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_set_sort,
+    xlsx_filters_sorts_show, xlsx_rowheights_set, xlsx_rowheights_show,
 };
 
 pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
@@ -554,6 +556,92 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
                     custom_present: value_flag_present(rest, "--custom-op"),
                     expect_filter: expect_filter.as_deref(),
                     expect_filter_present: value_flag_present(rest, "--expect-filter"),
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "filters-sorts" && verb == "clear-column-filter" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--sheet", "--column", "--out", "--backup"],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let column = parse_i64_flag(rest, "--column")?.unwrap_or(0);
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_filters_sorts_clear_column_filter(
+                file,
+                XlsxFiltersSortsClearColumnFilterOptions {
+                    sheet: sheet.as_deref(),
+                    column,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "filters-sorts" && verb == "set-sort" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--ref",
+                    "--column",
+                    "--expect-sort",
+                    "--out",
+                    "--backup",
+                ],
+                &["--descending", "--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let ref_range = parse_string_flag(rest, "--ref")?;
+            let column = parse_string_flag(rest, "--column")?;
+            let expect_sort = parse_string_flag(rest, "--expect-sort")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_filters_sorts_set_sort(
+                file,
+                XlsxFiltersSortsSetSortOptions {
+                    sheet: sheet.as_deref(),
+                    ref_range: ref_range.as_deref(),
+                    column: column.as_deref(),
+                    descending: has_flag(rest, "--descending"),
+                    expect_sort: expect_sort.as_deref(),
+                    expect_sort_present: value_flag_present(rest, "--expect-sort"),
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "filters-sorts" && verb == "clear-sort" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--sheet", "--out", "--backup"],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_filters_sorts_clear_sort(
+                file,
+                XlsxFiltersSortsClearSortOptions {
+                    sheet: sheet.as_deref(),
                     out: out.as_deref(),
                     backup: backup.as_deref(),
                     dry_run: has_flag(rest, "--dry-run"),

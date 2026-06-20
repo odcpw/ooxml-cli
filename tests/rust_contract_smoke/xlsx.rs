@@ -2039,6 +2039,520 @@ fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
 }
 
 #[test]
+fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-filter-column-clear-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    let go_out_path = temp_dir.join("go-out.xlsx");
+    let rust_out_path = temp_dir.join("rust-out.xlsx");
+    let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:C3"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Region</t></is></c><c r="B1" t="inlineStr"><is><t>Amount</t></is></c><c r="C1" t="inlineStr"><is><t>Status</t></is></c></row>
+    <row r="2"><c r="A2" t="inlineStr"><is><t>North</t></is></c><c r="B2"><v>15</v></c><c r="C2" t="inlineStr"><is><t>Open</t></is></c></row>
+    <row r="3"><c r="A3" t="inlineStr"><is><t>South</t></is></c><c r="B3"><v>25</v></c><c r="C3" t="inlineStr"><is><t>Closed</t></is></c></row>
+  </sheetData>
+  <autoFilter ref="A1:C3">
+    <filterColumn colId="0"><filters><filter val="North"/></filters></filterColumn>
+    <filterColumn colId="2"><filters><filter val="Open"/></filters></filterColumn>
+  </autoFilter>
+</worksheet>"#;
+    write_simple_xlsx_with_sheet_xml(&go_in_path, sheet_xml);
+    write_simple_xlsx_with_sheet_xml(&rust_in_path, sheet_xml);
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let go_out = go_out_path.to_string_lossy().to_string();
+    let rust_out = rust_out_path.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "clear-column-filter",
+        &go_in,
+        "--sheet",
+        "1",
+        "--column",
+        "0",
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "clear-column-filter",
+        &rust_in,
+        "--sheet",
+        "1",
+        "--column",
+        "0",
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "clear-column-filter exit");
+    assert_eq!(rust_stderr, go_stderr, "clear-column-filter stderr");
+    let rust_result = rust_stdout.expect("rust clear-column-filter stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_result.clone(),
+            &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go clear-column-filter stdout"),
+            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+        ),
+        "clear-column-filter stdout"
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_result, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_result, "showCommand");
+
+    let show_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        &go_out,
+        "--sheet",
+        "1",
+    ];
+    let show_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        &rust_out,
+        "--sheet",
+        "1",
+    ];
+    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
+    assert_eq!(rust_code, go_code, "clear-column saved show exit");
+    assert_eq!(rust_stderr, go_stderr, "clear-column saved show stderr");
+    assert_eq!(
+        scrub_path(
+            rust_show.expect("rust clear-column saved show"),
+            &rust_out,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_show.expect("go clear-column saved show"),
+            &go_out,
+            "[OUT]"
+        ),
+        "clear-column saved show stdout"
+    );
+    let rust_sheet_xml = read_zip_string(&rust_out_path, "xl/worksheets/sheet1.xml");
+    assert!(!rust_sheet_xml.contains(r#"colId="0""#));
+    assert!(rust_sheet_xml.contains(r#"colId="2""#));
+
+    let dry_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "clear-column-filter",
+        &go_out,
+        "--sheet",
+        "1",
+        "--column",
+        "2",
+        "--dry-run",
+    ];
+    let dry_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "clear-column-filter",
+        &rust_out,
+        "--sheet",
+        "1",
+        "--column",
+        "2",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
+    assert_eq!(rust_code, go_code, "clear-column dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "clear-column dry-run stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust clear-column dry-run"),
+            &rust_out,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_stdout.expect("go clear-column dry-run"),
+            &go_out,
+            "[OUT]"
+        ),
+        "clear-column dry-run stdout"
+    );
+    assert!(
+        read_zip_string(&rust_out_path, "xl/worksheets/sheet1.xml").contains(r#"colId="2""#),
+        "dry-run should not remove column 2 filter"
+    );
+
+    let missing_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "clear-column-filter",
+        &go_out,
+        "--sheet",
+        "1",
+        "--column",
+        "1",
+        "--dry-run",
+    ];
+    let missing_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "clear-column-filter",
+        &rust_out,
+        "--sheet",
+        "1",
+        "--column",
+        "1",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&missing_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&missing_rust);
+    assert_eq!(rust_code, go_code, "clear-column missing exit");
+    assert_eq!(rust_stdout, go_stdout, "clear-column missing stdout");
+    assert_eq!(rust_stderr, go_stderr, "clear-column missing stderr");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-filter-sort-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    let go_sort1_path = temp_dir.join("go-sort1.xlsx");
+    let rust_sort1_path = temp_dir.join("rust-sort1.xlsx");
+    let go_sort2_path = temp_dir.join("go-sort2.xlsx");
+    let rust_sort2_path = temp_dir.join("rust-sort2.xlsx");
+    let go_cleared_path = temp_dir.join("go-cleared.xlsx");
+    let rust_cleared_path = temp_dir.join("rust-cleared.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("go input");
+    fs::copy(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &rust_in_path,
+    )
+    .expect("rust input");
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let go_sort1 = go_sort1_path.to_string_lossy().to_string();
+    let rust_sort1 = rust_sort1_path.to_string_lossy().to_string();
+    let go_sort2 = go_sort2_path.to_string_lossy().to_string();
+    let rust_sort2 = rust_sort2_path.to_string_lossy().to_string();
+    let go_cleared = go_cleared_path.to_string_lossy().to_string();
+    let rust_cleared = rust_cleared_path.to_string_lossy().to_string();
+
+    let set_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-sort",
+        &go_in,
+        "--sheet",
+        "1",
+        "--ref",
+        "A1:C3",
+        "--column",
+        "A",
+        "--out",
+        &go_sort1,
+    ];
+    let set_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-sort",
+        &rust_in,
+        "--sheet",
+        "1",
+        "--ref",
+        "A1:C3",
+        "--column",
+        "A",
+        "--out",
+        &rust_sort1,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&set_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&set_rust);
+    assert_eq!(rust_code, go_code, "set-sort exit");
+    assert_eq!(rust_stderr, go_stderr, "set-sort stderr");
+    let rust_set = rust_stdout.expect("rust set-sort stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_set.clone(),
+            &[(&rust_in, "[IN]"), (&rust_sort1, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go set-sort stdout"),
+            &[(&go_in, "[IN]"), (&go_sort1, "[OUT]")]
+        ),
+        "set-sort stdout"
+    );
+    assert_eq!(rust_set["sortState"]["conditions"][0]["ref"], "A1:A3");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_set, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_set, "showCommand");
+
+    let set2_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-sort",
+        &go_sort1,
+        "--sheet",
+        "1",
+        "--ref",
+        "A1:C3",
+        "--column",
+        "B",
+        "--descending",
+        "--expect-sort",
+        "A1:C3",
+        "--out",
+        &go_sort2,
+    ];
+    let set2_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-sort",
+        &rust_sort1,
+        "--sheet",
+        "1",
+        "--ref",
+        "A1:C3",
+        "--column",
+        "B",
+        "--descending",
+        "--expect-sort",
+        "A1:C3",
+        "--out",
+        &rust_sort2,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&set2_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&set2_rust);
+    assert_eq!(rust_code, go_code, "second set-sort exit");
+    assert_eq!(rust_stderr, go_stderr, "second set-sort stderr");
+    let rust_set2 = rust_stdout.expect("rust second set-sort stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_set2.clone(),
+            &[(&rust_sort1, "[IN]"), (&rust_sort2, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go second set-sort stdout"),
+            &[(&go_sort1, "[IN]"), (&go_sort2, "[OUT]")]
+        ),
+        "second set-sort stdout"
+    );
+    assert_eq!(rust_set2["sortState"]["conditions"][1]["ref"], "B1:B3");
+    assert_eq!(
+        rust_set2["sortState"]["conditions"][1]["descending"],
+        Value::Bool(true)
+    );
+
+    let show_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        &go_sort2,
+        "--sheet",
+        "1",
+    ];
+    let show_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        &rust_sort2,
+        "--sheet",
+        "1",
+    ];
+    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
+    assert_eq!(rust_code, go_code, "sort saved show exit");
+    assert_eq!(rust_stderr, go_stderr, "sort saved show stderr");
+    assert_eq!(
+        scrub_path(
+            rust_show.expect("rust sort saved show"),
+            &rust_sort2,
+            "[OUT]"
+        ),
+        scrub_path(go_show.expect("go sort saved show"), &go_sort2, "[OUT]"),
+        "sort saved show stdout"
+    );
+
+    let bad_expect_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-sort",
+        &go_sort2,
+        "--sheet",
+        "1",
+        "--ref",
+        "A1:C3",
+        "--column",
+        "C",
+        "--expect-sort",
+        "A1:B2",
+        "--dry-run",
+    ];
+    let bad_expect_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "set-sort",
+        &rust_sort2,
+        "--sheet",
+        "1",
+        "--ref",
+        "A1:C3",
+        "--column",
+        "C",
+        "--expect-sort",
+        "A1:B2",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&bad_expect_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&bad_expect_rust);
+    assert_eq!(rust_code, go_code, "set-sort bad expect exit");
+    assert_eq!(rust_stdout, go_stdout, "set-sort bad expect stdout");
+    assert_eq!(rust_stderr, go_stderr, "set-sort bad expect stderr");
+
+    let clear_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "clear-sort",
+        &go_sort2,
+        "--sheet",
+        "1",
+        "--out",
+        &go_cleared,
+    ];
+    let clear_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "clear-sort",
+        &rust_sort2,
+        "--sheet",
+        "1",
+        "--out",
+        &rust_cleared,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&clear_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&clear_rust);
+    assert_eq!(rust_code, go_code, "clear-sort exit");
+    assert_eq!(rust_stderr, go_stderr, "clear-sort stderr");
+    let rust_clear = rust_stdout.expect("rust clear-sort stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_clear.clone(),
+            &[(&rust_sort2, "[IN]"), (&rust_cleared, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go clear-sort stdout"),
+            &[(&go_sort2, "[IN]"), (&go_cleared, "[OUT]")]
+        ),
+        "clear-sort stdout"
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_clear, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_clear, "showCommand");
+
+    let show_cleared_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        &go_cleared,
+        "--sheet",
+        "1",
+    ];
+    let show_cleared_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "show",
+        &rust_cleared,
+        "--sheet",
+        "1",
+    ];
+    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_cleared_go);
+    let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_cleared_rust);
+    assert_eq!(rust_code, go_code, "clear-sort saved show exit");
+    assert_eq!(rust_stderr, go_stderr, "clear-sort saved show stderr");
+    assert_eq!(
+        scrub_path(
+            rust_show.expect("rust clear-sort saved show"),
+            &rust_cleared,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_show.expect("go clear-sort saved show"),
+            &go_cleared,
+            "[OUT]"
+        ),
+        "clear-sort saved show stdout"
+    );
+    assert!(
+        !read_zip_string(&rust_cleared_path, "xl/worksheets/sheet1.xml").contains("sortState"),
+        "clear-sort should remove sortState"
+    );
+
+    let no_sort_go = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "clear-sort",
+        &go_in,
+        "--sheet",
+        "1",
+        "--dry-run",
+    ];
+    let no_sort_rust = [
+        "--json",
+        "xlsx",
+        "filters-sorts",
+        "clear-sort",
+        &rust_in,
+        "--sheet",
+        "1",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&no_sort_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&no_sort_rust);
+    assert_eq!(rust_code, go_code, "clear-sort missing exit");
+    assert_eq!(rust_stdout, go_stdout, "clear-sort missing stdout");
+    assert_eq!(rust_stderr, go_stderr, "clear-sort missing stderr");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_ranges_set_matches_go_oracle_and_saved_output() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-xlsx-ranges-set-{}", std::process::id()));
