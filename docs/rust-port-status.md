@@ -9,6 +9,22 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX chart remaining style/type leaf parity landed for direct
+  `pptx charts set-axis`, `pptx charts convert-type`, and
+  `pptx charts copy-style`. The slice edits chart axis
+  title/visibility/scale/gridline/font fields, converts common chart plot
+  wrappers while preserving data caches, and copies practical chart styling
+  from a template chart without changing target data. Rust capabilities now
+  advertise 185 Go-oracle command paths, leaving a pinned 105-command gap;
+  these commands are direct CLI operations with `opCompatible=false` because
+  serve/MCP operation dispatch is not wired for `pptx charts` yet. Proof:
+  focused Go-vs-Rust chart readback/mutation/error tests; focused capability
+  ratchet/MCP command-resource tests; strict validation for generated proof
+  decks; Open XML SDK Office2019 schema validation (zero errors) for SDK-clean
+  proof decks generated from a target-only axis-ID repaired seed; PowerPoint
+  COM open oracle for SDK-clean proof decks; `cargo fmt --check`; `cargo
+  check --all-targets`; `cargo clippy --all-targets -- -D warnings`; and
+  `cargo test --all-targets`.
 - Rust XLSX chart leaf parity expanded for direct `xlsx charts show`,
   `xlsx charts convert-type`, `xlsx charts copy-style`, and
   `xlsx charts set-axis`. The slice promotes chart show output, changes chart

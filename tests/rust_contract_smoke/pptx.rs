@@ -929,6 +929,40 @@ fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
             "1",
         ],
     );
+    assert_pptx_chart_saved_mutation_matches_go(
+        &temp_dir,
+        "set-axis",
+        &[
+            "--slide",
+            "1",
+            "--chart",
+            "chart:1",
+            "--axis",
+            "value",
+            "--title",
+            "Revenue",
+            "--number-format",
+            "#,##0",
+            "--major-gridlines=false",
+            "--expect-axis-count",
+            "2",
+        ],
+    );
+    assert_pptx_chart_saved_mutation_matches_go(
+        &temp_dir,
+        "convert-type",
+        &[
+            "--slide",
+            "1",
+            "--chart",
+            "chart:1",
+            "--to",
+            "line",
+            "--expect-type",
+            "column",
+        ],
+    );
+    assert_pptx_chart_copy_style_matches_go(&temp_dir);
 
     let fixture = "testdata/pptx/chart-simple/presentation.pptx";
     let dry_run_args = [
@@ -953,6 +987,189 @@ fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
         rust_stdout.expect("rust chart title dry-run stdout"),
         go_stdout.expect("go chart title dry-run stdout"),
         "chart title dry-run stdout"
+    );
+
+    for args in [
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "convert-type",
+            fixture,
+            "--chart",
+            "chart:1",
+            "--out",
+            "unused.pptx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "convert-type",
+            fixture,
+            "--chart",
+            "chart:1",
+            "--to",
+            "line",
+            "--expect-type",
+            "pie",
+            "--out",
+            "unused.pptx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "set-axis",
+            fixture,
+            "--chart",
+            "chart:1",
+            "--axis",
+            "value",
+            "--out",
+            "unused.pptx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "set-axis",
+            fixture,
+            "--chart",
+            "chart:1",
+            "--axis",
+            "category",
+            "--major-unit",
+            "10",
+            "--out",
+            "unused.pptx",
+        ],
+        vec![
+            "--json",
+            "pptx",
+            "charts",
+            "copy-style",
+            fixture,
+            "--chart",
+            "chart:1",
+            "--to-chart",
+            "chart:1",
+            "--from",
+            fixture,
+            "--out",
+            "unused.pptx",
+        ],
+    ] {
+        let borrowed = args.to_vec();
+        assert_go_rust_match(&borrowed);
+    }
+}
+
+fn assert_pptx_chart_copy_style_matches_go(temp_dir: &Path) {
+    let fixture = "testdata/pptx/chart-simple/presentation.pptx";
+    let command = "copy-style";
+    let go_out = temp_dir.join("go-copy-style.pptx");
+    let rust_out = temp_dir.join("rust-copy-style.pptx");
+    let go_out_str = go_out.to_str().expect("go copy-style output path");
+    let rust_out_str = rust_out.to_str().expect("rust copy-style output path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "charts",
+        command,
+        fixture,
+        "--chart",
+        "chart:2",
+        "--from",
+        fixture,
+        "--from-slide",
+        "1",
+        "--from-chart",
+        "chart:1",
+        "--expect-series-count",
+        "1",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "charts",
+        command,
+        fixture,
+        "--chart",
+        "chart:2",
+        "--from",
+        fixture,
+        "--from-slide",
+        "1",
+        "--from-chart",
+        "chart:1",
+        "--expect-series-count",
+        "1",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "copy-style exit");
+    assert_eq!(rust_stderr, go_stderr, "copy-style stderr");
+    let rust_json = rust_stdout.expect("rust copy-style stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go copy-style stdout"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "copy-style stdout"
+    );
+    assert!(go_out.exists(), "Go copy-style output missing");
+    assert!(rust_out.exists(), "Rust copy-style output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "chartShowCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let go_show_args = [
+        "--json",
+        "pptx",
+        "charts",
+        "show",
+        go_out_str,
+        "--slide",
+        "2",
+        "--chart",
+        "part:/ppt/charts/chart2.xml",
+    ];
+    let rust_show_args = [
+        "--json",
+        "pptx",
+        "charts",
+        "show",
+        rust_out_str,
+        "--slide",
+        "2",
+        "--chart",
+        "part:/ppt/charts/chart2.xml",
+    ];
+    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&go_show_args);
+    let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&rust_show_args);
+    assert_eq!(rust_show_code, go_show_code, "copy-style readback exit");
+    assert_eq!(
+        rust_show_stderr, go_show_stderr,
+        "copy-style readback stderr"
+    );
+    assert_eq!(
+        scrub_path(
+            rust_show_stdout.expect("rust copy-style readback"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_show_stdout.expect("go copy-style readback"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "copy-style readback stdout"
     );
 }
 

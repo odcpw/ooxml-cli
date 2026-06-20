@@ -815,6 +815,83 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             pptx_charts_set_series_style(file, rest)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "charts" && verb == "convert-type" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--chart",
+                    "--to",
+                    "--expect-type",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_charts_convert_type(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "charts" && verb == "set-axis" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--chart",
+                    "--axis",
+                    "--title",
+                    "--expect-axis-title",
+                    "--hidden",
+                    "--min",
+                    "--max",
+                    "--major-unit",
+                    "--number-format",
+                    "--major-gridlines",
+                    "--minor-gridlines",
+                    "--tick-label-font-family",
+                    "--tick-label-font-size",
+                    "--tick-label-font-color",
+                    "--title-font-family",
+                    "--title-font-size",
+                    "--title-font-color",
+                    "--expect-axis-count",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--tick-label-font-bold",
+                    "--tick-label-font-italic",
+                    "--title-font-bold",
+                    "--title-font-italic",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
+            )?;
+            pptx_charts_set_axis(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "charts" && verb == "copy-style" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--chart",
+                    "--to-chart",
+                    "--from",
+                    "--from-slide",
+                    "--from-chart",
+                    "--expect-series-count",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_charts_copy_style(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "tables" && verb == "show" =>
         {
             reject_unknown_flags(rest, &["--slide", "--table-id", "--target"], &["--details"])?;
