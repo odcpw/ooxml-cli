@@ -115,6 +115,9 @@ Latest milestone, 2026-06-20:
   `src/serve/op_dispatch.rs` into `src/serve/op_dispatch/docx.rs`, leaving the
   top-level serve op dispatcher as family routing plus the remaining PPTX text
   replacement operation.
+- The top-level serve op dispatcher now routes XLSX and DOCX commands by
+  family prefix, leaving exact command matching and unsupported-command
+  fallbacks inside each child dispatcher.
 - XLSX workbook metadata inspect/update types, XML readers, property renderers,
   and calc-setting mutation helpers moved from `src/main.rs` into
   `src/xlsx_metadata.rs`, keeping CLI and serve call sites stable through the
@@ -210,9 +213,10 @@ Latest milestone, 2026-06-20:
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
 - Proof after the latest split: `cargo test --test rust_contract_smoke
-  serve_op_supports_docx`, `cargo test --test rust_contract_smoke serve_op`,
-  `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
-  `cargo test --all-targets` all pass with 77 Rust contract tests.
+  serve_op_rejects_unknown`, `cargo test --test rust_contract_smoke serve_op`,
+  `cargo test --test rust_contract_smoke capabilities`, `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
+  all pass with 78 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
@@ -481,13 +485,13 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - `serve` JSON-RPC op/inspect support for `xlsx workbook metadata
   update/inspect`, so workbook-level metadata edits can run through the same
   web/agent session loop as range and table workflows
-- `serve` JSON-RPC inspect support for `docx text`, `docx headers list/show`,
-  `docx footers list/show`, and `docx images list`, so read-only DOCX
-  discovery and readback commands can run through the same web/agent session
+- `serve` JSON-RPC inspect support for DOCX text, header/footer, image,
+  comment, block, field, style, and table readback commands, so DOCX discovery
+  and generated readback commands can run through the same web/agent session
   loop as direct CLI calls
-- `serve` JSON-RPC op support for `docx headers set-text`, proving the
-  op-compatible DOCX header/footer mutation path used by the web/agent session
-  loop
+- `serve` JSON-RPC op support for DOCX header/footer, field, paragraph, style,
+  block, comment, and table mutations, proving the op-compatible DOCX mutation
+  paths used by the web/agent session loop
 
 Still missing before parity can be claimed:
 

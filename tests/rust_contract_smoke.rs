@@ -8433,6 +8433,73 @@ fn serve_op_supports_xlsx_workbook_metadata_update() {
 }
 
 #[test]
+fn serve_op_rejects_unknown_xlsx_and_docx_commands_in_family_dispatchers() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-unknown-family-op-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(1, "open", serde_json::json!({"file": input_str}));
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    assert!(
+        open_response.get("error").is_none(),
+        "open failed: {open_response:?}"
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    for (offset, command) in ["xlsx not-real", "docx not-real"].iter().enumerate() {
+        let response = serve_roundtrip(
+            &mut stdin,
+            &mut reader,
+            &rpc_request(
+                2 + offset as i64,
+                "op",
+                serde_json::json!({
+                    "session": session,
+                    "command": command,
+                    "args": {},
+                }),
+            ),
+        );
+        assert!(
+            response.get("error").is_some(),
+            "unknown serve op command should fail: {response:?}"
+        );
+        assert_eq!(
+            response["error"]["data"]["type"],
+            Value::String("invalid_args".to_string())
+        );
+        assert_eq!(
+            response["error"]["message"],
+            Value::String(format!("unsupported serve op command: {command}"))
+        );
+    }
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_op_supports_docx_headers_set_text() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-docx-header-set-text-{}",

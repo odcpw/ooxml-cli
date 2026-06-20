@@ -88,7 +88,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
                     "ooxml --json xlsx ranges export workbook.xlsx --sheet sheetId:1 --range A1 --include-types",
                     "ooxml --json xlsx ranges set workbook.xlsx --sheet sheetId:1 --range A1:B2 --values '[[\"A\",\"B\"],[1,2]]' --out edited.xlsx",
                     "ooxml --json xlsx ranges set-format workbook.xlsx --sheet Sheet1 --range B2:B20 --preset currency --out edited.xlsx",
-                    "serve op commands: xlsx cells set, xlsx ranges set, xlsx ranges set-format"
+                    "serve op commands: xlsx cells set, xlsx ranges set, xlsx ranges set-format, xlsx workbook metadata update"
                 ]
             }
         ],

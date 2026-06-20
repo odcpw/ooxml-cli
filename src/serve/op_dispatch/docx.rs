@@ -935,7 +935,7 @@ pub(super) fn serve_docx_op(working: &str, command: &str, args: &Value) -> CliRe
         }
         _ => {
             return Err(CliError::invalid_args(format!(
-                "unsupported DOCX serve op command: {command}"
+                "unsupported serve op command: {command}"
             )));
         }
     };
