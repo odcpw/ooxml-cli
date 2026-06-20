@@ -1960,7 +1960,7 @@ fn serve_op_supports_xlsx_workbook_metadata_update() {
 }
 
 #[test]
-fn serve_op_rejects_unknown_xlsx_and_docx_commands_in_family_dispatchers() {
+fn serve_op_rejects_unknown_family_commands_in_dispatchers() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-unknown-family-op-{}",
         std::process::id()
@@ -1992,7 +1992,10 @@ fn serve_op_rejects_unknown_xlsx_and_docx_commands_in_family_dispatchers() {
         .expect("session id")
         .to_string();
 
-    for (offset, command) in ["xlsx not-real", "docx not-real"].iter().enumerate() {
+    for (offset, command) in ["xlsx not-real", "docx not-real", "pptx not-real"]
+        .iter()
+        .enumerate()
+    {
         let response = serve_roundtrip(
             &mut stdin,
             &mut reader,
@@ -3509,6 +3512,266 @@ fn serve_op_supports_docx_comments_editing() {
                 && comment["anchoredToBlock"].as_i64() == Some(1)
         }),
         "committed output should contain added serve comment: {output_comments:?}"
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn serve_op_supports_pptx_table_mutations() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-pptx-tables-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = "testdata/pptx/table-slide/presentation.pptx";
+    let output = temp_dir.join("serve-pptx-tables-out.pptx");
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({"file": input, "out": output_str}),
+        ),
+    );
+    assert!(
+        open_response.get("error").is_none(),
+        "pptx tables open failed: {open_response:?}"
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let table_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            2,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx tables show",
+                "args": {"slide": 2, "target": "table:1"},
+            }),
+        ),
+    );
+    assert!(
+        table_response.get("error").is_none(),
+        "pptx tables show inspect failed: {table_response:?}"
+    );
+    assert_eq!(
+        table_response["result"]["tables"][0]["rows"],
+        Value::from(3)
+    );
+    assert_eq!(
+        table_response["result"]["tables"][0]["cells"][1][1],
+        Value::String("R1C1".to_string())
+    );
+
+    let set_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            3,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx tables set-cell",
+                "args": {
+                    "slide": 2,
+                    "target": "table:1",
+                    "row": 2,
+                    "col": 2,
+                    "text": "Serve PPTX Cell"
+                },
+            }),
+        ),
+    );
+    assert!(
+        set_response.get("error").is_none(),
+        "pptx tables set-cell op failed: {set_response:?}"
+    );
+    assert_eq!(
+        set_response["result"]["readback"]["previousText"],
+        Value::String("R1C1".to_string())
+    );
+    assert_eq!(
+        set_response["result"]["readback"]["text"],
+        Value::String("Serve PPTX Cell".to_string())
+    );
+
+    let changed_table_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            4,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx tables show",
+                "args": {"slide": 2, "target": "table:1"},
+            }),
+        ),
+    );
+    assert!(
+        changed_table_response.get("error").is_none(),
+        "pptx tables changed inspect failed: {changed_table_response:?}"
+    );
+    assert_eq!(
+        changed_table_response["result"]["tables"][0]["cells"][1][1],
+        Value::String("Serve PPTX Cell".to_string())
+    );
+
+    let insert_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            5,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx tables insert-row",
+                "args": {
+                    "slide": 2,
+                    "target": "table:1",
+                    "at": 3
+                },
+            }),
+        ),
+    );
+    assert!(
+        insert_response.get("error").is_none(),
+        "pptx tables insert-row op failed: {insert_response:?}"
+    );
+    assert_eq!(insert_response["result"]["readback"]["at"], Value::from(3));
+    assert_eq!(
+        insert_response["result"]["readback"]["rows"],
+        Value::from(4)
+    );
+    assert_eq!(
+        insert_response["result"]["readback"]["cellCount"],
+        Value::from(3)
+    );
+
+    let delete_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            6,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx tables delete-row",
+                "args": {
+                    "slide": 2,
+                    "target": "table:1",
+                    "row": 3
+                },
+            }),
+        ),
+    );
+    assert!(
+        delete_response.get("error").is_none(),
+        "pptx tables delete-row op failed: {delete_response:?}"
+    );
+    assert_eq!(delete_response["result"]["readback"]["row"], Value::from(3));
+    assert_eq!(
+        delete_response["result"]["readback"]["rows"],
+        Value::from(3)
+    );
+
+    let plan_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(7, "plan", serde_json::json!({"session": session})),
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][0],
+        Value::String("pptx".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][1],
+        Value::String("tables".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][2],
+        Value::String("set-cell".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][1]["argv"][2],
+        Value::String("insert-row".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][2]["argv"][2],
+        Value::String("delete-row".to_string())
+    );
+
+    let validate_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(8, "validate", serde_json::json!({"session": session})),
+    );
+    assert!(
+        validate_response.get("error").is_none(),
+        "pptx tables validate failed: {validate_response:?}"
+    );
+
+    let commit_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(9, "commit", serde_json::json!({"session": session})),
+    );
+    assert!(
+        commit_response.get("error").is_none(),
+        "pptx tables commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "pptx tables serve validate exit");
+    assert_eq!(validate_stderr, None, "pptx tables serve validate stderr");
+
+    let (tables_code, tables_stdout, tables_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "tables",
+        "show",
+        &output_str,
+        "--slide",
+        "2",
+        "--target",
+        "table:1",
+    ]);
+    assert_eq!(tables_code, 0, "pptx tables output readback exit");
+    assert_eq!(tables_stderr, None, "pptx tables output readback stderr");
+    let tables = tables_stdout.expect("pptx tables output readback");
+    assert_eq!(tables["tables"][0]["rows"], Value::from(3));
+    assert_eq!(
+        tables["tables"][0]["cells"][1][1],
+        Value::String("Serve PPTX Cell".to_string())
+    );
+    assert_eq!(
+        tables["tables"][0]["cells"][2][0],
+        Value::String("R2C0".to_string())
     );
 
     drop(stdin);

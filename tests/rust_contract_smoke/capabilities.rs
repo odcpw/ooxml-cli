@@ -20,9 +20,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx layouts list", false);
     assert_command(&all_caps, "ooxml pptx layouts show", false);
     assert_command(&all_caps, "ooxml pptx tables show", false);
-    assert_command(&all_caps, "ooxml pptx tables set-cell", false);
-    assert_command(&all_caps, "ooxml pptx tables delete-row", false);
-    assert_command(&all_caps, "ooxml pptx tables insert-row", false);
+    assert_command(&all_caps, "ooxml pptx tables set-cell", true);
+    assert_command(&all_caps, "ooxml pptx tables delete-row", true);
+    assert_command(&all_caps, "ooxml pptx tables insert-row", true);
     assert_command(&all_caps, "ooxml pptx comments list", false);
     assert_command(&all_caps, "ooxml pptx comments add", false);
     assert_command(&all_caps, "ooxml pptx comments edit", false);
@@ -257,9 +257,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx layouts list", false);
     assert_command(&pptx_caps, "ooxml pptx layouts show", false);
     assert_command(&pptx_caps, "ooxml pptx tables show", false);
-    assert_command(&pptx_caps, "ooxml pptx tables set-cell", false);
-    assert_command(&pptx_caps, "ooxml pptx tables delete-row", false);
-    assert_command(&pptx_caps, "ooxml pptx tables insert-row", false);
+    assert_command(&pptx_caps, "ooxml pptx tables set-cell", true);
+    assert_command(&pptx_caps, "ooxml pptx tables delete-row", true);
+    assert_command(&pptx_caps, "ooxml pptx tables insert-row", true);
     assert_command(&pptx_caps, "ooxml pptx extract text", false);
     assert_command(&pptx_caps, "ooxml pptx extract notes", false);
     assert_command(&pptx_caps, "ooxml pptx notes show", false);
@@ -358,9 +358,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(table_stderr, None);
     let table_caps = table_stdout.expect("table capabilities");
     assert_command(&table_caps, "ooxml pptx tables show", false);
-    assert_command(&table_caps, "ooxml pptx tables set-cell", false);
-    assert_command(&table_caps, "ooxml pptx tables delete-row", false);
-    assert_command(&table_caps, "ooxml pptx tables insert-row", false);
+    assert_command(&table_caps, "ooxml pptx tables set-cell", true);
+    assert_command(&table_caps, "ooxml pptx tables delete-row", true);
+    assert_command(&table_caps, "ooxml pptx tables insert-row", true);
     assert_command(&table_caps, "ooxml xlsx filters-sorts show", false);
     assert_command(
         &table_caps,

@@ -153,8 +153,8 @@ pub(super) fn commands() -> Vec<Value> {
             "set-cell <file> --slide <n> (--table-id <id>|--target <selector>) --row <n> --col <n> --text <text>",
             "Set plain text in one PowerPoint table cell.",
             &["slide", "table"],
-            false,
-            Some("direct CLI mutation; serve/MCP op support is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--slide", "slide", "int", "1-based slide number"),
                 flag(
@@ -210,8 +210,8 @@ pub(super) fn commands() -> Vec<Value> {
             "delete-row <file> --slide <n> (--table-id <id>|--target <selector>) --row <n>",
             "Delete one row from a PowerPoint table.",
             &["slide", "table"],
-            false,
-            Some("direct CLI mutation; serve/MCP op support is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--slide", "slide", "int", "1-based slide number"),
                 flag(
@@ -254,8 +254,8 @@ pub(super) fn commands() -> Vec<Value> {
             "insert-row <file> --slide <n> (--table-id <id>|--target <selector>) --at <n>",
             "Insert an empty row into a PowerPoint table.",
             &["slide", "table"],
-            false,
-            Some("direct CLI mutation; serve/MCP op support is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--slide", "slide", "int", "1-based slide number"),
                 flag(

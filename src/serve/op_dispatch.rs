@@ -1,4 +1,5 @@
 mod docx;
+mod pptx;
 mod xlsx;
 
 use serde_json::Value;
@@ -25,6 +26,9 @@ pub(super) fn serve_op_command(working: &str, command: &str, args: &Value) -> Cl
                 target,
                 text,
             }
+        }
+        family_command if family_command.starts_with("pptx ") => {
+            pptx::serve_pptx_op(working, family_command, args)?
         }
         _ => {
             return Err(CliError::invalid_args(format!(

@@ -16,6 +16,12 @@ pub(super) enum ServeOp {
         target: String,
         text: String,
     },
+    PptxTablesOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
     XlsxRangeSet {
         command: String,
         sheet: String,
@@ -131,6 +137,7 @@ impl ServeOp {
         match self {
             ServeOp::XlsxCellSet { command, .. }
             | ServeOp::PptxReplaceText { command, .. }
+            | ServeOp::PptxTablesOp { command, .. }
             | ServeOp::XlsxRangeSet { command, .. }
             | ServeOp::XlsxRangeSetFormat { command, .. }
             | ServeOp::XlsxWorkbookMetadataUpdate { command, .. }
@@ -358,6 +365,27 @@ impl ServeOp {
                 ]);
                 Value::Array(argv)
             }
+            ServeOp::PptxTablesOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command.split_whitespace().nth(2).unwrap_or("set-cell");
+                let mut argv = vec![
+                    json!("pptx"),
+                    json!("tables"),
+                    json!(verb),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
             ServeOp::DocxHeaderFooterSetText {
                 command,
                 plan_flags,
@@ -549,6 +577,11 @@ impl ServeOp {
                 ..
             } => replace_json_string(readback.clone(), readback_file, file),
             ServeOp::XlsxWorkbookMetadataUpdate {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::PptxTablesOp {
                 readback_file,
                 readback,
                 ..

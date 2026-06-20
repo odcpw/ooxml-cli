@@ -9,6 +9,21 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX table serve/MCP operation dispatch is wired for the already-ported
+  `pptx tables set-cell`, `pptx tables delete-row`, and
+  `pptx tables insert-row` direct CLI mutations. Serve ops now call the existing
+  Rust PPTX table mutation functions against the session working copy, preserve
+  direct-CLI-shaped plan argv/readback fields, and advertise
+  `opCompatible=true` only for those three table mutation commands; `pptx tables
+  show` remains inspect-only. Rust capabilities still advertise 103 Go-oracle
+  command paths, leaving a pinned 187-command gap. Proof: `cargo fmt --check`,
+  `cargo check --all-targets`, focused `cargo test --test rust_contract_smoke
+  serve_op_supports_pptx_table_mutations -- --nocapture`, focused `cargo test
+  --test rust_contract_smoke capabilities_advertise_supported_web_agent_surface
+  -- --nocapture`, strict validation for the saved PPTX serve output, Open XML
+  SDK Office2019 schema validation (zero errors), PowerPoint COM open oracle,
+  `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
+  passed with 4 ZIP guard unit tests plus 113 Rust contract tests.
 - Rust VBA source readback parity landed for direct `vba inspect-bin`,
   `vba list`, and `vba extract`. The slice ports a read-only CFB/MS-OVBA reader
   for parseable `vbaProject.bin` payloads, reports source-module selectors,
