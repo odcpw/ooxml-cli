@@ -219,6 +219,10 @@ Latest milestone, 2026-06-20:
   `src/docx_comments.rs` into `src/docx_comments/markers.rs`, keeping
   comment removal orchestration in the facade and preserving direct DOCX/serve
   comment contract coverage.
+- DOCX comment list readback, comment/anchor parsing, list JSON rendering,
+  content hashing, and fragment readback moved from `src/docx_comments.rs`
+  into `src/docx_comments/read.rs`, leaving add/edit/remove orchestration and
+  package wiring in the comments facade.
 - DOCX body block readers, rich block reports, paragraph/table text extraction,
   run formatting capture, namespace-aware paragraph handles, and block content
   hashing moved from `src/main.rs` into `src/docx_block_readers.rs`.
