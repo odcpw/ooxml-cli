@@ -11,6 +11,7 @@ mod command_text;
 mod completion;
 mod conformance;
 mod conformance_invariants;
+mod conformance_office;
 mod diff;
 mod doctor;
 mod docx_block_commands;

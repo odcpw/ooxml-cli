@@ -349,8 +349,8 @@ fn go_and_rust_help_like_paths_share_success_shape() {
 
 #[test]
 fn conformance_check_hidden_slice_is_runnable_but_unadvertised() {
-    // Known divergence for this hidden slice: Go supports optional --office-check;
-    // Rust rejects it until the integration lane promotes Office-open parity.
+    // The command remains hidden from the advertised capability surface while
+    // the integration lane finishes the remaining repair-invariant parity.
     let (help_code, help_stdout, help_stderr) = run_ooxml_raw(&["help", "conformance", "check"]);
     assert_eq!(help_code, 0);
     assert_eq!(help_stderr, "");
@@ -370,23 +370,13 @@ fn conformance_check_hidden_slice_is_runnable_but_unadvertised() {
     assert_eq!(report["status"], "passed");
     assert_eq!(report["summary"]["passed"], 3);
 
-    let (office_code, office_stdout, office_stderr) = run_ooxml(&[
+    assert_go_rust_match(&[
         "--json",
         "conformance",
         "check",
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
         "--office-check",
     ]);
-    assert_eq!(office_code, 2);
-    assert_eq!(office_stdout, None);
-    let error = office_stderr.expect("office-check stderr");
-    assert_eq!(error["error"]["code"], "invalid_args");
-    assert!(
-        error["error"]["message"]
-            .as_str()
-            .expect("error message")
-            .contains("--office-check")
-    );
 }
 
 #[test]

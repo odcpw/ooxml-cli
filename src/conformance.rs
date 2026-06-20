@@ -23,13 +23,12 @@ fn check(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {
         &["--format", "--office-check-out-dir"],
         &["--json", "--office-check"],
     )?;
-    if has_flag(args, "--office-check") {
-        return Err(CliError::invalid_args(
-            "Rust conformance check has not ported --office-check; command remains unadvertised until office-open parity is available",
-        ));
-    }
     let file = conformance_check_file_arg(args)?;
-    let report = check_report(file)?;
+    let report = check_report(
+        file,
+        has_flag(args, "--office-check"),
+        optional_string_flag(args, "--office-check-out-dir")?,
+    )?;
     let exit_code = if report
         .get("status")
         .and_then(Value::as_str)
@@ -86,9 +85,14 @@ fn conformance_check_file_arg(args: &[String]) -> CliResult<&str> {
     })
 }
 
-fn check_report(file: &str) -> CliResult<Value> {
+fn check_report(
+    file: &str,
+    run_office_check: bool,
+    office_check_out_dir: Option<&str>,
+) -> CliResult<Value> {
     let mut checks = Vec::new();
     checks.push(json!({"name": "package-open", "status": "passed"}));
+    let family = package_type(file)?;
 
     let validation_report = crate::validation::validate(file, false)?;
     let validation_diagnostics = diagnostics_from_report(&validation_report);
@@ -103,8 +107,35 @@ fn check_report(file: &str) -> CliResult<Value> {
         invariant_diagnostics,
     ));
 
-    let family = package_type(file)?;
+    if run_office_check {
+        checks.push(crate::conformance_office::conformance_office_open_check(
+            file,
+            family,
+            office_check_out_dir,
+        )?);
+    }
+
     Ok(finish_report(file, family, checks))
+}
+
+fn optional_string_flag<'a>(args: &'a [String], name: &str) -> CliResult<Option<&'a str>> {
+    let prefix = format!("{name}=");
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        if arg == name {
+            return args
+                .get(i + 1)
+                .map(String::as_str)
+                .map(Some)
+                .ok_or_else(|| CliError::invalid_args(format!("{name} requires a value")));
+        }
+        if let Some(value) = arg.strip_prefix(&prefix) {
+            return Ok(Some(value));
+        }
+        i += 1;
+    }
+    Ok(None)
 }
 
 fn diagnostics_from_report(report: &Value) -> Vec<Value> {
@@ -232,6 +263,18 @@ fn check_text(report: &Value) -> String {
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 out.push_str(&format!("    [{severity}] {code}: {message}\n"));
+            }
+        }
+        if let Some(office_check) = check.get("officeCheck") {
+            if let Some(error) = office_check.get("error").and_then(Value::as_str)
+                && !error.is_empty()
+            {
+                out.push_str(&format!("    office-check: {error}\n"));
+            }
+            if let Some(output_path) = office_check.get("outputPath").and_then(Value::as_str)
+                && !output_path.is_empty()
+            {
+                out.push_str(&format!("    office-check-output: {output_path}\n"));
             }
         }
     }
