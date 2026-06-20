@@ -354,6 +354,11 @@ Latest milestone, 2026-06-20:
   `ensure_docx_body_table_scaffolds_xml` and
   `ensure_docx_table_scaffold_fragment` available through the same
   `docx_xml` facade while leaving generic XML range walkers in place.
+- DOCX body paragraph mutation helpers moved from `src/docx_xml.rs` into
+  `src/docx_xml/body_paragraphs.rs`, keeping append/insert/set/clear,
+  paragraph replacement, section-property insertion, and paragraph rendering
+  behind the same `docx_xml` facade while leaving shared text-child rendering
+  and generic XML range walkers in place.
 - XLSX range export, JSON range rendering, data-out writing, data-format
   normalization, and range max-cell guards moved from `src/main.rs` into
   `src/xlsx_ranges.rs`.
