@@ -239,6 +239,340 @@ fn xlsx_ranges_set_formula_recalc_metadata_matches_go_oracle() {
 }
 
 #[test]
+fn xlsx_freeze_show_set_clear_matches_go_oracle_and_saved_output() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-freeze-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    let go_frozen_path = temp_dir.join("go-frozen.xlsx");
+    let rust_frozen_path = temp_dir.join("rust-frozen.xlsx");
+    let go_cleared_path = temp_dir.join("go-cleared.xlsx");
+    let rust_cleared_path = temp_dir.join("rust-cleared.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("go input");
+    fs::copy(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &rust_in_path,
+    )
+    .expect("rust input");
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let go_frozen = go_frozen_path.to_string_lossy().to_string();
+    let rust_frozen = rust_frozen_path.to_string_lossy().to_string();
+    let go_cleared = go_cleared_path.to_string_lossy().to_string();
+    let rust_cleared = rust_cleared_path.to_string_lossy().to_string();
+
+    let show_go = ["--json", "xlsx", "freeze", "show", &go_in, "--sheet", "1"];
+    let show_rust = ["--json", "xlsx", "freeze", "show", &rust_in, "--sheet", "1"];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&show_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&show_rust);
+    assert_eq!(rust_code, go_code, "initial show exit");
+    assert_eq!(rust_stderr, go_stderr, "initial show stderr");
+    assert_eq!(
+        scrub_path(rust_stdout.expect("rust initial show"), &rust_in, "[IN]"),
+        scrub_path(go_stdout.expect("go initial show"), &go_in, "[IN]"),
+        "initial show stdout"
+    );
+
+    let set_go = [
+        "--json", "xlsx", "freeze", "set", &go_in, "--sheet", "1", "--rows", "1", "--cols", "1",
+        "--out", &go_frozen,
+    ];
+    let set_rust = [
+        "--json",
+        "xlsx",
+        "freeze",
+        "set",
+        &rust_in,
+        "--sheet",
+        "1",
+        "--rows",
+        "1",
+        "--cols",
+        "1",
+        "--out",
+        &rust_frozen,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&set_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&set_rust);
+    assert_eq!(rust_code, go_code, "set exit");
+    assert_eq!(rust_stderr, go_stderr, "set stderr");
+    let rust_set = rust_stdout.expect("rust set stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_set.clone(),
+            &[(&rust_in, "[IN]"), (&rust_frozen, "[FROZEN]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go set stdout"),
+            &[(&go_in, "[IN]"), (&go_frozen, "[FROZEN]")]
+        ),
+        "set stdout"
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_set, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_set, "showCommand");
+
+    let show_go_frozen = [
+        "--json", "xlsx", "freeze", "show", &go_frozen, "--sheet", "1",
+    ];
+    let show_rust_frozen = [
+        "--json",
+        "xlsx",
+        "freeze",
+        "show",
+        &rust_frozen,
+        "--sheet",
+        "1",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&show_go_frozen);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&show_rust_frozen);
+    assert_eq!(rust_code, go_code, "frozen show exit");
+    assert_eq!(rust_stderr, go_stderr, "frozen show stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust frozen show"),
+            &rust_frozen,
+            "[FROZEN]"
+        ),
+        scrub_path(go_stdout.expect("go frozen show"), &go_frozen, "[FROZEN]"),
+        "frozen show stdout"
+    );
+
+    let clear_go = [
+        "--json",
+        "xlsx",
+        "freeze",
+        "clear",
+        &go_frozen,
+        "--sheet",
+        "1",
+        "--out",
+        &go_cleared,
+    ];
+    let clear_rust = [
+        "--json",
+        "xlsx",
+        "freeze",
+        "clear",
+        &rust_frozen,
+        "--sheet",
+        "1",
+        "--out",
+        &rust_cleared,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&clear_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&clear_rust);
+    assert_eq!(rust_code, go_code, "clear exit");
+    assert_eq!(rust_stderr, go_stderr, "clear stderr");
+    let rust_clear = rust_stdout.expect("rust clear stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_clear.clone(),
+            &[(&rust_frozen, "[FROZEN]"), (&rust_cleared, "[CLEARED]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go clear stdout"),
+            &[(&go_frozen, "[FROZEN]"), (&go_cleared, "[CLEARED]")]
+        ),
+        "clear stdout"
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_clear, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_clear, "showCommand");
+
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
+        "--json",
+        "xlsx",
+        "freeze",
+        "show",
+        &go_cleared,
+        "--sheet",
+        "1",
+    ]);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "freeze",
+        "show",
+        &rust_cleared,
+        "--sheet",
+        "1",
+    ]);
+    assert_eq!(rust_code, go_code, "cleared show exit");
+    assert_eq!(rust_stderr, go_stderr, "cleared show stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust cleared show"),
+            &rust_cleared,
+            "[CLEARED]"
+        ),
+        scrub_path(
+            go_stdout.expect("go cleared show"),
+            &go_cleared,
+            "[CLEARED]"
+        ),
+        "cleared show stdout"
+    );
+    assert!(
+        !read_zip_string(&rust_cleared_path, "xl/worksheets/sheet1.xml").contains("<pane"),
+        "clear should remove frozen pane"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_freeze_dry_run_and_errors_match_go_oracle() {
+    type BadFreezeCase<'a> = (
+        Vec<&'a str>,
+        Vec<&'a str>,
+        Vec<(&'a str, &'a str)>,
+        Vec<(&'a str, &'a str)>,
+    );
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-freeze-errors-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("go input");
+    fs::copy(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &rust_in_path,
+    )
+    .expect("rust input");
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+
+    let dry_go = [
+        "--json",
+        "xlsx",
+        "freeze",
+        "set",
+        &go_in,
+        "--sheet",
+        "1",
+        "--rows",
+        "2",
+        "--dry-run",
+    ];
+    let dry_rust = [
+        "--json",
+        "xlsx",
+        "freeze",
+        "set",
+        &rust_in,
+        "--sheet",
+        "1",
+        "--rows",
+        "2",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
+    assert_eq!(rust_code, go_code, "dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "dry-run stderr");
+    assert_eq!(
+        scrub_path(rust_stdout.expect("rust dry-run stdout"), &rust_in, "[IN]"),
+        scrub_path(go_stdout.expect("go dry-run stdout"), &go_in, "[IN]"),
+        "dry-run stdout"
+    );
+    assert!(
+        !read_zip_string(&rust_in_path, "xl/worksheets/sheet1.xml").contains("<pane"),
+        "dry-run should not mutate source workbook"
+    );
+
+    let go_out = temp_dir.join("go-out.xlsx").to_string_lossy().to_string();
+    let rust_out = temp_dir.join("rust-out.xlsx").to_string_lossy().to_string();
+    let bad_cases: Vec<BadFreezeCase<'_>> = vec![
+        (
+            vec![
+                "--json", "xlsx", "freeze", "set", &go_in, "--sheet", "1", "--rows", "0", "--cols",
+                "0", "--out", &go_out,
+            ],
+            vec![
+                "--json", "xlsx", "freeze", "set", &rust_in, "--sheet", "1", "--rows", "0",
+                "--cols", "0", "--out", &rust_out,
+            ],
+            vec![(&go_in, "[IN]"), (&go_out, "[OUT]")],
+            vec![(&rust_in, "[IN]"), (&rust_out, "[OUT]")],
+        ),
+        (
+            vec![
+                "--json", "xlsx", "freeze", "set", &go_in, "--sheet", "1", "--rows", "1048576",
+                "--out", &go_out,
+            ],
+            vec![
+                "--json", "xlsx", "freeze", "set", &rust_in, "--sheet", "1", "--rows", "1048576",
+                "--out", &rust_out,
+            ],
+            vec![(&go_in, "[IN]"), (&go_out, "[OUT]")],
+            vec![(&rust_in, "[IN]"), (&rust_out, "[OUT]")],
+        ),
+        (
+            vec![
+                "--json",
+                "xlsx",
+                "freeze",
+                "set",
+                &go_in,
+                "--sheet",
+                "1",
+                "--rows",
+                "1",
+                "--expect-state",
+                "frozen",
+                "--out",
+                &go_out,
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "freeze",
+                "set",
+                &rust_in,
+                "--sheet",
+                "1",
+                "--rows",
+                "1",
+                "--expect-state",
+                "frozen",
+                "--out",
+                &rust_out,
+            ],
+            vec![(&go_in, "[IN]"), (&go_out, "[OUT]")],
+            vec![(&rust_in, "[IN]"), (&rust_out, "[OUT]")],
+        ),
+        (
+            vec![
+                "--json", "xlsx", "freeze", "clear", &go_in, "--sheet", "1", "--out", &go_out,
+            ],
+            vec![
+                "--json", "xlsx", "freeze", "clear", &rust_in, "--sheet", "1", "--out", &rust_out,
+            ],
+            vec![(&go_in, "[IN]"), (&go_out, "[OUT]")],
+            vec![(&rust_in, "[IN]"), (&rust_out, "[OUT]")],
+        ),
+    ];
+    for (go_args, rust_args, go_paths, rust_paths) in bad_cases {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+        assert_eq!(rust_code, go_code, "bad case exit for {go_args:?}");
+        assert_eq!(rust_stdout, go_stdout, "bad case stdout for {go_args:?}");
+        assert_eq!(
+            scrub_paths(rust_stderr.expect("rust bad case stderr"), &rust_paths),
+            scrub_paths(go_stderr.expect("go bad case stderr"), &go_paths),
+            "bad case stderr for {go_args:?}"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_workbook_metadata_inspect_matches_go_oracle() {
     assert_go_rust_match(&[
         "--json",

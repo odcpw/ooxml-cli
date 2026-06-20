@@ -464,6 +464,19 @@ Latest milestone, 2026-06-20:
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all passed after the split with the same 4 ZIP guard unit tests plus 81 Rust
   contract tests.
+- Rust XLSX freeze-pane parity landed for `xlsx freeze show/set/clear`.
+  The slice matches the Go oracle for unfrozen/frozen readback JSON, saved
+  mutation JSON, generated `validateCommand` and `showCommand` fields, dry-run
+  output, invalid row/column guards, stale `--expect-state` guards, and clear
+  failure on unfrozen sheets. The implementation lives in focused
+  `src/xlsx_freeze.rs`, keeping sheet-view pane XML mutation out of the shared
+  XLSX mutation and table modules. Proof: `cargo fmt --check`, `cargo
+  check --all-targets`, focused `xlsx_freeze` Go-oracle tests, capability
+  ratchet tests, `cargo clippy --all-targets -- -D warnings`, and `cargo test
+  --all-targets` passed with 4 ZIP guard unit tests plus 83 Rust contract tests.
+  A Rust-generated frozen workbook passed Rust `validate --strict`, Microsoft
+  Open XML SDK validation (`Valid: true`, `ErrorCount: 0`), and desktop Excel
+  COM open proof (`1 passed, 0 failed`).
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
@@ -657,7 +670,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 73, and the harness pins the 217-command gap until
+  paths, Rust advertises 76, and the harness pins the 214-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -711,6 +724,11 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   commands, stale `--expect-ref` guards, invalid-name/error parity, sheet/range
   ref construction, empty defined-name cleanup, capability indexing, and strict
   validation of saved outputs
+- `--json xlsx freeze show/set/clear <xlsx>` with Go-oracle comparison for
+  unfrozen/frozen readback, saved mutation JSON, generated validation/readback
+  commands, dry-run behavior, invalid row/column bounds, stale
+  `--expect-state` guards, unfrozen clear errors, capability indexing, strict
+  validation, Open XML SDK schema validation, and desktop Excel COM open proof
 - `--json xlsx tables list <xlsx>` and `--json xlsx tables show <xlsx>` with
   Go-oracle comparison for generated table workbooks, table metadata, columns,
   bridge command templates, `capabilities --for table`, and stable table

@@ -32,6 +32,7 @@ mod validation;
 mod vba;
 mod verify;
 mod xlsx_formula_recalc;
+mod xlsx_freeze;
 mod xlsx_metadata;
 mod xlsx_model;
 mod xlsx_mutation;
