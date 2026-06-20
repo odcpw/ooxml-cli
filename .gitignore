@@ -58,6 +58,7 @@ __pycache__/
 /.codex/
 /.claude/
 /refactor/
+/proofs/
 
 # OOXML web workbench local state
 /web/node_modules/
