@@ -10,6 +10,7 @@ mod cli_dispatch;
 mod command_text;
 mod completion;
 mod conformance;
+mod conformance_invariants;
 mod diff;
 mod doctor;
 mod docx_block_commands;
@@ -414,7 +415,7 @@ fn is_text_utility_command(args: &[String]) -> bool {
         [cmd, ..] if cmd == "find" => true,
         [cmd, ..] if cmd == "robot-docs" || cmd == "agent" => true,
         [cmd, ..] if cmd == "completion" => true,
-        [cmd, sub, ..] if cmd == "conformance" && sub == "coverage" => true,
+        [cmd, sub, ..] if cmd == "conformance" && (sub == "coverage" || sub == "check") => true,
         _ => false,
     }
 }

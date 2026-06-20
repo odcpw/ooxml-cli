@@ -32,7 +32,7 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
     (
         &["conformance"],
         "Show Rust-supported conformance reports.",
-        "Rust currently exposes static conformance coverage. Go's repair-invariant `conformance check` is intentionally unported until Rust can reproduce it without wrapping validation as a placeholder.",
+        "Rust exposes static conformance coverage and a hidden repair-invariant `conformance check` slice. The check command stays unadvertised until Office-open and full Go parity are promoted.",
         &[],
     ),
     (
@@ -443,8 +443,8 @@ fn group_help(topic: &[String]) -> CliResult<String> {
         out.push_str(&render_children(&children));
     }
     if topic_matches(topic, &["conformance"]) {
-        out.push_str("\nIntentionally Unported:\n");
-        out.push_str("  check  Go's repair-invariant check is not yet reproduced in Rust; use `ooxml validate --strict <file>` plus `ooxml --json conformance coverage`.\n");
+        out.push_str("\nHidden/Unadvertised:\n");
+        out.push_str("  check  Runs the Rust-native package-open, repo-validation, and repair-invariant slice; not advertised until Office-open and full Go parity are promoted.\n");
     }
     out.push_str("\nGlobal Flags:\n");
     out.push_str(global_flags_text());
@@ -478,7 +478,7 @@ fn leaf_help(topic: &[String], command: &Value) -> String {
 }
 
 fn conformance_check_gap_help() -> String {
-    "Go `ooxml conformance check` runs package-open, repo-validation, repair-invariants, and optional office-open checks.\n\nThe Rust port does not yet reproduce the repair-invariant stage, so this command remains intentionally unimplemented and unadvertised.\n\nUse:\n  ooxml validate --strict <file>\n  ooxml --json conformance coverage\n".to_string()
+    "Go `ooxml conformance check` runs package-open, repo-validation, repair-invariants, and optional office-open checks.\n\nRust now has a hidden native repair-invariant slice for package-open, repo-validation, content-type/relationship/root/count/order checks. The command remains unadvertised until --office-check and the full Go invariant surface are promoted.\n\nUse:\n  ooxml --json conformance check <file>\n  ooxml --json conformance coverage\n".to_string()
 }
 
 fn available_children(topic: &[String]) -> Vec<(String, String)> {

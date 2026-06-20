@@ -1,19 +1,241 @@
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::cli_dispatch::{DispatchBody, DispatchOutput};
-use crate::{CliError, CliResult, EXIT_SUCCESS, GlobalFlags, has_flag, reject_unknown_flags};
+use crate::{
+    CliError, CliResult, EXIT_SUCCESS, EXIT_VALIDATION_FAILED, GlobalFlags, has_flag, package_type,
+    reject_unknown_flags,
+};
 
 pub(crate) fn conformance(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {
     match args {
         [sub, rest @ ..] if sub == "coverage" => coverage(flags, rest),
-        [sub, ..] if sub == "check" => Err(CliError::invalid_args(
-            "unsupported Rust-port contract command: conformance check",
-        )),
+        [sub, rest @ ..] if sub == "check" => check(flags, rest),
         _ => Err(CliError::invalid_args(format!(
             "unsupported Rust-port contract command: conformance {}",
             args.join(" ")
         ))),
     }
+}
+
+fn check(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {
+    reject_unknown_flags(
+        args,
+        &["--format", "--office-check-out-dir"],
+        &["--json", "--office-check"],
+    )?;
+    if has_flag(args, "--office-check") {
+        return Err(CliError::invalid_args(
+            "Rust conformance check has not ported --office-check; command remains unadvertised until office-open parity is available",
+        ));
+    }
+    let file = conformance_check_file_arg(args)?;
+    let report = check_report(file)?;
+    let exit_code = if report
+        .get("status")
+        .and_then(Value::as_str)
+        .is_some_and(|status| status == "failed")
+    {
+        EXIT_VALIDATION_FAILED
+    } else {
+        EXIT_SUCCESS
+    };
+    if flags.json || has_flag(args, "--json") || local_format_json(args) {
+        Ok(DispatchOutput {
+            body: DispatchBody::Json(report),
+            exit_code,
+        })
+    } else {
+        Ok(DispatchOutput {
+            body: DispatchBody::Text(check_text(&report)),
+            exit_code,
+        })
+    }
+}
+
+fn conformance_check_file_arg(args: &[String]) -> CliResult<&str> {
+    let mut file = None;
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        match arg {
+            "--json" | "--office-check" => i += 1,
+            "--format" | "-f" | "--office-check-out-dir" => {
+                if args.get(i + 1).is_none() {
+                    return Err(CliError::invalid_args(format!("{arg} requires a value")));
+                }
+                i += 2;
+            }
+            _ if arg.starts_with("--format=") || arg.starts_with("-f=") => i += 1,
+            _ if arg.starts_with("--office-check-out-dir=") => i += 1,
+            _ if arg.starts_with("--") => {
+                return Err(CliError::invalid_args(format!("unknown flag: {arg}")));
+            }
+            _ => {
+                if file.is_some() {
+                    return Err(CliError::invalid_args(
+                        "conformance check accepts exactly one file argument",
+                    ));
+                }
+                file = Some(arg);
+                i += 1;
+            }
+        }
+    }
+    file.ok_or_else(|| {
+        CliError::invalid_args("conformance check requires exactly one file argument")
+    })
+}
+
+fn check_report(file: &str) -> CliResult<Value> {
+    let mut checks = Vec::new();
+    checks.push(json!({"name": "package-open", "status": "passed"}));
+
+    let validation_report = crate::validation::validate(file, false)?;
+    let validation_diagnostics = diagnostics_from_report(&validation_report);
+    checks.push(check_with_diagnostics(
+        "repo-validation",
+        validation_diagnostics,
+    ));
+
+    let invariant_diagnostics = crate::conformance_invariants::check_repair_invariants(file)?;
+    checks.push(check_with_diagnostics(
+        "repair-invariants",
+        invariant_diagnostics,
+    ));
+
+    let family = package_type(file)?;
+    Ok(finish_report(file, family, checks))
+}
+
+fn diagnostics_from_report(report: &Value) -> Vec<Value> {
+    report
+        .get("diagnostics")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn check_with_diagnostics(name: &str, diagnostics: Vec<Value>) -> Value {
+    let mut check = Map::new();
+    check.insert("name".to_string(), json!(name));
+    check.insert("status".to_string(), json!(diagnostic_status(&diagnostics)));
+    if !diagnostics.is_empty() {
+        check.insert("diagnostics".to_string(), Value::Array(diagnostics));
+    }
+    Value::Object(check)
+}
+
+fn diagnostic_status(diagnostics: &[Value]) -> &'static str {
+    if diagnostics
+        .iter()
+        .any(|diag| diag.get("severity").and_then(Value::as_str) == Some("error"))
+    {
+        "failed"
+    } else if diagnostics
+        .iter()
+        .any(|diag| diag.get("severity").and_then(Value::as_str) == Some("warning"))
+    {
+        "warning"
+    } else {
+        "passed"
+    }
+}
+
+fn finish_report(file: &str, family: &str, checks: Vec<Value>) -> Value {
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+    let mut warnings = 0usize;
+    let mut skipped = 0usize;
+    let mut errors = 0usize;
+    for check in &checks {
+        match check
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+        {
+            "failed" => failed += 1,
+            "warning" => warnings += 1,
+            "skipped" => skipped += 1,
+            _ => passed += 1,
+        }
+        if let Some(diagnostics) = check.get("diagnostics").and_then(Value::as_array) {
+            errors += diagnostics
+                .iter()
+                .filter(|diag| diag.get("severity").and_then(Value::as_str) == Some("error"))
+                .count();
+        }
+    }
+    let status = if failed > 0 {
+        "failed"
+    } else if warnings > 0 {
+        "warning"
+    } else {
+        "passed"
+    };
+    json!({
+        "schemaVersion": "ooxml-cli.conformance.v1",
+        "file": file,
+        "family": family,
+        "status": status,
+        "checks": checks,
+        "summary": {
+            "passed": passed,
+            "failed": failed,
+            "warnings": warnings,
+            "skipped": skipped,
+            "errors": errors,
+        },
+    })
+}
+
+fn check_text(report: &Value) -> String {
+    let file = report
+        .get("file")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let family = report
+        .get("family")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let status = report
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let mut out = format!("File: {file}\nFamily: {family}\nStatus: {status}\n\nChecks:\n");
+    for check in report
+        .get("checks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let name = check
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let status = check
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        out.push_str(&format!("  [{status}] {name}\n"));
+        if let Some(diagnostics) = check.get("diagnostics").and_then(Value::as_array) {
+            for diagnostic in diagnostics {
+                let severity = diagnostic
+                    .get("severity")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let code = diagnostic
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let message = diagnostic
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                out.push_str(&format!("    [{severity}] {code}: {message}\n"));
+            }
+        }
+    }
+    out
 }
 
 fn coverage(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {

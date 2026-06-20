@@ -222,7 +222,7 @@ fn root_and_parent_help_text_surfaces_are_useful() {
             &["conformance"],
             &[
                 "static conformance coverage",
-                "Intentionally Unported",
+                "Hidden/Unadvertised",
                 "conformance check",
             ],
         ),
@@ -348,12 +348,14 @@ fn go_and_rust_help_like_paths_share_success_shape() {
 }
 
 #[test]
-fn conformance_check_remains_unimplemented_until_repair_invariants_ported() {
+fn conformance_check_hidden_slice_is_runnable_but_unadvertised() {
+    // Known divergence for this hidden slice: Go supports optional --office-check;
+    // Rust rejects it until the integration lane promotes Office-open parity.
     let (help_code, help_stdout, help_stderr) = run_ooxml_raw(&["help", "conformance", "check"]);
     assert_eq!(help_code, 0);
     assert_eq!(help_stderr, "");
     assert!(help_stdout.contains("repair-invariant"));
-    assert!(help_stdout.contains("intentionally unimplemented"));
+    assert!(help_stdout.contains("unadvertised"));
 
     let (code, stdout, stderr) = run_ooxml(&[
         "--json",
@@ -361,21 +363,114 @@ fn conformance_check_remains_unimplemented_until_repair_invariants_ported() {
         "check",
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
     ]);
-    assert_eq!(code, 2);
-    assert_eq!(stdout, None);
-    let error = stderr.expect("conformance check stderr");
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    let report = stdout.expect("conformance check stdout");
+    assert_eq!(report["schemaVersion"], "ooxml-cli.conformance.v1");
+    assert_eq!(report["status"], "passed");
+    assert_eq!(report["summary"]["passed"], 3);
+
+    let (office_code, office_stdout, office_stderr) = run_ooxml(&[
+        "--json",
+        "conformance",
+        "check",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--office-check",
+    ]);
+    assert_eq!(office_code, 2);
+    assert_eq!(office_stdout, None);
+    let error = office_stderr.expect("office-check stderr");
     assert_eq!(error["error"]["code"], "invalid_args");
     assert!(
         error["error"]["message"]
             .as_str()
             .expect("error message")
-            .contains("unsupported Rust-port contract command: conformance check")
+            .contains("--office-check")
     );
+}
+
+#[test]
+fn conformance_check_matches_go_for_clean_representative_packages() {
+    for file in [
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "testdata/pptx/minimal-title/presentation.pptx",
+        "testdata/docx/minimal/document.docx",
+    ] {
+        assert_go_rust_match(&["--json", "conformance", "check", file]);
+    }
+}
+
+#[test]
+fn conformance_check_matches_go_for_repair_invariant_failures() {
+    // Provenance: both generated subjects below are deterministic mutations of
+    // testdata/xlsx/minimal-workbook/workbook.xlsx, compared against the Go CLI oracle.
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-conformance-invariants-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("conformance invariant temp dir");
+
+    let bad_content_type = temp_dir.join("workbook-content-type-mismatch.xlsx");
+    rewrite_zip_fixture(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &bad_content_type,
+        |name, data| {
+            if name == "[Content_Types].xml" {
+                Some((
+                    name.to_string(),
+                    replace_ascii(
+                        data,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml",
+                    ),
+                ))
+            } else {
+                Some((name.to_string(), data))
+            }
+        },
+    );
+    assert_go_rust_conformance_check_match(&bad_content_type);
+
+    let bad_order = temp_dir.join("worksheet-child-order.xlsx");
+    rewrite_zip_fixture(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &bad_order,
+        |name, data| {
+            if name == "xl/worksheets/sheet1.xml" {
+                Some((
+                    name.to_string(),
+                    replace_ascii(
+                        data,
+                        "  <sheetData>",
+                        "  <mergeCells count=\"0\"></mergeCells>\n  <sheetData>",
+                    ),
+                ))
+            } else {
+                Some((name.to_string(), data))
+            }
+        },
+    );
+    assert_go_rust_conformance_check_match(&bad_order);
 }
 
 #[test]
 fn conformance_coverage_matches_go_static_report() {
     assert_go_rust_match(&["--json", "conformance", "coverage"]);
+}
+
+fn assert_go_rust_conformance_check_match(file: &Path) {
+    let file = file.to_string_lossy().to_string();
+    let args = ["--json", "conformance", "check", file.as_str()];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+    assert_eq!(rust_code, go_code, "exit code for {file}");
+    assert_eq!(rust_stderr, go_stderr, "stderr for {file}");
+    assert_eq!(
+        rust_stdout.map(scrub_file_fields),
+        go_stdout.map(scrub_file_fields),
+        "stdout for {file}"
+    );
 }
 
 fn command_by_path<'a>(capabilities: &'a Value, path: &str) -> Option<&'a Value> {

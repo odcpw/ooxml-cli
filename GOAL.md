@@ -37,13 +37,16 @@ history.
   - `cargo check --all-targets` passed.
   - `cargo fmt --check` passed.
   - `cargo clippy --all-targets -- -D warnings` passed.
-  - `cargo test --all-targets` passed with 4 unit tests and 203 Rust contract
-    tests after the template leaf integration.
+  - `cargo test --all-targets` passed with 4 unit tests and 206 Rust contract
+    tests after the hidden conformance invariant slice.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
   - Current capability ratchet: Go advertises 290 command paths, Rust
     advertises 289, leaving 1 unported path after the exact `pptx diff`
     integration: `ooxml conformance check`.
+  - `ooxml conformance check` has a hidden Rust-native repair-invariant slice,
+    but remains unadvertised until the remaining Go invariant surface and
+    `--office-check` behavior are ported.
   - Open XML SDK validation and desktop PowerPoint COM open proof passed for the
     generated `template apply` and `pptx template compile` decks.
 

@@ -9,6 +9,16 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust `conformance check` now has a hidden Rust-native repair-invariant slice
+  instead of a placeholder: package open, strict repo validation, content-type
+  checks, relationship closure, known part roots, shared-string/style/worksheet
+  count and child-order checks, plus deterministic clean-fixture and broken-XLSX
+  parity tests. The command remains intentionally unadvertised until the full Go
+  invariant surface and `--office-check` behavior are ported. Rust capabilities
+  still advertise 289 Go-oracle command paths, leaving the pinned 1-command gap
+  `ooxml conformance check`. Proof: focused Go-vs-Rust conformance/utility
+  contract tests, targeted Go repair-invariant tests, full Rust contract suite,
+  fmt, and clippy.
 - Rust exact `pptx diff` routing landed for the semantic PPTX diff path. The
   slice preserves the existing top-level `diff` behavior, routes
   `pptx diff <baseline> <candidate>` through the PPTX-specific Go-shaped JSON
