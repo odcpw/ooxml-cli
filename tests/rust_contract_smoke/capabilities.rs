@@ -31,6 +31,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx shapes delete", false);
     assert_command(&all_caps, "ooxml pptx charts list", false);
     assert_command(&all_caps, "ooxml pptx charts show", false);
+    assert_command(&all_caps, "ooxml pptx charts set-title", false);
+    assert_command(&all_caps, "ooxml pptx charts set-legend", false);
+    assert_command(&all_caps, "ooxml pptx charts set-chart-area-fill", false);
+    assert_command(&all_caps, "ooxml pptx charts set-plot-area-fill", false);
+    assert_command(&all_caps, "ooxml pptx charts set-series-style", false);
     assert_command(&all_caps, "ooxml pptx tables show", false);
     assert_command(&all_caps, "ooxml pptx tables set-cell", true);
     assert_command(&all_caps, "ooxml pptx tables delete-row", true);
@@ -153,6 +158,19 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command_target_kind(&all_caps, "ooxml pptx charts list", "chart");
     assert_command_target_kind(&all_caps, "ooxml pptx charts show", "slide");
     assert_command_target_kind(&all_caps, "ooxml pptx charts show", "chart");
+    for path in [
+        "ooxml pptx charts set-title",
+        "ooxml pptx charts set-legend",
+        "ooxml pptx charts set-chart-area-fill",
+        "ooxml pptx charts set-plot-area-fill",
+        "ooxml pptx charts set-series-style",
+    ] {
+        assert_object_kind_command(&all_caps, "chart", path);
+        assert_object_kind_command(&all_caps, "style", path);
+        assert_command_target_kind(&all_caps, path, "slide");
+        assert_command_target_kind(&all_caps, path, "chart");
+        assert_command_target_kind(&all_caps, path, "style");
+    }
     assert_object_kind_command(&all_caps, "table", "ooxml pptx tables delete-col");
     assert_command_target_kind(&all_caps, "ooxml pptx tables delete-col", "slide");
     assert_command_target_kind(&all_caps, "ooxml pptx tables delete-col", "table");
@@ -435,6 +453,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx layouts show", false);
     assert_command(&pptx_caps, "ooxml pptx charts list", false);
     assert_command(&pptx_caps, "ooxml pptx charts show", false);
+    assert_command(&pptx_caps, "ooxml pptx charts set-title", false);
+    assert_command(&pptx_caps, "ooxml pptx charts set-legend", false);
+    assert_command(&pptx_caps, "ooxml pptx charts set-chart-area-fill", false);
+    assert_command(&pptx_caps, "ooxml pptx charts set-plot-area-fill", false);
+    assert_command(&pptx_caps, "ooxml pptx charts set-series-style", false);
     assert_command(&pptx_caps, "ooxml pptx tables show", false);
     assert_command(&pptx_caps, "ooxml pptx tables set-cell", true);
     assert_command(&pptx_caps, "ooxml pptx tables delete-row", true);
@@ -651,6 +674,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let chart_caps = chart_stdout.expect("chart capabilities");
     assert_command(&chart_caps, "ooxml pptx charts list", false);
     assert_command(&chart_caps, "ooxml pptx charts show", false);
+    assert_command(&chart_caps, "ooxml pptx charts set-title", false);
+    assert_command(&chart_caps, "ooxml pptx charts set-legend", false);
+    assert_command(&chart_caps, "ooxml pptx charts set-chart-area-fill", false);
+    assert_command(&chart_caps, "ooxml pptx charts set-plot-area-fill", false);
+    assert_command(&chart_caps, "ooxml pptx charts set-series-style", false);
     assert_no_command(&chart_caps, "ooxml pptx tables show");
 
     let (name_code, name_stdout, name_stderr) =
@@ -764,6 +792,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(style_code, 0);
     assert_eq!(style_stderr, None);
     let style_caps = style_stdout.expect("style capabilities");
+    assert_command(&style_caps, "ooxml pptx charts set-title", false);
+    assert_command(&style_caps, "ooxml pptx charts set-legend", false);
+    assert_command(&style_caps, "ooxml pptx charts set-chart-area-fill", false);
+    assert_command(&style_caps, "ooxml pptx charts set-plot-area-fill", false);
+    assert_command(&style_caps, "ooxml pptx charts set-series-style", false);
     assert_command(&style_caps, "ooxml xlsx ranges set-format", true);
     assert_command(&style_caps, "ooxml xlsx ranges set-style", false);
     assert_command(&style_caps, "ooxml docx styles list", false);
@@ -921,12 +954,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        152,
+        157,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        138,
+        133,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

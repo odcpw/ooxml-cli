@@ -430,6 +430,106 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             pptx_charts_show(file, slide, chart.as_deref())
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "charts" && verb == "set-title" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--chart",
+                    "--title",
+                    "--expect-title",
+                    "--font-family",
+                    "--font-size",
+                    "--font-color",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--font-bold",
+                    "--font-italic",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
+            )?;
+            pptx_charts_set_title(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "charts" && verb == "set-legend" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--chart",
+                    "--position",
+                    "--overlay",
+                    "--expect-position",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_charts_set_legend(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "charts" && verb == "set-chart-area-fill" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--chart",
+                    "--fill-color",
+                    "--expect-fill",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_charts_set_chart_area_fill(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "charts" && verb == "set-plot-area-fill" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--chart",
+                    "--fill-color",
+                    "--expect-fill",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_charts_set_plot_area_fill(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "charts" && verb == "set-series-style" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--chart",
+                    "--series",
+                    "--fill-color",
+                    "--line-color",
+                    "--line-width-pt",
+                    "--marker-symbol",
+                    "--marker-size",
+                    "--expect-series-count",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_charts_set_series_style(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "tables" && verb == "show" =>
         {
             reject_unknown_flags(rest, &["--slide", "--table-id", "--target"], &["--details"])?;

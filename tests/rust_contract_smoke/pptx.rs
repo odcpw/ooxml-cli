@@ -149,6 +149,197 @@ fn pptx_charts_list_show_json_and_errors_match_go_oracle() {
 }
 
 #[test]
+fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-chart-style-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("chart style temp dir");
+
+    assert_pptx_chart_saved_mutation_matches_go(
+        &temp_dir,
+        "set-title",
+        &[
+            "--slide",
+            "1",
+            "--chart",
+            "chart:1",
+            "--title",
+            "Rust Title",
+            "--expect-title",
+            "Revenue by Region",
+            "--font-family",
+            "Arial",
+            "--font-size",
+            "14",
+            "--font-color",
+            "#112233",
+            "--font-bold",
+        ],
+    );
+    assert_pptx_chart_saved_mutation_matches_go(
+        &temp_dir,
+        "set-legend",
+        &[
+            "--slide",
+            "1",
+            "--chart",
+            "chart:1",
+            "--position",
+            "bottom",
+            "--overlay=false",
+        ],
+    );
+    assert_pptx_chart_saved_mutation_matches_go(
+        &temp_dir,
+        "set-plot-area-fill",
+        &[
+            "--slide",
+            "1",
+            "--chart",
+            "chart:1",
+            "--fill-color",
+            "#F3F6FA",
+        ],
+    );
+    assert_pptx_chart_saved_mutation_matches_go(
+        &temp_dir,
+        "set-chart-area-fill",
+        &["--slide", "1", "--chart", "chart:1", "--fill-color", "none"],
+    );
+    assert_pptx_chart_saved_mutation_matches_go(
+        &temp_dir,
+        "set-series-style",
+        &[
+            "--slide",
+            "1",
+            "--chart",
+            "chart:1",
+            "--series",
+            "1",
+            "--fill-color",
+            "#AA5500",
+            "--line-color",
+            "#111111",
+            "--line-width-pt",
+            "2.25",
+            "--expect-series-count",
+            "1",
+        ],
+    );
+
+    let fixture = "testdata/pptx/chart-simple/presentation.pptx";
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "charts",
+        "set-title",
+        fixture,
+        "--slide",
+        "1",
+        "--chart",
+        "chart:1",
+        "--title",
+        "Dry Run Title",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "chart title dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "chart title dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust chart title dry-run stdout"),
+        go_stdout.expect("go chart title dry-run stdout"),
+        "chart title dry-run stdout"
+    );
+}
+
+fn assert_pptx_chart_saved_mutation_matches_go(
+    temp_dir: &Path,
+    command: &str,
+    extra_args: &[&str],
+) {
+    let fixture = "testdata/pptx/chart-simple/presentation.pptx";
+    let go_out = temp_dir.join(format!("go-{command}.pptx"));
+    let rust_out = temp_dir.join(format!("rust-{command}.pptx"));
+    let go_out_str = go_out.to_str().expect("go chart mutation output path");
+    let rust_out_str = rust_out.to_str().expect("rust chart mutation output path");
+
+    let mut go_args = vec!["--json", "pptx", "charts", command, fixture];
+    go_args.extend_from_slice(extra_args);
+    go_args.extend_from_slice(&["--out", go_out_str]);
+    let mut rust_args = vec!["--json", "pptx", "charts", command, fixture];
+    rust_args.extend_from_slice(extra_args);
+    rust_args.extend_from_slice(&["--out", rust_out_str]);
+
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "{command} exit");
+    assert_eq!(rust_stderr, go_stderr, "{command} stderr");
+    let rust_json = rust_stdout.unwrap_or_else(|| panic!("rust {command} stdout"));
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.unwrap_or_else(|| panic!("go {command} stdout")),
+            go_out_str,
+            "[OUT]"
+        ),
+        "{command} stdout"
+    );
+    assert!(go_out.exists(), "Go {command} output missing");
+    assert!(rust_out.exists(), "Rust {command} output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "chartShowCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let go_show_args = [
+        "--json",
+        "pptx",
+        "charts",
+        "show",
+        go_out_str,
+        "--slide",
+        "1",
+        "--chart",
+        "part:/ppt/charts/chart1.xml",
+    ];
+    let rust_show_args = [
+        "--json",
+        "pptx",
+        "charts",
+        "show",
+        rust_out_str,
+        "--slide",
+        "1",
+        "--chart",
+        "part:/ppt/charts/chart1.xml",
+    ];
+    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&go_show_args);
+    let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&rust_show_args);
+    assert_eq!(rust_show_code, go_show_code, "{command} readback exit");
+    assert_eq!(
+        rust_show_stderr, go_show_stderr,
+        "{command} readback stderr"
+    );
+    assert_eq!(
+        scrub_path(
+            rust_show_stdout.unwrap_or_else(|| panic!("rust {command} readback")),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_show_stdout.unwrap_or_else(|| panic!("go {command} readback")),
+            go_out_str,
+            "[OUT]"
+        ),
+        "{command} readback stdout"
+    );
+}
+
+#[test]
 fn frozen_pptx_mutation_and_validate_match_go_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-contract-{}", std::process::id()));

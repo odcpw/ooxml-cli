@@ -1,3 +1,4 @@
+mod charts;
 mod comments;
 mod notes;
 mod replace;
@@ -5,6 +6,10 @@ mod shapes;
 mod slides;
 mod tables;
 
+pub(crate) use charts::{
+    pptx_charts_set_chart_area_fill, pptx_charts_set_legend, pptx_charts_set_plot_area_fill,
+    pptx_charts_set_series_style, pptx_charts_set_title,
+};
 pub(crate) use comments::{pptx_comments_add, pptx_comments_edit, pptx_comments_remove};
 pub(crate) use notes::{pptx_notes_clear, pptx_notes_set};
 pub(crate) use replace::{pptx_replace_images, pptx_replace_text_occurrences};

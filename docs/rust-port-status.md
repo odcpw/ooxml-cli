@@ -9,6 +9,23 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX chart style mutation parity landed for direct `pptx charts
+  set-title`, `set-legend`, `set-chart-area-fill`, `set-plot-area-fill`, and
+  `set-series-style`. The slice mutates embedded chart title text/font fields,
+  legend position/overlay, chart-area and plot-area fills, and per-series
+  fill/line styling while preserving Go-shaped saved-output, dry-run, readback,
+  and error behavior. Rust capabilities now advertise 157 Go-oracle command
+  paths, leaving a pinned 133-command gap; these commands are direct CLI
+  mutations with `opCompatible=false` because serve/MCP operation dispatch is
+  not wired for `pptx charts` yet. Proof: focused Go-vs-Rust chart style
+  mutation tests; focused capability ratchet/discovery tests; strict validation
+  for all five generated proof decks; Open XML SDK Office2019 comparison
+  showing the same inherited 12 `/ppt/charts/chart2.xml` axis schema errors in
+  the source fixture and all five proof decks, with no new mutation-added
+  errors; PowerPoint COM open oracle for all five proof decks; `cargo fmt
+  --check`; `cargo check --all-targets`; `cargo clippy --all-targets -- -D
+  warnings`; and `cargo test --all-targets` passed with 4 ZIP guard unit tests
+  plus 145 Rust contract tests.
 - Rust XLSX chart style mutation parity landed for direct `xlsx charts
   set-title`, `set-legend`, `set-chart-area-fill`, `set-plot-area-fill`, and
   `set-series-style`. The slice mutates chart title text/font fields, legend
@@ -1258,7 +1275,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 152, and the harness pins the 138-command gap until
+  paths, Rust advertises 157, and the harness pins the 133-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

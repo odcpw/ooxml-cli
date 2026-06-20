@@ -648,7 +648,10 @@ fn inspect_series_style(ser: &XmlNode, number: usize) -> Value {
                 }
             }
             if let Some(width) = ln.attr("w").and_then(|v| v.trim().parse::<f64>().ok()) {
-                style.insert("lineWidthPt".to_string(), json!(width / 12700.0));
+                style.insert(
+                    "lineWidthPt".to_string(),
+                    json_style_number(width / 12700.0),
+                );
             }
         }
     }
@@ -723,7 +726,7 @@ fn inspect_font(r_pr: &XmlNode) -> Option<Value> {
         .attr("sz")
         .and_then(|value| value.trim().parse::<f64>().ok())
     {
-        font.insert("sizePt".to_string(), json!(size / 100.0));
+        font.insert("sizePt".to_string(), json_style_number(size / 100.0));
     }
     if let Some(bold) = r_pr.attr("b") {
         font.insert("bold".to_string(), json!(parse_ooxml_bool(bold)));
@@ -789,6 +792,14 @@ fn axis_kind(element: &str) -> &'static str {
         "dateAx" => "date",
         "serAx" => "series",
         _ => "category",
+    }
+}
+
+fn json_style_number(value: f64) -> Value {
+    if value.is_finite() && value.fract() == 0.0 {
+        json!(value as i64)
+    } else {
+        json!(value)
     }
 }
 
