@@ -490,18 +490,19 @@ Latest milestone, 2026-06-20:
   existing table, expands the table and autoFilter ranges, reuses the shared
   XLSX range writer for cell XML/formula handling, rejects totals/calculated
   columns/unsafe overwrites, and emits validation, range readback, and table
-  readback commands matching the Go oracle. Rust capabilities still do not
-  advertise `append-rows` because serve/MCP operation routing has not yet been
-  promoted for that path; `xlsx tables list/show` already emit the command
-  template and it is executable in Rust direct CLI. Proof: `cargo fmt
+  readback commands matching the Go oracle. It is now advertised in Rust
+  capabilities and supported through serve/MCP operation routing because the Go
+  oracle advertises it as op-compatible. Rust capabilities now advertise 78
+  Go-oracle command paths, leaving a pinned 212-command gap. Proof: `cargo fmt
   --check`, `cargo check --all-targets`, focused `xlsx_tables_append_rows`
-  Go-oracle tests, focused `xlsx_tables` tests, the Go capability subset
-  ratchet, `cargo clippy --all-targets -- -D warnings`, and `cargo test
-  --all-targets` passed with 4 ZIP guard unit tests plus 85 Rust contract tests.
-  A Rust-generated appended
-  workbook at `.tmp\xlsx-tables-append-rows\rust-append-rows.xlsx` passed Rust
+  Go-oracle tests, focused `xlsx_tables` tests, focused serve-op and capability
+  tests, MCP command-resource coverage, `cargo clippy --all-targets -- -D
+  warnings`, and `cargo test --all-targets` passed with 4 ZIP guard unit tests
+  plus 89 Rust contract tests. A Rust-generated appended workbook at
+  `.tmp\xlsx-tables-append-rows-promotion\rust-append-rows.xlsx` passed Rust
   `validate --strict`, Microsoft Open XML SDK validation (`Valid: true`,
-  `ErrorCount: 0`), and desktop Excel COM open proof (`1 passed, 0 failed`).
+  `ErrorCount: 0`, schema `Office2019`), and desktop Excel COM open proof
+  (`1 passed, 0 failed`).
 - Rust XLSX table append-record parity landed for
   `xlsx tables append-records`. The slice decodes inline/file JSON records,
   maps fields to exact table column names, enforces `--expect-range`, missing
@@ -795,10 +796,8 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   mutation JSON, dry-run output, generated validation/range/table readback
   commands, table and autoFilter range expansion, appended range readback,
   invalid column-count errors, strict validation, Open XML SDK schema
-  validation, and desktop Excel COM open proof. This direct command is not yet
-  direct-advertised in Rust capabilities because the frozen Go capability
-  inventory omits the path; table list/show command templates remain the
-  discoverability path for now.
+  validation, desktop Excel COM open proof, capability indexing, serve operation
+  routing, and MCP command-resource discovery
 - `--json xlsx tables append-records <xlsx>` with Go-oracle comparison for
   saved mutation JSON, dry-run output/templates, generated validation/range/table
   readback commands, table and autoFilter range expansion, appended range

@@ -90,6 +90,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments add");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments edit");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments remove");
+    assert_object_kind_command(&all_caps, "table", "ooxml xlsx tables append-rows");
+    assert_object_kind_command(&all_caps, "range", "ooxml xlsx tables append-rows");
+    assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx tables append-rows");
     assert_object_kind_command(&all_caps, "table", "ooxml xlsx tables append-records");
     assert_object_kind_command(&all_caps, "range", "ooxml xlsx tables append-records");
     assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx tables append-records");
@@ -151,6 +154,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx tables list", false);
     assert_command(&xlsx_caps, "ooxml xlsx tables show", false);
     assert_command(&xlsx_caps, "ooxml xlsx tables export", false);
+    assert_command(&xlsx_caps, "ooxml xlsx tables append-rows", true);
     assert_command(&xlsx_caps, "ooxml xlsx tables append-records", true);
     assert_command(&xlsx_caps, "ooxml xlsx names list", false);
     assert_command(&xlsx_caps, "ooxml xlsx names show", false);
@@ -170,6 +174,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml xlsx tables list", false);
     assert_command(&table_caps, "ooxml xlsx tables show", false);
     assert_command(&table_caps, "ooxml xlsx tables export", false);
+    assert_command(&table_caps, "ooxml xlsx tables append-rows", true);
     assert_command(&table_caps, "ooxml xlsx tables append-records", true);
     assert_command(&table_caps, "ooxml docx tables set-cell", true);
     assert_command(&table_caps, "ooxml docx tables clear-cell", true);
@@ -367,10 +372,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 77, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 78, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        213,
+        212,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

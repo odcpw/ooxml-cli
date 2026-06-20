@@ -1159,6 +1159,139 @@ fn serve_op_supports_xlsx_ranges_set_format() {
 }
 
 #[test]
+fn serve_op_supports_xlsx_tables_append_rows() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-table-append-rows-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("serve-table-append-rows-out.xlsx");
+    write_table_xlsx(&input);
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(
+        1,
+        "open",
+        serde_json::json!({"file": input_str, "out": output_str}),
+    );
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let op = rpc_request(
+        2,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx tables append-rows",
+            "args": {
+                "table": "Sales",
+                "values": [
+                    ["North", 30],
+                    ["South", 40]
+                ]
+            },
+        }),
+    );
+    let op_response = serve_roundtrip(&mut stdin, &mut reader, &op);
+    assert!(
+        op_response.get("error").is_none(),
+        "append-rows op failed: {op_response:?}"
+    );
+    let readback = &op_response["result"]["readback"];
+    assert_eq!(readback["rowsAppended"], Value::from(2));
+    assert_eq!(
+        readback["previousRange"],
+        Value::String("A1:B3".to_string())
+    );
+    assert_eq!(readback["range"], Value::String("A1:B5".to_string()));
+    assert_eq!(
+        readback["destination"]["appended"]["values"][0][0],
+        Value::String("North".to_string())
+    );
+    assert_eq!(
+        readback["destination"]["appended"]["values"][1][1],
+        serde_json::json!(40)
+    );
+
+    let plan = rpc_request(3, "plan", serde_json::json!({"session": session}));
+    let plan_response = serve_roundtrip(&mut stdin, &mut reader, &plan);
+    let argv = plan_response["result"]["plan"][0]["argv"]
+        .as_array()
+        .expect("planned argv");
+    assert_eq!(argv[2], Value::String("append-rows".to_string()));
+    assert!(
+        argv.iter()
+            .any(|arg| arg == &Value::String("--values".to_string()))
+    );
+
+    let commit = rpc_request(4, "commit", serde_json::json!({"session": session}));
+    let commit_response = serve_roundtrip(&mut stdin, &mut reader, &commit);
+    assert!(
+        commit_response.get("error").is_none(),
+        "commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+    assert_eq!(
+        commit_response["result"]["applied"][0]["readback"]["file"],
+        Value::String(output_str.clone())
+    );
+    assert_eq!(
+        commit_response["result"]["applied"][0]["readback"]["output"],
+        Value::String(output_str.clone())
+    );
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "append-rows serve output validate exit");
+    assert_eq!(
+        validate_stderr, None,
+        "append-rows serve output validate stderr"
+    );
+
+    let (export_code, export_stdout, export_stderr) = run_go_ooxml(&[
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &output_str,
+        "--sheet",
+        "Data",
+        "--range",
+        "A4:B5",
+        "--include-types",
+        "--include-formulas",
+    ]);
+    assert_eq!(export_code, 0, "Go export readback exit");
+    assert_eq!(export_stderr, None, "Go export readback stderr");
+    let export = export_stdout.expect("Go export readback");
+    assert_eq!(export["values"][0][0], Value::String("North".to_string()));
+    assert_eq!(export["values"][0][1], serde_json::json!(30));
+    assert_eq!(export["values"][1][0], Value::String("South".to_string()));
+    assert_eq!(export["values"][1][1], serde_json::json!(40));
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_op_supports_xlsx_tables_append_records() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-table-append-records-{}",

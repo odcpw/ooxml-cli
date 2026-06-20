@@ -2,9 +2,10 @@ use serde_json::{Value, json};
 
 use crate::{
     CliError, CliResult, XlsxCellsSetOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions,
-    XlsxTablesAppendRecordsOptions, XlsxWorkbookMetadataUpdateOptions, json_bool, json_i64,
-    json_optional_serialized, json_optional_string, json_string, xlsx_cells_set, xlsx_ranges_set,
-    xlsx_ranges_set_format, xlsx_tables_append_records, xlsx_workbook_metadata_update,
+    XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions, XlsxWorkbookMetadataUpdateOptions,
+    json_bool, json_i64, json_optional_serialized, json_optional_string, json_string,
+    xlsx_cells_set, xlsx_ranges_set, xlsx_ranges_set_format, xlsx_tables_append_records,
+    xlsx_tables_append_rows, xlsx_workbook_metadata_update,
 };
 
 use super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
@@ -138,6 +139,65 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 decimals,
                 currency_symbol,
                 max_cells,
+                readback_file: working.to_string(),
+                readback,
+            }
+        }
+        "xlsx tables append-rows" => {
+            let sheet = json_optional_string(args, "sheet");
+            let table = json_optional_string(args, "table");
+            let values = json_optional_serialized(args, "values")?;
+            let values_file = json_optional_string(args, "values-file")
+                .or_else(|| json_optional_string(args, "valuesFile"));
+            let data_format = json_optional_string(args, "data-format")
+                .or_else(|| json_optional_string(args, "dataFormat"));
+            let null_policy = json_optional_string(args, "null-policy")
+                .or_else(|| json_optional_string(args, "nullPolicy"));
+            let ragged = json_optional_string(args, "ragged");
+            let max_cells = json_i64(args, "max-cells")?
+                .or(json_i64(args, "maxCells")?)
+                .unwrap_or(100000);
+            let overwrite_formulas = json_bool(args, "overwrite-formulas")
+                .or_else(|| json_bool(args, "overwriteFormulas"))
+                .unwrap_or(false);
+            let readback = xlsx_tables_append_rows(
+                working,
+                XlsxTablesAppendRowsOptions {
+                    sheet: sheet.as_deref(),
+                    table: table.as_deref(),
+                    values: values.as_deref(),
+                    values_file: values_file.as_deref(),
+                    data_format: data_format.as_deref(),
+                    null_policy: null_policy.as_deref(),
+                    null_policy_present: null_policy.is_some(),
+                    ragged: ragged.as_deref(),
+                    max_cells,
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    no_validate: true,
+                    in_place: true,
+                    overwrite_formulas,
+                },
+            )?;
+            let mut plan_flags = Vec::new();
+            push_serve_plan_string_flag(&mut plan_flags, "--sheet", sheet.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--table", table.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--values", values.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--values-file", values_file.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--data-format", data_format.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--null-policy", null_policy.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--ragged", ragged.as_deref());
+            if max_cells != 100000 {
+                plan_flags.push(json!("--max-cells"));
+                plan_flags.push(json!(max_cells.to_string()));
+            }
+            if overwrite_formulas {
+                plan_flags.push(json!("--overwrite-formulas"));
+            }
+            ServeOp::XlsxTablesOp {
+                command: command.to_string(),
+                plan_flags,
                 readback_file: working.to_string(),
                 readback,
             }
