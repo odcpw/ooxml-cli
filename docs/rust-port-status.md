@@ -35,6 +35,14 @@ Latest milestone, 2026-06-20:
   `cargo fmt --check`; and `cargo clippy --all-targets -- -D warnings`.
   `ooxml conformance check` remains unadvertised pending a fresh promotion
   audit rather than assumption from the closed blocker list.
+- A fresh promotion audit after those blocker closures still says "not yet":
+  committed PPTX failure fixtures diverge in the `repo-validation` check.
+  Rust is missing Go-shaped `PPTX_MISSING_MEDIA`,
+  `PPTX_MISSING_SLIDE_RELATIONSHIP`, and `PPTX_STALE_MEDIA_REFERENCE`
+  diagnostics for `testdata/pptx/animations-stale-media/presentation.pptx`
+  and `testdata/pptx/corrupted-missing-media/presentation.pptx`. This keeps
+  `ooxml conformance check` hidden until the PPTX validation slice lands and a
+  follow-up promotion audit passes.
 - Rust `conformance check` now includes the focused Go-oracle spreadsheet
   semantic-reference invariant slice. The checks live in
   `src/conformance_invariants/spreadsheet_semantics.rs` and cover workbook

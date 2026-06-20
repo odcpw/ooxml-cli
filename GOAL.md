@@ -52,7 +52,10 @@ history.
     fresh promotion audit confirms that the previous red-team blockers are
     closed. Recently closed blocker set: `XLSX_WORKSHEET_HYPERLINK_REFERENCE`,
     `OOXML_RELS_READ_ERROR`, `OOXML_OPEN_FAILED`, `OOXML_VALIDATE_FAILED`, and
-    `OOXML_REPAIR_INVARIANT_FAILED`.
+    `OOXML_REPAIR_INVARIANT_FAILED`. Current promotion blocker: PPTX
+    repo-validation parity for `PPTX_MISSING_MEDIA`,
+    `PPTX_MISSING_SLIDE_RELATIONSHIP`, and `PPTX_STALE_MEDIA_REFERENCE` on
+    committed broken media fixtures.
   - The hidden conformance invariant engine was split at `951a227` into focused
     Rust modules under `src/conformance_invariants/` for content types,
     relationships, spec tables, XML-part checks, shared types, and utilities.
