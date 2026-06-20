@@ -7,6 +7,7 @@ mod content_types;
 mod deep_relationships;
 mod image_payloads;
 mod package;
+mod pptx_animations;
 mod references;
 mod relationships;
 mod spec;
@@ -21,6 +22,7 @@ use content_types::{check_content_types_coverage, collect_parts, parse_content_t
 use deep_relationships::check_part_deep_relationship_invariants;
 use image_payloads::check_part_image_payload_invariants;
 use package::{check_zip_entry_metadata, read_zip_entry_metadata};
+use pptx_animations::check_part_pptx_animation_invariants;
 use references::check_reference_list_invariants;
 use relationships::{check_package_relationship_closure, parse_relationship_part};
 use spec::check_known_part_content_type;
@@ -63,6 +65,7 @@ pub(crate) fn check_repair_invariants(file: &str) -> CliResult<Vec<Value>> {
             continue;
         }
         diagnostics.extend(check_part_xml_invariants(file, part)?);
+        diagnostics.extend(check_part_pptx_animation_invariants(file, part)?);
         diagnostics.extend(check_chart_structure_invariants(file, part));
         diagnostics.extend(check_table_pivot_invariants(file, part)?);
         diagnostics.extend(check_part_deep_relationship_invariants(
