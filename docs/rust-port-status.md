@@ -118,6 +118,10 @@ Latest milestone, 2026-06-20:
 - The top-level serve op dispatcher now routes XLSX and DOCX commands by
   family prefix, leaving exact command matching and unsupported-command
   fallbacks inside each child dispatcher.
+- DOCX CLI dispatch for text, block, style, comment, field, header/footer,
+  image, table, and paragraph commands moved from `src/cli_dispatch.rs` into
+  `src/cli_dispatch/docx.rs`, leaving the top-level CLI dispatcher responsible
+  for core command routing plus PPTX/XLSX families.
 - XLSX workbook metadata inspect/update types, XML readers, property renderers,
   and calc-setting mutation helpers moved from `src/main.rs` into
   `src/xlsx_metadata.rs`, keeping CLI and serve call sites stable through the
@@ -213,8 +217,8 @@ Latest milestone, 2026-06-20:
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
 - Proof after the latest split: `cargo test --test rust_contract_smoke
-  serve_op_rejects_unknown`, `cargo test --test rust_contract_smoke serve_op`,
-  `cargo test --test rust_contract_smoke capabilities`, `cargo fmt --check`,
+  docx_`, `cargo test --test rust_contract_smoke
+  frozen_cli_slice_matches_go_baseline -- --exact`, `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
   all pass with 78 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
