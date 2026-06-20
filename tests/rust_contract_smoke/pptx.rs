@@ -4429,6 +4429,332 @@ fn assert_go_rust_json_match_with_path_scrub(
 }
 
 #[test]
+fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_go_oracle() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-text-set-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx text set temp dir");
+
+    let fixture = "testdata/pptx/title-content/presentation.pptx";
+    let go_out = temp_dir.join("go-text-set.pptx");
+    let rust_out = temp_dir.join("rust-text-set.pptx");
+    let go_out_str = go_out.to_str().expect("go text set path");
+    let rust_out_str = rust_out.to_str().expect("rust text set path");
+
+    let go_args = [
+        "--json",
+        "pptx",
+        "text",
+        "set",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "title",
+        "--paragraph",
+        "0",
+        "--run-index",
+        "0",
+        "--bold",
+        "--italic",
+        "--font-size",
+        "28",
+        "--color",
+        "ff0000",
+        "--font-family",
+        "Arial",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "text",
+        "set",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "title",
+        "--paragraph",
+        "0",
+        "--run-index",
+        "0",
+        "--bold",
+        "--italic",
+        "--font-size",
+        "28",
+        "--color",
+        "ff0000",
+        "--font-family",
+        "Arial",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "text set saved exit");
+    assert_eq!(rust_stderr, go_stderr, "text set saved stderr");
+    let rust_json = rust_stdout.expect("rust text set stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(go_stdout.expect("go text set stdout"), go_out_str, "[OUT]"),
+        "text set saved stdout"
+    );
+    assert!(go_out.exists(), "Go text set output missing");
+    assert!(rust_out.exists(), "Rust text set output missing");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+
+    let (go_read_code, go_read_stdout, go_read_stderr) = run_go_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "get",
+        go_out_str,
+        "--slide",
+        "2",
+        "--target",
+        "title",
+        "--include-text",
+    ]);
+    let (rust_read_code, rust_read_stdout, rust_read_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "get",
+        rust_out_str,
+        "--slide",
+        "2",
+        "--target",
+        "title",
+        "--include-text",
+    ]);
+    assert_eq!(rust_read_code, go_read_code, "text set readback exit");
+    assert_eq!(rust_read_stderr, go_read_stderr, "text set readback stderr");
+    assert_eq!(
+        scrub_path(
+            rust_read_stdout.expect("rust text set readback"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_read_stdout.expect("go text set readback"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "text set readback stdout"
+    );
+
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "text",
+        "set",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "title",
+        "--paragraph",
+        "0",
+        "--run-index",
+        "0",
+        "--underline",
+        "single",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
+    assert_eq!(rust_code, go_code, "text set dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "text set dry-run stderr");
+    assert_eq!(
+        rust_stdout.expect("rust text set dry-run"),
+        go_stdout.expect("go text set dry-run"),
+        "text set dry-run stdout"
+    );
+
+    let go_hyper = temp_dir.join("go-hyperlink.pptx");
+    let rust_hyper = temp_dir.join("rust-hyperlink.pptx");
+    let go_hyper_str = go_hyper.to_str().expect("go hyperlink path");
+    let rust_hyper_str = rust_hyper.to_str().expect("rust hyperlink path");
+    let go_hyper_args = [
+        "--json",
+        "pptx",
+        "text",
+        "set",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "title",
+        "--paragraph",
+        "0",
+        "--run-index",
+        "0",
+        "--hyperlink",
+        "https://example.com",
+        "--out",
+        go_hyper_str,
+    ];
+    let rust_hyper_args = [
+        "--json",
+        "pptx",
+        "text",
+        "set",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "title",
+        "--paragraph",
+        "0",
+        "--run-index",
+        "0",
+        "--hyperlink",
+        "https://example.com",
+        "--out",
+        rust_hyper_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_hyper_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_hyper_args);
+    assert_eq!(rust_code, go_code, "text set hyperlink exit");
+    assert_eq!(rust_stderr, go_stderr, "text set hyperlink stderr");
+    let rust_hyper_json = rust_stdout.expect("rust hyperlink stdout");
+    assert_eq!(
+        scrub_path(rust_hyper_json.clone(), rust_hyper_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go hyperlink stdout"),
+            go_hyper_str,
+            "[OUT]"
+        ),
+        "text set hyperlink stdout"
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_hyper_json, "validateCommand");
+
+    for (label, args) in [
+        (
+            "text set paragraph out of range",
+            vec![
+                "--json",
+                "pptx",
+                "text",
+                "set",
+                fixture,
+                "--slide",
+                "2",
+                "--target",
+                "title",
+                "--paragraph",
+                "99",
+                "--bold",
+                "--dry-run",
+            ],
+        ),
+        (
+            "text set run index out of range",
+            vec![
+                "--json",
+                "pptx",
+                "text",
+                "set",
+                fixture,
+                "--slide",
+                "2",
+                "--target",
+                "title",
+                "--paragraph",
+                "0",
+                "--run-index",
+                "99",
+                "--bold",
+                "--dry-run",
+            ],
+        ),
+        (
+            "text set invalid color",
+            vec![
+                "--json",
+                "pptx",
+                "text",
+                "set",
+                fixture,
+                "--slide",
+                "2",
+                "--target",
+                "title",
+                "--paragraph",
+                "0",
+                "--color",
+                "ZZZZZZ",
+                "--dry-run",
+            ],
+        ),
+        (
+            "text set mutually exclusive flags",
+            vec![
+                "--json",
+                "pptx",
+                "text",
+                "set",
+                fixture,
+                "--slide",
+                "2",
+                "--target",
+                "title",
+                "--paragraph",
+                "0",
+                "--bold",
+                "--remove-bold",
+                "--dry-run",
+            ],
+        ),
+        (
+            "text set no styling flags",
+            vec![
+                "--json",
+                "pptx",
+                "text",
+                "set",
+                fixture,
+                "--slide",
+                "2",
+                "--target",
+                "title",
+                "--paragraph",
+                "0",
+                "--dry-run",
+            ],
+        ),
+        (
+            "text set unknown target",
+            vec![
+                "--json",
+                "pptx",
+                "text",
+                "set",
+                fixture,
+                "--slide",
+                "2",
+                "--target",
+                "nonexistent",
+                "--paragraph",
+                "0",
+                "--bold",
+                "--dry-run",
+            ],
+        ),
+    ] {
+        assert_go_rust_json_match(&args, label);
+    }
+}
+
+#[test]
 fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

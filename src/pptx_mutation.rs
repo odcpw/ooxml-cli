@@ -8,6 +8,7 @@ mod replace;
 mod shapes;
 mod slides;
 mod tables;
+mod text;
 
 pub(crate) use animations::{
     pptx_animations_add, pptx_animations_prune_stale, pptx_animations_remove,
@@ -40,6 +41,7 @@ pub(crate) use tables::{
     pptx_tables_delete_col, pptx_tables_delete_row, pptx_tables_insert_col, pptx_tables_insert_row,
     pptx_tables_set_cell, pptx_tables_update_from_xlsx,
 };
+pub(crate) use text::pptx_text_set;
 
 use serde_json::{Value, json};
 use std::fs;

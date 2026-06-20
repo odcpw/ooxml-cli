@@ -1208,6 +1208,41 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             )?;
             pptx_tables_update_from_xlsx(file, rest)
         }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "text" && verb == "set" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--target",
+                    "--paragraph",
+                    "--run-index",
+                    "--underline",
+                    "--font-size",
+                    "--color",
+                    "--font-family",
+                    "--hyperlink",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--bold",
+                    "--italic",
+                    "--remove-bold",
+                    "--remove-italic",
+                    "--remove-underline",
+                    "--remove-font-size",
+                    "--remove-color",
+                    "--remove-font-family",
+                    "--remove-hyperlink",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
+            )?;
+            pptx_text_set(file, rest)
+        }
         [family, group, verb]
             if family == "pptx"
                 && group == "replace"

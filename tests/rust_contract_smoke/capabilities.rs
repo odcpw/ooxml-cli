@@ -36,6 +36,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx layouts clone", false);
     assert_command(&all_caps, "ooxml pptx shapes get", false);
     assert_command(&all_caps, "ooxml pptx add-textbox", false);
+    assert_command(&all_caps, "ooxml pptx text set", false);
     assert_command(&all_caps, "ooxml pptx place image", false);
     assert_command(&all_caps, "ooxml pptx place table", false);
     assert_command(&all_caps, "ooxml pptx place table-from-xlsx", false);
@@ -237,12 +238,17 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "ooxml pptx shapes get",
         "ooxml pptx shapes set-bounds",
         "ooxml pptx shapes delete",
+        "ooxml pptx text set",
     ] {
         assert_object_kind_command(&all_caps, "slide", path);
         assert_object_kind_command(&all_caps, "shape", path);
         assert_command_target_kind(&all_caps, path, "slide");
         assert_command_target_kind(&all_caps, path, "shape");
     }
+    assert_object_kind_command(&all_caps, "style", "ooxml pptx text set");
+    assert_object_kind_command(&all_caps, "hyperlink", "ooxml pptx text set");
+    assert_command_target_kind(&all_caps, "ooxml pptx text set", "style");
+    assert_command_target_kind(&all_caps, "ooxml pptx text set", "hyperlink");
     assert_object_kind_command(&all_caps, "chart", "ooxml pptx charts list");
     assert_object_kind_command(&all_caps, "chart", "ooxml pptx charts show");
     assert_object_kind_command(&all_caps, "chart", "ooxml pptx charts create");
@@ -1229,12 +1235,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        213,
+        214,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        77,
+        76,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

@@ -9,6 +9,17 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX text-run mutation parity landed for direct `pptx text set`. The
+  slice updates run-level bold, italic, underline, font size, color, font
+  family, and hyperlink styling, preserving Go-shaped saved-output, dry-run,
+  readback, validation-command, and representative error behavior. Rust
+  capabilities now advertise 214 Go-oracle command paths, leaving a pinned
+  76-command gap; `pptx text set` is advertised with `opCompatible=false`
+  because serve/MCP operation dispatch is not wired for this direct CLI-only
+  lane. Proof: focused Go-vs-Rust text-set contract tests, focused capability
+  ratchet tests, strict validation, Open XML SDK validation, desktop
+  PowerPoint COM open proof for a generated deck, `cargo fmt --check`, `cargo
+  clippy --all-targets -- -D warnings`, and `cargo test --all-targets`.
 - Rust top-level semantic diff parity landed for direct `diff <baseline>
   <candidate>` across PPTX, XLSX, and DOCX readback models. The slice detects
   mismatched package families, emits the Go-shaped `{schemaVersion, type,
