@@ -4607,3 +4607,230 @@ fn docx_images_list_matches_go_oracle() {
         assert_go_rust_match(&args);
     }
 }
+
+#[test]
+fn docx_images_replace_insert_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-docx-images-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&temp_dir).expect("docx image temp dir");
+    let image_file = "testdata/test_image.png";
+    let source = "testdata/docx/with-image/document.docx";
+    let image_block_hash =
+        "sha256:a6cd446a4bd7d7661a1048d57c7cf52f8702143ad430b0aba83997e51475b09f";
+    let anchor_block_hash =
+        "sha256:d1e3bd8afcf28570360528cc36de5036e7ddf87bc0b45a221feec8cf5ed30f53";
+
+    let go_replace = temp_dir.join("go-replace.docx");
+    let rust_replace = temp_dir.join("rust-replace.docx");
+    let go_replace_str = go_replace.to_string_lossy().to_string();
+    let rust_replace_str = rust_replace.to_string_lossy().to_string();
+    let go_replace_args = [
+        "--json",
+        "docx",
+        "images",
+        "replace",
+        source,
+        "--image",
+        "1",
+        "--file",
+        image_file,
+        "--expect-hash",
+        image_block_hash,
+        "--width",
+        "1828800",
+        "--height",
+        "914400",
+        "--out",
+        &go_replace_str,
+    ];
+    let rust_replace_args = [
+        "--json",
+        "docx",
+        "images",
+        "replace",
+        source,
+        "--image",
+        "1",
+        "--file",
+        image_file,
+        "--expect-hash",
+        image_block_hash,
+        "--width",
+        "1828800",
+        "--height",
+        "914400",
+        "--out",
+        &rust_replace_str,
+    ];
+    assert_go_rust_outputs_match("replace image", &go_replace_args, &rust_replace_args);
+    assert_strict_valid(&go_replace_str);
+    assert_strict_valid(&rust_replace_str);
+    assert_go_rust_lists_match(&go_replace_str, &rust_replace_str, "replace readback");
+
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "images",
+        "replace",
+        source,
+        "--image",
+        "1",
+        "--file",
+        image_file,
+        "--expect-hash",
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "--dry-run",
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "images",
+        "replace",
+        source,
+        "--image",
+        "99",
+        "--file",
+        image_file,
+        "--dry-run",
+    ]);
+
+    let go_insert = temp_dir.join("go-insert.docx");
+    let rust_insert = temp_dir.join("rust-insert.docx");
+    let go_insert_str = go_insert.to_string_lossy().to_string();
+    let rust_insert_str = rust_insert.to_string_lossy().to_string();
+    let go_insert_args = [
+        "--json",
+        "docx",
+        "images",
+        "insert",
+        source,
+        "--after",
+        "1",
+        "--expect-hash",
+        anchor_block_hash,
+        "--file",
+        image_file,
+        "--width",
+        "914400",
+        "--height",
+        "914400",
+        "--out",
+        &go_insert_str,
+    ];
+    let rust_insert_args = [
+        "--json",
+        "docx",
+        "images",
+        "insert",
+        source,
+        "--after",
+        "1",
+        "--expect-hash",
+        anchor_block_hash,
+        "--file",
+        image_file,
+        "--width",
+        "914400",
+        "--height",
+        "914400",
+        "--out",
+        &rust_insert_str,
+    ];
+    assert_go_rust_outputs_match("insert image", &go_insert_args, &rust_insert_args);
+    assert_strict_valid(&go_insert_str);
+    assert_strict_valid(&rust_insert_str);
+    assert_go_rust_lists_match(&go_insert_str, &rust_insert_str, "insert readback");
+
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "images",
+        "insert",
+        source,
+        "--after",
+        "1",
+        "--expect-hash",
+        anchor_block_hash,
+        "--file",
+        image_file,
+        "--width",
+        "914400",
+        "--height",
+        "914400",
+        "--dry-run",
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "images",
+        "insert",
+        source,
+        "--after",
+        "9",
+        "--expect-hash",
+        anchor_block_hash,
+        "--file",
+        image_file,
+        "--width",
+        "914400",
+        "--height",
+        "914400",
+        "--dry-run",
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "docx",
+        "images",
+        "insert",
+        source,
+        "--after",
+        "0",
+        "--expect-hash",
+        anchor_block_hash,
+        "--file",
+        image_file,
+        "--width",
+        "914400",
+        "--height",
+        "914400",
+        "--dry-run",
+    ]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn assert_go_rust_outputs_match(label: &str, go_args: &[&str], rust_args: &[&str]) {
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(rust_args);
+    assert_eq!(rust_code, go_code, "{label} exit");
+    assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+    assert_eq!(rust_stdout, go_stdout, "{label} stdout");
+}
+
+fn assert_strict_valid(path: &str) {
+    let (code, stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", path]);
+    assert_eq!(code, 0, "strict validate exit for {path}");
+    assert_eq!(stderr, None, "strict validate stderr for {path}");
+    let stdout = stdout.expect("strict validate stdout");
+    assert_eq!(stdout["valid"], Value::Bool(true), "strict validate result");
+}
+
+fn assert_go_rust_lists_match(go_path: &str, rust_path: &str, label: &str) {
+    let go_args = ["--json", "docx", "images", "list", go_path];
+    let rust_args = ["--json", "docx", "images", "list", rust_path];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "{label} exit");
+    assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+    assert_eq!(
+        scrub_path(rust_stdout.expect("rust list stdout"), rust_path, "[OUT]"),
+        scrub_path(go_stdout.expect("go list stdout"), go_path, "[OUT]"),
+        "{label} stdout"
+    );
+}

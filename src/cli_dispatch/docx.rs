@@ -438,6 +438,120 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
             reject_unknown_flags(rest, &[], &[])?;
             docx_images_list(file)
         }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "images" && verb == "replace" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--image",
+                    "--file",
+                    "--expect-hash",
+                    "--width",
+                    "--height",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let image = parse_string_flag(rest, "--image")?.ok_or_else(|| {
+                CliError::invalid_args("--image is required (1-based index or relationship id)")
+            })?;
+            if image.trim().is_empty() {
+                return Err(CliError::invalid_args(
+                    "--image is required (1-based index or relationship id)",
+                ));
+            }
+            let image_file = parse_string_flag(rest, "--file")?
+                .ok_or_else(|| CliError::invalid_args("--file is required"))?;
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            require_docx_image_hash_format(&expect_hash)?;
+            let width = parse_i64_flag(rest, "--width")?.unwrap_or(0);
+            let height = parse_i64_flag(rest, "--height")?.unwrap_or(0);
+            if width < 0 || height < 0 {
+                return Err(CliError::invalid_args(
+                    "--width and --height must be >= 0 (EMU)",
+                ));
+            }
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            docx_images_replace(
+                file,
+                &image,
+                &image_file,
+                &expect_hash,
+                width,
+                height,
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    in_place: has_flag(rest, "--in-place"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "images" && verb == "insert" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--after",
+                    "--file",
+                    "--expect-hash",
+                    "--width",
+                    "--height",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let after = parse_i64_flag(rest, "--after")?.unwrap_or(0);
+            if after < 0 {
+                return Err(CliError::invalid_args("--after must be >= 0"));
+            }
+            let image_file = parse_string_flag(rest, "--file")?
+                .ok_or_else(|| CliError::invalid_args("--file is required"))?;
+            let width = parse_i64_flag(rest, "--width")?.unwrap_or(0);
+            let height = parse_i64_flag(rest, "--height")?.unwrap_or(0);
+            if width <= 0 || height <= 0 {
+                return Err(CliError::invalid_args(
+                    "--width and --height are required and must be > 0 (EMU)",
+                ));
+            }
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            if after > 0 {
+                require_docx_block_hash(&expect_hash)?;
+            } else if value_flag_present(rest, "--expect-hash") {
+                return Err(CliError::invalid_args(
+                    "--expect-hash cannot be used with --after 0",
+                ));
+            }
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            docx_images_insert(
+                file,
+                after as usize,
+                &image_file,
+                &expect_hash,
+                width,
+                height,
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    in_place: has_flag(rest, "--in-place"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                },
+            )
+        }
         [cmd, group, ..] if cmd == "docx" && group == "tables" => dispatch_docx_tables(args),
         [cmd, group, ..] if cmd == "docx" && group == "paragraphs" => {
             dispatch_docx_paragraphs(args)
@@ -447,4 +561,25 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
             args.join(" ")
         ))),
     }
+}
+
+fn require_docx_image_hash_format(value: &str) -> CliResult<()> {
+    if value.trim().is_empty() {
+        return Ok(());
+    }
+    let Some(hex) = value.strip_prefix("sha256:") else {
+        return Err(CliError::invalid_args(
+            "--expect-hash must match sha256:<64 lowercase hex chars> from docx blocks",
+        ));
+    };
+    if hex.len() != 64
+        || !hex
+            .bytes()
+            .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase())
+    {
+        return Err(CliError::invalid_args(
+            "--expect-hash must match sha256:<64 lowercase hex chars> from docx blocks",
+        ));
+    }
+    Ok(())
 }

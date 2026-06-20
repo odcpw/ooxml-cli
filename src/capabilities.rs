@@ -52,13 +52,13 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             "table": ["ooxml pptx tables show", "ooxml pptx tables set-cell", "ooxml pptx tables delete-row", "ooxml xlsx filters-sorts show", "ooxml xlsx filters-sorts set-autofilter", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export", "ooxml xlsx tables append-rows", "ooxml xlsx tables append-records", "ooxml docx tables show", "ooxml docx tables set-cell", "ooxml docx tables clear-cell", "ooxml docx tables insert-row", "ooxml docx tables delete-row", "ooxml docx styles apply"],
             "name": ["ooxml xlsx names list", "ooxml xlsx names show", "ooxml xlsx names add", "ooxml xlsx names update", "ooxml xlsx names rename", "ooxml xlsx names delete"],
             "block": ["ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx tables show"],
-            "paragraph": ["ooxml docx text", "ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx paragraphs append", "ooxml docx paragraphs insert", "ooxml docx paragraphs set", "ooxml docx paragraphs clear", "ooxml docx styles apply", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx images list"],
+            "paragraph": ["ooxml docx text", "ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx paragraphs append", "ooxml docx paragraphs insert", "ooxml docx paragraphs set", "ooxml docx paragraphs clear", "ooxml docx styles apply", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx images list", "ooxml docx images insert"],
             "style": ["ooxml xlsx ranges set-format", "ooxml docx styles list", "ooxml docx styles show", "ooxml docx styles apply"],
             "comment": ["ooxml pptx comments list", "ooxml docx comments list", "ooxml docx comments add", "ooxml docx comments edit", "ooxml docx comments remove"],
             "field": ["ooxml docx fields list", "ooxml docx fields insert", "ooxml docx fields set-result"],
             "header": ["ooxml docx headers list", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers list"],
             "footer": ["ooxml docx footers list", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx headers list"],
-            "image": ["ooxml docx images list"],
+            "image": ["ooxml docx images list", "ooxml docx images replace", "ooxml docx images insert"],
             "module": ["ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba attach", "ooxml vba remove"]
         },
         "exitCodes": [

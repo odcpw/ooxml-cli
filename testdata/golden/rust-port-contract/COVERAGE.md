@@ -12,6 +12,7 @@
 | Web smoke | smoke scripts route readback through `OOXML_BIN` | `baseline.json` `webSmoke` |
 | Focused PPTX table mutation | `pptx tables set-cell` saved output, dry-run, text-file, readback, and error envelopes | `cargo test --test rust_contract_smoke pptx_tables_set_cell` |
 | XLSX filters/sorts | Go-vs-Rust differential tests for `xlsx filters-sorts show`, direct `set-autofilter`, saved readback, dry-run, error behavior, table target, and serve inspect | `tests/rust_contract_smoke/xlsx.rs`, `tests/rust_contract_smoke/serve.rs` |
+| DOCX image mutation | Go-vs-Rust saved replace/insert, strict validation/readback, dry-run, stale hash, and missing-target errors | `tests/rust_contract_smoke/docx.rs` `docx_images_replace_insert_match_go_oracle` |
 
 Out of scope for this Linux-local freeze:
 

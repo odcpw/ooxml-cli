@@ -83,7 +83,8 @@ pub(crate) use docx_mutation_core::{
     HANDLE_SCOPE_STALE, HANDLE_STALE, docx_handle_error, docx_mutation_output_path_for_result,
     docx_validate_strict_command, ensure_docx_package_kind, resolve_docx_paragraph_handle_index,
     resolve_optional_docx_paragraph_text, resolve_required_docx_table_text,
-    write_docx_mutation_output, write_docx_package_mutation_output,
+    write_docx_mutation_output, write_docx_package_binary_mutation_output,
+    write_docx_package_mutation_output,
 };
 pub(crate) use docx_paragraph_commands::{
     docx_paragraphs_append, docx_paragraphs_clear, docx_paragraphs_insert, docx_paragraphs_set,

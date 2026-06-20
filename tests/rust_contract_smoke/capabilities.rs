@@ -33,6 +33,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx headers set-text", true);
     assert_command(&all_caps, "ooxml docx footers set-text", true);
     assert_command(&all_caps, "ooxml docx images list", false);
+    assert_command(&all_caps, "ooxml docx images replace", false);
+    assert_command(&all_caps, "ooxml docx images insert", false);
     assert_command(&all_caps, "ooxml docx tables show", false);
     assert_command(&all_caps, "ooxml docx tables set-cell", true);
     assert_command(&all_caps, "ooxml docx tables clear-cell", true);
@@ -96,6 +98,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "header", "ooxml docx headers set-text");
     assert_object_kind_command(&all_caps, "footer", "ooxml docx footers set-text");
     assert_object_kind_command(&all_caps, "image", "ooxml docx images list");
+    assert_object_kind_command(&all_caps, "image", "ooxml docx images replace");
+    assert_object_kind_command(&all_caps, "image", "ooxml docx images insert");
+    assert_object_kind_command(&all_caps, "paragraph", "ooxml docx images insert");
     assert_object_kind_command(&all_caps, "master", "ooxml pptx masters list");
     assert_object_kind_command(&all_caps, "master", "ooxml pptx masters show");
     assert_object_kind_command(&all_caps, "comment", "ooxml pptx comments list");
@@ -315,6 +320,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&paragraph_caps, "ooxml docx paragraphs insert", true);
     assert_command(&paragraph_caps, "ooxml docx paragraphs set", true);
     assert_command(&paragraph_caps, "ooxml docx paragraphs clear", true);
+    assert_command(&paragraph_caps, "ooxml docx images insert", false);
     assert_no_command(&paragraph_caps, "ooxml docx blocks");
 
     let (style_code, style_stdout, style_stderr) =
@@ -373,6 +379,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(image_stderr, None);
     let image_caps = image_stdout.expect("image capabilities");
     assert_command(&image_caps, "ooxml docx images list", false);
+    assert_command(&image_caps, "ooxml docx images replace", false);
+    assert_command(&image_caps, "ooxml docx images insert", false);
 
     let (capabilities_code, capabilities_stdout, capabilities_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "capabilities"]);
@@ -412,6 +420,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx headers set-text", true);
     assert_command(&docx_caps, "ooxml docx footers set-text", true);
     assert_command(&docx_caps, "ooxml docx images list", false);
+    assert_command(&docx_caps, "ooxml docx images replace", false);
+    assert_command(&docx_caps, "ooxml docx images insert", false);
     assert_command(&docx_caps, "ooxml docx tables show", false);
     assert_command(&docx_caps, "ooxml docx tables set-cell", true);
     assert_command(&docx_caps, "ooxml docx tables clear-cell", true);
@@ -455,10 +465,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 86, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 88, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        204,
+        202,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

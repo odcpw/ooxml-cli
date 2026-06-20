@@ -9,6 +9,22 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust DOCX image mutation parity landed for direct `docx images replace` and
+  `docx images insert`. The slice replaces image payloads in place or via a new
+  media part when content type changes, resizes existing inline drawings, inserts
+  a new inline image paragraph before/after body blocks, enforces Go-compatible
+  hash guards, dry-run, and target-not-found errors, and keeps serve/MCP op
+  compatibility disabled until an image-mutation op pattern is established. Rust
+  capabilities now advertise 88 Go-oracle command paths, leaving a pinned
+  202-command gap. Proof: `cargo fmt --check`, `cargo check --all-targets`,
+  focused `cargo test --test rust_contract_smoke docx_images -- --nocapture`,
+  focused capability ratchet/discovery tests, `cargo clippy --all-targets --
+  -D warnings`, strict validation/readback for generated Go and Rust DOCX
+  outputs in the contract harness, strict validation for generated replace and
+  insert DOCX proof files, Open XML SDK Office2019 schema validation (zero
+  errors) for both proof files, Word COM open oracle for both proof files, and
+  `cargo test --all-targets` passed with 4 ZIP guard unit tests plus 103 Rust
+  contract tests.
 - Rust XLSX filters/sorts parity landed for direct
   `xlsx filters-sorts show` and `xlsx filters-sorts set-autofilter`. The slice
   reads worksheet/table autoFilter state plus worksheet sortState, adds or
@@ -810,6 +826,12 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   enumeration, media relationship resolution, content type, EMU dimensions,
   block indexes, block hashes, selectors, empty documents, media-only fixtures
   without inline image references, and unsupported package-type rejection
+- `--json docx images replace <docx>` and
+  `--json docx images insert <docx>` with Go-oracle comparison for saved DOCX
+  mutation, image payload writes, inline extent updates, relationship and media
+  part allocation, strict validation/readback, dry-run non-mutation,
+  `--expect-hash` guard failures, missing image/block errors, and direct CLI
+  capability advertisement
 - `--json docx tables show <docx>` with Go-oracle comparison for whole-document
   and selected-table readback, body block indexes, selectors, content hashes,
   dimensions, merged-cell detection, cell text, detailed table objects, empty
@@ -862,7 +884,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 86, and the harness pins the 204-command gap until
+  paths, Rust advertises 88, and the harness pins the 202-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
