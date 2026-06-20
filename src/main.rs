@@ -41,6 +41,7 @@ mod xlsx_ranges;
 mod xlsx_sheet_xml;
 mod xlsx_sheets;
 mod xlsx_table_append;
+mod xlsx_table_format;
 mod xlsx_tables;
 mod xml_util;
 mod zip_io;
@@ -173,6 +174,9 @@ pub(crate) use xlsx_sheets::{xlsx_cells_extract, xlsx_sheets_list, xlsx_sheets_s
 pub(crate) use xlsx_table_append::{
     XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions, xlsx_tables_append_records,
     xlsx_tables_append_rows,
+};
+pub(crate) use xlsx_table_format::{
+    XlsxTablesSetColumnFormatOptions, xlsx_tables_set_column_format,
 };
 pub(crate) use xlsx_tables::{
     XlsxTableExportOptions, xlsx_source_command, xlsx_tables_export, xlsx_tables_list,

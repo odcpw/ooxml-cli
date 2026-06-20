@@ -2647,6 +2647,347 @@ fn xlsx_tables_export_matches_go_oracle() {
 }
 
 #[test]
+fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-table-column-format-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    let go_out_path = temp_dir.join("go-out.xlsx");
+    let rust_out_path = temp_dir.join("rust-out.xlsx");
+    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&rust_in_path);
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+    let go_out = go_out_path.to_string_lossy().to_string();
+    let rust_out = rust_out_path.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json",
+        "xlsx",
+        "tables",
+        "set-column-format",
+        &go_in,
+        "--table",
+        "Sales",
+        "--column",
+        "Amount",
+        "--preset",
+        "currency",
+        "--decimals",
+        "2",
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "tables",
+        "set-column-format",
+        &rust_in,
+        "--table",
+        "Sales",
+        "--column",
+        "Amount",
+        "--preset",
+        "currency",
+        "--decimals",
+        "2",
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "set-column-format exit");
+    assert_eq!(rust_stderr, go_stderr, "set-column-format stderr");
+    let rust_result = rust_stdout.expect("rust set-column-format stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_result.clone(),
+            &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go set-column-format stdout"),
+            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+        ),
+        "set-column-format stdout"
+    );
+
+    assert_eq!(rust_result["table"], "Sales");
+    assert_eq!(rust_result["column"], "Amount");
+    assert_eq!(rust_result["columnIndex"], 1);
+    assert_eq!(rust_result["range"], "B2:B3");
+    assert_eq!(rust_result["tableRange"], "A1:B3");
+    for field in [
+        "validateCommand",
+        "cellsExtractCommand",
+        "rangesExportCommand",
+        "tableShowCommand",
+        "tableExportCommand",
+    ] {
+        assert_rust_emitted_ooxml_command_succeeds(&rust_result, field);
+    }
+
+    let show_go = [
+        "--json", "xlsx", "tables", "show", &go_out, "--table", "Sales",
+    ];
+    let show_rust = [
+        "--json", "xlsx", "tables", "show", &rust_out, "--table", "Sales",
+    ];
+    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
+    assert_eq!(rust_code, go_code, "saved table show exit");
+    assert_eq!(rust_stderr, go_stderr, "saved table show stderr");
+    assert_eq!(
+        scrub_path(
+            rust_show.expect("rust saved table show"),
+            &rust_out,
+            "[OUT]"
+        ),
+        scrub_path(go_show.expect("go saved table show"), &go_out, "[OUT]"),
+        "saved table show"
+    );
+
+    let range_go = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &go_out,
+        "--sheet",
+        "Data",
+        "--range",
+        "B2:B3",
+        "--include-types",
+        "--include-formulas",
+        "--include-formats",
+    ];
+    let range_rust = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &rust_out,
+        "--sheet",
+        "Data",
+        "--range",
+        "B2:B3",
+        "--include-types",
+        "--include-formulas",
+        "--include-formats",
+    ];
+    let (go_code, go_range, go_stderr) = run_go_ooxml(&range_go);
+    let (rust_code, rust_range, rust_stderr) = run_ooxml(&range_rust);
+    assert_eq!(rust_code, go_code, "saved formatted range export exit");
+    assert_eq!(
+        rust_stderr, go_stderr,
+        "saved formatted range export stderr"
+    );
+    assert_eq!(
+        scrub_path(
+            rust_range.expect("rust saved formatted range export"),
+            &rust_out,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_range.expect("go saved formatted range export"),
+            &go_out,
+            "[OUT]"
+        ),
+        "saved formatted range export"
+    );
+    let styles_xml = read_zip_string(&rust_out_path, "xl/styles.xml");
+    assert!(
+        styles_xml.contains(r#"applyNumberFormat="1""#),
+        "Rust styles.xml missing applied number format:\n{styles_xml}"
+    );
+
+    let dry_go = [
+        "--json",
+        "xlsx",
+        "tables",
+        "set-column-format",
+        &go_in,
+        "--table",
+        "Sales",
+        "--column",
+        "Amount",
+        "--preset",
+        "integer",
+        "--dry-run",
+    ];
+    let dry_rust = [
+        "--json",
+        "xlsx",
+        "tables",
+        "set-column-format",
+        &rust_in,
+        "--table",
+        "Sales",
+        "--column",
+        "Amount",
+        "--preset",
+        "integer",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
+    assert_eq!(rust_code, go_code, "set-column-format dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "set-column-format dry-run stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust set-column-format dry-run stdout"),
+            &rust_in,
+            "[IN]"
+        ),
+        scrub_path(
+            go_stdout.expect("go set-column-format dry-run stdout"),
+            &go_in,
+            "[IN]"
+        ),
+        "set-column-format dry-run stdout"
+    );
+    assert!(
+        !zip_entry_exists(&rust_in_path, "xl/styles.xml"),
+        "dry-run wrote styles.xml into Rust input workbook"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_tables_set_column_format_errors_and_totals_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-table-column-format-errors-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-in.xlsx");
+    let rust_in_path = temp_dir.join("rust-in.xlsx");
+    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&rust_in_path);
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+
+    for (label, extra_args) in [
+        (
+            "guard mismatch",
+            vec![
+                "--table",
+                "Sales",
+                "--column",
+                "Amount",
+                "--expect-column",
+                "Region",
+                "--preset",
+                "currency",
+                "--dry-run",
+            ],
+        ),
+        (
+            "unknown column",
+            vec![
+                "--table",
+                "Sales",
+                "--column",
+                "Missing",
+                "--preset",
+                "currency",
+                "--dry-run",
+            ],
+        ),
+        (
+            "missing column",
+            vec!["--table", "Sales", "--preset", "currency", "--dry-run"],
+        ),
+    ] {
+        let mut go_args = vec!["--json", "xlsx", "tables", "set-column-format", &go_in];
+        go_args.extend(extra_args.iter().copied());
+        let mut rust_args = vec!["--json", "xlsx", "tables", "set-column-format", &rust_in];
+        rust_args.extend(extra_args.iter().copied());
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+        assert_eq!(rust_code, go_code, "{label} exit");
+        assert_eq!(rust_stdout, go_stdout, "{label} stdout");
+        assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+    }
+
+    let totals_go_path = temp_dir.join("totals-go.xlsx");
+    let totals_rust_path = temp_dir.join("totals-rust.xlsx");
+    let totals_go_out_path = temp_dir.join("totals-go-out.xlsx");
+    let totals_rust_out_path = temp_dir.join("totals-rust-out.xlsx");
+    write_table_xlsx_with_totals(&totals_go_path);
+    write_table_xlsx_with_totals(&totals_rust_path);
+    let totals_go = totals_go_path.to_string_lossy().to_string();
+    let totals_rust = totals_rust_path.to_string_lossy().to_string();
+    let totals_go_out = totals_go_out_path.to_string_lossy().to_string();
+    let totals_rust_out = totals_rust_out_path.to_string_lossy().to_string();
+    let totals_go_args = [
+        "--json",
+        "xlsx",
+        "tables",
+        "set-column-format",
+        &totals_go,
+        "--table",
+        "Sales",
+        "--column",
+        "Amount",
+        "--preset",
+        "number",
+        "--decimals",
+        "0",
+        "--out",
+        &totals_go_out,
+    ];
+    let totals_rust_args = [
+        "--json",
+        "xlsx",
+        "tables",
+        "set-column-format",
+        &totals_rust,
+        "--table",
+        "Sales",
+        "--column",
+        "Amount",
+        "--preset",
+        "number",
+        "--decimals",
+        "0",
+        "--out",
+        &totals_rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&totals_go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&totals_rust_args);
+    assert_eq!(rust_code, go_code, "totals set-column-format exit");
+    assert_eq!(rust_stderr, go_stderr, "totals set-column-format stderr");
+    let rust_result = rust_stdout.expect("rust totals stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_result.clone(),
+            &[(&totals_rust, "[IN]"), (&totals_rust_out, "[OUT]"),]
+        ),
+        scrub_paths(
+            go_stdout.expect("go totals stdout"),
+            &[(&totals_go, "[IN]"), (&totals_go_out, "[OUT]")]
+        ),
+        "totals set-column-format stdout"
+    );
+    assert_eq!(rust_result["range"], "B2:B3");
+    assert_eq!(rust_result["rows"], 2);
+    let sheet_xml = read_zip_string(&totals_rust_out_path, "xl/worksheets/sheet1.xml");
+    assert!(
+        sheet_xml.contains(r#"<c r="B4"><v>30</v></c>"#),
+        "totals row should not receive a style index:\n{sheet_xml}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_tables_append_rows_matches_go_oracle_and_saved_output() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-table-append-rows-{}",
@@ -2797,6 +3138,39 @@ fn xlsx_tables_append_rows_matches_go_oracle_and_saved_output() {
     }
 
     let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn write_table_xlsx_with_totals(dest: &Path) {
+    let base = dest.with_extension("base.xlsx");
+    write_table_xlsx(&base);
+    rewrite_zip_fixture(base.to_str().expect("base path"), dest, |name, data| {
+        let data = match name {
+            "xl/worksheets/sheet1.xml" => {
+                let data = replace_ascii(
+                    data,
+                    r#"<dimension ref="A1:B3"/>"#,
+                    r#"<dimension ref="A1:B4"/>"#,
+                );
+                replace_ascii(
+                    data,
+                    "  </sheetData>",
+                    r#"    <row r="4"><c r="A4" t="inlineStr"><is><t>Total</t></is></c><c r="B4"><v>30</v></c></row>
+  </sheetData>"#,
+                )
+            }
+            "xl/tables/table1.xml" => {
+                let data = replace_ascii(data, r#"ref="A1:B3""#, r#"ref="A1:B4""#);
+                replace_ascii(
+                    data,
+                    r#"totalsRowShown="0""#,
+                    r#"totalsRowShown="1" totalsRowCount="1""#,
+                )
+            }
+            _ => data,
+        };
+        Some((name.to_string(), data))
+    });
+    let _ = fs::remove_file(base);
 }
 
 #[test]

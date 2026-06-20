@@ -4,8 +4,8 @@ use crate::cli_args::*;
 use crate::cli_core::{CliError, CliResult};
 use crate::xlsx_tables::*;
 use crate::{
-    XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions, xlsx_tables_append_records,
-    xlsx_tables_append_rows,
+    XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions, XlsxTablesSetColumnFormatOptions,
+    xlsx_tables_append_records, xlsx_tables_append_rows, xlsx_tables_set_column_format,
 };
 
 pub(super) fn dispatch_xlsx_tables(args: &[String]) -> CliResult<Value> {
@@ -109,6 +109,57 @@ pub(super) fn dispatch_xlsx_tables(args: &[String]) -> CliResult<Value> {
                     no_validate: has_flag(rest, "--no-validate"),
                     in_place: has_flag(rest, "--in-place"),
                     overwrite_formulas: has_flag(rest, "--overwrite-formulas"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "tables" && verb == "set-column-format" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--table",
+                    "--column",
+                    "--expect-column",
+                    "--preset",
+                    "--format-code",
+                    "--decimals",
+                    "--currency-symbol",
+                    "--max-cells",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let table = parse_string_flag(rest, "--table")?;
+            let column = parse_string_flag(rest, "--column")?;
+            let expect_column = parse_string_flag(rest, "--expect-column")?;
+            let preset = parse_string_flag(rest, "--preset")?;
+            let format_code = parse_string_flag(rest, "--format-code")?;
+            let decimals = parse_i64_flag(rest, "--decimals")?.unwrap_or(2);
+            let currency_symbol = parse_string_flag(rest, "--currency-symbol")?;
+            let max_cells = parse_i64_flag(rest, "--max-cells")?.unwrap_or(100000);
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_tables_set_column_format(
+                file,
+                XlsxTablesSetColumnFormatOptions {
+                    sheet: sheet.as_deref(),
+                    table: table.as_deref(),
+                    column: column.as_deref(),
+                    expect_column: expect_column.as_deref(),
+                    preset: preset.as_deref(),
+                    format_code: format_code.as_deref(),
+                    decimals,
+                    currency_symbol: currency_symbol.as_deref(),
+                    max_cells,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
                 },
             )
         }

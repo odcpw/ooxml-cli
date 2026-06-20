@@ -538,6 +538,21 @@ Latest milestone, 2026-06-20:
   readback commands are unchanged. Proof: `cargo fmt --check`, `cargo
   check --all-targets`, and focused `cargo test --test rust_contract_smoke
   xlsx_tables -- --nocapture` passed with 9 XLSX table contract tests.
+- Rust direct CLI parity landed for `xlsx tables set-column-format`. The
+  implementation resolves an exact table column to its data-body range, excludes
+  header/totals rows, then reuses the existing XLSX range set-format path for
+  styles, validation, output writing, and range readback. It is not advertised
+  in Rust capabilities or serve/MCP because the Go capability inventory also
+  omits this Cobra command. Proof in the worker lane: `cargo fmt --check`,
+  `cargo check --all-targets`, and focused `cargo test --test
+  rust_contract_smoke xlsx_tables_set_column_format -- --nocapture` passed with
+  2 Go-oracle contract tests. Integration proof repeated `cargo fmt --check`,
+  `cargo check --all-targets`, and the same focused contract tests. A
+  Rust-generated formatted workbook at
+  `.tmp\xlsx-table-column-format-proof\rust-table-format.xlsx` passed Rust
+  `validate --strict`, Microsoft Open XML SDK validation (`Valid: true`,
+  `ErrorCount: 0`, schema `Office2019`), and desktop Excel COM open proof
+  (`1 passed, 0 failed`).
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
