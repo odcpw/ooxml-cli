@@ -24,6 +24,11 @@ fn conformance_check_matches_go_for_spreadsheet_semantic_references() {
     let style_out_of_range = temp_dir.join("cell-style-out-of-range.xlsx");
     write_style_semantics_xlsx(&style_out_of_range, StyleFixtureKind::OutOfRange);
     assert_go_rust_repair_invariants_match(&style_out_of_range);
+
+    let hyperlink_references = temp_dir.join("worksheet-hyperlink-references.xlsx");
+    write_hyperlink_reference_xlsx(&hyperlink_references);
+    assert_go_rust_repair_invariants_match(&hyperlink_references);
+    assert_go_reports_hyperlink_reference_diagnostics(&hyperlink_references);
 }
 
 fn assert_go_rust_repair_invariants_match(file: &Path) {
@@ -125,6 +130,101 @@ fn write_style_semantics_xlsx(dest: &Path, kind: StyleFixtureKind) {
             ),
             calc_chain_xml: None,
         },
+    );
+}
+
+fn write_hyperlink_reference_xlsx(dest: &Path) {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("fixture parent");
+    }
+    let output = File::create(dest).expect("create worksheet hyperlink reference xlsx");
+    let mut writer = ZipWriter::new(output);
+    let zip_options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+    write_zip_string(
+        &mut writer,
+        zip_options,
+        "[Content_Types].xml",
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>
+</Types>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        zip_options,
+        "_rels/.rels",
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(&mut writer, zip_options, "xl/workbook.xml", workbook_xml());
+    write_zip_string(
+        &mut writer,
+        zip_options,
+        "xl/_rels/workbook.xml.rels",
+        &workbook_rels(false, false),
+    );
+    write_zip_string(
+        &mut writer,
+        zip_options,
+        "xl/worksheets/sheet1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetData/>
+  <hyperlinks>
+    <hyperlink ref="A1" r:id="rIdMissingHyperlink"/>
+    <hyperlink ref="A2" r:id="rIdWrongHyperlink"/>
+    <hyperlink ref="A3" r:id="rIdInternalHyperlink"/>
+    <hyperlink ref="A4" location="Sheet2!A1"/>
+  </hyperlinks>
+</worksheet>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        zip_options,
+        "xl/worksheets/_rels/sheet1.xml.rels",
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdWrongHyperlink" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+  <Relationship Id="rIdInternalHyperlink" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="Sheet2!A1"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        zip_options,
+        "xl/drawings/drawing1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"/>"#,
+    );
+    writer
+        .finish()
+        .expect("finish worksheet hyperlink reference xlsx");
+}
+
+fn assert_go_reports_hyperlink_reference_diagnostics(file: &Path) {
+    let file = file.to_string_lossy().to_string();
+    let args = ["--json", "conformance", "check", file.as_str()];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    assert_ne!(go_code, 0, "Go should reject hyperlink fixture");
+    assert_eq!(go_stderr, None, "Go hyperlink fixture stderr");
+    let go_report = go_stdout.expect("Go conformance stdout");
+    let diagnostics = check_by_name(&go_report, "repair-invariants")["diagnostics"]
+        .as_array()
+        .expect("repair-invariants diagnostics");
+    let hyperlink_diagnostics: Vec<&Value> = diagnostics
+        .iter()
+        .filter(|diag| diag["code"].as_str() == Some("XLSX_WORKSHEET_HYPERLINK_REFERENCE"))
+        .collect();
+    assert_eq!(
+        hyperlink_diagnostics.len(),
+        3,
+        "Go hyperlink fixture should exercise missing relationship, wrong type, and internal TargetMode: {hyperlink_diagnostics:#?}"
     );
 }
 

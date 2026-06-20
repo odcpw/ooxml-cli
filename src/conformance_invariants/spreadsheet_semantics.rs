@@ -19,6 +19,8 @@ use super::util::{diag, normalize_uri};
 
 const OFFICE_RELATIONSHIPS_NS: &[u8] =
     b"http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const REL_TYPE_XLSX_HYPERLINK: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
 
 #[derive(Default)]
 pub(super) struct SpreadsheetSemanticContext {
@@ -49,9 +51,20 @@ pub(super) fn check_part_spreadsheet_semantic_invariants(
         CONTENT_TYPE_XLSX_CALC_CHAIN => read_calc_chain_entries(file, part)
             .map(|entries| check_calc_chain_references(&part.uri, &entries, &context.calc_chain))
             .unwrap_or_default(),
-        CONTENT_TYPE_XLSX_WORKSHEET => read_worksheet_cells(file, part)
-            .map(|cells| check_worksheet_style_references(&part.uri, &cells, &context.styles))
-            .unwrap_or_default(),
+        CONTENT_TYPE_XLSX_WORKSHEET => {
+            let mut diagnostics = read_worksheet_cells(file, part)
+                .map(|cells| check_worksheet_style_references(&part.uri, &cells, &context.styles))
+                .unwrap_or_default();
+            if let Some(hyperlinks) = read_worksheet_hyperlinks(file, part) {
+                let rels = relationships_for_part_without_entry_set(file, &part.uri);
+                diagnostics.extend(check_worksheet_hyperlink_references(
+                    &part.uri,
+                    &hyperlinks,
+                    &rels,
+                ));
+            }
+            diagnostics
+        }
         _ => Vec::new(),
     }
 }
@@ -87,6 +100,11 @@ struct WorksheetCellInfo {
     cell_ref: String,
     style_index: String,
     has_formula: bool,
+}
+
+#[derive(Clone, Default)]
+struct WorksheetHyperlinkInfo {
+    rid: String,
 }
 
 #[derive(Clone, Default)]
@@ -723,6 +741,85 @@ fn read_worksheet_cells_by_entry(file: &str, entry_name: &str) -> Option<Vec<Wor
     seen_root.then_some(cells)
 }
 
+fn read_worksheet_hyperlinks(file: &str, part: &PartInfo) -> Option<Vec<WorksheetHyperlinkInfo>> {
+    let xml = zip_text(file, &part.entry_name).ok()?;
+    let mut reader = NsReader::from_str(&xml);
+    reader.config_mut().trim_text(true);
+    let mut stack = Vec::<String>::new();
+    let mut hyperlinks = Vec::new();
+    let mut seen_root = false;
+    let mut seen_hyperlinks = false;
+    let mut hyperlinks_depth: Option<usize> = None;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let in_spreadsheet_ns =
+                    element_in_ns(reader.resolver(), &e, SPREADSHEETML_NAMESPACE.as_bytes());
+                if stack.is_empty() && !seen_root {
+                    seen_root = true;
+                    if name != "worksheet" || !in_spreadsheet_ns {
+                        return None;
+                    }
+                } else if in_spreadsheet_ns
+                    && stack.as_slice() == ["worksheet"]
+                    && name == "hyperlinks"
+                    && !seen_hyperlinks
+                {
+                    seen_hyperlinks = true;
+                    hyperlinks_depth = Some(stack.len() + 1);
+                } else if in_spreadsheet_ns
+                    && hyperlinks_depth == Some(stack.len())
+                    && name == "hyperlink"
+                {
+                    hyperlinks.push(WorksheetHyperlinkInfo {
+                        rid: relationship_id_attr(&e, reader.resolver()),
+                    });
+                }
+                stack.push(name);
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                let in_spreadsheet_ns =
+                    element_in_ns(reader.resolver(), &e, SPREADSHEETML_NAMESPACE.as_bytes());
+                if stack.is_empty() && !seen_root {
+                    seen_root = true;
+                    if name != "worksheet" || !in_spreadsheet_ns {
+                        return None;
+                    }
+                } else if in_spreadsheet_ns
+                    && stack.as_slice() == ["worksheet"]
+                    && name == "hyperlinks"
+                    && !seen_hyperlinks
+                {
+                    seen_hyperlinks = true;
+                } else if in_spreadsheet_ns
+                    && hyperlinks_depth == Some(stack.len())
+                    && name == "hyperlink"
+                {
+                    hyperlinks.push(WorksheetHyperlinkInfo {
+                        rid: relationship_id_attr(&e, reader.resolver()),
+                    });
+                }
+            }
+            Ok(Event::End(e)) => {
+                let element_name = e.name();
+                let name = local_name(element_name.as_ref());
+                if hyperlinks_depth == Some(stack.len()) && name == "hyperlinks" {
+                    hyperlinks_depth = None;
+                }
+                stack.pop();
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => return None,
+            _ => {}
+        }
+    }
+
+    seen_root.then_some(hyperlinks)
+}
+
 fn collect_styles_reference_info(file: &str, parts: &[PartInfo]) -> StylesReferenceInfo {
     for part in parts {
         if part.content_type != CONTENT_TYPE_XLSX_STYLES {
@@ -858,6 +955,11 @@ fn relationships_for_part(
     parse_relationship_part(file, &rels_part).unwrap_or_default()
 }
 
+fn relationships_for_part_without_entry_set(file: &str, part_uri: &str) -> Vec<RelationshipRecord> {
+    let rels_part = relationships_part_for(part_uri.trim_start_matches('/'));
+    parse_relationship_part(file, &rels_part).unwrap_or_default()
+}
+
 fn relationships_by_id(rels: &[RelationshipRecord]) -> BTreeMap<String, RelationshipRecord> {
     let mut out = BTreeMap::new();
     for rel in rels {
@@ -867,6 +969,49 @@ fn relationships_by_id(rels: &[RelationshipRecord]) -> BTreeMap<String, Relation
         }
     }
     out
+}
+
+fn check_worksheet_hyperlink_references(
+    part_uri: &str,
+    hyperlinks: &[WorksheetHyperlinkInfo],
+    rels: &[RelationshipRecord],
+) -> Vec<Value> {
+    let rel_map = relationships_by_id(rels);
+    let mut diagnostics = Vec::new();
+    for (idx, hyperlink) in hyperlinks.iter().enumerate() {
+        let rid = hyperlink.rid.trim();
+        if rid.is_empty() {
+            continue;
+        }
+        let label = worksheet_hyperlink_label(idx + 1, hyperlink);
+        let Some(rel) = rel_map.get(rid) else {
+            diagnostics.push(diag(
+                "XLSX_WORKSHEET_HYPERLINK_REFERENCE",
+                format!("{part_uri} {label} references missing hyperlink relationship {rid}"),
+            ));
+            continue;
+        };
+        if rel.rel_type != REL_TYPE_XLSX_HYPERLINK {
+            diagnostics.push(diag(
+                "XLSX_WORKSHEET_HYPERLINK_REFERENCE",
+                format!(
+                    "{part_uri} {label} relationship {rid} has type {:?}, expected {:?}",
+                    rel.rel_type, REL_TYPE_XLSX_HYPERLINK
+                ),
+            ));
+            continue;
+        }
+        if !rel.target_mode.trim().eq_ignore_ascii_case("External") {
+            diagnostics.push(diag(
+                "XLSX_WORKSHEET_HYPERLINK_REFERENCE",
+                format!(
+                    "{part_uri} {label} relationship {rid} has TargetMode {:?}; worksheet hyperlink r:id relationships must be External",
+                    rel.target_mode.trim()
+                ),
+            ));
+        }
+    }
+    diagnostics
 }
 
 fn relationship_id_attr(
@@ -893,6 +1038,15 @@ fn worksheet_cell_label(cell: &WorksheetCellInfo) -> String {
         "cell".to_string()
     } else {
         format!("cell {cell_ref}")
+    }
+}
+
+fn worksheet_hyperlink_label(position: usize, hyperlink: &WorksheetHyperlinkInfo) -> String {
+    let rid = hyperlink.rid.trim();
+    if rid.is_empty() {
+        format!("<hyperlink> at position {position}")
+    } else {
+        format!("<hyperlink r:id={rid:?}> at position {position}")
     }
 }
 
