@@ -1002,10 +1002,7 @@ fn search_docx(file: &str, matcher: &Matcher, options: &FindOptions) -> CliResul
                     .with_replace_token(token)
                     .with_handle("handle", handle.clone())
                 });
-                let mutation_command = op
-                    .as_ref()
-                    .map(OpSpec::human_command)
-                    .unwrap_or_else(String::new);
+                let mutation_command = op.as_ref().map(OpSpec::human_command).unwrap_or_default();
                 hits.push(hit_json(HitInput {
                     package_type: "docx",
                     kind: "docx-text",

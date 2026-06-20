@@ -111,6 +111,12 @@ struct ImageSlotPayload {
     data: Vec<u8>,
 }
 
+#[derive(Clone, Copy)]
+struct ImageSlotPackage<'a> {
+    file: &'a str,
+    slide_part: &'a str,
+}
+
 pub(crate) fn pptx_slides_delete(file: &str, slide: i64, args: &[String]) -> CliResult<Value> {
     let options = parse_slide_mutation_options(args)?;
     ensure_pptx(file)?;
@@ -560,8 +566,10 @@ fn build_new_slide_from_layout_mutation(
             .cloned()
             .unwrap_or_else(|| zip_text(file, "[Content_Types].xml").unwrap_or_default());
         apply_image_slot_assignments(
-            file,
-            &new_slide_part,
+            ImageSlotPackage {
+                file,
+                slide_part: &new_slide_part,
+            },
             &mut slide_xml,
             &mut slide_rels_xml,
             &mut content_types_xml,
@@ -638,8 +646,10 @@ fn build_new_slide_from_layout_mutation(
     );
     let mut binary_overrides = BTreeMap::new();
     apply_image_slot_assignments(
-        file,
-        &new_slide_part,
+        ImageSlotPackage {
+            file,
+            slide_part: &new_slide_part,
+        },
         &mut slide_xml,
         &mut slide_rels_xml,
         &mut content_types,
@@ -1532,8 +1542,7 @@ fn normalize_image_fit(mode: &str) -> CliResult<String> {
 }
 
 fn apply_image_slot_assignments(
-    file: &str,
-    slide_part: &str,
+    package: ImageSlotPackage<'_>,
     slide_xml: &mut String,
     slide_rels_xml: &mut String,
     content_types_xml: &mut String,
@@ -1561,11 +1570,12 @@ fn apply_image_slot_assignments(
                 )));
             }
         };
-        let payload = load_image_slot_payload(file, target.shape_id, &assignment.image_path)?;
+        let payload =
+            load_image_slot_payload(package.file, target.shape_id, &assignment.image_path)?;
         let rels = relationship_entries_from_xml(slide_rels_xml);
         let relationship_id = allocate_relationship_id(&rels);
         let rel_target = relationship_target_from_source_to_target(
-            &format!("/{slide_part}"),
+            &format!("/{}", package.slide_part),
             &payload.image_part,
         );
         *slide_rels_xml = add_relationship_to_xml(
