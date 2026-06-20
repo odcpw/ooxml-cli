@@ -10,6 +10,7 @@ mod package;
 mod references;
 mod relationships;
 mod spec;
+mod table_pivot;
 mod types;
 mod util;
 mod xml_parts;
@@ -22,6 +23,7 @@ use package::{check_zip_entry_metadata, read_zip_entry_metadata};
 use references::check_reference_list_invariants;
 use relationships::{check_package_relationship_closure, parse_relationship_part};
 use spec::check_known_part_content_type;
+use table_pivot::check_table_pivot_invariants;
 use util::{diag, is_rels_uri};
 use xml_parts::check_part_xml_invariants;
 
@@ -57,6 +59,7 @@ pub(crate) fn check_repair_invariants(file: &str) -> CliResult<Vec<Value>> {
         }
         diagnostics.extend(check_part_xml_invariants(file, part)?);
         diagnostics.extend(check_chart_structure_invariants(file, part));
+        diagnostics.extend(check_table_pivot_invariants(file, part)?);
         diagnostics.extend(check_part_deep_relationship_invariants(
             file, part, &entry_set, &parts,
         )?);
