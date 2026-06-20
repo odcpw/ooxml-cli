@@ -676,11 +676,15 @@ Set-Content -LiteralPath $pivotValuesFile -Encoding ASCII -Value @(
 $pptxChartExtLstValuesFile = Join-Path $outRoot "pptx-chart-extlst-values.json"
 Set-Content -LiteralPath $pptxChartExtLstValuesFile -Encoding ASCII -Value '[["Region","S1"],["North",10],["South",20]]'
 
+$explicitBinaryPath = $BinaryPath -ne ""
 if ($BinaryPath -eq "") {
     $BinaryPath = Join-Path $binDir "ooxml.exe"
 }
 
 if (-not $SkipBuild) {
+    if ($explicitBinaryPath) {
+        throw "Refusing to build Go into explicit -BinaryPath. Omit -BinaryPath to build the Go CLI, or pass -SkipBuild to test the existing binary at: $BinaryPath"
+    }
     $go = Resolve-GoExe -Requested $GoExe
     Invoke-Checked -FilePath $go -Arguments @("build", "-buildvcs=false", "-o", $BinaryPath, ".\cmd\ooxml") -Label "build"
 }

@@ -97,6 +97,11 @@ When intentional output changes occur, update goldens with `UPDATE_GOLDENS=1` an
 
 `tools/windows-office-edit-smoke.ps1` builds the CLI, mutates representative DOCX/XLSX/PPTX files, runs strict validation and Open XML SDK validation, optionally runs conformance, and optionally opens outputs in desktop Office.
 
+The Office smoke scripts build the Go CLI by default. When validating the Rust
+port or another prebuilt subject, pass `-BinaryPath <path-to-ooxml.exe>` together
+with `-SkipBuild`; an explicit `-BinaryPath` without `-SkipBuild` is rejected so
+the script cannot overwrite the subject with a Go build.
+
 `tools/windows-office-vba-smoke.ps1` creates Office-native `.xlsm` and `.pptm` seeds from `.bas` / `.cls` sources through `ooxml vba create`, proves `vbaProject.bin` extract/attach/remove, proves existing-module replacement, validates outputs, asserts real Office-shaped add/remove are refused, and optionally opens macro-enabled outputs in Excel and PowerPoint.
 
 `tools/windows-office-vba-create.ps1` is the backend helper for `ooxml vba create`. It is useful for troubleshooting Office COM directly, but the CLI command is the agent-facing workflow and the smoke gate is the proof.

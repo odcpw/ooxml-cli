@@ -194,12 +194,16 @@ $caseDir = Join-Path $outRoot "outputs"
 $oracleDir = Join-Path $outRoot "office-oracle"
 New-Item -ItemType Directory -Force -Path $outRoot, $binDir, $seedDir, $sourceDir, $caseDir, $oracleDir | Out-Null
 
-$go = Resolve-GoExe -Requested $GoExe
 $script:DotNet = Resolve-DotNetExe -Requested $DotNetExe
+$explicitBinaryPath = $BinaryPath -ne ""
 if ($BinaryPath -eq "") {
     $BinaryPath = Join-Path $binDir "ooxml.exe"
 }
 if (-not $SkipBuild) {
+    if ($explicitBinaryPath) {
+        throw "Refusing to build Go into explicit -BinaryPath. Omit -BinaryPath to build the Go CLI, or pass -SkipBuild to test the existing binary at: $BinaryPath"
+    }
+    $go = Resolve-GoExe -Requested $GoExe
     Invoke-Checked -FilePath $go -Arguments @("build", "-buildvcs=false", "-o", $BinaryPath, (Join-Path $root "cmd\ooxml")) -Label "build" | Out-Null
 }
 elseif (-not (Test-Path -LiteralPath $BinaryPath -PathType Leaf)) {

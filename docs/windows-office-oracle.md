@@ -73,6 +73,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-v
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
 ```
 
+The edit and VBA smoke scripts build the Go CLI by default. To prove an
+already-built Rust binary or any other external subject, pass both
+`-BinaryPath <path-to-ooxml.exe>` and `-SkipBuild`; the scripts refuse to build
+Go into an explicit `-BinaryPath`.
+
 This script builds `ooxml`, runs representative XLSX, PPTX, and DOCX mutations,
 runs `ooxml validate --strict` and Microsoft Open XML SDK schema validation on
 every edited output. Release gates also run repair conformance checks.
