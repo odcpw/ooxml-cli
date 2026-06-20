@@ -28,7 +28,7 @@ pub(super) fn commands() -> Vec<Value> {
             "ooxml xlsx colwidths show",
             "show <file> --sheet <sheet> --range <columns>",
             "Show resolved worksheet column widths for a column range.",
-            &["sheet"],
+            &["sheet", "range"],
             false,
             Some("read-only command; direct CLI parity only in the current Rust slice"),
             vec![

@@ -100,6 +100,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx tables append-records");
     assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx colwidths show");
     assert_object_kind_command(&all_caps, "range", "ooxml xlsx colwidths show");
+    assert_command_target_kind(&all_caps, "ooxml xlsx colwidths show", "sheet");
+    assert_command_target_kind(&all_caps, "ooxml xlsx colwidths show", "range");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names list");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names show");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names add");

@@ -1234,6 +1234,21 @@ fn assert_no_command(capabilities: &Value, path: &str) {
     );
 }
 
+fn assert_command_target_kind(capabilities: &Value, path: &str, kind: &str) {
+    let commands = capabilities["commands"].as_array().expect("commands array");
+    let command = commands
+        .iter()
+        .find(|command| command["path"].as_str() == Some(path))
+        .unwrap_or_else(|| panic!("missing command {path}: {commands:?}"));
+    let kinds = command["targetObjectKinds"]
+        .as_array()
+        .unwrap_or_else(|| panic!("targetObjectKinds for {path} is not an array"));
+    assert!(
+        kinds.iter().any(|value| value.as_str() == Some(kind)),
+        "missing target kind {kind} for {path}: {kinds:?}"
+    );
+}
+
 fn assert_object_kind(capabilities: &Value, kind: &str) {
     let kinds = capabilities["objectKinds"]
         .as_array()
