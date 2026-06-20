@@ -1370,6 +1370,18 @@ fn xlsx_workbook_metadata_update_matches_go_oracle_and_readback() {
         ),
         "metadata readback stdout"
     );
+    let content_types = read_zip_string(Path::new(&rust_out), "[Content_Types].xml");
+    assert!(
+        content_types.contains(
+            r#"ContentType="application/vnd.openxmlformats-package.core-properties+xml""#
+        ),
+        "metadata update must emit the SDK-expected OPC core properties content type: {content_types}"
+    );
+    assert!(
+        !content_types
+            .contains("application/vnd.openxmlformats-officedocument.core-properties+xml"),
+        "metadata update must not emit the invalid officedocument core properties content type: {content_types}"
+    );
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

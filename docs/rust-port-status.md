@@ -149,6 +149,14 @@ Latest milestone, 2026-06-20:
   and calc-setting mutation helpers moved from `src/main.rs` into
   `src/xlsx_metadata.rs`, keeping CLI and serve call sites stable through the
   crate facade.
+- XLSX workbook `calcPr` parsing/updating and workbook child-order logic moved
+  from `src/xlsx_metadata.rs` into `src/xlsx_metadata/calc.rs`, keeping the
+  metadata facade responsible for orchestration and shared XML insertion.
+- Rust XLSX workbook metadata creation now emits the Open XML SDK-expected OPC
+  core-properties content type
+  `application/vnd.openxmlformats-package.core-properties+xml`; the Rust
+  contract test now asserts the invalid `officedocument.core-properties` type
+  is not written.
 - XLSX formula recalculation metadata updates, calcChain content-type cleanup,
   workbook relationship cleanup, and calcChain part removal moved from
   `src/xlsx_mutation.rs` into `src/xlsx_formula_recalc.rs`, with the mutation
@@ -265,12 +273,12 @@ Latest milestone, 2026-06-20:
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
 - Proof after the latest de-monolithization slice: `cargo fmt --check`, `cargo
-  check --all-targets`, targeted Go-oracle checks for `xlsx cells extract`,
-  `xlsx ranges set-format`, `xlsx sheets show`, and `docx_comments`, `cargo
-  clippy --all-targets -- -D warnings`, and `cargo test --all-targets` all pass
-  with 4 ZIP guard unit tests plus 78 Rust contract tests. Office COM proof was
-  not run for these splits because they are pure parser/helper moves and do not
-  alter generated Office output shape.
+  check --all-targets`, targeted Go-oracle checks for `xlsx workbook metadata`,
+  `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
+  all pass with 4 ZIP guard unit tests plus 78 Rust contract tests. A generated
+  metadata-update XLSX passed `ooxml --json validate --strict`, Microsoft Open
+  XML SDK validation (`Valid: true`, `ErrorCount: 0`), and desktop Excel COM
+  open proof (`1 passed, 0 failed`).
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
