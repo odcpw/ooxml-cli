@@ -531,6 +531,13 @@ Latest milestone, 2026-06-20:
   subset/MCP tests, and `cargo test --all-targets` passed with 4 ZIP guard unit
   tests plus 88 Rust contract tests. Office/Open XML proof was not rerun because
   no OOXML output behavior changed.
+- XLSX table append XML validation/ref-rewrite helpers split from
+  `src/xlsx_table_append.rs` into `src/xlsx_table_append/table_xml.rs`. This is
+  a private isomorphic seam ahead of the next table mutation slice:
+  append-row/append-record command behavior, JSON shape, validation, and
+  readback commands are unchanged. Proof: `cargo fmt --check`, `cargo
+  check --all-targets`, and focused `cargo test --test rust_contract_smoke
+  xlsx_tables -- --nocapture` passed with 9 XLSX table contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
