@@ -378,7 +378,7 @@ fn parse_xlsx_matrix_rows(value: &Value) -> CliResult<Vec<Vec<XlsxMatrixCell>>> 
         .collect()
 }
 
-fn parse_xlsx_matrix_cell(value: &Value) -> CliResult<XlsxMatrixCell> {
+pub(crate) fn parse_xlsx_matrix_cell(value: &Value) -> CliResult<XlsxMatrixCell> {
     if value.is_null() {
         return Ok(XlsxMatrixCell {
             kind: "empty".to_string(),
@@ -432,7 +432,10 @@ fn parse_xlsx_matrix_cell(value: &Value) -> CliResult<XlsxMatrixCell> {
         .get("value")
         .ok_or_else(|| CliError::invalid_args("object cell must contain value or formula"))?;
     let mut cell = parse_xlsx_matrix_cell(raw_value)?;
-    if let Some(kind) = object.get("type").and_then(Value::as_str) {
+    if let Some(raw_kind) = object.get("type") {
+        let kind = raw_kind
+            .as_str()
+            .ok_or_else(|| CliError::invalid_args("type must be a string"))?;
         cell.kind = kind.trim().to_ascii_lowercase();
         if cell.kind == "formula" {
             cell.formula = cell.value.clone();

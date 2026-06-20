@@ -470,6 +470,10 @@ fn write_table_xlsx(dest: &Path) {
 }
 
 fn write_table_xlsx_with_sheet(dest: &Path, sheet_name: &str) {
+    write_table_xlsx_with_sheet_and_columns(dest, sheet_name, ["Region", "Amount"]);
+}
+
+fn write_table_xlsx_with_sheet_and_columns(dest: &Path, sheet_name: &str, columns: [&str; 2]) {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).expect("fixture parent");
     }
@@ -524,16 +528,19 @@ fn write_table_xlsx_with_sheet(dest: &Path, sheet_name: &str) {
         &mut writer,
         options,
         "xl/worksheets/sheet1.xml",
-        r#"<?xml version="1.0" encoding="UTF-8"?>
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <dimension ref="A1:B3"/>
   <sheetData>
-    <row r="1"><c r="A1" t="inlineStr"><is><t>Region</t></is></c><c r="B1" t="inlineStr"><is><t>Amount</t></is></c></row>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>{}</t></is></c><c r="B1" t="inlineStr"><is><t>{}</t></is></c></row>
     <row r="2"><c r="A2" t="inlineStr"><is><t>East</t></is></c><c r="B2"><v>10</v></c></row>
     <row r="3"><c r="A3" t="inlineStr"><is><t>West</t></is></c><c r="B3"><f>SUM(B2:B2)*2</f><v>20</v></c></row>
   </sheetData>
   <tableParts count="1"><tablePart r:id="rId1"/></tableParts>
 </worksheet>"#,
+            columns[0], columns[1]
+        ),
     );
     write_zip_string(
         &mut writer,
@@ -548,15 +555,18 @@ fn write_table_xlsx_with_sheet(dest: &Path, sheet_name: &str) {
         &mut writer,
         options,
         "xl/tables/table1.xml",
-        r#"<?xml version="1.0" encoding="UTF-8"?>
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
 <table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="Sales" displayName="Sales" ref="A1:B3" headerRowCount="1" totalsRowShown="0">
   <autoFilter ref="A1:B3"/>
   <tableColumns count="2">
-    <tableColumn id="1" name="Region"/>
-    <tableColumn id="2" name="Amount"/>
+    <tableColumn id="1" name="{}"/>
+    <tableColumn id="2" name="{}"/>
   </tableColumns>
   <tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>
 </table>"#,
+            columns[0], columns[1]
+        ),
     );
     writer.finish().expect("finish table xlsx");
 }

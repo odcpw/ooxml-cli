@@ -4,8 +4,9 @@ mod ranges;
 pub(crate) use cells::{XlsxCellsSetOptions, xlsx_cells_set};
 pub(crate) use format::{XlsxRangesSetFormatOptions, xlsx_ranges_set_format};
 pub(crate) use ranges::{
-    XlsxRangesSetOptions, parse_xlsx_range_set_matrix, rectangularize_xlsx_matrix,
-    resolve_xlsx_ranges_set_values, validate_xlsx_null_policy, xlsx_ranges_set,
+    XlsxRangesSetOptions, parse_xlsx_matrix_cell, parse_xlsx_range_set_matrix,
+    rectangularize_xlsx_matrix, resolve_xlsx_ranges_set_values, validate_xlsx_null_policy,
+    xlsx_ranges_set,
 };
 
 use serde_json::{Map, Value, json};

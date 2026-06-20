@@ -49,6 +49,12 @@ pub(super) enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    XlsxTablesOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
     DocxHeaderFooterSetText {
         command: String,
         plan_flags: Vec<Value>,
@@ -116,6 +122,7 @@ impl ServeOp {
             | ServeOp::XlsxRangeSet { command, .. }
             | ServeOp::XlsxRangeSetFormat { command, .. }
             | ServeOp::XlsxWorkbookMetadataUpdate { command, .. }
+            | ServeOp::XlsxTablesOp { command, .. }
             | ServeOp::DocxHeaderFooterSetText { command, .. }
             | ServeOp::DocxFieldsOp { command, .. }
             | ServeOp::DocxBlocksOp { command, .. }
@@ -260,6 +267,30 @@ impl ServeOp {
                     json!("workbook"),
                     json!("metadata"),
                     json!("update"),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
+            ServeOp::XlsxTablesOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command
+                    .split_whitespace()
+                    .nth(2)
+                    .unwrap_or("append-records");
+                let mut argv = vec![
+                    json!("xlsx"),
+                    json!("tables"),
+                    json!(verb),
                     json!(source_file),
                 ];
                 argv.extend(plan_flags.iter().cloned());
@@ -462,6 +493,11 @@ impl ServeOp {
                 ..
             } => replace_json_string(readback.clone(), readback_file, file),
             ServeOp::XlsxWorkbookMetadataUpdate {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::XlsxTablesOp {
                 readback_file,
                 readback,
                 ..

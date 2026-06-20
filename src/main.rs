@@ -170,7 +170,10 @@ pub(crate) use xlsx_sheet_xml::{
     xlsx_used_range_from_cell_refs,
 };
 pub(crate) use xlsx_sheets::{xlsx_cells_extract, xlsx_sheets_list, xlsx_sheets_show};
-pub(crate) use xlsx_table_append::{XlsxTablesAppendRowsOptions, xlsx_tables_append_rows};
+pub(crate) use xlsx_table_append::{
+    XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions, xlsx_tables_append_records,
+    xlsx_tables_append_rows,
+};
 pub(crate) use xlsx_tables::{
     XlsxTableExportOptions, xlsx_source_command, xlsx_tables_export, xlsx_tables_list,
     xlsx_tables_show,

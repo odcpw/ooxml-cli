@@ -9,7 +9,10 @@ use crate::xlsx_names::*;
 use crate::xlsx_ranges::*;
 use crate::xlsx_sheets::*;
 use crate::xlsx_tables::*;
-use crate::{XlsxTablesAppendRowsOptions, xlsx_tables_append_rows};
+use crate::{
+    XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions, xlsx_tables_append_records,
+    xlsx_tables_append_rows,
+};
 
 pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
     match args {
@@ -694,6 +697,62 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
                     null_policy_present: value_flag_present(rest, "--null-policy"),
                     ragged: ragged.as_deref(),
                     max_cells,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                    overwrite_formulas: has_flag(rest, "--overwrite-formulas"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "tables" && verb == "append-records" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--table",
+                    "--expect-range",
+                    "--records",
+                    "--records-file",
+                    "--missing",
+                    "--null-policy",
+                    "--max-cells",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--ignore-extra-fields",
+                    "--dry-run",
+                    "--no-validate",
+                    "--in-place",
+                    "--overwrite-formulas",
+                ],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let table = parse_string_flag(rest, "--table")?;
+            let expect_range = parse_string_flag(rest, "--expect-range")?;
+            let records = parse_string_flag(rest, "--records")?;
+            let records_file = parse_string_flag(rest, "--records-file")?;
+            let missing = parse_string_flag(rest, "--missing")?;
+            let null_policy = parse_string_flag(rest, "--null-policy")?;
+            let max_cells = parse_i64_flag(rest, "--max-cells")?.unwrap_or(100000);
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_tables_append_records(
+                file,
+                XlsxTablesAppendRecordsOptions {
+                    sheet: sheet.as_deref(),
+                    table: table.as_deref(),
+                    expect_range: expect_range.as_deref(),
+                    records: records.as_deref(),
+                    records_file: records_file.as_deref(),
+                    missing: missing.as_deref(),
+                    null_policy: null_policy.as_deref(),
+                    max_cells,
+                    ignore_extra_fields: has_flag(rest, "--ignore-extra-fields"),
                     out: out.as_deref(),
                     backup: backup.as_deref(),
                     dry_run: has_flag(rest, "--dry-run"),

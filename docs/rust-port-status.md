@@ -501,6 +501,24 @@ Latest milestone, 2026-06-20:
   workbook at `.tmp\xlsx-tables-append-rows\rust-append-rows.xlsx` passed Rust
   `validate --strict`, Microsoft Open XML SDK validation (`Valid: true`,
   `ErrorCount: 0`), and desktop Excel COM open proof (`1 passed, 0 failed`).
+- Rust XLSX table append-record parity landed for
+  `xlsx tables append-records`. The slice decodes inline/file JSON records,
+  maps fields to exact table column names, enforces `--expect-range`, missing
+  and extra-field policies, reuses the shared table append matrix core, and
+  supports serve/MCP op routing because the Go oracle advertises the command as
+  op-compatible. The record decoder lives in `src/xlsx_table_append/records.rs`
+  so the table append parent remains focused on target resolution and OOXML
+  mutation. Rust capabilities now advertise 77 Go-oracle command paths, leaving
+  a pinned 213-command gap. Proof: `cargo fmt --check`, `cargo check
+  --all-targets`, focused `xlsx_tables_append_records` Go-oracle and serve-op
+  tests, focused `xlsx_tables` tests, MCP command-resource coverage, capability
+  ratchet tests, `cargo clippy --all-targets -- -D warnings`, and `cargo test
+  --all-targets` passed with 4 ZIP guard unit tests plus 88 Rust contract tests.
+  A Rust-generated appended workbook at
+  `.tmp\xlsx-tables-append-records\rust-append-records.xlsx` passed Rust
+  `validate --strict`, Microsoft Open XML SDK validation (`Valid: true`,
+  `ErrorCount: 0`, schema `Office2019`), and desktop Excel COM open proof
+  (`1 passed, 0 failed`).
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
@@ -694,7 +712,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 76, and the harness pins the 214-command gap until
+  paths, Rust advertises 77, and the harness pins the 213-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -770,6 +788,13 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   direct-advertised in Rust capabilities because the frozen Go capability
   inventory omits the path; table list/show command templates remain the
   discoverability path for now.
+- `--json xlsx tables append-records <xlsx>` with Go-oracle comparison for
+  saved mutation JSON, dry-run output/templates, generated validation/range/table
+  readback commands, table and autoFilter range expansion, appended range
+  readback, required `--expect-range`, missing/extra-field policies,
+  blank/duplicate table column rejection, capability indexing, serve operation
+  routing, MCP command-resource discovery, strict validation, Open XML SDK
+  schema validation, and desktop Excel COM open proof
 - `--json xlsx workbook metadata inspect/update <xlsx>` with Go-oracle
   comparison for default inspection, saved mutation output, generated readback
   commands, dry-run, clearing, calc-mode/full-recalc flags, guard/error

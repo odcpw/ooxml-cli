@@ -1,10 +1,10 @@
-﻿use serde_json::{Value, json};
+use serde_json::{Value, json};
 
 use crate::{
     CliError, CliResult, XlsxCellsSetOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions,
-    XlsxWorkbookMetadataUpdateOptions, json_bool, json_i64, json_optional_serialized,
-    json_optional_string, json_string, xlsx_cells_set, xlsx_ranges_set, xlsx_ranges_set_format,
-    xlsx_workbook_metadata_update,
+    XlsxTablesAppendRecordsOptions, XlsxWorkbookMetadataUpdateOptions, json_bool, json_i64,
+    json_optional_serialized, json_optional_string, json_string, xlsx_cells_set, xlsx_ranges_set,
+    xlsx_ranges_set_format, xlsx_tables_append_records, xlsx_workbook_metadata_update,
 };
 
 use super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
@@ -138,6 +138,72 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 decimals,
                 currency_symbol,
                 max_cells,
+                readback_file: working.to_string(),
+                readback,
+            }
+        }
+        "xlsx tables append-records" => {
+            let sheet = json_optional_string(args, "sheet");
+            let table = json_string(args, "table")?;
+            let expect_range = json_optional_string(args, "expect-range")
+                .or_else(|| json_optional_string(args, "expectRange"))
+                .ok_or_else(|| CliError::invalid_args("expect-range is required"))?;
+            let records = json_optional_serialized(args, "records")?;
+            let records_file = json_optional_string(args, "records-file")
+                .or_else(|| json_optional_string(args, "recordsFile"));
+            let missing = json_optional_string(args, "missing");
+            let null_policy = json_optional_string(args, "null-policy")
+                .or_else(|| json_optional_string(args, "nullPolicy"));
+            let max_cells = json_i64(args, "max-cells")?
+                .or(json_i64(args, "maxCells")?)
+                .unwrap_or(100000);
+            let ignore_extra_fields = json_bool(args, "ignore-extra-fields")
+                .or_else(|| json_bool(args, "ignoreExtraFields"))
+                .unwrap_or(false);
+            let overwrite_formulas = json_bool(args, "overwrite-formulas")
+                .or_else(|| json_bool(args, "overwriteFormulas"))
+                .unwrap_or(false);
+            let readback = xlsx_tables_append_records(
+                working,
+                XlsxTablesAppendRecordsOptions {
+                    sheet: sheet.as_deref(),
+                    table: Some(&table),
+                    expect_range: Some(&expect_range),
+                    records: records.as_deref(),
+                    records_file: records_file.as_deref(),
+                    missing: missing.as_deref(),
+                    null_policy: null_policy.as_deref(),
+                    max_cells,
+                    ignore_extra_fields,
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    no_validate: true,
+                    in_place: true,
+                    overwrite_formulas,
+                },
+            )?;
+            let mut plan_flags = Vec::new();
+            push_serve_plan_string_flag(&mut plan_flags, "--sheet", sheet.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--table", Some(&table));
+            push_serve_plan_string_flag(&mut plan_flags, "--expect-range", Some(&expect_range));
+            push_serve_plan_string_flag(&mut plan_flags, "--records", records.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--records-file", records_file.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--missing", missing.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--null-policy", null_policy.as_deref());
+            if max_cells != 100000 {
+                plan_flags.push(json!("--max-cells"));
+                plan_flags.push(json!(max_cells.to_string()));
+            }
+            if ignore_extra_fields {
+                plan_flags.push(json!("--ignore-extra-fields"));
+            }
+            if overwrite_formulas {
+                plan_flags.push(json!("--overwrite-formulas"));
+            }
+            ServeOp::XlsxTablesOp {
+                command: command.to_string(),
+                plan_flags,
                 readback_file: working.to_string(),
                 readback,
             }

@@ -1,3 +1,5 @@
+mod records;
+
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Value, json};
@@ -6,9 +8,9 @@ use std::fs;
 use std::path::Path;
 
 use crate::xlsx_mutation::{
-    add_xlsx_range_mutation_commands, parse_xlsx_range_set_matrix, rectangularize_xlsx_matrix,
-    resolve_xlsx_ranges_set_values, set_xlsx_range_in_sheet_xml, validate_xlsx_null_policy,
-    xlsx_range_destination_json,
+    XlsxMatrixCell, add_xlsx_range_mutation_commands, parse_xlsx_range_set_matrix,
+    rectangularize_xlsx_matrix, resolve_xlsx_ranges_set_values, set_xlsx_range_in_sheet_xml,
+    validate_xlsx_null_policy, xlsx_range_destination_json,
 };
 use crate::xlsx_tables::{
     XlsxTableRef, parse_xlsx_table_part, select_xlsx_table, xlsx_source_command, xlsx_tables,
@@ -19,6 +21,9 @@ use crate::{
     normalize_xlsx_ranges_set_data_format, parse_range, parse_xlsx_row_spans, range_bounds_ref,
     relationships, render_xml_attrs, validate, validate_xlsx_mutation_output_flags,
     workbook_sheets, xlsx_ranges_set_temp_path, xlsx_sheet_data_span, zip_text,
+};
+use records::{
+    normalize_xlsx_missing_policy, resolve_xlsx_tables_append_records, xlsx_records_to_rows,
 };
 
 const XLSX_MAX_ROW: u32 = 1_048_576;
@@ -39,6 +44,42 @@ pub(crate) struct XlsxTablesAppendRowsOptions<'a> {
     pub(crate) no_validate: bool,
     pub(crate) in_place: bool,
     pub(crate) overwrite_formulas: bool,
+}
+
+pub(crate) struct XlsxTablesAppendRecordsOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) table: Option<&'a str>,
+    pub(crate) expect_range: Option<&'a str>,
+    pub(crate) records: Option<&'a str>,
+    pub(crate) records_file: Option<&'a str>,
+    pub(crate) missing: Option<&'a str>,
+    pub(crate) null_policy: Option<&'a str>,
+    pub(crate) max_cells: i64,
+    pub(crate) ignore_extra_fields: bool,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+    pub(crate) overwrite_formulas: bool,
+}
+
+struct XlsxTableAppendTarget {
+    table: XlsxTableRef,
+    table_part: String,
+    sheet_part: String,
+    table_xml: String,
+    sheet_xml: String,
+    table_range: RangeBounds,
+}
+
+struct XlsxTableAppendWriteOptions<'a> {
+    out: Option<&'a str>,
+    backup: Option<&'a str>,
+    dry_run: bool,
+    no_validate: bool,
+    in_place: bool,
+    overwrite_formulas: bool,
 }
 
 struct TableStartTag {
@@ -92,15 +133,135 @@ pub(crate) fn xlsx_tables_append_rows(
         options.dry_run,
     )?;
 
-    let tables = xlsx_tables(file, options.sheet)?;
-    let table = select_xlsx_table(&tables, options.table.unwrap_or_default())?;
+    let target = resolve_xlsx_table_append_target(file, options.sheet, options.table)?;
+    let mut result = xlsx_table_append_matrix(
+        file,
+        target,
+        &matrix.rows,
+        &null_policy,
+        XlsxTableAppendWriteOptions {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+            overwrite_formulas: options.overwrite_formulas,
+        },
+    )?;
+    result.insert("dataFormat".to_string(), json!(data_format));
+    result.insert("majorDimension".to_string(), json!(matrix.major_dimension));
+    Ok(Value::Object(result))
+}
+
+pub(crate) fn xlsx_tables_append_records(
+    file: &str,
+    options: XlsxTablesAppendRecordsOptions<'_>,
+) -> CliResult<Value> {
+    if !Path::new(file).exists() {
+        return Err(CliError::file_not_found(format!("file not found: {file}")));
+    }
+    let table_selector = options.table.unwrap_or_default();
+    if table_selector.is_empty() {
+        return Err(CliError::invalid_args("--table is required"));
+    }
+    let expect_range = options.expect_range.unwrap_or_default();
+    if expect_range.is_empty() {
+        return Err(CliError::invalid_args("--expect-range is required"));
+    }
+    if options.max_cells < 0 {
+        return Err(CliError::invalid_args("--max-cells must be >= 0"));
+    }
+    let missing_policy = normalize_xlsx_missing_policy(options.missing)?;
+    let null_policy = normalize_xlsx_append_null_policy(options.null_policy, true, None)?;
+    let records = resolve_xlsx_tables_append_records(options.records, options.records_file)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+
+    let target = resolve_xlsx_table_append_target(file, options.sheet, Some(table_selector))?;
+    if target.table.range != expect_range {
+        return Err(CliError::invalid_args(format!(
+            "table range mismatch: expected {expect_range} but found {}",
+            target.table.range
+        )));
+    }
+    let columns = xlsx_table_column_names(&target.table);
+    let rows = xlsx_records_to_rows(
+        &records,
+        &columns,
+        &missing_policy,
+        options.ignore_extra_fields,
+    )?;
+    let cell_count = i64::try_from(rows.len().saturating_mul(columns.len())).unwrap_or(i64::MAX);
+    if options.max_cells > 0 && cell_count > options.max_cells {
+        return Err(CliError::invalid_args(format!(
+            "records contain {cell_count} cells, above --max-cells {}",
+            options.max_cells
+        )));
+    }
+
+    let mut result = xlsx_table_append_matrix(
+        file,
+        target,
+        &rows,
+        &null_policy,
+        XlsxTableAppendWriteOptions {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+            overwrite_formulas: options.overwrite_formulas,
+        },
+    )?;
+    result.insert("dataFormat".to_string(), json!("json"));
+    result.insert("missingPolicy".to_string(), json!(missing_policy));
+    result.insert(
+        "ignoredExtraFields".to_string(),
+        json!(options.ignore_extra_fields),
+    );
+    result.insert("columns".to_string(), json!(columns));
+    Ok(Value::Object(result))
+}
+
+fn resolve_xlsx_table_append_target(
+    file: &str,
+    sheet: Option<&str>,
+    table_selector: Option<&str>,
+) -> CliResult<XlsxTableAppendTarget> {
+    let tables = xlsx_tables(file, sheet)?;
+    let table = select_xlsx_table(&tables, table_selector.unwrap_or_default())?;
     let table_part = table.part_uri.trim_start_matches('/').to_string();
     let sheet_part = table.sheet_part_uri.trim_start_matches('/').to_string();
     let table_xml = zip_text(file, &table_part)?;
     let sheet_xml = zip_text(file, &sheet_part)?;
-
     let table_range = validate_xlsx_table_append_xml(&table_xml, &table.part_uri)?;
-    let table_bounds = table_range.normalized();
+    Ok(XlsxTableAppendTarget {
+        table,
+        table_part,
+        sheet_part,
+        table_xml,
+        sheet_xml,
+        table_range,
+    })
+}
+
+fn xlsx_table_append_matrix(
+    file: &str,
+    target: XlsxTableAppendTarget,
+    rows: &[Vec<XlsxMatrixCell>],
+    null_policy: &str,
+    options: XlsxTableAppendWriteOptions<'_>,
+) -> CliResult<Map<String, Value>> {
+    let row_count = rows.len();
+    let col_count = rows.first().map_or(0, Vec::len);
+    if row_count < 1 || col_count < 1 {
+        return Err(CliError::invalid_args("values matrix cannot be empty"));
+    }
+    let table_bounds = target.table_range.normalized();
     if col_count as u32 != table_bounds.col_count() {
         return Err(CliError::invalid_args(format!(
             "table column count mismatch: row 1 has {col_count} columns, want {}",
@@ -119,13 +280,13 @@ pub(crate) fn xlsx_tables_append_rows(
         end_col: table_bounds.max_col(),
         end_row: table_bounds.max_row() + row_count as u32,
     };
-    reject_xlsx_table_append_overwrite(&sheet_xml, append_bounds)?;
+    reject_xlsx_table_append_overwrite(&target.sheet_xml, append_bounds)?;
 
     let (updated_sheet_xml, stats) = set_xlsx_range_in_sheet_xml(
-        &sheet_xml,
+        &target.sheet_xml,
         append_bounds,
-        &matrix.rows,
-        &null_policy,
+        rows,
+        null_policy,
         options.overwrite_formulas,
     )?;
     let new_bounds = RangeBounds {
@@ -134,10 +295,10 @@ pub(crate) fn xlsx_tables_append_rows(
         end_col: table_bounds.max_col(),
         end_row: table_bounds.max_row() + row_count as u32,
     };
-    let previous_range = range_bounds_ref(table_range);
+    let previous_range = range_bounds_ref(target.table_range);
     let new_range = range_bounds_ref(new_bounds);
     let append_range = range_bounds_ref(append_bounds);
-    let updated_table_xml = update_xlsx_table_refs(&table_xml, &new_range)?;
+    let updated_table_xml = update_xlsx_table_refs(&target.table_xml, &new_range)?;
 
     let output_path = options.out.filter(|value| !value.is_empty());
     let commit_path = if options.in_place {
@@ -158,8 +319,8 @@ pub(crate) fn xlsx_tables_append_rows(
     };
     let mut overrides = BTreeMap::new();
     let mut removals = BTreeSet::new();
-    overrides.insert(sheet_part.clone(), updated_sheet_xml);
-    overrides.insert(table_part.clone(), updated_table_xml.clone());
+    overrides.insert(target.sheet_part.clone(), updated_sheet_xml);
+    overrides.insert(target.table_part.clone(), updated_table_xml.clone());
     add_xlsx_formula_recalc_package_updates(
         file,
         stats.formula_seen,
@@ -172,12 +333,12 @@ pub(crate) fn xlsx_tables_append_rows(
         validate(&readback_path, true)?;
     }
 
-    let sheet = workbook_sheet_for_table(file, &table)?;
+    let sheet = workbook_sheet_for_table(file, &target.table)?;
     let destination = xlsx_table_append_destination_json(
         &readback_path,
         commit_path,
         &sheet,
-        &table,
+        &target.table,
         &updated_table_xml,
         &previous_range,
         &append_range,
@@ -200,9 +361,9 @@ pub(crate) fn xlsx_tables_append_rows(
 
     let mut result = Map::new();
     result.insert("file".to_string(), json!(file));
-    result.insert("table".to_string(), json!(table.display_name));
-    result.insert("sheet".to_string(), json!(table.sheet));
-    result.insert("sheetNumber".to_string(), json!(table.sheet_number));
+    result.insert("table".to_string(), json!(target.table.display_name));
+    result.insert("sheet".to_string(), json!(target.table.sheet));
+    result.insert("sheetNumber".to_string(), json!(target.table.sheet_number));
     result.insert("previousRange".to_string(), json!(previous_range));
     result.insert("range".to_string(), json!(new_range));
     result.insert("appendRange".to_string(), json!(append_range));
@@ -212,9 +373,7 @@ pub(crate) fn xlsx_tables_append_rows(
     result.insert("cleared".to_string(), json!(stats.cleared));
     result.insert("skipped".to_string(), json!(stats.skipped));
     result.insert("formulaCount".to_string(), json!(stats.formula_count));
-    result.insert("dataFormat".to_string(), json!(data_format));
     result.insert("nullPolicy".to_string(), json!(null_policy));
-    result.insert("majorDimension".to_string(), json!(matrix.major_dimension));
     if let Some(commit_path) = commit_path {
         result.insert("output".to_string(), json!(commit_path));
     }
@@ -230,9 +389,9 @@ pub(crate) fn xlsx_tables_append_rows(
         &mut result,
         commit_path,
         &format!("sheetId:{}", sheet.sheet_id),
-        &table.primary_selector,
+        &target.table.primary_selector,
     );
-    Ok(Value::Object(result))
+    Ok(result)
 }
 
 fn normalize_xlsx_append_null_policy(
@@ -256,6 +415,14 @@ fn normalize_xlsx_append_null_policy(
         }
     };
     Ok(normalized.to_string())
+}
+
+fn xlsx_table_column_names(table: &XlsxTableRef) -> Vec<String> {
+    table
+        .columns
+        .iter()
+        .map(|column| column.name.clone())
+        .collect()
 }
 
 fn validate_xlsx_table_append_xml(xml: &str, part_uri: &str) -> CliResult<RangeBounds> {
