@@ -169,6 +169,10 @@ Latest milestone, 2026-06-20:
   comment-handle parsing, marker insertion/removal, comments-part rendering,
   and comment content hashing moved from `src/main.rs` into
   `src/docx_comments.rs`.
+- DOCX comment handle parsing/resolution moved from `src/docx_comments.rs`
+  into `src/docx_comments/handles.rs`, preserving a single `pub(super)`
+  resolver entry point while keeping handle parsing private to the child
+  module.
 - DOCX body block readers, rich block reports, paragraph/table text extraction,
   run formatting capture, namespace-aware paragraph handles, and block content
   hashing moved from `src/main.rs` into `src/docx_block_readers.rs`.
@@ -232,6 +236,10 @@ Latest milestone, 2026-06-20:
 - XLSX A1 cell/range parsing, `RangeBounds`, range containment, and column-name
   rendering moved from `src/xlsx_model.rs` into `src/xlsx_model/range.rs`,
   leaving `src/xlsx_model.rs` as the facade for existing crate imports.
+- XLSX style readback, built-in number-format lookup, and date-style detection
+  moved from `src/xlsx_model.rs` into `src/xlsx_model/styles.rs`, preserving
+  the existing `XlsxStyle`, `xlsx_styles`, and `builtin_num_format_code` crate
+  facade used by sheet readback and range-format writes.
 - XLSX range/cell mutation commands, range formatting, calc-chain
   invalidation, style XML mutation, sheet-data rewrites, and mutation readback
   command generation moved from `src/main.rs` into `src/xlsx_mutation.rs`.
@@ -257,12 +265,12 @@ Latest milestone, 2026-06-20:
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
 - Proof after the latest de-monolithization slice: `cargo fmt --check`, `cargo
-  check --all-targets`, targeted Go-oracle checks for `xlsx ranges set`, `xlsx
-  cells extract`, DOCX header/footer listing, and DOCX field listing, `cargo
+  check --all-targets`, targeted Go-oracle checks for `xlsx cells extract`,
+  `xlsx ranges set-format`, `xlsx sheets show`, and `docx_comments`, `cargo
   clippy --all-targets -- -D warnings`, and `cargo test --all-targets` all pass
   with 4 ZIP guard unit tests plus 78 Rust contract tests. Office COM proof was
-  not run for these splits because they are pure parser/readback moves and do
-  not alter generated Office output shape.
+  not run for these splits because they are pure parser/helper moves and do not
+  alter generated Office output shape.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
