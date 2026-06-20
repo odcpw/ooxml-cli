@@ -79,6 +79,9 @@ Latest milestone, 2026-06-20:
 - PPTX notes extraction/show reporting moved from `src/pptx_readback.rs` into
   `src/pptx_readback/notes.rs`, reusing the shared slide-part helper and parent
   shape text parser through the PPTX readback facade.
+- PPTX text extraction, text JSON rendering, and slide text snapshots moved from
+  `src/pptx_readback.rs` into `src/pptx_readback/text.rs`, leaving `pptx diff`
+  at the readback facade while sharing the same shape model parser.
 - PPTX master/layout/theme readback moved from `src/pptx_readback.rs` into
   `src/pptx_readback/layouts.rs`, preserving the existing crate-facing
   `pptx masters` and `pptx layouts` command facade.
