@@ -1,5 +1,27 @@
 use super::*;
 
+const XLSX_PARENT_HELP_PATHS: &[&[&str]] = &[
+    &["xlsx"],
+    &["xlsx", "cells"],
+    &["xlsx", "charts"],
+    &["xlsx", "cols"],
+    &["xlsx", "colwidths"],
+    &["xlsx", "comments"],
+    &["xlsx", "data-validations"],
+    &["xlsx", "filters-sorts"],
+    &["xlsx", "freeze"],
+    &["xlsx", "hyperlinks"],
+    &["xlsx", "names"],
+    &["xlsx", "pivots"],
+    &["xlsx", "ranges"],
+    &["xlsx", "rowheights"],
+    &["xlsx", "rows"],
+    &["xlsx", "sheets"],
+    &["xlsx", "tables"],
+    &["xlsx", "workbook"],
+    &["xlsx", "workbook", "metadata"],
+];
+
 #[test]
 fn utility_capabilities_advertise_only_implemented_paths() {
     let (code, stdout, stderr) = run_ooxml(&["--json", "capabilities"]);
@@ -38,14 +60,7 @@ fn utility_capabilities_advertise_only_implemented_paths() {
         assert_command(&caps, path, false);
     }
     assert_no_command(&caps, "ooxml conformance check");
-    for path in [
-        "ooxml xlsx",
-        "ooxml xlsx sheets",
-        "ooxml xlsx tables",
-        "ooxml pptx",
-        "ooxml pptx slides",
-        "ooxml pptx layouts",
-    ] {
+    for path in ["ooxml pptx", "ooxml pptx slides", "ooxml pptx layouts"] {
         assert_no_command(&caps, path);
     }
 }
@@ -252,8 +267,22 @@ fn go_and_rust_help_like_paths_share_success_shape() {
         &["docx", "styles"][..],
         &["docx", "tables"][..],
         &["pptx", "slides"][..],
-        &["xlsx", "sheets"][..],
     ] {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(args);
+        assert_eq!(rust_code, go_code, "exit code for {args:?}");
+        assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
+        assert!(
+            go_stdout.contains("Usage:"),
+            "Go stdout for {args:?}: {go_stdout}"
+        );
+        assert!(
+            rust_stdout.contains("Usage:"),
+            "Rust stdout for {args:?}: {rust_stdout}"
+        );
+    }
+
+    for args in XLSX_PARENT_HELP_PATHS {
         let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(args);
         assert_eq!(rust_code, go_code, "exit code for {args:?}");

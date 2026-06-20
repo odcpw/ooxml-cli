@@ -4,8 +4,97 @@ use serde_json::Value;
 
 use super::{capability_command, flag};
 
+const COMMAND_GROUP_REASON: &str = "it is a command group, not a leaf mutation command";
+
 pub(super) fn commands() -> Vec<Value> {
     let mut commands = vec![
+        command_group("ooxml xlsx", "xlsx", "Work with XLSX workbooks"),
+        command_group(
+            "ooxml xlsx cells",
+            "cells",
+            "Read and mutate worksheet cells",
+        ),
+        command_group("ooxml xlsx charts", "charts", "Inspect workbook charts"),
+        command_group(
+            "ooxml xlsx cols",
+            "cols",
+            "Insert and delete worksheet columns",
+        ),
+        command_group(
+            "ooxml xlsx colwidths",
+            "colwidths",
+            "Inspect and set worksheet column widths",
+        ),
+        command_group(
+            "ooxml xlsx comments",
+            "comments",
+            "Inspect and mutate XLSX cell comments (legacy notes)",
+        ),
+        command_group(
+            "ooxml xlsx data-validations",
+            "data-validations",
+            "Inspect and mutate worksheet data validations",
+        ),
+        command_group(
+            "ooxml xlsx filters-sorts",
+            "filters-sorts",
+            "Auto-filter and sort for table/range workflows",
+        ),
+        command_group(
+            "ooxml xlsx freeze",
+            "freeze",
+            "Inspect and set worksheet freeze panes",
+        ),
+        command_group(
+            "ooxml xlsx hyperlinks",
+            "hyperlinks",
+            "Inspect and mutate worksheet hyperlinks",
+        ),
+        command_group(
+            "ooxml xlsx names",
+            "names",
+            "Inspect and mutate workbook defined names",
+        ),
+        command_group(
+            "ooxml xlsx pivots",
+            "pivots",
+            "Inspect workbook PivotTables",
+        ),
+        command_group(
+            "ooxml xlsx ranges",
+            "ranges",
+            "Export and set rectangular worksheet ranges",
+        ),
+        command_group(
+            "ooxml xlsx rowheights",
+            "rowheights",
+            "Inspect and set worksheet row heights",
+        ),
+        command_group(
+            "ooxml xlsx rows",
+            "rows",
+            "Insert and delete worksheet rows",
+        ),
+        command_group(
+            "ooxml xlsx sheets",
+            "sheets",
+            "Inspect and mutate workbook sheets",
+        ),
+        command_group(
+            "ooxml xlsx tables",
+            "tables",
+            "Inspect and mutate workbook tables",
+        ),
+        command_group(
+            "ooxml xlsx workbook",
+            "workbook",
+            "Workbook-level operations",
+        ),
+        command_group(
+            "ooxml xlsx workbook metadata",
+            "metadata",
+            "Inspect and update workbook metadata and calc settings",
+        ),
         capability_command(
             "ooxml xlsx sheets list",
             "list <file>",
@@ -2504,6 +2593,18 @@ pub(super) fn commands() -> Vec<Value> {
         ),
     ]);
     commands
+}
+
+fn command_group(path: &str, use_text: &str, short: &str) -> Value {
+    capability_command(
+        path,
+        use_text,
+        short,
+        &[],
+        false,
+        Some(COMMAND_GROUP_REASON),
+        vec![],
+    )
 }
 
 fn xlsx_chart_fill_flags() -> Vec<Value> {

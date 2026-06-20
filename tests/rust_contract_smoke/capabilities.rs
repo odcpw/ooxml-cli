@@ -14,6 +14,30 @@ const DOCX_PARENT_GROUP_COMMANDS: &[&str] = &[
     "ooxml docx tables",
 ];
 
+const XLSX_PARENT_GROUP_PATHS: &[&str] = &[
+    "ooxml xlsx",
+    "ooxml xlsx cells",
+    "ooxml xlsx charts",
+    "ooxml xlsx cols",
+    "ooxml xlsx colwidths",
+    "ooxml xlsx comments",
+    "ooxml xlsx data-validations",
+    "ooxml xlsx filters-sorts",
+    "ooxml xlsx freeze",
+    "ooxml xlsx hyperlinks",
+    "ooxml xlsx names",
+    "ooxml xlsx pivots",
+    "ooxml xlsx ranges",
+    "ooxml xlsx rowheights",
+    "ooxml xlsx rows",
+    "ooxml xlsx sheets",
+    "ooxml xlsx tables",
+    "ooxml xlsx workbook",
+    "ooxml xlsx workbook metadata",
+];
+
+const COMMAND_GROUP_REASON: &str = "it is a command group, not a leaf mutation command";
+
 #[test]
 fn capabilities_advertise_supported_web_agent_surface() {
     let (all_code, all_stdout, all_stderr) = run_ooxml(&["--json", "capabilities"]);
@@ -1379,6 +1403,41 @@ fn docx_parent_group_capabilities_match_go_oracle() {
 }
 
 #[test]
+fn xlsx_parent_group_capabilities_match_go_oracle() {
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
+    assert_eq!(go_code, 0);
+    assert_eq!(go_stderr, None);
+    let go_caps = go_stdout.expect("go capabilities");
+
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(rust_code, 0);
+    assert_eq!(rust_stderr, None);
+    let rust_caps = rust_stdout.expect("rust capabilities");
+
+    for path in XLSX_PARENT_GROUP_PATHS {
+        let go_command = command_by_path(&go_caps, path);
+        let rust_command = command_by_path(&rust_caps, path);
+        for field in ["use", "short", "opCompatible", "opIneligibleReason"] {
+            assert_eq!(rust_command[field], go_command[field], "{field} for {path}");
+        }
+        assert!(is_absent_or_empty_array(
+            go_command.get("targetObjectKinds")
+        ));
+        assert!(is_absent_or_empty_array(go_command.get("localFlags")));
+        assert!(is_empty_array(&rust_command["targetObjectKinds"]));
+        assert!(is_empty_array(&rust_command["localFlags"]));
+        assert_eq!(
+            rust_command["opCompatible"], false,
+            "{path} op compatibility"
+        );
+        assert_eq!(
+            rust_command["opIneligibleReason"], COMMAND_GROUP_REASON,
+            "{path} command-group reason"
+        );
+    }
+}
+
+#[test]
 fn rust_capability_inventory_is_go_oracle_subset() {
     let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
     assert_eq!(go_code, 0);
@@ -1395,12 +1454,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        245,
+        264,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        45,
+        26,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
@@ -1419,4 +1478,14 @@ fn command_by_path<'a>(capabilities: &'a Value, path: &str) -> &'a Value {
         .iter()
         .find(|command| command["path"].as_str() == Some(path))
         .unwrap_or_else(|| panic!("missing command {path}: {commands:?}"))
+}
+
+fn is_absent_or_empty_array(value: Option<&Value>) -> bool {
+    value
+        .map(|value| value.as_array().is_some_and(Vec::is_empty))
+        .unwrap_or(true)
+}
+
+fn is_empty_array(value: &Value) -> bool {
+    value.as_array().is_some_and(Vec::is_empty)
 }

@@ -275,6 +275,12 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
         "Commands for workbook metadata inspection and mutation.",
         &[],
     ),
+    (
+        &["xlsx", "workbook", "metadata"],
+        "Inspect and update workbook metadata and calc settings.",
+        "Commands for workbook core/app properties and calculation settings.",
+        &[],
+    ),
 ];
 
 pub(crate) fn is_help_request(args: &[String]) -> bool {
@@ -332,7 +338,13 @@ fn is_known_topic(args: &[String]) -> bool {
 }
 
 fn is_parent_group_path(args: &[String]) -> bool {
-    is_group_path(args) && has_available_children(args)
+    if !is_group_path(args) {
+        return false;
+    }
+    command_for_topic(args)
+        .as_ref()
+        .map(is_command_group_capability)
+        .unwrap_or(true)
 }
 
 fn is_group_path(args: &[String]) -> bool {
@@ -379,21 +391,6 @@ fn group_for_topic(
         })
 }
 
-fn has_available_children(topic: &[String]) -> bool {
-    capability_commands().into_iter().any(|command| {
-        let Some(path) = command["path"].as_str() else {
-            return false;
-        };
-        let words = path
-            .strip_prefix("ooxml ")
-            .unwrap_or(path)
-            .split_whitespace()
-            .map(ToOwned::to_owned)
-            .collect::<Vec<_>>();
-        starts_with_topic(&words, topic) && words.len() > topic.len()
-    })
-}
-
 fn root_help() -> String {
     let commands = available_children(&[]);
     let mut out = format!(
@@ -403,7 +400,9 @@ fn root_help() -> String {
     out.push_str("\nGlobal Flags:\n");
     out.push_str(global_flags_text());
     out.push_str("\nUse \"ooxml help [command]\" for Rust-supported command help.\n");
-    out.push_str("Some parent/group help paths are listed in capabilities; invoke a listed leaf command for work.\n");
+    out.push_str(
+        "Parent/group capability paths are help surfaces; invoke a listed leaf command for work.\n",
+    );
     out
 }
 
@@ -531,6 +530,18 @@ fn command_for_topic(topic: &[String]) -> Option<Value> {
     capability_commands()
         .into_iter()
         .find(|command| command["path"].as_str() == Some(wanted.as_str()))
+}
+
+fn is_command_group_capability(command: &Value) -> bool {
+    command["opCompatible"].as_bool() == Some(false)
+        && command["localFlags"]
+            .as_array()
+            .map(Vec::is_empty)
+            .unwrap_or(true)
+        && command["targetObjectKinds"]
+            .as_array()
+            .map(Vec::is_empty)
+            .unwrap_or(true)
 }
 
 fn render_children(children: &[(String, String)]) -> String {
