@@ -164,6 +164,12 @@ Latest milestone, 2026-06-20:
   hash rules for insertion at document start, text/style alias handling, plan
   flag ordering, `DocxBlocksOp` readback shaping, and unsupported-command
   fallback behavior.
+- DOCX serve operation dispatch for header/footer `set-text` moved from
+  `src/serve/op_dispatch/docx.rs` into
+  `src/serve/op_dispatch/docx/headers_footers.rs`, preserving header/footer
+  kind routing, section/index/default-reference handling, selector and
+  `textFile` alias behavior, plan flag ordering, `DocxHeaderFooterSetText`
+  readback shaping, and unsupported-command fallback behavior.
 - The top-level serve op dispatcher now routes XLSX and DOCX commands by
   family prefix, leaving exact command matching and unsupported-command
   fallbacks inside each child dispatcher.
