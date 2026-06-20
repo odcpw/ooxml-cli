@@ -80,7 +80,8 @@ fn guide_json() -> Value {
                     "ooxml validate --strict <file>",
                     "ooxml --json doctor",
                     "ooxml --json doctor capabilities",
-                    "ooxml --json conformance coverage"
+                    "ooxml --json conformance coverage",
+                    "ooxml --json conformance check <file>"
                 ]
             },
             {
@@ -156,7 +157,7 @@ fn guide_json() -> Value {
         "warnings": [
             "Do not run mutation commands without an explicit --out, --dry-run, or user-approved --in-place path.",
             "Do not assume Go-only commands exist in the Rust port; use capabilities before invoking a command family.",
-            "Do not treat conformance check as available in Rust until it appears in capabilities."
+            "Use --office-check only when a local LibreOffice/soffice open engine is appropriate for the current proof."
         ]
     })
 }

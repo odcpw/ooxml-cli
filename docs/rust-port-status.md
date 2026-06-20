@@ -9,40 +9,19 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
-- Rust `conformance check` now includes the second conformance parity wave:
-  local `--office-check` behavior, PPTX animation target repair invariants,
-  chart embedded-workbook package-open repair invariants, and a
-  behavior-preserving split of embedded workbook helpers into
-  `src/conformance_invariants/embedded_workbook.rs`. Proof: focused
-  Go-vs-Rust tests for office-check missing-engine behavior, PPTX animation
-  target diagnostics, chart embedded-workbook diagnostics, the combined
-  `conformance_check` subset with 14 tests, `cargo fmt --check`, `cargo
+- Rust `conformance check` is now promoted in the advertised capability
+  surface. The final blocker was PPTX repo-validation parity for
+  `PPTX_MISSING_MEDIA`, `PPTX_MISSING_SLIDE_RELATIONSHIP`, and
+  `PPTX_STALE_MEDIA_REFERENCE` on committed broken-media fixtures. That slice
+  now lives in `src/validation_pptx.rs` and is covered by a Go-vs-Rust
+  fixture test. A read-only promotion audit confirmed the previous wrapper,
+  relationship read-error, worksheet hyperlink, and PPTX media blockers are
+  closed. Proof: focused PPTX media parity test, combined
+  `conformance_check` subset with 18 tests, `cargo fmt --check`, `cargo
   clippy --all-targets -- -D warnings`, Open XML SDK validator build, and
-  `cargo test --all-targets` with 4 unit tests plus 217 Rust contract tests.
-  Capability promotion remains intentionally blocked: a read-only red-team
-  audit found missing or divergent full-report behavior for
-  `OOXML_RELS_READ_ERROR`, `OOXML_OPEN_FAILED`, `OOXML_VALIDATE_FAILED`, and
-  `OOXML_REPAIR_INVARIANT_FAILED`. Rust still advertises 289 Go-oracle command
-  paths while Go advertises 290; the remaining unadvertised path is still
-  `ooxml conformance check`. The `XLSX_WORKSHEET_HYPERLINK_REFERENCE` blocker
-  has since been closed by a focused Go-vs-Rust worksheet hyperlink fixture.
-- The follow-up conformance blocker closure landed Rust parity work for
-  worksheet hyperlink relationship references, relationship-part read-error
-  classification/static coverage, and Go-shaped conformance lifecycle wrapper
-  reports for package-open, validation, and unexpected repair-invariant errors.
-  Proof: focused worksheet hyperlink, wrapper-report, relationship read-error,
-  and coverage tests; the combined `conformance_check` subset with 17 tests;
-  `cargo fmt --check`; and `cargo clippy --all-targets -- -D warnings`.
-  `ooxml conformance check` remains unadvertised pending a fresh promotion
-  audit rather than assumption from the closed blocker list.
-- A fresh promotion audit after those blocker closures still says "not yet":
-  committed PPTX failure fixtures diverge in the `repo-validation` check.
-  Rust is missing Go-shaped `PPTX_MISSING_MEDIA`,
-  `PPTX_MISSING_SLIDE_RELATIONSHIP`, and `PPTX_STALE_MEDIA_REFERENCE`
-  diagnostics for `testdata/pptx/animations-stale-media/presentation.pptx`
-  and `testdata/pptx/corrupted-missing-media/presentation.pptx`. This keeps
-  `ooxml conformance check` hidden until the PPTX validation slice lands and a
-  follow-up promotion audit passes.
+  `cargo test --all-targets` with 5 unit tests plus 222 Rust contract tests.
+  Current capability ratchet: Go advertises 290 command paths and Rust now
+  advertises the same 290-path Go-oracle subset.
 - Rust `conformance check` now includes the focused Go-oracle spreadsheet
   semantic-reference invariant slice. The checks live in
   `src/conformance_invariants/spreadsheet_semantics.rs` and cover workbook

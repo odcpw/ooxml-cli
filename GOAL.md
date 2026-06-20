@@ -37,26 +37,20 @@ history.
   - `cargo check --all-targets` passed.
   - `cargo fmt --check` passed.
   - `cargo clippy --all-targets -- -D warnings` passed.
-  - `cargo test --all-targets` passed with 4 unit tests and 217 Rust contract
-    tests after the hidden conformance ZIP-timestamp, reference-list,
+  - `cargo test --all-targets` passed with 5 unit tests and 222 Rust contract
+    tests after the conformance ZIP-timestamp, reference-list,
     deep-relationship, image-payload, chart-structure, table/pivot,
     spreadsheet semantic-reference, PPTX animation-target, chart embedded
-    workbook-open, and local office-check slices.
+    workbook-open, PPTX media validation, lifecycle wrapper, relationship
+    read-error, and local office-check slices.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
-  - Current capability ratchet: Go advertises 290 command paths, Rust
-    advertises 289, leaving 1 unported path after the exact `pptx diff`
-    integration: `ooxml conformance check`.
-  - `ooxml conformance check` has a hidden Rust-native repair-invariant slice
-    with local `--office-check` behavior, but remains unadvertised until a
-    fresh promotion audit confirms that the previous red-team blockers are
-    closed. Recently closed blocker set: `XLSX_WORKSHEET_HYPERLINK_REFERENCE`,
-    `OOXML_RELS_READ_ERROR`, `OOXML_OPEN_FAILED`, `OOXML_VALIDATE_FAILED`, and
-    `OOXML_REPAIR_INVARIANT_FAILED`. Current promotion blocker: PPTX
-    repo-validation parity for `PPTX_MISSING_MEDIA`,
-    `PPTX_MISSING_SLIDE_RELATIONSHIP`, and `PPTX_STALE_MEDIA_REFERENCE` on
-    committed broken media fixtures.
-  - The hidden conformance invariant engine was split at `951a227` into focused
+  - Current capability ratchet: Go advertises 290 command paths and Rust
+    advertises the same 290-path Go-oracle subset. `ooxml conformance check`
+    is now promoted after a read-only audit confirmed parity on the previous
+    wrapper, relationship, worksheet hyperlink, and PPTX media validation
+    blockers.
+  - The conformance invariant engine was split at `951a227` into focused
     Rust modules under `src/conformance_invariants/` for content types,
     relationships, spec tables, XML-part checks, shared types, and utilities.
     This is the base for the next parallel conformance worker lanes.

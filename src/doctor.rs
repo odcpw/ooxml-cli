@@ -119,7 +119,7 @@ fn doctor_capabilities(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
             },
             {
                 "id": "repair-conformance",
-                "description": "Run the conformance wrapper when available.",
+                "description": "Run the package conformance wrapper.",
                 "requiredChecks": ["office-edit-smoke"],
                 "command": "ooxml --json conformance check <file>"
             },
@@ -185,7 +185,7 @@ fn doctor_capabilities(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
             "doctor is advisory and read-only; it should not mutate OOXML packages.",
             "Each finding includes remediation or remediationCommand when a deterministic next step is known.",
             "--online is reserved for compatibility and does not perform network access.",
-            "conformance check is not yet ported in Rust; use the coverage report and strict validation in this slice.",
+            "conformance check is promoted in Rust for package-open, repo-validation, repair-invariant, and optional local office-open proof.",
             "Use check-release-fast before Office-dependent release gates."
         ]
     });
@@ -729,7 +729,7 @@ Recommended agent flow:
 1. Run `ooxml --json doctor health`.
 2. If healthy is false, inspect `findings` and then `ooxml --json doctor`.
 3. Follow a finding's `remediationCommand` only when it is appropriate for the current task.
-4. For package proof without desktop Office, run `ooxml validate --strict <file>` and `ooxml --json conformance coverage`.
+4. For package proof without desktop Office, run `ooxml validate --strict <file>` and `ooxml --json conformance check <file>`.
 5. Use Office COM or VBA smoke gates only on Windows hosts where the corresponding checks are ok.
 
 Exit codes:

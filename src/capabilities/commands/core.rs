@@ -213,9 +213,7 @@ pub(super) fn commands() -> Vec<Value> {
             "Show Rust-supported conformance reports.",
             &[],
             false,
-            Some(
-                "read-only conformance command group; conformance check remains unadvertised in Rust",
-            ),
+            Some("read-only conformance command group"),
             vec![],
         ),
         capability_command(
@@ -224,8 +222,30 @@ pub(super) fn commands() -> Vec<Value> {
             "Show the static Office-repair conformance harness coverage report.",
             &[],
             false,
-            Some("read-only report wrapper; conformance check remains unadvertised in Rust"),
+            Some("read-only conformance coverage report"),
             vec![],
+        ),
+        capability_command(
+            "ooxml conformance check",
+            "conformance check <file> [--office-check] [--office-check-out-dir <dir>]",
+            "Run package-open, repo-validation, repair-invariant, and optional local office-open checks for one OOXML package.",
+            &["package"],
+            false,
+            Some("read-only package conformance proof; not a mutation op"),
+            vec![
+                flag(
+                    "--office-check",
+                    "office-check",
+                    "bool",
+                    "also run the optional local LibreOffice/soffice open check",
+                ),
+                flag(
+                    "--office-check-out-dir",
+                    "office-check-out-dir",
+                    "string",
+                    "directory for optional local office-open conversion output",
+                ),
+            ],
         ),
         capability_command(
             "ooxml apply",

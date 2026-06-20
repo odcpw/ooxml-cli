@@ -79,10 +79,10 @@ fn utility_capabilities_advertise_only_implemented_paths() {
         "ooxml completion zsh",
         "ooxml conformance",
         "ooxml conformance coverage",
+        "ooxml conformance check",
     ] {
         assert_command(&caps, path, false);
     }
-    assert_no_command(&caps, "ooxml conformance check");
     assert_command(&caps, "ooxml pptx diff", false);
 }
 
@@ -101,10 +101,7 @@ fn meta_parent_capabilities_are_go_oracle_paths_with_rust_reasons() {
     for (path, reason_needle) in [
         ("ooxml completion", "completion"),
         ("ooxml help", "help"),
-        (
-            "ooxml conformance",
-            "conformance check remains unadvertised",
-        ),
+        ("ooxml conformance", "conformance command group"),
         ("ooxml vba", "VBA leaf command"),
     ] {
         let go_command = command_by_path(&go_caps, path)
@@ -129,8 +126,8 @@ fn meta_parent_capabilities_are_go_oracle_paths_with_rust_reasons() {
         "Go oracle should still advertise conformance check"
     );
     assert!(
-        command_by_path(&rust_caps, "ooxml conformance check").is_none(),
-        "Rust must not advertise conformance check until office-open and full parity are promoted"
+        command_by_path(&rust_caps, "ooxml conformance check").is_some(),
+        "Rust should advertise conformance check after promotion audit"
     );
 }
 
@@ -169,7 +166,6 @@ fn robot_docs_guide_is_filtered_to_rust_supported_commands() {
         "xlsx charts update-source",
         "vba replace-module",
         "vba add-module",
-        "conformance check <file>",
         "--find",
         "--replace",
     ] {
@@ -220,11 +216,7 @@ fn root_and_parent_help_text_surfaces_are_useful() {
         ),
         (
             &["conformance"],
-            &[
-                "static conformance coverage",
-                "Hidden/Unadvertised",
-                "conformance check",
-            ],
+            &["static conformance coverage", "conformance check"],
         ),
         (&["docx"], &["DOCX", "comments", "tables"]),
         (&["xlsx"], &["XLSX", "sheets", "ranges"]),
@@ -348,14 +340,12 @@ fn go_and_rust_help_like_paths_share_success_shape() {
 }
 
 #[test]
-fn conformance_check_hidden_slice_is_runnable_but_unadvertised() {
-    // The command remains hidden from the advertised capability surface while
-    // the integration lane finishes the remaining repair-invariant parity.
+fn conformance_check_is_advertised_and_runnable() {
     let (help_code, help_stdout, help_stderr) = run_ooxml_raw(&["help", "conformance", "check"]);
     assert_eq!(help_code, 0);
     assert_eq!(help_stderr, "");
-    assert!(help_stdout.contains("repair-invariant"));
-    assert!(help_stdout.contains("unadvertised"));
+    assert!(help_stdout.contains("Usage:"));
+    assert!(help_stdout.contains("--office-check"));
 
     let (code, stdout, stderr) = run_ooxml(&[
         "--json",

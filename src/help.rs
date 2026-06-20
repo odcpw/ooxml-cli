@@ -32,7 +32,7 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
     (
         &["conformance"],
         "Show Rust-supported conformance reports.",
-        "Rust exposes static conformance coverage and a hidden repair-invariant `conformance check` slice. The check command stays unadvertised until Office-open and full Go parity are promoted.",
+        "Rust exposes static conformance coverage and the promoted package `conformance check` proof command.",
         &[],
     ),
     (
@@ -313,9 +313,7 @@ pub(crate) fn is_help_request(args: &[String]) -> bool {
 
 pub(crate) fn help(args: &[String]) -> CliResult<DispatchOutput> {
     let topic = normalize_topic(args);
-    let text = if topic_matches(&topic, &["conformance", "check"]) {
-        conformance_check_gap_help()
-    } else if topic.is_empty() {
+    let text = if topic.is_empty() {
         root_help()
     } else if is_group_path(&topic) {
         group_help(&topic)?
@@ -343,10 +341,7 @@ fn normalize_topic(args: &[String]) -> Vec<String> {
 }
 
 fn is_known_topic(args: &[String]) -> bool {
-    args.is_empty()
-        || topic_matches(args, &["conformance", "check"])
-        || is_group_path(args)
-        || command_for_topic(args).is_some()
+    args.is_empty() || is_group_path(args) || command_for_topic(args).is_some()
 }
 
 fn is_parent_group_path(args: &[String]) -> bool {
@@ -383,10 +378,6 @@ fn path_matches(args: &[String], path: &[&str]) -> bool {
             .iter()
             .zip(path.iter())
             .all(|(left, right)| left == right)
-}
-
-fn topic_matches(args: &[String], path: &[&str]) -> bool {
-    path_matches(args, path)
 }
 
 fn group_for_topic(
@@ -442,10 +433,6 @@ fn group_help(topic: &[String]) -> CliResult<String> {
     } else {
         out.push_str(&render_children(&children));
     }
-    if topic_matches(topic, &["conformance"]) {
-        out.push_str("\nHidden/Unadvertised:\n");
-        out.push_str("  check  Runs the Rust-native package-open, repo-validation, and repair-invariant slice; not advertised until Office-open and full Go parity are promoted.\n");
-    }
     out.push_str("\nGlobal Flags:\n");
     out.push_str(global_flags_text());
     out.push('\n');
@@ -475,10 +462,6 @@ fn leaf_help(topic: &[String], command: &Value) -> String {
     out.push_str("\nGlobal Flags:\n");
     out.push_str(global_flags_text());
     out
-}
-
-fn conformance_check_gap_help() -> String {
-    "Go `ooxml conformance check` runs package-open, repo-validation, repair-invariants, and optional office-open checks.\n\nRust now has a hidden native repair-invariant slice for package-open, repo-validation, content-type/relationship/root/count/order checks. The command remains unadvertised until --office-check and the full Go invariant surface are promoted.\n\nUse:\n  ooxml --json conformance check <file>\n  ooxml --json conformance coverage\n".to_string()
 }
 
 fn available_children(topic: &[String]) -> Vec<(String, String)> {
