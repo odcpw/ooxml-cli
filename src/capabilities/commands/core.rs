@@ -28,6 +28,47 @@ pub(super) fn commands() -> Vec<Value> {
             )],
         ),
         capability_command(
+            "ooxml apply",
+            "apply <file> --ops <ops.json> (--out <file>|--in-place|--dry-run)",
+            "Apply a JSON batch of mutation operations to one OOXML package through the same session engine used by serve and MCP.",
+            &["package"],
+            false,
+            Some("batch command owns operation dispatch; do not nest inside serve/MCP op"),
+            vec![
+                flag(
+                    "--ops",
+                    "ops",
+                    "string",
+                    "JSON file containing an array of operations",
+                ),
+                flag("--out", "out", "string", "output package path"),
+                flag(
+                    "--backup",
+                    "backup",
+                    "string",
+                    "backup path when used with --in-place",
+                ),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "return the operation plan without writing output",
+                ),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the final package back to the input file",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict validation before publishing output",
+                ),
+            ],
+        ),
+        capability_command(
             "ooxml serve",
             "serve",
             "Run the JSON-RPC 2.0 stdio session server for web and agent workflows.",

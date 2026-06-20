@@ -10,6 +10,7 @@
 | Serve | JSON-RPC open, op, inspect, validate, plan, commit, abort | `baseline.json` `serve.flow` |
 | MCP | initialize, tools, resources, command resource, session tools | `baseline.json` `mcp` |
 | Web smoke | smoke scripts route readback through `OOXML_BIN` | `baseline.json` `webSmoke` |
+| Apply batch orchestration | Go-vs-Rust dry-run plan, real XLSX mutation/readback, session-owned arg rejection, and strict validation/readback of saved output | `tests/rust_contract_smoke/agent_surface.rs` `apply_*` |
 | Focused PPTX table mutation | `pptx tables set-cell` saved output, dry-run, text-file, readback, and error envelopes | `cargo test --test rust_contract_smoke pptx_tables_set_cell` |
 | Focused PPTX table columns/XLSX update | `pptx tables insert-col`, `delete-col`, and `update-from-xlsx` saved output, readback, strict validation, dry-run, source guards, and error envelopes | `cargo test --test rust_contract_smoke pptx_tables_column`, `cargo test --test rust_contract_smoke pptx_tables_update_from_xlsx` |
 | XLSX filters/sorts | Go-vs-Rust differential tests for `xlsx filters-sorts show`, direct `set-autofilter`, saved readback, dry-run, error behavior, table target, and serve inspect | `tests/rust_contract_smoke/xlsx.rs`, `tests/rust_contract_smoke/serve.rs` |

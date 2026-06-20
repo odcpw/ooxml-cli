@@ -2,6 +2,163 @@
 use super::*;
 
 #[test]
+fn apply_dry_run_plan_matches_go_oracle() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-apply-dry-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let ops = temp_dir.join("ops.json");
+    fs::write(
+        &ops,
+        serde_json::to_string(&serde_json::json!([
+            {
+                "command": "xlsx cells set",
+                "args": {"sheet": "1", "cell": "A1", "value": "apply-contract"}
+            }
+        ]))
+        .expect("ops JSON"),
+    )
+    .expect("write ops");
+    let ops_str = ops.to_str().expect("ops path");
+    let args = [
+        "--json",
+        "apply",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--ops",
+        ops_str,
+        "--dry-run",
+    ];
+
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+    assert_eq!(rust_code, go_code, "apply dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "apply dry-run stderr");
+    assert_eq!(rust_stdout, go_stdout, "apply dry-run stdout");
+}
+
+#[test]
+fn apply_batch_matches_go_oracle_and_writes_valid_xlsx() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-apply-run-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let ops = temp_dir.join("ops.json");
+    let go_out = temp_dir.join("go-out.xlsx");
+    let rust_out = temp_dir.join("rust-out.xlsx");
+    fs::write(
+        &ops,
+        serde_json::to_string(&serde_json::json!([
+            {
+                "command": "xlsx cells set",
+                "args": {"sheet": "1", "cell": "A1", "value": "apply-contract"}
+            }
+        ]))
+        .expect("ops JSON"),
+    )
+    .expect("write ops");
+    let ops_str = ops.to_str().expect("ops path");
+    let go_out_str = go_out.to_str().expect("go out path");
+    let rust_out_str = rust_out.to_str().expect("rust out path");
+    let go_args = [
+        "--json",
+        "apply",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--ops",
+        ops_str,
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "apply",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--ops",
+        ops_str,
+        "--out",
+        rust_out_str,
+    ];
+
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(
+        rust_code, go_code,
+        "apply run exit; go_stderr={go_stderr:?}; rust_stderr={rust_stderr:?}"
+    );
+    assert_eq!(rust_stderr, go_stderr, "apply run stderr");
+    let go_json = go_stdout.expect("go apply stdout");
+    let rust_json = rust_stdout.expect("rust apply stdout");
+    assert_eq!(
+        scrub_paths(rust_json.clone(), &[(rust_out_str, "[OUT_XLSX]")]),
+        scrub_paths(go_json, &[(go_out_str, "[OUT_XLSX]")]),
+        "apply run stdout"
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(
+        &rust_json["applied"][0]["readback"],
+        "rangesExportCommand",
+    );
+
+    let (export_code, export_stdout, export_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        rust_out_str,
+        "--sheet",
+        "1",
+        "--range",
+        "A1",
+        "--include-types",
+    ]);
+    assert_eq!(export_code, 0, "apply output export exit");
+    assert_eq!(export_stderr, None, "apply output export stderr");
+    assert_eq!(
+        export_stdout.expect("apply output export")["values"],
+        serde_json::json!([["apply-contract"]])
+    );
+}
+
+#[test]
+fn apply_rejects_session_owned_nested_args_like_go_oracle() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-apply-owned-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let ops = temp_dir.join("ops.json");
+    fs::write(
+        &ops,
+        serde_json::to_string(&serde_json::json!([
+            {
+                "command": "xlsx cells set",
+                "args": {
+                    "sheet": "1",
+                    "cell": "A1",
+                    "value": "apply-contract",
+                    "out": "nested.xlsx"
+                }
+            }
+        ]))
+        .expect("ops JSON"),
+    )
+    .expect("write ops");
+    let ops_str = ops.to_str().expect("ops path");
+    let args = [
+        "--json",
+        "apply",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--ops",
+        ops_str,
+        "--dry-run",
+    ];
+
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+    assert_eq!(rust_code, go_code, "apply owned arg exit");
+    assert_eq!(rust_stdout, go_stdout, "apply owned arg stdout");
+    assert_eq!(rust_stderr, go_stderr, "apply owned arg stderr");
+}
+
+#[test]
 fn frozen_mcp_discovery_and_flow_match_go_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-mcp-{}", std::process::id()));

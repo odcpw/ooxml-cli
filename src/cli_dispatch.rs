@@ -13,7 +13,7 @@ use crate::pptx_render::pptx_render;
 use crate::validation::validate;
 use crate::vba::*;
 use crate::verify::verify;
-use crate::{pptx_media_add, pptx_media_list, pptx_media_replace};
+use crate::{apply, pptx_media_add, pptx_media_list, pptx_media_replace};
 
 pub(crate) struct DispatchOutput {
     pub(crate) value: Value,
@@ -40,6 +40,7 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
     match args {
         [cmd] if cmd == "version" => Ok(json!({"tool": "ooxml", "version": "0.0.1"})),
         [cmd, rest @ ..] if cmd == "capabilities" => capabilities::capabilities(rest),
+        [cmd, file, rest @ ..] if cmd == "apply" => apply(file, rest),
         [cmd, file] if cmd == "inspect" => inspect(file),
         [cmd, rest @ ..] if cmd == "validate" => {
             let (file, strict) = parse_validate_args(rest, flags.strict)?;

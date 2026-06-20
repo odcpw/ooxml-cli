@@ -9,6 +9,22 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust core `ooxml apply` parity landed for batch mutation orchestration. The
+  slice parses Go-shaped operation JSON, normalizes command/arg spelling,
+  rejects session-owned nested flags such as `out`, emits the Go dry-run plan
+  with rolling temp placeholders, and executes real batches through the Rust
+  serve session engine before one final commit. Rust capabilities now advertise
+  172 Go-oracle command paths, leaving a pinned 118-command gap; `apply` is
+  advertised with `opCompatible=false` because the batch command owns operation
+  dispatch and should not be nested inside serve/MCP `op`. The Windows Go-oracle
+  harness now builds the oracle as `.exe` so Go `apply` can self-exec during
+  parity tests. Proof: focused Go-vs-Rust apply dry-run, saved XLSX mutation,
+  and owned-arg error tests; focused capability ratchet/MCP command-resource
+  tests; strict validation and range readback for the saved XLSX proof; Open
+  XML SDK Office2019 schema validation (zero errors) for the saved XLSX proof;
+  Excel COM open oracle for the saved XLSX proof; `cargo fmt --check`; `cargo
+  check --all-targets`; `cargo clippy --all-targets -- -D warnings`; and
+  `cargo test --all-targets`.
 - Rust PPTX animation parity landed for direct `pptx animations list`, `add`,
   `remove`, `reorder`, and `prune-stale`. The slice reads animation timing,
   adds supported entrance effects, removes/reorders click effects, and prunes

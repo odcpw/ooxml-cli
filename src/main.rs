@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 
+mod apply;
 mod capabilities;
 mod cli_args;
 mod cli_core;
@@ -55,6 +56,7 @@ mod xlsx_tables;
 mod xml_util;
 mod zip_io;
 
+pub(crate) use apply::apply;
 pub(crate) use cli_args::{
     has_flag, parse_i64_flag, parse_string_flag, parse_u32_flag, parse_u32_flags,
     parse_validate_args, reject_unknown_flags, validate_positive_i64,

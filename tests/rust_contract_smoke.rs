@@ -189,7 +189,12 @@ fn scrub_file_fields(value: Value) -> Value {
 
 fn go_ooxml_binary() -> &'static PathBuf {
     GO_OOXML_BIN.get_or_init(|| {
-        let binary = std::env::temp_dir().join(format!("ooxml-go-oracle-{}", std::process::id()));
+        let binary_name = if cfg!(windows) {
+            format!("ooxml-go-oracle-{}.exe", std::process::id())
+        } else {
+            format!("ooxml-go-oracle-{}", std::process::id())
+        };
+        let binary = std::env::temp_dir().join(binary_name);
         let go_cache = go_cache_dir();
         let output = Command::new("go")
             .args(["build", "-buildvcs=false", "-o"])
