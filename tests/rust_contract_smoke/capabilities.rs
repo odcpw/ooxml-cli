@@ -92,6 +92,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments remove");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names list");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names show");
+    assert_object_kind_command(&all_caps, "name", "ooxml xlsx names add");
+    assert_object_kind_command(&all_caps, "name", "ooxml xlsx names update");
+    assert_object_kind_command(&all_caps, "name", "ooxml xlsx names rename");
+    assert_object_kind_command(&all_caps, "name", "ooxml xlsx names delete");
     assert_object_kind_command(&all_caps, "module", "ooxml vba inspect");
     assert_object_kind_command(&all_caps, "module", "ooxml vba attach");
 
@@ -143,6 +147,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx tables export", false);
     assert_command(&xlsx_caps, "ooxml xlsx names list", false);
     assert_command(&xlsx_caps, "ooxml xlsx names show", false);
+    assert_command(&xlsx_caps, "ooxml xlsx names add", true);
+    assert_command(&xlsx_caps, "ooxml xlsx names update", true);
+    assert_command(&xlsx_caps, "ooxml xlsx names rename", true);
+    assert_command(&xlsx_caps, "ooxml xlsx names delete", true);
     assert_command(&xlsx_caps, "ooxml xlsx workbook metadata inspect", false);
     assert_command(&xlsx_caps, "ooxml xlsx workbook metadata update", true);
 
@@ -168,6 +176,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let name_caps = name_stdout.expect("name capabilities");
     assert_command(&name_caps, "ooxml xlsx names list", false);
     assert_command(&name_caps, "ooxml xlsx names show", false);
+    assert_command(&name_caps, "ooxml xlsx names add", true);
+    assert_command(&name_caps, "ooxml xlsx names update", true);
+    assert_command(&name_caps, "ooxml xlsx names rename", true);
+    assert_command(&name_caps, "ooxml xlsx names delete", true);
     assert_no_command(&name_caps, "ooxml xlsx tables list");
 
     let (layout_code, layout_stdout, layout_stderr) =
@@ -347,10 +359,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 69, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 73, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        221,
+        217,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

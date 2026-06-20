@@ -443,6 +443,18 @@ Latest milestone, 2026-06-20:
   `cargo clippy --all-targets -- -D warnings`, focused VBA Go-oracle parity,
   capability subset tests, and `cargo test --all-targets` all passed after the
   move.
+- Rust XLSX defined-name mutation parity landed for `xlsx names
+  add/update/rename/delete`. The slice matches the Go oracle for saved mutation
+  JSON, generated readback commands, dry-run output, validation/error envelopes,
+  stale `--expect-ref` guards, empty `<definedNames>` cleanup, capability
+  advertising, and post-save list/show readback. Proof: `cargo fmt --check`,
+  `cargo check --all-targets`, focused `xlsx_names` Go-oracle tests,
+  capability ratchet tests, `cargo clippy --all-targets -- -D warnings`, and
+  `cargo test --all-targets` passed with 4 ZIP guard unit tests plus 81 Rust
+  contract tests. A Rust-generated workbook after add/update/rename passed
+  Rust `validate --strict`, Microsoft Open XML SDK validation (`Valid: true`,
+  `ErrorCount: 0`), and desktop Excel COM open proof (`1 passed, 0 failed`,
+  Excel 16.0 build 20026).
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
@@ -636,7 +648,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 69, and the harness pins the 221-command gap until
+  paths, Rust advertises 73, and the harness pins the 217-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -685,6 +697,11 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   workbook-scoped and sheet-local defined names, scope filtering, selectors,
   workbook handles, generated `showCommand` execution, `capabilities --for
   name`, and serve inspect routing
+- `--json xlsx names add/update/rename/delete <xlsx>` with Go-oracle
+  comparison for saved mutation JSON, dry-run output, validation and readback
+  commands, stale `--expect-ref` guards, invalid-name/error parity, sheet/range
+  ref construction, empty defined-name cleanup, capability indexing, and strict
+  validation of saved outputs
 - `--json xlsx tables list <xlsx>` and `--json xlsx tables show <xlsx>` with
   Go-oracle comparison for generated table workbooks, table metadata, columns,
   bridge command templates, `capabilities --for table`, and stable table

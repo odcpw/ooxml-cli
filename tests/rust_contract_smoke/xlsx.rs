@@ -1672,6 +1672,450 @@ fn xlsx_names_list_show_matches_go_oracle() {
 }
 
 #[test]
+fn xlsx_names_mutations_match_go_oracle_and_saved_readback() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-names-mutate-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in = temp_dir.join("go-input.xlsx");
+    let rust_in = temp_dir.join("rust-input.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in).expect("stage go input");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &rust_in).expect("stage rust input");
+    let go_add = temp_dir.join("go-add.xlsx");
+    let rust_add = temp_dir.join("rust-add.xlsx");
+    let go_update = temp_dir.join("go-update.xlsx");
+    let rust_update = temp_dir.join("rust-update.xlsx");
+    let go_rename = temp_dir.join("go-rename.xlsx");
+    let rust_rename = temp_dir.join("rust-rename.xlsx");
+    let go_delete = temp_dir.join("go-delete.xlsx");
+    let rust_delete = temp_dir.join("rust-delete.xlsx");
+    let go_in = go_in.to_string_lossy().to_string();
+    let rust_in = rust_in.to_string_lossy().to_string();
+    let go_add = go_add.to_string_lossy().to_string();
+    let rust_add = rust_add.to_string_lossy().to_string();
+    let go_update = go_update.to_string_lossy().to_string();
+    let rust_update = rust_update.to_string_lossy().to_string();
+    let go_rename = go_rename.to_string_lossy().to_string();
+    let rust_rename = rust_rename.to_string_lossy().to_string();
+    let go_delete = go_delete.to_string_lossy().to_string();
+    let rust_delete = rust_delete.to_string_lossy().to_string();
+    let initial_ref = "'Sheet1'!$A$1:$B$2";
+    let updated_ref = "SUM('Sheet1'!$B$1:$B$2)";
+
+    let steps = [
+        (
+            "add",
+            vec![
+                "--json",
+                "xlsx",
+                "names",
+                "add",
+                &go_in,
+                "--name",
+                "SalesData",
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A1:B2",
+                "--out",
+                &go_add,
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "names",
+                "add",
+                &rust_in,
+                "--name",
+                "SalesData",
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A1:B2",
+                "--out",
+                &rust_add,
+            ],
+            vec![(&go_in, "[IN]"), (&go_add, "[ADD]")],
+            vec![(&rust_in, "[IN]"), (&rust_add, "[ADD]")],
+        ),
+        (
+            "update",
+            vec![
+                "--json",
+                "xlsx",
+                "names",
+                "update",
+                &go_add,
+                "--name",
+                "SalesData",
+                "--ref",
+                updated_ref,
+                "--expect-ref",
+                initial_ref,
+                "--out",
+                &go_update,
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "names",
+                "update",
+                &rust_add,
+                "--name",
+                "SalesData",
+                "--ref",
+                updated_ref,
+                "--expect-ref",
+                initial_ref,
+                "--out",
+                &rust_update,
+            ],
+            vec![(&go_add, "[ADD]"), (&go_update, "[UPDATE]")],
+            vec![(&rust_add, "[ADD]"), (&rust_update, "[UPDATE]")],
+        ),
+        (
+            "rename",
+            vec![
+                "--json",
+                "xlsx",
+                "names",
+                "rename",
+                &go_update,
+                "--name",
+                "SalesData",
+                "--new-name",
+                "RevenueData",
+                "--expect-ref",
+                updated_ref,
+                "--out",
+                &go_rename,
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "names",
+                "rename",
+                &rust_update,
+                "--name",
+                "SalesData",
+                "--new-name",
+                "RevenueData",
+                "--expect-ref",
+                updated_ref,
+                "--out",
+                &rust_rename,
+            ],
+            vec![(&go_update, "[UPDATE]"), (&go_rename, "[RENAME]")],
+            vec![(&rust_update, "[UPDATE]"), (&rust_rename, "[RENAME]")],
+        ),
+        (
+            "delete",
+            vec![
+                "--json",
+                "xlsx",
+                "names",
+                "delete",
+                &go_rename,
+                "--name",
+                "RevenueData",
+                "--expect-ref",
+                updated_ref,
+                "--out",
+                &go_delete,
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "names",
+                "delete",
+                &rust_rename,
+                "--name",
+                "RevenueData",
+                "--expect-ref",
+                updated_ref,
+                "--out",
+                &rust_delete,
+            ],
+            vec![(&go_rename, "[RENAME]"), (&go_delete, "[DELETE]")],
+            vec![(&rust_rename, "[RENAME]"), (&rust_delete, "[DELETE]")],
+        ),
+    ];
+
+    for (label, go_args, rust_args, go_paths, rust_paths) in steps {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+        assert_eq!(rust_code, go_code, "{label} exit");
+        assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+        let go_path_refs = go_paths
+            .iter()
+            .map(|(from, to)| (from.as_str(), *to))
+            .collect::<Vec<_>>();
+        let rust_path_refs = rust_paths
+            .iter()
+            .map(|(from, to)| (from.as_str(), *to))
+            .collect::<Vec<_>>();
+        let rust_raw = rust_stdout.expect("rust names mutation stdout");
+        let go_json = scrub_paths(go_stdout.expect("go names mutation stdout"), &go_path_refs);
+        let rust_json = scrub_paths(rust_raw.clone(), &rust_path_refs);
+        assert_eq!(rust_json, go_json, "{label} stdout");
+        assert_rust_emitted_ooxml_command_exits_zero(&rust_raw, "validateCommand");
+        assert_rust_emitted_ooxml_command_succeeds(&rust_raw, "namesListCommand");
+        if label != "delete" {
+            assert_rust_emitted_ooxml_command_succeeds(&rust_raw, "nameShowCommand");
+        }
+    }
+
+    let (go_code, go_stdout, go_stderr) =
+        run_go_ooxml(&["--json", "xlsx", "names", "list", &go_delete]);
+    let (rust_code, rust_stdout, rust_stderr) =
+        run_ooxml(&["--json", "xlsx", "names", "list", &rust_delete]);
+    assert_eq!(rust_code, go_code, "post-delete list exit");
+    assert_eq!(rust_stderr, go_stderr, "post-delete list stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust post-delete list"),
+            &rust_delete,
+            "[DELETE]"
+        ),
+        scrub_path(
+            go_stdout.expect("go post-delete list"),
+            &go_delete,
+            "[DELETE]"
+        ),
+        "post-delete list stdout"
+    );
+    assert!(
+        !read_zip_string(Path::new(&rust_delete), "xl/workbook.xml").contains("definedNames"),
+        "empty definedNames element should be removed"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_names_dry_run_and_errors_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-names-errors-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_in_path = temp_dir.join("go-input.xlsx");
+    let rust_in_path = temp_dir.join("rust-input.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("go input");
+    fs::copy(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &rust_in_path,
+    )
+    .expect("rust input");
+    let go_in = go_in_path.to_string_lossy().to_string();
+    let rust_in = rust_in_path.to_string_lossy().to_string();
+
+    let dry_go = [
+        "--json",
+        "xlsx",
+        "names",
+        "add",
+        &go_in,
+        "--name",
+        "LocalInput",
+        "--ref",
+        "Sheet1!$A$1",
+        "--scope-sheet",
+        "Sheet1",
+        "--dry-run",
+    ];
+    let dry_rust = [
+        "--json",
+        "xlsx",
+        "names",
+        "add",
+        &rust_in,
+        "--name",
+        "LocalInput",
+        "--ref",
+        "Sheet1!$A$1",
+        "--scope-sheet",
+        "Sheet1",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
+    assert_eq!(rust_code, go_code, "dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "dry-run stderr");
+    assert_eq!(
+        scrub_path(rust_stdout.expect("rust dry-run"), &rust_in, "[IN]"),
+        scrub_path(go_stdout.expect("go dry-run"), &go_in, "[IN]"),
+        "dry-run stdout"
+    );
+    assert!(
+        !read_zip_string(&rust_in_path, "xl/workbook.xml").contains("definedNames"),
+        "dry-run should not write source workbook"
+    );
+
+    let bad_cases: Vec<Vec<&str>> = vec![
+        vec!["--json", "xlsx", "names", "show", &go_in],
+        vec![
+            "--json",
+            "xlsx",
+            "names",
+            "add",
+            &go_in,
+            "--ref",
+            "Sheet1!$A$1",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "names",
+            "add",
+            &go_in,
+            "--name",
+            "A1",
+            "--ref",
+            "Sheet1!$A$1",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "names",
+            "add",
+            &go_in,
+            "--name",
+            "Bad Name",
+            "--ref",
+            "Sheet1!$A$1",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "names",
+            "add",
+            &go_in,
+            "--name",
+            "Input",
+            "--ref",
+            "Sheet1!$A$1",
+            "--range",
+            "A1",
+            "--dry-run",
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "names",
+            "add",
+            &go_in,
+            "--name",
+            "Input",
+            "--range",
+            "A1",
+            "--dry-run",
+        ],
+    ];
+    for go_args in bad_cases {
+        let mut rust_args = go_args.clone();
+        for arg in &mut rust_args {
+            if *arg == go_in {
+                *arg = &rust_in;
+            }
+        }
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+        assert_eq!(rust_code, go_code, "bad args exit for {go_args:?}");
+        assert_eq!(rust_stdout, go_stdout, "bad args stdout for {go_args:?}");
+        assert_eq!(
+            scrub_path(rust_stderr.expect("rust bad args stderr"), &rust_in, "[IN]"),
+            scrub_path(go_stderr.expect("go bad args stderr"), &go_in, "[IN]"),
+            "bad args stderr for {go_args:?}"
+        );
+    }
+
+    let go_add = temp_dir.join("go-add.xlsx").to_string_lossy().to_string();
+    let rust_add = temp_dir.join("rust-add.xlsx").to_string_lossy().to_string();
+    assert_eq!(
+        run_go_ooxml(&[
+            "--json",
+            "xlsx",
+            "names",
+            "add",
+            &go_in,
+            "--name",
+            "Input",
+            "--ref",
+            "Sheet1!$A$1",
+            "--out",
+            &go_add,
+        ])
+        .0,
+        0,
+        "go stale setup"
+    );
+    assert_eq!(
+        run_ooxml(&[
+            "--json",
+            "xlsx",
+            "names",
+            "add",
+            &rust_in,
+            "--name",
+            "Input",
+            "--ref",
+            "Sheet1!$A$1",
+            "--out",
+            &rust_add,
+        ])
+        .0,
+        0,
+        "rust stale setup"
+    );
+    let go_stale = [
+        "--json",
+        "xlsx",
+        "names",
+        "update",
+        &go_add,
+        "--name",
+        "Input",
+        "--ref",
+        "Sheet1!$A$2",
+        "--expect-ref",
+        "Sheet1!$A$99",
+        "--dry-run",
+    ];
+    let rust_stale = [
+        "--json",
+        "xlsx",
+        "names",
+        "update",
+        &rust_add,
+        "--name",
+        "Input",
+        "--ref",
+        "Sheet1!$A$2",
+        "--expect-ref",
+        "Sheet1!$A$99",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_stale);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_stale);
+    assert_eq!(rust_code, go_code, "stale guard exit");
+    assert_eq!(rust_stdout, go_stdout, "stale guard stdout");
+    assert_eq!(
+        scrub_path(rust_stderr.expect("rust stale stderr"), &rust_add, "[ADD]"),
+        scrub_path(go_stderr.expect("go stale stderr"), &go_add, "[ADD]"),
+        "stale guard stderr"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_tables_list_show_matches_go_oracle() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-xlsx-tables-{}", std::process::id()));
