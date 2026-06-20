@@ -38,9 +38,9 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             {"name": "--strict", "argName": "strict", "type": "bool", "default": "false", "description": "enable strict validation mode"}
         ],
         "commands": commands,
-        "objectKinds": ["package", "slide", "shape", "master", "layout", "placeholder", "sheet", "range", "cell", "table", "name", "block", "paragraph", "style", "comment", "field", "header", "footer", "image"],
+        "objectKinds": ["package", "slide", "shape", "master", "layout", "placeholder", "sheet", "range", "cell", "table", "name", "block", "paragraph", "style", "comment", "field", "header", "footer", "image", "module"],
         "objectKindsIndex": {
-            "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml docx text", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update"],
+            "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml docx text", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update", "ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba attach", "ooxml vba remove"],
             "slide": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx layouts list", "ooxml pptx layouts show", "ooxml pptx tables show", "ooxml pptx extract text", "ooxml pptx extract notes", "ooxml pptx notes show", "ooxml pptx comments list", "ooxml pptx replace text", "ooxml pptx render"],
             "shape": ["ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx extract text", "ooxml pptx replace text"],
             "master": ["ooxml pptx masters list", "ooxml pptx masters show"],
@@ -58,7 +58,8 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             "field": ["ooxml docx fields list", "ooxml docx fields insert", "ooxml docx fields set-result"],
             "header": ["ooxml docx headers list", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers list"],
             "footer": ["ooxml docx footers list", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx headers list"],
-            "image": ["ooxml docx images list"]
+            "image": ["ooxml docx images list"],
+            "module": ["ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba attach", "ooxml vba remove"]
         },
         "exitCodes": [
             {"code": EXIT_SUCCESS, "name": "success", "description": "command completed successfully"},

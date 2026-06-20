@@ -629,7 +629,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 65, and the harness pins the 225-command gap until
+  paths, Rust advertises 69, and the harness pins the 221-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -691,6 +691,11 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   comparison for default inspection, saved mutation output, generated readback
   commands, dry-run, clearing, calc-mode/full-recalc flags, guard/error
   envelopes, `capabilities --for xlsx`, and strict Go-subset inventory ratchet
+- `--json vba inspect/extract-bin/attach/remove <xlsx|xlsm>` for the opaque
+  package-level VBA path, with Go-oracle comparison for macro package wiring,
+  byte-for-byte `vbaProject.bin` extraction, saved output readback, dry-run
+  templates, and strict validation of attached/removed packages. This does not
+  yet port CFB/MS-OVBA source-module parsing or Office-authored `vba create`.
 - `serve` JSON-RPC generic PPTX inspect/op/commit path for
   `pptx slides show` plus `pptx replace text`, matching the Flue workbench's
   generic `apply_ooxml_ops_to_current` smoke route
@@ -724,7 +729,8 @@ Still missing before parity can be claimed:
 - Full command-surface inventory parity.
 - Metamorphic and fuzz harnesses for OOXML package invariants.
 - Broad release-grade Office/Open XML SDK/COM proof for the complete promoted
-  Rust surface, including macro/VBA gates once VBA commands are ported.
+  Rust surface, including Office-authored macro/VBA gates beyond the opaque
+  package attach/extract/remove path.
 
 Dependency note: live GitHub inspection of `https://github.com/Dicklesworthstone`
 found useful Rust infrastructure projects, but no direct OOXML/ZIP/XML package

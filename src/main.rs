@@ -29,6 +29,7 @@ mod runtime_util;
 mod selector_util;
 mod serve;
 mod validation;
+mod vba;
 mod verify;
 mod xlsx_formula_recalc;
 mod xlsx_metadata;
@@ -112,8 +113,9 @@ pub(crate) use mcp_support::{
 pub(crate) use opc::{
     RelationshipEntry, add_relationship_to_xml, allocate_relationship_id, content_type_for_part,
     ensure_content_type_override, ensure_package_root_relationship_xml, relationship_entries,
-    relationship_source_uri, relationship_target_from_source_to_target, relationships,
-    relationships_part_for, resolve_relationship_target,
+    relationship_entries_from_xml, relationship_source_uri,
+    relationship_target_from_source_to_target, relationships, relationships_part_for,
+    resolve_relationship_target,
 };
 pub(crate) use package_discovery::{
     InspectPackageKind, detect_inspect_package_type, find_docx_document_part,
@@ -132,7 +134,8 @@ pub(crate) use pptx_readback::{
     pptx_slides_list, pptx_tables_show,
 };
 pub(crate) use runtime_util::{
-    chrono_like_counter, current_utc_rfc3339, docx_mutation_temp_path, xlsx_ranges_set_temp_path,
+    chrono_like_counter, current_utc_rfc3339, docx_mutation_temp_path, package_mutation_temp_path,
+    xlsx_ranges_set_temp_path,
 };
 pub(crate) use selector_util::{add_selector, selector_candidates};
 pub(crate) use serve::{ServeState, run_serve_stdio};
@@ -176,9 +179,10 @@ pub(crate) use xml_util::{
     xml_general_ref,
 };
 pub(crate) use zip_io::{
-    copy_zip_with_part_override, copy_zip_with_part_overrides,
-    copy_zip_with_part_overrides_and_removals, copy_zip_with_replacement, zip_entry_exists,
-    zip_entry_names, zip_entry_set, zip_text,
+    copy_zip_with_binary_part_overrides_and_removals, copy_zip_with_part_override,
+    copy_zip_with_part_overrides, copy_zip_with_part_overrides_and_removals,
+    copy_zip_with_replacement, zip_bytes, zip_entry_exists, zip_entry_names, zip_entry_set,
+    zip_text,
 };
 
 fn main() {

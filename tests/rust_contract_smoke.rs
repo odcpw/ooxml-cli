@@ -1099,6 +1099,9 @@ mod agent_surface;
 #[path = "rust_contract_smoke/capabilities.rs"]
 mod capabilities;
 
+#[path = "rust_contract_smoke/vba.rs"]
+mod vba;
+
 fn rpc_request(id: i64, method: &str, params: Value) -> Value {
     serde_json::json!({
         "id": id,

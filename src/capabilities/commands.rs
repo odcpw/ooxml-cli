@@ -1,6 +1,7 @@
 mod core;
 mod docx;
 mod pptx;
+mod vba;
 mod xlsx;
 
 use serde_json::{Map, Value, json};
@@ -11,6 +12,7 @@ pub(crate) fn capability_commands() -> Vec<Value> {
     commands.extend(pptx::commands());
     commands.extend(xlsx::commands());
     commands.extend(docx::commands());
+    commands.extend(vba::commands());
     commands
 }
 fn capability_command(

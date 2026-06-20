@@ -46,6 +46,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx comments add", true);
     assert_command(&all_caps, "ooxml docx comments edit", true);
     assert_command(&all_caps, "ooxml docx comments remove", true);
+    assert_command(&all_caps, "ooxml vba inspect", false);
+    assert_command(&all_caps, "ooxml vba extract-bin", false);
+    assert_command(&all_caps, "ooxml vba attach", true);
+    assert_command(&all_caps, "ooxml vba remove", true);
     for kind in [
         "block",
         "paragraph",
@@ -60,6 +64,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "placeholder",
         "style",
         "comment",
+        "module",
     ] {
         assert_object_kind(&all_caps, kind);
     }
@@ -87,6 +92,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments remove");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names list");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names show");
+    assert_object_kind_command(&all_caps, "module", "ooxml vba inspect");
+    assert_object_kind_command(&all_caps, "module", "ooxml vba attach");
 
     let (pptx_code, pptx_stdout, pptx_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "pptx"]);
@@ -314,6 +321,15 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx comments add", true);
     assert_command(&docx_caps, "ooxml docx comments edit", true);
     assert_command(&docx_caps, "ooxml docx comments remove", true);
+
+    let (vba_code, vba_stdout, vba_stderr) = run_ooxml(&["--json", "capabilities", "--for", "vba"]);
+    assert_eq!(vba_code, 0);
+    assert_eq!(vba_stderr, None);
+    let vba_caps = vba_stdout.expect("vba capabilities");
+    assert_command(&vba_caps, "ooxml vba inspect", false);
+    assert_command(&vba_caps, "ooxml vba extract-bin", false);
+    assert_command(&vba_caps, "ooxml vba attach", true);
+    assert_command(&vba_caps, "ooxml vba remove", true);
 }
 
 #[test]
@@ -331,10 +347,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 65, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 69, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        225,
+        221,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

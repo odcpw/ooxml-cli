@@ -16,7 +16,8 @@ date, and status before a milestone can claim parity.
   `tests/rust_contract_smoke.rs` pins the Go and Rust command counts so each
   newly ported surface must move the gap deliberately.
 - **Affected tests:** `rust_capability_inventory_is_go_oracle_subset`.
-- **Review date:** 2026-06-19.
+- **Review date:** 2026-06-20.
 - **Notes:** this is not an accepted behavioral mismatch for an implemented
   command. It records that overall parity is not yet claimable while unported Go
-  command paths remain absent from Rust.
+  command paths remain absent from Rust. Current ratchet: Go advertises 290
+  command paths, Rust advertises 69, leaving 221 unported paths.

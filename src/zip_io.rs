@@ -53,6 +53,20 @@ pub(crate) fn zip_text(path: &str, name: &str) -> CliResult<String> {
     )
 }
 
+pub(crate) fn zip_bytes(path: &str, name: &str) -> CliResult<Vec<u8>> {
+    let mut archive = open_zip(path)?;
+    let mut file = archive
+        .by_name(name)
+        .map_err(|err| CliError::unexpected(format!("missing zip part {name}: {err}")))?;
+    let declared_size = file.size();
+    read_zip_bytes_entry_limited(
+        &mut file,
+        name,
+        declared_size,
+        MAX_ZIP_PART_UNCOMPRESSED_BYTES,
+    )
+}
+
 fn open_zip(path: &str) -> CliResult<ZipArchive<File>> {
     let file = File::open(path).map_err(|err| {
         if err.kind() == std::io::ErrorKind::NotFound {
@@ -130,6 +144,28 @@ fn read_zip_text_entry_limited<R: Read>(
         )));
     }
     Ok(text)
+}
+
+fn read_zip_bytes_entry_limited<R: Read>(
+    mut reader: R,
+    name: &str,
+    declared_size: u64,
+    limit: u64,
+) -> CliResult<Vec<u8>> {
+    check_zip_entry_declared_size(name, declared_size, limit)?;
+    let mut data = Vec::new();
+    reader
+        .by_ref()
+        .take(limit.saturating_add(1))
+        .read_to_end(&mut data)
+        .map_err(|err| CliError::unexpected(format!("failed to read zip entry {name}: {err}")))?;
+    if data.len() as u64 > limit {
+        return Err(CliError::unexpected(format!(
+            "zip entry {name} exceeds uncompressed size limit ({} > {limit} bytes)",
+            data.len()
+        )));
+    }
+    Ok(data)
 }
 
 fn copy_zip_entry_limited<R: Read, W: Write>(
@@ -243,6 +279,38 @@ pub(crate) fn copy_zip_with_part_overrides_and_removals(
     overrides: &BTreeMap<String, String>,
     removals: &BTreeSet<String>,
 ) -> CliResult<()> {
+    copy_zip_with_text_and_binary_part_overrides_and_removals(
+        input,
+        output,
+        overrides,
+        &BTreeMap::new(),
+        removals,
+    )
+}
+
+pub(crate) fn copy_zip_with_binary_part_overrides_and_removals(
+    input: &str,
+    output: &str,
+    text_overrides: &BTreeMap<String, String>,
+    binary_overrides: &BTreeMap<String, Vec<u8>>,
+    removals: &BTreeSet<String>,
+) -> CliResult<()> {
+    copy_zip_with_text_and_binary_part_overrides_and_removals(
+        input,
+        output,
+        text_overrides,
+        binary_overrides,
+        removals,
+    )
+}
+
+fn copy_zip_with_text_and_binary_part_overrides_and_removals(
+    input: &str,
+    output: &str,
+    text_overrides: &BTreeMap<String, String>,
+    binary_overrides: &BTreeMap<String, Vec<u8>>,
+    removals: &BTreeSet<String>,
+) -> CliResult<()> {
     if let Some(parent) = Path::new(output).parent() {
         fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
     }
@@ -262,13 +330,20 @@ pub(crate) fn copy_zip_with_part_overrides_and_removals(
             continue;
         }
         let name = entry.name().to_string();
-        if removals.contains(&name) && !overrides.contains_key(&name) {
+        if removals.contains(&name)
+            && !text_overrides.contains_key(&name)
+            && !binary_overrides.contains_key(&name)
+        {
             continue;
         }
         writer
             .start_file(&name, options)
             .map_err(|err| CliError::unexpected(err.to_string()))?;
-        if let Some(text) = overrides.get(&name) {
+        if let Some(data) = binary_overrides.get(&name) {
+            writer
+                .write_all(data)
+                .map_err(|err| CliError::unexpected(err.to_string()))?;
+        } else if let Some(text) = text_overrides.get(&name) {
             writer
                 .write_all(text.as_bytes())
                 .map_err(|err| CliError::unexpected(err.to_string()))?;
@@ -284,7 +359,10 @@ pub(crate) fn copy_zip_with_part_overrides_and_removals(
         }
         written.insert(name);
     }
-    for (name, text) in overrides {
+    for (name, text) in text_overrides {
+        if binary_overrides.contains_key(name) {
+            continue;
+        }
         if written.contains(name) {
             continue;
         }
@@ -296,6 +374,20 @@ pub(crate) fn copy_zip_with_part_overrides_and_removals(
             .map_err(|err| CliError::unexpected(err.to_string()))?;
         writer
             .write_all(text.as_bytes())
+            .map_err(|err| CliError::unexpected(err.to_string()))?;
+    }
+    for (name, data) in binary_overrides {
+        if written.contains(name) {
+            continue;
+        }
+        if removals.contains(name) {
+            continue;
+        }
+        writer
+            .start_file(name, options)
+            .map_err(|err| CliError::unexpected(err.to_string()))?;
+        writer
+            .write_all(data)
             .map_err(|err| CliError::unexpected(err.to_string()))?;
     }
     writer

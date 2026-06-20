@@ -51,15 +51,26 @@ pub(crate) fn xlsx_ranges_set_temp_path(file: &str) -> String {
 }
 
 pub(crate) fn docx_mutation_temp_path(file: &str) -> String {
+    package_mutation_temp_path(file, "docx-mutation")
+}
+
+pub(crate) fn package_mutation_temp_path(file: &str, label: &str) -> String {
     let parent = Path::new(file)
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
+    let ext = Path::new(file)
+        .extension()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| format!(".{value}"))
+        .unwrap_or_else(|| ".tmp".to_string());
     parent
         .join(format!(
-            ".ooxml-rust-docx-mutation-{}-{}.docx",
+            ".ooxml-rust-{label}-{}-{}{}",
             std::process::id(),
-            chrono_like_counter()
+            chrono_like_counter(),
+            ext
         ))
         .to_string_lossy()
         .to_string()

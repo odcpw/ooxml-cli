@@ -10,6 +10,7 @@ use crate::pptx_mutation::*;
 use crate::pptx_readback::*;
 use crate::pptx_render::pptx_render;
 use crate::validation::validate;
+use crate::vba::*;
 use crate::verify::verify;
 use crate::xlsx_metadata::*;
 use crate::xlsx_mutation::*;
@@ -27,6 +28,59 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
             validate(file, strict)
         }
         [cmd, file, rest @ ..] if cmd == "verify" => verify(file, rest),
+        [family, verb, file] if family == "vba" && verb == "inspect" => vba_inspect(file),
+        [family, verb, file, rest @ ..] if family == "vba" && verb == "extract-bin" => {
+            reject_unknown_flags(rest, &["--out"], &[])?;
+            let out = parse_string_flag(rest, "--out")?
+                .ok_or_else(|| CliError::invalid_args("--out is required"))?;
+            vba_extract_bin(file, &out)
+        }
+        [family, verb, file, rest @ ..] if family == "vba" && verb == "attach" => {
+            reject_unknown_flags(
+                rest,
+                &["--bin", "--out", "--backup"],
+                &[
+                    "--allow-host-family-risk",
+                    "--dry-run",
+                    "--no-validate",
+                    "--in-place",
+                ],
+            )?;
+            let bin = parse_string_flag(rest, "--bin")?
+                .ok_or_else(|| CliError::invalid_args("--bin is required"))?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            vba_attach(
+                file,
+                &bin,
+                VbaMutationOptions {
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, verb, file, rest @ ..] if family == "vba" && verb == "remove" => {
+            reject_unknown_flags(
+                rest,
+                &["--out", "--backup"],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            vba_remove(
+                file,
+                VbaMutationOptions {
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
         [family, ..] if family == "docx" => docx::dispatch_docx(args),
         [family, verb, file, rest @ ..] if family == "pptx" && verb == "render" => {
             pptx_render(file, rest)
