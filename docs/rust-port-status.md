@@ -162,6 +162,10 @@ Latest milestone, 2026-06-20:
   coverage asserts fresh Go-created `docProps/core.xml` parts avoid the invalid
   legacy MIME, and the produced workbook passes strict `ooxml validate`, .NET
   OpenXML SDK validation, and the Windows Excel oracle.
+- The Rust contract smoke test monolith started its B9 split: XLSX command-family
+  parity tests moved from `tests/rust_contract_smoke.rs` into
+  `tests/rust_contract_smoke/xlsx.rs`, preserving the shared Go-oracle helpers
+  and the 78-test contract count.
 - XLSX formula recalculation metadata updates, calcChain content-type cleanup,
   workbook relationship cleanup, and calcChain part removal moved from
   `src/xlsx_mutation.rs` into `src/xlsx_formula_recalc.rs`, with the mutation
