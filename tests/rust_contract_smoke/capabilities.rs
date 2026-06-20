@@ -22,6 +22,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let all_caps = all_stdout.expect("all capabilities");
     assert_command(&all_caps, "ooxml version", false);
     assert_command(&all_caps, "ooxml capabilities", false);
+    assert_command(&all_caps, "ooxml help", false);
     assert_command(&all_caps, "ooxml apply", false);
     assert_command(&all_caps, "ooxml diff", false);
     assert_command(&all_caps, "ooxml template tokens", false);
@@ -29,6 +30,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml template profile inspect", false);
     assert_command(&all_caps, "ooxml serve", false);
     assert_command(&all_caps, "ooxml mcp", false);
+    assert_command(&all_caps, "ooxml completion", false);
+    assert_command(&all_caps, "ooxml conformance", false);
     assert_command(&all_caps, "ooxml pptx extract text", false);
     assert_command(&all_caps, "ooxml pptx extract notes", false);
     assert_command(&all_caps, "ooxml pptx extract images", false);
@@ -137,6 +140,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx comments add", true);
     assert_command(&all_caps, "ooxml docx comments edit", true);
     assert_command(&all_caps, "ooxml docx comments remove", true);
+    assert_command(&all_caps, "ooxml vba", false);
     assert_command(&all_caps, "ooxml vba inspect", false);
     assert_command(&all_caps, "ooxml vba create", false);
     assert_command(&all_caps, "ooxml vba extract-bin", false);
@@ -1324,6 +1328,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(vba_code, 0);
     assert_eq!(vba_stderr, None);
     let vba_caps = vba_stdout.expect("vba capabilities");
+    assert_command(&vba_caps, "ooxml vba", false);
     assert_command(&vba_caps, "ooxml vba create", false);
     assert_command(&vba_caps, "ooxml vba inspect", false);
     assert_command(&vba_caps, "ooxml vba extract-bin", false);
@@ -1390,12 +1395,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        241,
+        245,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        49,
+        45,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

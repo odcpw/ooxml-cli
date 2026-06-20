@@ -28,6 +28,15 @@ pub(super) fn commands() -> Vec<Value> {
             )],
         ),
         capability_command(
+            "ooxml help",
+            "help [command]",
+            "Show Rust-supported command help.",
+            &[],
+            false,
+            Some("read-only help command; parent/group help surfaces are not mutation ops"),
+            vec![],
+        ),
+        capability_command(
             "ooxml doctor",
             "doctor [--only <checks>]",
             "Run read-only environment checks for agent/release workflows.",
@@ -154,6 +163,15 @@ pub(super) fn commands() -> Vec<Value> {
             vec![],
         ),
         capability_command(
+            "ooxml completion",
+            "completion",
+            "Generate shell completion scripts for Rust-supported top-level commands.",
+            &[],
+            false,
+            Some("command group help surface; run a shell leaf to emit a completion script"),
+            vec![],
+        ),
+        capability_command(
             "ooxml completion bash",
             "completion bash",
             "Generate bash shell completion for ooxml.",
@@ -187,6 +205,17 @@ pub(super) fn commands() -> Vec<Value> {
             &[],
             false,
             Some("shell integration helper"),
+            vec![],
+        ),
+        capability_command(
+            "ooxml conformance",
+            "conformance",
+            "Show Rust-supported conformance reports.",
+            &[],
+            false,
+            Some(
+                "read-only conformance command group; conformance check remains unadvertised in Rust",
+            ),
             vec![],
         ),
         capability_command(

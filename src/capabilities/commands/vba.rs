@@ -5,6 +5,15 @@ use super::{capability_command, flag};
 pub(super) fn commands() -> Vec<Value> {
     vec![
         capability_command(
+            "ooxml vba",
+            "vba",
+            "Inspect and edit Rust-supported VBA macro project surfaces.",
+            &[],
+            false,
+            Some("command group help surface; run a VBA leaf command for work"),
+            vec![],
+        ),
+        capability_command(
             "ooxml vba create",
             "create <output.xlsm|output.pptm>",
             "Create an Office-authored XLSM/PPTM from .bas/.cls source files using the Windows Office helper.",

@@ -8,6 +8,7 @@ fn utility_capabilities_advertise_only_implemented_paths() {
     let caps = stdout.expect("capabilities");
 
     for path in [
+        "ooxml help",
         "ooxml doctor",
         "ooxml doctor capabilities",
         "ooxml doctor health",
@@ -26,19 +27,18 @@ fn utility_capabilities_advertise_only_implemented_paths() {
         "ooxml docx paragraphs",
         "ooxml docx styles",
         "ooxml docx tables",
+        "ooxml completion",
         "ooxml completion bash",
         "ooxml completion fish",
         "ooxml completion powershell",
         "ooxml completion zsh",
+        "ooxml conformance",
         "ooxml conformance coverage",
     ] {
         assert_command(&caps, path, false);
     }
     assert_no_command(&caps, "ooxml conformance check");
-    assert_no_command(&caps, "ooxml help");
     for path in [
-        "ooxml completion",
-        "ooxml conformance",
         "ooxml xlsx",
         "ooxml xlsx sheets",
         "ooxml xlsx tables",
@@ -48,6 +48,54 @@ fn utility_capabilities_advertise_only_implemented_paths() {
     ] {
         assert_no_command(&caps, path);
     }
+}
+
+#[test]
+fn meta_parent_capabilities_are_go_oracle_paths_with_rust_reasons() {
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
+    assert_eq!(go_code, 0);
+    assert_eq!(go_stderr, None);
+    let go_caps = go_stdout.expect("go capabilities");
+
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(rust_code, 0);
+    assert_eq!(rust_stderr, None);
+    let rust_caps = rust_stdout.expect("rust capabilities");
+
+    for (path, reason_needle) in [
+        ("ooxml completion", "completion"),
+        ("ooxml help", "help"),
+        (
+            "ooxml conformance",
+            "conformance check remains unadvertised",
+        ),
+        ("ooxml vba", "VBA leaf command"),
+    ] {
+        let go_command = command_by_path(&go_caps, path)
+            .unwrap_or_else(|| panic!("Go oracle missing expected parent/meta path {path}"));
+        assert_eq!(go_command["opCompatible"], Value::Bool(false));
+
+        let rust_command = command_by_path(&rust_caps, path)
+            .unwrap_or_else(|| panic!("Rust missing promoted parent/meta path {path}"));
+        assert_eq!(rust_command["opCompatible"], Value::Bool(false));
+        assert!(
+            rust_command["opIneligibleReason"]
+                .as_str()
+                .expect("Rust op-ineligible reason")
+                .contains(reason_needle),
+            "Rust reason for {path}: {}",
+            rust_command["opIneligibleReason"]
+        );
+    }
+
+    assert!(
+        command_by_path(&go_caps, "ooxml conformance check").is_some(),
+        "Go oracle should still advertise conformance check"
+    );
+    assert!(
+        command_by_path(&rust_caps, "ooxml conformance check").is_none(),
+        "Rust must not advertise conformance check until repair invariants are ported"
+    );
 }
 
 #[test]
@@ -193,6 +241,7 @@ fn go_and_rust_help_like_paths_share_success_shape() {
         &["help"][..],
         &["completion"][..],
         &["conformance"][..],
+        &["vba"][..],
         &["docx"][..],
         &["docx", "comments"][..],
         &["docx", "fields"][..],
@@ -249,6 +298,14 @@ fn conformance_check_remains_unimplemented_until_repair_invariants_ported() {
 #[test]
 fn conformance_coverage_matches_go_static_report() {
     assert_go_rust_match(&["--json", "conformance", "coverage"]);
+}
+
+fn command_by_path<'a>(capabilities: &'a Value, path: &str) -> Option<&'a Value> {
+    capabilities["commands"]
+        .as_array()
+        .expect("commands array")
+        .iter()
+        .find(|command| command["path"].as_str() == Some(path))
 }
 
 #[test]
