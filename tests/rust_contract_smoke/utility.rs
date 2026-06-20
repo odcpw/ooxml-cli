@@ -573,6 +573,24 @@ fn conformance_check_matches_go_for_reference_list_failures() {
 }
 
 #[test]
+fn conformance_check_matches_go_for_deep_relationship_invariants() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-conformance-deep-relationships-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("conformance deep relationships temp dir");
+
+    let clean = temp_dir.join("deep-relationships-clean.xlsx");
+    write_deep_relationship_xlsx(&clean, false);
+    assert_go_rust_conformance_check_match(&clean);
+
+    let broken = temp_dir.join("deep-relationships-broken.xlsx");
+    write_deep_relationship_xlsx(&broken, true);
+    assert_go_rust_repair_invariants_match(&broken);
+}
+
+#[test]
 fn conformance_coverage_matches_go_static_report() {
     assert_go_rust_match(&["--json", "conformance", "coverage"]);
 }
@@ -686,6 +704,252 @@ fn check_by_name<'a>(report: &'a Value, name: &str) -> &'a Value {
         .iter()
         .find(|check| check["name"].as_str() == Some(name))
         .unwrap_or_else(|| panic!("missing check {name}: {}", report["checks"]))
+}
+
+fn write_deep_relationship_xlsx(dest: &Path, broken: bool) {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("fixture parent");
+    }
+    let output = File::create(dest).expect("create deep relationship xlsx");
+    let mut writer = ZipWriter::new(output);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+    write_zip_string(
+        &mut writer,
+        options,
+        "[Content_Types].xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>
+  <Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>
+  <Override PartName="/xl/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>
+  <Override PartName="/xl/pivotTables/pivotTable1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml"/>
+  <Override PartName="/xl/pivotCache/pivotCacheDefinition1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml"/>
+  <Override PartName="/xl/pivotCache/pivotCacheRecords1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheRecords+xml"/>
+</Types>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "_rels/.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>"#,
+    );
+
+    let workbook_pivot_cache = if broken {
+        r#"<pivotCaches><pivotCache cacheId="1" r:id="rIdMissingCache"/></pivotCaches>"#
+    } else {
+        r#"<pivotCaches><pivotCache cacheId="1" r:id="rIdCache1"/></pivotCaches>"#
+    };
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/workbook.xml",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Data" sheetId="1" r:id="rIdSheet1"/></sheets>
+  {workbook_pivot_cache}
+</workbook>"#
+        ),
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/_rels/workbook.xml.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdSheet1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rIdCache1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheDefinition" Target="pivotCache/pivotCacheDefinition1.xml"/>
+</Relationships>"#,
+    );
+
+    let worksheet_tail = if broken {
+        r#"<drawing/>
+  <tableParts count="2"><tablePart/><tablePart r:id="rIdWrongTable"/></tableParts>"#
+    } else {
+        r#"<drawing r:id="rIdDrawing1"/>
+  <tableParts count="1"><tablePart r:id="rIdTable1"/></tableParts>"#
+    };
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/worksheets/sheet1.xml",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <dimension ref="A1:C3"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Region</t></is></c><c r="B1" t="inlineStr"><is><t>Quarter</t></is></c><c r="C1" t="inlineStr"><is><t>Amount</t></is></c></row>
+    <row r="2"><c r="A2" t="inlineStr"><is><t>East</t></is></c><c r="B2" t="inlineStr"><is><t>Q1</t></is></c><c r="C2"><v>10</v></c></row>
+    <row r="3"><c r="A3" t="inlineStr"><is><t>West</t></is></c><c r="B3" t="inlineStr"><is><t>Q2</t></is></c><c r="C3"><v>20</v></c></row>
+  </sheetData>
+  {worksheet_tail}
+</worksheet>"#
+        ),
+    );
+    let worksheet_rels = if broken {
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdDrawing1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+  <Relationship Id="rIdWrongTable" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../tables/table1.xml"/>
+  <Relationship Id="rIdPivot1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable" Target="../pivotTables/pivotTable1.xml"/>
+</Relationships>"#
+    } else {
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdDrawing1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+  <Relationship Id="rIdTable1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/>
+  <Relationship Id="rIdPivot1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable" Target="../pivotTables/pivotTable1.xml"/>
+</Relationships>"#
+    };
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/worksheets/_rels/sheet1.xml.rels",
+        worksheet_rels,
+    );
+
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/tables/table1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="Sales" displayName="Sales" ref="A1:C3" headerRowCount="1" totalsRowShown="0">
+  <autoFilter ref="A1:C3"/>
+  <tableColumns count="3">
+    <tableColumn id="1" name="Region"/>
+    <tableColumn id="2" name="Quarter"/>
+    <tableColumn id="3" name="Amount"/>
+  </tableColumns>
+  <tableStyleInfo name="TableStyleMedium2" showRowStripes="1"/>
+</table>"#,
+    );
+
+    let chart_rid = if broken {
+        "rIdMissingChart"
+    } else {
+        "rIdChart1"
+    };
+    let image_rid = if broken {
+        "rIdWrongImageType"
+    } else {
+        "rIdImage1"
+    };
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/drawings/drawing1.xml",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <xdr:twoCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:row>0</xdr:row></xdr:from><xdr:to><xdr:col>5</xdr:col><xdr:row>10</xdr:row></xdr:to><xdr:graphicFrame><a:graphic><a:graphicData><c:chart r:id="{chart_rid}"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>
+  <xdr:twoCellAnchor><xdr:from><xdr:col>6</xdr:col><xdr:row>0</xdr:row></xdr:from><xdr:to><xdr:col>8</xdr:col><xdr:row>4</xdr:row></xdr:to><xdr:pic><xdr:blipFill><a:blip r:embed="{image_rid}"/></xdr:blipFill></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>
+</xdr:wsDr>"#
+        ),
+    );
+    let drawing_rels = if broken {
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdImage1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>
+  <Relationship Id="rIdWrongImageType" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart1.xml"/>
+</Relationships>"#
+    } else {
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdChart1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart1.xml"/>
+  <Relationship Id="rIdImage1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>
+</Relationships>"#
+    };
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/drawings/_rels/drawing1.xml.rels",
+        drawing_rels,
+    );
+
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/charts/chart1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">
+  <c:chart><c:plotArea/></c:chart>
+</c:chartSpace>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/pivotTables/pivotTable1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<pivotTableDefinition xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" name="SalesPivot" cacheId="1" dataCaption="Values">
+  <location ref="D3:E6" firstHeaderRow="1" firstDataRow="2" firstDataCol="1"/>
+  <pivotFields count="3"><pivotField axis="axisRow"/><pivotField axis="axisCol"/><pivotField dataField="1"/></pivotFields>
+  <rowFields count="1"><field x="0"/></rowFields>
+  <colFields count="1"><field x="1"/></colFields>
+  <dataFields count="1"><dataField name="Sum of Amount" fld="2"/></dataFields>
+  <pivotTableStyleInfo name="PivotStyleLight16"/>
+</pivotTableDefinition>"#,
+    );
+
+    let records_rid = if broken {
+        "rIdMissingRecords"
+    } else {
+        "rIdRecords1"
+    };
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/pivotCache/pivotCacheDefinition1.xml",
+        &format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<pivotCacheDefinition xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="{records_rid}" recordCount="2">
+  <cacheSource type="worksheet"><worksheetSource ref="A1:C3" sheet="Data"/></cacheSource>
+  <cacheFields count="3"><cacheField name="Region"/><cacheField name="Quarter"/><cacheField name="Amount"/></cacheFields>
+</pivotCacheDefinition>"#
+        ),
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/pivotCache/_rels/pivotCacheDefinition1.xml.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdRecords1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheRecords" Target="pivotCacheRecords1.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/pivotCache/pivotCacheRecords1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<pivotCacheRecords xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="2"><r/><r/></pivotCacheRecords>"#,
+    );
+    write_zip_bytes(
+        &mut writer,
+        options,
+        "xl/media/image1.png",
+        &fs::read("testdata/test_image.png").expect("read test image"),
+    );
+
+    writer.finish().expect("finish deep relationship xlsx");
+}
+
+fn write_zip_bytes(
+    writer: &mut ZipWriter<File>,
+    options: SimpleFileOptions,
+    name: &str,
+    data: &[u8],
+) {
+    writer.start_file(name, options).expect("write zip entry");
+    writer.write_all(data).expect("write zip data");
 }
 
 fn command_by_path<'a>(capabilities: &'a Value, path: &str) -> Option<&'a Value> {
