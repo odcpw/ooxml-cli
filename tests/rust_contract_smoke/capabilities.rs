@@ -158,6 +158,20 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "ooxml xlsx filters-sorts set-autofilter",
         "table",
     );
+    assert_object_kind_command(&all_caps, "comment", "ooxml xlsx comments list");
+    assert_object_kind_command(&all_caps, "comment", "ooxml xlsx comments add");
+    assert_object_kind_command(&all_caps, "comment", "ooxml xlsx comments update");
+    assert_object_kind_command(&all_caps, "comment", "ooxml xlsx comments remove");
+    assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx comments list");
+    assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx comments add");
+    assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx comments update");
+    assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx comments remove");
+    assert_object_kind_command(&all_caps, "cell", "ooxml xlsx comments list");
+    assert_object_kind_command(&all_caps, "cell", "ooxml xlsx comments add");
+    assert_object_kind_command(&all_caps, "cell", "ooxml xlsx comments update");
+    assert_object_kind_command(&all_caps, "cell", "ooxml xlsx comments remove");
+    assert_command_target_kind(&all_caps, "ooxml xlsx comments add", "comment");
+    assert_command_target_kind(&all_caps, "ooxml xlsx comments add", "cell");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names list");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names show");
     assert_object_kind_command(&all_caps, "name", "ooxml xlsx names add");
@@ -214,6 +228,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx rowheights show", false);
     assert_command(&xlsx_caps, "ooxml xlsx filters-sorts show", false);
     assert_command(&xlsx_caps, "ooxml xlsx filters-sorts set-autofilter", false);
+    assert_command(&xlsx_caps, "ooxml xlsx comments list", false);
+    assert_command(&xlsx_caps, "ooxml xlsx comments add", true);
+    assert_command(&xlsx_caps, "ooxml xlsx comments update", true);
+    assert_command(&xlsx_caps, "ooxml xlsx comments remove", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set-format", true);
@@ -351,6 +369,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&comment_caps, "ooxml pptx comments add", false);
     assert_command(&comment_caps, "ooxml pptx comments edit", false);
     assert_command(&comment_caps, "ooxml pptx comments remove", false);
+    assert_command(&comment_caps, "ooxml xlsx comments list", false);
+    assert_command(&comment_caps, "ooxml xlsx comments add", true);
+    assert_command(&comment_caps, "ooxml xlsx comments update", true);
+    assert_command(&comment_caps, "ooxml xlsx comments remove", true);
     assert_command(&comment_caps, "ooxml docx comments list", false);
     assert_command(&comment_caps, "ooxml docx comments add", true);
     assert_command(&comment_caps, "ooxml docx comments edit", true);
@@ -477,10 +499,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 91, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 95, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        199,
+        195,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

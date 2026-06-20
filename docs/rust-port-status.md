@@ -9,6 +9,22 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust XLSX comments parity landed for direct
+  `xlsx comments list/add/update/remove` plus serve operations for
+  add/update/remove and serve inspect for list. The slice creates and updates
+  worksheet comments parts, worksheet relationships, content-type overrides,
+  VML drawing parts, and `<legacyDrawing>` refs; it removes orphaned comments
+  and VML parts when the last comment is deleted; and it matches Go-oracle
+  JSON, readback commands, dry-run, hash-guard, duplicate-cell, and missing
+  comment behavior. Rust capabilities now advertise 95 Go-oracle command paths,
+  leaving a pinned 195-command gap. Proof: `cargo fmt --check`, `cargo check
+  --all-targets`, focused `cargo test --test rust_contract_smoke xlsx_comments
+  -- --nocapture`, focused capability ratchet/discovery tests, strict
+  validation for generated add/update/remove XLSX proof files, Open XML SDK
+  Office2019 schema validation (zero errors) for all three proof files, Excel
+  COM open oracle for all three proof files, `cargo clippy --all-targets --
+  -D warnings`, and `cargo test --all-targets` passed with 4 ZIP guard unit
+  tests plus 106 Rust contract tests.
 - Rust PPTX comment mutation parity landed for direct
   `pptx comments add`, `pptx comments edit`, and `pptx comments remove`.
   The slice creates legacy slide comments and shared comment-author parts,
@@ -903,7 +919,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 91, and the harness pins the 199-command gap until
+  paths, Rust advertises 95, and the harness pins the 195-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

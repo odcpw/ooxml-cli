@@ -49,6 +49,12 @@ pub(super) enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    XlsxCommentsOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
     XlsxTablesOp {
         command: String,
         plan_flags: Vec<Value>,
@@ -122,6 +128,7 @@ impl ServeOp {
             | ServeOp::XlsxRangeSet { command, .. }
             | ServeOp::XlsxRangeSetFormat { command, .. }
             | ServeOp::XlsxWorkbookMetadataUpdate { command, .. }
+            | ServeOp::XlsxCommentsOp { command, .. }
             | ServeOp::XlsxTablesOp { command, .. }
             | ServeOp::DocxHeaderFooterSetText { command, .. }
             | ServeOp::DocxFieldsOp { command, .. }
@@ -290,6 +297,27 @@ impl ServeOp {
                 let mut argv = vec![
                     json!("xlsx"),
                     json!("tables"),
+                    json!(verb),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
+            ServeOp::XlsxCommentsOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command.split_whitespace().nth(2).unwrap_or("add");
+                let mut argv = vec![
+                    json!("xlsx"),
+                    json!("comments"),
                     json!(verb),
                     json!(source_file),
                 ];
@@ -498,6 +526,11 @@ impl ServeOp {
                 ..
             }
             | ServeOp::XlsxTablesOp {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::XlsxCommentsOp {
                 readback_file,
                 readback,
                 ..

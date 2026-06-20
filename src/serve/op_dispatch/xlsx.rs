@@ -1,11 +1,13 @@
 use serde_json::{Value, json};
 
 use crate::{
-    CliError, CliResult, XlsxCellsSetOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions,
+    CliError, CliResult, XlsxCellsSetOptions, XlsxCommentsAddOptions, XlsxCommentsRemoveOptions,
+    XlsxCommentsUpdateOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions,
     XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions, XlsxWorkbookMetadataUpdateOptions,
     json_bool, json_i64, json_optional_serialized, json_optional_string, json_string,
-    xlsx_cells_set, xlsx_ranges_set, xlsx_ranges_set_format, xlsx_tables_append_records,
-    xlsx_tables_append_rows, xlsx_workbook_metadata_update,
+    xlsx_cells_set, xlsx_comments_add, xlsx_comments_remove, xlsx_comments_update, xlsx_ranges_set,
+    xlsx_ranges_set_format, xlsx_tables_append_records, xlsx_tables_append_rows,
+    xlsx_workbook_metadata_update,
 };
 
 use super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
@@ -41,6 +43,139 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 json!(value),
             ];
             ServeOp::XlsxCellSet {
+                command: command.to_string(),
+                plan_flags,
+                readback_file: working.to_string(),
+                readback,
+            }
+        }
+        "xlsx comments add" => {
+            let sheet = json_optional_string(args, "sheet");
+            let cell = json_string(args, "cell")?;
+            let author = json_string(args, "author")?;
+            let text = json_optional_string(args, "text");
+            let text_file = json_optional_string(args, "text-file")
+                .or_else(|| json_optional_string(args, "textFile"));
+            let readback = xlsx_comments_add(
+                working,
+                XlsxCommentsAddOptions {
+                    sheet: sheet.as_deref(),
+                    cell: Some(&cell),
+                    author: Some(&author),
+                    text: text.as_deref(),
+                    text_file: text_file.as_deref(),
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    no_validate: true,
+                    in_place: true,
+                },
+            )?;
+            let mut plan_flags = Vec::new();
+            push_serve_plan_string_flag(&mut plan_flags, "--sheet", sheet.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--cell", Some(&cell));
+            push_serve_plan_string_flag(&mut plan_flags, "--author", Some(&author));
+            push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--text-file", text_file.as_deref());
+            ServeOp::XlsxCommentsOp {
+                command: command.to_string(),
+                plan_flags,
+                readback_file: working.to_string(),
+                readback,
+            }
+        }
+        "xlsx comments update" => {
+            let sheet = json_optional_string(args, "sheet");
+            let comment_id = match json_i64(args, "comment-id")? {
+                Some(value) => Some(value),
+                None => json_i64(args, "commentId")?,
+            };
+            if let Some(comment_id) = comment_id
+                && comment_id < 0
+            {
+                return Err(CliError::invalid_args("--comment-id must be >= 0"));
+            }
+            let handle = json_optional_string(args, "handle");
+            let text = json_optional_string(args, "text");
+            let text_file = json_optional_string(args, "text-file")
+                .or_else(|| json_optional_string(args, "textFile"));
+            let author = json_optional_string(args, "author");
+            let expect_hash = json_optional_string(args, "expect-hash")
+                .or_else(|| json_optional_string(args, "expectHash"));
+            let readback = xlsx_comments_update(
+                working,
+                XlsxCommentsUpdateOptions {
+                    sheet: sheet.as_deref(),
+                    comment_id,
+                    handle: handle.as_deref(),
+                    text: text.as_deref(),
+                    text_present: args.get("text").is_some(),
+                    text_file: text_file.as_deref(),
+                    author: author.as_deref(),
+                    author_present: args.get("author").is_some(),
+                    expect_hash: expect_hash.as_deref(),
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    no_validate: true,
+                    in_place: true,
+                },
+            )?;
+            let mut plan_flags = Vec::new();
+            push_serve_plan_string_flag(&mut plan_flags, "--sheet", sheet.as_deref());
+            if let Some(comment_id) = comment_id {
+                plan_flags.push(json!("--comment-id"));
+                plan_flags.push(json!(comment_id.to_string()));
+            }
+            push_serve_plan_string_flag(&mut plan_flags, "--handle", handle.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--text-file", text_file.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--author", author.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--expect-hash", expect_hash.as_deref());
+            ServeOp::XlsxCommentsOp {
+                command: command.to_string(),
+                plan_flags,
+                readback_file: working.to_string(),
+                readback,
+            }
+        }
+        "xlsx comments remove" | "xlsx comments delete" => {
+            let sheet = json_optional_string(args, "sheet");
+            let comment_id = match json_i64(args, "comment-id")? {
+                Some(value) => Some(value),
+                None => json_i64(args, "commentId")?,
+            };
+            if let Some(comment_id) = comment_id
+                && comment_id < 0
+            {
+                return Err(CliError::invalid_args("--comment-id must be >= 0"));
+            }
+            let handle = json_optional_string(args, "handle");
+            let expect_hash = json_optional_string(args, "expect-hash")
+                .or_else(|| json_optional_string(args, "expectHash"));
+            let readback = xlsx_comments_remove(
+                working,
+                XlsxCommentsRemoveOptions {
+                    sheet: sheet.as_deref(),
+                    comment_id,
+                    handle: handle.as_deref(),
+                    expect_hash: expect_hash.as_deref(),
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    no_validate: true,
+                    in_place: true,
+                },
+            )?;
+            let mut plan_flags = Vec::new();
+            push_serve_plan_string_flag(&mut plan_flags, "--sheet", sheet.as_deref());
+            if let Some(comment_id) = comment_id {
+                plan_flags.push(json!("--comment-id"));
+                plan_flags.push(json!(comment_id.to_string()));
+            }
+            push_serve_plan_string_flag(&mut plan_flags, "--handle", handle.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--expect-hash", expect_hash.as_deref());
+            ServeOp::XlsxCommentsOp {
                 command: command.to_string(),
                 plan_flags,
                 readback_file: working.to_string(),

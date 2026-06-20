@@ -1226,6 +1226,193 @@ fn serve_op_supports_xlsx_ranges_set_format() {
 }
 
 #[test]
+fn serve_op_supports_xlsx_comments_add_update_remove() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-xlsx-comments-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("serve-comments-out.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(
+        1,
+        "open",
+        serde_json::json!({"file": input_str, "out": output_str}),
+    );
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let add = rpc_request(
+        2,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx comments add",
+            "args": {
+                "sheet": "Sheet1",
+                "cell": "B2",
+                "author": "Serve Agent",
+                "text": "Serve note"
+            },
+        }),
+    );
+    let add_response = serve_roundtrip(&mut stdin, &mut reader, &add);
+    assert!(
+        add_response.get("error").is_none(),
+        "comments add op failed: {add_response:?}"
+    );
+    let add_readback = &add_response["result"]["readback"];
+    assert_eq!(add_readback["commentId"], Value::from(0));
+    assert_eq!(add_readback["handle"], "H:xlsx/ws:1/comment:a:B2");
+    assert_eq!(add_readback["text"], "Serve note");
+    let working = add_readback["file"]
+        .as_str()
+        .expect("working package")
+        .to_string();
+    let add_hash = add_readback["contentHash"]
+        .as_str()
+        .expect("add hash")
+        .to_string();
+
+    let inspect = rpc_request(
+        3,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx comments list",
+            "args": {"sheet": "Sheet1", "commentId": 0},
+        }),
+    );
+    let inspect_response = serve_roundtrip(&mut stdin, &mut reader, &inspect);
+    assert!(
+        inspect_response.get("error").is_none(),
+        "comments inspect failed: {inspect_response:?}"
+    );
+    let (code, expected, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "comments",
+        "list",
+        &working,
+        "--sheet",
+        "Sheet1",
+        "--comment-id",
+        "0",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    assert_eq!(inspect_response["result"], expected.expect("list stdout"));
+
+    let update = rpc_request(
+        4,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx comments update",
+            "args": {
+                "handle": "H:xlsx/ws:1/comment:a:B2",
+                "author": "Reviewer",
+                "text": "Serve updated",
+                "expectHash": add_hash
+            },
+        }),
+    );
+    let update_response = serve_roundtrip(&mut stdin, &mut reader, &update);
+    assert!(
+        update_response.get("error").is_none(),
+        "comments update op failed: {update_response:?}"
+    );
+    let update_readback = &update_response["result"]["readback"];
+    assert_eq!(update_readback["previousText"], "Serve note");
+    assert_eq!(update_readback["author"], "Reviewer");
+    let updated_hash = update_readback["contentHash"]
+        .as_str()
+        .expect("updated hash")
+        .to_string();
+
+    let remove = rpc_request(
+        5,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx comments remove",
+            "args": {"commentId": 0, "expectHash": updated_hash},
+        }),
+    );
+    let remove_response = serve_roundtrip(&mut stdin, &mut reader, &remove);
+    assert!(
+        remove_response.get("error").is_none(),
+        "comments remove op failed: {remove_response:?}"
+    );
+    assert_eq!(
+        remove_response["result"]["readback"]["previousText"],
+        "Serve updated"
+    );
+
+    let plan = rpc_request(6, "plan", serde_json::json!({"session": session}));
+    let plan_response = serve_roundtrip(&mut stdin, &mut reader, &plan);
+    let plan_items = plan_response["result"]["plan"]
+        .as_array()
+        .expect("planned operations");
+    let verbs = plan_items
+        .iter()
+        .map(|item| item["argv"][2].as_str().expect("plan verb").to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(verbs, ["add", "update", "remove"]);
+
+    let commit = rpc_request(7, "commit", serde_json::json!({"session": session}));
+    let commit_response = serve_roundtrip(&mut stdin, &mut reader, &commit);
+    assert!(
+        commit_response.get("error").is_none(),
+        "commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+    assert_eq!(
+        commit_response["result"]["applied"][2]["readback"]["output"],
+        Value::String(output_str.clone())
+    );
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "comments serve output validate exit");
+    assert_eq!(
+        validate_stderr, None,
+        "comments serve output validate stderr"
+    );
+    let (list_code, list_stdout, list_stderr) =
+        run_ooxml(&["--json", "xlsx", "comments", "list", &output_str]);
+    assert_eq!(list_code, 0, "comments serve output list exit");
+    assert_eq!(list_stderr, None, "comments serve output list stderr");
+    assert_eq!(
+        list_stdout.expect("serve output comments list")["comments"],
+        Value::Array(Vec::new())
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_op_supports_xlsx_tables_append_rows() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-table-append-rows-{}",

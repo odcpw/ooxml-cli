@@ -9,9 +9,9 @@ use crate::{
     pptx_extract_text, pptx_extract_text_json_args, pptx_layouts_list, pptx_layouts_show,
     pptx_masters_list, pptx_masters_show, pptx_notes_show, pptx_shapes_show, pptx_slide_selectors,
     pptx_slide_show, pptx_slides_list, pptx_tables_show, require_json_data_format,
-    xlsx_cells_extract, xlsx_filters_sorts_show, xlsx_names_list, xlsx_names_show,
-    xlsx_range_export_with_options, xlsx_sheets_list, xlsx_sheets_show, xlsx_tables_export,
-    xlsx_tables_list, xlsx_tables_show, xlsx_workbook_metadata_inspect,
+    xlsx_cells_extract, xlsx_comments_list, xlsx_filters_sorts_show, xlsx_names_list,
+    xlsx_names_show, xlsx_range_export_with_options, xlsx_sheets_list, xlsx_sheets_show,
+    xlsx_tables_export, xlsx_tables_list, xlsx_tables_show, xlsx_workbook_metadata_inspect,
 };
 
 pub(super) fn serve_inspect_command(
@@ -73,6 +73,19 @@ pub(super) fn serve_inspect_command(
                 max_cells,
                 include_empty,
             )
+        }
+        "xlsx comments list" => {
+            let sheet = json_optional_string(args, "sheet");
+            let comment_id = match json_i64(args, "comment-id")? {
+                Some(value) => Some(value),
+                None => json_i64(args, "commentId")?,
+            };
+            if let Some(comment_id) = comment_id
+                && comment_id < 0
+            {
+                return Err(CliError::invalid_args("--comment-id must be >= 0"));
+            }
+            xlsx_comments_list(working, sheet.as_deref(), comment_id)
         }
         "xlsx sheets list" => xlsx_sheets_list(working),
         "xlsx sheets show" => {

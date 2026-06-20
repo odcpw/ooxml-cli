@@ -31,6 +31,7 @@ mod serve;
 mod validation;
 mod vba;
 mod verify;
+mod xlsx_comments;
 mod xlsx_dimensions;
 mod xlsx_filters_sorts;
 mod xlsx_formula_recalc;
@@ -149,6 +150,10 @@ pub(crate) use runtime_util::{
 pub(crate) use selector_util::{add_selector, selector_candidates};
 pub(crate) use serve::{ServeState, run_serve_stdio};
 pub(crate) use validation::{validate, validate_exit_code};
+pub(crate) use xlsx_comments::{
+    XlsxCommentsAddOptions, XlsxCommentsRemoveOptions, XlsxCommentsUpdateOptions,
+    xlsx_comments_add, xlsx_comments_list, xlsx_comments_remove, xlsx_comments_update,
+};
 pub(crate) use xlsx_dimensions::{xlsx_colwidths_show, xlsx_rowheights_show};
 pub(crate) use xlsx_filters_sorts::{
     XlsxFiltersSortsSetAutoFilterOptions, xlsx_filters_sorts_set_autofilter,
