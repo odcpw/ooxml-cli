@@ -154,6 +154,70 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             pptx_render(file, rest)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "animations" && verb == "list" =>
+        {
+            reject_unknown_flags(rest, &[], &[])?;
+            pptx_animations_list(file)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "animations" && verb == "add" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--shape",
+                    "--effect",
+                    "--direction",
+                    "--duration-ms",
+                    "--start",
+                    "--paragraph-range",
+                    "--expect-shape-name",
+                    "--expect-paragraph-count",
+                    "--out",
+                    "--backup",
+                ],
+                &["--by-paragraph", "--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_animations_add(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "animations" && verb == "remove" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--effect-id",
+                    "--expect-shape-name",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_animations_remove(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "animations" && verb == "reorder" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--slide", "--order", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_animations_reorder(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "animations" && verb == "prune-stale" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--slide", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_animations_prune_stale(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "slides" && verb == "show" =>
         {
             let slide = parse_u32_flag(rest, "--slide")?.unwrap_or(1);

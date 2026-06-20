@@ -29,6 +29,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx shapes get", false);
     assert_command(&all_caps, "ooxml pptx shapes set-bounds", false);
     assert_command(&all_caps, "ooxml pptx shapes delete", false);
+    assert_command(&all_caps, "ooxml pptx animations list", false);
+    assert_command(&all_caps, "ooxml pptx animations add", false);
+    assert_command(&all_caps, "ooxml pptx animations remove", false);
+    assert_command(&all_caps, "ooxml pptx animations reorder", false);
+    assert_command(&all_caps, "ooxml pptx animations prune-stale", false);
     assert_command(&all_caps, "ooxml pptx charts list", false);
     assert_command(&all_caps, "ooxml pptx charts show", false);
     assert_command(&all_caps, "ooxml pptx charts set-title", false);
@@ -98,6 +103,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "field",
         "header",
         "footer",
+        "animation",
         "image",
         "media",
         "table",
@@ -113,6 +119,27 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "module",
     ] {
         assert_object_kind(&all_caps, kind);
+    }
+    for path in [
+        "ooxml pptx animations list",
+        "ooxml pptx animations add",
+        "ooxml pptx animations remove",
+        "ooxml pptx animations reorder",
+        "ooxml pptx animations prune-stale",
+    ] {
+        assert_object_kind_command(&all_caps, "animation", path);
+        assert_object_kind_command(&all_caps, "slide", path);
+        assert_command_target_kind(&all_caps, path, "animation");
+        assert_command_target_kind(&all_caps, path, "slide");
+    }
+    for path in [
+        "ooxml pptx animations list",
+        "ooxml pptx animations add",
+        "ooxml pptx animations remove",
+        "ooxml pptx animations prune-stale",
+    ] {
+        assert_object_kind_command(&all_caps, "shape", path);
+        assert_command_target_kind(&all_caps, path, "shape");
     }
     assert_object_kind_command(&all_caps, "field", "ooxml docx fields list");
     assert_object_kind_command(&all_caps, "field", "ooxml docx fields insert");
@@ -495,6 +522,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx shapes get", false);
     assert_command(&pptx_caps, "ooxml pptx shapes set-bounds", false);
     assert_command(&pptx_caps, "ooxml pptx shapes delete", false);
+    assert_command(&pptx_caps, "ooxml pptx animations list", false);
+    assert_command(&pptx_caps, "ooxml pptx animations add", false);
+    assert_command(&pptx_caps, "ooxml pptx animations remove", false);
+    assert_command(&pptx_caps, "ooxml pptx animations reorder", false);
+    assert_command(&pptx_caps, "ooxml pptx animations prune-stale", false);
     assert_command(&pptx_caps, "ooxml pptx masters list", false);
     assert_command(&pptx_caps, "ooxml pptx masters show", false);
     assert_command(&pptx_caps, "ooxml pptx layouts list", false);
@@ -736,6 +768,18 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&chart_caps, "ooxml pptx charts set-plot-area-fill", false);
     assert_command(&chart_caps, "ooxml pptx charts set-series-style", false);
     assert_no_command(&chart_caps, "ooxml pptx tables show");
+
+    let (animation_code, animation_stdout, animation_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "animation"]);
+    assert_eq!(animation_code, 0);
+    assert_eq!(animation_stderr, None);
+    let animation_caps = animation_stdout.expect("animation capabilities");
+    assert_command(&animation_caps, "ooxml pptx animations list", false);
+    assert_command(&animation_caps, "ooxml pptx animations add", false);
+    assert_command(&animation_caps, "ooxml pptx animations remove", false);
+    assert_command(&animation_caps, "ooxml pptx animations reorder", false);
+    assert_command(&animation_caps, "ooxml pptx animations prune-stale", false);
+    assert_no_command(&animation_caps, "ooxml pptx tables show");
 
     let (name_code, name_stdout, name_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "name"]);
@@ -1021,12 +1065,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        166,
+        171,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        124,
+        119,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

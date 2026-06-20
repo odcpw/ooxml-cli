@@ -149,6 +149,358 @@ fn pptx_charts_list_show_json_and_errors_match_go_oracle() {
 }
 
 #[test]
+fn pptx_animations_list_json_and_missing_path_match_go_oracle() {
+    assert_go_rust_match(&[
+        "--json",
+        "pptx",
+        "animations",
+        "list",
+        "testdata/pptx/animations-synthetic/presentation.pptx",
+    ]);
+    assert_go_rust_match(&[
+        "--json",
+        "pptx",
+        "animations",
+        "list",
+        "testdata/pptx/title-content/presentation.pptx",
+    ]);
+
+    let missing = std::env::temp_dir().join(format!(
+        "ooxml-rust-missing-animations-{}-{}.pptx",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let missing_str = missing.to_str().expect("missing path");
+    assert_go_rust_match(&["--json", "pptx", "animations", "list", missing_str]);
+}
+
+#[test]
+fn pptx_animations_mutations_match_go_oracle_and_validate() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-animations-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("animations temp dir");
+
+    let fixture = "testdata/pptx/title-content/presentation.pptx";
+    let dry_run_args = [
+        "--json",
+        "pptx",
+        "animations",
+        "add",
+        fixture,
+        "--slide",
+        "1",
+        "--shape",
+        "shape:2",
+        "--effect",
+        "appear",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&dry_run_args);
+
+    let go_s1 = temp_dir.join("go-s1.pptx");
+    let go_s2 = temp_dir.join("go-s2.pptx");
+    let go_s3 = temp_dir.join("go-s3.pptx");
+    let go_reordered = temp_dir.join("go-reordered.pptx");
+    let go_removed = temp_dir.join("go-removed.pptx");
+    let rust_s1 = temp_dir.join("rust-s1.pptx");
+    let rust_s2 = temp_dir.join("rust-s2.pptx");
+    let rust_s3 = temp_dir.join("rust-s3.pptx");
+    let rust_reordered = temp_dir.join("rust-reordered.pptx");
+    let rust_removed = temp_dir.join("rust-removed.pptx");
+
+    let mut input_go = fixture.to_string();
+    let mut input_rust = fixture.to_string();
+    for (effect, go_out, rust_out) in [
+        ("appear", &go_s1, &rust_s1),
+        ("wipe", &go_s2, &rust_s2),
+        ("fade", &go_s3, &rust_s3),
+    ] {
+        let go_out_str = go_out.to_str().expect("go animation output");
+        let rust_out_str = rust_out.to_str().expect("rust animation output");
+        let mut go_args = vec![
+            "--json",
+            "pptx",
+            "animations",
+            "add",
+            input_go.as_str(),
+            "--slide",
+            "1",
+            "--shape",
+            "shape:2",
+            "--effect",
+            effect,
+            "--out",
+            go_out_str,
+        ];
+        let mut rust_args = vec![
+            "--json",
+            "pptx",
+            "animations",
+            "add",
+            input_rust.as_str(),
+            "--slide",
+            "1",
+            "--shape",
+            "shape:2",
+            "--effect",
+            effect,
+            "--out",
+            rust_out_str,
+        ];
+        if effect == "wipe" {
+            go_args.extend(["--direction", "up"]);
+            rust_args.extend(["--direction", "up"]);
+        }
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+        assert_eq!(rust_code, go_code, "add {effect} exit");
+        assert_eq!(rust_stderr, go_stderr, "add {effect} stderr");
+        let rust_json = rust_stdout.expect("rust add stdout");
+        assert_eq!(
+            scrub_paths(
+                rust_json.clone(),
+                &[(rust_out_str, "[OUT]"), (input_rust.as_str(), "[IN]")]
+            ),
+            scrub_paths(
+                go_stdout.expect("go add stdout"),
+                &[(go_out_str, "[OUT]"), (input_go.as_str(), "[IN]")]
+            ),
+            "add {effect} stdout"
+        );
+        assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+        input_go = go_out_str.to_string();
+        input_rust = rust_out_str.to_string();
+    }
+
+    let (go_list_code, go_list_stdout, go_list_stderr) = run_go_ooxml(&[
+        "--json",
+        "pptx",
+        "animations",
+        "list",
+        go_s3.to_str().expect("go s3"),
+    ]);
+    let (rust_list_code, rust_list_stdout, rust_list_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "animations",
+        "list",
+        rust_s3.to_str().expect("rust s3"),
+    ]);
+    assert_eq!(rust_list_code, go_list_code, "list after add exit");
+    assert_eq!(rust_list_stderr, go_list_stderr, "list after add stderr");
+    assert_eq!(
+        rust_list_stdout.clone().expect("rust list after add"),
+        go_list_stdout.expect("go list after add"),
+        "list after add stdout"
+    );
+    let list_json = rust_list_stdout.expect("rust list json");
+    let effects = list_json["slides"][0]["effects"]
+        .as_array()
+        .expect("animation effects");
+    let order = [
+        effects[2]["clickStepId"].as_i64().expect("third click id"),
+        effects[1]["clickStepId"].as_i64().expect("second click id"),
+        effects[0]["clickStepId"].as_i64().expect("first click id"),
+    ]
+    .iter()
+    .map(ToString::to_string)
+    .collect::<Vec<_>>()
+    .join(",");
+
+    let go_reordered_str = go_reordered.to_str().expect("go reorder output");
+    let rust_reordered_str = rust_reordered.to_str().expect("rust reorder output");
+    let go_reorder_args = [
+        "--json",
+        "pptx",
+        "animations",
+        "reorder",
+        go_s3.to_str().expect("go s3 path"),
+        "--slide",
+        "1",
+        "--order",
+        order.as_str(),
+        "--out",
+        go_reordered_str,
+    ];
+    let rust_reorder_args = [
+        "--json",
+        "pptx",
+        "animations",
+        "reorder",
+        rust_s3.to_str().expect("rust s3 path"),
+        "--slide",
+        "1",
+        "--order",
+        order.as_str(),
+        "--out",
+        rust_reordered_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_reorder_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_reorder_args);
+    assert_eq!(rust_code, go_code, "reorder exit");
+    assert_eq!(rust_stderr, go_stderr, "reorder stderr");
+    let rust_reorder_json = rust_stdout.expect("rust reorder stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_reorder_json.clone(),
+            &[
+                (rust_reordered_str, "[OUT]"),
+                (rust_s3.to_str().expect("rust s3 scrub"), "[IN]"),
+            ]
+        ),
+        scrub_paths(
+            go_stdout.expect("go reorder stdout"),
+            &[
+                (go_reordered_str, "[OUT]"),
+                (go_s3.to_str().expect("go s3 scrub"), "[IN]"),
+            ]
+        ),
+        "reorder stdout"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_reorder_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_reorder_json, "validateCommand");
+
+    let rust_reordered_list =
+        run_ooxml(&["--json", "pptx", "animations", "list", rust_reordered_str])
+            .1
+            .expect("rust reordered list");
+    let remove_id = rust_reordered_list["slides"][0]["effects"][1]["effectId"]
+        .as_i64()
+        .expect("middle effect id")
+        .to_string();
+    let go_removed_str = go_removed.to_str().expect("go removed output");
+    let rust_removed_str = rust_removed.to_str().expect("rust removed output");
+    let go_remove_args = [
+        "--json",
+        "pptx",
+        "animations",
+        "remove",
+        go_reordered_str,
+        "--slide",
+        "1",
+        "--effect-id",
+        remove_id.as_str(),
+        "--out",
+        go_removed_str,
+    ];
+    let rust_remove_args = [
+        "--json",
+        "pptx",
+        "animations",
+        "remove",
+        rust_reordered_str,
+        "--slide",
+        "1",
+        "--effect-id",
+        remove_id.as_str(),
+        "--out",
+        rust_removed_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_remove_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_remove_args);
+    assert_eq!(rust_code, go_code, "remove exit");
+    assert_eq!(rust_stderr, go_stderr, "remove stderr");
+    let rust_remove_json = rust_stdout.expect("rust remove stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_remove_json.clone(),
+            &[(rust_removed_str, "[OUT]"), (rust_reordered_str, "[IN]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go remove stdout"),
+            &[(go_removed_str, "[OUT]"), (go_reordered_str, "[IN]")]
+        ),
+        "remove stdout"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_remove_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_remove_json, "validateCommand");
+
+    let missing_args = [
+        "--json",
+        "pptx",
+        "animations",
+        "remove",
+        "testdata/pptx/animations-synthetic/presentation.pptx",
+        "--slide",
+        "1",
+        "--effect-id",
+        "9999",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&missing_args);
+
+    let prune_dry_run = [
+        "--json",
+        "pptx",
+        "animations",
+        "prune-stale",
+        "testdata/pptx/animations-synthetic/presentation.pptx",
+        "--dry-run",
+    ];
+    assert_go_rust_match(&prune_dry_run);
+
+    let go_pruned = temp_dir.join("go-pruned.pptx");
+    let rust_pruned = temp_dir.join("rust-pruned.pptx");
+    let go_pruned_str = go_pruned.to_str().expect("go pruned output");
+    let rust_pruned_str = rust_pruned.to_str().expect("rust pruned output");
+    let go_prune_args = [
+        "--json",
+        "pptx",
+        "animations",
+        "prune-stale",
+        "testdata/pptx/animations-synthetic/presentation.pptx",
+        "--slide",
+        "4",
+        "--out",
+        go_pruned_str,
+    ];
+    let rust_prune_args = [
+        "--json",
+        "pptx",
+        "animations",
+        "prune-stale",
+        "testdata/pptx/animations-synthetic/presentation.pptx",
+        "--slide",
+        "4",
+        "--out",
+        rust_pruned_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_prune_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_prune_args);
+    assert_eq!(rust_code, go_code, "prune saved exit");
+    assert_eq!(rust_stderr, go_stderr, "prune saved stderr");
+    let rust_prune_json = rust_stdout.expect("rust prune stdout");
+    assert_eq!(
+        scrub_path(rust_prune_json.clone(), rust_pruned_str, "[OUT]"),
+        scrub_path(go_stdout.expect("go prune stdout"), go_pruned_str, "[OUT]"),
+        "prune saved stdout"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_prune_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_prune_json, "validateCommand");
+
+    let (go_code, go_stdout, go_stderr) =
+        run_go_ooxml(&["--json", "pptx", "animations", "list", go_pruned_str]);
+    let (rust_code, rust_stdout, rust_stderr) =
+        run_ooxml(&["--json", "pptx", "animations", "list", rust_pruned_str]);
+    assert_eq!(rust_code, go_code, "prune readback exit");
+    assert_eq!(rust_stderr, go_stderr, "prune readback stderr");
+    assert_eq!(
+        rust_stdout.expect("rust prune readback"),
+        go_stdout.expect("go prune readback"),
+        "prune readback stdout"
+    );
+}
+
+#[test]
 fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

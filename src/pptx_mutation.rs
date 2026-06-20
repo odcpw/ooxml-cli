@@ -1,3 +1,4 @@
+mod animations;
 mod charts;
 mod comments;
 mod layouts;
@@ -7,6 +8,10 @@ mod shapes;
 mod slides;
 mod tables;
 
+pub(crate) use animations::{
+    pptx_animations_add, pptx_animations_prune_stale, pptx_animations_remove,
+    pptx_animations_reorder,
+};
 pub(crate) use charts::{
     pptx_charts_set_chart_area_fill, pptx_charts_set_legend, pptx_charts_set_plot_area_fill,
     pptx_charts_set_series_style, pptx_charts_set_title,
