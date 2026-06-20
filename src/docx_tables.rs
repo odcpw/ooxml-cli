@@ -134,6 +134,32 @@ pub(crate) fn docx_tables_clear_cell(
     )))
 }
 
+pub(crate) fn docx_tables_insert_row(
+    file: &str,
+    table: usize,
+    at: usize,
+    expected_hash: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let mutation = docx_table_insert_row_mutation(file, table, at, expected_hash)?;
+    let output_path = docx_mutation_output_path_for_result(file, &options);
+    write_docx_mutation_output(file, &mutation.document_part, &mutation.xml, options)?;
+
+    Ok(Value::Object(docx_table_row_mutation_result(
+        file,
+        table,
+        at,
+        &mutation,
+        output_path,
+    )))
+}
+
 pub(crate) fn docx_tables_delete_row(
     file: &str,
     table: usize,
@@ -262,6 +288,93 @@ fn docx_table_cell_text_mutation(
         previous_hash,
         previous_text,
         flattened,
+    })
+}
+
+fn docx_table_insert_row_mutation(
+    file: &str,
+    table: usize,
+    at: usize,
+    expected_hash: &str,
+) -> CliResult<DocxTableRowMutation> {
+    let entries = zip_entry_names(file)?;
+    ensure_docx_package_kind(file, &entries)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let xml = zip_text(file, &document_part)?;
+    let reports = docx_rich_block_reports(&xml, false).map_err(|err| {
+        CliError::unexpected(format!("failed to read main document: {}", err.message))
+    })?;
+
+    let mut table_seen = 0usize;
+    let mut selected_block = 0usize;
+    let mut previous_hash = String::new();
+    for report in reports.iter().filter(|report| report.kind == "table") {
+        table_seen += 1;
+        if table_seen != table {
+            continue;
+        }
+        selected_block = report.index;
+        previous_hash = report.content_hash.clone();
+        if previous_hash != expected_hash {
+            return Err(CliError::invalid_args(format!(
+                "block hash mismatch: block {selected_block} expected {expected_hash} but found {previous_hash}"
+            )));
+        }
+        if report.table_merged {
+            return Err(CliError::invalid_args("table has merged cells"));
+        }
+        let row_count = report.table_rows.len();
+        if row_count == 0 || at < 1 || at > row_count + 1 {
+            return Err(CliError::target_not_found(format!(
+                "target not found: table {table} row {at}"
+            )));
+        }
+        break;
+    }
+    if selected_block == 0 {
+        return Err(CliError::target_not_found(format!(
+            "target not found: table {table} row {at}"
+        )));
+    }
+
+    let body_tag = docx_body_tag(&xml)?;
+    let ranges = docx_body_block_ranges(&xml, &body_tag)?;
+    let table_range = ranges
+        .get(selected_block - 1)
+        .filter(|range| range.kind == "tbl")
+        .ok_or_else(|| CliError::unexpected("selected table block readback missing"))?;
+    let table_fragment =
+        ensure_docx_table_scaffold_fragment(&xml[table_range.start..table_range.end])?;
+    let updated_table = insert_docx_table_row_fragment(&table_fragment, at)?;
+
+    let mut updated_xml = String::with_capacity(xml.len() + updated_table.len());
+    updated_xml.push_str(&xml[..table_range.start]);
+    updated_xml.push_str(&updated_table);
+    updated_xml.push_str(&xml[table_range.end..]);
+
+    let updated_report = docx_rich_block_reports(&updated_xml, false)
+        .map_err(|err| {
+            CliError::unexpected(format!("failed to read main document: {}", err.message))
+        })?
+        .into_iter()
+        .find(|report| report.index == selected_block && report.kind == "table")
+        .ok_or_else(|| CliError::unexpected("updated table readback missing"))?;
+    let rows = updated_report.table_rows.len();
+    let cols = updated_report
+        .table_rows
+        .iter()
+        .map(Vec::len)
+        .max()
+        .unwrap_or_default();
+
+    Ok(DocxTableRowMutation {
+        document_part,
+        xml: updated_xml,
+        block: selected_block,
+        rows,
+        cols,
+        content_hash: updated_report.content_hash,
+        previous_hash,
     })
 }
 
@@ -448,6 +561,64 @@ fn delete_docx_table_row_fragment(table_fragment: &str, row: usize) -> CliResult
     updated_table.push_str(&table_fragment[..row_range.start]);
     updated_table.push_str(&table_fragment[row_range.end..]);
     Ok(updated_table)
+}
+
+fn insert_docx_table_row_fragment(table_fragment: &str, at: usize) -> CliResult<String> {
+    let (open_end, _tag_name, close_start, self_closing) = xml_fragment_bounds(table_fragment)?;
+    if self_closing {
+        return Err(CliError::target_not_found(format!(
+            "target not found: table row {at}"
+        )));
+    }
+    let rows: Vec<XmlNamedRange> =
+        xml_direct_child_ranges(table_fragment, open_end + 1, close_start)?
+            .into_iter()
+            .filter(|child| child.kind == "tr")
+            .collect();
+    if rows.is_empty() || at < 1 || at > rows.len() + 1 {
+        return Err(CliError::target_not_found(format!(
+            "target not found: table row {at}"
+        )));
+    }
+    let template_range = if at <= rows.len() {
+        &rows[at - 1]
+    } else {
+        rows.last().expect("non-empty rows")
+    };
+    let inserted_row = clear_docx_table_row_cells_fragment(
+        &table_fragment[template_range.start..template_range.end],
+    )?;
+    let insert_at = if at <= rows.len() {
+        rows[at - 1].start
+    } else {
+        close_start
+    };
+
+    let mut updated_table = String::with_capacity(table_fragment.len() + inserted_row.len());
+    updated_table.push_str(&table_fragment[..insert_at]);
+    updated_table.push_str(&inserted_row);
+    updated_table.push_str(&table_fragment[insert_at..]);
+    Ok(updated_table)
+}
+
+fn clear_docx_table_row_cells_fragment(row_fragment: &str) -> CliResult<String> {
+    let (row_open_end, _row_tag_name, row_close_start, row_self_closing) =
+        xml_fragment_bounds(row_fragment)?;
+    if row_self_closing {
+        return Ok(row_fragment.to_string());
+    }
+    let cells: Vec<XmlNamedRange> =
+        xml_direct_child_ranges(row_fragment, row_open_end + 1, row_close_start)?
+            .into_iter()
+            .filter(|child| child.kind == "tc")
+            .collect();
+    let mut updated_row = row_fragment.to_string();
+    for cell_range in cells.iter().rev() {
+        let cell_fragment = &row_fragment[cell_range.start..cell_range.end];
+        let (updated_cell, _flattened) = set_docx_table_cell_fragment(cell_fragment, "")?;
+        updated_row.replace_range(cell_range.start..cell_range.end, &updated_cell);
+    }
+    Ok(updated_row)
 }
 
 fn set_docx_table_cell_text_fragment(

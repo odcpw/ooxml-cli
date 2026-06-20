@@ -2745,7 +2745,7 @@ fn serve_op_supports_docx_tables_editing() {
         .expect("clear-cell content hash")
         .to_string();
 
-    let delete_response = serve_roundtrip(
+    let insert_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
         &rpc_request(
@@ -2753,11 +2753,42 @@ fn serve_op_supports_docx_tables_editing() {
             "op",
             serde_json::json!({
                 "session": session,
+                "command": "docx tables insert-row",
+                "args": {
+                    "table": 1,
+                    "at": 2,
+                    "expectHash": clear_hash
+                },
+            }),
+        ),
+    );
+    assert!(
+        insert_response.get("error").is_none(),
+        "docx tables insert-row op failed: {insert_response:?}"
+    );
+    assert_eq!(insert_response["result"]["readback"]["row"], Value::from(2));
+    assert_eq!(
+        insert_response["result"]["readback"]["rows"],
+        Value::from(3)
+    );
+    let insert_hash = insert_response["result"]["readback"]["contentHash"]
+        .as_str()
+        .expect("insert-row content hash")
+        .to_string();
+
+    let delete_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            7,
+            "op",
+            serde_json::json!({
+                "session": session,
                 "command": "docx tables delete-row",
                 "args": {
                     "table": 1,
                     "row": 2,
-                    "expectHash": clear_hash
+                    "expectHash": insert_hash
                 },
             }),
         ),
@@ -2769,13 +2800,13 @@ fn serve_op_supports_docx_tables_editing() {
     assert_eq!(delete_response["result"]["readback"]["row"], Value::from(2));
     assert_eq!(
         delete_response["result"]["readback"]["rows"],
-        Value::from(1)
+        Value::from(2)
     );
 
     let plan_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
-        &rpc_request(7, "plan", serde_json::json!({"session": session})),
+        &rpc_request(8, "plan", serde_json::json!({"session": session})),
     );
     assert_eq!(
         plan_response["result"]["plan"][0]["argv"][1],
@@ -2791,13 +2822,17 @@ fn serve_op_supports_docx_tables_editing() {
     );
     assert_eq!(
         plan_response["result"]["plan"][2]["argv"][2],
+        Value::String("insert-row".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][3]["argv"][2],
         Value::String("delete-row".to_string())
     );
 
     let commit_response = serve_roundtrip(
         &mut stdin,
         &mut reader,
-        &rpc_request(8, "commit", serde_json::json!({"session": session})),
+        &rpc_request(9, "commit", serde_json::json!({"session": session})),
     );
     assert!(
         commit_response.get("error").is_none(),
@@ -2822,10 +2857,14 @@ fn serve_op_supports_docx_tables_editing() {
     assert_eq!(tables_code, 0, "docx tables output readback exit");
     assert_eq!(tables_stderr, None, "docx tables output readback stderr");
     let tables = tables_stdout.expect("docx tables output readback");
-    assert_eq!(tables["tables"][0]["rows"], Value::from(1));
+    assert_eq!(tables["tables"][0]["rows"], Value::from(2));
     assert_eq!(
         tables["tables"][0]["cells"][0][1],
         Value::String(String::new())
+    );
+    assert_eq!(
+        tables["tables"][0]["cells"][1][0],
+        Value::String("A2".to_string())
     );
 
     drop(stdin);

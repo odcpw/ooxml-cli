@@ -35,6 +35,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx tables show", false);
     assert_command(&all_caps, "ooxml docx tables set-cell", true);
     assert_command(&all_caps, "ooxml docx tables clear-cell", true);
+    assert_command(&all_caps, "ooxml docx tables insert-row", true);
     assert_command(&all_caps, "ooxml docx tables delete-row", true);
     assert_command(&all_caps, "ooxml docx blocks replace", true);
     assert_command(&all_caps, "ooxml docx blocks delete", true);
@@ -82,6 +83,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command_target_kind(&all_caps, "ooxml pptx tables delete-row", "slide");
     assert_command_target_kind(&all_caps, "ooxml pptx tables delete-row", "table");
     assert_object_kind_command(&all_caps, "table", "ooxml docx styles apply");
+    assert_object_kind_command(&all_caps, "table", "ooxml docx tables insert-row");
+    assert_command_target_kind(&all_caps, "ooxml docx tables insert-row", "table");
     assert_object_kind_command(&all_caps, "table", "ooxml docx tables delete-row");
     assert_object_kind_command(&all_caps, "style", "ooxml docx styles list");
     assert_object_kind_command(&all_caps, "style", "ooxml docx styles show");
@@ -204,6 +207,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml xlsx tables append-records", true);
     assert_command(&table_caps, "ooxml docx tables set-cell", true);
     assert_command(&table_caps, "ooxml docx tables clear-cell", true);
+    assert_command(&table_caps, "ooxml docx tables insert-row", true);
     assert_command(&table_caps, "ooxml docx tables delete-row", true);
     assert_command(&table_caps, "ooxml docx blocks delete", true);
     assert_no_command(&table_caps, "ooxml docx blocks");
@@ -361,6 +365,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx tables show", false);
     assert_command(&docx_caps, "ooxml docx tables set-cell", true);
     assert_command(&docx_caps, "ooxml docx tables clear-cell", true);
+    assert_command(&docx_caps, "ooxml docx tables insert-row", true);
     assert_command(&docx_caps, "ooxml docx tables delete-row", true);
     assert_command(&docx_caps, "ooxml docx blocks replace", true);
     assert_command(&docx_caps, "ooxml docx blocks delete", true);
@@ -400,10 +405,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 82, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 83, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        208,
+        207,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

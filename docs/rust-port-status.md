@@ -9,6 +9,20 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust DOCX table row insertion parity landed for direct
+  `docx tables insert-row`. The slice clones an existing main-document table row
+  structure, clears inserted cell text, rejects stale hashes, bad row targets,
+  and merged tables like the Go oracle, and is wired through DOCX serve
+  operation dispatch. Rust capabilities now advertise 83 Go-oracle command
+  paths, leaving a pinned 207-command gap. Proof: `cargo fmt --check`,
+  `cargo check --all-targets`, focused `cargo test --test rust_contract_smoke
+  docx_tables_insert_row -- --nocapture`, focused capability ratchet/discovery
+  tests, focused serve session coverage for set-cell, clear-cell, insert-row,
+  delete-row, commit, strict validation, and readback; strict repo validation
+  for a generated DOCX, Open XML SDK Office2019 schema validation (zero
+  errors), Word COM open oracle, `cargo clippy --all-targets -- -D warnings`,
+  and `cargo test --all-targets` passed with 4 ZIP guard unit tests plus 97
+  Rust contract tests.
 - Rust PPTX table row deletion parity landed for direct
   `pptx tables delete-row`. The slice deletes one row from a selected table
   graphic frame, rejects unsafe/out-of-range rows like the Go oracle, emits
@@ -775,10 +789,12 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   hash-guarded cell mutation JSON, output/readback command fields, strict
   validation, selected-table readback, previous cell text, dry-run shape, and
   serve operation/inspect routing through the session path
-- `--json docx tables delete-row <docx>` with Go-oracle comparison for
-  hash-guarded row deletion JSON, output/readback command fields, strict
-  validation, selected-table readback, dry-run shape, row-target errors, and
-  merged-table/last-row rejection
+- `--json docx tables insert-row <docx>` and
+  `--json docx tables delete-row <docx>` with Go-oracle comparison for
+  hash-guarded row mutation JSON, output/readback command fields, strict
+  validation, selected-table readback, dry-run shape, row-target errors,
+  stale-hash guards, and merged-table rejection; delete-row also covers
+  last-row rejection
 - `--json docx text <xlsx>` unsupported-type rejection with direct Go-oracle
   comparison for exit code, stderr JSON, and empty stdout
 - JSON error envelope for an invalid slide number

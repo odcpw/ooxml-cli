@@ -93,7 +93,8 @@ pub(crate) use docx_styles::{
     normalize_docx_style_target,
 };
 pub(crate) use docx_tables::{
-    docx_tables_clear_cell, docx_tables_delete_row, docx_tables_set_cell, docx_tables_show,
+    docx_tables_clear_cell, docx_tables_delete_row, docx_tables_insert_row, docx_tables_set_cell,
+    docx_tables_show,
 };
 pub(crate) use docx_xml::{
     DOCX_W_NS, DOCX_W14_NS, XmlNamedRange, XmlRange, append_docx_body_paragraph_xml,
