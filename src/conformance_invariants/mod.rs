@@ -4,6 +4,7 @@ use crate::{CliResult, zip_entry_names, zip_entry_set};
 
 mod content_types;
 mod package;
+mod references;
 mod relationships;
 mod spec;
 mod types;
@@ -12,6 +13,7 @@ mod xml_parts;
 
 use content_types::{check_content_types_coverage, collect_parts, parse_content_types};
 use package::{check_zip_entry_metadata, read_zip_entry_metadata};
+use references::check_reference_list_invariants;
 use relationships::{check_package_relationship_closure, parse_relationship_part};
 use spec::check_known_part_content_type;
 use util::{diag, is_rels_uri};
@@ -32,6 +34,7 @@ pub(crate) fn check_repair_invariants(file: &str) -> CliResult<Vec<Value>> {
     diagnostics.extend(check_package_relationship_closure(
         file, &entries, &entry_set, &parts,
     )?);
+    diagnostics.extend(check_reference_list_invariants(file, &entry_set, &parts));
 
     for part in &parts {
         diagnostics.extend(check_known_part_content_type(&part.uri, &part.content_type));

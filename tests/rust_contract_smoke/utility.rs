@@ -488,6 +488,91 @@ fn conformance_check_matches_go_for_invalid_zip_timestamp() {
 }
 
 #[test]
+fn conformance_check_matches_go_for_reference_list_failures() {
+    // Provenance: deterministic reference-list mutations of committed clean
+    // fixtures, compared against the Go CLI oracle's repair-invariants check.
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-conformance-references-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("conformance reference temp dir");
+
+    let wrong_workbook_sheet_rel_type = temp_dir.join("workbook-sheet-wrong-rel-type.xlsx");
+    rewrite_zip_fixture(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &wrong_workbook_sheet_rel_type,
+        |name, data| {
+            if name == "xl/_rels/workbook.xml.rels" {
+                Some((
+                    name.to_string(),
+                    replace_ascii(
+                        data,
+                        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet",
+                        "http://example.invalid/ooxml/relationships/not-a-sheet",
+                    ),
+                ))
+            } else {
+                Some((name.to_string(), data))
+            }
+        },
+    );
+    assert_go_rust_repair_invariants_match(&wrong_workbook_sheet_rel_type);
+
+    let external_presentation_slide_rel = temp_dir.join("presentation-slide-external-rel.pptx");
+    rewrite_zip_fixture(
+        "testdata/pptx/minimal-title/presentation.pptx",
+        &external_presentation_slide_rel,
+        |name, data| {
+            if name == "ppt/_rels/presentation.xml.rels" {
+                Some((
+                    name.to_string(),
+                    replace_ascii(
+                        data,
+                        "<Relationship Id=\"rId7\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide1.xml\"/>",
+                        "<Relationship Id=\"rId7\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide1.xml\" TargetMode=\"External\"/>",
+                    ),
+                ))
+            } else {
+                Some((name.to_string(), data))
+            }
+        },
+    );
+    assert_go_rust_repair_invariants_match(&external_presentation_slide_rel);
+
+    let missing_slide_master_layout_rel = temp_dir.join("slide-master-layout-missing-rel.pptx");
+    rewrite_zip_fixture(
+        "testdata/pptx/minimal-title/presentation.pptx",
+        &missing_slide_master_layout_rel,
+        |name, data| {
+            if name == "ppt/slideMasters/slideMaster1.xml" {
+                Some((
+                    name.to_string(),
+                    replace_ascii(data, "r:id=\"rId1\"", "r:id=\"rId404\""),
+                ))
+            } else {
+                Some((name.to_string(), data))
+            }
+        },
+    );
+    assert_go_rust_repair_invariants_match(&missing_slide_master_layout_rel);
+
+    let missing_layout_master_rels = temp_dir.join("slide-layout-master-missing.pptx");
+    rewrite_zip_fixture(
+        "testdata/pptx/minimal-title/presentation.pptx",
+        &missing_layout_master_rels,
+        |name, data| {
+            if name == "ppt/slideLayouts/_rels/slideLayout1.xml.rels" {
+                None
+            } else {
+                Some((name.to_string(), data))
+            }
+        },
+    );
+    assert_go_rust_repair_invariants_match(&missing_layout_master_rels);
+}
+
+#[test]
 fn conformance_coverage_matches_go_static_report() {
     assert_go_rust_match(&["--json", "conformance", "coverage"]);
 }
@@ -576,6 +661,31 @@ fn zero_zip_timestamp_in_headers(
 
 fn read_u16_le(data: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([data[offset], data[offset + 1]])
+}
+
+fn assert_go_rust_repair_invariants_match(file: &Path) {
+    let file = file.to_string_lossy().to_string();
+    let args = ["--json", "conformance", "check", file.as_str()];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
+    assert_eq!(rust_code, go_code, "exit code for {file}");
+    assert_eq!(rust_stderr, go_stderr, "stderr for {file}");
+    let rust_report = rust_stdout.expect("rust conformance stdout");
+    let go_report = go_stdout.expect("go conformance stdout");
+    assert_eq!(
+        check_by_name(&rust_report, "repair-invariants"),
+        check_by_name(&go_report, "repair-invariants"),
+        "repair-invariants check for {file}"
+    );
+}
+
+fn check_by_name<'a>(report: &'a Value, name: &str) -> &'a Value {
+    report["checks"]
+        .as_array()
+        .expect("checks array")
+        .iter()
+        .find(|check| check["name"].as_str() == Some(name))
+        .unwrap_or_else(|| panic!("missing check {name}: {}", report["checks"]))
 }
 
 fn command_by_path<'a>(capabilities: &'a Value, path: &str) -> Option<&'a Value> {
