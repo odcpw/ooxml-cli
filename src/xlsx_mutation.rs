@@ -1,8 +1,14 @@
 mod cells;
 mod format;
 mod ranges;
-pub(crate) use cells::{XlsxCellsSetOptions, xlsx_cells_set};
-pub(crate) use format::{XlsxRangesSetFormatOptions, xlsx_ranges_set_format};
+pub(crate) use cells::{
+    XlsxCellsClearOptions, XlsxCellsSetBatchOptions, XlsxCellsSetOptions, xlsx_cells_clear,
+    xlsx_cells_set, xlsx_cells_set_batch,
+};
+pub(crate) use format::{
+    XlsxRangesSetFormatOptions, XlsxRangesSetStyleOptions, xlsx_ranges_set_format,
+    xlsx_ranges_set_style,
+};
 pub(crate) use ranges::{
     XlsxRangesSetOptions, parse_xlsx_matrix_cell, parse_xlsx_range_set_matrix,
     rectangularize_xlsx_matrix, resolve_xlsx_ranges_set_values, validate_xlsx_null_policy,
@@ -384,6 +390,24 @@ pub(crate) fn xlsx_range_destination_json(
     sheet_part: &str,
     range: &str,
 ) -> CliResult<Value> {
+    xlsx_range_destination_json_with_max(
+        readback_file,
+        destination_file,
+        sheet,
+        sheet_part,
+        range,
+        0,
+    )
+}
+
+pub(crate) fn xlsx_range_destination_json_with_max(
+    readback_file: &str,
+    destination_file: Option<&str>,
+    sheet: &WorkbookSheet,
+    sheet_part: &str,
+    range: &str,
+    readback_max_cells: i64,
+) -> CliResult<Value> {
     let exported = xlsx_range_export_with_options(
         readback_file,
         &sheet.name,
@@ -396,6 +420,7 @@ pub(crate) fn xlsx_range_destination_json(
             max_cells: 0,
         },
     )?;
+    let exported = truncate_xlsx_destination_export(exported, readback_max_cells);
     let mut destination = Map::new();
     if let Some(file) = destination_file {
         destination.insert("file".to_string(), json!(file));
@@ -434,6 +459,77 @@ pub(crate) fn xlsx_range_destination_json(
         }
     }
     Ok(Value::Object(destination))
+}
+
+fn truncate_xlsx_destination_export(mut exported: Value, max_cells: i64) -> Value {
+    if max_cells <= 0 {
+        return exported;
+    }
+    let Some(object) = exported.as_object_mut() else {
+        return exported;
+    };
+    let rows = object.get("rows").and_then(Value::as_u64).unwrap_or(0);
+    let cols = object.get("cols").and_then(Value::as_u64).unwrap_or(0);
+    let total_cells = rows.saturating_mul(cols);
+    if total_cells <= max_cells as u64 {
+        return exported;
+    }
+    for key in [
+        "values",
+        "types",
+        "formulas",
+        "styleIndexes",
+        "numberFormatIds",
+        "numberFormatCodes",
+    ] {
+        if let Some(value) = object.get_mut(key) {
+            truncate_xlsx_matrix_value(value, max_cells as usize);
+        }
+    }
+    if let Some(formulas) = object.get("formulas") {
+        object.insert(
+            "formulaCount".to_string(),
+            json!(count_non_null_xlsx_matrix_cells(formulas)),
+        );
+    }
+    object.insert("truncated".to_string(), json!(true));
+    exported
+}
+
+fn truncate_xlsx_matrix_value(value: &mut Value, max_cells: usize) {
+    let Some(rows) = value.as_array_mut() else {
+        return;
+    };
+    let mut remaining = max_cells;
+    let mut keep_rows = 0usize;
+    for row in rows.iter_mut() {
+        if remaining == 0 {
+            break;
+        }
+        let Some(cells) = row.as_array_mut() else {
+            keep_rows += 1;
+            continue;
+        };
+        if cells.len() > remaining {
+            cells.truncate(remaining);
+            remaining = 0;
+        } else {
+            remaining -= cells.len();
+        }
+        keep_rows += 1;
+    }
+    rows.truncate(keep_rows);
+}
+
+fn count_non_null_xlsx_matrix_cells(value: &Value) -> usize {
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter(|cell| !cell.is_null())
+        .count()
 }
 
 pub(crate) fn add_xlsx_range_mutation_commands(

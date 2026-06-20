@@ -1,8 +1,11 @@
 mod num_formats_xml;
 mod number_format;
+mod style;
 mod style_xfs;
 mod styles_part;
 mod styles_xml;
+
+pub(crate) use style::{XlsxRangesSetStyleOptions, xlsx_ranges_set_style};
 
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};

@@ -9,6 +9,23 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust XLSX batch/style direct CLI parity landed for `xlsx cells clear`,
+  `xlsx cells set-batch`, and `xlsx ranges set-style`. The slice clears cell
+  values/formulas with Go-compatible handle/range validation and readback
+  truncation, sets sparse JSON/stdin cell batches with details and formula
+  recalc behavior, applies font/fill/border/alignment styles while preserving
+  existing number formats, updates capability discovery, and keeps all three
+  commands as direct CLI mutations with serve/MCP operation dispatch unwired.
+  Rust capabilities now advertise 138 Go-oracle command paths, leaving a
+  pinned 152-command gap. Proof: focused Go-vs-Rust contract tests for
+  `xlsx_cells_clear`, `xlsx_cells_set_batch`, and `xlsx_ranges_set_style`,
+  focused capability ratchet/discovery tests, strict validation for
+  Rust-generated XLSX outputs inside the focused tests plus generated proof
+  workbooks, Open XML SDK Office2019 schema validation (zero errors) for clear,
+  set-batch, and set-style proof workbooks, Excel COM open oracle for those
+  proof workbooks, `cargo fmt --check`, `cargo check --all-targets`, `cargo
+  clippy --all-targets -- -D warnings`, and `cargo test --all-targets` passed
+  with 4 ZIP guard unit tests plus 136 Rust contract tests.
 - Rust XLSX charts read-only parity landed for direct `xlsx charts list` and
   `xlsx charts show`. The slice discovers charts through worksheet drawing
   relationships, reads chart parts, selectors, series source references and
@@ -1165,7 +1182,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 135, and the harness pins the 155-command gap until
+  paths, Rust advertises 138, and the harness pins the 152-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

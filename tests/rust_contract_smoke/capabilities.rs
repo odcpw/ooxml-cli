@@ -347,6 +347,22 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "module", "ooxml vba list");
     assert_object_kind_command(&all_caps, "module", "ooxml vba extract");
     assert_object_kind_command(&all_caps, "module", "ooxml vba attach");
+    for path in [
+        "ooxml xlsx ranges set-style",
+        "ooxml xlsx cells clear",
+        "ooxml xlsx cells set-batch",
+    ] {
+        assert_object_kind_command(&all_caps, "sheet", path);
+        assert_object_kind_command(&all_caps, "range", path);
+        assert_command_target_kind(&all_caps, path, "sheet");
+        assert_command_target_kind(&all_caps, path, "range");
+    }
+    assert_object_kind_command(&all_caps, "style", "ooxml xlsx ranges set-style");
+    assert_command_target_kind(&all_caps, "ooxml xlsx ranges set-style", "style");
+    assert_object_kind_command(&all_caps, "cell", "ooxml xlsx cells clear");
+    assert_object_kind_command(&all_caps, "cell", "ooxml xlsx cells set-batch");
+    assert_command_target_kind(&all_caps, "ooxml xlsx cells clear", "cell");
+    assert_command_target_kind(&all_caps, "ooxml xlsx cells set-batch", "cell");
 
     let (pptx_code, pptx_stdout, pptx_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "pptx"]);
@@ -451,8 +467,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set-format", true);
+    assert_command(&xlsx_caps, "ooxml xlsx ranges set-style", false);
     assert_command(&xlsx_caps, "ooxml xlsx cells extract", false);
     assert_command(&xlsx_caps, "ooxml xlsx cells set", true);
+    assert_command(&xlsx_caps, "ooxml xlsx cells clear", false);
+    assert_command(&xlsx_caps, "ooxml xlsx cells set-batch", false);
     assert_command(&xlsx_caps, "ooxml xlsx freeze show", false);
     assert_command(&xlsx_caps, "ooxml xlsx freeze set", true);
     assert_command(&xlsx_caps, "ooxml xlsx freeze clear", true);
@@ -518,6 +537,18 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&range_caps, "ooxml xlsx hyperlinks delete", true);
     assert_command(&range_caps, "ooxml pptx tables update-from-xlsx", true);
     assert_command(&range_caps, "ooxml xlsx ranges export", false);
+    assert_command(&range_caps, "ooxml xlsx ranges set-style", false);
+    assert_command(&range_caps, "ooxml xlsx cells clear", false);
+    assert_command(&range_caps, "ooxml xlsx cells set-batch", false);
+
+    let (cell_code, cell_stdout, cell_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "cell"]);
+    assert_eq!(cell_code, 0);
+    assert_eq!(cell_stderr, None);
+    let cell_caps = cell_stdout.expect("cell capabilities");
+    assert_command(&cell_caps, "ooxml xlsx cells set", true);
+    assert_command(&cell_caps, "ooxml xlsx cells clear", false);
+    assert_command(&cell_caps, "ooxml xlsx cells set-batch", false);
 
     let (table_code, table_stdout, table_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "table"]);
@@ -650,6 +681,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(style_stderr, None);
     let style_caps = style_stdout.expect("style capabilities");
     assert_command(&style_caps, "ooxml xlsx ranges set-format", true);
+    assert_command(&style_caps, "ooxml xlsx ranges set-style", false);
     assert_command(&style_caps, "ooxml docx styles list", false);
     assert_command(&style_caps, "ooxml docx styles show", false);
     assert_command(&style_caps, "ooxml docx styles apply", true);
@@ -799,12 +831,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        135,
+        138,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        155,
+        152,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
