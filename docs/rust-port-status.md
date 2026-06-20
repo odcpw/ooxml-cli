@@ -193,6 +193,10 @@ Latest milestone, 2026-06-20:
 - DOCX field listing, field insertion, cached-result mutation, field-location
   parsing, simple/complex field detection, and field XML rewrite helpers moved
   from `src/main.rs` into `src/docx_fields.rs`.
+- DOCX field list command routing, document/header/footer field scanning,
+  simple/complex field readback, field filtering, and list JSON rendering moved
+  from `src/docx_fields.rs` into `src/docx_fields/read.rs`, leaving insert and
+  cached-result mutation helpers in the DOCX fields facade.
 - DOCX header/footer list/show/set-text commands, selector parsing,
   section/reference creation, relationship/content-type wiring, part templates,
   and readback command generation moved from `src/main.rs` into
@@ -242,13 +246,11 @@ Latest milestone, 2026-06-20:
   mutation path, and the old direct cell-XML replacement/readback shim was
   removed.
 - Proof after the latest split: `cargo check --all-targets`, `cargo test --test
-  rust_contract_smoke web_smoke_binary_readback_checks_are_supported -- --exact`,
-  `cargo test --test rust_contract_smoke
-  serve_pptx_generic_web_agent_edit_path_works -- --exact`, `cargo test --test
-  rust_contract_smoke frozen_pptx_mutation_and_validate_match_go_baseline --
-  --exact`, `cargo test --test rust_contract_smoke
-  frozen_cli_slice_matches_go_baseline -- --exact`, `cargo test --test
-  rust_contract_smoke frozen_serve_flow_matches_go_baseline -- --exact`,
+  rust_contract_smoke docx_fields_list_matches_go_oracle -- --exact`, `cargo
+  test --test rust_contract_smoke docx_fields_insert_and_set_result_match_go_oracle
+  -- --exact`, `cargo test --test rust_contract_smoke
+  serve_op_supports_docx_fields_editing -- --exact`, `cargo test --test
+  rust_contract_smoke serve_inspect_supports_docx_read_commands -- --exact`,
   `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
   `cargo test --all-targets` all pass with 78 Rust contract tests.
 - Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
