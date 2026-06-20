@@ -54,7 +54,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             "block": ["ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx tables show"],
             "paragraph": ["ooxml docx text", "ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx paragraphs append", "ooxml docx paragraphs insert", "ooxml docx paragraphs set", "ooxml docx paragraphs clear", "ooxml docx styles apply", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx images list", "ooxml docx images insert"],
             "style": ["ooxml xlsx ranges set-format", "ooxml docx styles list", "ooxml docx styles show", "ooxml docx styles apply"],
-            "comment": ["ooxml pptx comments list", "ooxml docx comments list", "ooxml docx comments add", "ooxml docx comments edit", "ooxml docx comments remove"],
+            "comment": ["ooxml pptx comments list", "ooxml pptx comments add", "ooxml pptx comments edit", "ooxml pptx comments remove", "ooxml docx comments list", "ooxml docx comments add", "ooxml docx comments edit", "ooxml docx comments remove"],
             "field": ["ooxml docx fields list", "ooxml docx fields insert", "ooxml docx fields set-result"],
             "header": ["ooxml docx headers list", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers list"],
             "footer": ["ooxml docx footers list", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx headers list"],

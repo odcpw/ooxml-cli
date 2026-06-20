@@ -23,6 +23,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx tables set-cell", false);
     assert_command(&all_caps, "ooxml pptx tables delete-row", false);
     assert_command(&all_caps, "ooxml pptx comments list", false);
+    assert_command(&all_caps, "ooxml pptx comments add", false);
+    assert_command(&all_caps, "ooxml pptx comments edit", false);
+    assert_command(&all_caps, "ooxml pptx comments remove", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx fields insert", true);
     assert_command(&all_caps, "ooxml docx fields set-result", true);
@@ -104,6 +107,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "master", "ooxml pptx masters list");
     assert_object_kind_command(&all_caps, "master", "ooxml pptx masters show");
     assert_object_kind_command(&all_caps, "comment", "ooxml pptx comments list");
+    assert_object_kind_command(&all_caps, "comment", "ooxml pptx comments add");
+    assert_object_kind_command(&all_caps, "comment", "ooxml pptx comments edit");
+    assert_object_kind_command(&all_caps, "comment", "ooxml pptx comments remove");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments list");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments add");
     assert_object_kind_command(&all_caps, "comment", "ooxml docx comments edit");
@@ -185,6 +191,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx extract notes", false);
     assert_command(&pptx_caps, "ooxml pptx notes show", false);
     assert_command(&pptx_caps, "ooxml pptx comments list", false);
+    assert_command(&pptx_caps, "ooxml pptx comments add", false);
+    assert_command(&pptx_caps, "ooxml pptx comments edit", false);
+    assert_command(&pptx_caps, "ooxml pptx comments remove", false);
     assert_command(&pptx_caps, "ooxml pptx replace text", true);
 
     let (package_code, package_stdout, package_stderr) =
@@ -339,6 +348,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(comment_stderr, None);
     let comment_caps = comment_stdout.expect("comment capabilities");
     assert_command(&comment_caps, "ooxml pptx comments list", false);
+    assert_command(&comment_caps, "ooxml pptx comments add", false);
+    assert_command(&comment_caps, "ooxml pptx comments edit", false);
+    assert_command(&comment_caps, "ooxml pptx comments remove", false);
     assert_command(&comment_caps, "ooxml docx comments list", false);
     assert_command(&comment_caps, "ooxml docx comments add", true);
     assert_command(&comment_caps, "ooxml docx comments edit", true);
@@ -465,10 +477,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
-    assert_eq!(rust_paths.len(), 88, "Rust supported command count changed");
+    assert_eq!(rust_paths.len(), 91, "Rust supported command count changed");
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        202,
+        199,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

@@ -163,6 +163,65 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Value>
             pptx_comments_list(file, slide.map(|value| value as u32), comment_id)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "comments" && verb == "add" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--author",
+                    "--initials",
+                    "--date",
+                    "--text",
+                    "--text-file",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_comments_add(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "comments" && verb == "edit" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--comment-id",
+                    "--author-id",
+                    "--handle",
+                    "--text",
+                    "--text-file",
+                    "--author",
+                    "--date",
+                    "--expect-hash",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_comments_edit(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "comments" && verb == "remove" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--slide",
+                    "--comment-id",
+                    "--author-id",
+                    "--handle",
+                    "--expect-hash",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_comments_remove(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "masters" && verb == "list" =>
         {
             reject_unknown_flags(rest, &[], &[])?;

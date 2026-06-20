@@ -9,6 +9,25 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX comment mutation parity landed for direct
+  `pptx comments add`, `pptx comments edit`, and `pptx comments remove`.
+  The slice creates legacy slide comments and shared comment-author parts,
+  reuses or creates authors, edits by stable comment handle or compound
+  `comment-id`/`author-id`, removes the final per-slide comments part and
+  relationship, emits comment-list readback plus validate/render command
+  templates, and matches Go-oracle dry-run, hash-guard, missing-target, and
+  invalid-argument behavior. Rust capabilities now advertise 91 Go-oracle
+  command paths, leaving a pinned 199-command gap; these commands are direct
+  CLI mutations with `opCompatible=false` because PPTX comment serve/MCP op
+  dispatch is not wired in this slice. Proof: `cargo check --all-targets`,
+  focused `cargo test --test rust_contract_smoke
+  pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_oracle
+  -- --nocapture`, Rust strict validation through the emitted validate commands
+  for saved add/edit/remove PPTX outputs, Open XML SDK Office2019 schema
+  validation (zero errors) for generated add/edit/remove proof files,
+  PowerPoint COM open oracle for all three proof files, `cargo clippy
+  --all-targets -- -D warnings`, and `cargo test --all-targets` passed with 4
+  ZIP guard unit tests plus 104 Rust contract tests.
 - Rust DOCX image mutation parity landed for direct `docx images replace` and
   `docx images insert`. The slice replaces image payloads in place or via a new
   media part when content type changes, resizes existing inline drawings, inserts
@@ -884,7 +903,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 88, and the harness pins the 202-command gap until
+  paths, Rust advertises 91, and the harness pins the 199-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
@@ -915,6 +934,11 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   slide-filtered, comment-id-filtered, generated commented decks, missing
   comments, slide range guards, unsupported-package cases, and serve `inspect`
   routing through the session path
+- `--json pptx comments add/edit/remove <pptx>` with Go-oracle comparison for
+  saved mutation JSON, generated comments-list readback commands, stable
+  comment-handle edit/remove targeting, dry-run output/templates, hash mismatch
+  guards, missing-comment and slide-range errors, capability indexing, strict
+  validation through emitted commands, and final-comment comments-part cleanup
 - `--json pptx extract text <pptx>` with Go-oracle comparison for full-deck,
   slide-filtered, empty-selection, and unsupported-package cases, plus serve
   `inspect` routing through the session path
