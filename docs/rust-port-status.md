@@ -152,6 +152,10 @@ Latest milestone, 2026-06-20:
 - XLSX workbook `calcPr` parsing/updating and workbook child-order logic moved
   from `src/xlsx_metadata.rs` into `src/xlsx_metadata/calc.rs`, keeping the
   metadata facade responsible for orchestration and shared XML insertion.
+- XLSX core/app document-properties XML reading, rendering, namespace repair,
+  and direct-child update helpers moved from `src/xlsx_metadata.rs` into
+  `src/xlsx_metadata/props_xml.rs`, while the facade keeps workbook metadata
+  orchestration and shared insertion ordering for the calc child module.
 - Rust XLSX workbook metadata creation now emits the Open XML SDK-expected OPC
   core-properties content type
   `application/vnd.openxmlformats-package.core-properties+xml`; the Rust
