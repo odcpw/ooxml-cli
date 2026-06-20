@@ -1,13 +1,14 @@
 use serde_json::{Value, json};
 
 use crate::{
-    CliError, CliResult, XlsxCellsSetOptions, XlsxCommentsAddOptions, XlsxCommentsRemoveOptions,
-    XlsxCommentsUpdateOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions,
-    XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions, XlsxWorkbookMetadataUpdateOptions,
-    json_bool, json_i64, json_optional_serialized, json_optional_string, json_string,
-    xlsx_cells_set, xlsx_comments_add, xlsx_comments_remove, xlsx_comments_update, xlsx_ranges_set,
-    xlsx_ranges_set_format, xlsx_tables_append_records, xlsx_tables_append_rows,
-    xlsx_workbook_metadata_update,
+    CliError, CliResult, XlsxCellsSetOptions, XlsxColWidthsSetOptions, XlsxCommentsAddOptions,
+    XlsxCommentsRemoveOptions, XlsxCommentsUpdateOptions, XlsxRangesSetFormatOptions,
+    XlsxRangesSetOptions, XlsxRowHeightsSetOptions, XlsxTablesAppendRecordsOptions,
+    XlsxTablesAppendRowsOptions, XlsxWorkbookMetadataUpdateOptions, json_bool, json_i64,
+    json_optional_serialized, json_optional_string, json_string, xlsx_cells_set,
+    xlsx_colwidths_set, xlsx_comments_add, xlsx_comments_remove, xlsx_comments_update,
+    xlsx_ranges_set, xlsx_ranges_set_format, xlsx_rowheights_set, xlsx_tables_append_records,
+    xlsx_tables_append_rows, xlsx_workbook_metadata_update,
 };
 
 use super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
@@ -278,6 +279,92 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
+        "xlsx colwidths set" => {
+            let sheet = json_optional_string(args, "sheet");
+            let range = json_string(args, "range")?;
+            let width_text = json_number_string(args, "width")?;
+            let expect_width_text = match json_optional_number_string(args, "expect-width")? {
+                Some(value) => Some(value),
+                None => json_optional_number_string(args, "expectWidth")?,
+            };
+            let width = parse_json_f64_arg(&width_text, "width")?;
+            let expect_width = expect_width_text
+                .as_deref()
+                .map(|value| parse_json_f64_arg(value, "expect-width"))
+                .transpose()?;
+            let readback = xlsx_colwidths_set(
+                working,
+                XlsxColWidthsSetOptions {
+                    sheet: sheet.as_deref(),
+                    range: &range,
+                    width: Some(width),
+                    expect_width,
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    no_validate: true,
+                    in_place: true,
+                },
+            )?;
+            let mut plan_flags = Vec::new();
+            push_serve_plan_string_flag(&mut plan_flags, "--sheet", sheet.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--range", Some(&range));
+            push_serve_plan_string_flag(&mut plan_flags, "--width", Some(&width_text));
+            push_serve_plan_string_flag(
+                &mut plan_flags,
+                "--expect-width",
+                expect_width_text.as_deref(),
+            );
+            ServeOp::XlsxDimensionsOp {
+                command: command.to_string(),
+                plan_flags,
+                readback_file: working.to_string(),
+                readback,
+            }
+        }
+        "xlsx rowheights set" => {
+            let sheet = json_optional_string(args, "sheet");
+            let range = json_string(args, "range")?;
+            let height_text = json_number_string(args, "height")?;
+            let expect_height_text = match json_optional_number_string(args, "expect-height")? {
+                Some(value) => Some(value),
+                None => json_optional_number_string(args, "expectHeight")?,
+            };
+            let height = parse_json_f64_arg(&height_text, "height")?;
+            let expect_height = expect_height_text
+                .as_deref()
+                .map(|value| parse_json_f64_arg(value, "expect-height"))
+                .transpose()?;
+            let readback = xlsx_rowheights_set(
+                working,
+                XlsxRowHeightsSetOptions {
+                    sheet: sheet.as_deref(),
+                    range: &range,
+                    height: Some(height),
+                    expect_height,
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    no_validate: true,
+                    in_place: true,
+                },
+            )?;
+            let mut plan_flags = Vec::new();
+            push_serve_plan_string_flag(&mut plan_flags, "--sheet", sheet.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--range", Some(&range));
+            push_serve_plan_string_flag(&mut plan_flags, "--height", Some(&height_text));
+            push_serve_plan_string_flag(
+                &mut plan_flags,
+                "--expect-height",
+                expect_height_text.as_deref(),
+            );
+            ServeOp::XlsxDimensionsOp {
+                command: command.to_string(),
+                plan_flags,
+                readback_file: working.to_string(),
+                readback,
+            }
+        }
         "xlsx tables append-rows" => {
             let sheet = json_optional_string(args, "sheet");
             let table = json_optional_string(args, "table");
@@ -537,4 +624,26 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
         }
     };
     Ok(op)
+}
+
+fn json_number_string(args: &Value, field: &str) -> CliResult<String> {
+    json_optional_number_string(args, field)?
+        .ok_or_else(|| CliError::invalid_args(format!("{field} is required")))
+}
+
+fn json_optional_number_string(args: &Value, field: &str) -> CliResult<Option<String>> {
+    let Some(value) = args.get(field) else {
+        return Ok(None);
+    };
+    match value {
+        Value::String(text) => Ok(Some(text.clone())),
+        Value::Number(number) => Ok(Some(number.to_string())),
+        _ => Err(CliError::invalid_args(format!("{field} must be a number"))),
+    }
+}
+
+fn parse_json_f64_arg(value: &str, field: &str) -> CliResult<f64> {
+    value
+        .parse::<f64>()
+        .map_err(|_| CliError::invalid_args(format!("{field} must be a number")))
 }

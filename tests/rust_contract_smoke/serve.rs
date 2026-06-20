@@ -1108,6 +1108,165 @@ fn serve_op_supports_xlsx_ranges_set() {
 }
 
 #[test]
+fn serve_op_supports_xlsx_dimension_setters() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-dimensions-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("serve-dimensions-out.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(
+        1,
+        "open",
+        serde_json::json!({"file": input_str, "out": output_str}),
+    );
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let col_op = rpc_request(
+        2,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx colwidths set",
+            "args": {"sheet": "Sheet1", "range": "B:C", "width": 19.5},
+        }),
+    );
+    let col_response = serve_roundtrip(&mut stdin, &mut reader, &col_op);
+    assert!(
+        col_response.get("error").is_none(),
+        "colwidths set op failed: {col_response:?}"
+    );
+    let col_readback = &col_response["result"]["readback"];
+    assert_eq!(col_readback["range"], Value::String("B:C".to_string()));
+    assert_eq!(col_readback["columns"], Value::from(2));
+    assert_eq!(col_readback["width"], serde_json::json!(19.5));
+
+    let row_op = rpc_request(
+        3,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx rowheights set",
+            "args": {"sheet": "Sheet1", "range": "2:3", "height": "23.75"},
+        }),
+    );
+    let row_response = serve_roundtrip(&mut stdin, &mut reader, &row_op);
+    assert!(
+        row_response.get("error").is_none(),
+        "rowheights set op failed: {row_response:?}"
+    );
+    let row_readback = &row_response["result"]["readback"];
+    assert_eq!(row_readback["range"], Value::String("2:3".to_string()));
+    assert_eq!(row_readback["rows"], Value::from(2));
+    assert_eq!(row_readback["created"], Value::from(2));
+    assert_eq!(row_readback["height"], serde_json::json!(23.75));
+
+    let plan = rpc_request(4, "plan", serde_json::json!({"session": session}));
+    let plan_response = serve_roundtrip(&mut stdin, &mut reader, &plan);
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][1],
+        Value::String("colwidths".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][2],
+        Value::String("set".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][1]["argv"][1],
+        Value::String("rowheights".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][1]["argv"][2],
+        Value::String("set".to_string())
+    );
+
+    let commit = rpc_request(5, "commit", serde_json::json!({"session": session}));
+    let commit_response = serve_roundtrip(&mut stdin, &mut reader, &commit);
+    assert!(
+        commit_response.get("error").is_none(),
+        "dimension commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+    assert_eq!(
+        commit_response["result"]["applied"][0]["readback"]["file"],
+        Value::String(output_str.clone())
+    );
+    assert_eq!(
+        commit_response["result"]["applied"][1]["readback"]["file"],
+        Value::String(output_str.clone())
+    );
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "dimension serve output validate exit");
+    assert_eq!(
+        validate_stderr, None,
+        "dimension serve output validate stderr"
+    );
+
+    let (col_code, col_stdout, col_stderr) = run_go_ooxml(&[
+        "--json",
+        "xlsx",
+        "colwidths",
+        "show",
+        &output_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "B:C",
+    ]);
+    assert_eq!(col_code, 0, "Go colwidths readback exit");
+    assert_eq!(col_stderr, None, "Go colwidths readback stderr");
+    let col_show = col_stdout.expect("Go colwidths readback");
+    assert_eq!(col_show["columns"]["B"]["width"], serde_json::json!(19.5));
+    assert_eq!(col_show["columns"]["C"]["width"], serde_json::json!(19.5));
+    assert_eq!(col_show["columns"]["B"]["custom"], Value::Bool(true));
+
+    let (row_code, row_stdout, row_stderr) = run_go_ooxml(&[
+        "--json",
+        "xlsx",
+        "rowheights",
+        "show",
+        &output_str,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "2:3",
+    ]);
+    assert_eq!(row_code, 0, "Go rowheights readback exit");
+    assert_eq!(row_stderr, None, "Go rowheights readback stderr");
+    let row_show = row_stdout.expect("Go rowheights readback");
+    assert_eq!(row_show["rows"]["2"]["height"], serde_json::json!(23.75));
+    assert_eq!(row_show["rows"]["3"]["height"], serde_json::json!(23.75));
+    assert_eq!(row_show["rows"]["2"]["custom"], Value::Bool(true));
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_op_supports_xlsx_ranges_set_format() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-format-{}", std::process::id()));

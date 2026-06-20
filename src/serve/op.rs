@@ -55,6 +55,12 @@ pub(super) enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    XlsxDimensionsOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
     XlsxTablesOp {
         command: String,
         plan_flags: Vec<Value>,
@@ -129,6 +135,7 @@ impl ServeOp {
             | ServeOp::XlsxRangeSetFormat { command, .. }
             | ServeOp::XlsxWorkbookMetadataUpdate { command, .. }
             | ServeOp::XlsxCommentsOp { command, .. }
+            | ServeOp::XlsxDimensionsOp { command, .. }
             | ServeOp::XlsxTablesOp { command, .. }
             | ServeOp::DocxHeaderFooterSetText { command, .. }
             | ServeOp::DocxFieldsOp { command, .. }
@@ -274,6 +281,27 @@ impl ServeOp {
                     json!("workbook"),
                     json!("metadata"),
                     json!("update"),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
+            ServeOp::XlsxDimensionsOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let group = command.split_whitespace().nth(1).unwrap_or("colwidths");
+                let mut argv = vec![
+                    json!("xlsx"),
+                    json!(group),
+                    json!("set"),
                     json!(source_file),
                 ];
                 argv.extend(plan_flags.iter().cloned());
@@ -521,6 +549,11 @@ impl ServeOp {
                 ..
             } => replace_json_string(readback.clone(), readback_file, file),
             ServeOp::XlsxWorkbookMetadataUpdate {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::XlsxDimensionsOp {
                 readback_file,
                 readback,
                 ..

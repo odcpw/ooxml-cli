@@ -9,6 +9,21 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust XLSX worksheet dimension mutation parity landed for direct
+  `xlsx colwidths set` and `xlsx rowheights set`. The slice preserves existing
+  column span attributes while carving target widths, creates missing row
+  records for height updates, supports dry-run and stale `--expect-width` /
+  `--expect-height` guards like the Go oracle, and is wired through capability
+  discovery plus serve operation dispatch. Rust capabilities now advertise 100
+  Go-oracle command paths, leaving a pinned 190-command gap. Proof: `cargo fmt
+  --check`, `cargo check --all-targets`, focused `cargo test --test
+  rust_contract_smoke xlsx_dimension_setters -- --nocapture`, focused
+  capability ratchet/discovery tests, strict validation for generated
+  colwidth/rowheight XLSX proof files, Open XML SDK Office2019 schema
+  validation (zero errors) for both proof files, Excel COM open oracle for both
+  proof files, `cargo clippy --all-targets -- -D warnings`, and `cargo test
+  --all-targets` passed with 4 ZIP guard unit tests plus 111 Rust contract
+  tests.
 - Rust XLSX filters/sorts parity expanded for direct
   `xlsx filters-sorts clear-autofilter` and
   `xlsx filters-sorts add-column-filter`. The slice removes worksheet/table
@@ -1025,6 +1040,12 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   heights, explicit/custom/hidden `<row>` entries, default row-height
   overrides, reversed range normalization, invalid row-range errors, generated
   set-command templates, and capability indexing
+- `--json xlsx colwidths set <xlsx>` and
+  `--json xlsx rowheights set <xlsx>` with Go-oracle comparison for saved
+  mutation JSON, generated validation/readback commands, dry-run no-write
+  behavior, out-of-range and stale-expect errors, saved output readback,
+  capability indexing, serve operation routing, strict validation, and Go
+  readback of committed outputs
 - `--json xlsx filters-sorts show <xlsx>`,
   `--json xlsx filters-sorts set-autofilter <xlsx>`,
   `--json xlsx filters-sorts clear-autofilter <xlsx>`, and

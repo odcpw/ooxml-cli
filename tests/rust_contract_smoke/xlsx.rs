@@ -180,6 +180,574 @@ fn xlsx_rowheights_show_matches_go_oracle() {
 }
 
 #[test]
+fn xlsx_dimension_setters_match_go_oracle_saved_readback_dry_run_and_errors() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-dim-set-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let go_cols_in_path = temp_dir.join("go-cols-in.xlsx");
+    let rust_cols_in_path = temp_dir.join("rust-cols-in.xlsx");
+    let go_cols_out_path = temp_dir.join("go-cols-out.xlsx");
+    let rust_cols_out_path = temp_dir.join("rust-cols-out.xlsx");
+    let cols_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetFormatPr defaultColWidth="11"/>
+  <cols>
+    <col min="2" max="4" width="30" customWidth="1" hidden="1" style="3"/>
+    <col min="7" max="7" width="9" customWidth="1"/>
+  </cols>
+  <sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData>
+</worksheet>"#;
+    write_simple_xlsx_with_sheet_xml(&go_cols_in_path, cols_xml);
+    write_simple_xlsx_with_sheet_xml(&rust_cols_in_path, cols_xml);
+    let go_cols_in = go_cols_in_path.to_string_lossy().to_string();
+    let rust_cols_in = rust_cols_in_path.to_string_lossy().to_string();
+    let go_cols_out = go_cols_out_path.to_string_lossy().to_string();
+    let rust_cols_out = rust_cols_out_path.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json",
+        "xlsx",
+        "colwidths",
+        "set",
+        &go_cols_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "C:E",
+        "--width",
+        "12.5",
+        "--expect-width",
+        "30",
+        "--out",
+        &go_cols_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "colwidths",
+        "set",
+        &rust_cols_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "C:E",
+        "--width",
+        "12.5",
+        "--expect-width",
+        "30",
+        "--out",
+        &rust_cols_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "colwidths set exit");
+    assert_eq!(rust_stderr, go_stderr, "colwidths set stderr");
+    let rust_result = rust_stdout.expect("rust colwidths set stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_result.clone(),
+            &[(&rust_cols_in, "[IN]"), (&rust_cols_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go colwidths set stdout"),
+            &[(&go_cols_in, "[IN]"), (&go_cols_out, "[OUT]")]
+        ),
+        "colwidths set stdout"
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_result, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_result, "colwidthsShowCommand");
+
+    let col_show_go = [
+        "--json",
+        "xlsx",
+        "colwidths",
+        "show",
+        &go_cols_out,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "B:E",
+    ];
+    let col_show_rust = [
+        "--json",
+        "xlsx",
+        "colwidths",
+        "show",
+        &rust_cols_out,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "B:E",
+    ];
+    let (go_code, go_show, go_stderr) = run_go_ooxml(&col_show_go);
+    let (rust_code, rust_show, rust_stderr) = run_go_ooxml(&col_show_rust);
+    assert_eq!(rust_code, go_code, "colwidths saved readback exit");
+    assert_eq!(rust_stderr, go_stderr, "colwidths saved readback stderr");
+    assert_eq!(
+        scrub_path(
+            rust_show.expect("rust colwidths saved readback"),
+            &rust_cols_out,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_show.expect("go colwidths saved readback"),
+            &go_cols_out,
+            "[OUT]"
+        ),
+        "colwidths saved readback"
+    );
+
+    let before_cols = read_zip_string(&rust_cols_in_path, "xl/worksheets/sheet1.xml");
+    let dry_go = [
+        "--json",
+        "xlsx",
+        "colwidths",
+        "set",
+        &go_cols_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A:A",
+        "--width",
+        "20.25",
+        "--dry-run",
+    ];
+    let dry_rust = [
+        "--json",
+        "xlsx",
+        "colwidths",
+        "set",
+        &rust_cols_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A:A",
+        "--width",
+        "20.25",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
+    assert_eq!(rust_code, go_code, "colwidths dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "colwidths dry-run stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust colwidths dry-run stdout"),
+            &rust_cols_in,
+            "[IN]"
+        ),
+        scrub_path(
+            go_stdout.expect("go colwidths dry-run stdout"),
+            &go_cols_in,
+            "[IN]"
+        ),
+        "colwidths dry-run stdout"
+    );
+    assert_eq!(
+        read_zip_string(&rust_cols_in_path, "xl/worksheets/sheet1.xml"),
+        before_cols,
+        "colwidths dry-run should not mutate source workbook"
+    );
+
+    for (label, go_bad, rust_bad) in [
+        (
+            "missing width",
+            vec![
+                "--json",
+                "xlsx",
+                "colwidths",
+                "set",
+                &go_cols_in,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A:A",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "colwidths",
+                "set",
+                &rust_cols_in,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A:A",
+                "--dry-run",
+            ],
+        ),
+        (
+            "width out of range",
+            vec![
+                "--json",
+                "xlsx",
+                "colwidths",
+                "set",
+                &go_cols_in,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A:A",
+                "--width",
+                "999",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "colwidths",
+                "set",
+                &rust_cols_in,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A:A",
+                "--width",
+                "999",
+                "--dry-run",
+            ],
+        ),
+        (
+            "expect width mismatch",
+            vec![
+                "--json",
+                "xlsx",
+                "colwidths",
+                "set",
+                &go_cols_in,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A:A",
+                "--width",
+                "13",
+                "--expect-width",
+                "99",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "colwidths",
+                "set",
+                &rust_cols_in,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A:A",
+                "--width",
+                "13",
+                "--expect-width",
+                "99",
+                "--dry-run",
+            ],
+        ),
+    ] {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_bad);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_bad);
+        assert_eq!(rust_code, go_code, "colwidths {label} exit");
+        assert_eq!(rust_stdout, go_stdout, "colwidths {label} stdout");
+        assert_eq!(
+            scrub_path(
+                rust_stderr.expect("rust colwidths bad stderr"),
+                &rust_cols_in,
+                "[IN]"
+            ),
+            scrub_path(
+                go_stderr.expect("go colwidths bad stderr"),
+                &go_cols_in,
+                "[IN]"
+            ),
+            "colwidths {label} stderr"
+        );
+    }
+
+    let go_rows_in_path = temp_dir.join("go-rows-in.xlsx");
+    let rust_rows_in_path = temp_dir.join("rust-rows-in.xlsx");
+    let go_rows_out_path = temp_dir.join("go-rows-out.xlsx");
+    let rust_rows_out_path = temp_dir.join("rust-rows-out.xlsx");
+    let rows_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetFormatPr defaultRowHeight="17"/>
+  <sheetData>
+    <row r="1"><c r="A1"><v>1</v></c></row>
+    <row r="3" ht="18" customHeight="1" hidden="1" spans="1:2"><c r="A3"><v>3</v></c></row>
+    <row r="5"><c r="A5"><v>5</v></c></row>
+  </sheetData>
+</worksheet>"#;
+    write_simple_xlsx_with_sheet_xml(&go_rows_in_path, rows_xml);
+    write_simple_xlsx_with_sheet_xml(&rust_rows_in_path, rows_xml);
+    let go_rows_in = go_rows_in_path.to_string_lossy().to_string();
+    let rust_rows_in = rust_rows_in_path.to_string_lossy().to_string();
+    let go_rows_out = go_rows_out_path.to_string_lossy().to_string();
+    let rust_rows_out = rust_rows_out_path.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json",
+        "xlsx",
+        "rowheights",
+        "set",
+        &go_rows_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "2:4",
+        "--height",
+        "24.5",
+        "--expect-height",
+        "17",
+        "--out",
+        &go_rows_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "rowheights",
+        "set",
+        &rust_rows_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "2:4",
+        "--height",
+        "24.5",
+        "--expect-height",
+        "17",
+        "--out",
+        &rust_rows_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "rowheights set exit");
+    assert_eq!(rust_stderr, go_stderr, "rowheights set stderr");
+    let rust_result = rust_stdout.expect("rust rowheights set stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_result.clone(),
+            &[(&rust_rows_in, "[IN]"), (&rust_rows_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go rowheights set stdout"),
+            &[(&go_rows_in, "[IN]"), (&go_rows_out, "[OUT]")]
+        ),
+        "rowheights set stdout"
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_result, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_result, "rowheightsShowCommand");
+
+    let row_show_go = [
+        "--json",
+        "xlsx",
+        "rowheights",
+        "show",
+        &go_rows_out,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "2:4",
+    ];
+    let row_show_rust = [
+        "--json",
+        "xlsx",
+        "rowheights",
+        "show",
+        &rust_rows_out,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "2:4",
+    ];
+    let (go_code, go_show, go_stderr) = run_go_ooxml(&row_show_go);
+    let (rust_code, rust_show, rust_stderr) = run_go_ooxml(&row_show_rust);
+    assert_eq!(rust_code, go_code, "rowheights saved readback exit");
+    assert_eq!(rust_stderr, go_stderr, "rowheights saved readback stderr");
+    assert_eq!(
+        scrub_path(
+            rust_show.expect("rust rowheights saved readback"),
+            &rust_rows_out,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_show.expect("go rowheights saved readback"),
+            &go_rows_out,
+            "[OUT]"
+        ),
+        "rowheights saved readback"
+    );
+
+    let before_rows = read_zip_string(&rust_rows_in_path, "xl/worksheets/sheet1.xml");
+    let dry_go = [
+        "--json",
+        "xlsx",
+        "rowheights",
+        "set",
+        &go_rows_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "1:1",
+        "--height",
+        "19.25",
+        "--dry-run",
+    ];
+    let dry_rust = [
+        "--json",
+        "xlsx",
+        "rowheights",
+        "set",
+        &rust_rows_in,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "1:1",
+        "--height",
+        "19.25",
+        "--dry-run",
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
+    assert_eq!(rust_code, go_code, "rowheights dry-run exit");
+    assert_eq!(rust_stderr, go_stderr, "rowheights dry-run stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust rowheights dry-run stdout"),
+            &rust_rows_in,
+            "[IN]"
+        ),
+        scrub_path(
+            go_stdout.expect("go rowheights dry-run stdout"),
+            &go_rows_in,
+            "[IN]"
+        ),
+        "rowheights dry-run stdout"
+    );
+    assert_eq!(
+        read_zip_string(&rust_rows_in_path, "xl/worksheets/sheet1.xml"),
+        before_rows,
+        "rowheights dry-run should not mutate source workbook"
+    );
+
+    for (label, go_bad, rust_bad) in [
+        (
+            "missing height",
+            vec![
+                "--json",
+                "xlsx",
+                "rowheights",
+                "set",
+                &go_rows_in,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "1:1",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "rowheights",
+                "set",
+                &rust_rows_in,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "1:1",
+                "--dry-run",
+            ],
+        ),
+        (
+            "height out of range",
+            vec![
+                "--json",
+                "xlsx",
+                "rowheights",
+                "set",
+                &go_rows_in,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "1:1",
+                "--height",
+                "500",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "rowheights",
+                "set",
+                &rust_rows_in,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "1:1",
+                "--height",
+                "500",
+                "--dry-run",
+            ],
+        ),
+        (
+            "expect height mismatch",
+            vec![
+                "--json",
+                "xlsx",
+                "rowheights",
+                "set",
+                &go_rows_in,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "1:1",
+                "--height",
+                "18",
+                "--expect-height",
+                "99",
+                "--dry-run",
+            ],
+            vec![
+                "--json",
+                "xlsx",
+                "rowheights",
+                "set",
+                &rust_rows_in,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "1:1",
+                "--height",
+                "18",
+                "--expect-height",
+                "99",
+                "--dry-run",
+            ],
+        ),
+    ] {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_bad);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_bad);
+        assert_eq!(rust_code, go_code, "rowheights {label} exit");
+        assert_eq!(rust_stdout, go_stdout, "rowheights {label} stdout");
+        assert_eq!(
+            scrub_path(
+                rust_stderr.expect("rust rowheights bad stderr"),
+                &rust_rows_in,
+                "[IN]"
+            ),
+            scrub_path(
+                go_stderr.expect("go rowheights bad stderr"),
+                &go_rows_in,
+                "[IN]"
+            ),
+            "rowheights {label} stderr"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_filters_sorts_show_matches_go_oracle() {
     assert_go_rust_match(&[
         "--json",

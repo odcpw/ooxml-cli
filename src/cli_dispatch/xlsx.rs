@@ -12,12 +12,14 @@ use crate::xlsx_names::*;
 use crate::xlsx_ranges::*;
 use crate::xlsx_sheets::*;
 use crate::{
-    XlsxCommentsAddOptions, XlsxCommentsRemoveOptions, XlsxCommentsUpdateOptions,
-    XlsxFiltersSortsAddColumnFilterOptions, XlsxFiltersSortsClearAutoFilterOptions,
-    XlsxFiltersSortsSetAutoFilterOptions, xlsx_colwidths_show, xlsx_comments_add,
+    XlsxColWidthsSetOptions, XlsxCommentsAddOptions, XlsxCommentsRemoveOptions,
+    XlsxCommentsUpdateOptions, XlsxFiltersSortsAddColumnFilterOptions,
+    XlsxFiltersSortsClearAutoFilterOptions, XlsxFiltersSortsSetAutoFilterOptions,
+    XlsxRowHeightsSetOptions, xlsx_colwidths_set, xlsx_colwidths_show, xlsx_comments_add,
     xlsx_comments_list, xlsx_comments_remove, xlsx_comments_update,
     xlsx_filters_sorts_add_column_filter, xlsx_filters_sorts_clear_autofilter,
-    xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_show, xlsx_rowheights_show,
+    xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_show, xlsx_rowheights_set,
+    xlsx_rowheights_show,
 };
 
 pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
@@ -189,6 +191,43 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
             xlsx_colwidths_show(file, sheet.as_deref(), &range)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "colwidths" && verb == "set" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--range",
+                    "--width",
+                    "--expect-width",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let range = parse_string_flag(rest, "--range")?
+                .ok_or_else(|| CliError::invalid_args("--range is required (e.g. B or B:D)"))?;
+            let width = parse_f64_flag(rest, "--width")?;
+            let expect_width = parse_f64_flag(rest, "--expect-width")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_colwidths_set(
+                file,
+                XlsxColWidthsSetOptions {
+                    sheet: sheet.as_deref(),
+                    range: &range,
+                    width,
+                    expect_width,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "rowheights" && verb == "show" =>
         {
             reject_unknown_flags(rest, &["--sheet", "--range"], &[])?;
@@ -196,6 +235,43 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
             let range = parse_string_flag(rest, "--range")?
                 .ok_or_else(|| CliError::invalid_args("--range is required (e.g. 2 or 2:5)"))?;
             xlsx_rowheights_show(file, sheet.as_deref(), &range)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "rowheights" && verb == "set" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet",
+                    "--range",
+                    "--height",
+                    "--expect-height",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let range = parse_string_flag(rest, "--range")?
+                .ok_or_else(|| CliError::invalid_args("--range is required (e.g. 2 or 2:5)"))?;
+            let height = parse_f64_flag(rest, "--height")?;
+            let expect_height = parse_f64_flag(rest, "--expect-height")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_rowheights_set(
+                file,
+                XlsxRowHeightsSetOptions {
+                    sheet: sheet.as_deref(),
+                    range: &range,
+                    height,
+                    expect_height,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
         }
         [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "comments" && verb == "list" =>
@@ -923,4 +999,14 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
             args.join(" ")
         ))),
     }
+}
+
+fn parse_f64_flag(args: &[String], name: &str) -> CliResult<Option<f64>> {
+    parse_string_flag(args, name)?
+        .map(|value| {
+            value
+                .parse::<f64>()
+                .map_err(|_| CliError::invalid_args(format!("{name} must be a number")))
+        })
+        .transpose()
 }

@@ -154,7 +154,10 @@ pub(crate) use xlsx_comments::{
     XlsxCommentsAddOptions, XlsxCommentsRemoveOptions, XlsxCommentsUpdateOptions,
     xlsx_comments_add, xlsx_comments_list, xlsx_comments_remove, xlsx_comments_update,
 };
-pub(crate) use xlsx_dimensions::{xlsx_colwidths_show, xlsx_rowheights_show};
+pub(crate) use xlsx_dimensions::{
+    XlsxColWidthsSetOptions, XlsxRowHeightsSetOptions, xlsx_colwidths_set, xlsx_colwidths_show,
+    xlsx_rowheights_set, xlsx_rowheights_show,
+};
 pub(crate) use xlsx_filters_sorts::{
     XlsxFiltersSortsAddColumnFilterOptions, XlsxFiltersSortsClearAutoFilterOptions,
     XlsxFiltersSortsSetAutoFilterOptions, xlsx_filters_sorts_add_column_filter,
