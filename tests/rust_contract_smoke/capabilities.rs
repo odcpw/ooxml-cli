@@ -38,6 +38,29 @@ const XLSX_PARENT_GROUP_PATHS: &[&str] = &[
 
 const COMMAND_GROUP_REASON: &str = "it is a command group, not a leaf mutation command";
 
+const PPTX_PARENT_GROUP_CAPABILITY_PATHS: &[&str] = &[
+    "ooxml pptx",
+    "ooxml pptx animations",
+    "ooxml pptx charts",
+    "ooxml pptx comments",
+    "ooxml pptx extract",
+    "ooxml pptx fields",
+    "ooxml pptx layouts",
+    "ooxml pptx masters",
+    "ooxml pptx media",
+    "ooxml pptx notes",
+    "ooxml pptx place",
+    "ooxml pptx replace",
+    "ooxml pptx shapes",
+    "ooxml pptx slides",
+    "ooxml pptx tables",
+    "ooxml pptx template",
+    "ooxml pptx text",
+    "ooxml pptx theme",
+    "ooxml pptx translate",
+    "ooxml pptx xlsx-bindings",
+];
+
 #[test]
 fn capabilities_advertise_supported_web_agent_surface() {
     let (all_code, all_stdout, all_stderr) = run_ooxml(&["--json", "capabilities"]);
@@ -56,6 +79,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml mcp", false);
     assert_command(&all_caps, "ooxml completion", false);
     assert_command(&all_caps, "ooxml conformance", false);
+    for path in PPTX_PARENT_GROUP_CAPABILITY_PATHS {
+        assert_command(&all_caps, path, false);
+    }
+    assert_no_command(&all_caps, "ooxml pptx diff");
     assert_command(&all_caps, "ooxml pptx extract text", false);
     assert_command(&all_caps, "ooxml pptx extract notes", false);
     assert_command(&all_caps, "ooxml pptx extract images", false);
@@ -1438,6 +1465,67 @@ fn xlsx_parent_group_capabilities_match_go_oracle() {
 }
 
 #[test]
+fn pptx_parent_group_capabilities_match_go_oracle_metadata() {
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
+    assert_eq!(go_code, 0);
+    assert_eq!(go_stderr, None);
+    let go_caps = go_stdout.expect("go capabilities");
+
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(rust_code, 0);
+    assert_eq!(rust_stderr, None);
+    let rust_caps = rust_stdout.expect("rust capabilities");
+
+    for path in PPTX_PARENT_GROUP_CAPABILITY_PATHS {
+        let go_command = command_by_path(&go_caps, path);
+        let rust_command = command_by_path(&rust_caps, path);
+
+        assert_eq!(
+            go_command["opCompatible"],
+            Value::Bool(false),
+            "Go opCompatible for {path}"
+        );
+        assert_eq!(
+            rust_command["opCompatible"],
+            Value::Bool(false),
+            "Rust opCompatible for {path}"
+        );
+        assert_eq!(rust_command["use"], go_command["use"], "use for {path}");
+        assert_eq!(
+            rust_command["short"], go_command["short"],
+            "short for {path}"
+        );
+        for field in ["targetObjectKinds", "localFlags"] {
+            assert!(
+                optional_array_is_empty(go_command, field),
+                "Go {field} should be absent or empty for {path}: {}",
+                go_command[field]
+            );
+            assert!(
+                optional_array_is_empty(rust_command, field),
+                "Rust {field} should be absent or empty for {path}: {}",
+                rust_command[field]
+            );
+        }
+        assert_eq!(
+            rust_command["opIneligibleReason"], go_command["opIneligibleReason"],
+            "opIneligibleReason for {path}"
+        );
+    }
+
+    let go_diff = command_by_path(&go_caps, "ooxml pptx diff");
+    assert_eq!(go_diff["opCompatible"], Value::Bool(false));
+    assert_eq!(
+        go_diff["use"],
+        Value::String("diff <baseline> <candidate>".to_string())
+    );
+    assert!(
+        !capability_has_path(&rust_caps, "ooxml pptx diff"),
+        "Rust must not advertise pptx diff until that exact path is routed"
+    );
+}
+
+#[test]
 fn rust_capability_inventory_is_go_oracle_subset() {
     let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
     assert_eq!(go_code, 0);
@@ -1454,12 +1542,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        264,
+        284,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        26,
+        6,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
@@ -1488,4 +1576,20 @@ fn is_absent_or_empty_array(value: Option<&Value>) -> bool {
 
 fn is_empty_array(value: &Value) -> bool {
     value.as_array().is_some_and(Vec::is_empty)
+}
+
+fn capability_has_path(capabilities: &Value, path: &str) -> bool {
+    capabilities["commands"]
+        .as_array()
+        .expect("commands array")
+        .iter()
+        .any(|command| command["path"].as_str() == Some(path))
+}
+
+fn optional_array_is_empty(value: &Value, field: &str) -> bool {
+    value
+        .get(field)
+        .and_then(Value::as_array)
+        .map(|items| items.is_empty())
+        .unwrap_or(true)
 }

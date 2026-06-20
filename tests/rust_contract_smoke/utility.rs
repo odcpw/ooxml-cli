@@ -22,6 +22,29 @@ const XLSX_PARENT_HELP_PATHS: &[&[&str]] = &[
     &["xlsx", "workbook", "metadata"],
 ];
 
+const PPTX_PARENT_GROUP_HELP_PATHS: &[&[&str]] = &[
+    &["pptx"],
+    &["pptx", "animations"],
+    &["pptx", "charts"],
+    &["pptx", "comments"],
+    &["pptx", "extract"],
+    &["pptx", "fields"],
+    &["pptx", "layouts"],
+    &["pptx", "masters"],
+    &["pptx", "media"],
+    &["pptx", "notes"],
+    &["pptx", "place"],
+    &["pptx", "replace"],
+    &["pptx", "shapes"],
+    &["pptx", "slides"],
+    &["pptx", "tables"],
+    &["pptx", "template"],
+    &["pptx", "text"],
+    &["pptx", "theme"],
+    &["pptx", "translate"],
+    &["pptx", "xlsx-bindings"],
+];
+
 #[test]
 fn utility_capabilities_advertise_only_implemented_paths() {
     let (code, stdout, stderr) = run_ooxml(&["--json", "capabilities"]);
@@ -60,9 +83,7 @@ fn utility_capabilities_advertise_only_implemented_paths() {
         assert_command(&caps, path, false);
     }
     assert_no_command(&caps, "ooxml conformance check");
-    for path in ["ooxml pptx", "ooxml pptx slides", "ooxml pptx layouts"] {
-        assert_no_command(&caps, path);
-    }
+    assert_no_command(&caps, "ooxml pptx diff");
 }
 
 #[test]
@@ -248,6 +269,34 @@ fn root_and_parent_help_text_surfaces_are_useful() {
             );
         }
     }
+}
+
+#[test]
+fn pptx_parent_group_help_paths_share_go_success_shape() {
+    for args in PPTX_PARENT_GROUP_HELP_PATHS {
+        let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(args);
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(args);
+        assert_eq!(rust_code, go_code, "exit code for {args:?}");
+        assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
+        assert!(
+            go_stdout.contains("Usage:"),
+            "Go stdout for {args:?}: {go_stdout}"
+        );
+        assert!(
+            rust_stdout.contains("Usage:"),
+            "Rust stdout for {args:?}: {rust_stdout}"
+        );
+    }
+
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(&["pptx", "diff"]);
+    assert_eq!(go_code, 2);
+    assert_eq!(go_stdout, "");
+    assert!(go_stderr.contains("accepts 2 arg"));
+
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(&["pptx", "diff"]);
+    assert_eq!(rust_code, 2);
+    assert_eq!(rust_stdout, "");
+    assert!(rust_stderr.contains("frozen --json contract slice"));
 }
 
 #[test]
