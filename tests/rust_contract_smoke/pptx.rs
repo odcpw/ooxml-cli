@@ -524,6 +524,61 @@ fn pptx_animations_list_json_and_missing_path_match_go_oracle() {
 }
 
 #[test]
+fn pptx_template_inspect_and_validate_layout_match_go_oracle() {
+    assert_go_rust_json_match(
+        &[
+            "--json",
+            "pptx",
+            "template",
+            "inspect",
+            "testdata/pptx/template-branded/manifest.json",
+        ],
+        "pptx template inspect branded manifest",
+    );
+    assert_go_rust_json_match(
+        &[
+            "--json",
+            "pptx",
+            "template",
+            "inspect",
+            "testdata/pptx/template-branded/missing.json",
+        ],
+        "pptx template inspect missing manifest",
+    );
+
+    for fixture in [
+        "testdata/pptx/minimal-title/presentation.pptx",
+        "testdata/pptx/title-content/presentation.pptx",
+        "testdata/pptx/table-slide/presentation.pptx",
+        "testdata/pptx/layout-qa-dense-slide/presentation.pptx",
+        "testdata/pptx/layout-qa-shape-collision/presentation.pptx",
+        "testdata/pptx/layout-qa-text-overflow/presentation.pptx",
+    ] {
+        let args = ["--json", "pptx", "validate-layout", fixture];
+        assert_go_rust_json_match(&args, fixture);
+    }
+
+    assert_go_rust_json_match(
+        &[
+            "--json",
+            "pptx",
+            "validate-layout",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        ],
+        "pptx validate-layout rejects xlsx",
+    );
+    assert_go_rust_json_match(
+        &[
+            "--json",
+            "pptx",
+            "validate-layout",
+            "testdata/pptx/missing-layout-qa.pptx",
+        ],
+        "pptx validate-layout missing file",
+    );
+}
+
+#[test]
 fn pptx_animations_mutations_match_go_oracle_and_validate() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

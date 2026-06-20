@@ -122,7 +122,11 @@ fn capability_matches_filter(command: &Value, filter: &str) -> bool {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if path.contains(&format!(" {filter} ")) || path.ends_with(&format!(" {filter}")) {
+    if matches!(
+        filter,
+        "pptx" | "xlsx" | "docx" | "vba" | "capabilities" | "serve" | "mcp" | "version"
+    ) && (path.contains(&format!(" {filter} ")) || path.ends_with(&format!(" {filter}")))
+    {
         return true;
     }
     command

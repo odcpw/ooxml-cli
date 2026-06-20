@@ -9,6 +9,17 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX template/layout QA read-only parity landed for direct
+  `pptx template inspect` and `pptx validate-layout`. The slice inspects
+  captured template manifests, reports slide density, text overflows, and shape
+  collisions from PPTX XML, and preserves Go-shaped JSON success/error
+  behavior on focused fixtures. Rust capabilities now advertise 192 Go-oracle
+  command paths, leaving a pinned 98-command gap. `pptx template capture`,
+  `pptx xlsx-bindings plan`, theme mutation, and PPTX field commands remain
+  intentionally unported in this worker slice because they are broader
+  generation/mutation surfaces. Proof: focused Go-vs-Rust template/layout QA
+  tests; focused capability ratchet tests; `cargo fmt --check`; and `cargo
+  check --all-targets`.
 - Rust DOCX replace parity landed for direct `docx replace`. The slice performs
   Go-shaped body find/replace over top-level paragraphs and table-cell
   paragraphs, including split-run matches, literal/regex modes, match-case,
@@ -1428,7 +1439,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 190, and the harness pins the 100-command gap until
+  paths, Rust advertises 192, and the harness pins the 98-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture

@@ -13,7 +13,10 @@ use crate::pptx_render::pptx_render;
 use crate::validation::validate;
 use crate::vba::*;
 use crate::verify::verify;
-use crate::{apply, pptx_media_add, pptx_media_list, pptx_media_replace};
+use crate::{
+    apply, pptx_media_add, pptx_media_list, pptx_media_replace, pptx_template_inspect,
+    pptx_validate_layout,
+};
 
 pub(crate) struct DispatchOutput {
     pub(crate) value: Value,
@@ -153,6 +156,16 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [family, ..] if family == "xlsx" => xlsx::dispatch_xlsx(args),
         [family, verb, file, rest @ ..] if family == "pptx" && verb == "render" => {
             pptx_render(file, rest)
+        }
+        [family, verb, file, rest @ ..] if family == "pptx" && verb == "validate-layout" => {
+            reject_unknown_flags(rest, &["--format"], &[])?;
+            pptx_validate_layout(file)
+        }
+        [family, group, verb, manifest, rest @ ..]
+            if family == "pptx" && group == "template" && verb == "inspect" =>
+        {
+            reject_unknown_flags(rest, &["--format"], &[])?;
+            pptx_template_inspect(manifest)
         }
         [family, verb, file, rest @ ..] if family == "pptx" && verb == "add-textbox" => {
             reject_unknown_flags(

@@ -22,6 +22,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx slides reorder", false);
     assert_command(&all_caps, "ooxml pptx clone-slide", false);
     assert_command(&all_caps, "ooxml pptx new-slide-from-layout", false);
+    assert_command(&all_caps, "ooxml pptx validate-layout", false);
+    assert_command(&all_caps, "ooxml pptx template inspect", false);
     assert_command(&all_caps, "ooxml pptx notes show", false);
     assert_command(&all_caps, "ooxml pptx notes set", true);
     assert_command(&all_caps, "ooxml pptx notes clear", true);
@@ -583,6 +585,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx slides delete", false);
     assert_command(&pptx_caps, "ooxml pptx slides move", false);
     assert_command(&pptx_caps, "ooxml pptx slides reorder", false);
+    assert_command(&pptx_caps, "ooxml pptx validate-layout", false);
+    assert_command(&pptx_caps, "ooxml pptx template inspect", false);
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
     assert_command(&pptx_caps, "ooxml pptx shapes get", false);
     assert_command(&pptx_caps, "ooxml pptx add-textbox", false);
@@ -635,6 +639,13 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx replace text-from-xlsx", false);
     assert_command(&pptx_caps, "ooxml pptx replace text-map-from-xlsx", false);
     assert_command(&pptx_caps, "ooxml pptx replace images", false);
+
+    let (template_code, template_stdout, template_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "template"]);
+    assert_eq!(template_code, 0);
+    assert_eq!(template_stderr, None);
+    let template_caps = template_stdout.expect("template capabilities");
+    assert_no_command(&template_caps, "ooxml pptx template inspect");
 
     let (package_code, package_stdout, package_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "package"]);
@@ -1176,12 +1187,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        190,
+        192,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        100,
+        98,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
