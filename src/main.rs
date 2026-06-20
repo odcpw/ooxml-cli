@@ -8,6 +8,7 @@ mod cli_dispatch;
 mod command_text;
 mod completion;
 mod conformance;
+mod diff;
 mod doctor;
 mod docx_block_commands;
 mod docx_block_readers;
@@ -77,6 +78,7 @@ pub(crate) use cli_core::{
 };
 pub(crate) use cli_dispatch::{DispatchBody, dispatch, require_docx_block_hash};
 pub(crate) use command_text::command_arg;
+pub(crate) use diff::diff;
 pub(crate) use docx_block_commands::{
     docx_blocks_delete, docx_blocks_insert_after, docx_blocks_replace, docx_blocks_show, docx_text,
 };
@@ -252,7 +254,7 @@ pub(crate) use xlsx_table_format::{
     XlsxTablesSetColumnFormatOptions, xlsx_tables_set_column_format,
 };
 pub(crate) use xlsx_tables::{
-    XlsxTableExportOptions, select_xlsx_table, xlsx_source_command, xlsx_tables,
+    XlsxTableExportOptions, XlsxTableRef, select_xlsx_table, xlsx_source_command, xlsx_tables,
     xlsx_tables_export, xlsx_tables_list, xlsx_tables_show,
 };
 pub(crate) use xml_util::{

@@ -1102,6 +1102,9 @@ fn validate_rejects_corrupted_docx_and_xlsx_like_go_oracle() {
 #[path = "rust_contract_smoke/docx.rs"]
 mod docx;
 
+#[path = "rust_contract_smoke/diff.rs"]
+mod diff;
+
 #[path = "rust_contract_smoke/pptx.rs"]
 mod pptx;
 

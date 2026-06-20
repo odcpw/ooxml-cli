@@ -182,9 +182,17 @@ pub(super) fn pptx_slide_texts(file: &str) -> CliResult<Vec<Vec<ShapeText>>> {
 }
 
 fn shape_key(shape: &Shape) -> String {
-    if shape.is_placeholder && shape.name.to_ascii_lowercase().contains("title") {
-        "title".to_string()
-    } else if !shape.name.is_empty() {
+    if let Some(placeholder) = shape.placeholder.as_ref() {
+        match placeholder.literal_type.as_str() {
+            "ctrTitle" | "title" => return "title".to_string(),
+            "subTitle" => return "subtitle".to_string(),
+            "body" | "obj" => return "body".to_string(),
+            "pic" => return "picture".to_string(),
+            other if !other.is_empty() => return other.to_string(),
+            _ => {}
+        }
+    }
+    if !shape.name.is_empty() {
         shape.name.clone()
     } else {
         format!("shape:{}", shape.id)

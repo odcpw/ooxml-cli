@@ -276,6 +276,17 @@ pub(super) fn commands() -> Vec<Value> {
             vec![],
         ),
         capability_command(
+            "ooxml diff",
+            "diff <baseline> <candidate>",
+            "Compare two OOXML packages semantically where the Rust port has readback models.",
+            &["package"],
+            false,
+            Some(
+                "read-only semantic diff command; Rust visual --render diff is intentionally unported",
+            ),
+            vec![],
+        ),
+        capability_command(
             "ooxml verify",
             "verify <file>",
             "Validate and compare a package against a baseline where supported.",

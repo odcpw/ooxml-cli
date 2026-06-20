@@ -11,6 +11,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml version", false);
     assert_command(&all_caps, "ooxml capabilities", false);
     assert_command(&all_caps, "ooxml apply", false);
+    assert_command(&all_caps, "ooxml diff", false);
     assert_command(&all_caps, "ooxml serve", false);
     assert_command(&all_caps, "ooxml mcp", false);
     assert_command(&all_caps, "ooxml pptx extract text", false);
@@ -682,6 +683,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(package_code, 0);
     assert_eq!(package_stderr, None);
     let package_caps = package_stdout.expect("package capabilities");
+    assert_command(&package_caps, "ooxml diff", false);
     assert_no_command(&package_caps, "ooxml docx blocks");
 
     let (xlsx_code, xlsx_stdout, xlsx_stderr) =
@@ -1227,12 +1229,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        212,
+        213,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        78,
+        77,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

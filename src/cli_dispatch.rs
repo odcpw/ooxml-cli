@@ -14,7 +14,7 @@ use crate::validation::validate;
 use crate::vba::*;
 use crate::verify::verify;
 use crate::{
-    apply, pptx_media_add, pptx_media_list, pptx_media_replace, pptx_template_inspect,
+    apply, diff, pptx_media_add, pptx_media_list, pptx_media_replace, pptx_template_inspect,
     pptx_validate_layout,
 };
 
@@ -83,6 +83,7 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [cmd, rest @ ..] if cmd == "capabilities" => capabilities::capabilities(rest),
         [cmd, file, rest @ ..] if cmd == "apply" => apply(file, rest),
         [cmd, file] if cmd == "inspect" => inspect(file),
+        [cmd, baseline, candidate, rest @ ..] if cmd == "diff" => diff(baseline, candidate, rest),
         [cmd, rest @ ..] if cmd == "validate" => {
             let (file, strict) = parse_validate_args(rest, flags.strict)?;
             validate(file, strict)

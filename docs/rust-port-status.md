@@ -9,6 +9,17 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust top-level semantic diff parity landed for direct `diff <baseline>
+  <candidate>` across PPTX, XLSX, and DOCX readback models. The slice detects
+  mismatched package families, emits the Go-shaped `{schemaVersion, type,
+  semantic, visual?}` JSON envelope, compares XLSX sheets/cells/defined
+  names/tables, DOCX blocks/text/style/table shape, and PPTX text changes via
+  the existing Rust PPTX semantic helper. Rust capabilities now advertise 213
+  Go-oracle command paths, leaving a pinned 77-command gap. Intentional gap:
+  PPTX `--render` visual diff is rejected in Rust instead of being faked; rerun
+  without `--render` for semantic diff. Proof: focused Go-vs-Rust top-level
+  diff tests for PPTX/XLSX/DOCX, mismatched-family error parity, explicit
+  render-gap test, and focused capability ratchet tests.
 - Rust agent-facing utility parity landed for read-only `doctor`, `find`,
   `robot-docs`, shell `completion`, and static `conformance coverage` paths.
   The slice adds JSON-or-text utility output support, real local doctor probes,
@@ -1490,7 +1501,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 212, and the harness pins the 78-command gap until
+  paths, Rust advertises 213, and the harness pins the 77-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
