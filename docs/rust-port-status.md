@@ -146,6 +146,12 @@ Latest milestone, 2026-06-20:
   `src/serve/op_dispatch/docx/fields.rs`, preserving required argument
   validation, `fieldCode`/`expectHash` alias handling, plan flag ordering,
   `DocxFieldsOp` readback shaping, and unsupported-command fallback behavior.
+- DOCX serve operation dispatch for paragraph `append`, `insert`, `set`, and
+  `clear` moved from `src/serve/op_dispatch/docx.rs` into
+  `src/serve/op_dispatch/docx/paragraphs.rs`, preserving handle/index
+  validation, required text resolution, plan flag ordering,
+  `DocxParagraphsOp` readback shaping, and unsupported-command fallback
+  behavior.
 - The top-level serve op dispatcher now routes XLSX and DOCX commands by
   family prefix, leaving exact command matching and unsupported-command
   fallbacks inside each child dispatcher.
