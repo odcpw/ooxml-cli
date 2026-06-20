@@ -24,6 +24,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx slides delete", false);
     assert_command(&all_caps, "ooxml pptx slides move", false);
     assert_command(&all_caps, "ooxml pptx slides reorder", false);
+    assert_command(&all_caps, "ooxml pptx slides import-slide", false);
+    assert_command(&all_caps, "ooxml pptx slides merge", false);
     assert_command(&all_caps, "ooxml pptx clone-slide", false);
     assert_command(&all_caps, "ooxml pptx new-slide-from-layout", false);
     assert_command(&all_caps, "ooxml pptx validate-layout", false);
@@ -35,9 +37,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx notes clear", true);
     assert_command(&all_caps, "ooxml pptx masters list", false);
     assert_command(&all_caps, "ooxml pptx masters show", false);
+    assert_command(&all_caps, "ooxml pptx masters import", false);
     assert_command(&all_caps, "ooxml pptx masters add-placeholder", false);
     assert_command(&all_caps, "ooxml pptx layouts list", false);
     assert_command(&all_caps, "ooxml pptx layouts show", false);
+    assert_command(&all_caps, "ooxml pptx layouts import", false);
     assert_command(&all_caps, "ooxml pptx layouts clone", false);
     assert_command(&all_caps, "ooxml pptx shapes get", false);
     assert_command(&all_caps, "ooxml pptx add-textbox", false);
@@ -148,6 +152,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "layout",
         "placeholder",
         "style",
+        "theme",
         "comment",
         "module",
     ] {
@@ -325,6 +330,16 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command_target_kind(&all_caps, "ooxml pptx slides move", "slide");
     assert_object_kind_command(&all_caps, "slide", "ooxml pptx slides reorder");
     assert_command_target_kind(&all_caps, "ooxml pptx slides reorder", "slide");
+    for path in ["ooxml pptx slides import-slide", "ooxml pptx slides merge"] {
+        assert_object_kind_command(&all_caps, "slide", path);
+        assert_object_kind_command(&all_caps, "layout", path);
+        assert_object_kind_command(&all_caps, "master", path);
+        assert_object_kind_command(&all_caps, "theme", path);
+        assert_command_target_kind(&all_caps, path, "slide");
+        assert_command_target_kind(&all_caps, path, "layout");
+        assert_command_target_kind(&all_caps, path, "master");
+        assert_command_target_kind(&all_caps, path, "theme");
+    }
     assert_object_kind_command(&all_caps, "table", "ooxml pptx tables update-from-xlsx");
     assert_object_kind_command(&all_caps, "sheet", "ooxml pptx tables update-from-xlsx");
     assert_object_kind_command(&all_caps, "range", "ooxml pptx tables update-from-xlsx");
@@ -609,6 +624,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "ooxml pptx layouts set-bounds",
         "ooxml pptx layouts delete-shape",
         "ooxml pptx layouts add-placeholder",
+        "ooxml pptx layouts import",
     ] {
         assert_object_kind_command(&all_caps, "layout", path);
         assert_command_target_kind(&all_caps, path, "layout");
@@ -631,6 +647,16 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command_target_kind(&all_caps, "ooxml pptx new-slide-from-layout", "placeholder");
     assert_object_kind_command(&all_caps, "master", "ooxml pptx masters add-placeholder");
     assert_command_target_kind(&all_caps, "ooxml pptx masters add-placeholder", "master");
+    assert_object_kind_command(&all_caps, "master", "ooxml pptx masters import");
+    assert_command_target_kind(&all_caps, "ooxml pptx masters import", "master");
+    assert_object_kind_command(&all_caps, "layout", "ooxml pptx masters import");
+    assert_command_target_kind(&all_caps, "ooxml pptx masters import", "layout");
+    assert_object_kind_command(&all_caps, "master", "ooxml pptx layouts import");
+    assert_command_target_kind(&all_caps, "ooxml pptx layouts import", "master");
+    assert_object_kind_command(&all_caps, "theme", "ooxml pptx masters import");
+    assert_command_target_kind(&all_caps, "ooxml pptx masters import", "theme");
+    assert_object_kind_command(&all_caps, "theme", "ooxml pptx layouts import");
+    assert_command_target_kind(&all_caps, "ooxml pptx layouts import", "theme");
     assert_object_kind_command(
         &all_caps,
         "placeholder",
@@ -652,6 +678,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx slides delete", false);
     assert_command(&pptx_caps, "ooxml pptx slides move", false);
     assert_command(&pptx_caps, "ooxml pptx slides reorder", false);
+    assert_command(&pptx_caps, "ooxml pptx slides import-slide", false);
+    assert_command(&pptx_caps, "ooxml pptx slides merge", false);
     assert_command(&pptx_caps, "ooxml pptx validate-layout", false);
     assert_command(&pptx_caps, "ooxml pptx template inspect", false);
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
@@ -671,8 +699,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx animations prune-stale", false);
     assert_command(&pptx_caps, "ooxml pptx masters list", false);
     assert_command(&pptx_caps, "ooxml pptx masters show", false);
+    assert_command(&pptx_caps, "ooxml pptx masters import", false);
     assert_command(&pptx_caps, "ooxml pptx layouts list", false);
     assert_command(&pptx_caps, "ooxml pptx layouts show", false);
+    assert_command(&pptx_caps, "ooxml pptx layouts import", false);
     assert_command(&pptx_caps, "ooxml pptx layouts rename", false);
     assert_command(&pptx_caps, "ooxml pptx layouts set-bounds", false);
     assert_command(&pptx_caps, "ooxml pptx layouts delete-shape", false);
@@ -1056,6 +1086,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let layout_caps = layout_stdout.expect("layout capabilities");
     assert_command(&layout_caps, "ooxml pptx layouts list", false);
     assert_command(&layout_caps, "ooxml pptx layouts show", false);
+    assert_command(&layout_caps, "ooxml pptx layouts import", false);
     assert_command(&layout_caps, "ooxml pptx layouts rename", false);
     assert_command(&layout_caps, "ooxml pptx layouts set-bounds", false);
     assert_command(&layout_caps, "ooxml pptx layouts delete-shape", false);
@@ -1070,6 +1101,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let master_caps = master_stdout.expect("master capabilities");
     assert_command(&master_caps, "ooxml pptx masters list", false);
     assert_command(&master_caps, "ooxml pptx masters show", false);
+    assert_command(&master_caps, "ooxml pptx masters import", false);
     assert_command(&master_caps, "ooxml pptx extract xml", false);
     assert_no_command(&master_caps, "ooxml pptx layouts show");
 
@@ -1124,6 +1156,17 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&style_caps, "ooxml docx styles list", false);
     assert_command(&style_caps, "ooxml docx styles show", false);
     assert_command(&style_caps, "ooxml docx styles apply", true);
+
+    let (theme_code, theme_stdout, theme_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "theme"]);
+    assert_eq!(theme_code, 0);
+    assert_eq!(theme_stderr, None);
+    let theme_caps = theme_stdout.expect("theme capabilities");
+    assert_command(&theme_caps, "ooxml pptx slides import-slide", false);
+    assert_command(&theme_caps, "ooxml pptx slides merge", false);
+    assert_command(&theme_caps, "ooxml pptx masters import", false);
+    assert_command(&theme_caps, "ooxml pptx layouts import", false);
+    assert_no_command(&theme_caps, "ooxml pptx theme update");
 
     let (comment_code, comment_stdout, comment_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "comment"]);
@@ -1282,12 +1325,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        227,
+        231,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        63,
+        59,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

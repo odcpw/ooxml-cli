@@ -4648,6 +4648,368 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
 }
 
 #[test]
+fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-import-merge-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx import/merge temp dir");
+
+    let target = "testdata/pptx/minimal-title/presentation.pptx";
+    let notes_source = "testdata/pptx/slide-assembly-notes-media/presentation.pptx";
+    let multi_source = "testdata/pptx/slide-assembly-multi/presentation.pptx";
+
+    for (label, args) in [
+        (
+            "slides import-slide dry-run",
+            vec![
+                "--json",
+                "pptx",
+                "slides",
+                "import-slide",
+                target,
+                "--source",
+                target,
+                "--slide",
+                "1",
+                "--dry-run",
+            ],
+        ),
+        (
+            "slides merge dry-run",
+            vec![
+                "--json",
+                "pptx",
+                "slides",
+                "merge",
+                target,
+                target,
+                "--dry-run",
+            ],
+        ),
+        (
+            "layouts import dry-run",
+            vec![
+                "--json",
+                "pptx",
+                "layouts",
+                "import",
+                target,
+                "--source",
+                target,
+                "--layout",
+                "1",
+                "--dry-run",
+            ],
+        ),
+        (
+            "masters import dry-run",
+            vec![
+                "--json",
+                "pptx",
+                "masters",
+                "import",
+                target,
+                "--source",
+                target,
+                "--master",
+                "1",
+                "--dry-run",
+            ],
+        ),
+        (
+            "slides import-slide missing source slide",
+            vec![
+                "--json",
+                "pptx",
+                "slides",
+                "import-slide",
+                target,
+                "--source",
+                target,
+                "--slide",
+                "99",
+                "--dry-run",
+            ],
+        ),
+        (
+            "layouts import missing layout",
+            vec![
+                "--json",
+                "pptx",
+                "layouts",
+                "import",
+                target,
+                "--source",
+                target,
+                "--layout",
+                "99",
+                "--dry-run",
+            ],
+        ),
+    ] {
+        assert_go_rust_json_match(&args, label);
+    }
+
+    let go_source = temp_dir.join("go-renamed-source.pptx");
+    let rust_source = temp_dir.join("rust-renamed-source.pptx");
+    let go_source_str = go_source.to_str().expect("go renamed source path");
+    let rust_source_str = rust_source.to_str().expect("rust renamed source path");
+    let go_rename_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "rename",
+        target,
+        "--layout",
+        "1",
+        "--name",
+        "WorkerOImportedTitle",
+        "--out",
+        go_source_str,
+    ];
+    let rust_rename_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "rename",
+        target,
+        "--layout",
+        "1",
+        "--name",
+        "WorkerOImportedTitle",
+        "--out",
+        rust_source_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_rename_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_rename_args);
+    assert_eq!(rust_code, go_code, "renamed import source exit");
+    assert_eq!(rust_stderr, go_stderr, "renamed import source stderr");
+    assert_eq!(
+        scrub_path(
+            rust_stdout.expect("rust renamed source stdout"),
+            rust_source_str,
+            "[SOURCE]"
+        ),
+        scrub_path(
+            go_stdout.expect("go renamed source stdout"),
+            go_source_str,
+            "[SOURCE]"
+        ),
+        "renamed import source stdout"
+    );
+
+    let go_import_slide = temp_dir.join("go-import-slide.pptx");
+    let rust_import_slide = temp_dir.join("rust-import-slide.pptx");
+    let go_import_slide_str = go_import_slide.to_str().expect("go import-slide path");
+    let rust_import_slide_str = rust_import_slide.to_str().expect("rust import-slide path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "slides",
+        "import-slide",
+        target,
+        "--source",
+        notes_source,
+        "--slide",
+        "1",
+        "--layout-policy",
+        "import",
+        "--theme-policy",
+        "import",
+        "--notes-policy",
+        "clone",
+        "--out",
+        go_import_slide_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "slides",
+        "import-slide",
+        target,
+        "--source",
+        notes_source,
+        "--slide",
+        "1",
+        "--layout-policy",
+        "import",
+        "--theme-policy",
+        "import",
+        "--notes-policy",
+        "clone",
+        "--out",
+        rust_import_slide_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "slides import-slide saved exit");
+    assert_eq!(rust_stderr, go_stderr, "slides import-slide saved stderr");
+    assert_eq!(
+        rust_stdout.expect("rust import-slide stdout"),
+        go_stdout.expect("go import-slide stdout"),
+        "slides import-slide saved stdout"
+    );
+    assert_go_rust_match(&["--json", "validate", "--strict", rust_import_slide_str]);
+
+    let go_merge = temp_dir.join("go-merge.pptx");
+    let rust_merge = temp_dir.join("rust-merge.pptx");
+    let go_merge_str = go_merge.to_str().expect("go merge path");
+    let rust_merge_str = rust_merge.to_str().expect("rust merge path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "slides",
+        "merge",
+        target,
+        multi_source,
+        "--layout-policy",
+        "import",
+        "--theme-policy",
+        "import",
+        "--out",
+        go_merge_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "slides",
+        "merge",
+        target,
+        multi_source,
+        "--layout-policy",
+        "import",
+        "--theme-policy",
+        "import",
+        "--out",
+        rust_merge_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "slides merge saved exit");
+    assert_eq!(rust_stderr, go_stderr, "slides merge saved stderr");
+    let rust_merge_json = rust_stdout.expect("rust merge stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_merge_json.clone(),
+            &[("rust-merge.pptx", "[OUT]"), (rust_merge_str, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go merge stdout"),
+            &[("go-merge.pptx", "[OUT]"), (go_merge_str, "[OUT]")]
+        ),
+        "slides merge saved stdout"
+    );
+    assert_go_rust_match(&["--json", "validate", "--strict", rust_merge_str]);
+
+    let go_layout = temp_dir.join("go-layout-import.pptx");
+    let rust_layout = temp_dir.join("rust-layout-import.pptx");
+    let go_layout_str = go_layout.to_str().expect("go layout import path");
+    let rust_layout_str = rust_layout.to_str().expect("rust layout import path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "import",
+        target,
+        "--source",
+        go_source_str,
+        "--layout",
+        "WorkerOImportedTitle",
+        "--theme-policy",
+        "import",
+        "--out",
+        go_layout_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "layouts",
+        "import",
+        target,
+        "--source",
+        rust_source_str,
+        "--layout",
+        "WorkerOImportedTitle",
+        "--theme-policy",
+        "import",
+        "--out",
+        rust_layout_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "layouts import saved exit");
+    assert_eq!(rust_stderr, go_stderr, "layouts import saved stderr");
+    let rust_layout_json = rust_stdout.expect("rust layouts import stdout");
+    assert_eq!(
+        scrub_path(rust_layout_json.clone(), rust_layout_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go layouts import stdout"),
+            go_layout_str,
+            "[OUT]"
+        ),
+        "layouts import saved stdout"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_layout_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_layout_json, "validateCommand");
+
+    let go_master = temp_dir.join("go-master-import.pptx");
+    let rust_master = temp_dir.join("rust-master-import.pptx");
+    let go_master_str = go_master.to_str().expect("go master import path");
+    let rust_master_str = rust_master.to_str().expect("rust master import path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "masters",
+        "import",
+        target,
+        "--source",
+        go_source_str,
+        "--master",
+        "1",
+        "--theme-policy",
+        "import",
+        "--out",
+        go_master_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "masters",
+        "import",
+        target,
+        "--source",
+        rust_source_str,
+        "--master",
+        "1",
+        "--theme-policy",
+        "import",
+        "--out",
+        rust_master_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "masters import saved exit");
+    assert_eq!(rust_stderr, go_stderr, "masters import saved stderr");
+    let rust_master_json = rust_stdout.expect("rust masters import stdout");
+    assert_eq!(
+        scrub_path(rust_master_json.clone(), rust_master_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go masters import stdout"),
+            go_master_str,
+            "[OUT]"
+        ),
+        "masters import saved stdout"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_master_json, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_master_json, "validateCommand");
+}
+
+#[test]
 fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

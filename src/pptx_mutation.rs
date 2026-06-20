@@ -2,6 +2,7 @@ mod animations;
 mod charts;
 mod comments;
 mod fields;
+mod import_merge;
 mod layouts;
 mod notes;
 mod placement;
@@ -23,6 +24,9 @@ pub(crate) use charts::{
 };
 pub(crate) use comments::{pptx_comments_add, pptx_comments_edit, pptx_comments_remove};
 pub(crate) use fields::pptx_fields_set;
+pub(crate) use import_merge::{
+    pptx_layouts_import, pptx_masters_import, pptx_slides_import_slide, pptx_slides_merge,
+};
 pub(crate) use layouts::{
     pptx_layouts_add_placeholder, pptx_layouts_clone, pptx_layouts_delete_shape,
     pptx_layouts_rename, pptx_layouts_set_bounds, pptx_masters_add_placeholder,

@@ -648,6 +648,35 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [family, group, verb, file] if family == "pptx" && group == "slides" && verb == "list" => {
             pptx_slides_list(file)
         }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "slides" && verb == "import-slide" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--source",
+                    "--slide",
+                    "--insert-after",
+                    "--layout-policy",
+                    "--theme-policy",
+                    "--notes-policy",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_slides_import_slide(file, rest)
+        }
+        [family, group, verb, file, source, rest @ ..]
+            if family == "pptx" && group == "slides" && verb == "merge" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--layout-policy", "--theme-policy", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_slides_merge(file, source, rest)
+        }
         [family, group, verb, file, slide, rest @ ..]
             if family == "pptx" && group == "slides" && verb == "delete" =>
         {
@@ -951,6 +980,22 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             pptx_masters_add_placeholder(file, rest)
         }
         [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "masters" && verb == "import" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--source",
+                    "--master",
+                    "--theme-policy",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_masters_import(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "layouts" && verb == "list" =>
         {
             reject_unknown_flags(rest, &["--master"], &[])?;
@@ -979,6 +1024,22 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
                 &["--dry-run", "--in-place", "--no-validate"],
             )?;
             pptx_layouts_clone(file, rest)
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "pptx" && group == "layouts" && verb == "import" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--source",
+                    "--layout",
+                    "--theme-policy",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            pptx_layouts_import(file, rest)
         }
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "layouts" && verb == "rename" =>

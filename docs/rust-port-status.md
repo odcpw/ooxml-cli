@@ -9,6 +9,20 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX cross-package import/merge authoring parity landed for direct
+  `pptx slides import-slide`, `pptx slides merge`, `pptx layouts import`, and
+  `pptx masters import`. The slice copies real PPTX package parts, rewrites
+  relationships, imports or reuses compatible layouts/masters/themes, clones
+  notes on request, remints imported PowerPoint identity fields, and preserves
+  Go-shaped saved-output, dry-run, readback, strict-validation, and
+  representative error behavior. Rust capabilities now advertise 231 Go-oracle
+  command paths, leaving a pinned 59-command gap; these commands are direct
+  cross-package CLI mutations with `opCompatible=false` because serve/MCP
+  operation dispatch is not wired for this lane. Proof: focused Go-vs-Rust
+  import/merge contract tests, focused capability ratchet tests, strict
+  validation and readback checks for generated PPTX proof decks, Open XML SDK
+  validation, and desktop PowerPoint COM proof for representative generated
+  slide import/merge decks, plus the current worker gate commands.
 - Rust template/binding workflow parity landed for bounded read-only and
   artifact-producing leaves: `template tokens`, `template profile save`,
   `template profile inspect`, `pptx template capture`, and `pptx
@@ -1586,7 +1600,7 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 227, and the harness pins the 63-command gap until
+  paths, Rust advertises 231, and the harness pins the 59-command gap until
   each new Rust command intentionally moves the count
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
