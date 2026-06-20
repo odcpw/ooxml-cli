@@ -3,7 +3,10 @@ use serde_json::{Value, json};
 use super::super::op::ServeOp;
 use crate::{
     CliError, CliResult, json_i64,
-    pptx_mutation::{pptx_tables_delete_row, pptx_tables_insert_row, pptx_tables_set_cell},
+    pptx_mutation::{
+        pptx_notes_clear, pptx_notes_set, pptx_tables_delete_row, pptx_tables_insert_row,
+        pptx_tables_set_cell,
+    },
 };
 
 pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliResult<ServeOp> {
@@ -52,6 +55,29 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
 
             finish_pptx_tables_op(working, command, plan_args, pptx_tables_insert_row)?
         }
+        "pptx notes set" => {
+            let slide = required_i64(args, "slide")?;
+            let (text, text_present) = optional_string(args, "text")?;
+            if !text_present {
+                return Err(CliError::invalid_args("text is required"));
+            }
+            let mut plan_args = Vec::new();
+            push_cli_flag(&mut plan_args, "--slide", &slide.to_string());
+            push_cli_flag(
+                &mut plan_args,
+                "--text",
+                text.as_deref().unwrap_or_default(),
+            );
+
+            finish_pptx_notes_op(working, command, plan_args, pptx_notes_set)?
+        }
+        "pptx notes clear" => {
+            let slide = required_i64(args, "slide")?;
+            let mut plan_args = Vec::new();
+            push_cli_flag(&mut plan_args, "--slide", &slide.to_string());
+
+            finish_pptx_notes_op(working, command, plan_args, pptx_notes_clear)?
+        }
         _ => {
             return Err(CliError::invalid_args(format!(
                 "unsupported serve op command: {command}"
@@ -72,6 +98,24 @@ fn finish_pptx_tables_op(
     mutation_args.push("--no-validate".to_string());
     let readback = run(working, &mutation_args)?;
     Ok(ServeOp::PptxTablesOp {
+        command: command.to_string(),
+        plan_flags: plan_args.into_iter().map(|arg| json!(arg)).collect(),
+        readback_file: working.to_string(),
+        readback,
+    })
+}
+
+fn finish_pptx_notes_op(
+    working: &str,
+    command: &str,
+    plan_args: Vec<String>,
+    run: fn(&str, &[String]) -> CliResult<Value>,
+) -> CliResult<ServeOp> {
+    let mut mutation_args = plan_args.clone();
+    mutation_args.push("--in-place".to_string());
+    mutation_args.push("--no-validate".to_string());
+    let readback = run(working, &mutation_args)?;
+    Ok(ServeOp::PptxNotesOp {
         command: command.to_string(),
         plan_flags: plan_args.into_iter().map(|arg| json!(arg)).collect(),
         readback_file: working.to_string(),

@@ -15,6 +15,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx extract text", false);
     assert_command(&all_caps, "ooxml pptx extract notes", false);
     assert_command(&all_caps, "ooxml pptx notes show", false);
+    assert_command(&all_caps, "ooxml pptx notes set", true);
+    assert_command(&all_caps, "ooxml pptx notes clear", true);
     assert_command(&all_caps, "ooxml pptx masters list", false);
     assert_command(&all_caps, "ooxml pptx masters show", false);
     assert_command(&all_caps, "ooxml pptx layouts list", false);
@@ -98,6 +100,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "table", "ooxml pptx tables insert-row");
     assert_command_target_kind(&all_caps, "ooxml pptx tables insert-row", "slide");
     assert_command_target_kind(&all_caps, "ooxml pptx tables insert-row", "table");
+    assert_object_kind_command(&all_caps, "slide", "ooxml pptx notes set");
+    assert_command_target_kind(&all_caps, "ooxml pptx notes set", "slide");
+    assert_object_kind_command(&all_caps, "slide", "ooxml pptx notes clear");
+    assert_command_target_kind(&all_caps, "ooxml pptx notes clear", "slide");
     assert_object_kind_command(&all_caps, "table", "ooxml docx styles apply");
     assert_object_kind_command(&all_caps, "table", "ooxml docx tables insert-row");
     assert_command_target_kind(&all_caps, "ooxml docx tables insert-row", "table");
@@ -270,6 +276,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx extract text", false);
     assert_command(&pptx_caps, "ooxml pptx extract notes", false);
     assert_command(&pptx_caps, "ooxml pptx notes show", false);
+    assert_command(&pptx_caps, "ooxml pptx notes set", true);
+    assert_command(&pptx_caps, "ooxml pptx notes clear", true);
     assert_command(&pptx_caps, "ooxml pptx comments list", false);
     assert_command(&pptx_caps, "ooxml pptx comments add", false);
     assert_command(&pptx_caps, "ooxml pptx comments edit", false);
@@ -615,12 +623,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        106,
+        108,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        184,
+        182,
         "Rust missing-command count changed"
     );
     let invented = rust_paths

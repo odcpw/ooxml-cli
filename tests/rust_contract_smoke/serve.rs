@@ -3781,6 +3781,213 @@ fn serve_op_supports_pptx_table_mutations() {
 }
 
 #[test]
+fn serve_op_supports_pptx_notes_mutations() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-pptx-notes-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = "testdata/pptx/title-content/presentation.pptx";
+    let output = temp_dir.join("serve-pptx-notes-out.pptx");
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({"file": input, "out": output_str}),
+        ),
+    );
+    assert!(
+        open_response.get("error").is_none(),
+        "pptx notes open failed: {open_response:?}"
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let set_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            2,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx notes set",
+                "args": {
+                    "slide": 1,
+                    "text": "Serve speaker note\nSecond line"
+                },
+            }),
+        ),
+    );
+    assert!(
+        set_response.get("error").is_none(),
+        "pptx notes set op failed: {set_response:?}"
+    );
+    assert_eq!(
+        set_response["result"]["readback"]["text"],
+        Value::String("Serve speaker note\nSecond line".to_string())
+    );
+    assert_eq!(
+        set_response["result"]["readback"]["createdPart"],
+        Value::Bool(true)
+    );
+
+    let changed_notes_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            3,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx notes show",
+                "args": {"slide": 1},
+            }),
+        ),
+    );
+    assert!(
+        changed_notes_response.get("error").is_none(),
+        "pptx notes changed inspect failed: {changed_notes_response:?}"
+    );
+    assert_eq!(
+        changed_notes_response["result"]["notes"]["plainText"],
+        Value::String("Serve speaker note\nSecond line".to_string())
+    );
+
+    let clear_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            4,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx notes clear",
+                "args": {"slide": 1},
+            }),
+        ),
+    );
+    assert!(
+        clear_response.get("error").is_none(),
+        "pptx notes clear op failed: {clear_response:?}"
+    );
+    assert_eq!(
+        clear_response["result"]["readback"]["text"],
+        Value::String(String::new())
+    );
+    assert_eq!(
+        clear_response["result"]["readback"]["createdPart"],
+        Value::Bool(false)
+    );
+
+    let cleared_notes_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            5,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx notes show",
+                "args": {"slide": 1},
+            }),
+        ),
+    );
+    assert!(
+        cleared_notes_response.get("error").is_none(),
+        "pptx notes cleared inspect failed: {cleared_notes_response:?}"
+    );
+    assert_eq!(
+        cleared_notes_response["result"]["notes"]["plainText"],
+        Value::String(String::new())
+    );
+
+    let plan_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(6, "plan", serde_json::json!({"session": session})),
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][0],
+        Value::String("pptx".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][1],
+        Value::String("notes".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][0]["argv"][2],
+        Value::String("set".to_string())
+    );
+    assert_eq!(
+        plan_response["result"]["plan"][1]["argv"][2],
+        Value::String("clear".to_string())
+    );
+
+    let validate_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(7, "validate", serde_json::json!({"session": session})),
+    );
+    assert!(
+        validate_response.get("error").is_none(),
+        "pptx notes validate failed: {validate_response:?}"
+    );
+
+    let commit_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(8, "commit", serde_json::json!({"session": session})),
+    );
+    assert!(
+        commit_response.get("error").is_none(),
+        "pptx notes commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "pptx notes serve validate exit");
+    assert_eq!(validate_stderr, None, "pptx notes serve validate stderr");
+
+    let (notes_code, notes_stdout, notes_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "notes",
+        "show",
+        &output_str,
+        "--slide",
+        "1",
+    ]);
+    assert_eq!(notes_code, 0, "pptx notes output readback exit");
+    assert_eq!(notes_stderr, None, "pptx notes output readback stderr");
+    let notes = notes_stdout.expect("pptx notes output readback");
+    assert_eq!(notes["notes"]["plainText"], Value::String(String::new()));
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_pptx_generic_web_agent_edit_path_works() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-pptx-{}", std::process::id()));

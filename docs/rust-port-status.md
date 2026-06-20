@@ -9,6 +9,24 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust PPTX speaker-notes mutation capability advertisement and serve operation
+  parity landed for the already-ported direct `pptx notes set` and
+  `pptx notes clear` commands. Rust now advertises both leaves as
+  `opCompatible=true`, wires serve ops through the existing notes mutation
+  functions against the session working copy, preserves `pptx notes show`
+  inspect/readback behavior, and leaves the Go-only `ooxml pptx notes` group
+  path unadvertised because the Rust capability inventory lists implemented
+  operational command paths rather than command groups. Rust capabilities now
+  advertise 108 Go-oracle command paths, leaving a pinned 182-command gap.
+  Proof: `cargo fmt --check`, `cargo check --all-targets`, focused
+  `cargo test --test rust_contract_smoke pptx_notes -- --nocapture`, focused
+  `cargo test --test rust_contract_smoke capabilit -- --nocapture`, strict
+  validation for the serve-mutated PPTX output inside
+  `serve_op_supports_pptx_notes_mutations`, strict validation for a generated
+  `pptx notes set` proof deck, Open XML SDK Office2019 schema validation (zero
+  errors) for that proof deck, PowerPoint COM open oracle on that proof deck,
+  `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`
+  passed with 4 ZIP guard unit tests plus 116 Rust contract tests.
 - Rust XLSX filters/sorts remaining direct CLI parity landed for
   `xlsx filters-sorts clear-column-filter`, `xlsx filters-sorts set-sort`, and
   `xlsx filters-sorts clear-sort`. The slice removes worksheet filter-column
