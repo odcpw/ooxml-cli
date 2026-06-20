@@ -170,6 +170,9 @@ Latest milestone, 2026-06-20:
   `tests/rust_contract_smoke.rs` into
   `tests/rust_contract_smoke/capabilities.rs`, keeping shared capability helper
   assertions in the parent harness while preserving the 78-test contract count.
+- The frozen PPTX mutation/render/verify contract test moved from
+  `tests/rust_contract_smoke.rs` into `tests/rust_contract_smoke/pptx.rs`,
+  preserving the shared baseline/process helpers and the 78-test contract count.
 - XLSX formula recalculation metadata updates, calcChain content-type cleanup,
   workbook relationship cleanup, and calcChain part removal moved from
   `src/xlsx_mutation.rs` into `src/xlsx_formula_recalc.rs`, with the mutation
