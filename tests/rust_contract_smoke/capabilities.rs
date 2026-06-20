@@ -2,6 +2,18 @@
 // integration test crate can keep the shared Go-oracle helpers in one place.
 use super::*;
 
+const DOCX_PARENT_GROUP_COMMANDS: &[&str] = &[
+    "ooxml docx",
+    "ooxml docx comments",
+    "ooxml docx fields",
+    "ooxml docx footers",
+    "ooxml docx headers",
+    "ooxml docx images",
+    "ooxml docx paragraphs",
+    "ooxml docx styles",
+    "ooxml docx tables",
+];
+
 #[test]
 fn capabilities_advertise_supported_web_agent_surface() {
     let (all_code, all_stdout, all_stderr) = run_ooxml(&["--json", "capabilities"]);
@@ -92,6 +104,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx replace text-from-xlsx", false);
     assert_command(&all_caps, "ooxml pptx replace text-map-from-xlsx", false);
     assert_command(&all_caps, "ooxml pptx replace images", false);
+    for path in DOCX_PARENT_GROUP_COMMANDS {
+        assert_command(&all_caps, path, false);
+    }
     assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx fields insert", true);
     assert_command(&all_caps, "ooxml docx fields set-result", true);
@@ -1271,6 +1286,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(docx_code, 0);
     assert_eq!(docx_stderr, None);
     let docx_caps = docx_stdout.expect("docx capabilities");
+    for path in DOCX_PARENT_GROUP_COMMANDS {
+        assert_command(&docx_caps, path, false);
+    }
     assert_command(&docx_caps, "ooxml docx fields list", false);
     assert_command(&docx_caps, "ooxml docx fields insert", true);
     assert_command(&docx_caps, "ooxml docx fields set-result", true);
@@ -1321,6 +1339,41 @@ fn capabilities_advertise_supported_web_agent_surface() {
 }
 
 #[test]
+fn docx_parent_group_capabilities_match_go_oracle() {
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
+    assert_eq!(go_code, 0);
+    assert_eq!(go_stderr, None);
+    let go_caps = go_stdout.expect("go capabilities");
+
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(rust_code, 0);
+    assert_eq!(rust_stderr, None);
+    let rust_caps = rust_stdout.expect("rust capabilities");
+
+    for path in DOCX_PARENT_GROUP_COMMANDS {
+        let go_command = command_by_path(&go_caps, path);
+        let rust_command = command_by_path(&rust_caps, path);
+        for field in ["path", "use", "short", "opCompatible", "opIneligibleReason"] {
+            assert_eq!(rust_command[field], go_command[field], "{field} for {path}");
+        }
+        assert!(
+            rust_command["targetObjectKinds"]
+                .as_array()
+                .expect("Rust targetObjectKinds")
+                .is_empty(),
+            "group command {path} should not advertise target object kinds"
+        );
+        assert!(
+            rust_command["localFlags"]
+                .as_array()
+                .expect("Rust localFlags")
+                .is_empty(),
+            "group command {path} should not advertise local flags"
+        );
+    }
+}
+
+#[test]
 fn rust_capability_inventory_is_go_oracle_subset() {
     let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
     assert_eq!(go_code, 0);
@@ -1337,12 +1390,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        232,
+        241,
         "Rust supported command count changed"
     );
     assert_eq!(
         go_paths.len() - rust_paths.len(),
-        58,
+        49,
         "Rust missing-command count changed"
     );
     let invented = rust_paths
@@ -1353,4 +1406,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
         invented.is_empty(),
         "Rust capabilities must be a Go-oracle command subset; invented paths: {invented:?}"
     );
+}
+
+fn command_by_path<'a>(capabilities: &'a Value, path: &str) -> &'a Value {
+    let commands = capabilities["commands"].as_array().expect("commands array");
+    commands
+        .iter()
+        .find(|command| command["path"].as_str() == Some(path))
+        .unwrap_or_else(|| panic!("missing command {path}: {commands:?}"))
 }

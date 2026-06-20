@@ -332,7 +332,7 @@ fn is_known_topic(args: &[String]) -> bool {
 }
 
 fn is_parent_group_path(args: &[String]) -> bool {
-    is_group_path(args) && command_for_topic(args).is_none()
+    is_group_path(args) && (group_for_topic(args).is_some() || command_for_topic(args).is_none())
 }
 
 fn is_group_path(args: &[String]) -> bool {
@@ -388,7 +388,7 @@ fn root_help() -> String {
     out.push_str("\nGlobal Flags:\n");
     out.push_str(global_flags_text());
     out.push_str("\nUse \"ooxml help [command]\" for Rust-supported command help.\n");
-    out.push_str("Parent/group help paths are intentionally not listed in capabilities; invoke a listed leaf command for work.\n");
+    out.push_str("Capabilities mark command groups as non-operation commands; invoke a listed leaf command for work.\n");
     out
 }
 

@@ -17,6 +17,15 @@ fn utility_capabilities_advertise_only_implemented_paths() {
         "ooxml find robot-docs",
         "ooxml robot-docs",
         "ooxml robot-docs guide",
+        "ooxml docx",
+        "ooxml docx comments",
+        "ooxml docx fields",
+        "ooxml docx footers",
+        "ooxml docx headers",
+        "ooxml docx images",
+        "ooxml docx paragraphs",
+        "ooxml docx styles",
+        "ooxml docx tables",
         "ooxml completion bash",
         "ooxml completion fish",
         "ooxml completion powershell",
@@ -30,7 +39,6 @@ fn utility_capabilities_advertise_only_implemented_paths() {
     for path in [
         "ooxml completion",
         "ooxml conformance",
-        "ooxml docx",
         "ooxml xlsx",
         "ooxml xlsx sheets",
         "ooxml xlsx tables",
@@ -115,7 +123,7 @@ fn completion_shells_emit_text_scripts() {
 }
 
 #[test]
-fn root_and_parent_help_text_surfaces_are_useful_and_unadvertised() {
+fn root_and_parent_help_text_surfaces_are_useful() {
     let cases: &[(&[&str], &[&str])] = &[
         (
             &[],
@@ -139,6 +147,23 @@ fn root_and_parent_help_text_surfaces_are_useful_and_unadvertised() {
         (&["xlsx", "sheets"], &["sheet readback", "list", "add"]),
         (&["pptx"], &["PPTX", "slides", "charts"]),
         (&["pptx", "slides"], &["slide readback", "list", "show"]),
+        (
+            &["docx", "comments"],
+            &["DOCX comments", "list", "add", "remove"],
+        ),
+        (&["docx", "fields"], &["DOCX fields", "list", "insert"]),
+        (&["docx", "footers"], &["DOCX footers", "list", "set-text"]),
+        (&["docx", "headers"], &["DOCX headers", "list", "set-text"]),
+        (
+            &["docx", "images"],
+            &["DOCX inline images", "list", "insert"],
+        ),
+        (
+            &["docx", "paragraphs"],
+            &["DOCX body paragraphs", "append", "clear"],
+        ),
+        (&["docx", "styles"], &["DOCX styles", "list", "apply"]),
+        (&["docx", "tables"], &["DOCX tables", "show", "set-cell"]),
         (
             &["vba"],
             &["Rust-supported command group", "inspect", "attach"],
@@ -169,6 +194,14 @@ fn go_and_rust_help_like_paths_share_success_shape() {
         &["completion"][..],
         &["conformance"][..],
         &["docx"][..],
+        &["docx", "comments"][..],
+        &["docx", "fields"][..],
+        &["docx", "footers"][..],
+        &["docx", "headers"][..],
+        &["docx", "images"][..],
+        &["docx", "paragraphs"][..],
+        &["docx", "styles"][..],
+        &["docx", "tables"][..],
         &["pptx", "slides"][..],
         &["xlsx", "sheets"][..],
     ] {
