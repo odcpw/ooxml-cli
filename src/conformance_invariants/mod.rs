@@ -10,6 +10,7 @@ mod package;
 mod references;
 mod relationships;
 mod spec;
+mod spreadsheet_semantics;
 mod table_pivot;
 mod types;
 mod util;
@@ -23,6 +24,9 @@ use package::{check_zip_entry_metadata, read_zip_entry_metadata};
 use references::check_reference_list_invariants;
 use relationships::{check_package_relationship_closure, parse_relationship_part};
 use spec::check_known_part_content_type;
+use spreadsheet_semantics::{
+    check_part_spreadsheet_semantic_invariants, collect_spreadsheet_semantic_context,
+};
 use table_pivot::check_table_pivot_invariants;
 use util::{diag, is_rels_uri};
 use xml_parts::check_part_xml_invariants;
@@ -33,6 +37,7 @@ pub(crate) fn check_repair_invariants(file: &str) -> CliResult<Vec<Value>> {
     let content_types = parse_content_types(file, &entry_set)?;
     let parts = collect_parts(&entries, &content_types);
     let zip_metadata = read_zip_entry_metadata(file)?;
+    let spreadsheet_semantics = collect_spreadsheet_semantic_context(file, &entry_set, &parts);
 
     let mut diagnostics = Vec::new();
     diagnostics.extend(content_types.diagnostics.clone());
@@ -66,6 +71,11 @@ pub(crate) fn check_repair_invariants(file: &str) -> CliResult<Vec<Value>> {
         diagnostics.extend(check_part_image_payload_invariants(
             file, part, &entry_set, &parts,
         )?);
+        diagnostics.extend(check_part_spreadsheet_semantic_invariants(
+            file,
+            part,
+            &spreadsheet_semantics,
+        ));
     }
 
     Ok(diagnostics)
