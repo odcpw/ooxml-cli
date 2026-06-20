@@ -1930,9 +1930,6 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 Still missing before parity can be claimed:
 
 - real render proof parity beyond the mocked frozen manifest path.
-- Full command-surface inventory parity.
-- Rust-native `conformance check` repair-invariant parity rather than wrapping
-  `validate` as a misleading placeholder.
 - Metamorphic and fuzz harnesses for OOXML package invariants.
 - Broad release-grade Office/Open XML SDK/COM proof for the complete promoted
   Rust surface, including Office-authored `vba create`, real macro package
