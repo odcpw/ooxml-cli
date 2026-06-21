@@ -90,6 +90,9 @@ pub(super) fn render_dir_stream(project: &VbaProjectModel) -> Vec<u8> {
         out.extend(vba_dir_record(0x001E, &0_u32.to_le_bytes()));
         out.extend(vba_dir_record(0x002C, &WRITE_COOKIE.to_le_bytes()));
         out.extend(vba_dir_record(module.kind.dir_record_id(), &[]));
+        if module.kind == VbaModuleKind::Class {
+            out.extend(vba_dir_record(0x0028, &[]));
+        }
         out.extend(vba_dir_record(0x002B, &[]));
     }
     out.extend(vba_dir_record(0x0010, &[]));
@@ -259,6 +262,7 @@ mod tests {
             VbaModuleKind::Class.dir_record_id(),
             &[]
         ));
+        assert_eq!(record_count(&dir, 0x0028, &[]), 1);
         assert!(contains_record(&dir, 0x0010, &[]));
     }
 

@@ -14,6 +14,9 @@ param(
 
     [string]$ExpectedValue = "Hello from ooxml",
 
+    [ValidateSet("Standard", "Class")]
+    [string]$SmokeMode = "Standard",
+
     [string]$MarkerFile = "",
 
     [int]$TimeoutSeconds = 120,
@@ -181,6 +184,7 @@ function New-SmokeResult {
         officeVersion     = $OfficeVersion
         officeBuild       = $OfficeBuild
         status            = $Status
+        smokeMode         = $SmokeMode
         visible           = [bool]$Visible
         macroName         = $Macro
         expectedCell      = $ExpectedCell
@@ -345,6 +349,7 @@ function Invoke-ChildMacroRun {
         "-MacroName", $MacroName,
         "-ExpectedCell", $ExpectedCell,
         "-ExpectedValue", $ExpectedValue,
+        "-SmokeMode", $SmokeMode,
         "-MarkerFile", $MarkerFile,
         "-TimeoutSeconds", "0",
         "-ChildRunOnly",
@@ -429,6 +434,7 @@ if ($ChildRunOnly) {
     exit 0
 }
 
+$generatedSources = @()
 if ($InputFile -eq "") {
     if ($BinaryPath -eq "") {
         $BinaryPath = Resolve-DefaultBinaryPath -Root $root
@@ -437,23 +443,68 @@ if ($InputFile -eq "") {
         throw "BinaryPath does not exist: $BinaryPath. Run `cargo build --bin ooxml` or pass -BinaryPath."
     }
     $sourcePath = Join-Path $outRoot "AgentSmoke.bas"
+    $workerSourcePath = Join-Path $outRoot "Worker.cls"
     $xlsxPath = Join-Path $outRoot "input.xlsx"
     $xlsmPath = Join-Path $outRoot "macro-run-smoke.xlsm"
     if ($MarkerFile -eq "") {
         $MarkerFile = Join-Path $outRoot "macro-run-marker.txt"
     }
     Remove-Item -LiteralPath $MarkerFile -Force -ErrorAction SilentlyContinue
-    Write-AsciiFile -Path $sourcePath -Lines @(
-        'Attribute VB_Name = "AgentSmoke"',
-        'Public Sub AgentSmokeRun()',
-        ('    ThisWorkbook.Worksheets(1).Range("{0}").Value = "{1}"' -f $ExpectedCell, ($ExpectedValue -replace '"', '""')),
-        ('    Open "{0}" For Output As #1' -f (Escape-VbaString -Value $MarkerFile)),
-        ('    Print #1, "{0}"' -f (Escape-VbaString -Value $ExpectedValue)),
-        '    Close #1',
-        'End Sub'
-    )
+    if ($SmokeMode -eq "Class") {
+        Write-AsciiFile -Path $sourcePath -Lines @(
+            'Attribute VB_Name = "AgentSmoke"',
+            'Public Sub AgentSmokeRun()',
+            '    On Error GoTo SmokeFailed',
+            '    Dim worker As Worker',
+            '    Set worker = New Worker',
+            '    Dim actual As String',
+            '    actual = worker.MarkerValue()',
+            '    WriteSmokeMarker actual',
+            '    Exit Sub',
+            'SmokeFailed:',
+            '    WriteSmokeMarker "ERROR " & CStr(Err.Number) & ": " & Err.Description',
+            'End Sub',
+            'Private Sub WriteSmokeMarker(ByVal value As String)',
+            ('    ThisWorkbook.Worksheets(1).Range("{0}").Value = value' -f $ExpectedCell),
+            ('    Open "{0}" For Output As #1' -f (Escape-VbaString -Value $MarkerFile)),
+            '    Print #1, value',
+            '    Close #1',
+            'End Sub'
+        )
+        Write-AsciiFile -Path $workerSourcePath -Lines @(
+            'VERSION 1.0 CLASS',
+            'BEGIN',
+            '  MultiUse = -1',
+            'END',
+            'Attribute VB_Name = "Worker"',
+            'Attribute VB_GlobalNameSpace = False',
+            'Attribute VB_Creatable = False',
+            'Attribute VB_PredeclaredId = False',
+            'Attribute VB_Exposed = False',
+            'Public Function MarkerValue() As String',
+            ('    MarkerValue = "{0}"' -f (Escape-VbaString -Value $ExpectedValue)),
+            'End Function'
+        )
+        $generatedSources = @($sourcePath, $workerSourcePath)
+    }
+    else {
+        Write-AsciiFile -Path $sourcePath -Lines @(
+            'Attribute VB_Name = "AgentSmoke"',
+            'Public Sub AgentSmokeRun()',
+            ('    ThisWorkbook.Worksheets(1).Range("{0}").Value = "{1}"' -f $ExpectedCell, ($ExpectedValue -replace '"', '""')),
+            ('    Open "{0}" For Output As #1' -f (Escape-VbaString -Value $MarkerFile)),
+            ('    Print #1, "{0}"' -f (Escape-VbaString -Value $ExpectedValue)),
+            '    Close #1',
+            'End Sub'
+        )
+        $generatedSources = @($sourcePath)
+    }
     Copy-Item -LiteralPath (Join-Path $root "testdata\xlsx\minimal-workbook\workbook.xlsx") -Destination $xlsxPath -Force
-    $create = Invoke-Process -FilePath $BinaryPath -Arguments @("--json", "vba", "create", $xlsxPath, "--pure", "--source", $sourcePath, "--out", $xlsmPath)
+    $sourceArguments = @()
+    foreach ($source in $generatedSources) {
+        $sourceArguments += @("--source", $source)
+    }
+    $create = Invoke-Process -FilePath $BinaryPath -Arguments (@("--json", "vba", "create", $xlsxPath, "--pure") + $sourceArguments + @("--out", $xlsmPath))
     if ($create.exitCode -ne 0) {
         throw ("pure XLSM create failed: {0}" -f $create.output)
     }
@@ -473,6 +524,8 @@ $summary = [pscustomobject]@{
     schemaVersion = "ooxml-cli.vba-run-smoke.v1"
     repoRoot      = $root
     outputDir     = $outRoot
+    smokeMode     = $SmokeMode
+    generatedSources = @($generatedSources)
     inputFile     = $InputFile
     result        = $result
 }

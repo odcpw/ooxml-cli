@@ -363,10 +363,13 @@ fn build_bin_from_sources(family: Option<&str>, sources: &[String]) -> CliResult
         .filter(|input| input.inserted_vb_name)
         .map(|input| input.module.name.clone())
         .collect::<Vec<_>>();
-    let user_modules = source_modules
+    let mut user_modules = source_modules
         .iter()
         .map(|input| input.module.clone())
         .collect::<Vec<_>>();
+    if family == "xlsx" && needs_excel_host_document_modules(&user_modules) {
+        user_modules = with_excel_host_document_modules(user_modules);
+    }
     let project = match family.as_str() {
         "xlsx" => VbaProjectModel::xlsx(user_modules),
         "pptx" => VbaProjectModel::pptx(user_modules),
@@ -405,6 +408,21 @@ fn module_summary_json(project: &VbaProjectModel) -> Value {
             })
             .collect(),
     )
+}
+
+fn needs_excel_host_document_modules(modules: &[VbaModuleModel]) -> bool {
+    modules
+        .iter()
+        .any(|module| module.kind == VbaModuleKind::Class)
+}
+
+fn with_excel_host_document_modules(mut user_modules: Vec<VbaModuleModel>) -> Vec<VbaModuleModel> {
+    let mut modules = vec![
+        VbaModuleModel::excel_workbook_document(),
+        VbaModuleModel::excel_sheet_document("Sheet1"),
+    ];
+    modules.append(&mut user_modules);
+    modules
 }
 
 fn attach_command_template(family: &str, bin_path: &str) -> String {
@@ -514,7 +532,7 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
         )));
     }
     let kind = source_kind_from_path(path)?;
-    let text = String::from_utf8_lossy(&data);
+    let text = normalized_source_text_for_kind(kind, &String::from_utf8_lossy(&data));
     let attr_name = vb_name_attribute(&text);
     let name = attr_name.unwrap_or_else(|| {
         Path::new(path)
@@ -524,13 +542,16 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
             .to_string()
     });
     let inserted_vb_name = vb_name_attribute(&text).is_none();
-    let source = if inserted_vb_name {
-        let normalized = codec::normalize_vba_line_endings(&text);
-        format!("Attribute VB_Name = \"{name}\"\r\n{normalized}").into_bytes()
+    let mut source_text = if inserted_vb_name {
+        format!("Attribute VB_Name = \"{name}\"\r\n{text}").into_bytes()
     } else {
-        data
+        text.into_bytes()
     };
-    let module = VbaModuleModel::new(name, None::<String>, kind, source);
+    if kind == VbaModuleKind::Class {
+        source_text =
+            ensure_class_module_attributes(&String::from_utf8_lossy(&source_text)).into_bytes();
+    }
+    let module = VbaModuleModel::new(name, None::<String>, kind, source_text);
     module
         .validate_for_build()
         .map_err(authoring_error_to_cli)?;
@@ -555,6 +576,96 @@ fn source_kind_from_path(path: &str) -> CliResult<VbaModuleKind> {
             "VBA source must be .bas or .cls: {path}"
         ))),
     }
+}
+
+fn normalized_source_text_for_kind(kind: VbaModuleKind, text: &str) -> String {
+    let normalized = codec::normalize_vba_line_endings(text);
+    if kind == VbaModuleKind::Class {
+        strip_exported_class_wrapper(&normalized)
+    } else {
+        normalized
+    }
+}
+
+fn strip_exported_class_wrapper(text: &str) -> String {
+    let lines = text.split("\r\n").collect::<Vec<_>>();
+    if !lines
+        .first()
+        .is_some_and(|line| line.trim().eq_ignore_ascii_case("VERSION 1.0 CLASS"))
+    {
+        return text.to_string();
+    }
+    let Some(begin_idx) = lines
+        .iter()
+        .position(|line| line.trim().eq_ignore_ascii_case("BEGIN"))
+    else {
+        return text.to_string();
+    };
+    let Some(end_offset) = lines
+        .iter()
+        .skip(begin_idx + 1)
+        .position(|line| line.trim().eq_ignore_ascii_case("END"))
+    else {
+        return text.to_string();
+    };
+    lines[begin_idx + 1 + end_offset + 1..].join("\r\n")
+}
+
+fn ensure_class_module_attributes(text: &str) -> String {
+    let mut lines = text
+        .split("\r\n")
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    if lines.last().is_some_and(String::is_empty) {
+        lines.pop();
+    }
+    let insert_at = lines
+        .iter()
+        .position(|line| {
+            !line
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("attribute ")
+        })
+        .unwrap_or(lines.len());
+    let required = [
+        (
+            "vb_base",
+            "Attribute VB_Base = \"0{FCFB3D2A-A0FA-1068-A738-08002B3371B5}\"",
+        ),
+        ("vb_globalnamespace", "Attribute VB_GlobalNameSpace = False"),
+        ("vb_creatable", "Attribute VB_Creatable = False"),
+        ("vb_predeclaredid", "Attribute VB_PredeclaredId = False"),
+        ("vb_exposed", "Attribute VB_Exposed = False"),
+        ("vb_templatederived", "Attribute VB_TemplateDerived = False"),
+        ("vb_customizable", "Attribute VB_Customizable = False"),
+    ];
+    let mut missing = required
+        .into_iter()
+        .filter_map(|(key, line)| (!has_attribute(&lines, key)).then_some(line.to_string()))
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        let mut out = lines.join("\r\n");
+        out.push_str("\r\n");
+        return out;
+    }
+    for line in missing.drain(..).rev() {
+        lines.insert(insert_at, line);
+    }
+    let mut out = lines.join("\r\n");
+    out.push_str("\r\n");
+    out
+}
+
+fn has_attribute(lines: &[String], name: &str) -> bool {
+    lines.iter().any(|line| {
+        let trimmed = line.trim();
+        let lower = trimmed.to_ascii_lowercase();
+        lower
+            .strip_prefix("attribute ")
+            .and_then(|rest| rest.split_once('='))
+            .is_some_and(|(candidate, _)| candidate.trim() == name)
+    })
 }
 
 fn vb_name_attribute(text: &str) -> Option<String> {
@@ -623,5 +734,71 @@ mod tests {
         let err = render_known_streams(&project).expect_err("invalid model");
         assert_eq!(err.kind, VbaAuthoringErrorKind::InvalidModel);
         assert!(err.message.contains("at least one"));
+    }
+
+    #[test]
+    fn imported_class_source_strips_office_export_wrapper() {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ooxml-vba-class-source-{}-{suffix}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let path = temp_dir.join("Worker.cls");
+        fs::write(
+            &path,
+            "VERSION 1.0 CLASS\r\nBEGIN\r\n  MultiUse = -1\r\nEND\r\nAttribute VB_Name = \"Worker\"\r\nPublic Function Answer()\r\nAnswer = 42\r\nEnd Function\r\n",
+        )
+        .expect("write class");
+
+        let input = read_source_module(&path.to_string_lossy()).expect("read source module");
+        let source = String::from_utf8(input.module.source).expect("source utf8");
+
+        assert_eq!(input.module.kind, VbaModuleKind::Class);
+        assert_eq!(input.module.name, "Worker");
+        assert!(source.starts_with("Attribute VB_Name = \"Worker\"\r\n"));
+        assert!(source.contains("Public Function Answer()"));
+        assert!(!source.contains("VERSION 1.0 CLASS"));
+        assert!(!source.contains("MultiUse = -1"));
+        assert!(source.contains("Attribute VB_Base = \"0{FCFB3D2A-A0FA-1068-A738-08002B3371B5}\""));
+        assert!(source.contains("Attribute VB_TemplateDerived = False"));
+        assert!(source.contains("Attribute VB_Customizable = False"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn xlsx_class_authoring_synthesizes_excel_host_documents() {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ooxml-vba-class-host-docs-{}-{suffix}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let worker_path = temp_dir.join("Worker.cls");
+        fs::write(
+            &worker_path,
+            "Attribute VB_Name = \"Worker\"\r\nPublic Function Answer()\r\nAnswer = 42\r\nEnd Function\r\n",
+        )
+        .expect("write class source");
+
+        let project =
+            build_bin_from_sources(Some("xlsx"), &[worker_path.to_string_lossy().to_string()])
+                .expect("build class project");
+
+        assert_eq!(project.project.modules.len(), 3);
+        assert_eq!(project.project.modules[0].name, "ThisWorkbook");
+        assert_eq!(project.project.modules[0].kind, VbaModuleKind::Document);
+        assert_eq!(project.project.modules[1].name, "Sheet1");
+        assert_eq!(project.project.modules[1].kind, VbaModuleKind::Document);
+        assert_eq!(project.project.modules[2].name, "Worker");
+        assert_eq!(project.project.modules[2].kind, VbaModuleKind::Class);
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

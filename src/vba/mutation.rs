@@ -19,6 +19,7 @@ use super::package_xml::{
     package_part_name, remove_content_type_override, remove_vba_relationships_xml,
     set_content_type_override, upsert_vba_relationship_xml,
 };
+use super::xlsx_host::xlsx_vba_document_code_name_overrides;
 
 pub(super) fn attach_vba_project(
     file: &str,
@@ -57,7 +58,6 @@ pub(super) fn attach_vba_project_bytes(
         .filter(|part| !part.trim().is_empty())
         .unwrap_or_else(|| info.family.default_vba_part.to_string());
     let main_part = package_part_name(&info.main_part_uri);
-    let main_data = zip_bytes(file, &main_part)?;
     let mut text_overrides = BTreeMap::new();
     let mut binary_overrides = BTreeMap::new();
     let mut removals = BTreeSet::new();
@@ -79,7 +79,12 @@ pub(super) fn attach_vba_project_bytes(
         rels_part,
         upsert_vba_relationship_xml(&rels_xml, file, &info, &target_part),
     );
-    binary_overrides.insert(main_part, main_data);
+    if info.family.family == "xlsx" {
+        text_overrides.extend(xlsx_vba_document_code_name_overrides(file, &info, &data)?);
+    }
+    if !text_overrides.contains_key(&main_part) {
+        binary_overrides.insert(main_part.clone(), zip_bytes(file, &main_part)?);
+    }
     binary_overrides.insert(package_part_name(&target_part), data);
 
     write_vba_mutation(

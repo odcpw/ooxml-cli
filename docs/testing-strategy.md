@@ -43,6 +43,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-e
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -SkipOffice -EnableVbaObjectModelAccess
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-run-smoke.ps1 -TimeoutSeconds 45
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-run-smoke.ps1 -SmokeMode Class -TimeoutSeconds 45
 ```
 
 ## What To Test
@@ -99,7 +100,7 @@ legacy behavior, not the normal Rust proof path.
 
 `tools/windows-office-vba-smoke.ps1` creates Office-native `.xlsm` and `.pptm` seeds from `.bas` / `.cls` sources through `ooxml vba create`, proves `vbaProject.bin` extract/attach/remove, proves existing-module replacement, validates outputs, asserts real Office-shaped add/remove are refused, and optionally opens macro-enabled outputs in Excel and PowerPoint.
 
-`tools/windows-office-vba-run-smoke.ps1` creates a pure Rust XLSM from a harmless `.bas` module, validates it, opens it in Excel, executes the macro, and verifies a marker value. It is explicit opt-in because it runs VBA.
+`tools/windows-office-vba-run-smoke.ps1` creates a pure Rust XLSM from a harmless `.bas` module, validates it, opens it in Excel, executes the macro, and verifies a marker value. Its opt-in `-SmokeMode Class` lane generates an `AgentSmoke.bas` entrypoint plus `Worker.cls` and only passes when the class method supplies the verified value. It is explicit opt-in because it runs VBA.
 
 `tools/windows-office-vba-create.ps1` is the backend helper for `ooxml vba create`. It is useful for troubleshooting Office COM directly, but the CLI command is the agent-facing workflow and the smoke gate is the proof.
 

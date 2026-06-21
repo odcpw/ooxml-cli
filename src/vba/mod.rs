@@ -8,6 +8,7 @@ mod office_check;
 mod output;
 mod package_xml;
 mod source;
+mod xlsx_host;
 
 use serde_json::{Map, Value, json};
 use std::fs;

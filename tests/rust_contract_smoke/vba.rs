@@ -252,6 +252,122 @@ fn vba_pure_create_builds_and_reads_back_xlsm_without_office_com() {
 }
 
 #[test]
+fn vba_pure_create_class_xlsm_adds_excel_host_codenames_without_office_com() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-vba-pure-class-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let macro_source_path = temp_dir.join("AgentSmoke.bas");
+    let worker_source_path = temp_dir.join("Worker.cls");
+    fs::write(
+        &macro_source_path,
+        "Attribute VB_Name = \"AgentSmoke\"\r\nPublic Sub AgentSmokeRun()\r\n    Dim worker As Worker\r\n    Set worker = New Worker\r\n    ThisWorkbook.Worksheets(1).Range(\"A1\").Value = worker.Message()\r\nEnd Sub\r\n",
+    )
+    .expect("write standard source");
+    fs::write(
+        &worker_source_path,
+        "VERSION 1.0 CLASS\r\nBEGIN\r\n  MultiUse = -1\r\nEND\r\nAttribute VB_Name = \"Worker\"\r\nAttribute VB_GlobalNameSpace = False\r\nAttribute VB_Creatable = False\r\nAttribute VB_PredeclaredId = False\r\nAttribute VB_Exposed = False\r\nPublic Function Message() As String\r\n    Message = \"Hello from class\"\r\nEnd Function\r\n",
+    )
+    .expect("write class source");
+
+    let input_path = temp_dir.join("input.xlsx");
+    let output_path = temp_dir.join("class.xlsm");
+    let extract_dir = temp_dir.join("macros");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input_path).expect("copy workbook");
+
+    let input = input_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+    let macro_source = macro_source_path.to_string_lossy().to_string();
+    let worker_source = worker_source_path.to_string_lossy().to_string();
+    let extract = extract_dir.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "create",
+        &input,
+        "--pure",
+        "--family",
+        "xlsx",
+        "--source",
+        &macro_source,
+        "--source",
+        &worker_source,
+        "--out",
+        &output,
+    ]);
+    assert_eq!(code, 0, "pure class create exit");
+    assert_eq!(stderr, None, "pure class create stderr");
+    let create = stdout.expect("pure class create stdout");
+    assert_eq!(create["backend"], "pure-rust");
+    assert_eq!(create["createMode"], "pure");
+    let authored_modules = create["authoring"]["modules"].as_array().unwrap();
+    assert_eq!(authored_modules.len(), 4);
+    assert_eq!(authored_modules[0]["name"], "ThisWorkbook");
+    assert_eq!(authored_modules[0]["hostSynthesized"], true);
+    assert_eq!(authored_modules[1]["name"], "Sheet1");
+    assert_eq!(authored_modules[1]["hostSynthesized"], true);
+    assert_eq!(authored_modules[2]["name"], "AgentSmoke");
+    assert_eq!(authored_modules[3]["name"], "Worker");
+    assert_eq!(authored_modules[3]["kind"], "class");
+
+    let workbook_xml = read_zip_string(&output_path, "xl/workbook.xml");
+    let sheet_xml = read_zip_string(&output_path, "xl/worksheets/sheet1.xml");
+    assert!(
+        workbook_xml.contains(r#"codeName="ThisWorkbook""#),
+        "workbookPr should carry the VBA workbook code name"
+    );
+    assert!(
+        sheet_xml.contains(r#"codeName="Sheet1""#),
+        "sheetPr should carry the first worksheet code name"
+    );
+
+    let (code, _stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &output]);
+    assert_eq!(code, 0, "validate pure class xlsm");
+    assert_eq!(stderr, None, "validate pure class stderr");
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &output]);
+    assert_eq!(code, 0, "list pure class xlsm");
+    assert_eq!(stderr, None, "list pure class stderr");
+    let list = stdout.expect("list pure class stdout");
+    assert_eq!(list["project"]["moduleCount"], 4);
+    assert!(
+        list["project"]["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|module| module["name"] == "Worker" && module["kind"] == "class")
+    );
+
+    let (code, _stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "extract",
+        &output,
+        "--out-dir",
+        &extract,
+        "--module",
+        "module:Worker",
+    ]);
+    assert_eq!(code, 0, "extract Worker");
+    assert_eq!(stderr, None, "extract Worker stderr");
+    let extracted_worker =
+        fs::read_to_string(extract_dir.join("Worker.cls")).expect("extracted Worker");
+    assert!(extracted_worker.contains("Public Function Message()"));
+    assert!(!extracted_worker.contains("VERSION 1.0 CLASS"));
+    assert!(!extracted_worker.contains("MultiUse = -1"));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn vba_rebuild_replaces_module_set_from_source_dir_without_office_com() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

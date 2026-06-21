@@ -63,7 +63,6 @@ pub(super) struct VbaModuleModel {
 }
 
 impl VbaModuleModel {
-    #[cfg(test)]
     pub(super) fn excel_workbook_document() -> Self {
         Self::new(
             "ThisWorkbook",
@@ -73,7 +72,6 @@ impl VbaModuleModel {
         )
     }
 
-    #[cfg(test)]
     pub(super) fn excel_sheet_document(name: impl Into<String>) -> Self {
         let name = name.into();
         let source = format!(
