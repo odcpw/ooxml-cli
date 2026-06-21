@@ -37,12 +37,13 @@ history.
   - `cargo check --all-targets` passed.
   - `cargo fmt --check` passed.
   - `cargo clippy --all-targets -- -D warnings` passed.
-  - `cargo test --all-targets` passed with 5 unit tests and 222 Rust contract
+  - `cargo test --all-targets` passed with 5 unit tests and 232 Rust contract
     tests after the conformance ZIP-timestamp, reference-list,
     deep-relationship, image-payload, chart-structure, table/pivot,
     spreadsheet semantic-reference, PPTX animation-target, chart embedded
     workbook-open, PPTX media validation, lifecycle wrapper, relationship
-    read-error, and local office-check slices.
+    read-error, local office-check, find-to-ops, render-diff, new-slide image
+    slot, template target, and PPTX image batch-replacement slices.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
   - Current capability ratchet: Go advertises 290 command paths and Rust
@@ -81,6 +82,9 @@ history.
     unsupported-family report shapes.
   - Open XML SDK validation and desktop PowerPoint COM open proof passed for the
     generated `template apply` and `pptx template compile` decks.
+  - Windows edit smoke against `target/debug/ooxml.exe` passed all 52 mutation
+    scenarios with strict validation, Rust `conformance check`, Microsoft Open
+    XML SDK validation, and desktop Office COM open proof.
 
 ## Definition of Done
 

@@ -9,6 +9,26 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- Rust agent-facing composition and proof ergonomics moved forward after
+  command-path parity: `find --to-ops`, `find --replace --to-ops`, and
+  `find --replace --apply` now emit/apply structured XLSX/DOCX/PPTX ops;
+  `diff --render` / `pptx diff --render` now return Go-shaped visual payloads
+  for mock and unavailable-tool modes; and `pptx new-slide-from-layout
+  --set-image-slot` now authors picture placeholders with package media,
+  relationships, and content types. `pptx replace images --for-slides` now
+  matches the Go batch replacement shape, and `template apply --target-charts`
+  / `--target-text-styles` now execute instead of hard-failing, with PPTX and
+  XLSX chart/text-style target tests against the Go oracle. The Windows edit
+  smoke against `target/debug/ooxml.exe` now runs all 52 mutation scenarios
+  through strict validation, Rust `conformance check`, Microsoft Open XML SDK
+  validation, and desktop Office COM open proof with 52 passed / 0 failed. The
+  chart create
+  Open XML SDK blocker found by that smoke was fixed by inserting new slide
+  chart `graphicFrame` elements before `p:spTree/p:extLst`. Proof: focused
+  `find_`, diff render, PPTX layout/image-slot, PPTX replace-image batch,
+  template target, and chart-create tests;
+  `cargo fmt --check`; `cargo clippy --all-targets -- -D warnings`; and
+  `cargo test --all-targets` with 5 unit tests plus 232 Rust contract tests.
 - Rust `conformance check` is now promoted in the advertised capability
   surface. The final blocker was PPTX repo-validation parity for
   `PPTX_MISSING_MEDIA`, `PPTX_MISSING_SLIDE_RELATIONSHIP`, and
@@ -1541,13 +1561,13 @@ Latest milestone, 2026-06-20:
   `validate --strict`, Microsoft Open XML SDK validation (`Valid: true`,
   `ErrorCount: 0`, schema `Office2019`), and desktop Excel COM open proof
   (`1 passed, 0 failed`).
-- Windows edit smoke against `target/debug/ooxml.exe` reached the implemented
+- Earlier Windows edit smoke against `target/debug/ooxml.exe` reached the then-implemented
   edit surface: 12 scenarios passed strict validation, Microsoft Open XML SDK
   schema validation, and desktop Office COM open proof. The three implemented
   XLSX mutation scenarios (`xlsx-cells-set`, `xlsx-ranges-set`, and
-  `xlsx-ranges-set-format`) opened in Excel without repair/failure. The full
-  52-scenario smoke remains red for the Rust port because 40 Go-surface edit
-  commands are still intentionally unsupported.
+  `xlsx-ranges-set-format`) opened in Excel without repair/failure. This
+  early 12/52 result is superseded by the latest milestone's 52/52 strict,
+  conformance, Open XML SDK, and desktop Office COM proof.
 
 The first Rust slice implements and tests the CLI cases from that baseline:
 
@@ -1746,8 +1766,8 @@ The first Rust slice implements and tests the CLI cases from that baseline:
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
 - Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises 232, and the harness pins the 58-command gap until
-  each new Rust command intentionally moves the count
+  paths, Rust advertises the same 290-path Go-oracle subset, and the harness
+  pins the count so future command-path changes move deliberately
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
 - `--json pptx slides list <pptx>` with direct Go-oracle comparison for
@@ -1929,11 +1949,17 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 
 Still missing before parity can be claimed:
 
-- real render proof parity beyond the mocked frozen manifest path.
+- real render proof on a machine with the full render stack
+  (`soffice`/LibreOffice, `pdftoppm`, and image comparison tooling). Rust now
+  implements mock and unavailable-tool `diff --render` behavior, but the current
+  Windows proof host does not have the real render toolchain installed.
 - Metamorphic and fuzz harnesses for OOXML package invariants.
-- Broad release-grade Office/Open XML SDK/COM proof for the complete promoted
-  Rust surface, including Office-authored `vba create`, real macro package
-  `vba office-check`, and module source mutation gates.
+- Broad release-grade desktop Office proof for promoted workflows not covered
+  by the 52-scenario edit smoke, especially Office-authored `vba create`, real
+  macro package `vba office-check`, and module source mutation gates. The
+  Windows edit smoke now passes all 52 mutation scenarios with strict
+  validation, Rust conformance, Open XML SDK validation, and desktop Office COM
+  open proof.
 
 Dependency note: live GitHub inspection of `https://github.com/Dicklesworthstone`
 found useful Rust infrastructure projects, but no direct OOXML/ZIP/XML package

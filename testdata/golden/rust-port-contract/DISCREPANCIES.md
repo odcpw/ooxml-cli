@@ -9,15 +9,15 @@ No open divergences are currently accepted for the implemented Rust command
 surface. New mismatches must be added here with impact, affected tests, review
 date, and status before a milestone can claim parity.
 
-## Open Parity Inventory Gap
+## Command Inventory
 
-- **Status:** open until full Rust command parity is proven.
-- **Impact:** the Rust port is intentionally partial; the capability ratchet in
+- **Status:** no open command-path inventory gap as of 2026-06-20.
+- **Impact:** the capability ratchet in
   `tests/rust_contract_smoke/capabilities.rs` pins the Go and Rust command
-  counts so each newly ported surface must move the gap deliberately.
+  counts so future command-surface changes must move deliberately.
 - **Affected tests:** `rust_capability_inventory_is_go_oracle_subset`.
 - **Review date:** 2026-06-20.
-- **Notes:** this is not an accepted behavioral mismatch for an implemented
-  command. It records that overall parity is not yet claimable while unported Go
-  command paths remain absent from Rust. Current ratchet: Go advertises 290
-  command paths, Rust advertises 232, leaving 58 unported paths.
+- **Notes:** this is not a claim that every flag-level behavior and Office proof
+  is complete. It records only the command-path inventory state. Current
+  ratchet: Go advertises 290 command paths, and Rust advertises the same
+  290-path Go-oracle subset.
