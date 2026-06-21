@@ -67,11 +67,40 @@ fn guide_json() -> Value {
                 "name": "Discovery",
                 "commands": [
                     "ooxml --json capabilities",
-                    "ooxml --json capabilities --for <filter>",
+                    "ooxml --json capabilities --for slides",
+                    "ooxml --json capabilities --for conditional-formats",
+                    "ooxml --json capabilities --for modules",
                     "ooxml robot-docs guide",
                     "ooxml --json inspect <file>",
                     "ooxml --json find <query> <file>",
                     "ooxml --json doctor health"
+                ],
+                "filters": [
+                    "pptx",
+                    "xlsx",
+                    "docx",
+                    "vba",
+                    "slide",
+                    "shape",
+                    "sheet",
+                    "range",
+                    "conditional-format",
+                    "data-validation",
+                    "table",
+                    "chart",
+                    "comment",
+                    "module"
+                ],
+                "filterAliases": [
+                    "slides -> slide",
+                    "shapes -> shape",
+                    "ranges -> range",
+                    "conditional-formats -> conditional-format",
+                    "conditional-formatting -> conditional-format",
+                    "cf -> conditional-format",
+                    "data-validations -> data-validation",
+                    "modules -> module",
+                    "macros -> module"
                 ]
             },
             {
@@ -189,6 +218,32 @@ fn guide_text(value: &Value) -> String {
                     out.push_str(command.as_str().unwrap_or_default());
                     out.push('\n');
                 }
+            }
+            if let Some(filters) = section["filters"].as_array()
+                && !filters.is_empty()
+            {
+                out.push_str("  Filters: ");
+                out.push_str(
+                    &filters
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                );
+                out.push('\n');
+            }
+            if let Some(aliases) = section["filterAliases"].as_array()
+                && !aliases.is_empty()
+            {
+                out.push_str("  Filter aliases: ");
+                out.push_str(
+                    &aliases
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                );
+                out.push('\n');
             }
         }
     }

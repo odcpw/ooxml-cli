@@ -1420,3 +1420,110 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&vba_caps, "ooxml vba attach", true);
     assert_command(&vba_caps, "ooxml vba remove", true);
 }
+
+#[test]
+fn capabilities_for_accepts_agent_natural_plural_aliases() {
+    for (alias, canonical, expected_path) in [
+        ("slides", "slide", "ooxml pptx slides list"),
+        ("shapes", "shape", "ooxml pptx shapes show"),
+        ("ranges", "range", "ooxml xlsx ranges export"),
+        ("tables", "table", "ooxml xlsx tables list"),
+        ("charts", "chart", "ooxml pptx charts list"),
+        ("comments", "comment", "ooxml pptx comments list"),
+        ("modules", "module", "ooxml vba list"),
+        (
+            "conditional-formats",
+            "conditional-format",
+            "ooxml xlsx conditional-formats list",
+        ),
+        (
+            "conditional-formatting",
+            "conditional-format",
+            "ooxml xlsx conditional-formats list",
+        ),
+        (
+            "data-validations",
+            "data-validation",
+            "ooxml xlsx data-validations list",
+        ),
+    ] {
+        let (alias_code, alias_stdout, alias_stderr) =
+            run_ooxml(&["--json", "capabilities", "--for", alias]);
+        assert_eq!(alias_code, 0, "alias exit for {alias}");
+        assert_eq!(alias_stderr, None, "alias stderr for {alias}");
+        let alias_caps = alias_stdout.expect("alias capabilities");
+
+        let (canonical_code, canonical_stdout, canonical_stderr) =
+            run_ooxml(&["--json", "capabilities", "--for", canonical]);
+        assert_eq!(canonical_code, 0, "canonical exit for {canonical}");
+        assert_eq!(canonical_stderr, None, "canonical stderr for {canonical}");
+        let canonical_caps = canonical_stdout.expect("canonical capabilities");
+
+        assert_eq!(
+            alias_caps["filter"]["normalized"], canonical,
+            "alias {alias} should normalize to {canonical}"
+        );
+        assert_eq!(
+            capability_paths(&alias_caps),
+            capability_paths(&canonical_caps),
+            "alias {alias} should return the same command set as {canonical}"
+        );
+        assert_command(&alias_caps, expected_path, false);
+    }
+}
+
+#[test]
+fn capabilities_without_global_json_is_first_tryable() {
+    let (code, stdout, stderr) = run_ooxml(&["capabilities", "--for", "slides"]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    let caps = stdout.expect("capabilities JSON");
+    assert_eq!(caps["filter"]["normalized"], "slide");
+    assert_command(&caps, "ooxml pptx slides list", false);
+}
+
+#[test]
+fn capabilities_unknown_filter_returns_machine_guidance() {
+    let (code, stdout, stderr) = run_ooxml(&["--json", "capabilities", "--for", "slidez"]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    let caps = stdout.expect("capabilities JSON");
+    assert_eq!(caps["commands"].as_array().expect("commands").len(), 0);
+    assert_eq!(caps["filter"]["requested"], "slidez");
+    assert!(
+        caps["filter"]["suggestions"]
+            .as_array()
+            .expect("suggestions")
+            .iter()
+            .any(|suggestion| suggestion == "slide"),
+        "unknown filter should suggest canonical object kinds: {caps:?}"
+    );
+}
+
+#[test]
+fn capabilities_unknown_for_flag_teaches_exact_flag() {
+    let (code, stdout, stderr) = run_ooxml(&["--json", "capabilities", "--fr", "slides"]);
+    assert_eq!(code, 2);
+    assert_eq!(stdout, None);
+    let error = stderr.expect("stderr JSON");
+    let message = error["error"]["message"].as_str().expect("message");
+    assert!(message.contains("did you mean --for"), "{message}");
+    assert!(
+        message.contains("ooxml --json capabilities --for <filter>"),
+        "{message}"
+    );
+}
+
+#[test]
+fn global_json_typo_teaches_exact_correction() {
+    let (code, stdout, stderr) = run_ooxml(&["--jsno", "capabilities", "--for", "slides"]);
+    assert_eq!(code, 2);
+    assert_eq!(stdout, None);
+    let error = stderr.expect("stderr JSON");
+    let message = error["error"]["message"].as_str().expect("message");
+    assert!(message.contains("did you mean --json"), "{message}");
+    assert!(
+        message.contains("ooxml --json capabilities --for slides"),
+        "{message}"
+    );
+}

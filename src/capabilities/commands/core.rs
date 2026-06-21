@@ -24,7 +24,7 @@ pub(super) fn commands() -> Vec<Value> {
                 "--for",
                 "for",
                 "string",
-                "filter commands by supported command family or object kind",
+                "filter by command family or object kind; natural plurals and group aliases such as slides, ranges, conditional-formats, and modules are accepted",
             )],
         ),
         capability_command(

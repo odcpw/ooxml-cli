@@ -408,6 +408,12 @@ fn parse_global_flags(raw_args: &[String]) -> CliResult<(GlobalFlags, Vec<String
                 flags.strict = true;
                 i += 1;
             }
+            typo if is_json_flag_typo(typo) => {
+                return Err(CliError::invalid_args(format!(
+                    "unknown global flag: {typo}; did you mean --json? Try: {}",
+                    corrected_global_flag_command(raw_args, i, "--json")
+                )));
+            }
             _ => {
                 args.extend_from_slice(&raw_args[i..]);
                 break;
@@ -436,6 +442,8 @@ fn is_text_utility_command(args: &[String]) -> bool {
         return true;
     }
     match args {
+        [cmd, ..] if cmd == "capabilities" => true,
+        [cmd, ..] if cmd == "version" => true,
         [cmd, ..] if cmd == "doctor" => true,
         [cmd, ..] if cmd == "find" => true,
         [cmd, ..] if cmd == "robot-docs" || cmd == "agent" => true,
@@ -443,4 +451,14 @@ fn is_text_utility_command(args: &[String]) -> bool {
         [cmd, sub, ..] if cmd == "conformance" && (sub == "coverage" || sub == "check") => true,
         _ => false,
     }
+}
+
+fn is_json_flag_typo(value: &str) -> bool {
+    matches!(value, "--jsno" | "--jason" | "--jsonn")
+}
+
+fn corrected_global_flag_command(raw_args: &[String], index: usize, replacement: &str) -> String {
+    let mut corrected = raw_args.to_vec();
+    corrected[index] = replacement.to_string();
+    format!("ooxml {}", corrected.join(" "))
 }

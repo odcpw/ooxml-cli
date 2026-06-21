@@ -192,6 +192,31 @@ fn robot_docs_guide_is_filtered_to_rust_supported_commands() {
     let text = serde_json::to_string(&guide).expect("guide string");
     assert!(text.contains("ooxml --json doctor capabilities"));
     assert!(text.contains("ooxml --json find <query> <file>"));
+    assert!(text.contains("ooxml --json capabilities --for slides"));
+    assert!(text.contains("conditional-formats -> conditional-format"));
+    assert!(text.contains("modules -> module"));
+    let discovery = guide["sections"]
+        .as_array()
+        .expect("sections")
+        .iter()
+        .find(|section| section["name"] == "Discovery")
+        .expect("Discovery section");
+    assert!(
+        discovery["filters"]
+            .as_array()
+            .expect("filters")
+            .iter()
+            .any(|filter| filter == "conditional-format"),
+        "Discovery filters should enumerate legal capability filters: {discovery:?}"
+    );
+    assert!(
+        discovery["filterAliases"]
+            .as_array()
+            .expect("filterAliases")
+            .iter()
+            .any(|alias| alias == "slides -> slide"),
+        "Discovery aliases should enumerate accepted plural filters: {discovery:?}"
+    );
     for stale in [
         "pptx charts update-data",
         "xlsx charts update-source",
@@ -348,6 +373,69 @@ fn pptx_parent_group_help_paths_share_go_success_shape() {
     assert_eq!(rust_code, 2);
     assert_eq!(rust_stdout, "");
     assert!(rust_stderr.contains("frozen --json contract slice"));
+}
+
+#[test]
+fn help_alias_topics_resolve_to_canonical_group_help() {
+    for (args, expected_usage, expected_aliases) in [
+        (
+            &["xlsx", "conditional-format", "--help"][..],
+            "ooxml xlsx conditional-formats [command]",
+            "conditional-formats, conditional-format, conditional-formatting, cf",
+        ),
+        (
+            &["xlsx", "conditional-formatting", "--help"][..],
+            "ooxml xlsx conditional-formats [command]",
+            "conditional-formats, conditional-format, conditional-formatting, cf",
+        ),
+        (
+            &["xlsx", "cf", "--help"][..],
+            "ooxml xlsx conditional-formats [command]",
+            "conditional-formats, conditional-format, conditional-formatting, cf",
+        ),
+        (
+            &["xlsx", "data-validation", "--help"][..],
+            "ooxml xlsx data-validations [command]",
+            "data-validations, data-validation, dv",
+        ),
+        (
+            &["xlsx", "dv", "--help"][..],
+            "ooxml xlsx data-validations [command]",
+            "data-validations, data-validation, dv",
+        ),
+    ] {
+        let (code, stdout, stderr) = run_ooxml_raw(args);
+        assert_eq!(code, 0, "exit for {args:?}; stderr={stderr}");
+        assert_eq!(stderr, "", "stderr for {args:?}");
+        assert!(
+            stdout.contains(expected_usage),
+            "stdout for {args:?} missing usage {expected_usage:?}: {stdout}"
+        );
+        assert!(
+            stdout.contains(expected_aliases),
+            "stdout for {args:?} missing aliases {expected_aliases:?}: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn vba_create_help_splits_pure_and_legacy_modes() {
+    let (code, stdout, stderr) = run_ooxml_raw(&["vba", "create", "--help"]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, "");
+    for expected in [
+        "Mode guide:",
+        "Preferred pure Rust mode:",
+        "Pure mode flags: --pure, --source, --family, --out, --in-place, --backup, --dry-run, --no-validate.",
+        "Legacy Office-COM mode:",
+        "Legacy flags: --office-create-script, --extract-bin, --enable-vba-object-model-access, --visible, --force.",
+        "Do not combine --pure with legacy Office-COM flags.",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "vba create help missing {expected:?}: {stdout}"
+        );
+    }
 }
 
 #[test]

@@ -20,6 +20,15 @@ const RUST_ONLY_CAPABILITY_PATHS: &[&str] = &[
     "ooxml docx tables create",
     "ooxml pptx scaffold",
     "ooxml repair normalize",
+    "ooxml vba build-bin",
+    "ooxml vba rebuild",
+    "ooxml vba run-smoke",
+    "ooxml xlsx conditional-formats",
+    "ooxml xlsx conditional-formats add",
+    "ooxml xlsx conditional-formats delete",
+    "ooxml xlsx conditional-formats list",
+    "ooxml xlsx conditional-formats reorder",
+    "ooxml xlsx conditional-formats show",
     "ooxml xlsx scaffold",
     "ooxml xlsx tables create",
 ];
@@ -31,7 +40,6 @@ const XLSX_PARENT_GROUP_PATHS: &[&str] = &[
     "ooxml xlsx cols",
     "ooxml xlsx colwidths",
     "ooxml xlsx comments",
-    "ooxml xlsx conditional-formats",
     "ooxml xlsx data-validations",
     "ooxml xlsx filters-sorts",
     "ooxml xlsx freeze",
@@ -304,6 +312,109 @@ fn xlsx_conditional_format_reorder_capability_metadata() {
             "--dry-run",
             "--no-validate"
         ])
+    );
+}
+
+#[test]
+fn xlsx_conditional_format_add_capability_advertises_rule_constraints() {
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(rust_code, 0);
+    assert_eq!(rust_stderr, None);
+    let rust_caps = rust_stdout.expect("rust capabilities");
+    let add = command_by_path(&rust_caps, "ooxml xlsx conditional-formats add");
+    let constraints = &add["flagConstraints"];
+
+    assert_eq!(constraints["modeFlag"], "--type");
+    assert_eq!(constraints["defaultMode"], "expression");
+    let modes = constraints["modes"].as_array().expect("constraint modes");
+    assert!(
+        modes.iter().any(|mode| {
+            mode["value"] == "expression"
+                && mode["required"] == serde_json::json!(["--range", "--formula"])
+        }),
+        "expression mode should advertise required authoring flags: {constraints:?}"
+    );
+    assert!(
+        modes
+            .iter()
+            .any(|mode| { mode["value"] == "color-scale" && mode["repeat"]["--cfvo"] == "2 or 3" }),
+        "color-scale mode should advertise cfvo repeat count: {constraints:?}"
+    );
+    assert!(
+        modes.iter().any(|mode| {
+            mode["value"] == "icon-set"
+                && mode["forbidden"]
+                    .as_array()
+                    .expect("icon-set forbidden flags")
+                    .contains(&Value::String("--color".to_string()))
+        }),
+        "icon-set mode should forbid color flags: {constraints:?}"
+    );
+}
+
+#[test]
+fn vba_create_capability_advertises_mode_constraints() {
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(rust_code, 0);
+    assert_eq!(rust_stderr, None);
+    let rust_caps = rust_stdout.expect("rust capabilities");
+    let create = command_by_path(&rust_caps, "ooxml vba create");
+    let constraints = &create["flagConstraints"];
+
+    let modes = constraints["modes"].as_array().expect("constraint modes");
+    let pure = modes
+        .iter()
+        .find(|mode| mode["name"] == "pure")
+        .expect("pure mode constraints");
+    assert!(
+        local_flag_field(create, "name")
+            .as_array()
+            .expect("vba create local flag names")
+            .contains(&Value::String("--dry-run".to_string())),
+        "vba create should advertise --dry-run because pure mode accepts it: {create:?}"
+    );
+    assert!(
+        pure["allowedFlags"]
+            .as_array()
+            .expect("pure allowed flags")
+            .contains(&Value::String("--source".to_string()))
+    );
+    assert!(
+        pure["allowedFlags"]
+            .as_array()
+            .expect("pure allowed flags")
+            .contains(&Value::String("--dry-run".to_string()))
+    );
+    assert!(
+        pure["conflictsWith"]
+            .as_array()
+            .expect("pure conflict flags")
+            .contains(&Value::String("--office-create-script".to_string()))
+    );
+
+    let legacy = modes
+        .iter()
+        .find(|mode| mode["name"] == "legacy-office-com")
+        .expect("legacy mode constraints");
+    assert!(
+        legacy["allowedFlags"]
+            .as_array()
+            .expect("legacy allowed flags")
+            .contains(&Value::String("--office-create-script".to_string()))
+    );
+    assert!(
+        legacy["conflictsWith"]
+            .as_array()
+            .expect("legacy conflict flags")
+            .contains(&Value::String("--out".to_string()))
+    );
+    assert!(
+        constraints["rules"]
+            .as_array()
+            .expect("constraint rules")
+            .iter()
+            .any(|rule| rule.as_str().unwrap_or_default().contains("--pure cannot")),
+        "vba create should advertise pure/legacy conflict rules: {constraints:?}"
     );
 }
 

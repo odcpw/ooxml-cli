@@ -1,0 +1,49 @@
+{
+  "query": "ooxml capabilities conditional formats vba create flags discovery",
+  "limit": 8,
+  "offset": 0,
+  "count": 0,
+  "total_matches": 0,
+  "hits": [],
+  "max_tokens": 2500,
+  "request_id": null,
+  "cursor": null,
+  "hits_clamped": false,
+  "suggestions": [
+    {
+      "kind": "wildcard_query",
+      "message": "Try broader search: \"*ooxml capabilities conditional formats vba create flags discovery*\"",
+      "suggested_query": "*ooxml capabilities conditional formats vba create flags discovery*",
+      "suggested_filters": null,
+      "shortcut": 1
+    },
+    {
+      "kind": "alternate_agent",
+      "message": "Try searching in: pi_agent",
+      "suggested_query": null,
+      "suggested_filters": {
+        "agents": [
+          "pi_agent"
+        ],
+        "workspaces": [],
+        "created_from": null,
+        "created_to": null
+      },
+      "shortcut": 2
+    },
+    {
+      "kind": "alternate_agent",
+      "message": "Try searching in: codex",
+      "suggested_query": null,
+      "suggested_filters": {
+        "agents": [
+          "codex"
+        ],
+        "workspaces": [],
+        "created_from": null,
+        "created_to": null
+      },
+      "shortcut": 3
+    }
+  ]
+}

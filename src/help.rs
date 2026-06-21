@@ -231,13 +231,13 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
         &["xlsx", "conditional-formats"],
         "Inspect and mutate worksheet conditional formatting.",
         "Commands for conditional-formatting expression rules.",
-        &["conditional-format"],
+        &["conditional-format", "conditional-formatting", "cf"],
     ),
     (
         &["xlsx", "data-validations"],
         "Inspect and mutate worksheet data validations.",
         "Commands for data-validation rules.",
-        &["data-validation"],
+        &["data-validation", "dv"],
     ),
     (
         &["xlsx", "filters-sorts"],
@@ -314,6 +314,7 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
 ];
 
 pub(crate) fn is_help_request(args: &[String]) -> bool {
+    let topic = normalize_topic(args);
     if args.is_empty() {
         return true;
     }
@@ -324,9 +325,9 @@ pub(crate) fn is_help_request(args: &[String]) -> bool {
         return true;
     }
     if matches!(args.last().map(String::as_str), Some("--help" | "-h")) {
-        return is_known_topic(&args[..args.len() - 1]);
+        return is_known_topic(&topic);
     }
-    is_parent_group_path(args)
+    is_parent_group_path(&topic)
 }
 
 pub(crate) fn help(args: &[String]) -> CliResult<DispatchOutput> {
@@ -355,7 +356,30 @@ fn normalize_topic(args: &[String]) -> Vec<String> {
         topic.remove(0);
     }
     topic.retain(|arg| arg != "--help" && arg != "-h");
-    topic
+    canonicalize_topic(&topic)
+}
+
+fn canonicalize_topic(topic: &[String]) -> Vec<String> {
+    let mut canonical = topic.to_vec();
+    for (path, _, _, aliases) in GROUP_TOPICS {
+        if path.is_empty() || canonical.len() < path.len() {
+            continue;
+        }
+        let alias_index = path.len() - 1;
+        let prefix_matches = canonical
+            .iter()
+            .take(alias_index)
+            .zip(path.iter().take(alias_index))
+            .all(|(left, right)| left == right);
+        if prefix_matches
+            && aliases
+                .iter()
+                .any(|alias| canonical[alias_index].as_str() == *alias)
+        {
+            canonical[alias_index] = path[alias_index].to_string();
+        }
+    }
+    canonical
 }
 
 fn is_known_topic(args: &[String]) -> bool {
@@ -476,9 +500,25 @@ fn leaf_help(topic: &[String], command: &Value) -> String {
             out.push_str(&format!("  {name:<24} {description}\n"));
         }
     }
+    if topic == ["vba", "create"] {
+        append_vba_create_mode_guide(&mut out);
+    }
     out.push_str("\nGlobal Flags:\n");
     out.push_str(global_flags_text());
     out
+}
+
+fn append_vba_create_mode_guide(out: &mut String) {
+    out.push_str("\nMode guide:\n");
+    out.push_str("  Preferred pure Rust mode:\n");
+    out.push_str(
+        "    ooxml --json vba create <input.xlsx|input.pptx|input.docx> --pure --source Module1.bas --out <output.xlsm|output.pptm|output.docm>\n",
+    );
+    out.push_str("    Pure mode flags: --pure, --source, --family, --out, --in-place, --backup, --dry-run, --no-validate.\n");
+    out.push_str("  Legacy Office-COM mode:\n");
+    out.push_str("    ooxml --json vba create <input.xlsx|input.pptx> <output.xlsm|output.pptm> --office-create-script <windows-office-vba-create.ps1>\n");
+    out.push_str("    Legacy flags: --office-create-script, --extract-bin, --enable-vba-object-model-access, --visible, --force.\n");
+    out.push_str("  Do not combine --pure with legacy Office-COM flags.\n");
 }
 
 fn leaf_usage(topic: &[String], use_text: &str) -> String {

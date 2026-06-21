@@ -4,29 +4,60 @@ pub(crate) use commands::capability_commands;
 use serde_json::{Value, json};
 
 use crate::{
-    CliResult, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS, EXIT_RENDER_FAILED, EXIT_SUCCESS,
+    CliError, CliResult, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS, EXIT_RENDER_FAILED, EXIT_SUCCESS,
     EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED, EXIT_UNSUPPORTED_TYPE, parse_string_flag,
 };
 
 pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
-    let filter = parse_string_flag(args, "--for")?.map(|value| value.to_ascii_lowercase());
+    reject_capabilities_unknown_flags(args)?;
+    let requested_filter = parse_string_flag(args, "--for")?;
+    let normalized_filter = requested_filter.as_deref().map(normalize_capability_filter);
     let mut commands = capability_commands();
-    if let Some(filter) = filter.as_deref() {
+    if let Some(filter) = normalized_filter.as_deref() {
         commands.retain(|command| capability_matches_filter(command, filter));
     }
+    let filter_info = requested_filter.as_ref().map(|requested| {
+        let normalized = normalized_filter.as_deref().unwrap_or_default();
+        let mut info = json!({
+            "requested": requested,
+            "normalized": normalized,
+            "matchedCommands": commands.len()
+        });
+        if commands.is_empty() {
+            info["suggestions"] = json!(capability_filter_suggestions(normalized));
+        }
+        info
+    });
     let mut notes = vec![
         "Rust implementation surface: commands listed here are implemented in the current ooxml CLI."
             .to_string(),
         "The deprecated Go implementation is retained on codex/ooxml-go-reference as a frozen oracle/reference."
             .to_string(),
     ];
-    if let Some(filter) = filter.as_deref() {
-        notes.insert(
-            0,
-            format!("Filtered by Rust-supported command/object filter \"{filter}\"."),
-        );
+    if let (Some(requested), Some(normalized)) =
+        (requested_filter.as_deref(), normalized_filter.as_deref())
+    {
+        if requested == normalized {
+            notes.insert(
+                0,
+                format!("Filtered by Rust-supported command/object filter \"{normalized}\"."),
+            );
+        } else {
+            notes.insert(
+                0,
+                format!(
+                    "Filtered by Rust-supported command/object filter \"{requested}\" (normalized to \"{normalized}\")."
+                ),
+            );
+        }
+        if commands.is_empty() {
+            notes.insert(
+                1,
+                "No commands matched this filter; inspect `filter.suggestions`, `filterAliases`, and `objectKinds` for accepted filters.".to_string(),
+            );
+        }
     }
-    Ok(json!({
+    let mut document = json!({
         "tool": "ooxml",
         "version": "0.0.1",
         "contractVersion": "ooxml-cli.agent-capabilities.v4",
@@ -39,6 +70,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
         ],
         "commands": commands,
         "objectKinds": ["package", "template", "slide", "shape", "animation", "master", "layout", "placeholder", "sheet", "range", "conditional-format", "data-validation", "cell", "hyperlink", "table", "pivot", "name", "block", "paragraph", "style", "theme", "comment", "chart", "field", "header", "footer", "image", "media", "module"],
+        "filterAliases": capability_filter_aliases_json(),
         "objectKindsIndex": {
             "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml apply", "ooxml convert xlsm-to-xlsx", "ooxml repair normalize", "ooxml docx scaffold", "ooxml docx text", "ooxml pptx scaffold", "ooxml xlsx scaffold", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update", "ooxml vba build-bin", "ooxml vba create", "ooxml vba rebuild", "ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba inspect-bin", "ooxml vba list", "ooxml vba extract", "ooxml vba add-module", "ooxml vba replace-module", "ooxml vba remove-module", "ooxml vba attach", "ooxml vba remove"],
             "template": ["ooxml template", "ooxml template apply", "ooxml template tokens", "ooxml template profile", "ooxml template profile save", "ooxml template profile inspect", "ooxml pptx template", "ooxml pptx template inspect", "ooxml pptx template capture", "ooxml pptx template compile", "ooxml pptx xlsx-bindings plan", "ooxml pptx xlsx-bindings apply"],
@@ -116,7 +148,11 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             "mutations should be validated before handing files to users"
         ],
         "notes": notes,
-    }))
+    });
+    if let Some(filter_info) = filter_info {
+        document["filter"] = filter_info;
+    }
+    Ok(document)
 }
 
 fn capability_matches_filter(command: &Value, filter: &str) -> bool {
@@ -125,19 +161,16 @@ fn capability_matches_filter(command: &Value, filter: &str) -> bool {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if matches!(
-        filter,
-        "pptx"
-            | "xlsx"
-            | "docx"
-            | "vba"
-            | "convert"
-            | "template"
-            | "capabilities"
-            | "serve"
-            | "mcp"
-            | "version"
-    ) && (path.contains(&format!(" {filter} ")) || path.ends_with(&format!(" {filter}")))
+    if is_command_family_filter(filter)
+        && (path == format!("ooxml {filter}") || path.starts_with(&format!("ooxml {filter} ")))
+    {
+        return true;
+    }
+    if is_path_segment_filter(filter)
+        && path
+            .split_whitespace()
+            .skip(1)
+            .any(|segment| segment == filter)
     {
         return true;
     }
@@ -146,4 +179,222 @@ fn capability_matches_filter(command: &Value, filter: &str) -> bool {
         .and_then(Value::as_array)
         .map(|kinds| kinds.iter().any(|kind| kind.as_str() == Some(filter)))
         .unwrap_or(false)
+}
+
+const CAPABILITY_FILTER_ALIASES: &[(&str, &str)] = &[
+    ("slides", "slide"),
+    ("shapes", "shape"),
+    ("animations", "animation"),
+    ("masters", "master"),
+    ("layouts", "layout"),
+    ("placeholders", "placeholder"),
+    ("sheets", "sheet"),
+    ("ranges", "range"),
+    ("conditional-formats", "conditional-format"),
+    ("conditional-formatting", "conditional-format"),
+    ("cf", "conditional-format"),
+    ("data-validations", "data-validation"),
+    ("cells", "cell"),
+    ("hyperlinks", "hyperlink"),
+    ("tables", "table"),
+    ("pivots", "pivot"),
+    ("names", "name"),
+    ("blocks", "block"),
+    ("paragraphs", "paragraph"),
+    ("styles", "style"),
+    ("themes", "theme"),
+    ("comments", "comment"),
+    ("charts", "chart"),
+    ("fields", "field"),
+    ("headers", "header"),
+    ("footers", "footer"),
+    ("images", "image"),
+    ("modules", "module"),
+    ("macros", "module"),
+    ("macro", "module"),
+];
+
+fn is_command_family_filter(filter: &str) -> bool {
+    matches!(
+        filter,
+        "pptx"
+            | "xlsx"
+            | "docx"
+            | "vba"
+            | "apply"
+            | "convert"
+            | "diff"
+            | "repair"
+            | "template"
+            | "capabilities"
+            | "help"
+            | "doctor"
+            | "find"
+            | "robot-docs"
+            | "agent"
+            | "completion"
+            | "conformance"
+            | "serve"
+            | "mcp"
+            | "version"
+    )
+}
+
+fn is_path_segment_filter(filter: &str) -> bool {
+    matches!(filter, "template")
+}
+
+fn normalize_capability_filter(raw: &str) -> String {
+    let mut filter = raw.trim().to_ascii_lowercase().replace('_', "-");
+    if let Some(stripped) = filter.strip_prefix("ooxml ") {
+        filter = stripped.to_string();
+    }
+    CAPABILITY_FILTER_ALIASES
+        .iter()
+        .find_map(|(alias, canonical)| (*alias == filter).then_some((*canonical).to_string()))
+        .unwrap_or(filter)
+}
+
+fn capability_filter_aliases_json() -> Value {
+    json!(
+        CAPABILITY_FILTER_ALIASES
+            .iter()
+            .map(|(alias, canonical)| json!({
+                "alias": alias,
+                "canonical": canonical
+            }))
+            .collect::<Vec<_>>()
+    )
+}
+
+fn capability_filter_suggestions(filter: &str) -> Vec<String> {
+    let mut suggestions = Vec::new();
+    for candidate in capability_known_filters() {
+        if candidate.contains(filter) || filter.contains(&candidate) {
+            suggestions.push(candidate);
+        }
+    }
+    if suggestions.is_empty() {
+        suggestions.extend([
+            "pptx".to_string(),
+            "xlsx".to_string(),
+            "docx".to_string(),
+            "slide".to_string(),
+            "sheet".to_string(),
+            "range".to_string(),
+            "conditional-format".to_string(),
+        ]);
+    }
+    suggestions.sort();
+    suggestions.dedup();
+    suggestions.truncate(8);
+    suggestions
+}
+
+fn capability_known_filters() -> Vec<String> {
+    let mut filters = vec![
+        "pptx",
+        "xlsx",
+        "docx",
+        "vba",
+        "convert",
+        "template",
+        "capabilities",
+        "serve",
+        "mcp",
+        "version",
+        "package",
+        "template",
+        "slide",
+        "shape",
+        "animation",
+        "master",
+        "layout",
+        "placeholder",
+        "sheet",
+        "range",
+        "conditional-format",
+        "data-validation",
+        "cell",
+        "hyperlink",
+        "table",
+        "pivot",
+        "name",
+        "block",
+        "paragraph",
+        "style",
+        "theme",
+        "comment",
+        "chart",
+        "field",
+        "header",
+        "footer",
+        "image",
+        "media",
+        "module",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<Vec<_>>();
+    filters.extend(
+        CAPABILITY_FILTER_ALIASES
+            .iter()
+            .map(|(alias, _)| (*alias).to_string()),
+    );
+    filters.sort();
+    filters.dedup();
+    filters
+}
+
+fn reject_capabilities_unknown_flags(args: &[String]) -> CliResult<()> {
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
+        if !arg.starts_with('-') {
+            i += 1;
+            continue;
+        }
+        let flag = arg.split_once('=').map(|(flag, _)| flag).unwrap_or(arg);
+        match flag {
+            "--json" => i += 1,
+            "--for" => {
+                if arg.contains('=') {
+                    i += 1;
+                } else if args.get(i + 1).is_some() {
+                    i += 2;
+                } else {
+                    return Err(CliError::invalid_args("--for requires a value"));
+                }
+            }
+            "--format" | "-f" => {
+                let value = if let Some((_, value)) = arg.split_once('=') {
+                    Some(value)
+                } else {
+                    args.get(i + 1).map(String::as_str)
+                };
+                match value {
+                    Some("json") => {
+                        i += if arg.contains('=') { 1 } else { 2 };
+                    }
+                    Some(value) => {
+                        return Err(CliError::invalid_args(format!(
+                            "invalid format: {value} (expected 'json')"
+                        )));
+                    }
+                    None => return Err(CliError::invalid_args("--format requires a value")),
+                }
+            }
+            _ => {
+                let hint = if matches!(flag, "--fr" | "--fro" | "--filter") {
+                    "; did you mean --for? Try: ooxml --json capabilities --for <filter>"
+                } else {
+                    "; valid flags are --for <filter>, --json, and --format json"
+                };
+                return Err(CliError::invalid_args(format!(
+                    "unknown flag: {flag}{hint}"
+                )));
+            }
+        }
+    }
+    Ok(())
 }

@@ -1,8 +1,115 @@
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::{capability_command, flag};
 
 pub(super) fn commands() -> Vec<Value> {
+    let mut create = capability_command(
+        "ooxml vba create",
+        "create <workbook.xlsx|deck.pptx|document.docx> --pure --source Module1.bas --out <workbook.xlsm|deck.pptm|document.docm>",
+        "Create an XLSM/PPTM/DOCM from an existing package and VBA source files using pure Rust.",
+        &["package", "module"],
+        true,
+        Some(
+            "preferred cross-platform macro authoring path; legacy Office-COM create remains available without --pure for XLSM/PPTM seeds",
+        ),
+        vec![
+            flag("--backup", "backup", "string", "backup path for --in-place"),
+            flag(
+                "--dry-run",
+                "dryRun",
+                "bool",
+                "pure mode only: validate and report without writing",
+            ),
+            flag(
+                "--enable-vba-object-model-access",
+                "enableVbaObjectModelAccess",
+                "bool",
+                "legacy Office-COM mode only: temporarily enable Trust access to the VBA project object model",
+            ),
+            flag(
+                "--extract-bin",
+                "extractBin",
+                "string",
+                "legacy Office-COM mode only: optional path to write the created vbaProject.bin seed",
+            ),
+            flag(
+                "--family",
+                "family",
+                "string",
+                "target Office family; pure mode supports xlsx, pptx, or docx and can infer from input extension",
+            ),
+            flag(
+                "--force",
+                "force",
+                "bool",
+                "legacy Office-COM mode only: overwrite existing helper outputs",
+            ),
+            flag(
+                "--in-place",
+                "inPlace",
+                "bool",
+                "write back to the input package",
+            ),
+            flag(
+                "--no-validate",
+                "noValidate",
+                "bool",
+                "skip strict package validation after mutation",
+            ),
+            flag(
+                "--office-create-script",
+                "officeCreateScript",
+                "string",
+                "legacy Office-COM mode only: path to windows-office-vba-create.ps1",
+            ),
+            flag(
+                "--out",
+                "out",
+                "string",
+                "pure mode output macro-enabled package path",
+            ),
+            flag(
+                "--pure",
+                "pure",
+                "bool",
+                "build vbaProject.bin in Rust and attach it to the input package",
+            ),
+            flag(
+                "--source",
+                "source",
+                "stringArray",
+                "repeatable .bas or .cls source file to import",
+            ),
+            flag(
+                "--visible",
+                "visible",
+                "bool",
+                "show the Office application window during creation",
+            ),
+        ],
+    );
+    create["flagConstraints"] = json!({
+        "modes": [
+            {
+                "name": "pure",
+                "when": ["--pure"],
+                "allowedFlags": ["--pure", "--source", "--family", "--out", "--in-place", "--backup", "--dry-run", "--no-validate"],
+                "conflictsWith": ["--extract-bin", "--office-create-script", "--enable-vba-object-model-access", "--visible", "--force"],
+                "recommendedCommand": "ooxml --json vba create <input.xlsx|input.pptx|input.docx> --pure --source Module1.bas --out <output.xlsm|output.pptm|output.docm>"
+            },
+            {
+                "name": "legacy-office-com",
+                "when": ["not --pure"],
+                "allowedFlags": ["--family", "--source", "--extract-bin", "--office-create-script", "--enable-vba-object-model-access", "--visible", "--force"],
+                "conflictsWith": ["--out", "--backup", "--dry-run", "--no-validate", "--in-place"],
+                "recommendedCommand": "ooxml --json vba create <input.xlsx|input.pptx> <output.xlsm|output.pptm> --office-create-script <windows-office-vba-create.ps1>"
+            }
+        ],
+        "rules": [
+            "--pure cannot be combined with legacy Office-COM create flags.",
+            "Pure mode writes with --out, --in-place, or --dry-run; legacy Office-COM mode uses the positional output path."
+        ]
+    });
     vec![
         capability_command(
             "ooxml vba",
@@ -44,85 +151,7 @@ pub(super) fn commands() -> Vec<Value> {
                 ),
             ],
         ),
-        capability_command(
-            "ooxml vba create",
-            "create <workbook.xlsx|deck.pptx|document.docx> --pure --source Module1.bas --out <workbook.xlsm|deck.pptm|document.docm>",
-            "Create an XLSM/PPTM/DOCM from an existing package and VBA source files using pure Rust.",
-            &["package", "module"],
-            true,
-            Some(
-                "preferred cross-platform macro authoring path; legacy Office-COM create remains available without --pure for XLSM/PPTM seeds",
-            ),
-            vec![
-                flag("--backup", "backup", "string", "backup path for --in-place"),
-                flag(
-                    "--enable-vba-object-model-access",
-                    "enableVbaObjectModelAccess",
-                    "bool",
-                    "legacy Office-COM mode only: temporarily enable Trust access to the VBA project object model",
-                ),
-                flag(
-                    "--extract-bin",
-                    "extractBin",
-                    "string",
-                    "legacy Office-COM mode only: optional path to write the created vbaProject.bin seed",
-                ),
-                flag(
-                    "--family",
-                    "family",
-                    "string",
-                    "target Office family; pure mode supports xlsx, pptx, or docx and can infer from input extension",
-                ),
-                flag(
-                    "--force",
-                    "force",
-                    "bool",
-                    "legacy Office-COM mode only: overwrite existing helper outputs",
-                ),
-                flag(
-                    "--in-place",
-                    "inPlace",
-                    "bool",
-                    "write back to the input package",
-                ),
-                flag(
-                    "--no-validate",
-                    "noValidate",
-                    "bool",
-                    "skip strict package validation after mutation",
-                ),
-                flag(
-                    "--office-create-script",
-                    "officeCreateScript",
-                    "string",
-                    "legacy Office-COM mode only: path to windows-office-vba-create.ps1",
-                ),
-                flag(
-                    "--out",
-                    "out",
-                    "string",
-                    "pure mode output macro-enabled package path",
-                ),
-                flag(
-                    "--pure",
-                    "pure",
-                    "bool",
-                    "build vbaProject.bin in Rust and attach it to the input package",
-                ),
-                flag(
-                    "--source",
-                    "source",
-                    "stringArray",
-                    "repeatable .bas or .cls source file to import",
-                ),
-                flag(
-                    "--visible",
-                    "visible",
-                    "bool",
-                    "show the Office application window during creation",
-                ),
-            ],
-        ),
+        create,
         capability_command(
             "ooxml vba rebuild",
             "rebuild <workbook.xlsm|deck.pptm|document.docm> --source-dir macros --out <edited.xlsm|edited.pptm|edited.docm>",

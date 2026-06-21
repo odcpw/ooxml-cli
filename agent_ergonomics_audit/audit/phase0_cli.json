@@ -1,0 +1,18 @@
+{
+  "target_path": "/home/oliver/Projects/odcpw/ooxml-cli",
+  "discovered_at": "2026-06-21T20:45:21Z",
+  "languages": [
+    "rust"
+  ],
+  "binaries": [
+    "ooxml",
+    "ooxml-cli"
+  ],
+  "env_var_prefix": "OOXML",
+  "existing_surfaces": {
+    "robot_mode": false,
+    "capabilities": true,
+    "robot_docs": true
+  },
+  "recommended_mode": "full"
+}
