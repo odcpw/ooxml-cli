@@ -297,6 +297,223 @@ fn xlsx_scaffold_rejects_existing_output_unless_forced_and_validates_sheet_name(
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+#[test]
+fn xlsx_scaffold_rust_only_builds_formula_table_workbook() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-scaffold-workflow-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("xlsx scaffold workflow temp dir");
+
+    let scaffold_path = temp_dir.join("01-scaffold.xlsx");
+    let data_path = temp_dir.join("02-data.xlsx");
+    let table_path = temp_dir.join("03-table.xlsx");
+    let formatted_path = temp_dir.join("04-formatted.xlsx");
+    let final_path = temp_dir.join("05-final.xlsx");
+    let scaffold = scaffold_path.to_string_lossy().to_string();
+    let data = data_path.to_string_lossy().to_string();
+    let table = table_path.to_string_lossy().to_string();
+    let formatted = formatted_path.to_string_lossy().to_string();
+    let final_file = final_path.to_string_lossy().to_string();
+
+    let scaffold_result = run_ooxml_json_ok("workflow scaffold", &[
+        "--json",
+        "xlsx",
+        "scaffold",
+        &scaffold,
+        "--sheet",
+        "Sales Ops",
+    ]);
+    assert_eq!(
+        scaffold_result["sheet"],
+        Value::String("Sales Ops".to_string())
+    );
+
+    let workbook_values = r#"[
+        ["Region","Account","Units","Unit Price","Revenue"],
+        ["North","Enterprise",12,19.95,{"formula":"C2*D2"}],
+        ["South","Midmarket",8,24.50,{"formula":"C3*D3"}],
+        ["West","Startup",15,9.99,{"formula":"C4*D4"}],
+        ["East","Renewal",10,29.00,{"formula":"C5*D5"}]
+    ]"#;
+    let set_result = run_ooxml_json_ok("workflow ranges set", &[
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &scaffold,
+        "--sheet",
+        "Sales Ops",
+        "--range",
+        "A1:E5",
+        "--values",
+        workbook_values,
+        "--out",
+        &data,
+    ]);
+    assert_eq!(set_result["range"], "A1:E5");
+    assert_eq!(set_result["formulaCount"], Value::from(4));
+    assert_rust_emitted_ooxml_command_succeeds(&set_result, "rangesExportCommand");
+
+    let table_result = run_ooxml_json_ok("workflow table create", &[
+        "--json",
+        "xlsx",
+        "tables",
+        "create",
+        &data,
+        "--sheet",
+        "Sales Ops",
+        "--range",
+        "A1:E5",
+        "--table",
+        "SalesOps",
+        "--style",
+        "TableStyleMedium4",
+        "--out",
+        &table,
+    ]);
+    assert_eq!(table_result["table"], "SalesOps");
+    assert_eq!(table_result["columns"], serde_json::json!([
+        "Region",
+        "Account",
+        "Units",
+        "Unit Price",
+        "Revenue"
+    ]));
+    assert_rust_emitted_ooxml_command_succeeds(&table_result, "tableExportCommand");
+
+    let format_result = run_ooxml_json_ok("workflow table column format", &[
+        "--json",
+        "xlsx",
+        "tables",
+        "set-column-format",
+        &table,
+        "--table",
+        "SalesOps",
+        "--column",
+        "Revenue",
+        "--preset",
+        "currency",
+        "--decimals",
+        "2",
+        "--out",
+        &formatted,
+    ]);
+    assert_eq!(format_result["range"], "E2:E5");
+    assert_eq!(format_result["column"], "Revenue");
+    assert_rust_emitted_ooxml_command_succeeds(&format_result, "rangesExportCommand");
+
+    let cf_result = run_ooxml_json_ok("workflow conditional format", &[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "add",
+        &formatted,
+        "--sheet",
+        "Sales Ops",
+        "--range",
+        "E2:E5",
+        "--type",
+        "color-scale",
+        "--cfvo",
+        "min",
+        "--cfvo",
+        "percentile:50",
+        "--cfvo",
+        "max",
+        "--color",
+        "F8696B",
+        "--color",
+        "FFEB84",
+        "--color",
+        "63BE7B",
+        "--priority",
+        "1",
+        "--out",
+        &final_file,
+    ]);
+    assert_eq!(cf_result["range"], "E2:E5");
+    assert_eq!(cf_result["rule"]["type"], "colorScale");
+    assert_rust_emitted_ooxml_command_succeeds(&cf_result, "conditionalFormatsShowCommand");
+
+    assert_xlsx_strict_valid(&final_file);
+    assert_conformance_check_passed("workflow conformance", &final_file);
+
+    let range = run_ooxml_json_ok("workflow range readback", &[
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &final_file,
+        "--sheet",
+        "Sales Ops",
+        "--range",
+        "A1:E5",
+        "--include-types",
+        "--include-formulas",
+        "--include-formats",
+    ]);
+    assert_eq!(range["values"][1][0], "North");
+    assert_eq!(range["values"][2][2], Value::from(8));
+    assert_eq!(range["formulaCount"], Value::from(4));
+    assert_eq!(range["formulas"][1][4], "C2*D2");
+    assert_eq!(range["formulas"][4][4], "C5*D5");
+    let revenue_format = range["numberFormatCodes"][1][4]
+        .as_str()
+        .expect("Revenue number format readback");
+    assert!(
+        revenue_format.contains("#,##0.00"),
+        "unexpected Revenue number format: {revenue_format}"
+    );
+
+    let table_export = run_ooxml_json_ok("workflow table export", &[
+        "--json",
+        "xlsx",
+        "tables",
+        "export",
+        &final_file,
+        "--table",
+        "SalesOps",
+        "--include-types",
+        "--include-formulas",
+    ]);
+    assert_eq!(table_export["range"], "A1:E5");
+    assert_eq!(table_export["formulaCount"], Value::from(4));
+    assert_eq!(table_export["values"][4][1], "Renewal");
+    assert_eq!(table_export["formulas"][3][4], "C4*D4");
+
+    let cf_show = run_ooxml_json_ok("workflow conditional format show", &[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "show",
+        &final_file,
+        "--sheet",
+        "Sales Ops",
+        "--rule",
+        "cfRule:1",
+    ]);
+    assert_eq!(cf_show["sqref"], "E2:E5");
+    assert_eq!(cf_show["colorScale"]["colors"][2]["rgb"], "FF63BE7B");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn run_ooxml_json_ok(label: &str, args: &[&str]) -> Value {
+    let (code, stdout, stderr) = run_ooxml(args);
+    assert_eq!(code, 0, "{label} exit");
+    assert_eq!(stderr, None, "{label} stderr");
+    stdout.unwrap_or_else(|| panic!("{label} stdout"))
+}
+
+fn assert_conformance_check_passed(label: &str, file: &str) {
+    let conformance = run_ooxml_json_ok(label, &["--json", "conformance", "check", file]);
+    assert_eq!(conformance["schemaVersion"], "ooxml-cli.conformance.v1");
+    assert_eq!(conformance["status"], "passed");
+    assert_eq!(conformance["summary"]["failed"], Value::from(0));
+}
+
 fn assert_xml_tag_order(xml: &str, tags: &[&str]) {
     let mut previous = 0usize;
     for tag in tags {

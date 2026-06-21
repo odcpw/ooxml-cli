@@ -735,6 +735,17 @@ Set-Content -LiteralPath $pivotValuesFile -Encoding ASCII -Value @(
     "South,B,33"
 )
 
+$authoringValuesFile = Join-Path $outRoot "xlsx-authoring-values.json"
+Set-Content -LiteralPath $authoringValuesFile -Encoding ASCII -Value @'
+[
+  ["Region","Account","Units","Unit Price","Revenue"],
+  ["North","Enterprise",12,19.95,{"formula":"C2*D2"}],
+  ["South","Midmarket",8,24.50,{"formula":"C3*D3"}],
+  ["West","Startup",15,9.99,{"formula":"C4*D4"}],
+  ["East","Renewal",10,29.00,{"formula":"C5*D5"}]
+]
+'@
+
 $pptxChartExtLstValuesFile = Join-Path $outRoot "pptx-chart-extlst-values.json"
 Set-Content -LiteralPath $pptxChartExtLstValuesFile -Encoding ASCII -Value '[["Region","S1"],["North",10],["South",20]]'
 
@@ -840,6 +851,12 @@ $xlsxPivotData = Join-Path $outRoot "xlsx-pivot-data.xlsx"
 Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "ranges", "set", $xlsxMinimal, "--sheet", "1", "--anchor", "A1", "--data-format", "csv", "--values-file", $pivotValuesFile, "--out", $xlsxPivotData) -Label "stage:xlsx-pivot-data"
 Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "validate", $xlsxPivotData, "--strict") -Label "validate:stage:xlsx-pivot-data"
 
+$xlsxAuthoringSeed = Join-Path $outRoot "xlsx-authoring-seed.xlsx"
+$xlsxAuthoringData = Join-Path $outRoot "xlsx-authoring-data.xlsx"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "scaffold", $xlsxAuthoringSeed, "--sheet", "Sales Ops", "--force") -Label "stage:xlsx-authoring-seed"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "ranges", "set", $xlsxAuthoringSeed, "--sheet", "Sales Ops", "--range", "A1:E5", "--values-file", $authoringValuesFile, "--out", $xlsxAuthoringData) -Label "stage:xlsx-authoring-data"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "validate", $xlsxAuthoringData, "--strict") -Label "validate:stage:xlsx-authoring-data"
+
 $docxTableHash = Get-DocxTableHash -BinaryPath $BinaryPath -DocumentPath $docxTable -Table 1
 $docxBlock1Hash = Get-DocxBlockHash -BinaryPath $BinaryPath -DocumentPath $docxMinimal -Block 1
 $docxApplyBlock1Hash = Get-DocxBlockHash -BinaryPath $BinaryPath -DocumentPath $docxApplyStyles -Block 1
@@ -866,6 +883,27 @@ $scenarios = @(
         -Input $xlsxMinimal `
         -Output (Join-Path $caseDir "xlsx-ranges-set.xlsx") `
         -Arguments @("--json", "xlsx", "ranges", "set", $xlsxMinimal, "--sheet", "1", "--anchor", "A3", "--data-format", "csv", "--values-file", $rangeValuesFile, "--out", (Join-Path $caseDir "xlsx-ranges-set.xlsx"))),
+
+    (New-Scenario `
+        -Name "xlsx-ranges-set-formulas-from-scaffold" `
+        -Family "xlsx" `
+        -Input $xlsxAuthoringSeed `
+        -Output (Join-Path $caseDir "xlsx-ranges-set-formulas-from-scaffold.xlsx") `
+        -Arguments @("--json", "xlsx", "ranges", "set", $xlsxAuthoringSeed, "--sheet", "Sales Ops", "--range", "A1:E5", "--values-file", $authoringValuesFile, "--out", (Join-Path $caseDir "xlsx-ranges-set-formulas-from-scaffold.xlsx"))),
+
+    (New-Scenario `
+        -Name "xlsx-tables-create-from-scaffold" `
+        -Family "xlsx" `
+        -Input $xlsxAuthoringData `
+        -Output (Join-Path $caseDir "xlsx-tables-create-from-scaffold.xlsx") `
+        -Arguments @("--json", "xlsx", "tables", "create", $xlsxAuthoringData, "--sheet", "Sales Ops", "--range", "A1:E5", "--table", "SalesOps", "--style", "TableStyleMedium4", "--out", (Join-Path $caseDir "xlsx-tables-create-from-scaffold.xlsx"))),
+
+    (New-Scenario `
+        -Name "xlsx-conditional-formats-add-from-scaffold" `
+        -Family "xlsx" `
+        -Input $xlsxAuthoringData `
+        -Output (Join-Path $caseDir "xlsx-conditional-formats-add-from-scaffold.xlsx") `
+        -Arguments @("--json", "xlsx", "conditional-formats", "add", $xlsxAuthoringData, "--sheet", "Sales Ops", "--range", "E2:E5", "--type", "color-scale", "--cfvo", "min", "--cfvo", "percentile:50", "--cfvo", "max", "--color", "F8696B", "--color", "FFEB84", "--color", "63BE7B", "--priority", "1", "--out", (Join-Path $caseDir "xlsx-conditional-formats-add-from-scaffold.xlsx"))),
 
     (New-Scenario `
         -Name "xlsx-comments-add" `

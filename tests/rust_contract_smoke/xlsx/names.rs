@@ -427,6 +427,61 @@ fn xlsx_names_add_places_defined_names_after_sheets_and_validators_catch_bad_ord
         );
     }
 
+    let function_groups_input_path = temp_dir.join("function-groups-input.xlsx");
+    let function_groups_output_path = temp_dir.join("function-groups-named.xlsx");
+    rewrite_zip_fixture(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &function_groups_input_path,
+        |name, data| {
+            let data = if name == "xl/workbook.xml" {
+                let xml = String::from_utf8(data).expect("minimal workbook XML utf8");
+                xml.replace(
+                    "</sheets>",
+                    "</sheets><functionGroups count=\"1\"><functionGroup name=\"UserDefined\"/></functionGroups>",
+                )
+                .into_bytes()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let function_groups_input = function_groups_input_path.to_string_lossy().to_string();
+    let function_groups_output = function_groups_output_path.to_string_lossy().to_string();
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "names",
+        "add",
+        &function_groups_input,
+        "--name",
+        "AfterFunctionGroups",
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:A1",
+        "--out",
+        &function_groups_output,
+    ]);
+    assert_eq!(code, 0, "functionGroups names add exit");
+    assert_eq!(stderr, None, "functionGroups names add stderr");
+    assert!(
+        stdout.is_some(),
+        "functionGroups names add should emit JSON"
+    );
+    let function_groups_workbook = read_zip_string(&function_groups_output_path, "xl/workbook.xml");
+    let function_groups = function_groups_workbook
+        .find("<functionGroups")
+        .unwrap_or_else(|| panic!("workbook missing functionGroups:\n{function_groups_workbook}"));
+    let defined_names = function_groups_workbook.find("<definedNames").unwrap_or_else(|| {
+        panic!("workbook missing definedNames after functionGroups:\n{function_groups_workbook}")
+    });
+    assert!(
+        function_groups < defined_names,
+        "definedNames must be after functionGroups:\n{function_groups_workbook}"
+    );
+    assert_xlsx_strict_valid(&function_groups_output);
+
     let bad_order_path = temp_dir.join("bad-order.xlsx");
     rewrite_zip_fixture(
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
