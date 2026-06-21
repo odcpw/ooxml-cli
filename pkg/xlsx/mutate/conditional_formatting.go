@@ -3,6 +3,7 @@ package mutate
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -142,11 +143,21 @@ type DeleteConditionalFormatRuleRequest struct {
 	RuleSelector string
 }
 
+// ReorderConditionalFormatRuleRequest moves one cfRule to a target priority position.
+type ReorderConditionalFormatRuleRequest struct {
+	Package      opc.PackageSession
+	SheetRef     model.SheetRef
+	RuleSelector string
+	Priority     int
+}
+
 // ConditionalFormatMutationResult reports a conditional-formatting mutation.
 type ConditionalFormatMutationResult struct {
 	Sqref         string
 	Rule          ConditionalFormatRule
 	CellsAffected int
+	OldPriority   int
+	NewPriority   int
 }
 
 // ListConditionalFormats returns worksheet conditional-formatting blocks.
@@ -300,6 +311,89 @@ func findConditionalFormattingBlock(root *etree.Element, normSqref string) *etre
 		}
 	}
 	return nil
+}
+
+type conditionalFormatRuleTarget struct {
+	RuleElem      *etree.Element
+	Rule          ConditionalFormatRule
+	DocumentOrder int
+}
+
+func collectConditionalFormatRuleTargets(root *etree.Element) []conditionalFormatRuleTarget {
+	var out []conditionalFormatRuleTarget
+	globalRuleIndex := 0
+	blockIndex := 0
+	for _, cf := range namespaces.FindChildren(root, namespaces.NsSpreadsheetML, "conditionalFormatting") {
+		blockIndex++
+		sqref := cf.SelectAttrValue("sqref", "")
+		ruleIndex := 0
+		for _, ruleElem := range namespaces.FindChildren(cf, namespaces.NsSpreadsheetML, "cfRule") {
+			ruleIndex++
+			globalRuleIndex++
+			out = append(out, conditionalFormatRuleTarget{
+				RuleElem:      ruleElem,
+				Rule:          conditionalFormatRuleFromElem(ruleElem, blockIndex, ruleIndex, globalRuleIndex, sqref),
+				DocumentOrder: globalRuleIndex,
+			})
+		}
+	}
+	return out
+}
+
+func sortedConditionalFormatRuleTargets(targets []conditionalFormatRuleTarget) []conditionalFormatRuleTarget {
+	out := append([]conditionalFormatRuleTarget(nil), targets...)
+	sort.Slice(out, func(i, j int) bool {
+		a := out[i]
+		b := out[j]
+		aHasPriority := a.Rule.Priority > 0
+		bHasPriority := b.Rule.Priority > 0
+		if aHasPriority && bHasPriority && a.Rule.Priority != b.Rule.Priority {
+			return a.Rule.Priority < b.Rule.Priority
+		}
+		if aHasPriority != bHasPriority {
+			return aHasPriority
+		}
+		return a.DocumentOrder < b.DocumentOrder
+	})
+	return out
+}
+
+func selectConditionalFormatRuleTarget(targets []conditionalFormatRuleTarget, selector string) (conditionalFormatRuleTarget, error) {
+	var matches []conditionalFormatRuleTarget
+	for _, target := range targets {
+		if conditionalFormatRuleMatches(target.Rule, selector) {
+			matches = append(matches, target)
+		}
+	}
+	if len(matches) == 0 {
+		return conditionalFormatRuleTarget{}, fmt.Errorf("no conditional format rule found for %q", selector)
+	}
+	if len(matches) > 1 {
+		return conditionalFormatRuleTarget{}, fmt.Errorf("conditional format rule selector %q is ambiguous", selector)
+	}
+	return matches[0], nil
+}
+
+func findConditionalFormatRuleByPosition(blocks []ConditionalFormatBlock, blockIndex, ruleIndex int) (ConditionalFormatRule, bool) {
+	for _, block := range blocks {
+		if block.Index != blockIndex {
+			continue
+		}
+		for _, rule := range block.Rules {
+			if rule.RuleIndex == ruleIndex {
+				return rule, true
+			}
+		}
+	}
+	return ConditionalFormatRule{}, false
+}
+
+func setConditionalFormatPriorityAttr(rule *etree.Element, priority int) {
+	if attr := rule.SelectAttr("priority"); attr != nil {
+		attr.Value = strconv.Itoa(priority)
+		return
+	}
+	rule.CreateAttr("priority", strconv.Itoa(priority))
 }
 
 var validConditionalFormatCellIsOperators = map[string]bool{
@@ -830,6 +924,68 @@ func DeleteConditionalFormatRule(req *DeleteConditionalFormatRuleRequest) (*Cond
 		return nil, fmt.Errorf("failed to replace worksheet %s: %w", req.SheetRef.PartURI, err)
 	}
 	return &ConditionalFormatMutationResult{Sqref: rule.Sqref, Rule: rule, CellsAffected: sqrefCellCount(rule.Sqref)}, nil
+}
+
+// ReorderConditionalFormatRule moves one cfRule to a target priority and normalizes all priorities.
+func ReorderConditionalFormatRule(req *ReorderConditionalFormatRuleRequest) (*ConditionalFormatMutationResult, error) {
+	if req == nil {
+		return nil, fmt.Errorf("reorder conditional format request is nil")
+	}
+	selector := strings.TrimSpace(req.RuleSelector)
+	if selector == "" {
+		return nil, fmt.Errorf("--rule is required")
+	}
+	if req.Priority < 1 {
+		return nil, fmt.Errorf("--priority must be greater than zero")
+	}
+	doc, root, err := readWorksheetRoot(req.Package, req.SheetRef)
+	if err != nil {
+		return nil, err
+	}
+	targets := collectConditionalFormatRuleTargets(root)
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("worksheet has no conditional format rules")
+	}
+	if req.Priority > len(targets) {
+		return nil, fmt.Errorf("--priority must be between 1 and %d", len(targets))
+	}
+	selected, err := selectConditionalFormatRuleTarget(targets, selector)
+	if err != nil {
+		return nil, err
+	}
+
+	ordered := sortedConditionalFormatRuleTargets(targets)
+	moved := make([]conditionalFormatRuleTarget, 0, len(ordered)-1)
+	for _, target := range ordered {
+		if target.RuleElem == selected.RuleElem {
+			continue
+		}
+		moved = append(moved, target)
+	}
+	insertAt := req.Priority - 1
+	reordered := make([]conditionalFormatRuleTarget, 0, len(ordered))
+	reordered = append(reordered, moved[:insertAt]...)
+	reordered = append(reordered, selected)
+	reordered = append(reordered, moved[insertAt:]...)
+	for i, target := range reordered {
+		setConditionalFormatPriorityAttr(target.RuleElem, i+1)
+	}
+
+	blocks := conditionalFormatsFromRoot(root)
+	updated, ok := findConditionalFormatRuleByPosition(blocks, selected.Rule.BlockIndex, selected.Rule.RuleIndex)
+	if !ok {
+		return nil, fmt.Errorf("conditional format rule %q disappeared during reorder", selector)
+	}
+	if err := req.Package.ReplaceXMLPart(req.SheetRef.PartURI, doc); err != nil {
+		return nil, fmt.Errorf("failed to replace worksheet %s: %w", req.SheetRef.PartURI, err)
+	}
+	return &ConditionalFormatMutationResult{
+		Sqref:         updated.Sqref,
+		Rule:          updated,
+		CellsAffected: sqrefCellCount(updated.Sqref),
+		OldPriority:   selected.Rule.Priority,
+		NewPriority:   req.Priority,
+	}, nil
 }
 
 func findConditionalFormatRuleElement(root *etree.Element, selector string) (*etree.Element, *etree.Element, ConditionalFormatRule, error) {

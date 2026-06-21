@@ -619,3 +619,124 @@ func TestConditionalFormatsPreserveUnsupportedAndDeleteOneRule(t *testing.T) {
 		t.Fatalf("delete removed the wrong rule/block: %+v", blocks)
 	}
 }
+
+func TestConditionalFormatsReorderNormalizesPrioritiesAndPreservesPayload(t *testing.T) {
+	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main">
+  <sheetData/>
+  <conditionalFormatting sqref="A1:A5">
+    <cfRule type="expression" priority="3">
+      <formula>A1&gt;0</formula>
+      <extLst><ext uri="{keep}"><x14:id>keep-me</x14:id></ext></extLst>
+    </cfRule>
+    <cfRule type="cellIs" operator="greaterThan" priority="1">
+      <formula>5</formula>
+    </cfRule>
+  </conditionalFormatting>
+  <conditionalFormatting sqref="B1:B5">
+    <cfRule type="colorScale" priority="1">
+      <colorScale>
+        <cfvo type="min"/>
+        <cfvo type="max"/>
+        <color rgb="FFFF0000"/>
+        <color rgb="FF00FF00"/>
+      </colorScale>
+    </cfRule>
+    <cfRule type="expression">
+      <formula>B1&lt;&gt;0</formula>
+    </cfRule>
+  </conditionalFormatting>
+</worksheet>`)
+	defer pkg.Close()
+	sheet := workbook.Sheets[0]
+
+	result, err := ReorderConditionalFormatRule(&ReorderConditionalFormatRuleRequest{
+		Package:      pkg,
+		SheetRef:     sheet,
+		RuleSelector: "cfRule:1",
+		Priority:     2,
+	})
+	if err != nil {
+		t.Fatalf("ReorderConditionalFormatRule failed: %v", err)
+	}
+	if result.OldPriority != 3 || result.NewPriority != 2 {
+		t.Fatalf("unexpected priority readback: %+v", result)
+	}
+	if result.Rule.PrimarySelector != "cfRule:1" || result.Rule.Priority != 2 || len(result.Rule.Formulas) != 1 || result.Rule.Formulas[0] != "A1>0" {
+		t.Fatalf("unexpected selected rule readback: %+v", result.Rule)
+	}
+	if result.Sqref != "A1:A5" || result.CellsAffected != 5 {
+		t.Fatalf("unexpected mutation result: %+v", result)
+	}
+
+	blocks, err := ListConditionalFormats(pkg, sheet)
+	if err != nil {
+		t.Fatalf("ListConditionalFormats failed: %v", err)
+	}
+	var priorities []int
+	for _, block := range blocks {
+		for _, rule := range block.Rules {
+			priorities = append(priorities, rule.Priority)
+		}
+	}
+	if !intSlicesEqual(priorities, []int{2, 1, 3, 4}) {
+		t.Fatalf("document-order priorities = %+v, want [2 1 3 4]; blocks=%+v", priorities, blocks)
+	}
+	if blocks[1].Rules[0].ColorScale == nil || blocks[1].Rules[0].ColorScale.Colors[1].RGB != "FF00FF00" {
+		t.Fatalf("colorScale payload was not preserved: %+v", blocks[1].Rules[0])
+	}
+	raw, err := pkg.ReadRawPart(sheet.PartURI)
+	if err != nil {
+		t.Fatalf("ReadRawPart worksheet failed: %v", err)
+	}
+	if !strings.Contains(string(raw), "keep-me") {
+		t.Fatalf("unsupported ext payload was not preserved:\n%s", string(raw))
+	}
+}
+
+func TestConditionalFormatsReorderRejectsInvalidPriority(t *testing.T) {
+	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData/>
+  <conditionalFormatting sqref="A1:A5">
+    <cfRule type="expression" priority="1"><formula>A1&gt;0</formula></cfRule>
+    <cfRule type="expression" priority="2"><formula>A1&lt;0</formula></cfRule>
+  </conditionalFormatting>
+</worksheet>`)
+	defer pkg.Close()
+	sheet := workbook.Sheets[0]
+
+	for _, tc := range []struct {
+		name     string
+		priority int
+		want     string
+	}{
+		{name: "zero", priority: 0, want: "greater than zero"},
+		{name: "negative", priority: -1, want: "greater than zero"},
+		{name: "too large", priority: 3, want: "between 1 and 2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ReorderConditionalFormatRule(&ReorderConditionalFormatRuleRequest{
+				Package:      pkg,
+				SheetRef:     sheet,
+				RuleSelector: "cfRule:1",
+				Priority:     tc.priority,
+			})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q error, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func intSlicesEqual(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
