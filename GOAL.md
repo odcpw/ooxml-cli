@@ -1,531 +1,325 @@
-# Goal: First-Class Rust Port of ooxml-cli
+# GOAL: Rust-Only First-Class ooxml-cli
 
-Build a Rust implementation of `ooxml-cli` that reaches proven parity with the
-current Go implementation while becoming easier for agents and humans to extend.
-The Go CLI is the oracle. The Rust CLI is the subject. We do not claim parity
-from intention, similar-looking output, or partial smoke tests. We claim parity
-only when the proof loop says the Rust subject behaves like the Go oracle for the
-declared command surface and produces Office files that real Office can open.
+This repo is now a Rust product. The old Go implementation is deprecated reference material only.
+Do not build new behavior in Go. Do not keep measuring success as "matches Go" when Go lacks the
+feature, misses an Office failure, or encodes a historical limitation.
 
-This file is the operating charter for the Rust port. A fresh agent should be
-able to read this file, inspect the repo, and continue without needing the chat
-history.
+The product promise is simple:
 
-## Current Ground Truth
+> An agent or human can use `ooxml-cli` as a precise OOXML scalpel to create, inspect, edit, repair,
+> and verify Word, Excel, and PowerPoint files that desktop Office accepts.
 
-- Main repo path: `C:\Users\olidc\OneDrive\Desktop\Projects\ooxml-cli`.
-- Active Rust branch: `codex/ooxml-rust-port`.
-- Go reference branch: `codex/ooxml-go-reference`.
-- Current `origin/master` includes hardening commit
-  `acf3961 Fix two CFB unbounded-memory DoS bugs; harden OPC loader; add ingest fuzz harnesses`.
-- Current verification on 2026-06-20 showed `origin/master` at `acf3961`, with
-  `origin/master` and `acf3961` both ancestors of `codex/ooxml-rust-port`.
-  No master hardening merge/rebase is pending unless `origin/master` advances.
-- Rust toolchain is installed on this Windows box:
-  `rustc 1.96.0`, `cargo 1.96.0`, MSVC Build Tools with `link.exe`.
-- Go is installed: `go1.26.4 windows/amd64`.
-- .NET SDK is installed and the Open XML SDK validator builds.
-- GitHub CLI is authenticated as `odcpw`.
-- Current Rust crate:
-  - `Cargo.toml` package `ooxml-rs-port`, binary `ooxml`.
-  - `src/main.rs` is now a slim entrypoint/facade after the first
-    de-monolithization waves. Current growth pressure is in command-family
-    dispatch, capability metadata, OOXML mutation modules, and large contract
-    test shards.
-  - `tests/rust_contract_smoke.rs` contains the Go-vs-Rust contract harness.
-- Last setup checks:
-  - `cargo check --all-targets` passed.
-  - `cargo fmt --check` passed.
-  - `cargo clippy --all-targets -- -D warnings` passed.
-  - `cargo test --all-targets` passed with 5 unit tests and 235 Rust contract
-    tests after the conformance ZIP-timestamp, reference-list,
-    deep-relationship, image-payload, chart-structure, table/pivot,
-    spreadsheet semantic-reference, PPTX animation-target, chart embedded
-    workbook-open, PPTX media validation, lifecycle wrapper, relationship
-    read-error, local office-check, find-to-ops, render-diff, new-slide image
-    slot, template target, PPTX image batch-replacement, PPTX group-shape
-    delete, DOCX mixed-content field, XLSX chart style/source, and PPTX
-    clone-notes slices.
-  - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
-    green on Windows.
-  - Current capability ratchet: Go advertises 290 command paths and Rust
-    advertises the same 290-path Go-oracle subset. `ooxml conformance check`
-    is now promoted after a read-only audit confirmed parity on the previous
-    wrapper, relationship, worksheet hyperlink, and PPTX media validation
-    blockers.
-  - The conformance invariant engine was split at `951a227` into focused
-    Rust modules under `src/conformance_invariants/` for content types,
-    relationships, spec tables, XML-part checks, shared types, and utilities.
-    This is the base for the next parallel conformance worker lanes.
-  - ZIP central-directory timestamp repair checks landed in Rust after the
-    split and match the Go oracle on a synthetic invalid-timestamp workbook.
-  - Workbook/presentation reference-list repair checks landed in Rust and match
-    the Go oracle on synthetic workbook sheet, presentation slide, slide-layout
-    master, and slide-master layout relationship failures.
-  - Worksheet drawing/VML/table, workbook pivot-cache, chart external-data, and
-    drawing media relationship/content-type repair checks landed in Rust and
-    match the Go oracle on synthetic deep relationship failures.
-  - Image payload signature checks plus DOCX drawing image relationship checks
-    landed in Rust and match the Go oracle on a synthetic broken DOCX package.
-  - Chart/drawing structural checks landed in Rust for worksheet drawing anchor
-    order, chart child order, axis references, and series cache invariants.
-  - Table and pivot structural checks landed in Rust for table refs/counts,
-    table columns, pivot table/cache fields, records, and index references.
-  - Spreadsheet semantic checks landed in Rust for defined-name sheet/scope
-    references, calc-chain references, worksheet cell style references, and
-    worksheet hyperlink relationship references.
-  - PPTX animation target checks landed in Rust for missing, invalid, negative,
-    and missing-shape `spid` references.
-  - Chart embedded-workbook open checks landed in Rust and were then split into
-    `src/conformance_invariants/embedded_workbook.rs` to keep
-    `deep_relationships.rs` from regrowing into a monolith.
-  - Local `conformance check --office-check` behavior landed for the Go-shaped
-    LibreOffice/soffice compatibility check, including missing-engine and
-    unsupported-family report shapes.
-  - Open XML SDK validation and desktop PowerPoint COM open proof passed for the
-    generated `template apply` and `pptx template compile` decks.
-  - Windows edit smoke against `target/debug/ooxml.exe` passed all 52 mutation
-    scenarios with strict validation, Rust `conformance check`, Microsoft Open
-    XML SDK validation, and desktop Office COM open proof.
+That promise is stronger than "the zip parses" and stronger than "our tests are green". It means the
+file opens in the relevant Office app, the command surface is predictable for agents, and validation
+guards catch the classes of mistakes that Office rejects.
 
-## Definition of Done
+## Current Baseline
 
-The Rust port is done when all of the following are true:
-
-1. The Rust branch contains the current `master` hardening and remains current
-   with future Go safety/security fixes.
-2. Every Rust-advertised command is a strict subset of the Go oracle command
-   inventory until intentionally promoted.
-3. Every promoted Rust command matches the Go oracle for exit code, stdout JSON,
-   stderr JSON/text, error envelopes, emitted readback commands, mutation output,
-   validation behavior, serve behavior, and MCP behavior where applicable.
-4. The full supported command surface is either ported, intentionally excluded
-   with written rationale, or tracked as open debt in the status document.
-5. Rust proof gates are green:
-   - `cargo check`
-   - `cargo fmt --check`
-   - `cargo clippy --all-targets -- -D warnings`
-   - `cargo test`
-   - `cargo test --test rust_contract_smoke`
-6. Open XML proof gates are green for mutated/generated files:
-   - strict repo validation
-   - Open XML SDK schema validation
-7. Windows Office proof gates are green for relevant output files:
-   - Word opens DOCX/DOCM outputs without repair prompts.
-   - Excel opens XLSX/XLSM outputs without repair prompts.
-   - PowerPoint opens PPTX/PPTM outputs without repair prompts.
-   - Macro-enabled surfaces receive VBA-specific Office proof when touched.
-8. After the current parity goal is otherwise green, Rust supports Excel
-   conditional formatting as an explicit final feature slice. The slice must be
-   proven against the Go oracle where Go already has matching surface, or
-   against an explicitly added Go oracle slice if needed. XLSX/XLSM outputs must
-   pass strict validation, Open XML SDK validation, Excel desktop open proof, and
-   readback/round-trip checks without repair prompts.
-9. The super-heavy `$running-the-gauntlet-on-your-rust-port` certification has
-   completed before this goal is declared done: all three pillars are covered,
-   at least 10 full iterations have run, two consecutive rounds are clean, every
-   open hypothesis is resolved, and the final gauntlet artifacts exist.
-10. Rust safety polish is complete: unsafe-site classification and UB-focused
-    audit passes have either found no actionable findings or produced tracked
-    remediation with proof gates.
-11. The Rust implementation is no longer a single-file accumulation zone. The
-   monolith is split into proven, behavior-preserving modules with clear seams,
-   no command drift, and no casual reshuffling.
-12. The agent-facing CLI remains excellent: stable JSON, stdout as data, stderr
-   as diagnostics, useful errors, deterministic handles, pasteable readback
-   commands, discoverable capabilities, and no surprise interactivity.
-13. The branch is committed and pushed at stable milestones with a concise status
-    update in `docs/rust-port-status.md`.
+- Rust is the default CLI, docs, CI target, and implementation lane.
+- Go lives under `go/` as deprecated reference. Use it only for frozen historical comparison when it
+  is helpful; never let it veto a correct Rust improvement.
+- Conditional formatting exists in Rust: `xlsx conditional-formats list/show/add/delete/reorder`.
+- VBA macro creation for `.xlsm` and `.pptm` has been proven on this Windows machine through desktop
+  Office COM automation.
+- Manual Office smoke has opened generated `.docx`, `.xlsx`, and `.pptx` in Word, Excel, and
+  PowerPoint.
+- Known urgent defect: `xlsx names add` exposed an Office-rejecting workbook child-order failure
+  around `<definedNames>`. The correct CT_Workbook order is:
+  `workbookPr -> bookViews -> sheets -> definedNames -> calcPr`.
+- Known validator defect: `validate --strict` and `conformance check` must catch OOXML child-order
+  errors that desktop Office rejects, even when the Open XML SDK tier is unavailable.
 
 ## Non-Negotiables
 
-- Go is the oracle. Rust is the subject.
-- Do not run broad Go test suites after every Rust-only edit. Use targeted Go CLI
-  oracle comparisons for the command paths under port. Run broader Go tests only
-  for milestone gates, Go-side edits, frozen contract changes, or concrete
-  oracle doubt.
-- Do not claim parity unless the current evidence proves it.
-- Do not add new Rust feature surface on top of a broken proof loop.
-- Do not keep piling logic into `src/main.rs` or newly extracted accumulation
-  zones. New work must either use existing focused modules or happen as part of
-  a safe split plan.
-- Do not split the Rust monolith aesthetically. Splits must be isomorphic:
-  behavior identical, public command/API behavior identical, performance not
-  meaningfully worse, compile behavior neutral or better.
-- Do not rely on `br`, `bv`, `ntm`, or Agent Flywheel tooling in this Windows
-  workflow unless they are actually installed and verified. For now use Codex
-  subagents and normal git worktrees.
-- Treat desktop Office as a real oracle for "can users open this file?" when a
-  slice creates or mutates Office documents.
-- Prefer small, evidence-backed slices over sweeping rewrites.
+- Rust-only feature work. Go changes are limited to archival moves, build isolation, or frozen
+  reference harness maintenance.
+- Every mutating command that writes an Office package must either run strict validation or clearly
+  require an explicit skip flag.
+- "Valid" means structurally valid enough for Office, not just parseable XML.
+- Generated proof artifacts must be opened locally with desktop Office on Windows for release-grade
+  gates.
+- Keep command output useful for agents: JSON, command templates, selectors/handles, validation
+  commands, and clear diagnostics.
+- Keep code simple. Prefer small focused modules over another Rust monolith.
+- Use subagents aggressively for independent slices, but serialize integration, Office COM, and
+  full-suite gates.
+- Do not churn tests for vanity. Add tests that prevent real breakage or prove new user value.
 
-## Required Skills
+## Skills To Apply
 
-Use installed skills explicitly with `$` names when doing work under this goal:
+Use these skills intentionally, in this rough order:
 
-- `$reality-check-for-project`: periodically compare implemented code against
-  this goal, the README, and status docs.
-- `$codebase-archaeology`: map the Go implementation, Rust subject, command
-  dispatch, fixtures, and proof harness before changing unfamiliar areas.
-- `$testing-golden-artifacts`: maintain frozen Go contract artifacts and keep
-  path/date/session scrubbing deterministic on Windows.
-- `$testing-conformance-harnesses`: keep Go-vs-Rust subject/oracle/comparator
-  tests as the main correctness loop.
-- `$running-the-gauntlet-on-your-rust-port`: explicitly chosen for final
-  certification. Use `gauntlet-full` / super-heavy discipline before declaring
-  the Rust port complete: 16 phases, three pillars, minimum 10 full iterations,
-  two consecutive clean rounds, every hypothesis resolved, negative ledgers, and
-  final certification artifacts.
-- `$rust-unsafe-code-exorcist`: audit every Rust `unsafe` site if any exist,
-  classify unavoidable / perf-only / refactorable, harden remaining SAFETY
-  comments, and require proof for any safe rewrite or `safe-only` path.
-- `$rust-undefined-behavior-exorcist`: run the UB/soundness lens over the Rust
-  port and harness before release: Miri where practical, sanitizer/loom/fuzz
-  coverage where applicable, experiment ledgers for suspects, and no untracked
-  UB hypotheses.
-- `$de-monolithize-your-codebase-isomorphically`: split remaining Rust and test
-  accumulation points only through proven seams and proof gates.
-- `$simplify-and-refactor-code-isomorphically`: simplify after behavior is
-  locked by tests; no speculative rewrites.
-- `$multi-pass-bug-hunting`: run audit, fix, rescan loops on the Rust subject and
-  the harness.
-- `$agent-ergonomics-and-intuitiveness-maximization-for-cli-tools`: keep the CLI
-  excellent for agents and non-interactive automation.
-- `$testing-metamorphic`: add OOXML invariants such as validate-after-edit,
-  inspect-after-commit, unzip/rezip stability, relationship integrity,
-  content-type integrity, idempotent operations, and round-trip preservation.
-- `$testing-fuzzing`: fuzz malformed ZIP/OPC/XML edges, relationships, content
-  types, CFB/VBA, corrupted slides/sheets/docs, and known ingest boundaries.
-- `$multi-model-triangulation`: use Grok as a second-opinion reviewer for
-  architecture, de-monolithization plans, and risky parity gaps. I cannot call
-  Grok directly; generate copy-paste prompts and synthesize responses returned
-  by the user.
-- `$agent-fungibility-philosophy`: use interchangeable agents working from clear
-  slices; avoid fragile specialist bottlenecks.
+1. `$planning-workflow` for this file and milestone discipline.
+2. `$agent-fungibility-philosophy` for parallel subagent lanes with clear ownership boundaries.
+3. `$de-monolithize-your-codebase-isomorphically` before large additions touch already-large Rust
+   files.
+4. `$simplify-and-refactor-code-isomorphically` when a slice starts duplicating OOXML helpers.
+5. `$testing-conformance-harnesses` for validation, Office-open, and regression proof.
+6. `$multi-pass-bug-hunting` after each integration pass, especially on OOXML insertion/rewrite code.
+7. `$agent-ergonomics-and-intuitiveness-maximization-for-cli-tools` before finalizing new command
+   names and JSON output.
+8. `$world-class-doctor-mode-for-cli-tools` if doctor output needs to explain local Office/SDK proof
+   availability.
+9. `$readme-writing` only after behavior is real and stable.
+10. `$running-the-gauntlet-on-your-rust-port` for the final honest parity/readiness audit.
 
-## Parallel Execution Model
+## Parallel Work Model
 
-We want maximum safe parallelization. This machine has enough RAM, so read-only
-scouting and independent implementation slices should run concurrently.
+Use one integration lane and multiple worker lanes. Workers may develop and write code in separate
+worktrees. The integration lane owns conflict resolution, final command naming, Office gates, and
+commits to the main Rust branch.
 
-Use Codex subagents for parallel work. Use Grok via `$multi-model-triangulation`
-for independent review prompts when the decision is hard to reverse.
+### Integration Lane
 
-Parallelism rules:
-
-1. Split work into independent lanes: harness repair, master hardening tracking,
-   de-monolithization planning, DOCX surface, XLSX surface, PPTX surface,
-   serve/MCP surface, Office proof gates, fuzz/metamorphic gates.
-2. Read-only scouting can run aggressively in parallel.
-3. Parallel writers must use separate git worktrees or disjoint files with an
-   explicit reservation note in the handoff.
-4. Shared proof resources are serialized:
-   - full Rust test suite
-   - Office COM automation
-   - Open XML SDK validator runs on shared generated outputs
-   - branch integration and pushes
-5. Each slice must leave a clear handoff: files touched, tests run, remaining
-   risks, and whether Office proof is still needed.
-6. One integration lane merges slices, resolves conflicts, reruns proof gates,
-   and pushes stable milestones.
-7. No subagent may declare full parity from its slice alone.
-
-Suggested parallel lanes:
-
-- Lane A: Windows proof loop and golden scrubber reliability.
-- Lane B: track `master` hardening; merge/rebase only when `origin/master` is no
-  longer an ancestor of the Rust branch, then resolve conflicts safely.
-- Lane C: de-monolithization census and seam plan for current Rust/test
-  accumulation points.
-- Lane D: Rust clippy and hygiene fixes that do not change behavior.
-- Lane E: command-surface inventory gap analysis against Go capabilities.
-- Lane F: Office/Open XML proof gate smoke commands and documentation.
-- Lane G: Grok review prompts for architecture and de-monolithization choices.
-
-## Proof Ladder
-
-Use this ladder for every slice. Later gates can be skipped only when clearly
-irrelevant and the reason is written in the handoff.
-
-1. Local compile and formatting:
-   - `cargo check`
-   - `cargo fmt --check`
-2. Lint and test build:
-   - `cargo clippy --all-targets -- -D warnings`
-   - `cargo test --no-run`
-3. Targeted Rust tests:
-   - one test or command-family subset first
-   - then `cargo test --test rust_contract_smoke` when the slice affects parity
-4. Targeted Go oracle comparison:
-   - run the Go CLI for the exact command path being ported or audited
-   - compare exit code, stdout, stderr, JSON shape, and generated file behavior
-5. Open XML proof:
-   - strict repo validation
-   - Open XML SDK validator for generated/mutated Office files
-6. Desktop Office proof on Windows:
-   - Word/Excel/PowerPoint COM/open proof for risky or milestone document edits
-   - VBA/macro proof for XLSM/PPTM/DOCM surfaces
-7. Broad milestone gate:
-   - full Rust tests
-   - relevant Office smoke
-   - status doc update
-   - commit and push
-
-## Conditional Formatting Final Slice
-
-Conditional formatting is now part of the Rust port completion bar, but it
-should come after the current command-surface parity work is green enough that
-the proof loop is trusted.
-
-Scope:
-
-- Implement Rust support for creating and mutating Excel conditional formatting
-  in XLSX and XLSM files.
-- Preserve existing workbook structure, worksheets, relationships, styles,
-  content types, calc metadata, VBA parts, and unrelated formatting.
-- Support the first operationally useful set: cell/range rules, formula rules,
-  color scales, data bars, icon sets, priority ordering, stop-if-true where
-  applicable, and safe readback/inspection.
-- If the Go CLI already exposes a matching command, match it exactly. If not,
-  add the smallest Go oracle slice needed for a fair contract before promoting
-  the Rust command.
-
-Proof gates:
-
-- Go-vs-Rust oracle comparison for command output, generated file behavior, and
-  readback.
-- Strict repo validation and Open XML SDK validation.
-- Excel desktop open proof for XLSX and XLSM outputs without repair prompts.
-- Round-trip preservation: unrelated workbook parts are unchanged except for
-  known, normalized packaging differences.
-- Metamorphic checks: apply-then-readback, repeated apply idempotence where
-  intended, priority/order stability, relationship/content-type integrity, and
-  macro preservation for XLSM.
-
-## Final Rust-Port Gauntlet and Polish Bar
-
-The final goal explicitly chooses the super-heavy Rust-port gauntlet. Do not use
-this as day-to-day churn; use it as the certification lane once ordinary parity,
-Office proof, and the conditional-formatting slice are green.
-
-Required final artifacts:
-
-- `<project>__gauntlet_workspace/` or an explicitly documented equivalent.
-- `FINAL_GAUNTLET_REPORT.md`
-- `PARITY_RUNBOOK.md`
-- `RELEASE_CERTIFICATION_TEMPLATE.md`
-- Surface parity matrix / FeatureUniverse for the Rust CLI surface.
-- Conformance evidence bundle for Go-oracle parity and Office/Open XML proof.
-- Performance evidence or written rationale for why a command-family is not
-  performance-sensitive.
-- Negative ledgers for conformance, surface, and performance candidates with
-  retry-condition predicates.
-- Remediation plan for every confirmed gap, with no orphan findings.
-
-Required convergence:
-
-- `gauntlet-full` / super-heavy mode or equivalent.
-- 16 phases accounted for, even when a phase is intentionally not applicable.
-- At least 10 full iterations of the conformance/surface/performance loop.
-- Two consecutive clean rounds.
-- Every open hypothesis resolved as confirmed gap, no evidence, deferred with
-  rationale, or remediated with proof.
-
-Rust polish passes before final certification:
-
-- `$rust-unsafe-code-exorcist` for unsafe-site classification, SAFETY comments,
-  and safe-only/refactorable paths.
-- `$rust-undefined-behavior-exorcist` for Miri/UB/soundness coverage and
-  experiment-ledger discipline.
-- `$multi-pass-bug-hunting` until fix/rescan cycles stop producing meaningful
-  findings.
-- `$testing-fuzzing` and `$testing-metamorphic` for OOXML ingest/mutation
-  boundaries.
-- `$de-monolithize-your-codebase-isomorphically` and
-  `$simplify-and-refactor-code-isomorphically` for final architecture cleanup
-  after behavior is pinned.
-- `$agent-ergonomics-and-intuitiveness-maximization-for-cli-tools` before
-  release, so the finished CLI remains pleasant for agents and humans.
-
-## Windows Office Proof Policy
-
-This project manipulates Office documents. Schema validity is necessary but not
-sufficient. The files must open in the respective Office apps.
-
-Use the repository tools where possible:
-
-- `tools/windows-office-edit-smoke.ps1`
-- `tools/windows-office-vba-smoke.ps1`
-- `tools/windows-office-oracle.ps1`
-- `tools/openxml-validator/`
-
-Office proof cadence:
-
-- Fast inner loop: Rust tests plus repo strict validation.
-- Medium gate: Open XML SDK validator, skipping Office COM when the change is
-  purely internal and no new output files are created.
-- Milestone gate: desktop Office open proof for DOCX/XLSX/PPTX outputs.
-- Macro gate: Office-authored and Office-opened VBA proof for XLSM/PPTM/DOCM
-  when macro-enabled surfaces are touched.
-- Release gate: both Open XML SDK and Office COM proof, plus VBA smoke if macro
-  support is in scope.
-
-Office COM automation is a shared resource. Do not run multiple Office COM smoke
-suites concurrently.
-
-## De-Monolithization Direction
-
-The Rust implementation was allowed to pile into `src/main.rs` during
-bootstrapping. The entrypoint is now slimmed down, but the same discipline
-applies to newly extracted accumulation points.
-
-Use `$de-monolithize-your-codebase-isomorphically` before expanding major new
-feature surface. The goal is not to "make files prettier"; the goal is to make
-the Rust port safe for many agents to work on in parallel.
-
-Likely module seams to investigate, not blindly impose:
-
-- process entry, argument parsing, output/error envelope
-- capability inventory
-- OPC/ZIP package loading and saving
-- XML helpers
-- DOCX read/mutate operations
-- XLSX read/mutate operations
-- PPTX read/mutate operations
-- serve JSON-RPC session engine
-- MCP protocol surface
-- validation and diagnostics
-- command emission/readback helpers
-- test fixture helpers and contract scrubbers
-
-Rules for splitting:
-
-1. First map symbols, call clusters, shared state, and command ownership.
-2. Establish baseline gates before moving code.
-3. Extract one seam at a time.
-4. Keep facade/re-export behavior stable where needed.
-5. Do not mix code movement with behavior changes.
-6. Preserve blame where practical with mechanical moves.
-7. Run the proof ladder after each meaningful split.
-8. If a seam is not proven, leave it alone and record why.
-
-## Immediate Phase Plan
-
-### Phase 0: Freeze the Setup Baseline
-
-- Record the Windows setup facts in handoff/status.
-- Use the VS developer environment when invoking Cargo from this Codex process:
-  call `VsDevCmd.bat` and prepend `%USERPROFILE%\.cargo\bin` to PATH.
-- Confirm `dotnet build tools/openxml-validator/openxml-validator.csproj` stays
-  green.
-- Do not start feature work until Phase 1 is clean.
-
-### Phase 1: Make the Proof Loop Trustworthy
-
-Fix the proof loop before expanding Rust surface:
-
-- Fix Windows path scrubbing in the golden contract harness.
-- Normalize `diagnostics` empty-array behavior where the contract expects it, or
-  update the contract intentionally if the Go oracle changed.
-- Fix existing Clippy failures without behavior changes.
-- Ensure:
-  - `cargo check`
+- Own `GOAL.md`, branch hygiene, commits, push, and release readiness.
+- Keep subagents pointed at narrow command-family gaps.
+- Merge worker results in small batches.
+- Run the serialized gates:
   - `cargo fmt --check`
-  - `cargo clippy --all-targets -- -D warnings`
-  - `cargo test --no-run`
-  - targeted golden contract checks
+  - `cargo check --all-targets`
+  - focused `cargo test` for changed command families
+  - broad Rust test suite when stable
+  - `ooxml validate --strict`
+  - `ooxml --json conformance check`
+  - Windows Office oracle for representative generated files
 
-### Phase 2: Track Current Go Hardening
+### Worker A: XLSX Core Authoring
 
-- Verify current `origin/master` is an ancestor of `codex/ooxml-rust-port`.
-- Merge or rebase only if new `origin/master` hardening is not yet present.
-- Preserve Go as oracle and avoid broad Go churn.
-- Resolve conflicts with priority on security and ingest hardening.
-- Re-run relevant Rust and Go-oracle checks.
+Own XLSX from-nothing and spreadsheet authoring gaps:
 
-### Phase 3: De-Monolithize Safely
+- Implement pure Rust `xlsx` scaffold creation without desktop Office.
+- Add table creation, not just append-to-existing-table.
+- Prove formulas written by `xlsx cells set` and range commands preserve formula XML correctly.
+- Ensure formula writes set recalc state and do not leave stale cached values that mislead Excel.
+- Ensure pivots, tables, formulas, conditional formats, comments, freeze panes, styles, hyperlinks,
+  and data validations can coexist in one generated workbook.
+- Add Office-open proof for a generated `.xlsx` with formulas, a table, conditional formatting, and
+  a pivot/table-derived view.
 
-- Run a monolith census of Rust files and tests.
-- Produce a seam plan for the current Rust and contract-test accumulation
-  points.
-- Generate Grok review prompt for the seam plan if the split strategy is not
-  obvious.
-- Extract the first proven seams with no behavior change.
-- Keep tests green after each extraction.
+### Worker B: DOCX Authoring
 
-### Phase 4: Command Surface Expansion
+Own Word from-nothing and block construction:
 
-- Compare Go and Rust capability inventories.
-- Pick the next high-value command family based on agent utility and Office risk.
-- Port by command path, not vague module mirroring.
-- For each command path, add Go-vs-Rust parity cases and status-doc updates.
+- Implement pure Rust `docx` scaffold creation.
+- Add real block constructors for paragraphs, headings, lists, tables, and styled runs where the
+  current surface is mutation-only.
+- Ensure style creation/application is usable from commands and JSON.
+- Prove generated `.docx` opens in Word and survives strict validation/conformance.
+- Avoid giant XML string blobs when a reusable document builder helper is warranted.
 
-### Phase 5: Office and Metamorphic Hardening
+### Worker C: PPTX Authoring
 
-- Add Office proof for risky document mutations.
-- Add metamorphic tests for OOXML invariants.
-- Add fuzz targets for malformed packages and ingestion boundaries.
-- Keep fuzz and Office results as gates for release, not vague confidence.
+Own PowerPoint creation and fragile template areas:
 
-### Phase 6: Milestone Commit and Push
+- Implement pure Rust `pptx` scaffold creation.
+- Harden `pptx template capture` against real decks where shapes exist but the expected `spTree`
+  lookup path fails.
+- Make footer field updates visible by synthesizing missing footer placeholders when requested.
+- Ensure table/text/chart placement from XLSX works on generated decks, not only fixtures.
+- Prove generated `.pptx` opens in PowerPoint and survives strict validation/conformance.
 
-- Update `docs/rust-port-status.md`.
-- Commit only coherent milestones.
-- Push to `origin/codex/ooxml-rust-port`.
-- Leave a concise handoff: what is proven, what remains, and which command slice
-  should be next.
+### Worker D: Repair, Normalize, and Validation
 
-## How to Use Grok
+Own the safety rails:
 
-Use `$multi-model-triangulation` for copy-paste prompts to Grok when:
+- Add or improve `repair`/`normalize` behavior for recoverable OOXML ordering and relationship
+  problems that block unrelated edits.
+- Ensure `validate --strict` catches Office-rejecting child-element ordering for workbook, worksheet,
+  presentation, slides, charts, tables, pivots, and any other locally modeled package parts.
+- Keep `conformance check` as the deeper package proof, with optional Office-open tier.
+- Add focused tests for every validator false-confidence bug discovered.
+- Current first target: workbook `<definedNames>` ordering must be caught by both `validate --strict`
+  and `conformance check`.
 
-- choosing the de-monolithization architecture,
-- evaluating whether a parity gap is real or harness noise,
-- reviewing a risky Office/VBA mutation strategy,
-- deciding between command-surface priorities.
+### Worker E: Diff and Conversion Ergonomics
 
-The prompt should include:
+Own agent-facing sharp edges:
 
-- the relevant files and line references,
-- the Go oracle behavior,
-- the Rust subject behavior,
-- the proposed change,
-- exact proof gates,
-- a request to be critical and identify hidden risks.
+- Fix XLSX diff so renamed sheets still cell-align using stable identity such as sheetId, relationship
+  id, or part URI when names change.
+- Add discoverable conversion aliases where behavior already exists, for example `.xlsm` to `.xlsx`
+  as a macro-removal/save-as workflow.
+- Keep JSON output explicit about what changed, what was removed, and what proof command to run.
 
-Paste Grok's response back into the current Codex thread. Codex synthesizes the
-recommendation and implements only the parts that survive evidence.
+### Worker F: CLI Ergonomics and Docs
 
-## Handoff Format for Subagents
+Own the human/agent surface:
 
-Every subagent or parallel lane should report:
+- Review new commands for predictable names, required flags, examples, and JSON shape.
+- Update capabilities so agents can discover from-scratch creation and safety commands.
+- Keep README short, honest, and operational.
+- Avoid docs that advertise features before they pass local proof gates.
 
-```text
-Lane:
-Files read:
-Files changed:
-Command paths affected:
-Proof run:
-Office/Open XML proof:
-Known risks:
-Next suggested action:
-```
+## Implementation Priorities
 
-If a lane changes code, it must also report whether it touched:
+### Milestone 0: Stabilize The Current Branch
 
-- command output shape,
-- file mutation behavior,
-- validation behavior,
-- serve/MCP behavior,
-- Office-openability risk,
-- the capability inventory.
+- Keep the Rust-default commits.
+- Keep the Windows VBA helper fallback fix.
+- Fix the workbook child-order validator gap.
+- Run focused tests for XLSX names and validation.
+- Commit and push a stable checkpoint.
 
-## Do Not Forget
+### Milestone 1: Pure Package Scaffolds
 
-- The user wants a first-class `ooxml-cli`, not endless harness churn.
-- Harness work is justified only when it makes the port safer, faster to prove,
-  or easier for agents to use.
-- The Rust port must become modular before it grows much further.
-- Windows Office is available; use it as proof for real document openability.
-- Parallelism is desired, but correctness gates decide what lands.
-- Commit and push stable milestones when the evidence is clean.
+Add from-nothing creation for:
+
+- `.xlsx`: workbook, workbook rels, content types, one sheet, styles baseline, calc settings.
+- `.docx`: document, relationships, content types, body, section properties, minimal styles if useful.
+- `.pptx`: presentation, slide master/layout, one slide, relationships, content types, theme baseline.
+
+Acceptance:
+
+- Each scaffold validates strictly.
+- Each scaffold passes conformance check.
+- Each scaffold opens in the corresponding desktop Office app on this Windows host.
+- Each scaffold can be used as input to existing mutation commands.
+
+### Milestone 2: XLSX First-Class Authoring
+
+Add and prove:
+
+- Table creation.
+- Formula authoring with calc invalidation/recalc proof.
+- Conditional formatting in a from-scratch workbook.
+- Pivot/table/formula coexistence.
+- Office-open proof for a generated workbook that uses a realistic mix of features.
+
+Acceptance:
+
+- Excel opens the generated workbook without repair prompts.
+- Formula cells are formulas, not only cached literals.
+- Validation catches stale/order-invalid workbook XML.
+
+### Milestone 3: DOCX First-Class Authoring
+
+Add and prove:
+
+- Create document from scratch.
+- Append/insert block commands that build paragraphs, headings, lists, and tables.
+- Style application suitable for template adaptation work.
+
+Acceptance:
+
+- Word opens generated documents.
+- Existing mutation commands work on generated documents.
+- No giant monolith accumulates in DOCX code.
+
+### Milestone 4: PPTX First-Class Authoring
+
+Add and prove:
+
+- Create presentation from scratch.
+- Add slides and place text, tables, and charts.
+- Synthesize visible footer placeholders when fields require them.
+- Harden template capture on real-world decks.
+
+Acceptance:
+
+- PowerPoint opens generated decks.
+- Existing table/chart/text commands work on generated decks.
+- Template capture fails with actionable diagnostics or succeeds; no misleading "missing spTree"
+  when shapes are present.
+
+### Milestone 5: Repair, Diff, Convert
+
+Add and prove:
+
+- Repair/normalize for common safe OOXML ordering and relationship issues.
+- Diff aligns renamed sheets by stable identity.
+- Conversion aliases for common workflows, especially macro removal/save-as.
+
+Acceptance:
+
+- Broken-but-recoverable packages can be normalized before edit.
+- Diff reports real cell changes across sheet renames.
+- Conversion commands are discoverable through capabilities and README.
+
+### Milestone 6: Gauntlet
+
+Run the honest release-readiness pass:
+
+- Full Rust test suite.
+- Conformance check on representative generated and mutated artifacts.
+- Windows Office open proof for `.docx`, `.xlsx`, `.xlsm`, `.pptx`, and `.pptm` where applicable.
+- Doctor output reviewed for local SDK/Office availability.
+- README is short and matches reality.
+- No stale TODO docs, dead scripts, or Go-first references remain in the active path.
+
+## Current Gap Ledger
+
+The following findings are treated as live work until closed by code and proof:
+
+1. No pure from-nothing scaffold for `.docx`, `.xlsx`, or `.pptx`.
+2. XLSX tables can append/update existing tables but lack a create verb.
+3. Formula-heavy workbook proof is incomplete, especially around recalc/cache invalidation and Office
+   open behavior.
+4. DOCX authoring is still too mutation-oriented and lacks a clean block construction layer.
+5. PPTX template capture may fail on real decks with present shapes but unexpected tree layout.
+6. No repair/normalize command for safe recoverable OOXML issues.
+7. PPTX footer field setting creates metadata but not visible missing footer placeholders.
+8. XLSM-to-XLSX works through VBA removal but needs a clear conversion alias.
+9. XLSX diff aligns sheets by name, so renamed sheets do not cell-align.
+10. Validator false confidence: modeled schema child ordering must be checked locally, starting with
+    workbook `<definedNames>` placement.
+
+## Proof Rules
+
+Every new feature lands with:
+
+- A focused Rust integration test.
+- A saved-readback assertion through the CLI where possible.
+- `validate --strict` success for generated outputs.
+- `conformance check` success for generated outputs.
+- A negative test for at least one realistic broken case when adding validator coverage.
+- Office-open proof for release-grade artifact families on Windows.
+
+Office COM gates are serialized. Rust unit/integration tests can run in parallel. Subagents can work
+in parallel worktrees, but integration commits must stay small enough to review.
+
+## Generated Artifact Matrix
+
+The repo needs a command-to-artifact proof matrix. This is how bugs like invalid workbook child order
+stop slipping through.
+
+Scope the matrix around public user-facing commands, not every private Rust helper. Internal helper
+tests are useful, but users care whether `ooxml xlsx names add ... --out file.xlsx` creates a file
+that Excel can open.
+
+Each mutating command family should have at least one row with:
+
+- The exact CLI command.
+- The input fixture type: scaffold, clean fixture, realistic fixture, or intentionally damaged file.
+- The generated output path.
+- Structural assertions against the OOXML part most likely to break.
+- Saved-readback through the CLI.
+- `validate --strict`.
+- `conformance check`.
+- Office-open status for representative rows.
+- Golden/semantic snapshot where the output structure is complex enough that field assertions are
+  too weak.
+
+Coverage target:
+
+- Fast CI: all mutators get structural/readback/validate/conformance proof where practical.
+- Local Windows release gate: representative generated files for every Office family open in desktop
+  Word, Excel, and PowerPoint.
+- Nightly/deep gate: broader Office-open matrix across command families, serialized to avoid COM
+  flakiness.
+
+The matrix must be able to answer:
+
+- Which commands create or mutate files?
+- Which commands are proven on from-scratch scaffolds?
+- Which commands are proven on realistic files?
+- Which commands have Office-open proof?
+- Which commands only have parser-level proof and need a stronger row?
+
+## Commit Discipline
+
+- Commit stable milestones.
+- Push after meaningful green checkpoints.
+- Mention Office proof status in commit messages or follow-up notes when it is part of the change.
+- Keep generated manual artifacts out of git unless they are deliberate small fixtures.
+- Do not hide failures behind `--no-validate`; use it only for diagnosed pre-existing package damage
+  and then add repair/normalize work if the pattern matters.

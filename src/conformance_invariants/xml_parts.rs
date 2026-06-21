@@ -24,7 +24,10 @@ pub(super) fn check_part_xml_invariants(file: &str, part: &PartInfo) -> CliResul
             "workbook",
             SPREADSHEETML_NAMESPACE,
             "XLSX_WORKBOOK_ROOT",
-            None,
+            Some((
+                "XLSX_WORKBOOK_CHILD_ORDER",
+                workbook_child_order as fn(&str) -> usize,
+            )),
         )),
         CONTENT_TYPE_XLSX_SHARED_STRINGS => Some((
             "shared strings",
@@ -475,6 +478,33 @@ fn worksheet_child_order(name: &str) -> usize {
             "controls",
             "webPublishItems",
             "tableParts",
+            "extLst",
+        ],
+    )
+}
+
+fn workbook_child_order(name: &str) -> usize {
+    order_index(
+        name,
+        &[
+            "fileVersion",
+            "fileSharing",
+            "workbookPr",
+            "workbookProtection",
+            "bookViews",
+            "sheets",
+            "functionGroups",
+            "externalReferences",
+            "definedNames",
+            "calcPr",
+            "oleSize",
+            "customWorkbookViews",
+            "pivotCaches",
+            "smartTagPr",
+            "smartTagTypes",
+            "webPublishing",
+            "fileRecoveryPr",
+            "webPublishObjects",
             "extLst",
         ],
     )

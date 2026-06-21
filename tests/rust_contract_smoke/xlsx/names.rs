@@ -374,6 +374,114 @@ fn xlsx_names_mutations_match_go_oracle_and_saved_readback() {
 }
 
 #[test]
+fn xlsx_names_add_places_defined_names_after_sheets_and_validators_catch_bad_order() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-names-order-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let input_path = temp_dir.join("input.xlsx");
+    let output_path = temp_dir.join("named.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input_path).expect("stage input");
+    let input = input_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "names",
+        "add",
+        &input,
+        "--name",
+        "SalesData",
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--out",
+        &output,
+    ]);
+    assert_eq!(code, 0, "names add exit");
+    assert_eq!(stderr, None, "names add stderr");
+    assert!(
+        stdout.is_some(),
+        "names add should emit a success report"
+    );
+
+    let workbook_xml = read_zip_string(&output_path, "xl/workbook.xml");
+    let sheets_end = workbook_xml
+        .find("</sheets>")
+        .unwrap_or_else(|| panic!("workbook missing </sheets>:\n{workbook_xml}"));
+    let defined_names = workbook_xml
+        .find("<definedNames")
+        .unwrap_or_else(|| panic!("workbook missing <definedNames>:\n{workbook_xml}"));
+    assert!(
+        sheets_end < defined_names,
+        "definedNames must be after sheets:\n{workbook_xml}"
+    );
+    if let Some(calc_pr) = workbook_xml.find("<calcPr") {
+        assert!(
+            defined_names < calc_pr,
+            "definedNames must be before calcPr:\n{workbook_xml}"
+        );
+    }
+
+    let bad_order_path = temp_dir.join("bad-order.xlsx");
+    rewrite_zip_fixture(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &bad_order_path,
+        |name, data| {
+            let data = if name == "xl/workbook.xml" {
+                br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <workbookPr/>
+  <definedNames><definedName name="SalesData">Sheet1!$A$1:$B$2</definedName></definedNames>
+  <bookViews><workbookView activeTab="0"/></bookViews>
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+  <calcPr calcId="191029"/>
+</workbook>"#
+                .to_vec()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let bad_order = bad_order_path.to_string_lossy().to_string();
+    for args in [
+        vec!["--json", "--strict", "validate", &bad_order],
+        vec!["--json", "conformance", "check", &bad_order],
+    ] {
+        let (code, report, stderr) = run_ooxml(&args);
+        assert_ne!(code, 0, "{args:?} should reject bad workbook order");
+        assert_eq!(stderr, None, "{args:?} stderr");
+        let report = report.unwrap_or_else(|| panic!("{args:?} should emit JSON"));
+        assert!(
+            json_contains_diagnostic_code(&report, "XLSX_WORKBOOK_CHILD_ORDER"),
+            "{args:?} did not report workbook child order:\n{report:#}"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn json_contains_diagnostic_code(value: &Value, code: &str) -> bool {
+    match value {
+        Value::Object(map) => {
+            map.get("code").and_then(Value::as_str) == Some(code)
+                || map
+                    .values()
+                    .any(|child| json_contains_diagnostic_code(child, code))
+        }
+        Value::Array(items) => items
+            .iter()
+            .any(|child| json_contains_diagnostic_code(child, code)),
+        _ => false,
+    }
+}
+
+#[test]
 fn xlsx_names_dry_run_and_errors_match_go_oracle() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-names-errors-{}",
