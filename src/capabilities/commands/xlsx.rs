@@ -18,6 +18,7 @@ const COMMAND_GROUP_REASON: &str = "it is a command group, not a leaf mutation c
 
 pub(super) fn commands() -> Vec<Value> {
     let mut commands = group_commands();
+    commands.extend(scaffold_commands());
     commands.extend(structure::commands());
     commands.extend(charts::commands());
     commands.extend(comments::commands());
@@ -30,6 +31,32 @@ pub(super) fn commands() -> Vec<Value> {
     commands.extend(ranges_cells::commands());
     commands.extend(freeze::commands());
     commands
+}
+
+fn scaffold_commands() -> Vec<Value> {
+    vec![capability_command(
+        "ooxml xlsx scaffold",
+        "scaffold <output.xlsx>",
+        "Create a minimal XLSX workbook from scratch and validate it by default.",
+        &["package", "sheet"],
+        false,
+        Some("it creates a package and is not an apply/serve mutation op"),
+        vec![
+            flag("--sheet", "sheet", "string", "initial worksheet name"),
+            flag(
+                "--force",
+                "force",
+                "bool",
+                "replace an existing output file",
+            ),
+            flag(
+                "--no-validate",
+                "noValidate",
+                "bool",
+                "skip post-write strict validation",
+            ),
+        ],
+    )]
 }
 
 fn group_commands() -> Vec<Value> {

@@ -6,8 +6,8 @@ pub(crate) use cells::{
     xlsx_cells_set, xlsx_cells_set_batch,
 };
 pub(crate) use format::{
-    XlsxRangesSetFormatOptions, XlsxRangesSetStyleOptions, xlsx_ranges_set_format,
-    xlsx_ranges_set_style,
+    XlsxRangesSetFormatOptions, XlsxRangesSetStyleOptions, default_xlsx_styles_xml,
+    xlsx_ranges_set_format, xlsx_ranges_set_style,
 };
 pub(crate) use ranges::{
     XlsxRangesSetOptions, parse_xlsx_matrix_cell, parse_xlsx_range_set_matrix,

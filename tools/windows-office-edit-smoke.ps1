@@ -847,6 +847,13 @@ $docxComment0Hash = Get-DocxCommentHash -BinaryPath $BinaryPath -DocumentPath $d
 
 $scenarios = @(
     (New-Scenario `
+        -Name "xlsx-scaffold" `
+        -Family "xlsx" `
+        -Input "" `
+        -Output (Join-Path $caseDir "xlsx-scaffold.xlsx") `
+        -Arguments @("--json", "xlsx", "scaffold", (Join-Path $caseDir "xlsx-scaffold.xlsx"), "--sheet", "OfficeScaffold")),
+
+    (New-Scenario `
         -Name "xlsx-cells-set" `
         -Family "xlsx" `
         -Input $xlsxMinimal `

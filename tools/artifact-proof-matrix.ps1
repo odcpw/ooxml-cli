@@ -249,6 +249,9 @@ function Get-InputFixtureType {
     $reason = [string](Get-PropertyValue -Object $Command -Name "opIneligibleReason")
     $text = "$path $use $reason".ToLowerInvariant()
 
+    if ($path -match '^ooxml (docx|xlsx|pptx) scaffold$') {
+        return "scaffold"
+    }
     if ($path -eq "ooxml vba create") {
         return "source modules"
     }
@@ -272,6 +275,9 @@ function Test-PublicPackageMutator {
     $hasPackageWriteFlags = (Test-HasAnyFlag -FlagNames $flagNames -Needles @("--out", "--in-place")) -and (Test-HasAnyFlag -FlagNames $flagNames -Needles @("--dry-run", "--in-place"))
     $opCompatible = [bool](Get-PropertyValue -Object $Command -Name "opCompatible")
 
+    if ($path -match '^ooxml (docx|xlsx|pptx) scaffold$') {
+        return $true
+    }
     if ($path -eq "ooxml vba create" -or $path -eq "ooxml pptx template compile") {
         return $true
     }
@@ -341,6 +347,9 @@ function Get-MutationKind {
     param([object]$Command)
 
     $path = [string](Get-PropertyValue -Object $Command -Name "path")
+    if ($path -match '^ooxml (docx|xlsx|pptx) scaffold$') {
+        return "create-package"
+    }
     if ($path -eq "ooxml vba create" -or $path -eq "ooxml pptx template compile") {
         return "create-package"
     }
@@ -768,9 +777,13 @@ function Import-OfficeEditSmokeEvidence {
                     $tiers.Remove($tierName)
                 }
             }
+            $fixtureType = "office edit smoke fixture"
+            if ($commandPath -match '^ooxml (docx|xlsx|pptx) scaffold$') {
+                $fixtureType = "scaffold"
+            }
             $item = [pscustomobject][ordered]@{
                 commandPath = $commandPath
-                inputFixtureType = "office edit smoke fixture"
+                inputFixtureType = $fixtureType
                 generatedOutputPath = $output
                 exactCommand = $commandLine
                 sourceSummary = $resolved

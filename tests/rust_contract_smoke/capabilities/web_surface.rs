@@ -106,6 +106,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         assert_command(&all_caps, path, false);
     }
     assert_command(&all_caps, "ooxml docx scaffold", false);
+    assert_command(&all_caps, "ooxml xlsx scaffold", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx fields insert", true);
     assert_command(&all_caps, "ooxml docx fields set-result", true);
@@ -207,6 +208,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command_target_kind(&all_caps, "ooxml convert xlsm-to-xlsx", "package");
     assert_object_kind_command(&all_caps, "package", "ooxml docx scaffold");
     assert_command_target_kind(&all_caps, "ooxml docx scaffold", "package");
+    assert_object_kind_command(&all_caps, "package", "ooxml xlsx scaffold");
+    assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx scaffold");
+    assert_command_target_kind(&all_caps, "ooxml xlsx scaffold", "package");
+    assert_command_target_kind(&all_caps, "ooxml xlsx scaffold", "sheet");
     for path in [
         "ooxml vba add-module",
         "ooxml vba replace-module",
@@ -816,6 +821,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&package_caps, "ooxml template apply", true);
     assert_command(&package_caps, "ooxml convert xlsm-to-xlsx", false);
     assert_command(&package_caps, "ooxml docx scaffold", false);
+    assert_command(&package_caps, "ooxml xlsx scaffold", false);
     assert_no_command(&package_caps, "ooxml docx blocks");
 
     let (convert_code, convert_stdout, convert_stderr) =
@@ -831,6 +837,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(xlsx_code, 0);
     assert_eq!(xlsx_stderr, None);
     let xlsx_caps = xlsx_stdout.expect("xlsx capabilities");
+    assert_command(&xlsx_caps, "ooxml xlsx scaffold", false);
     assert_command(&xlsx_caps, "ooxml xlsx sheets list", false);
     assert_command(&xlsx_caps, "ooxml xlsx sheets show", false);
     assert_command(&xlsx_caps, "ooxml xlsx sheets add", true);

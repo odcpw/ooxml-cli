@@ -17,6 +17,7 @@ const DOCX_PARENT_GROUP_COMMANDS: &[&str] = &[
 const RUST_ONLY_CAPABILITY_PATHS: &[&str] = &[
     "ooxml convert xlsm-to-xlsx",
     "ooxml docx scaffold",
+    "ooxml xlsx scaffold",
     "ooxml xlsx tables create",
 ];
 

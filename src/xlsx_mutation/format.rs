@@ -6,6 +6,7 @@ mod styles_part;
 mod styles_xml;
 
 pub(crate) use style::{XlsxRangesSetStyleOptions, xlsx_ranges_set_style};
+pub(crate) use styles_part::default_xlsx_styles_xml;
 
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -26,7 +27,7 @@ use crate::{
 use num_formats_xml::ensure_xlsx_number_format;
 use number_format::resolve_xlsx_number_format;
 use style_xfs::ensure_xlsx_cell_style;
-use styles_part::{default_xlsx_styles_xml, resolve_or_add_xlsx_styles_part};
+use styles_part::resolve_or_add_xlsx_styles_part;
 
 pub(crate) struct XlsxRangesSetFormatOptions<'a> {
     pub(crate) sheet: &'a str,

@@ -52,6 +52,7 @@ mod validation;
 mod validation_pptx;
 mod vba;
 mod verify;
+mod xlsx_authoring;
 mod xlsx_charts;
 mod xlsx_comments;
 mod xlsx_conditional_formatting;
@@ -191,6 +192,7 @@ pub(crate) use template_workflow::{
     template_apply, template_profile_inspect, template_profile_save, template_tokens,
 };
 pub(crate) use validation::{validate, validate_exit_code};
+pub(crate) use xlsx_authoring::{XlsxScaffoldOptions, xlsx_scaffold};
 pub(crate) use xlsx_charts::{
     XlsxChartConvertTypeOptions, XlsxChartCopyStyleOptions, XlsxChartCreateOptions,
     XlsxChartSetAxisOptions, XlsxChartSetFillOptions, XlsxChartSetLegendOptions,
@@ -245,7 +247,7 @@ pub(crate) use xlsx_model::{
     xlsx_dimension_declared, xlsx_merged_cell_count, xlsx_sheet_selectors, xlsx_styles,
 };
 pub(crate) use xlsx_mutation::{
-    XlsxCellsSetOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions,
+    XlsxCellsSetOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions, default_xlsx_styles_xml,
     validate_xlsx_mutation_output_flags, xlsx_cells_set, xlsx_range_destination_json,
     xlsx_ranges_set, xlsx_ranges_set_format,
 };

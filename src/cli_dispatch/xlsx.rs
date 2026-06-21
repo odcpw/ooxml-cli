@@ -31,10 +31,24 @@ use self::ranges::dispatch_xlsx_ranges;
 use self::sheets::dispatch_xlsx_sheets;
 use self::tables::dispatch_xlsx_tables;
 use self::workbook::dispatch_xlsx_workbook;
+use crate::cli_args::{has_flag, parse_string_flag, reject_unknown_flags};
 use crate::cli_core::{CliError, CliResult};
+use crate::{XlsxScaffoldOptions, xlsx_scaffold};
 
 pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
     match args {
+        [family, verb, output, rest @ ..] if family == "xlsx" && verb == "scaffold" => {
+            reject_unknown_flags(rest, &["--sheet"], &["--force", "--no-validate"])?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            xlsx_scaffold(
+                output,
+                XlsxScaffoldOptions {
+                    sheet: sheet.as_deref(),
+                    force: has_flag(rest, "--force"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                },
+            )
+        }
         [family, group, ..] if family == "xlsx" && group == "ranges" => dispatch_xlsx_ranges(args),
         [family, group, ..] if family == "xlsx" && group == "workbook" => {
             dispatch_xlsx_workbook(args)

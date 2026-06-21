@@ -2,6 +2,7 @@
 // test crate navigable while preserving the shared oracle/fixture helpers above.
 use super::*;
 
+include!("xlsx/scaffold.rs");
 include!("xlsx/ranges_cells.rs");
 
 #[test]
