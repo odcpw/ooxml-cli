@@ -15,6 +15,12 @@ Latest milestone, 2026-06-20:
   the existing command order. Proof: `cargo fmt --check`, `cargo check
   --all-targets`, `cargo clippy --all-targets -- -D warnings`, and the full
   `capabilities` Rust contract shard with 8 passed tests.
+- The XLSX capability catalog was split along the same proven seam, keeping the
+  existing table module in-order and moving the remaining leaf metadata into
+  focused modules under `src/capabilities/commands/xlsx/`. Proof: `cargo
+  fmt --check`, `cargo check --all-targets`, `cargo clippy --all-targets --
+  -D warnings`, and the full `capabilities` Rust contract shard with 8 passed
+  tests.
 - Rust agent-facing composition and proof ergonomics moved forward after
   command-path parity: `find --to-ops`, `find --replace --to-ops`, and
   `find --replace --apply` now emit/apply structured XLSX/DOCX/PPTX ops;
