@@ -15,6 +15,7 @@ use crate::{
 
 mod color_scale;
 mod data_bar;
+mod icon_set;
 mod sqref;
 mod xml_support;
 
@@ -24,6 +25,9 @@ use color_scale::{
 };
 use data_bar::{
     ConditionalFormatDataBar, data_bar_json, parse_data_bar, render_data_bar, validate_data_bar,
+};
+use icon_set::{
+    ConditionalFormatIconSet, icon_set_json, parse_icon_set, render_icon_set, validate_icon_set,
 };
 use sqref::{normalize_sqref, sqref_cell_count};
 use xml_support::{
@@ -54,6 +58,7 @@ struct ConditionalFormatRule {
     stop_if_true: bool,
     color_scale: Option<ConditionalFormatColorScale>,
     data_bar: Option<ConditionalFormatDataBar>,
+    icon_set: Option<ConditionalFormatIconSet>,
 }
 
 #[derive(Clone, Copy)]
@@ -155,7 +160,7 @@ pub(crate) fn xlsx_conditional_formats_add(
             }
             if !options.cfvo.is_empty() || !options.colors.is_empty() {
                 return Err(CliError::invalid_args(
-                    "--cfvo and --color are only valid with --type color-scale or data-bar",
+                    "--cfvo and --color are only valid with --type color-scale, data-bar, or icon-set",
                 ));
             }
         }
@@ -165,7 +170,7 @@ pub(crate) fn xlsx_conditional_formats_add(
             }
             if !options.cfvo.is_empty() || !options.colors.is_empty() {
                 return Err(CliError::invalid_args(
-                    "--cfvo and --color are only valid with --type color-scale or data-bar",
+                    "--cfvo and --color are only valid with --type color-scale, data-bar, or icon-set",
                 ));
             }
         }
@@ -213,9 +218,31 @@ pub(crate) fn xlsx_conditional_formats_add(
                 ));
             }
         }
+        "iconSet" => {
+            if options.formula.is_some() || options.has_formula2 {
+                return Err(CliError::invalid_args(
+                    "--formula and --formula2 are not valid with --type icon-set",
+                ));
+            }
+            if options.has_stop_if_true {
+                return Err(CliError::invalid_args(
+                    "--stop-if-true is not valid with --type icon-set",
+                ));
+            }
+            if options.dxf_id.is_some() {
+                return Err(CliError::invalid_args(
+                    "--dxf-id is not valid with --type icon-set",
+                ));
+            }
+            if options.colors.iter().any(|value| value.trim() != "[]") {
+                return Err(CliError::invalid_args(
+                    "--color is not valid with --type icon-set",
+                ));
+            }
+        }
         _ => {
             return Err(CliError::invalid_args(
-                "--type must be expression, cell-is, cellIs, color-scale, colorScale, data-bar, or dataBar",
+                "--type must be expression, cell-is, cellIs, color-scale, colorScale, data-bar, dataBar, icon-set, or iconSet",
             ));
         }
     }
@@ -429,6 +456,9 @@ fn conditional_format_rule_json(rule: &ConditionalFormatRule) -> Value {
     if let Some(data_bar) = rule.data_bar.as_ref() {
         object.insert("dataBar".to_string(), data_bar_json(data_bar));
     }
+    if let Some(icon_set) = rule.icon_set.as_ref() {
+        object.insert("iconSet".to_string(), icon_set_json(icon_set));
+    }
     Value::Object(object)
 }
 
@@ -444,6 +474,7 @@ fn add_conditional_format_xml(
     let mut formulas = Vec::<String>::new();
     let mut color_scale = None;
     let mut data_bar = None;
+    let mut icon_set = None;
     match rule_type.as_str() {
         "expression" => {
             if formula.is_empty() {
@@ -461,7 +492,7 @@ fn add_conditional_format_xml(
             }
             if !options.cfvo.is_empty() || !options.colors.is_empty() {
                 return Err(CliError::invalid_args(
-                    "--cfvo and --color are only valid with --type color-scale or data-bar",
+                    "--cfvo and --color are only valid with --type color-scale, data-bar, or icon-set",
                 ));
             }
             formulas.push(formula.to_string());
@@ -472,7 +503,7 @@ fn add_conditional_format_xml(
             }
             if !options.cfvo.is_empty() || !options.colors.is_empty() {
                 return Err(CliError::invalid_args(
-                    "--cfvo and --color are only valid with --type color-scale or data-bar",
+                    "--cfvo and --color are only valid with --type color-scale, data-bar, or icon-set",
                 ));
             }
             operator = options.operator.unwrap_or_default().trim().to_string();
@@ -544,9 +575,34 @@ fn add_conditional_format_xml(
             let colors = parse_conditional_format_color_flags(&options.colors);
             data_bar = Some(validate_data_bar(&cfvo, &colors)?);
         }
+        "iconSet" => {
+            if options.formula.is_some() || options.has_formula2 {
+                return Err(CliError::invalid_args(
+                    "--formula and --formula2 are not valid with --type icon-set",
+                ));
+            }
+            if options.has_stop_if_true {
+                return Err(CliError::invalid_args(
+                    "--stop-if-true is not valid with --type icon-set",
+                ));
+            }
+            if options.dxf_id.is_some() {
+                return Err(CliError::invalid_args(
+                    "--dxf-id is not valid with --type icon-set",
+                ));
+            }
+            if options.colors.iter().any(|value| value.trim() != "[]") {
+                return Err(CliError::invalid_args(
+                    "--color is not valid with --type icon-set",
+                ));
+            }
+            let cfvo = parse_conditional_format_cfvo_flags(&options.cfvo)?;
+            let icon_set_name = options.operator.unwrap_or("3TrafficLights1");
+            icon_set = Some(validate_icon_set(icon_set_name, &cfvo)?);
+        }
         _ => {
             return Err(CliError::invalid_args(
-                "--type must be expression, cell-is, cellIs, color-scale, colorScale, data-bar, or dataBar",
+                "--type must be expression, cell-is, cellIs, color-scale, colorScale, data-bar, dataBar, icon-set, or iconSet",
             ));
         }
     }
@@ -570,6 +626,8 @@ fn add_conditional_format_xml(
         render_conditional_format_color_scale_rule(prefix, priority, color_scale)
     } else if let Some(data_bar) = data_bar.as_ref() {
         render_conditional_format_data_bar_rule(prefix, priority, data_bar)
+    } else if let Some(icon_set) = icon_set.as_ref() {
+        render_conditional_format_icon_set_rule(prefix, priority, icon_set)
     } else {
         render_conditional_format_rule(
             prefix,
@@ -600,6 +658,7 @@ fn add_conditional_format_xml(
                 && rule.formulas == formulas
                 && rule.color_scale == color_scale
                 && rule.data_bar == data_bar
+                && rule.icon_set == icon_set
         })
         .unwrap_or_else(|| ConditionalFormatRule {
             index: 0,
@@ -616,6 +675,7 @@ fn add_conditional_format_xml(
             stop_if_true: options.has_stop_if_true && options.stop_if_true,
             color_scale: color_scale.clone(),
             data_bar: data_bar.clone(),
+            icon_set: icon_set.clone(),
         });
     Ok(ConditionalFormatMutation {
         updated_xml,
@@ -717,6 +777,7 @@ fn parse_conditional_format_rule(
         stop_if_true: attr_is_true(&attrs, "stopIfTrue"),
         color_scale: parse_color_scale(fragment)?,
         data_bar: parse_data_bar(fragment)?,
+        icon_set: parse_icon_set(fragment)?,
     };
     let mut reader = Reader::from_str(fragment);
     reader.config_mut().trim_text(false);
@@ -928,6 +989,7 @@ fn normalize_conditional_format_add_type(rule_type: Option<&str>) -> String {
         "cell-is" | "cellIs" => "cellIs".to_string(),
         "color-scale" | "colorScale" => "colorScale".to_string(),
         "data-bar" | "dataBar" => "dataBar".to_string(),
+        "icon-set" | "iconSet" => "iconSet".to_string(),
         other => other.to_string(),
     }
 }
@@ -1044,6 +1106,25 @@ fn render_conditional_format_data_bar_rule(
         rule_tag,
         render_xml_attrs(&attrs),
         data_bar_xml,
+        rule_tag
+    )
+}
+
+fn render_conditional_format_icon_set_rule(
+    prefix: &str,
+    priority: i64,
+    icon_set: &ConditionalFormatIconSet,
+) -> String {
+    let rule_tag = element_name(prefix, "cfRule");
+    let mut attrs = BTreeMap::new();
+    attrs.insert("priority".to_string(), priority.to_string());
+    attrs.insert("type".to_string(), "iconSet".to_string());
+    let icon_set_xml = render_icon_set(prefix, icon_set);
+    format!(
+        "<{}{}>{}</{}>",
+        rule_tag,
+        render_xml_attrs(&attrs),
+        icon_set_xml,
         rule_tag
     )
 }
@@ -1187,6 +1268,26 @@ mod tests {
     }
 
     #[test]
+    fn parses_icon_set_rule_json() {
+        let xml = r#"<cfRule type="iconSet" priority="4"><iconSet iconSet="3TrafficLights1"><cfvo type="percent" val="0"/><cfvo type="percent" val="33"/><cfvo type="percent" val="67"/></iconSet></cfRule>"#;
+        let rule =
+            parse_conditional_format_rule(xml, 1, 1, 1, "A1:A5").expect("parse icon set rule");
+        let readback = conditional_format_rule_json(&rule);
+
+        assert_eq!(readback["type"], "iconSet");
+        assert_eq!(readback["priority"], 4);
+        assert_eq!(readback["iconSet"]["iconSet"], "3TrafficLights1");
+        assert_eq!(
+            readback["iconSet"]["cfvo"],
+            serde_json::json!([
+                { "type": "percent", "value": "0" },
+                { "type": "percent", "value": "33" },
+                { "type": "percent", "value": "67" },
+            ])
+        );
+    }
+
+    #[test]
     fn adds_data_bar_rule_xml() {
         let xml = r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>"#;
         let options = XlsxConditionalFormatMutationOptions {
@@ -1228,6 +1329,49 @@ mod tests {
         );
         assert!(mutation.updated_xml.contains(
             r#"<cfRule priority="7" type="dataBar"><dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="FF638EC6"/></dataBar></cfRule>"#
+        ));
+    }
+
+    #[test]
+    fn adds_icon_set_rule_xml() {
+        let xml = r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>"#;
+        let options = XlsxConditionalFormatMutationOptions {
+            sheet: None,
+            range: Some("A1:A5"),
+            rule: None,
+            formula: None,
+            rule_type: Some("icon-set"),
+            operator: Some("3TrafficLights1"),
+            formula2: None,
+            has_formula2: false,
+            cfvo: vec![
+                "percent:0".to_string(),
+                "percent:33".to_string(),
+                "percent:67".to_string(),
+            ],
+            colors: Vec::new(),
+            priority: Some(8),
+            stop_if_true: false,
+            has_stop_if_true: false,
+            dxf_id: None,
+            out: None,
+            backup: None,
+            dry_run: true,
+            no_validate: true,
+            in_place: false,
+        };
+
+        let mutation =
+            add_conditional_format_xml(xml, "", &options).expect("add icon set rule XML");
+
+        assert_eq!(mutation.rule.rule_type, "iconSet");
+        assert_eq!(mutation.rule.priority, Some(8));
+        assert_eq!(
+            mutation.rule.icon_set.as_ref().expect("icon set").icon_set,
+            "3TrafficLights1"
+        );
+        assert!(mutation.updated_xml.contains(
+            r#"<cfRule priority="8" type="iconSet"><iconSet iconSet="3TrafficLights1"><cfvo type="percent" val="0"/><cfvo type="percent" val="33"/><cfvo type="percent" val="67"/></iconSet></cfRule>"#
         ));
     }
 }
