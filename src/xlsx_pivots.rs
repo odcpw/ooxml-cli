@@ -23,7 +23,7 @@ use crate::{
     relationship_target_from_source_to_target, relationships_part_for, resolve_relationship_target,
     resolve_sheet, select_xlsx_table, validate, validate_xlsx_mutation_output_flags,
     workbook_sheets, xlsx_range_export_with_options, xlsx_ranges_set_temp_path, xlsx_tables,
-    xml_attr_escape, zip_entry_names, zip_text,
+    xlsx_workbook_waiting_for_formula_recalc, xml_attr_escape, zip_entry_names, zip_text,
 };
 
 const XLSX_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -577,7 +577,8 @@ fn resolve_pivot_source(
             max_cells: options.max_cells,
         },
     )?;
-    let cells = pivot_cells_from_range_export(&exported)?;
+    let cells =
+        pivot_cells_from_range_export(&exported, xlsx_workbook_waiting_for_formula_recalc(file)?)?;
     Ok(PivotSource {
         sheet,
         range,
@@ -762,7 +763,10 @@ fn build_pivot_create_artifacts(
     })
 }
 
-fn pivot_cells_from_range_export(exported: &Value) -> CliResult<Vec<Vec<PivotCell>>> {
+fn pivot_cells_from_range_export(
+    exported: &Value,
+    workbook_waiting_for_formula_recalc: bool,
+) -> CliResult<Vec<Vec<PivotCell>>> {
     let values = exported
         .get("values")
         .and_then(Value::as_array)
@@ -786,6 +790,12 @@ fn pivot_cells_from_range_export(exported: &Value) -> CliResult<Vec<Vec<PivotCel
                 let cell_ref = exported_range_cell_ref(exported, row_idx, col_idx);
                 return Err(CliError::invalid_args(format!(
                     "pivot source cell {cell_ref} contains a formula without a cached calculated value; open and recalculate the workbook in Excel, then save it before creating a pivot from that range"
+                )));
+            }
+            if !formula.trim().is_empty() && workbook_waiting_for_formula_recalc {
+                let cell_ref = exported_range_cell_ref(exported, row_idx, col_idx);
+                return Err(CliError::invalid_args(format!(
+                    "pivot source cell {cell_ref} contains a formula in a workbook marked for recalculation; open and recalculate the workbook in Excel, then save it before creating a pivot from that range"
                 )));
             }
             out_row.push(json_value_to_pivot_cell(value));

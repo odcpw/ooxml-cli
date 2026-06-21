@@ -14,7 +14,8 @@ use crate::{
     relationships_part_for, resolve_relationship_target, resolve_sheet, select_xlsx_table,
     selector_candidates, validate, validate_xlsx_mutation_output_flags, workbook_sheets,
     xlsx_range_export_with_options, xlsx_ranges_set_temp_path, xlsx_sheet_selectors, xlsx_tables,
-    xml_attr_escape, xml_escape, zip_entry_names, zip_text,
+    xlsx_workbook_waiting_for_formula_recalc, xml_attr_escape, xml_escape, zip_entry_names,
+    zip_text,
 };
 
 mod commands;

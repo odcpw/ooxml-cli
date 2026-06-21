@@ -87,7 +87,8 @@ pub(super) fn resolve_chart_create_source(
         .and_then(Value::as_str)
         .unwrap_or(&range)
         .to_string();
-    let cells = chart_cells_from_range_export(&exported)?;
+    let cells =
+        chart_cells_from_range_export(&exported, xlsx_workbook_waiting_for_formula_recalc(file)?)?;
     Ok(ChartCreateSource {
         sheet: canonical_sheet,
         sheet_number,
@@ -99,6 +100,7 @@ pub(super) fn resolve_chart_create_source(
 
 pub(super) fn chart_cells_from_range_export(
     exported: &Value,
+    workbook_waiting_for_formula_recalc: bool,
 ) -> CliResult<Vec<Vec<ChartSourceCell>>> {
     let values = exported
         .get("values")
@@ -131,6 +133,12 @@ pub(super) fn chart_cells_from_range_export(
                 let cell_ref = exported_range_cell_ref(exported, row_idx, col_idx);
                 return Err(CliError::invalid_args(format!(
                     "chart source cell {cell_ref} contains a formula without a cached calculated value; open and recalculate the workbook in Excel, then save it before creating a chart from that range"
+                )));
+            }
+            if !formula.trim().is_empty() && workbook_waiting_for_formula_recalc {
+                let cell_ref = exported_range_cell_ref(exported, row_idx, col_idx);
+                return Err(CliError::invalid_args(format!(
+                    "chart source cell {cell_ref} contains a formula in a workbook marked for recalculation; open and recalculate the workbook in Excel, then save it before creating a chart from that range"
                 )));
             }
             out_row.push(ChartSourceCell {

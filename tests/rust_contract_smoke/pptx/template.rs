@@ -690,3 +690,135 @@ fn pptx_template_capture_produces_manifest_for_readable_deck() {
             .any(|slot| slot["id"] == Value::String("title".to_string()))
     );
 }
+
+#[test]
+fn pptx_shape_readback_scopes_shapes_to_sp_tree_with_default_namespace() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-sptree-scope-{}-{suffix}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&temp_dir).expect("spTree scope temp dir");
+    let deck = temp_dir.join("default-namespace-sptree.pptx");
+    write_default_namespace_sptree_scope_pptx(&deck);
+    let deck_str = deck.to_string_lossy().to_string();
+
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "show",
+        &deck_str,
+        "--slide",
+        "1",
+        "--include-text",
+    ]);
+    assert_eq!(show_code, 0, "shapes show exit");
+    assert_eq!(show_stderr, None, "shapes show stderr");
+    let show = show_stdout.expect("shapes show stdout");
+    let shapes = show["shapes"].as_array().expect("shapes array");
+    let shape_names = shapes
+        .iter()
+        .map(|shape| shape["shapeName"].as_str().expect("shape name").to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        shape_names.contains(&"Title 1".to_string()),
+        "normal title shape should be captured: {shape_names:?}"
+    );
+    assert!(
+        shape_names.contains(&"Grouped Body".to_string()),
+        "grouped descendant shape under spTree should be captured: {shape_names:?}"
+    );
+    assert!(
+        !shape_names.contains(&"Outside Bogus Shape".to_string()),
+        "shape-like XML outside spTree should not be captured: {shape_names:?}"
+    );
+
+    let (capture_code, capture_stdout, capture_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "template",
+        "capture",
+        &deck_str,
+        "--name",
+        "Default Namespace",
+        "--slides",
+        "1",
+    ]);
+    assert_eq!(capture_code, 0, "template capture exit");
+    assert_eq!(capture_stderr, None, "template capture stderr");
+    let manifest = capture_stdout.expect("template capture stdout");
+    let slots = manifest["archetypes"][0]["slots"]
+        .as_array()
+        .expect("capture slots");
+    assert!(
+        slots
+            .iter()
+            .any(|slot| slot["id"] == Value::String("title".to_string())),
+        "default-namespace slide with spTree should still expose title slot: {slots:?}"
+    );
+    assert!(
+        !slots.iter().any(|slot| {
+            slot["shapeName"] == Value::String("Outside Bogus Shape".to_string())
+                || slot["id"] == Value::String("outside".to_string())
+        }),
+        "outside spTree shape-like XML should not become a slot: {slots:?}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn write_default_namespace_sptree_scope_pptx(dest: &Path) {
+    rewrite_zip_fixture(
+        "testdata/pptx/minimal-title/presentation.pptx",
+        dest,
+        |name, data| {
+            let data = if name == "ppt/slides/slide1.xml" {
+                default_namespace_sptree_scope_slide_xml()
+                    .as_bytes()
+                    .to_vec()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+}
+
+fn default_namespace_sptree_scope_slide_xml() -> &'static str {
+    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sld xmlns="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <cSld>
+    <spTree>
+      <nvGrpSpPr><cNvPr id="1" name=""/><cNvGrpSpPr/><nvPr/></nvGrpSpPr>
+      <grpSpPr/>
+      <sp>
+        <nvSpPr><cNvPr id="2" name="Title 1"/><cNvSpPr><a:spLocks noGrp="1"/></cNvSpPr><nvPr><ph type="ctrTitle"/></nvPr></nvSpPr>
+        <spPr/>
+        <txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Default Namespace Title</a:t></a:r></a:p></txBody>
+      </sp>
+      <grpSp>
+        <nvGrpSpPr><cNvPr id="3" name="Group 1"/><cNvGrpSpPr/><nvPr/></nvGrpSpPr>
+        <grpSpPr/>
+        <sp>
+          <nvSpPr><cNvPr id="4" name="Grouped Body"/><cNvSpPr/><nvPr/></nvSpPr>
+          <spPr/>
+          <txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Grouped text survives</a:t></a:r></a:p></txBody>
+        </sp>
+      </grpSp>
+    </spTree>
+    <extLst>
+      <ext uri="{scope-test}">
+        <sp>
+          <nvSpPr><cNvPr id="99" name="Outside Bogus Shape"/><cNvSpPr/><nvPr><ph type="body" idx="99"/></nvPr></nvSpPr>
+          <spPr/>
+          <txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Outside text</a:t></a:r></a:p></txBody>
+        </sp>
+      </ext>
+    </extLst>
+  </cSld>
+</sld>"#
+}

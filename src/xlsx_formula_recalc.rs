@@ -23,10 +23,6 @@ pub(crate) fn add_xlsx_formula_recalc_package_updates(
         ensure_xlsx_full_calc_on_load(zip_text(file, workbook_part)?),
     );
 
-    if !formula_invalidated {
-        return Ok(());
-    }
-
     let content_types_xml = zip_text(file, "[Content_Types].xml")?;
     for part in xlsx_calc_chain_parts_from_content_types(&content_types_xml) {
         removals.insert(part.trim_start_matches('/').to_string());
@@ -50,6 +46,37 @@ pub(crate) fn add_xlsx_formula_recalc_package_updates(
 
     removals.insert("xl/calcChain.xml".to_string());
     Ok(())
+}
+
+pub(crate) fn xlsx_workbook_waiting_for_formula_recalc(file: &str) -> CliResult<bool> {
+    let workbook_xml = zip_text(file, "xl/workbook.xml")?;
+    Ok(xlsx_workbook_xml_waiting_for_formula_recalc(&workbook_xml))
+}
+
+fn xlsx_workbook_xml_waiting_for_formula_recalc(xml: &str) -> bool {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Empty(e)) | Ok(Event::Start(e))
+                if local_name(e.name().as_ref()) == "calcPr" =>
+            {
+                let attrs = xml_attrs_map(&e);
+                return xlsx_truthy_xml_bool(attrs.get("fullCalcOnLoad"))
+                    || xlsx_truthy_xml_bool(attrs.get("forceFullCalc"));
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    false
+}
+
+fn xlsx_truthy_xml_bool(value: Option<&String>) -> bool {
+    value.is_some_and(|value| {
+        let normalized = value.trim().to_ascii_lowercase();
+        normalized == "1" || normalized == "true"
+    })
 }
 
 fn ensure_xlsx_full_calc_on_load(xml: String) -> String {

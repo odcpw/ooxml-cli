@@ -235,6 +235,52 @@ fn xlsx_ranges_set_formula_recalc_metadata_matches_go_oracle() {
 }
 
 #[test]
+fn xlsx_ranges_set_new_formula_removes_existing_calc_chain() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-ranges-set-new-formula-calc-chain-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input_path = temp_dir.join("in.xlsx");
+    let output_path = temp_dir.join("out.xlsx");
+    write_calc_chain_xlsx(&input_path);
+    let input = input_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &input,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "C1:C1",
+        "--values",
+        r#"[[{"formula":"SUM(A1:B1)"}]]"#,
+        "--out",
+        &output,
+    ]);
+    assert_eq!(code, 0, "new formula calc-chain exit");
+    assert_eq!(stderr, None, "new formula calc-chain stderr");
+    assert_eq!(
+        stdout.expect("new formula calc-chain stdout")["formulaCount"],
+        Value::from(1)
+    );
+    assert_xlsx_full_calc_flags(&output_path);
+    assert_xlsx_calc_chain_removed(&output_path);
+    assert!(
+        read_zip_string(&output_path, "xl/worksheets/sheet1.xml")
+            .contains(r#"<c r="C1"><f>SUM(A1:B1)</f></c>"#),
+        "new formula should be written without a cached value"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_ranges_set_formula_overwrite_invalidates_calc_chain_like_go() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-ranges-set-calc-chain-{}",

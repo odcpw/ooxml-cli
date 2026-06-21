@@ -315,6 +315,9 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
     let mut shapes = Vec::new();
     let mut current: Option<Shape> = None;
     let mut current_end = String::new();
+    let mut current_depth = 0_usize;
+    let mut depth = 0_usize;
+    let mut sp_tree_depth = None::<usize>;
     let mut in_text = false;
     let mut in_shape_text_body = false;
     let mut in_table = false;
@@ -322,20 +325,46 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
     let mut current_cell: Option<TableCell> = None;
     let mut current_paragraph: Option<Vec<String>> = None;
     loop {
-        match reader.read_event() {
-            Ok(Event::Start(e))
+        let event = reader.read_event();
+        let start_name = match &event {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                Some(local_name(e.name().as_ref()).to_string())
+            }
+            _ => None,
+        };
+        let end_name = match &event {
+            Ok(Event::End(e)) => Some(local_name(e.name().as_ref()).to_string()),
+            _ => None,
+        };
+        let event_depth = if matches!(event, Ok(Event::Start(_)) | Ok(Event::Empty(_))) {
+            depth + 1
+        } else {
+            depth
+        };
+        if matches!(event, Ok(Event::Start(_))) && start_name.as_deref() == Some("spTree") {
+            sp_tree_depth.get_or_insert(event_depth);
+        }
+        let in_sp_tree = sp_tree_depth.is_some_and(|sp_depth| event_depth > sp_depth);
+        let is_start = matches!(event, Ok(Event::Start(_)));
+        let is_end = matches!(event, Ok(Event::End(_)));
+        let closes_sp_tree = is_end && sp_tree_depth == Some(depth);
+
+        match event {
+            Ok(Event::Start(_))
                 if current.is_none()
-                    && matches!(local_name(e.name().as_ref()), "sp" | "pic" | "graphicFrame") =>
+                    && in_sp_tree
+                    && matches!(start_name.as_deref(), Some("sp" | "pic" | "graphicFrame")) =>
             {
-                let kind = local_name(e.name().as_ref()).to_string();
+                let kind = start_name.clone().unwrap_or_default();
                 current_end.clone_from(&kind);
+                current_depth = event_depth;
                 current = Some(Shape {
                     kind,
                     ..Shape::default()
                 });
             }
             Ok(Event::Start(e)) | Ok(Event::Empty(e))
-                if current.is_some() && local_name(e.name().as_ref()) == "cNvPr" =>
+                if current.is_some() && start_name.as_deref() == Some("cNvPr") =>
             {
                 if let Some(shape) = current.as_mut() {
                     shape.id = attr(&e, "id")
@@ -345,7 +374,7 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
                 }
             }
             Ok(Event::Start(e)) | Ok(Event::Empty(e))
-                if current.is_some() && local_name(e.name().as_ref()) == "ph" =>
+                if current.is_some() && start_name.as_deref() == Some("ph") =>
             {
                 if let Some(shape) = current.as_mut() {
                     shape.is_placeholder = true;
@@ -355,33 +384,33 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
                     });
                 }
             }
-            Ok(Event::Start(e))
+            Ok(Event::Start(_))
                 if current.as_ref().is_some_and(|shape| shape.kind == "sp")
-                    && local_name(e.name().as_ref()) == "txBody" =>
+                    && start_name.as_deref() == Some("txBody") =>
             {
                 if let Some(shape) = current.as_mut() {
                     shape.has_text_body = true;
                 }
                 in_shape_text_body = true;
             }
-            Ok(Event::Empty(e))
+            Ok(Event::Empty(_))
                 if current.as_ref().is_some_and(|shape| shape.kind == "sp")
-                    && local_name(e.name().as_ref()) == "txBody" =>
+                    && start_name.as_deref() == Some("txBody") =>
             {
                 if let Some(shape) = current.as_mut() {
                     shape.has_text_body = true;
                 }
             }
-            Ok(Event::Start(e)) if in_shape_text_body && local_name(e.name().as_ref()) == "p" => {
+            Ok(Event::Start(_)) if in_shape_text_body && start_name.as_deref() == Some("p") => {
                 current_paragraph = Some(Vec::new());
             }
-            Ok(Event::Empty(e)) if in_shape_text_body && local_name(e.name().as_ref()) == "p" => {
+            Ok(Event::Empty(_)) if in_shape_text_body && start_name.as_deref() == Some("p") => {
                 if let Some(shape) = current.as_mut() {
                     shape.paragraphs.push(Vec::new());
                 }
             }
             Ok(Event::Start(e)) | Ok(Event::Empty(e))
-                if current.is_some() && local_name(e.name().as_ref()) == "off" =>
+                if current.is_some() && start_name.as_deref() == Some("off") =>
             {
                 if let Some(shape) = current.as_mut() {
                     let mut bounds = shape.bounds.clone().unwrap_or(Bounds {
@@ -400,7 +429,7 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
                 }
             }
             Ok(Event::Start(e)) | Ok(Event::Empty(e))
-                if current.is_some() && local_name(e.name().as_ref()) == "ext" =>
+                if current.is_some() && start_name.as_deref() == Some("ext") =>
             {
                 if let Some(shape) = current.as_mut() {
                     let mut bounds = shape.bounds.clone().unwrap_or(Bounds {
@@ -420,20 +449,20 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
             }
             Ok(Event::Start(e)) | Ok(Event::Empty(e))
                 if current.as_ref().is_some_and(|shape| shape.kind == "pic")
-                    && local_name(e.name().as_ref()) == "blip" =>
+                    && start_name.as_deref() == Some("blip") =>
             {
                 if let Some(shape) = current.as_mut() {
                     shape.image_rel_id = attr(&e, "embed").unwrap_or_default();
                 }
             }
-            Ok(Event::Start(e)) if current.is_some() && local_name(e.name().as_ref()) == "tbl" => {
+            Ok(Event::Start(_)) if current.is_some() && start_name.as_deref() == Some("tbl") => {
                 in_table = true;
                 if let Some(shape) = current.as_mut() {
                     shape.table = Some(TableInfo::default());
                 }
             }
             Ok(Event::Start(e)) | Ok(Event::Empty(e))
-                if in_table && local_name(e.name().as_ref()) == "gridCol" =>
+                if in_table && start_name.as_deref() == Some("gridCol") =>
             {
                 if let Some(table) = current.as_mut().and_then(|shape| shape.table.as_mut())
                     && let Some(width) = attr(&e, "w").and_then(|value| value.parse().ok())
@@ -441,13 +470,13 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
                     table.columns.push(width);
                 }
             }
-            Ok(Event::Start(e)) if in_table && local_name(e.name().as_ref()) == "tr" => {
+            Ok(Event::Start(e)) if in_table && start_name.as_deref() == Some("tr") => {
                 current_row = Some(TableRow {
                     height: attr(&e, "h").and_then(|value| value.parse().ok()),
                     cells: Vec::new(),
                 });
             }
-            Ok(Event::Start(e)) if in_table && local_name(e.name().as_ref()) == "tc" => {
+            Ok(Event::Start(e)) if in_table && start_name.as_deref() == Some("tc") => {
                 current_cell = Some(TableCell {
                     grid_span: attr(&e, "gridSpan")
                         .and_then(|value| value.parse().ok())
@@ -458,7 +487,7 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
                     ..TableCell::default()
                 });
             }
-            Ok(Event::Start(e)) if current.is_some() && local_name(e.name().as_ref()) == "t" => {
+            Ok(Event::Start(_)) if current.is_some() && start_name.as_deref() == Some("t") => {
                 in_text = true;
             }
             Ok(Event::Text(e)) if in_text => {
@@ -481,49 +510,58 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
                     text,
                 );
             }
-            Ok(Event::End(e)) if local_name(e.name().as_ref()) == "t" => {
+            Ok(Event::End(_)) if end_name.as_deref() == Some("t") => {
                 in_text = false;
             }
-            Ok(Event::End(e)) if in_shape_text_body && local_name(e.name().as_ref()) == "p" => {
+            Ok(Event::End(_)) if in_shape_text_body && end_name.as_deref() == Some("p") => {
                 if let Some(paragraph) = current_paragraph.take()
                     && let Some(shape) = current.as_mut()
                 {
                     shape.paragraphs.push(paragraph);
                 }
             }
-            Ok(Event::End(e))
-                if in_shape_text_body && local_name(e.name().as_ref()) == "txBody" =>
-            {
+            Ok(Event::End(_)) if in_shape_text_body && end_name.as_deref() == Some("txBody") => {
                 in_shape_text_body = false;
             }
-            Ok(Event::End(e)) if in_table && local_name(e.name().as_ref()) == "tc" => {
+            Ok(Event::End(_)) if in_table && end_name.as_deref() == Some("tc") => {
                 if let Some(cell) = current_cell.take()
                     && let Some(row) = current_row.as_mut()
                 {
                     row.cells.push(cell);
                 }
             }
-            Ok(Event::End(e)) if in_table && local_name(e.name().as_ref()) == "tr" => {
+            Ok(Event::End(_)) if in_table && end_name.as_deref() == Some("tr") => {
                 if let Some(row) = current_row.take()
                     && let Some(table) = current.as_mut().and_then(|shape| shape.table.as_mut())
                 {
                     table.rows.push(row);
                 }
             }
-            Ok(Event::End(e)) if in_table && local_name(e.name().as_ref()) == "tbl" => {
+            Ok(Event::End(_)) if in_table && end_name.as_deref() == Some("tbl") => {
                 in_table = false;
             }
-            Ok(Event::End(e))
-                if current.is_some() && local_name(e.name().as_ref()) == current_end =>
+            Ok(Event::End(_))
+                if current.is_some()
+                    && event_depth == current_depth
+                    && end_name.as_deref() == Some(current_end.as_str()) =>
             {
                 if let Some(shape) = current.take() {
                     shapes.push(shape);
                 }
                 current_end.clear();
+                current_depth = 0;
             }
             Ok(Event::Eof) => break,
             Err(_) => break,
             _ => {}
+        }
+        if is_start {
+            depth += 1;
+        } else if is_end {
+            if closes_sp_tree {
+                sp_tree_depth = None;
+            }
+            depth = depth.saturating_sub(1);
         }
     }
     shapes

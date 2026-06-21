@@ -233,7 +233,9 @@ pub(crate) use xlsx_filters_sorts::{
     xlsx_filters_sorts_clear_column_filter, xlsx_filters_sorts_clear_sort,
     xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_set_sort, xlsx_filters_sorts_show,
 };
-pub(crate) use xlsx_formula_recalc::add_xlsx_formula_recalc_package_updates;
+pub(crate) use xlsx_formula_recalc::{
+    add_xlsx_formula_recalc_package_updates, xlsx_workbook_waiting_for_formula_recalc,
+};
 pub(crate) use xlsx_hyperlinks::{
     XlsxHyperlinkAddOptions, XlsxHyperlinkDeleteOptions, XlsxHyperlinkUpdateOptions,
     xlsx_hyperlinks_add, xlsx_hyperlinks_delete, xlsx_hyperlinks_list, xlsx_hyperlinks_show,

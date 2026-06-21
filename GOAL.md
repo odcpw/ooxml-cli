@@ -48,6 +48,10 @@ Updated 2026-06-21.
 - `ooxml docx tables create` can append a rectangular table to a scaffolded Word document and is
   covered by readback, structural XML, strict-validation, conformance, Open XML SDK validation, and a
   representative Word-open smoke row.
+- Pivot/chart source creation rejects formula cells without cached values and formula cells in
+  workbooks marked for recalculation, so stale formula outputs are not frozen into derived caches.
+- PPTX shape readback is scoped to shapes under `spTree`, with regression coverage for
+  default-namespace slides and shape-like XML outside `spTree`.
 - VBA `.xlsm` / `.pptm` creation is real on this Windows host through desktop Office COM, but macro
   source editing remains intentionally conservative.
 
@@ -97,7 +101,7 @@ Next useful checks:
 
 - A small Office-open smoke row for any formula-heavy workbook we intend users to rely on.
 - Keep the formula-cache guard tests green: pivot/chart creation must reject formula-derived source
-  ranges whose cached values have not been calculated yet.
+  ranges with missing cached values or workbook-level dirty recalculation flags.
 
 ### 3. DOCX Safety
 
@@ -123,7 +127,7 @@ Keep generated decks safe for template adaptation:
 
 Next useful checks:
 
-- Add a targeted regression for the real-deck `spTree` capture failure if a fixture can be kept small.
+- Keep the `spTree`-scoped shape readback regression green.
 - Keep footer placeholder synthesis covered by focused tests.
 
 ### 5. Repair, Convert, And Diff Safety

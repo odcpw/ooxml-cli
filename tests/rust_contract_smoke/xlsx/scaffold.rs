@@ -584,6 +584,73 @@ fn xlsx_pivot_and_chart_create_reject_uncached_formula_sources() {
     assert_eq!(chart_stdout, None, "chart create stdout");
     assert_formula_cache_error("chart", chart_stderr, "chart source cell C2");
 
+    let cached_dirty_path = temp_dir.join("03-cached-dirty.xlsx");
+    rewrite_zip_fixture(&data, &cached_dirty_path, |name, bytes| {
+        if name != "xl/worksheets/sheet1.xml" {
+            return Some((name.to_string(), bytes));
+        }
+        let xml = String::from_utf8(bytes).expect("worksheet utf8");
+        let updated = xml
+            .replace(
+                r#"<c r="C2"><f>B2*10</f></c>"#,
+                r#"<c r="C2"><f>B2*10</f><v>20</v></c>"#,
+            )
+            .replace(
+                r#"<c r="C3"><f>B3*10</f></c>"#,
+                r#"<c r="C3"><f>B3*10</f><v>30</v></c>"#,
+            );
+        assert_ne!(updated, xml, "cached formula fixture should be rewritten");
+        Some((name.to_string(), updated.into_bytes()))
+    });
+    assert_xlsx_full_calc_flags(&cached_dirty_path);
+    let cached_dirty = cached_dirty_path.to_string_lossy().to_string();
+
+    let (dirty_pivot_code, dirty_pivot_stdout, dirty_pivot_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "pivots",
+        "create",
+        &cached_dirty,
+        "--sheet",
+        "Data",
+        "--range",
+        "A1:C3",
+        "--rows",
+        "Region",
+        "--values",
+        "Revenue:sum",
+        "--dry-run",
+    ]);
+    assert_eq!(
+        dirty_pivot_code, 2,
+        "pivot create should reject dirty cached formulas"
+    );
+    assert_eq!(dirty_pivot_stdout, None, "dirty pivot stdout");
+    assert_formula_recalc_error("dirty pivot", dirty_pivot_stderr, "pivot source cell C2");
+
+    let (dirty_chart_code, dirty_chart_stdout, dirty_chart_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "charts",
+        "create",
+        &cached_dirty,
+        "--type",
+        "bar",
+        "--sheet",
+        "Data",
+        "--range",
+        "A1:C3",
+        "--title",
+        "Revenue",
+        "--dry-run",
+    ]);
+    assert_eq!(
+        dirty_chart_code, 2,
+        "chart create should reject dirty cached formulas"
+    );
+    assert_eq!(dirty_chart_stdout, None, "dirty chart stdout");
+    assert_formula_recalc_error("dirty chart", dirty_chart_stderr, "chart source cell C2");
+
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
@@ -595,6 +662,24 @@ fn run_ooxml_json_ok(label: &str, args: &[&str]) -> Value {
 }
 
 fn assert_formula_cache_error(label: &str, stderr: Option<Value>, expected_prefix: &str) {
+    assert_formula_source_error(
+        label,
+        stderr,
+        expected_prefix,
+        "cached calculated value",
+    );
+}
+
+fn assert_formula_recalc_error(label: &str, stderr: Option<Value>, expected_prefix: &str) {
+    assert_formula_source_error(label, stderr, expected_prefix, "marked for recalculation");
+}
+
+fn assert_formula_source_error(
+    label: &str,
+    stderr: Option<Value>,
+    expected_prefix: &str,
+    expected_detail: &str,
+) {
     let error = stderr.unwrap_or_else(|| panic!("{label} stderr"));
     assert_eq!(
         error["error"]["code"],
@@ -604,8 +689,8 @@ fn assert_formula_cache_error(label: &str, stderr: Option<Value>, expected_prefi
         .as_str()
         .unwrap_or_else(|| panic!("{label} error message"));
     assert!(
-        message.contains(expected_prefix) && message.contains("cached calculated value"),
-        "{label} error should explain uncached formula source: {message}"
+        message.contains(expected_prefix) && message.contains(expected_detail),
+        "{label} error should explain formula source rejection: {message}"
     );
 }
 

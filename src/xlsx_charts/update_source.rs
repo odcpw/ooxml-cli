@@ -155,13 +155,14 @@ pub(super) fn collect_chart_cache_points(
         range,
         XlsxRangeExportOptions {
             include_types: true,
-            include_formulas: false,
+            include_formulas: true,
             include_formats: true,
             data_out: None,
             max_cells,
         },
     )?;
-    let cells = chart_cells_from_range_export(&exported)?;
+    let cells =
+        chart_cells_from_range_export(&exported, xlsx_workbook_waiting_for_formula_recalc(file)?)?;
     let mut points = Vec::new();
     let mut skipped = 0_i64;
     let mut flat_index = 0_i64;
