@@ -97,25 +97,28 @@ Real Office-shaped module add/remove is intentionally refused today because Offi
 
 ## Verification
 
-Fast local loop:
+Fast local compile loop:
 
 ```powershell
-$env:CARGO_PROFILE_DEV_DEBUG = "0"
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test --all-targets
+cargo check --all-targets
+cargo test --test rust_contract_smoke <filter> -- --nocapture
 ```
+
+Use `cargo clippy --all-targets -- -D warnings` and `cargo test --all-targets` when you need the broader local gate.
 
 Run Go only when deliberately refreshing or checking the legacy oracle/reference, not as the normal product build.
 
 Windows Office proof gates for the Rust CLI:
 
 ```powershell
+$targetDir = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).target_directory
+$debugBin = Join-Path $targetDir "debug\ooxml.exe"
 cargo build --bin ooxml
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice -WriteArtifactProofMatrix
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance -WriteArtifactProofMatrix
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -RunConformance -SkipOffice -EnableVbaObjectModelAccess
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -RunConformance -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath $debugBin -SkipBuild -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice -WriteArtifactProofMatrix
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath $debugBin -SkipBuild -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance -WriteArtifactProofMatrix
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath $debugBin -SkipBuild -RequireOpenXmlSdk -RunConformance -SkipOffice -EnableVbaObjectModelAccess
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath $debugBin -SkipBuild -RequireOpenXmlSdk -RunConformance -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-run-smoke.ps1 -TimeoutSeconds 45
 ```
 
