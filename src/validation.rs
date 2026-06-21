@@ -101,7 +101,8 @@ fn validate_diagnostics(file: &str) -> CliResult<Vec<Value>> {
 
     diagnostics.extend(validate_relationship_integrity(file, &entries, &entry_set)?);
 
-    match detect_inspect_package_type(file, &entries) {
+    let package_kind = detect_inspect_package_type(file, &entries);
+    match package_kind {
         InspectPackageKind::Docx => {
             diagnostics.extend(validate_docx_required_parts(file, &entries, &entry_set)?);
         }
@@ -114,6 +115,12 @@ fn validate_diagnostics(file: &str) -> CliResult<Vec<Value>> {
             )?);
         }
         InspectPackageKind::Unknown => {}
+    }
+    if matches!(
+        package_kind,
+        InspectPackageKind::Docx | InspectPackageKind::Xlsx | InspectPackageKind::Pptx
+    ) {
+        diagnostics.extend(crate::vba::vba_package_invariant_diagnostics(file)?);
     }
 
     Ok(diagnostics)

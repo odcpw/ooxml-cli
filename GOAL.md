@@ -153,6 +153,9 @@ Already integrated on `master`:
 - pure Rust DOCM Word open proof through `ooxml vba office-check`
 - `vba rebuild` from source directories
 - Office-open proof for generated XLSM/PPTM/DOCM and package-level DOCM
+- `validate --strict` and `conformance check` reject broken VBA package wiring:
+  missing/duplicate `vbaProject` relationships, wrong `vbaProject.bin` content
+  types, non-macro main parts with VBA payloads, and orphan VBA project parts
 
 Known remaining gaps:
 

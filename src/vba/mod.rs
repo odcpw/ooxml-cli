@@ -8,6 +8,7 @@ mod office_check;
 mod output;
 mod package_xml;
 mod source;
+mod validation;
 mod xlsx_host;
 
 use serde_json::{Map, Value, json};
@@ -36,6 +37,7 @@ pub(crate) use source::{
     VbaAddModuleOptions, VbaRemoveModuleOptions, VbaReplaceModuleOptions, vba_add_module,
     vba_extract, vba_inspect_bin, vba_list, vba_remove_module, vba_replace_module,
 };
+pub(crate) use validation::vba_package_invariant_diagnostics;
 
 pub(crate) fn vba_inspect(file: &str) -> CliResult<Value> {
     let info = inspect_vba_package(file)?;
