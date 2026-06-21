@@ -15,9 +15,9 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
         commands.retain(|command| capability_matches_filter(command, filter));
     }
     let mut notes = vec![
-        "Rust port partial surface: only commands listed here are implemented in the Rust subject."
+        "Rust implementation surface: commands listed here are implemented in the current ooxml CLI."
             .to_string(),
-        "Use Go on codex/ooxml-go-reference as the oracle for the full command universe."
+        "The deprecated Go implementation is retained on codex/ooxml-go-reference as a frozen oracle/reference."
             .to_string(),
     ];
     if let Some(filter) = filter.as_deref() {

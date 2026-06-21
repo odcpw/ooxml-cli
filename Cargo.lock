@@ -190,7 +190,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ooxml-rs-port"
+name = "ooxml-cli"
 version = "0.0.1"
 dependencies = [
  "quick-xml",
