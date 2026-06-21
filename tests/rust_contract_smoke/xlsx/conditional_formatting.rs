@@ -713,13 +713,7 @@ fn xlsx_conditional_formats_icon_set_saved_readback() {
 }
 
 #[test]
-fn xlsx_conditional_formats_icon_set_saved_outputs_match_go_oracle_when_available() {
-    // Temporary guard: remove this early return once the local Go oracle branch includes
-    // XLSX icon-set conditional-format add/readback support.
-    if !go_oracle_supports_xlsx_icon_sets() {
-        return;
-    }
-
+fn xlsx_conditional_formats_icon_set_saved_outputs_match_go_oracle() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-cf-iconset-oracle-{}",
         std::process::id()
@@ -883,32 +877,6 @@ fn xlsx_conditional_formats_icon_set_rejects_bad_cli_arity() {
             .contains("does not accept --color"),
         "unexpected color error: {error:?}"
     );
-}
-
-fn go_oracle_supports_xlsx_icon_sets() -> bool {
-    let (code, stdout, stderr) = run_go_ooxml(&[
-        "--json",
-        "xlsx",
-        "conditional-formats",
-        "add",
-        "testdata/xlsx/minimal-workbook/workbook.xlsx",
-        "--sheet",
-        "1",
-        "--range",
-        "E1:E5",
-        "--type",
-        "icon-set",
-        "--icon-set",
-        "3TrafficLights1",
-        "--cfvo",
-        "percent:0",
-        "--cfvo",
-        "percent:33",
-        "--cfvo",
-        "percent:67",
-        "--dry-run",
-    ]);
-    code == 0 && stderr.is_none() && stdout.is_some()
 }
 
 #[test]

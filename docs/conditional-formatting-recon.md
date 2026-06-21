@@ -14,8 +14,8 @@ Current status on 2026-06-21:
 
 - Go and Rust both expose `ooxml xlsx conditional-formats` with
   `list`, `show`, `add`, and `delete`.
-- The promoted add surface covers expression, `cellIs`, `colorScale`, and
-  `dataBar`
+- The promoted add surface covers expression, `cellIs`, `colorScale`,
+  `dataBar`, and `iconSet`
   rules, with stable JSON readback, readback commands, strict validation, and
   Go-vs-Rust contract coverage.
 - Serve/MCP supports read-only `list`/`show` through `inspect` and mutating
@@ -24,8 +24,8 @@ Current status on 2026-06-21:
   worksheet mutations. Rust-generated XLSX outputs for the promoted rules have
   passed strict validation, Open XML SDK validation, and desktop Excel open
   proof.
-- Icon sets, richer x14 extension authoring, and style/dxf creation remain
-  intentionally deferred feature slices.
+- Richer x14 extension authoring and style/dxf creation remain intentionally
+  deferred feature slices.
 
 ## Historical Surface At Recon Time
 
@@ -77,7 +77,7 @@ These helpers are preservation/order infrastructure, not creation, editing, dele
 
 ## Likely Go Oracle Requirement
 
-At the time of this reconnaissance, Go had no user-facing conditional-formatting command, so the first operational slice needed to add the smallest Go oracle behavior worth porting and proving. That recommendation has since been implemented for list/show/add/delete plus expression, `cellIs`, and `colorScale` rules.
+At the time of this reconnaissance, Go had no user-facing conditional-formatting command, so the first operational slice needed to add the smallest Go oracle behavior worth porting and proving. That recommendation has since been implemented for list/show/add/delete plus expression, `cellIs`, `colorScale`, `dataBar`, and `iconSet` rules.
 
 Recommended Go-first order:
 

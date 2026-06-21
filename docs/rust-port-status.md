@@ -9,6 +9,23 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-21:
 
+- XLSX conditional-formatting now has Go-oracle and Rust parity for icon-set
+  rules. The Go oracle commit `41e2f2e` adds `--type icon-set` / `iconSet`
+  with an `--icon-set` name starting with `3`, `4`, or `5` and exactly that
+  many `--cfvo` values, plus JSON readback under `rule.iconSet.iconSet` and
+  `rule.iconSet.cfvo`. The Rust port implements the same surface through a
+  focused `xlsx_conditional_formatting::icon_set` helper module, CLI dispatch,
+  capability metadata, serve-op plan/readback support for both `icon-set` and
+  `iconSet` JSON args, and hard Go-vs-Rust contract coverage. Proof: `go test
+  ./pkg/xlsx/mutate ./internal/cli ./pkg/capabilities`, `cargo fmt --check`,
+  `cargo check --all-targets`, clippy with warnings denied, focused
+  `xlsx_conditional`, `capabilities`,
+  `serve_op_supports_xlsx_conditional_format_icon_sets`, and icon-set unit
+  tests. A Rust-generated `rust-cf-icon-set-current.xlsx` passed strict repo
+  validation, Rust `conformance check`, Microsoft Open XML SDK validation with
+  0 errors, and desktop Excel COM open proof on Office 16.0 build 20026.
+  `cargo test --all-targets` passed with 15 unit tests plus 250 Rust contract
+  tests.
 - XLSX conditional-formatting now has Go-oracle and Rust parity for data-bar
   rules. The Go oracle commit `3a2ce63` adds `--type data-bar` / `dataBar`
   with exactly two `--cfvo` values and exactly one `--color`, plus JSON
