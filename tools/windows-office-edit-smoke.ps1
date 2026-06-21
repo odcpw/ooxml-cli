@@ -1433,7 +1433,7 @@ $scenarios = @(
         -Family "xlsx" `
         -Input $xlsxAuthoringNamedRange `
         -Output (Join-Path $caseDir "xlsx-realistic-scaffold-pivot-chain.xlsx") `
-        -Arguments @("--json", "xlsx", "pivots", "create", $xlsxAuthoringNamedRange, "--sheet", "Sales Ops", "--range", "A1:E5", "--rows", "Region", "--values", "Units:sum", "--anchor", "G1", "--out", (Join-Path $caseDir "xlsx-realistic-scaffold-pivot-chain.xlsx")) `
+        -Arguments @("--json", "xlsx", "pivots", "create", $xlsxAuthoringNamedRange, "--sheet", "Sales Ops", "--range", "A1:D5", "--rows", "Region", "--values", "Units:sum", "--anchor", "G1", "--out", (Join-Path $caseDir "xlsx-realistic-scaffold-pivot-chain.xlsx")) `
         -InputFixtureType "scaffold-derived"),
 
     (New-Scenario `
