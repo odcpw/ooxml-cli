@@ -15,7 +15,7 @@ var xlsxConditionalFormatsCmd = &cobra.Command{
 	Use:     "conditional-formats",
 	Aliases: []string{"conditional-formatting", "conditional-format", "cf"},
 	Short:   "Inspect and mutate worksheet conditional formatting",
-	Long:    "Commands for listing, showing, adding, and deleting worksheet conditional-formatting expression rules.",
+	Long:    "Commands for listing, showing, adding, and deleting worksheet conditional-formatting expression and cellIs rules.",
 	Args:    cobra.NoArgs,
 	RunE:    showHelp,
 }
@@ -28,6 +28,7 @@ type XLSXConditionalFormatRuleJSON struct {
 	Selectors       []string `json:"selectors,omitempty"`
 	Sqref           string   `json:"sqref"`
 	Type            string   `json:"type,omitempty"`
+	Operator        string   `json:"operator,omitempty"`
 	Priority        *int     `json:"priority,omitempty"`
 	Formula         string   `json:"formula,omitempty"`
 	Formulas        []string `json:"formulas,omitempty"`
@@ -76,7 +77,9 @@ var (
 	xlsxCFSheet      string
 	xlsxCFRange      string
 	xlsxCFType       string
+	xlsxCFOperator   string
 	xlsxCFFormula    string
+	xlsxCFFormula2   string
 	xlsxCFRule       string
 	xlsxCFPriority   int
 	xlsxCFStopIfTrue bool
@@ -92,6 +95,7 @@ func conditionalFormatRuleToJSON(rule mutate.ConditionalFormatRule) XLSXConditio
 		Selectors:       rule.Selectors,
 		Sqref:           rule.Sqref,
 		Type:            rule.Type,
+		Operator:        rule.Operator,
 		Formulas:        rule.Formulas,
 		StopIfTrue:      rule.StopIfTrue,
 	}
@@ -173,7 +177,11 @@ var xlsxConditionalFormatsListCmd = &cobra.Command{
 			if rule.Priority != nil {
 				priority = fmt.Sprintf(" priority=%d", *rule.Priority)
 			}
-			fmt.Fprintf(&b, "  %s %s [%s]%s %s\n", rule.PrimarySelector, rule.Sqref, rule.Type, priority, rule.Formula)
+			operator := ""
+			if rule.Operator != "" {
+				operator = " " + rule.Operator
+			}
+			fmt.Fprintf(&b, "  %s %s [%s%s]%s %s\n", rule.PrimarySelector, rule.Sqref, rule.Type, operator, priority, strings.Join(rule.Formulas, ", "))
 		}
 		return writeXLSXOutput(cmd, []byte(strings.TrimRight(b.String(), "\n")))
 	},
@@ -208,7 +216,11 @@ var xlsxConditionalFormatsShowCmd = &cobra.Command{
 		if GetGlobalConfig(cmd).Format == "json" {
 			return writeJSONResult(cmd, &j, "conditional-formats show")
 		}
-		return writeXLSXOutput(cmd, []byte(fmt.Sprintf("%s %s [%s] %s", j.PrimarySelector, j.Sqref, j.Type, j.Formula)))
+		operator := ""
+		if j.Operator != "" {
+			operator = " " + j.Operator
+		}
+		return writeXLSXOutput(cmd, []byte(fmt.Sprintf("%s %s [%s%s] %s", j.PrimarySelector, j.Sqref, j.Type, operator, strings.Join(j.Formulas, ", "))))
 	},
 }
 
@@ -270,39 +282,73 @@ func runConditionalFormatMutation(cmd *cobra.Command, filePath, sheetSel, action
 	return writeXLSXOutput(cmd, []byte(fmt.Sprintf("%sd conditional format on %s!%s", action, result.Sheet, result.Range)))
 }
 
+func normalizeConditionalFormatAddType(ruleType string) string {
+	switch strings.TrimSpace(ruleType) {
+	case "", "expression":
+		return "expression"
+	case "cell-is", "cellIs":
+		return "cellIs"
+	default:
+		return strings.TrimSpace(ruleType)
+	}
+}
+
 var xlsxConditionalFormatsAddCmd = &cobra.Command{
 	Use:   "add <file>",
-	Short: "Add an expression conditional-formatting rule",
+	Short: "Add an expression or cellIs conditional-formatting rule",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		filePath := args[0]
-		ruleType := strings.TrimSpace(xlsxCFType)
-		if ruleType == "" {
-			ruleType = "expression"
-		}
-		if ruleType != "expression" {
-			return InvalidArgsError("--type currently supports only expression")
-		}
+		ruleType := normalizeConditionalFormatAddType(xlsxCFType)
 		if strings.TrimSpace(xlsxCFRange) == "" {
 			return InvalidArgsError("--range is required")
 		}
 		if strings.TrimSpace(xlsxCFFormula) == "" {
 			return InvalidArgsError("--formula is required")
 		}
-		return runConditionalFormatMutation(cmd, filePath, xlsxCFSheet, "add", func(pkg opc.PackageSession, sheet model.SheetRef) (*mutate.ConditionalFormatMutationResult, error) {
-			return mutate.AddConditionalFormatExpression(&mutate.AddConditionalFormatExpressionRequest{
-				Package:       pkg,
-				SheetRef:      sheet,
-				Range:         xlsxCFRange,
-				Formula:       xlsxCFFormula,
-				Priority:      xlsxCFPriority,
-				HasPriority:   cmd.Flags().Changed("priority"),
-				StopIfTrue:    xlsxCFStopIfTrue,
-				HasStopIfTrue: cmd.Flags().Changed("stop-if-true"),
-				DxfID:         xlsxCFDxfID,
-				HasDxfID:      cmd.Flags().Changed("dxf-id"),
+		switch ruleType {
+		case "expression":
+			if cmd.Flags().Changed("operator") {
+				return InvalidArgsError("--operator is only valid with --type cell-is")
+			}
+			if cmd.Flags().Changed("formula2") {
+				return InvalidArgsError("--formula2 is only valid with --type cell-is")
+			}
+			return runConditionalFormatMutation(cmd, filePath, xlsxCFSheet, "add", func(pkg opc.PackageSession, sheet model.SheetRef) (*mutate.ConditionalFormatMutationResult, error) {
+				return mutate.AddConditionalFormatExpression(&mutate.AddConditionalFormatExpressionRequest{
+					Package:       pkg,
+					SheetRef:      sheet,
+					Range:         xlsxCFRange,
+					Formula:       xlsxCFFormula,
+					Priority:      xlsxCFPriority,
+					HasPriority:   cmd.Flags().Changed("priority"),
+					StopIfTrue:    xlsxCFStopIfTrue,
+					HasStopIfTrue: cmd.Flags().Changed("stop-if-true"),
+					DxfID:         xlsxCFDxfID,
+					HasDxfID:      cmd.Flags().Changed("dxf-id"),
+				})
 			})
-		})
+		case "cellIs":
+			return runConditionalFormatMutation(cmd, filePath, xlsxCFSheet, "add", func(pkg opc.PackageSession, sheet model.SheetRef) (*mutate.ConditionalFormatMutationResult, error) {
+				return mutate.AddConditionalFormatCellIs(&mutate.AddConditionalFormatCellIsRequest{
+					Package:       pkg,
+					SheetRef:      sheet,
+					Range:         xlsxCFRange,
+					Operator:      xlsxCFOperator,
+					Formula:       xlsxCFFormula,
+					Formula2:      xlsxCFFormula2,
+					HasFormula2:   cmd.Flags().Changed("formula2"),
+					Priority:      xlsxCFPriority,
+					HasPriority:   cmd.Flags().Changed("priority"),
+					StopIfTrue:    xlsxCFStopIfTrue,
+					HasStopIfTrue: cmd.Flags().Changed("stop-if-true"),
+					DxfID:         xlsxCFDxfID,
+					HasDxfID:      cmd.Flags().Changed("dxf-id"),
+				})
+			})
+		default:
+			return InvalidArgsError("--type must be expression, cell-is, or cellIs")
+		}
 	},
 }
 
@@ -354,8 +400,10 @@ func init() {
 	}
 
 	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFRange, "range", "", "target range (sqref); space-separated allowed, e.g. \"A1:A10 C1:C5\"")
-	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFType, "type", "expression", "conditional-formatting rule type: expression")
-	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFFormula, "formula", "", "expression formula, e.g. A1>0")
+	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFType, "type", "expression", "conditional-formatting rule type: expression|cell-is")
+	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFOperator, "operator", "", "cellIs operator: between|notBetween|equal|notEqual|greaterThan|lessThan|greaterThanOrEqual|lessThanOrEqual")
+	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFFormula, "formula", "", "expression formula or first cellIs formula/bound, e.g. A1>0")
+	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFFormula2, "formula2", "", "second cellIs formula/bound (for between/notBetween)")
 	xlsxConditionalFormatsAddCmd.Flags().IntVar(&xlsxCFPriority, "priority", 0, "optional cfRule priority (positive integer)")
 	xlsxConditionalFormatsAddCmd.Flags().BoolVar(&xlsxCFStopIfTrue, "stop-if-true", false, "set stopIfTrue on the rule")
 	xlsxConditionalFormatsAddCmd.Flags().IntVar(&xlsxCFDxfID, "dxf-id", 0, "optional differential style id to reference")

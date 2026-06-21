@@ -119,6 +119,73 @@ func TestXLSXConditionalFormatsAddListShowDelete(t *testing.T) {
 	}
 }
 
+func TestXLSXConditionalFormatsAddCellIs(t *testing.T) {
+	workbookPath := getXLSXTestFilePath("minimal-workbook")
+	outPath := filepath.Join(t.TempDir(), "cf-cell-is.xlsx")
+
+	addOut, err := executeRootForXLSXTest(t,
+		"--format", "json",
+		"xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1",
+		"--range", "B1:B5",
+		"--type", "cell-is",
+		"--operator", "between",
+		"--formula", "1",
+		"--formula2", "10",
+		"--out", outPath,
+	)
+	if err != nil {
+		t.Fatalf("conditional-formats add cell-is failed: %v", err)
+	}
+	var addResult XLSXConditionalFormatMutationResult
+	if err := json.Unmarshal([]byte(addOut), &addResult); err != nil {
+		t.Fatalf("failed to unmarshal add JSON: %v\n%s", err, addOut)
+	}
+	if addResult.Rule == nil || addResult.Rule.Type != "cellIs" || addResult.Rule.Operator != "between" {
+		t.Fatalf("unexpected added rule: %+v", addResult.Rule)
+	}
+	if addResult.Rule.Formula != "1" || len(addResult.Rule.Formulas) != 2 || addResult.Rule.Formulas[1] != "10" {
+		t.Fatalf("unexpected cellIs formulas: %+v", addResult.Rule)
+	}
+
+	listOut, err := executeRootForXLSXTest(t, "--format", "json", "xlsx", "conditional-formats", "list", outPath, "--sheet", "1")
+	if err != nil {
+		t.Fatalf("conditional-formats list failed: %v", err)
+	}
+	var listResult XLSXConditionalFormatsListResult
+	if err := json.Unmarshal([]byte(listOut), &listResult); err != nil {
+		t.Fatalf("failed to unmarshal list JSON: %v\n%s", err, listOut)
+	}
+	if listResult.Count != 1 || listResult.Rules[0].Type != "cellIs" || listResult.Rules[0].Operator != "between" {
+		t.Fatalf("unexpected list result: %+v", listResult)
+	}
+
+	if _, err := executeRootForXLSXTest(t, "validate", "--strict", outPath); err != nil {
+		t.Fatalf("validate --strict failed: %v", err)
+	}
+}
+
+func TestXLSXConditionalFormatsAddCellIsValidation(t *testing.T) {
+	workbookPath := getXLSXTestFilePath("minimal-workbook")
+	outPath := filepath.Join(t.TempDir(), "cf-cell-is.xlsx")
+
+	_, err := executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "A1:A5", "--type", "cell-is", "--formula", "1", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--operator is required") {
+		t.Fatalf("expected missing operator error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "A1:A5", "--type", "cell-is", "--operator", "between", "--formula", "1", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "requires --formula2") {
+		t.Fatalf("expected missing formula2 error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "A1:A5", "--type", "cell-is", "--operator", "greaterThan", "--formula", "1", "--formula2", "10", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--formula2 is only valid") {
+		t.Fatalf("expected non-between formula2 error, got: %v", err)
+	}
+}
+
 func TestXLSXConditionalFormatsShowNotFound(t *testing.T) {
 	workbookPath := getXLSXTestFilePath("minimal-workbook")
 	outPath := filepath.Join(t.TempDir(), "cf.xlsx")

@@ -27,6 +27,7 @@ type ConditionalFormatRule struct {
 	Selectors       []string `json:"selectors,omitempty"`
 	Sqref           string   `json:"sqref"`
 	Type            string   `json:"type,omitempty"`
+	Operator        string   `json:"operator,omitempty"`
 	Priority        int      `json:"priority,omitempty"`
 	Formulas        []string `json:"formulas,omitempty"`
 	DxfID           int      `json:"dxfId,omitempty"`
@@ -40,6 +41,23 @@ type AddConditionalFormatExpressionRequest struct {
 	SheetRef      model.SheetRef
 	Range         string
 	Formula       string
+	Priority      int
+	HasPriority   bool
+	StopIfTrue    bool
+	HasStopIfTrue bool
+	DxfID         int
+	HasDxfID      bool
+}
+
+// AddConditionalFormatCellIsRequest creates a cellIs cfRule.
+type AddConditionalFormatCellIsRequest struct {
+	Package       opc.PackageSession
+	SheetRef      model.SheetRef
+	Range         string
+	Operator      string
+	Formula       string
+	Formula2      string
+	HasFormula2   bool
 	Priority      int
 	HasPriority   bool
 	StopIfTrue    bool
@@ -96,6 +114,7 @@ func conditionalFormatRuleFromElem(rule *etree.Element, blockIndex, ruleIndex, g
 		PrimarySelector: fmt.Sprintf("cfRule:%d", globalIndex),
 		Sqref:           sqref,
 		Type:            rule.SelectAttrValue("type", ""),
+		Operator:        rule.SelectAttrValue("operator", ""),
 		StopIfTrue:      attrIsTrue(rule, "stopIfTrue"),
 	}
 	entry.Selectors = conditionalFormatRuleSelectors(entry)
@@ -159,6 +178,27 @@ func findConditionalFormattingBlock(root *etree.Element, normSqref string) *etre
 	return nil
 }
 
+var validConditionalFormatCellIsOperators = map[string]bool{
+	"between":            true,
+	"notBetween":         true,
+	"equal":              true,
+	"notEqual":           true,
+	"greaterThan":        true,
+	"lessThan":           true,
+	"greaterThanOrEqual": true,
+	"lessThanOrEqual":    true,
+}
+
+func validateConditionalFormatCellIsOperator(op string) error {
+	if op == "" {
+		return fmt.Errorf("--operator is required for cellIs conditional formats")
+	}
+	if !validConditionalFormatCellIsOperators[op] {
+		return fmt.Errorf("invalid operator %q (use one of between, notBetween, equal, notEqual, greaterThan, lessThan, greaterThanOrEqual, lessThanOrEqual)", op)
+	}
+	return nil
+}
+
 // AddConditionalFormatExpression adds an expression conditional-formatting rule.
 func AddConditionalFormatExpression(req *AddConditionalFormatExpressionRequest) (*ConditionalFormatMutationResult, error) {
 	if req == nil {
@@ -209,26 +249,115 @@ func AddConditionalFormatExpression(req *AddConditionalFormatExpressionRequest) 
 	container.AddChild(rule)
 
 	blocks := conditionalFormatsFromRoot(root)
-	added := findAddedConditionalFormatRule(blocks, normSqref, priority, formula)
+	added := findAddedConditionalFormatRule(blocks, normSqref, "expression", priority, "", []string{formula})
 	if err := req.Package.ReplaceXMLPart(req.SheetRef.PartURI, doc); err != nil {
 		return nil, fmt.Errorf("failed to replace worksheet %s: %w", req.SheetRef.PartURI, err)
 	}
 	return &ConditionalFormatMutationResult{Sqref: normSqref, Rule: added, CellsAffected: sqrefCellCount(normSqref)}, nil
 }
 
-func findAddedConditionalFormatRule(blocks []ConditionalFormatBlock, sqref string, priority int, formula string) ConditionalFormatRule {
+// AddConditionalFormatCellIs adds a cellIs conditional-formatting rule.
+func AddConditionalFormatCellIs(req *AddConditionalFormatCellIsRequest) (*ConditionalFormatMutationResult, error) {
+	if req == nil {
+		return nil, fmt.Errorf("add conditional format request is nil")
+	}
+	normSqref, err := NormalizeSqref(req.Range)
+	if err != nil {
+		return nil, err
+	}
+	operator := strings.TrimSpace(req.Operator)
+	if err := validateConditionalFormatCellIsOperator(operator); err != nil {
+		return nil, err
+	}
+	formula := strings.TrimSpace(req.Formula)
+	if formula == "" {
+		return nil, fmt.Errorf("--formula is required")
+	}
+	formula2 := strings.TrimSpace(req.Formula2)
+	needsFormula2 := operator == "between" || operator == "notBetween"
+	if needsFormula2 && (!req.HasFormula2 || formula2 == "") {
+		return nil, fmt.Errorf("operator %q requires --formula2", operator)
+	}
+	if !needsFormula2 && req.HasFormula2 {
+		return nil, fmt.Errorf("--formula2 is only valid with between or notBetween")
+	}
+	if req.HasPriority && req.Priority < 1 {
+		return nil, fmt.Errorf("--priority must be greater than zero")
+	}
+	if req.HasDxfID && req.DxfID < 0 {
+		return nil, fmt.Errorf("--dxf-id must be zero or greater")
+	}
+	doc, root, err := readWorksheetRoot(req.Package, req.SheetRef)
+	if err != nil {
+		return nil, err
+	}
+	prefix := root.Space
+	container := findConditionalFormattingBlock(root, normSqref)
+	if container == nil {
+		container = newElement(prefix, "conditionalFormatting")
+		container.CreateAttr("sqref", normSqref)
+		insertWorksheetChild(root, container, "conditionalFormatting")
+	}
+
+	rule := newElement(prefix, "cfRule")
+	rule.CreateAttr("type", "cellIs")
+	rule.CreateAttr("operator", operator)
+	priority := req.Priority
+	if !req.HasPriority {
+		priority = nextConditionalFormatPriority(root)
+	}
+	rule.CreateAttr("priority", strconv.Itoa(priority))
+	if req.HasStopIfTrue {
+		setBoolAttr(rule, "stopIfTrue", req.StopIfTrue)
+	}
+	if req.HasDxfID {
+		rule.CreateAttr("dxfId", strconv.Itoa(req.DxfID))
+	}
+	formulaElem := newElement(prefix, "formula")
+	formulaElem.SetText(formula)
+	rule.AddChild(formulaElem)
+	formulas := []string{formula}
+	if needsFormula2 {
+		formula2Elem := newElement(prefix, "formula")
+		formula2Elem.SetText(formula2)
+		rule.AddChild(formula2Elem)
+		formulas = append(formulas, formula2)
+	}
+	container.AddChild(rule)
+
+	blocks := conditionalFormatsFromRoot(root)
+	added := findAddedConditionalFormatRule(blocks, normSqref, "cellIs", priority, operator, formulas)
+	if err := req.Package.ReplaceXMLPart(req.SheetRef.PartURI, doc); err != nil {
+		return nil, fmt.Errorf("failed to replace worksheet %s: %w", req.SheetRef.PartURI, err)
+	}
+	return &ConditionalFormatMutationResult{Sqref: normSqref, Rule: added, CellsAffected: sqrefCellCount(normSqref)}, nil
+}
+
+func findAddedConditionalFormatRule(blocks []ConditionalFormatBlock, sqref string, ruleType string, priority int, operator string, formulas []string) ConditionalFormatRule {
 	for i := len(blocks) - 1; i >= 0; i-- {
 		if existing, err := NormalizeSqref(blocks[i].Sqref); err != nil || existing != sqref {
 			continue
 		}
 		for j := len(blocks[i].Rules) - 1; j >= 0; j-- {
 			rule := blocks[i].Rules[j]
-			if rule.Priority == priority && len(rule.Formulas) == 1 && rule.Formulas[0] == formula {
+			if rule.Type == ruleType && rule.Priority == priority && rule.Operator == operator && stringSlicesEqual(rule.Formulas, formulas) {
 				return rule
 			}
 		}
 	}
 	return ConditionalFormatRule{}
+}
+
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // DeleteConditionalFormatRule removes one cfRule by selector and drops an empty block.

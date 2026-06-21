@@ -918,7 +918,7 @@ var commandMetadata = map[string]CommandMetadata{
 			{
 				Command:        "ooxml --json xlsx conditional-formats list workbook.xlsx --sheet Sheet1",
 				Description:    "List worksheet conditional-formatting blocks and cfRule selectors.",
-				ExpectedOutput: "JSON conditional-formatting records with sqref, rule selectors, type, priority, formulas, dxfId, and stopIfTrue.",
+				ExpectedOutput: "JSON conditional-formatting records with sqref, rule selectors, type, operator, priority, formulas, dxfId, and stopIfTrue.",
 			},
 		},
 		TargetObjectKinds: []string{"conditional-format", "range", "sheet"},
@@ -928,7 +928,7 @@ var commandMetadata = map[string]CommandMetadata{
 			{
 				Command:        "ooxml --json xlsx conditional-formats show workbook.xlsx --sheet Sheet1 --rule cfRule:1",
 				Description:    "Show one conditional-formatting rule by a selector returned from list.",
-				ExpectedOutput: "JSON conditional-formatting rule with sqref, type, priority, formulas, dxfId, and stopIfTrue.",
+				ExpectedOutput: "JSON conditional-formatting rule with sqref, type, operator, priority, formulas, dxfId, and stopIfTrue.",
 			},
 		},
 		CommonErrors: []CommonError{
@@ -943,9 +943,14 @@ var commandMetadata = map[string]CommandMetadata{
 				Description:    "Add an expression conditional-formatting rule that references an existing differential style.",
 				ExpectedOutput: "JSON mutation result with rule readback and validate command.",
 			},
+			{
+				Command:        "ooxml --json xlsx conditional-formats add workbook.xlsx --sheet Sheet1 --range A2:A20 --type cell-is --operator greaterThan --formula 100 --out edited.xlsx",
+				Description:    "Add a cellIs comparison rule without authoring new styles.",
+				ExpectedOutput: "JSON mutation result with cellIs operator/formula readback and validate command.",
+			},
 		},
 		CommonErrors: []CommonError{
-			{Pattern: "invalid_args", Solution: "Use ordinary A1 sqref ranges, --type expression, and an existing --dxf-id if styling is needed."},
+			{Pattern: "invalid_args", Solution: "Use ordinary A1 sqref ranges, --type expression or cell-is, supported cellIs operators, and an existing --dxf-id if styling is needed."},
 		},
 		TargetObjectKinds: []string{"conditional-format", "range", "sheet", "style"},
 	},
