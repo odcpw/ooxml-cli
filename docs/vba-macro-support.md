@@ -171,6 +171,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -OfficeOracleTimeoutSeconds 120
 ```
 
+Pure generated PPTM PowerPoint-open proof:
+
+```powershell
+ooxml --json pptx scaffold .\deck.pptx --title "Macro Deck" --force
+ooxml --json vba create .\deck.pptx --pure --family pptx --source .\macros\Module1.bas --out .\deck.pptm
+ooxml --json vba office-check .\deck.pptm --out-dir .\proof\pure-pptm-office-check
+```
+
 Explicit generated-XLSM macro execution proof:
 
 ```powershell

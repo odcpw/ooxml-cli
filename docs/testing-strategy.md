@@ -44,6 +44,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-v
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-run-smoke.ps1 -TimeoutSeconds 45
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-run-smoke.ps1 -SmokeMode Class -TimeoutSeconds 45
+.\target\debug\ooxml.exe --json vba office-check .\path\to\pure-generated.pptm --out-dir .\proof\pure-pptm-office-check
 ```
 
 ## What To Test
@@ -76,7 +77,7 @@ Keep:
 - `testdata/docx/**` for document body/table/style/header/image/comment cases.
 - generated fixture scripts under `testdata/generate/python` when they remain reproducible.
 
-For VBA, avoid pretending synthetic projects prove Office compatibility. Synthetic fixtures are fine for parser/writer unit coverage; Office-facing claims require Office-authored `.xlsm`/`.pptm` files or `tools/windows-office-vba-smoke.ps1`.
+For VBA, avoid pretending synthetic projects prove Office compatibility. Synthetic fixtures are fine for parser/writer unit coverage; Office-facing claims require a real Office oracle such as `ooxml vba office-check` on the generated macro package, `tools/windows-office-vba-smoke.ps1`, or the explicit XLSM macro-run smoke.
 
 ## Golden Tests
 
@@ -99,6 +100,8 @@ the script cannot overwrite the subject. The helper's implicit build path is
 legacy behavior, not the normal Rust proof path.
 
 `tools/windows-office-vba-smoke.ps1` creates Office-native `.xlsm` and `.pptm` seeds from `.bas` / `.cls` sources through `ooxml vba create`, proves `vbaProject.bin` extract/attach/remove, proves existing-module replacement, validates outputs, asserts real Office-shaped add/remove are refused, and optionally opens macro-enabled outputs in Excel and PowerPoint.
+
+For pure Rust PPTM authoring, generate the `.pptm` with `vba create --pure` or `build-bin` + `attach`, then run `ooxml --json vba office-check <file.pptm>`. On Windows this prefers the Microsoft Office COM oracle and records `microsoftOfficeVerified: true` only when PowerPoint opens the file without repair/failure.
 
 `tools/windows-office-vba-run-smoke.ps1` creates a pure Rust XLSM from a harmless `.bas` module, validates it, opens it in Excel, executes the macro, and verifies a marker value. Its opt-in `-SmokeMode Class` lane generates an `AgentSmoke.bas` entrypoint plus `Worker.cls` and only passes when the class method supplies the verified value. It is explicit opt-in because it runs VBA.
 

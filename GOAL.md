@@ -142,6 +142,7 @@ Already integrated on `master`:
 - pure Rust XLSM standard `.bas` macro execution proof in Excel
 - pure Rust XLSM class `.cls` macro execution proof in Excel
 - pure Rust PPTM authoring path
+- pure Rust PPTM PowerPoint open proof through `ooxml vba office-check`
 - package-level DOCM attach/extract/remove/inspect/list support
 - `vba rebuild` from source directories
 - Office-open proof for generated XLSM/PPTM and package-level DOCM
@@ -153,8 +154,8 @@ Known remaining gaps:
   user workbooks.
 - Golden/provenance coverage for generated `vbaProject.bin` outputs is still
   thin.
-- PPTM pure authoring has package/open proof, but not the same executable macro
-  smoke depth as XLSM.
+- PPTM pure authoring has package/open proof, but not executable macro smoke
+  depth comparable to the XLSM Excel run harness.
 - DOCM has package-level support, but pure DOCM authoring is not complete.
 
 ## Feature Order
