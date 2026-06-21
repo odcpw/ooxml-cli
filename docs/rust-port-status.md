@@ -9,6 +9,21 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-21:
 
+- XLSX conditional-formatting reached the first useful Go-oracle and Rust
+  parity slice: `xlsx conditional-formats list/show/add/delete` supports
+  expression rules, stable selectors, readback commands, strict validation, and
+  preservation of unsupported rule content. The default Go oracle branch
+  `codex/ooxml-go-reference` was fast-forwarded to the Go oracle commit
+  `2190991`, so the Rust contract harness no longer needs
+  `OOXML_GO_ORACLE_DIR=.` for this slice. Serve contract shards were split
+  further into PPTX and DOCX child modules without behavior changes. Proof:
+  `go test ./pkg/xlsx/mutate ./internal/cli ./pkg/capabilities`, `cargo
+  fmt --check`, `cargo check --all-targets`, clippy with warnings denied,
+  focused default-oracle `xlsx_conditional`, `serve`, and `capabilities`
+  contract filters, and `cargo test --all-targets` with 5 unit tests plus 238
+  Rust contract tests. A Rust-generated conditional-formatting XLSX passed
+  strict validation, Microsoft Open XML SDK validation with `ErrorCount: 0`,
+  and desktop Excel COM open proof on Office 16.0 build 20026.
 - A third split wave landed and kept the proof loop green: XLSX names, XLSX
   sheets, DOCX fields, and PPTX chart contract tests now live in child shards;
   PPTX placement, PPTX comment, and XLSX comment document/output helpers moved

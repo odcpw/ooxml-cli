@@ -516,17 +516,17 @@ fn parse_conditional_format_rule(
                 stack.push(name);
             }
             Ok(Event::Text(e)) => {
-                if stack.last().map(String::as_str) == Some("formula") {
-                    if let Some(formula) = rule.formulas.last_mut() {
-                        formula.push_str(&decode_xml_text(e.as_ref()));
-                    }
+                if stack.last().map(String::as_str) == Some("formula")
+                    && let Some(formula) = rule.formulas.last_mut()
+                {
+                    formula.push_str(&decode_xml_text(e.as_ref()));
                 }
             }
             Ok(Event::CData(e)) => {
-                if stack.last().map(String::as_str) == Some("formula") {
-                    if let Some(formula) = rule.formulas.last_mut() {
-                        formula.push_str(&decode_xml_text(e.as_ref()));
-                    }
+                if stack.last().map(String::as_str) == Some("formula")
+                    && let Some(formula) = rule.formulas.last_mut()
+                {
+                    formula.push_str(&decode_xml_text(e.as_ref()));
                 }
             }
             Ok(Event::GeneralRef(e)) => {
