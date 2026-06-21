@@ -31,6 +31,12 @@ $ProofCoverageClasses = @(
     "partial-proof",
     "contract-only"
 )
+$OfficeProofGapClasses = @(
+    "office-proven",
+    "no-proof-row",
+    "strict-validation-conformance-no-office",
+    "no-office-proof"
+)
 $PassingTierStatuses = @("passed", "not-required", "not-applicable", "waived")
 
 function Quote-Argument {
@@ -623,6 +629,24 @@ function Get-ProofCoverageDetail {
     }
 }
 
+function Get-OfficeProofGapClass {
+    param(
+        [hashtable]$Tiers,
+        [bool]$ProofRowPresent
+    )
+
+    if (Test-TierProofPassed -Tier $Tiers["office"]) {
+        return "office-proven"
+    }
+    if (-not $ProofRowPresent) {
+        return "no-proof-row"
+    }
+    if ((Test-TierProofPassed -Tier $Tiers["validate"]) -and (Test-TierProofPassed -Tier $Tiers["conformance"])) {
+        return "strict-validation-conformance-no-office"
+    }
+    return "no-office-proof"
+}
+
 function Get-HighestEvidenceTier {
     param([hashtable]$Tiers)
 
@@ -912,6 +936,8 @@ function Write-MarkdownReport {
     [void]$lines.Add(("Rows with required proof gaps: {0}" -f $Matrix.summary.rowsWithRequiredGaps))
     [void]$lines.Add(("Proof rows present: {0}" -f $Matrix.summary.proofRowsPresent))
     [void]$lines.Add(("Commands with no proof row yet: {0}" -f $Matrix.summary.commandsWithoutProofRows))
+    [void]$lines.Add(("Commands without Office-open proof: {0}" -f $Matrix.summary.commandsWithoutOfficeOpenProof))
+    [void]$lines.Add(("Commands strict-valid/conformant but no Office-open proof: {0}" -f $Matrix.summary.strictValidationConformanceWithoutOfficeOpenProofCommandCount))
     [void]$lines.Add(("Commands lacking strict validation/conformance/Office-open proof: {0}" -f $Matrix.summary.commandsLackingStrictValidationConformanceOrOfficeOpenProof))
     [void]$lines.Add("")
     [void]$lines.Add("| tier | gaps |")
@@ -926,13 +952,20 @@ function Write-MarkdownReport {
         [void]$lines.Add(("| {0} | {1} |" -f $coverageClass, $Matrix.summary.proofCoverageByClass.$coverageClass))
     }
     [void]$lines.Add("")
-    [void]$lines.Add("| family | coverage | proof row | command | fixture | artifact | strict gaps | structural | readback | validate | conformance | office |")
-    [void]$lines.Add("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    [void]$lines.Add("| Office proof gap | commands |")
+    [void]$lines.Add("| --- | ---: |")
+    foreach ($gapClass in $OfficeProofGapClasses) {
+        [void]$lines.Add(("| {0} | {1} |" -f $gapClass, $Matrix.summary.officeProofGapByClass.$gapClass))
+    }
+    [void]$lines.Add("")
+    [void]$lines.Add("| family | coverage | Office gap | proof row | command | fixture | artifact | strict gaps | structural | readback | validate | conformance | office |")
+    [void]$lines.Add("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     foreach ($row in @($Matrix.rows)) {
         [void]$lines.Add((
-            "| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} | {8} | {9} | {10} | {11} |" -f
+            "| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} | {8} | {9} | {10} | {11} | {12} |" -f
             (Escape-MarkdownCell $row.outputFamily),
             (Escape-MarkdownCell $row.proofCoverage),
+            (Escape-MarkdownCell $row.officeProofGapClass),
             (Escape-MarkdownCell $row.proofRowStatus),
             (Escape-MarkdownCell $row.commandPath),
             (Escape-MarkdownCell $row.inputFixtureType),
@@ -1022,6 +1055,13 @@ foreach ($command in @($capabilities.commands)) {
     $strictProofGaps = @(Get-StrictProofGaps -Tiers $tiers)
     $proofCoverage = Get-ProofCoverageClass -Tiers $tiers
     $proofCoverageDetail = Get-ProofCoverageDetail -CoverageClass $proofCoverage -ProofRowPresent $proofRowPresent
+    $officeProofGapClass = Get-OfficeProofGapClass -Tiers $tiers -ProofRowPresent $proofRowPresent
+    $lacksOfficeOpenProof = -not (Test-TierProofPassed -Tier $tiers["office"])
+    $strictValidationConformanceWithoutOfficeProof = (
+        (Test-TierProofPassed -Tier $tiers["validate"]) -and
+        (Test-TierProofPassed -Tier $tiers["conformance"]) -and
+        $lacksOfficeOpenProof
+    )
 
     $exactCommand = Get-PropertyValue -Object $evidence -Name "exactCommand"
     $row = [ordered]@{
@@ -1047,8 +1087,12 @@ foreach ($command in @($capabilities.commands)) {
         highestEvidenceTier = Get-HighestEvidenceTier -Tiers $tiers
         proofCoverage = $proofCoverage
         proofCoverageDetail = $proofCoverageDetail
+        officeProofGapClass = $officeProofGapClass
         proofRowStatus = $proofRowStatus
         proofRowPresent = $proofRowPresent
+        noExplicitProofRow = -not $proofRowPresent
+        lacksOfficeOpenProof = $lacksOfficeOpenProof
+        strictValidationConformanceProofWithoutOfficeOpenProof = $strictValidationConformanceWithoutOfficeProof
         requiredGaps = $requiredGaps
         strictProofGaps = $strictProofGaps
         lacksStrictValidationConformanceOrOfficeOpenProof = (@($strictProofGaps).Count -gt 0)
@@ -1085,10 +1129,17 @@ $strictConformanceProven = @($sortedRows | Where-Object { $_.proofCoverage -eq "
 $contractOnly = @($sortedRows | Where-Object { $_.proofCoverage -eq "contract-only" })
 $partialProof = @($sortedRows | Where-Object { $_.proofCoverage -eq "partial-proof" })
 $lackingStrictOrOfficeProof = @($sortedRows | Where-Object { $_.lacksStrictValidationConformanceOrOfficeOpenProof })
+$rowsWithoutOfficeOpenProof = @($sortedRows | Where-Object { $_.lacksOfficeOpenProof })
+$strictValidationConformanceWithoutOfficeProof = @($sortedRows | Where-Object { $_.strictValidationConformanceProofWithoutOfficeOpenProof })
 
 $proofCoverageByClass = [ordered]@{}
 foreach ($coverageClass in $ProofCoverageClasses) {
     $proofCoverageByClass[$coverageClass] = @($sortedRows | Where-Object { $_.proofCoverage -eq $coverageClass }).Count
+}
+
+$officeProofGapByClass = [ordered]@{}
+foreach ($gapClass in $OfficeProofGapClasses) {
+    $officeProofGapByClass[$gapClass] = @($sortedRows | Where-Object { $_.officeProofGapClass -eq $gapClass }).Count
 }
 
 $matrix = [pscustomobject][ordered]@{
@@ -1106,8 +1157,10 @@ $matrix = [pscustomobject][ordered]@{
         requiredTiers = $TierNames
         strictProofTiers = $StrictProofTierNames
         proofCoverageClasses = $ProofCoverageClasses
+        officeProofGapClasses = $OfficeProofGapClasses
         contractOnlyDefinition = "The command exists in capabilities, but this matrix run has no passing structural/readback/strict validation/conformance/Office-open proof tiers for it."
         proofRowStatusDefinition = "present means an explicit evidence or Office smoke row was supplied; missing means the row was inferred only from capabilities inventory."
+        officeProofGapClassDefinition = "office-proven means desktop Office-open proof passed; no-proof-row means no explicit proof evidence was supplied; strict-validation-conformance-no-office means strict validation and conformance passed but Office-open proof did not; no-office-proof means an explicit row exists but Office-open proof is still not passing."
         passingTierStatuses = $PassingTierStatuses
         note = "Missing means no proof evidence was provided to this matrix run; pass -EvidencePath to overlay checked proof rows."
     }
@@ -1128,6 +1181,9 @@ $matrix = [pscustomobject][ordered]@{
         proofCoverageByClass = $proofCoverageByClass
         proofRowsPresent = $rowsWithProofRows.Count
         commandsWithoutProofRows = $rowsWithoutProofRows.Count
+        commandsWithoutOfficeOpenProof = $rowsWithoutOfficeOpenProof.Count
+        strictValidationConformanceWithoutOfficeOpenProofCommandCount = $strictValidationConformanceWithoutOfficeProof.Count
+        officeProofGapByClass = $officeProofGapByClass
         strictConformanceProvenCommandCount = $strictConformanceProven.Count
         contractOnlyCommandCount = $contractOnly.Count
         partialProofCommandCount = $partialProof.Count
@@ -1141,6 +1197,8 @@ $matrix = [pscustomobject][ordered]@{
         strictConformanceProvenCommands = @($strictConformanceProven | ForEach-Object { $_.commandPath })
         contractOnlyCommands = @($contractOnly | ForEach-Object { $_.commandPath })
         commandsWithoutProofRows = @($rowsWithoutProofRows | ForEach-Object { $_.commandPath })
+        commandsWithoutOfficeOpenProof = @($rowsWithoutOfficeOpenProof | ForEach-Object { $_.commandPath })
+        strictValidationConformanceWithoutOfficeOpenProofCommands = @($strictValidationConformanceWithoutOfficeProof | ForEach-Object { $_.commandPath })
         commandsLackingStrictValidationConformanceOrOfficeOpenProof = @($lackingStrictOrOfficeProof | ForEach-Object { $_.commandPath })
         parserOnlyCommands = @($parserOnly | ForEach-Object { $_.commandPath })
     }

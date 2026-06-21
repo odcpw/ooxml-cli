@@ -16,6 +16,8 @@ param(
 
     [int]$MutationParallelism = ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount))),
 
+    [string[]]$ScenarioName = @(),
+
     [int]$OfficeOracleTimeoutSeconds = 120,
 
     [switch]$SkipBuild,
@@ -1134,6 +1136,13 @@ $scenarios = @(
         -Arguments @("--json", "docx", "replace", $docxMinimal, "--find", "Hello world", "--replace", "Hello from ooxml office smoke", "--expect-count", "1", "--out", (Join-Path $caseDir "docx-replace.docx"))),
 
     (New-Scenario `
+        -Name "docx-scaffold" `
+        -Family "docx" `
+        -Input "" `
+        -Output (Join-Path $caseDir "docx-scaffold.docx") `
+        -Arguments @("--json", "docx", "scaffold", (Join-Path $caseDir "docx-scaffold.docx"), "--text", "Office scaffold")),
+
+    (New-Scenario `
         -Name "docx-comments-add" `
         -Family "docx" `
         -Input $docxMinimal `
@@ -1274,6 +1283,27 @@ $scenarios = @(
         -Arguments @("--json", "docx", "images", "replace", $docxWithImage, "--image", "1", "--file", $imageFixture, "--out", (Join-Path $caseDir "docx-image-replace.docx")))
 )
 
+if ($ScenarioName.Count -gt 0) {
+    $requestedScenarioNames = @($ScenarioName | Where-Object { $null -ne $_ -and $_ -ne "" })
+    $knownScenarioNames = @{}
+    foreach ($scenario in $scenarios) {
+        $knownScenarioNames[[string]$scenario.name] = $true
+    }
+
+    $missingScenarioNames = @($requestedScenarioNames | Where-Object { -not $knownScenarioNames.ContainsKey([string]$_) })
+    if ($missingScenarioNames.Count -gt 0) {
+        $knownList = (($knownScenarioNames.Keys | Sort-Object) -join ", ")
+        $missingList = (($missingScenarioNames | Sort-Object) -join ", ")
+        throw "Unknown ScenarioName value(s): $missingList. Known scenarios: $knownList"
+    }
+
+    $wantedScenarioNames = @{}
+    foreach ($name in $requestedScenarioNames) {
+        $wantedScenarioNames[[string]$name] = $true
+    }
+    $scenarios = @($scenarios | Where-Object { $wantedScenarioNames.ContainsKey([string]$_.name) })
+}
+
 for ($i = 0; $i -lt $scenarios.Count; $i++) {
     $scenarios[$i].index = $i
 }
@@ -1399,6 +1429,7 @@ $summary = [pscustomobject]@{
     binary               = $BinaryPath
     outputDir            = $outRoot
     mutationParallelism  = $MutationParallelism
+    scenarioNameFilter   = @($ScenarioName)
     scenarioCount        = $results.Count
     passedCount          = ($results.Count - $failed.Count)
     failedCount          = $failed.Count

@@ -248,20 +248,31 @@ Run the honest release-readiness pass:
 
 ## Current Gap Ledger
 
-The following findings are treated as live work until closed by code and proof:
+Updated 2026-06-21. The following findings are treated as live work until closed by code and proof:
 
-1. No pure from-nothing scaffold for `.docx`, `.xlsx`, or `.pptx`.
-2. XLSX tables can append/update existing tables but lack a create verb.
-3. Formula-heavy workbook proof is incomplete, especially around recalc/cache invalidation and Office
-   open behavior.
-4. DOCX authoring is still too mutation-oriented and lacks a clean block construction layer.
-5. PPTX template capture may fail on real decks with present shapes but unexpected tree layout.
-6. No repair/normalize command for safe recoverable OOXML issues.
-7. PPTX footer field setting creates metadata but not visible missing footer placeholders.
+1. Scaffolds for `.docx`, `.xlsx`, and `.pptx` exist, but every scaffold family needs explicit
+   Office-open evidence in the artifact matrix. `docx scaffold` was the missing scaffold-family row
+   and now has a focused smoke scenario.
+2. XLSX table creation exists, and the next risk is realistic generated-workbook coexistence:
+   scaffold -> formulas/data -> table -> conditional format -> defined name -> pivot/chart -> Excel
+   open.
+3. Formula-heavy workbook proof is still incomplete around recalc/cache invalidation and Office-open
+   behavior on realistic generated workbooks.
+4. DOCX authoring still lacks first-class table creation, list construction, and styled-run creation
+   for new content. Existing scaffold, paragraph insertion, block insertion, and style application are
+   real and tested.
+5. PPTX scaffold exists, footer placeholder synthesis exists, and generated-deck text placement is
+   partly tested. The remaining proof gap is scaffold-derived table placement, table-from-XLSX,
+   charts, and PowerPoint-open evidence.
+6. PPTX template capture needs a targeted regression for real decks where shapes exist but older
+   `spTree` lookup assumptions failed.
+7. No repair/normalize command exists yet for safe recoverable OOXML ordering and relationship issues.
 8. XLSM-to-XLSX works through VBA removal but needs a clear conversion alias.
-9. XLSX diff aligns sheets by name, so renamed sheets do not cell-align.
-10. Validator false confidence: modeled schema child ordering must be checked locally, starting with
-    workbook `<definedNames>` placement.
+9. Existing VBA and template proof artifacts need matrix ingestion so already-proven Office-open rows
+   are visible in the command coverage ledger.
+10. Validator false confidence must stay closed: local strict validation and conformance must catch
+    modeled schema child ordering, including workbook `<definedNames>`, `<calcPr>`, and
+    `<pivotCaches>` placement.
 
 ## Proof Rules
 
