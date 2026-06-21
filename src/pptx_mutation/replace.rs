@@ -1,3 +1,6 @@
+mod image_batch;
+mod image_payload;
+
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Value, json};
@@ -6,6 +9,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
+use self::image_batch::{
+    ImageBatchSelector, parse_image_batch_selector, parse_image_batch_slide_spec,
+};
+use self::image_payload::{
+    image_content_type_from_path, normalize_fit_mode, replacement_image_uri, validate_image_payload,
+};
 use crate::cli_args::value_flag_present;
 use crate::{
     CliError, CliResult, RelationshipEntry, XlsxRangeExportOptions, attr, attr_exact,
@@ -1637,11 +1646,6 @@ struct ImageBatchSlideResult {
     plan: Option<ImageReplacePlan>,
 }
 
-struct ImageBatchSelector {
-    normalized: String,
-    unsupported_error: Option<String>,
-}
-
 fn replace_image(
     file: &str,
     target_selector: &str,
@@ -1957,135 +1961,6 @@ fn image_batch_slide_result_json(item: &ImageBatchSlideResult) -> Value {
     })
 }
 
-fn parse_image_batch_selector(target_selector: &str) -> CliResult<ImageBatchSelector> {
-    let trimmed = target_selector.trim();
-    if trimmed.is_empty() {
-        return Err(CliError::invalid_args(
-            "invalid target selector: selector cannot be empty",
-        ));
-    }
-    if let Some(raw) = trimmed.strip_prefix("shape:") {
-        let raw = raw.trim();
-        if raw.is_empty() {
-            return Err(CliError::invalid_args(
-                "invalid target selector: shape ID selector cannot be empty after 'shape:'",
-            ));
-        }
-        let id = raw.parse::<i64>().map_err(|err| {
-            CliError::invalid_args(format!("invalid target selector: invalid shape ID: {err}"))
-        })?;
-        if id < 0 {
-            return Err(CliError::invalid_args(format!(
-                "invalid target selector: shape ID must be non-negative, got {id}"
-            )));
-        }
-        return Ok(ImageBatchSelector {
-            normalized: format!("shape:{id}"),
-            unsupported_error: None,
-        });
-    }
-    if let Some(name) = trimmed.strip_prefix('~') {
-        if name.is_empty() {
-            return Err(CliError::invalid_args(
-                "invalid target selector: shape name selector cannot be empty after ~",
-            ));
-        }
-        return Ok(ImageBatchSelector {
-            normalized: format!("~{name}"),
-            unsupported_error: None,
-        });
-    }
-    let unsupported_type = if trimmed.starts_with('@') {
-        match trimmed.trim_start_matches('@').trim() {
-            "*" | "all-placeholders" => "*selectors.WildcardAllPlaceholdersSelector",
-            "all-shapes" | "all-shapes-nonph" => "*selectors.WildcardAllShapesSelector",
-            "all-pictures" => "*selectors.WildcardAllPicturesSelector",
-            "all-tables" => "*selectors.WildcardAllTablesSelector",
-            _ => "*selectors.PlaceholderTypeSelector",
-        }
-    } else if trimmed.starts_with('#') {
-        "*selectors.PlaceholderIndexSelector"
-    } else if is_image_batch_slide_selector(trimmed) {
-        if trimmed.contains(',') || trimmed.contains('-') {
-            "*selectors.SlideRangeSelector"
-        } else {
-            "*selectors.SlideNumberSelector"
-        }
-    } else {
-        "*selectors.PlaceholderKeySelector"
-    };
-    Ok(ImageBatchSelector {
-        normalized: trimmed.to_string(),
-        unsupported_error: Some(format!(
-            "selector type {unsupported_type} is not supported for image replacement (use shape ID or name)"
-        )),
-    })
-}
-
-fn is_image_batch_slide_selector(value: &str) -> bool {
-    value.contains(',')
-        || (!value.starts_with('-') && value.contains('-'))
-        || value.chars().all(|ch| ch.is_ascii_digit())
-}
-
-fn parse_image_batch_slide_spec(value: &str) -> Result<Vec<u32>, String> {
-    let spec = value.trim();
-    if spec.is_empty() {
-        return Err("empty specification".to_string());
-    }
-    let mut slides = Vec::new();
-    let mut seen = BTreeSet::<u32>::new();
-    for part in spec
-        .split(',')
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-    {
-        if part.contains('-') {
-            let range_parts = part.split('-').collect::<Vec<_>>();
-            if range_parts.len() != 2 {
-                return Err(format!("invalid range format: {part}"));
-            }
-            let start_raw = range_parts[0].trim();
-            let end_raw = range_parts[1].trim();
-            let start = start_raw
-                .parse::<i64>()
-                .map_err(|_| format!("invalid range start: {start_raw}"))?;
-            if start <= 0 {
-                return Err(format!("invalid range start: {start_raw}"));
-            }
-            let end = end_raw
-                .parse::<i64>()
-                .map_err(|_| format!("invalid range end: {end_raw}"))?;
-            if end <= 0 {
-                return Err(format!("invalid range end: {end_raw}"));
-            }
-            if start > end {
-                return Err(format!(
-                    "range start ({start}) cannot be greater than end ({end})"
-                ));
-            }
-            for slide in start as u32..=end as u32 {
-                if seen.insert(slide) {
-                    slides.push(slide);
-                }
-            }
-        } else {
-            let slide = part
-                .parse::<i64>()
-                .map_err(|_| format!("invalid slide number: {part}"))?;
-            if slide <= 0 {
-                return Err(format!("invalid slide number: {part}"));
-            }
-            let slide = slide as u32;
-            if seen.insert(slide) {
-                slides.push(slide);
-            }
-        }
-    }
-    slides.sort_unstable();
-    Ok(slides)
-}
-
 fn image_target_not_found(target_selector: &str, slide: u32, file: &str) -> CliError {
     let candidates = pptx_slide_refs_for_replace(file)
         .ok()
@@ -2203,105 +2078,6 @@ fn image_destination_json(
         }),
     );
     Value::Object(result)
-}
-
-fn normalize_fit_mode(mode: &str) -> CliResult<String> {
-    match mode.to_ascii_lowercase().as_str() {
-        "contain" | "fit" => Ok("contain".to_string()),
-        "cover" | "crop" => Ok("cover".to_string()),
-        other => Err(CliError::invalid_args(format!(
-            "invalid fit mode {other:?} (must be 'contain' or 'cover')"
-        ))),
-    }
-}
-
-fn replacement_image_uri(
-    old_uri: &str,
-    old_content_type: &str,
-    new_content_type: &str,
-) -> CliResult<String> {
-    if normalized_image_content_type(old_content_type)
-        == normalized_image_content_type(new_content_type)
-    {
-        return Ok(old_uri.to_string());
-    }
-    let new_ext = image_extension_for_content_type(new_content_type)?;
-    let old_ext = Path::new(old_uri)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or_default();
-    if old_ext.eq_ignore_ascii_case(new_ext.trim_start_matches('.')) {
-        return Ok(old_uri.to_string());
-    }
-    let Some((base, _)) = old_uri.rsplit_once('.') else {
-        return Ok(format!("{old_uri}{new_ext}"));
-    };
-    Ok(format!("{base}{new_ext}"))
-}
-
-fn image_content_type_from_path(path: &str) -> CliResult<String> {
-    let extension = Path::new(path)
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match extension.as_str() {
-        "png" => Ok("image/png".to_string()),
-        "jpg" | "jpeg" => Ok("image/jpeg".to_string()),
-        "gif" => Ok("image/gif".to_string()),
-        "bmp" => Ok("image/bmp".to_string()),
-        "tif" | "tiff" => Ok("image/tiff".to_string()),
-        "webp" => Ok("image/webp".to_string()),
-        "svg" => Ok("image/svg+xml".to_string()),
-        _ => Err(CliError::unsupported_type(format!(
-            "unsupported image type for {path}; supported extensions are .png, .jpg, .jpeg, .gif, .bmp, .tif, .tiff, .webp, and .svg"
-        ))),
-    }
-}
-
-fn image_extension_for_content_type(content_type: &str) -> CliResult<&'static str> {
-    match normalized_image_content_type(content_type).as_str() {
-        "image/png" => Ok(".png"),
-        "image/jpeg" | "image/jpg" | "image/pjpeg" => Ok(".jpg"),
-        "image/gif" => Ok(".gif"),
-        "image/bmp" => Ok(".bmp"),
-        "image/tiff" => Ok(".tiff"),
-        "image/webp" => Ok(".webp"),
-        "image/svg+xml" => Ok(".svg"),
-        other => Err(CliError::unsupported_type(format!(
-            "unsupported image content type {other}"
-        ))),
-    }
-}
-
-fn validate_image_payload(raw: &[u8], content_type: &str) -> Result<(), String> {
-    let normalized = normalized_image_content_type(content_type);
-    let ok = match normalized.as_str() {
-        "image/png" => raw.starts_with(b"\x89PNG\r\n\x1a\n"),
-        "image/jpeg" | "image/jpg" | "image/pjpeg" => {
-            raw.len() >= 3 && raw[0] == 0xff && raw[1] == 0xd8 && raw[2] == 0xff
-        }
-        "image/gif" => raw.starts_with(b"GIF87a") || raw.starts_with(b"GIF89a"),
-        "image/bmp" => raw.starts_with(b"BM"),
-        "image/tiff" => raw.starts_with(b"II*\0") || raw.starts_with(b"MM\0*"),
-        _ => true,
-    };
-    if ok {
-        Ok(())
-    } else {
-        Err(format!(
-            "image payload does not match content type {normalized}"
-        ))
-    }
-}
-
-fn normalized_image_content_type(content_type: &str) -> String {
-    content_type
-        .split_once(';')
-        .map(|(head, _)| head)
-        .unwrap_or(content_type)
-        .trim()
-        .to_ascii_lowercase()
 }
 
 #[derive(Clone)]

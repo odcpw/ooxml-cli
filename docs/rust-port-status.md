@@ -7,8 +7,29 @@ from `OOXML_GO_ORACLE_DIR`/`OOXML_GO_ORACLE_REF` when deliberately overridden.
 
 The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.json`.
 
-Latest milestone, 2026-06-20:
+Latest milestone, 2026-06-21:
 
+- Agent-facing serve/MCP coverage expanded after command-path parity:
+  `pptx shapes delete` and `xlsx charts set-series-style` now run through the
+  JSON op dispatcher using the proven CLI mutation paths. The web-agent
+  capability surface was updated accordingly. Proof: focused serve-op tests for
+  both mutations, focused XLSX chart style and nested PPTX shape-delete parity
+  tests, full capability shard with 8 passed tests, `cargo fmt --check`,
+  `cargo check --all-targets`, and `cargo clippy --all-targets -- -D warnings`.
+- The largest contract shards were split further without changing test names:
+  XLSX chart contract tests now live under
+  `tests/rust_contract_smoke/xlsx/charts.rs`, and PPTX table contract tests now
+  live under `tests/rust_contract_smoke/pptx/tables.rs`, included from their
+  original module locations. Proof: focused `xlsx_charts` and `pptx_tables`
+  Rust contract filters passed after integration.
+- Source de-monolithization continued along behavior-preserving seams:
+  `pptx_mutation::replace` image batch/payload helpers moved under
+  `src/pptx_mutation/replace/`, `pptx_mutation::tables` output/types helpers
+  moved under `src/pptx_mutation/tables/`, and `template_workflow` XML edit
+  primitives moved under `src/template_workflow/`. Proof: `cargo fmt --check`,
+  `cargo check --all-targets`, `cargo clippy --all-targets -- -D warnings`,
+  plus focused `pptx_replace_images`, `pptx_tables`, and `template_apply`
+  Rust/Go contract filters.
 - The PPTX capability catalog was split from one 3.8k-line accumulation file
   into focused command-family modules under `src/capabilities/commands/pptx/`,
   leaving `src/capabilities/commands/pptx.rs` as a small facade that preserves
