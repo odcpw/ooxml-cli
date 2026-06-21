@@ -8,6 +8,8 @@ param(
 
     [string]$EvidencePath = "",
 
+    [string[]]$OfficeEditSmokeSummaryPath = @(),
+
     [string]$OutJson = "",
 
     [string]$OutMarkdown = "",
@@ -266,13 +268,8 @@ function Test-PublicPackageMutator {
     param([object]$Command)
 
     $path = [string](Get-PropertyValue -Object $Command -Name "path")
-    $use = [string](Get-PropertyValue -Object $Command -Name "use")
-    $short = [string](Get-PropertyValue -Object $Command -Name "short")
-    $reason = [string](Get-PropertyValue -Object $Command -Name "opIneligibleReason")
-    $opCompatible = [bool](Get-PropertyValue -Object $Command -Name "opCompatible")
     $flagNames = @(Get-FlagNames -Command $Command)
     $hasPackageWriteFlags = (Test-HasAnyFlag -FlagNames $flagNames -Needles @("--out", "--in-place")) -and (Test-HasAnyFlag -FlagNames $flagNames -Needles @("--dry-run", "--in-place"))
-    $text = "$path $use $short $reason".ToLowerInvariant()
 
     if ($path -eq "ooxml vba create" -or $path -eq "ooxml pptx template compile") {
         return $true
@@ -283,10 +280,7 @@ function Test-PublicPackageMutator {
     if ($path -eq "ooxml find" -and ($flagNames -contains "--apply")) {
         return $true
     }
-    if ($opCompatible -and $hasPackageWriteFlags) {
-        return $true
-    }
-    if ($hasPackageWriteFlags -and $text -match 'direct cli .*mutation|source-module mutation') {
+    if ($hasPackageWriteFlags) {
         return $true
     }
     return $false
@@ -579,6 +573,212 @@ function Import-Evidence {
     return $map
 }
 
+function ConvertTo-OrderedPropertyMap {
+    param([object]$Object)
+
+    $map = [ordered]@{}
+    if ($null -eq $Object) {
+        return $map
+    }
+    foreach ($property in @($Object.PSObject.Properties)) {
+        $map[$property.Name] = $property.Value
+    }
+    return $map
+}
+
+function Merge-EvidenceItem {
+    param(
+        [object]$Existing,
+        [object]$Incoming
+    )
+
+    if ($null -eq $Existing) {
+        return $Incoming
+    }
+    if ($null -eq $Incoming) {
+        return $Existing
+    }
+
+    $result = ConvertTo-OrderedPropertyMap -Object $Existing
+    foreach ($property in @($Incoming.PSObject.Properties)) {
+        if ($property.Name -eq "tiers") {
+            continue
+        }
+        $current = $result[$property.Name]
+        if ($null -eq $current -or [string]$current -eq "") {
+            $result[$property.Name] = $property.Value
+        }
+    }
+
+    $mergedTiers = ConvertTo-OrderedPropertyMap -Object (Get-PropertyValue -Object $Existing -Name "tiers")
+    $incomingTiers = Get-PropertyValue -Object $Incoming -Name "tiers"
+    foreach ($tierName in $TierNames) {
+        $incomingTier = Get-PropertyValue -Object $incomingTiers -Name $tierName
+        if ($null -eq $incomingTier) {
+            continue
+        }
+        $existingTier = Get-PropertyValue -Object ([pscustomobject]$mergedTiers) -Name $tierName
+        $existingStatus = Get-PropertyValue -Object $existingTier -Name "status"
+        $incomingStatus = Get-PropertyValue -Object $incomingTier -Name "status"
+        if ($null -eq $existingTier -or -not ($PassingTierStatuses -contains [string]$existingStatus) -or ($PassingTierStatuses -contains [string]$incomingStatus)) {
+            $mergedTiers[$tierName] = $incomingTier
+        }
+    }
+    $result["tiers"] = [pscustomobject]$mergedTiers
+    return [pscustomobject]$result
+}
+
+function Merge-EvidenceMaps {
+    param(
+        [hashtable]$Target,
+        [hashtable]$Incoming
+    )
+
+    foreach ($key in $Incoming.Keys) {
+        if ($Target.ContainsKey($key)) {
+            $Target[$key] = Merge-EvidenceItem -Existing $Target[$key] -Incoming $Incoming[$key]
+        }
+        else {
+            $Target[$key] = $Incoming[$key]
+        }
+    }
+}
+
+function Find-CommandPathInSmokeCommand {
+    param(
+        [string]$CommandLine,
+        [string[]]$CommandPaths
+    )
+
+    if ($CommandLine -eq "") {
+        return ""
+    }
+    $normalized = " " + (($CommandLine -replace "[`r`n]+", " ") -replace "\s+", " ") + " "
+    foreach ($path in @($CommandPaths | Sort-Object Length -Descending)) {
+        $tail = ($path -replace "^ooxml\s+", "").Trim()
+        if ($tail -eq "") {
+            continue
+        }
+        $pattern = "(?i)(?:^|\s)--json\s+(?:--strict\s+)?" + [regex]::Escape($tail) + "(?:\s|$)"
+        if ($normalized -match $pattern) {
+            return $path
+        }
+    }
+    return ""
+}
+
+function New-SmokeTierEvidence {
+    param(
+        [object]$Stage,
+        [string]$PassedDetail,
+        [string]$FallbackDetail,
+        [string[]]$ExtraEvidence = @()
+    )
+
+    if ($null -eq $Stage) {
+        return $null
+    }
+    $status = [string](Get-PropertyValue -Object $Stage -Name "status")
+    if ($status -eq "" -or $status -eq "not-run" -or $status -eq "skipped") {
+        return $null
+    }
+    $detail = [string](Get-PropertyValue -Object $Stage -Name "detail")
+    if ($status -eq "passed" -and $PassedDetail -ne "") {
+        $detail = $PassedDetail
+    }
+    elseif ($detail -eq "") {
+        $detail = $FallbackDetail
+    }
+    $evidence = New-Object System.Collections.Generic.List[string]
+    foreach ($value in @($ExtraEvidence)) {
+        if ($null -ne $value -and [string]$value -ne "") {
+            [void]$evidence.Add([string]$value)
+        }
+    }
+    foreach ($name in @("command", "artifact")) {
+        $value = Get-PropertyValue -Object $Stage -Name $name
+        if ($null -ne $value -and [string]$value -ne "") {
+            [void]$evidence.Add([string]$value)
+        }
+    }
+    return [pscustomobject][ordered]@{
+        status = $status
+        detail = $detail
+        evidence = @($evidence)
+    }
+}
+
+function Import-OfficeEditSmokeEvidence {
+    param(
+        [string[]]$Paths,
+        [string[]]$CommandPaths
+    )
+
+    $map = @{}
+    foreach ($path in @($Paths | Where-Object { $null -ne $_ -and $_ -ne "" })) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "OfficeEditSmokeSummaryPath does not exist: $path"
+        }
+        $resolved = (Resolve-Path -LiteralPath $path).Path
+        $doc = Get-JsonObject -JsonText (Get-Content -LiteralPath $resolved -Raw)
+        foreach ($scenario in @((Get-PropertyValue -Object $doc -Name "scenarios"))) {
+            $mutation = Get-PropertyValue -Object $scenario -Name "mutation"
+            $commandLine = [string](Get-PropertyValue -Object $mutation -Name "command")
+            $commandPath = Find-CommandPathInSmokeCommand -CommandLine $commandLine -CommandPaths $CommandPaths
+            if ($commandPath -eq "") {
+                continue
+            }
+
+            $scenarioName = [string](Get-PropertyValue -Object $scenario -Name "name")
+            $output = [string](Get-PropertyValue -Object $scenario -Name "output")
+            $scenarioEvidence = @("office-edit-smoke summary: $resolved", "scenario: $scenarioName", "output: $output")
+            $tiers = [ordered]@{}
+            $tiers.structural = New-SmokeTierEvidence `
+                -Stage (Get-PropertyValue -Object $scenario -Name "openXmlSdk") `
+                -PassedDetail "Microsoft Open XML SDK schema validation passed for the smoke output." `
+                -FallbackDetail "Microsoft Open XML SDK schema validation did not pass for the smoke output." `
+                -ExtraEvidence $scenarioEvidence
+            $tiers.validate = New-SmokeTierEvidence `
+                -Stage (Get-PropertyValue -Object $scenario -Name "validation") `
+                -PassedDetail "ooxml validate --strict accepted the smoke output." `
+                -FallbackDetail "ooxml validate --strict did not accept the smoke output." `
+                -ExtraEvidence $scenarioEvidence
+            $tiers.conformance = New-SmokeTierEvidence `
+                -Stage (Get-PropertyValue -Object $scenario -Name "conformance") `
+                -PassedDetail "ooxml conformance check accepted the smoke output." `
+                -FallbackDetail "ooxml conformance check did not accept the smoke output." `
+                -ExtraEvidence $scenarioEvidence
+            $tiers.office = New-SmokeTierEvidence `
+                -Stage (Get-PropertyValue -Object $scenario -Name "microsoftOffice") `
+                -PassedDetail "Desktop Microsoft Office opened the smoke output without repair/failure." `
+                -FallbackDetail "Desktop Microsoft Office did not open the smoke output cleanly." `
+                -ExtraEvidence $scenarioEvidence
+
+            foreach ($tierName in @($TierNames)) {
+                if ($null -eq $tiers[$tierName]) {
+                    $tiers.Remove($tierName)
+                }
+            }
+            $item = [pscustomobject][ordered]@{
+                commandPath = $commandPath
+                inputFixtureType = "office edit smoke fixture"
+                generatedOutputPath = $output
+                exactCommand = $commandLine
+                sourceSummary = $resolved
+                scenarioName = $scenarioName
+                tiers = [pscustomobject]$tiers
+            }
+            if ($map.ContainsKey($commandPath)) {
+                $map[$commandPath] = Merge-EvidenceItem -Existing $map[$commandPath] -Incoming $item
+            }
+            else {
+                $map[$commandPath] = $item
+            }
+        }
+    }
+    return $map
+}
+
 function Escape-MarkdownCell {
     param([object]$Value)
 
@@ -645,7 +845,11 @@ if ($OutMarkdown -eq "") {
 $resolvedBinary = Resolve-OoxmlBinary -Requested $BinaryPath -Root $resolvedRepoRoot
 $capabilitiesResult = Get-Capabilities -Root $resolvedRepoRoot -Binary $resolvedBinary -JsonPath $CapabilitiesJsonPath
 $capabilities = $capabilitiesResult.Object
+$capabilityCommandPaths = @($capabilities.commands | ForEach-Object { [string](Get-PropertyValue -Object $_ -Name "path") })
 $evidenceMap = Import-Evidence -Path $EvidencePath
+$officeEditSmokeEvidence = Import-OfficeEditSmokeEvidence -Paths $OfficeEditSmokeSummaryPath -CommandPaths $capabilityCommandPaths
+Merge-EvidenceMaps -Target $evidenceMap -Incoming $officeEditSmokeEvidence
+$resolvedOfficeEditSmokeSummaryPaths = @($OfficeEditSmokeSummaryPath | Where-Object { $null -ne $_ -and $_ -ne "" } | ForEach-Object { (Resolve-Path -LiteralPath $_).Path })
 
 $rows = New-Object System.Collections.Generic.List[object]
 foreach ($command in @($capabilities.commands)) {
@@ -739,6 +943,9 @@ foreach ($row in $sortedRows) {
 }
 
 $rowsWithGaps = @($sortedRows | Where-Object { @($_.requiredGaps).Count -gt 0 })
+$structuralProven = @($sortedRows | Where-Object { $_.tiers.structural.status -eq "passed" })
+$validateProven = @($sortedRows | Where-Object { $_.tiers.validate.status -eq "passed" })
+$conformanceProven = @($sortedRows | Where-Object { $_.tiers.conformance.status -eq "passed" })
 $officeProven = @($sortedRows | Where-Object { $_.tiers.office.status -eq "passed" })
 $scaffoldProven = @($sortedRows | Where-Object { $_.inputFixtureType -eq "scaffold" -and @($_.requiredGaps).Count -eq 0 })
 $parserOnly = @($sortedRows | Where-Object { $_.highestEvidenceTier -eq "structural" })
@@ -751,6 +958,7 @@ $matrix = [pscustomobject][ordered]@{
         capabilitiesSource = $capabilitiesResult.Source
         capabilitiesCommand = $capabilitiesResult.Command
         evidencePath = if ($EvidencePath -ne "") { (Resolve-Path -LiteralPath $EvidencePath).Path } else { "" }
+        officeEditSmokeSummaryPaths = $resolvedOfficeEditSmokeSummaryPaths
     }
     policy = [ordered]@{
         rowSource = "Public package-creating and package-mutating commands inferred from ooxml --json capabilities."
@@ -764,6 +972,10 @@ $matrix = [pscustomobject][ordered]@{
         rowsWithRequiredGaps = $rowsWithGaps.Count
         gapsByTier = $gapsByTier
         mutatingCommandsByFamily = $byFamily
+        officeEditSmokeEvidenceCommandCount = $officeEditSmokeEvidence.Count
+        structuralProvenCommandCount = $structuralProven.Count
+        validateProvenCommandCount = $validateProven.Count
+        conformanceProvenCommandCount = $conformanceProven.Count
         officeProvenCommandCount = $officeProven.Count
         scaffoldProvenCommandCount = $scaffoldProven.Count
         parserOnlyCommandCount = $parserOnly.Count

@@ -17,6 +17,10 @@ endif
 
 RUST_DEBUG_BIN := target/debug/$(BINARY_NAME)$(EXE)
 GO_REFERENCE_BIN := target/go-reference/$(BINARY_NAME)$(EXE)
+ARTIFACT_PROOF_MATRIX_ARGS :=
+ifneq ($(strip $(OFFICE_EDIT_SMOKE_SUMMARY)),)
+ARTIFACT_PROOF_MATRIX_ARGS += -OfficeEditSmokeSummaryPath "$(OFFICE_EDIT_SMOKE_SUMMARY)"
+endif
 
 # help: Show this help message
 help:
@@ -94,7 +98,7 @@ web-smoke-nonpptx: build
 
 # artifact-proof-matrix: Generate the mutating command artifact proof gap matrix
 artifact-proof-matrix: build
-	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\artifact-proof-matrix.ps1 -RepoRoot . -BinaryPath "$(abspath $(RUST_DEBUG_BIN))"
+	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\artifact-proof-matrix.ps1 -RepoRoot . -BinaryPath "$(abspath $(RUST_DEBUG_BIN))" $(ARTIFACT_PROOF_MATRIX_ARGS)
 
 # check-fast: Compile all Rust targets without running live Go oracle tests
 check-fast:
