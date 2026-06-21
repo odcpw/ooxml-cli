@@ -1,11 +1,12 @@
 use serde_json::{Value, json};
 
 use crate::{
-    CliError, CliResult, XlsxCellsSetOptions, XlsxColWidthsSetOptions, XlsxCommentsAddOptions,
-    XlsxCommentsRemoveOptions, XlsxCommentsUpdateOptions, XlsxRangesSetFormatOptions,
-    XlsxRangesSetOptions, XlsxRowHeightsSetOptions, XlsxTablesAppendRecordsOptions,
-    XlsxTablesAppendRowsOptions, XlsxWorkbookMetadataUpdateOptions, json_bool, json_i64,
-    json_optional_serialized, json_optional_string, json_string, xlsx_cells_set,
+    CliError, CliResult, XlsxCellsSetOptions, XlsxChartSetSeriesStyleOptions,
+    XlsxColWidthsSetOptions, XlsxCommentsAddOptions, XlsxCommentsRemoveOptions,
+    XlsxCommentsUpdateOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions,
+    XlsxRowHeightsSetOptions, XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions,
+    XlsxWorkbookMetadataUpdateOptions, json_bool, json_i64, json_optional_serialized,
+    json_optional_string, json_string, xlsx_cells_set, xlsx_charts_set_series_style,
     xlsx_colwidths_set, xlsx_comments_add, xlsx_comments_remove, xlsx_comments_update,
     xlsx_ranges_set, xlsx_ranges_set_format, xlsx_rowheights_set, xlsx_tables_append_records,
     xlsx_tables_append_rows, xlsx_workbook_metadata_update,
@@ -275,6 +276,83 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 decimals,
                 currency_symbol,
                 max_cells,
+                readback_file: working.to_string(),
+                readback,
+            }
+        }
+        "xlsx charts set-series-style" => {
+            let sheet = json_optional_string(args, "sheet");
+            let chart = json_optional_string(args, "chart");
+            let series = json_i64(args, "series")?.unwrap_or(1);
+            let fill_color = json_optional_string(args, "fill-color")
+                .or_else(|| json_optional_string(args, "fillColor"));
+            let line_color = json_optional_string(args, "line-color")
+                .or_else(|| json_optional_string(args, "lineColor"));
+            let line_width_text = match json_optional_number_string(args, "line-width-pt")? {
+                Some(value) => Some(value),
+                None => json_optional_number_string(args, "lineWidthPt")?,
+            };
+            let line_width_pt = line_width_text
+                .as_deref()
+                .map(|value| parse_json_f64_arg(value, "line-width-pt"))
+                .transpose()?;
+            let marker_symbol = json_optional_string(args, "marker-symbol")
+                .or_else(|| json_optional_string(args, "markerSymbol"));
+            let marker_size = match json_i64(args, "marker-size")? {
+                Some(value) => Some(value),
+                None => json_i64(args, "markerSize")?,
+            };
+            let expect_series_count = match json_i64(args, "expect-series-count")? {
+                Some(value) => Some(value),
+                None => json_i64(args, "expectSeriesCount")?,
+            };
+            let readback = xlsx_charts_set_series_style(
+                working,
+                XlsxChartSetSeriesStyleOptions {
+                    sheet: sheet.as_deref(),
+                    chart: chart.as_deref(),
+                    series,
+                    fill_color: fill_color.as_deref(),
+                    line_color: line_color.as_deref(),
+                    line_width_pt,
+                    marker_symbol: marker_symbol.as_deref(),
+                    marker_size,
+                    expect_series_count,
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    no_validate: true,
+                    in_place: true,
+                },
+            )?;
+            let mut plan_flags = Vec::new();
+            push_serve_plan_string_flag(&mut plan_flags, "--sheet", sheet.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--chart", chart.as_deref());
+            plan_flags.push(json!("--series"));
+            plan_flags.push(json!(series.to_string()));
+            push_serve_plan_string_flag(&mut plan_flags, "--fill-color", fill_color.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--line-color", line_color.as_deref());
+            push_serve_plan_string_flag(
+                &mut plan_flags,
+                "--line-width-pt",
+                line_width_text.as_deref(),
+            );
+            push_serve_plan_string_flag(
+                &mut plan_flags,
+                "--marker-symbol",
+                marker_symbol.as_deref(),
+            );
+            if let Some(marker_size) = marker_size {
+                plan_flags.push(json!("--marker-size"));
+                plan_flags.push(json!(marker_size.to_string()));
+            }
+            if let Some(expect_series_count) = expect_series_count {
+                plan_flags.push(json!("--expect-series-count"));
+                plan_flags.push(json!(expect_series_count.to_string()));
+            }
+            ServeOp::XlsxChartsOp {
+                command: command.to_string(),
+                plan_flags,
                 readback_file: working.to_string(),
                 readback,
             }

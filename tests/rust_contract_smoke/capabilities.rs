@@ -918,7 +918,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx charts set-legend", false);
     assert_command(&xlsx_caps, "ooxml xlsx charts set-chart-area-fill", false);
     assert_command(&xlsx_caps, "ooxml xlsx charts set-plot-area-fill", false);
-    assert_command(&xlsx_caps, "ooxml xlsx charts set-series-style", false);
+    assert_command(&xlsx_caps, "ooxml xlsx charts set-series-style", true);
     assert_command(&xlsx_caps, "ooxml xlsx charts convert-type", false);
     assert_command(&xlsx_caps, "ooxml xlsx charts copy-style", false);
     assert_command(&xlsx_caps, "ooxml xlsx charts set-axis", false);
@@ -1144,7 +1144,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&chart_caps, "ooxml xlsx charts set-legend", false);
     assert_command(&chart_caps, "ooxml xlsx charts set-chart-area-fill", false);
     assert_command(&chart_caps, "ooxml xlsx charts set-plot-area-fill", false);
-    assert_command(&chart_caps, "ooxml xlsx charts set-series-style", false);
+    assert_command(&chart_caps, "ooxml xlsx charts set-series-style", true);
     assert_command(&chart_caps, "ooxml xlsx charts convert-type", false);
     assert_command(&chart_caps, "ooxml xlsx charts copy-style", false);
     assert_command(&chart_caps, "ooxml xlsx charts set-axis", false);
@@ -1158,7 +1158,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&style_caps, "ooxml xlsx charts set-legend", false);
     assert_command(&style_caps, "ooxml xlsx charts set-chart-area-fill", false);
     assert_command(&style_caps, "ooxml xlsx charts set-plot-area-fill", false);
-    assert_command(&style_caps, "ooxml xlsx charts set-series-style", false);
+    assert_command(&style_caps, "ooxml xlsx charts set-series-style", true);
     assert_command(&style_caps, "ooxml xlsx charts copy-style", false);
     assert_command(&style_caps, "ooxml xlsx charts set-axis", false);
     assert_command(&style_caps, "ooxml xlsx tables set-column-format", false);

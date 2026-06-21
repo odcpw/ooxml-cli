@@ -242,8 +242,8 @@ pub(super) fn commands() -> Vec<Value> {
             "set-series-style <file> --series <n>",
             "Set fill, line, and marker style fields on a worksheet chart series.",
             &["chart", "style"],
-            false,
-            Some("direct CLI mutation; serve/MCP op support is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--sheet", "sheet", "string", "sheet selector"),
                 flag("--chart", "chart", "string", "chart selector"),

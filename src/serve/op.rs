@@ -91,6 +91,12 @@ pub(super) enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    XlsxChartsOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
     DocxHeaderFooterSetText {
         command: String,
         plan_flags: Vec<Value>,
@@ -165,6 +171,7 @@ impl ServeOp {
             | ServeOp::XlsxCommentsOp { command, .. }
             | ServeOp::XlsxDimensionsOp { command, .. }
             | ServeOp::XlsxTablesOp { command, .. }
+            | ServeOp::XlsxChartsOp { command, .. }
             | ServeOp::DocxHeaderFooterSetText { command, .. }
             | ServeOp::DocxFieldsOp { command, .. }
             | ServeOp::DocxBlocksOp { command, .. }
@@ -374,6 +381,30 @@ impl ServeOp {
                 let mut argv = vec![
                     json!("xlsx"),
                     json!("comments"),
+                    json!(verb),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
+            ServeOp::XlsxChartsOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command
+                    .split_whitespace()
+                    .nth(2)
+                    .unwrap_or("set-series-style");
+                let mut argv = vec![
+                    json!("xlsx"),
+                    json!("charts"),
                     json!(verb),
                     json!(source_file),
                 ];
@@ -696,6 +727,11 @@ impl ServeOp {
                 ..
             }
             | ServeOp::XlsxCommentsOp {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::XlsxChartsOp {
                 readback_file,
                 readback,
                 ..
