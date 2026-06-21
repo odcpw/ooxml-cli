@@ -344,7 +344,7 @@ fn pptx_fields_set_capability_advertises_footer_synthesis() {
 
 #[test]
 fn artifact_proof_matrix_classifies_inventory_coverage() {
-    let Some(powershell) = powershell_for_artifact_proof_matrix_test() else {
+    let Some(powershell) = powershell_for_windows_contract_test() else {
         eprintln!("skipping artifact proof matrix test because PowerShell is not available");
         return;
     };
@@ -732,6 +732,85 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+#[test]
+fn office_edit_smoke_summary_command_paths_match_capability_keys() {
+    let Some(powershell) = powershell_for_windows_contract_test() else {
+        eprintln!(
+            "skipping Office edit smoke commandPath test because PowerShell is not available"
+        );
+        return;
+    };
+
+    let script_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tools")
+        .join("windows-office-edit-smoke.ps1");
+    let script = fs::read_to_string(&script_path).expect("read Office edit smoke script");
+    let helpers = powershell_function_block(
+        &script,
+        "function Test-ScenarioCommandPathStopArgument",
+        "function Invoke-Checked",
+    );
+    let probe = format!(
+        r#"
+{helpers}
+$ErrorActionPreference = "Stop"
+$cases = @(
+    [pscustomobject]@{{ Name = "xlsx scaffold"; Arguments = @("--json", "xlsx", "scaffold", "C:\tmp\scaffold.xlsx", "--sheet", "OfficeScaffold"); Expected = "ooxml xlsx scaffold" }},
+    [pscustomobject]@{{ Name = "xlsx names add"; Arguments = @("--json", "--strict", "xlsx", "names", "add", "C:\tmp\input.xlsx", "--name", "OfficeSmokeRange", "--out", "C:\tmp\output.xlsx"); Expected = "ooxml xlsx names add" }},
+    [pscustomobject]@{{ Name = "xlsx conditional formats add"; Arguments = @("--json", "xlsx", "conditional-formats", "add", "C:\tmp\input.xlsx", "--sheet", "1", "--range", "E2:E5", "--out", "C:\tmp\output.xlsx"); Expected = "ooxml xlsx conditional-formats add" }},
+    [pscustomobject]@{{ Name = "xlsx pivots create"; Arguments = @("--json", "xlsx", "pivots", "create", "C:\tmp\input.xlsx", "--sheet", "1", "--range", "A1:C5", "--out", "C:\tmp\output.xlsx"); Expected = "ooxml xlsx pivots create" }},
+    [pscustomobject]@{{ Name = "docx scaffold"; Arguments = @("--json", "docx", "scaffold", "C:\tmp\scaffold.docx", "--text", "Office scaffold"); Expected = "ooxml docx scaffold" }},
+    [pscustomobject]@{{ Name = "docx tables set-cell"; Arguments = @("--json", "docx", "tables", "set-cell", "C:\tmp\input.docx", "--table", "1", "--row", "1", "--col", "2", "--out", "C:\tmp\output.docx"); Expected = "ooxml docx tables set-cell" }},
+    [pscustomobject]@{{ Name = "pptx replace text occurrences"; Arguments = @("--json", "pptx", "replace", "text-occurrences", "C:\tmp\input.pptx", "--match-text", "Minimal Title Slide", "--out", "C:\tmp\output.pptx"); Expected = "ooxml pptx replace text-occurrences" }},
+    [pscustomobject]@{{ Name = "pptx place table-from-xlsx"; Arguments = @("--json", "pptx", "place", "table-from-xlsx", "C:\tmp\input.pptx", "--workbook", "C:\tmp\source.xlsx", "--out", "C:\tmp\output.pptx"); Expected = "ooxml pptx place table-from-xlsx" }},
+    [pscustomobject]@{{ Name = "pptx new slide from layout"; Arguments = @("--json", "pptx", "new-slide-from-layout", "C:\tmp\input.pptx", "--layout", "9", "--out", "C:\tmp\output.pptx"); Expected = "ooxml pptx new-slide-from-layout" }}
+)
+$rows = foreach ($case in $cases) {{
+    $actual = Get-ScenarioCommandPath -Arguments $case.Arguments
+    [pscustomobject]@{{
+        name = $case.Name
+        expected = $case.Expected
+        actual = $actual
+        passed = ($actual -eq $case.Expected)
+    }}
+}}
+$rows | ConvertTo-Json -Depth 6
+if (@($rows | Where-Object {{ -not $_.passed }}).Count -gt 0) {{
+    exit 1
+}}
+"#
+    );
+
+    let output = Command::new(powershell)
+        .arg("-NoProfile")
+        .arg("-ExecutionPolicy")
+        .arg("Bypass")
+        .arg("-Command")
+        .arg(probe)
+        .output()
+        .expect("run Office edit smoke commandPath probe");
+    assert!(
+        output.status.success(),
+        "Office edit smoke commandPath probe failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let rows: Value = serde_json::from_str(
+        String::from_utf8_lossy(&output.stdout)
+            .trim_start_matches('\u{feff}')
+            .trim(),
+    )
+    .expect("commandPath probe JSON");
+    let rows = rows.as_array().expect("commandPath rows");
+    assert_eq!(rows.len(), 9);
+    assert!(
+        rows.iter()
+            .all(|row| row["actual"] == row["expected"] && row["passed"] == Value::Bool(true)),
+        "unexpected commandPath probe rows: {rows:#?}"
+    );
+}
+
 fn assert_no_duplicate_command_paths(capabilities: &Value, label: &str) {
     let commands = capabilities["commands"].as_array().expect("commands array");
     let mut seen = BTreeSet::new();
@@ -774,7 +853,18 @@ fn optional_array_is_empty(value: &Value, field: &str) -> bool {
         .unwrap_or(true)
 }
 
-fn powershell_for_artifact_proof_matrix_test() -> Option<&'static str> {
+fn powershell_function_block(script: &str, start_marker: &str, end_marker: &str) -> String {
+    let start = script
+        .find(start_marker)
+        .unwrap_or_else(|| panic!("missing PowerShell helper start marker {start_marker}"));
+    let end = script[start..]
+        .find(end_marker)
+        .map(|offset| start + offset)
+        .unwrap_or_else(|| panic!("missing PowerShell helper end marker {end_marker}"));
+    script[start..end].to_string()
+}
+
+fn powershell_for_windows_contract_test() -> Option<&'static str> {
     ["powershell.exe", "powershell", "pwsh"]
         .into_iter()
         .find(|candidate| {

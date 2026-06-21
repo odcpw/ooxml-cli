@@ -105,6 +105,68 @@ function Format-CommandLine {
     return ((@($FilePath) + $Arguments) | ForEach-Object { Quote-Argument -Value $_ }) -join " "
 }
 
+function Test-ScenarioCommandPathStopArgument {
+    param([string]$Value)
+
+    if ($Value -eq "") {
+        return $false
+    }
+    if ($Value.StartsWith("-")) {
+        return $true
+    }
+    if ($Value -match '^[A-Za-z]:[\\/]' -or $Value -match '^\\\\' -or $Value -match '[\\/]') {
+        return $true
+    }
+    if ($Value -match '(?i)\.(docx|docm|xlsx|xlsm|pptx|pptm|csv|json|txt|xml|rels|png|jpg|jpeg|gif|bmp|wav|mp3|mp4)$') {
+        return $true
+    }
+
+    return $false
+}
+
+function Get-ScenarioCommandPath {
+    param([string[]]$Arguments)
+
+    $commandWords = New-Object System.Collections.Generic.List[string]
+    $globalFlagsWithValues = @{
+        "--format" = $true
+    }
+    $skipNextGlobalValue = $false
+
+    foreach ($argument in @($Arguments)) {
+        $value = [string]$argument
+
+        if ($commandWords.Count -eq 0) {
+            if ($skipNextGlobalValue) {
+                $skipNextGlobalValue = $false
+                continue
+            }
+            if ($value -eq "--json" -or $value -eq "--strict") {
+                continue
+            }
+            if ($globalFlagsWithValues.ContainsKey($value)) {
+                $skipNextGlobalValue = $true
+                continue
+            }
+            if ($value.StartsWith("-")) {
+                continue
+            }
+        }
+
+        if (Test-ScenarioCommandPathStopArgument -Value $value) {
+            break
+        }
+
+        $commandWords.Add($value)
+    }
+
+    if ($commandWords.Count -eq 0) {
+        return "ooxml"
+    }
+
+    return "ooxml " + (($commandWords | ForEach-Object { [string]$_ }) -join " ")
+}
+
 function Invoke-Checked {
     param(
         [Parameter(Mandatory = $true)]
@@ -266,6 +328,7 @@ function New-Scenario {
         input            = $Input
         inputFixtureType = $InputFixtureType
         output           = $Output
+        commandPath      = (Get-ScenarioCommandPath -Arguments $Arguments)
         arguments        = $Arguments
     }
 }
@@ -309,6 +372,7 @@ function New-SkippedScenarioResult {
         input           = $Scenario.input
         inputFixtureType = $Scenario.inputFixtureType
         output          = $Scenario.output
+        commandPath     = $Scenario.commandPath
         proofLevel      = "failed"
         mutation        = (New-StageResult -Status "skipped" -Detail $Reason)
         readback        = (New-StageResult -Status "skipped" -Detail $Reason)
@@ -411,6 +475,7 @@ function Invoke-ScenarioWorker {
         input           = $Scenario.input
         inputFixtureType = $Scenario.inputFixtureType
         output          = $Scenario.output
+        commandPath     = $Scenario.commandPath
         proofLevel      = "strict-validation"
         mutation        = (New-WorkerStageResult -Status "pending")
         readback        = (New-WorkerStageResult -Status "pending")
@@ -581,6 +646,7 @@ function Invoke-ScenarioSet {
             else {
                 $job = Start-Job -ScriptBlock ${function:Invoke-ScenarioWorker} -ArgumentList $scenario, $BinaryPath, $DotNetExe, $OpenXmlValidatorDll, $RunOpenXmlSdk, $RunConformance, $RequireOpenXmlSdk
             }
+            $job | Add-Member -NotePropertyName ScenarioCommandPath -NotePropertyValue $scenario.commandPath
             $jobs += $job
         }
 
@@ -601,6 +667,7 @@ function Invoke-ScenarioSet {
                     family          = "unknown"
                     input           = ""
                     output          = ""
+                    commandPath     = $job.ScenarioCommandPath
                     proofLevel      = "failed"
                     mutation        = (New-StageResult -Status "failed" -Detail "Scenario worker returned no result.")
                     readback        = (New-StageResult -Status "skipped" -Detail "Scenario worker returned no result.")
