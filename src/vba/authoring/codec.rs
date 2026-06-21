@@ -142,4 +142,60 @@ mod tests {
         let compressed = compress_container_literals(&raw);
         assert_eq!(decompress_literal_container(&compressed).unwrap(), raw);
     }
+
+    #[test]
+    fn literal_compression_emits_expected_container_and_chunk_headers() {
+        let raw = vec![b'X'; 4097];
+        let compressed = compress_container_literals(&raw);
+
+        assert_eq!(compressed[0], 0x01, "MS-OVBA compression signature");
+        assert_eq!(read_u16_at(&compressed, 1), 0x3FFF);
+        assert_eq!(&compressed[3..4099], &raw[..4096]);
+
+        let tail_header_pos = 4099;
+        assert_eq!(read_u16_at(&compressed, tail_header_pos), 0xB001);
+        assert_eq!(compressed[tail_header_pos + 2], 0x00);
+        assert_eq!(compressed[tail_header_pos + 3], b'X');
+        assert_eq!(compressed.len(), tail_header_pos + 4);
+    }
+
+    #[test]
+    fn literal_compression_headers_cover_boundary_lengths() {
+        let cases = [
+            (0, vec![]),
+            (1, vec![0xB001]),
+            (8, vec![0xB008]),
+            (9, vec![0xB00A]),
+            (3600, vec![0xBFD1]),
+            (3601, vec![0xBFD1, 0xB001]),
+            (4095, vec![0xBFD1, 0xB22C]),
+            (4096, vec![0x3FFF]),
+            (4097, vec![0x3FFF, 0xB001]),
+        ];
+
+        for (len, expected_headers) in cases {
+            let raw = vec![b'Z'; len];
+            let compressed = compress_container_literals(&raw);
+            assert_eq!(chunk_headers(&compressed), expected_headers, "len {len}");
+            assert_eq!(decompress_literal_container(&compressed).unwrap(), raw);
+        }
+    }
+
+    fn chunk_headers(data: &[u8]) -> Vec<u16> {
+        assert_eq!(data[0], 0x01);
+        let mut pos = 1;
+        let mut headers = Vec::new();
+        while pos < data.len() {
+            let header = read_u16_at(data, pos);
+            headers.push(header);
+            let chunk_size = usize::from(header & 0x0FFF) + 3;
+            pos += chunk_size;
+        }
+        assert_eq!(pos, data.len());
+        headers
+    }
+
+    fn read_u16_at(data: &[u8], pos: usize) -> u16 {
+        u16::from_le_bytes([data[pos], data[pos + 1]])
+    }
 }

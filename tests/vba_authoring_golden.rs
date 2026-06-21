@@ -453,8 +453,10 @@ fn xlsx_class_vba_build_bin_matches_golden_and_attaches() {
     assert_eq!(inspect, golden_inspect, "inspect-bin JSON golden drift");
 
     let attached_path = temp_dir.join("workbook.xlsm");
+    let attached_bin_path = temp_dir.join("attached-vbaProject.bin");
     let extract_dir = temp_dir.join("macros");
     let attached = path_string(&attached_path);
+    let attached_bin = path_string(&attached_bin_path);
     let extract = path_string(&extract_dir);
     let attach = assert_ok(
         "attach generated vbaProject.bin",
@@ -519,6 +521,26 @@ fn xlsx_class_vba_build_bin_matches_golden_and_attaches() {
             "ooxml --json conformance check {}",
             command_arg_for_test(&attached)
         )
+    );
+
+    let extract_bin = assert_ok(
+        "extract vbaProject.bin from class-attached workbook",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "extract-bin",
+            &attached,
+            "--out",
+            &attached_bin,
+        ]),
+    );
+    assert_eq!(extract_bin["bytesWritten"], CLASS_GOLDEN_BIN.len());
+    let attached_bin_bytes =
+        fs::read(&attached_bin_path).expect("read class-attached vbaProject.bin");
+    assert_eq!(sha256_hex(&attached_bin_bytes), CLASS_GOLDEN_SHA256);
+    assert_eq!(
+        attached_bin_bytes, CLASS_GOLDEN_BIN,
+        "class-attached extracted vbaProject.bin drifted from golden"
     );
 
     let extract_result = assert_ok(

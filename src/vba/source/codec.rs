@@ -275,3 +275,42 @@ pub(super) fn read_u32(data: &[u8], offset: usize) -> Result<u32, String> {
         .ok_or_else(|| "truncated VBA dir stream".to_string())?;
     Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn literal_compressor_roundtrips_through_real_decompressor() {
+        let small = b"Attribute VB_Name = \"Module1\"\r\nSub Hi()\r\nEnd Sub\r\n".to_vec();
+        let large = (0..9000)
+            .map(|idx| b'A' + (idx % 26) as u8)
+            .collect::<Vec<_>>();
+
+        for raw in [&small[..], &large[..]] {
+            let compressed = compress_container_literals(raw);
+            assert_eq!(compressed[0], 0x01);
+            assert_eq!(decompress_container(&compressed).unwrap(), raw);
+        }
+    }
+
+    #[test]
+    fn decompressor_rejects_truncated_or_invalid_containers() {
+        assert!(decompress_container(&[]).unwrap_err().contains("empty"));
+        assert!(
+            decompress_container(&[0x00])
+                .unwrap_err()
+                .contains("signature")
+        );
+        assert!(
+            decompress_container(&[0x01, 0x00])
+                .unwrap_err()
+                .contains("truncated")
+        );
+        assert!(
+            decompress_container(&[0x01, 0x00, 0x20])
+                .unwrap_err()
+                .contains("invalid compressed chunk signature")
+        );
+    }
+}

@@ -257,6 +257,56 @@ mod tests {
     }
 
     #[test]
+    fn primitive_record_writers_emit_exact_little_endian_bytes() {
+        assert_eq!(
+            fixed_u16_record(0x0003, 1252),
+            vec![0x03, 0x00, 0x02, 0x00, 0x00, 0x00, 0xE4, 0x04,]
+        );
+        assert_eq!(
+            fixed_u32_record(0x004A, 6),
+            vec![0x4A, 0x00, 0x04, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,]
+        );
+        assert_eq!(
+            variable_bytes_record(0x0004, b"VBA"),
+            vec![0x04, 0x00, 0x03, 0x00, 0x00, 0x00, b'V', b'B', b'A']
+        );
+        assert_eq!(
+            vba_dir_record(0x002B, &[]),
+            vec![0x2B, 0x00, 0x00, 0x00, 0x00, 0x00]
+        );
+    }
+
+    #[test]
+    fn complex_record_writers_emit_exact_binary_shapes() {
+        assert_eq!(
+            dual_string_record(0x0016, 0x003E, b"Ref"),
+            vec![
+                0x16, 0x00, 0x03, 0x00, 0x00, 0x00, b'R', b'e', b'f', 0x3E, 0x00, 0x06, 0x00, 0x00,
+                0x00, b'R', 0x00, b'e', 0x00, b'f', 0x00,
+            ]
+        );
+        assert_eq!(
+            project_version_record(),
+            vec![
+                0x09, 0x00, 0x04, 0x00, 0x00, 0x00, 0x4B, 0xD8, 0x59, 0x6C, 0x04, 0x00,
+            ]
+        );
+
+        let reference = registered_reference_record("stdole", r#"*\G{00020430}#2.0"#);
+        let name_part_len = dual_string_record(0x0016, 0x003E, b"stdole").len();
+        assert_eq!(&reference[..2], &0x0016_u16.to_le_bytes());
+        assert_eq!(read_u16_at(&reference, name_part_len), 0x000D);
+        assert_eq!(
+            read_u32_at(&reference, name_part_len + 6),
+            r#"*\G{00020430}#2.0"#.len() as u32
+        );
+        assert_eq!(
+            &reference[name_part_len + 10..name_part_len + 10 + r#"*\G{00020430}#2.0"#.len()],
+            r#"*\G{00020430}#2.0"#.as_bytes()
+        );
+    }
+
+    #[test]
     fn dir_stream_uses_existing_parser_record_ids_and_moduleoffset_zero() {
         let dir = render_dir_stream(&two_module_project());
         assert!(contains_record(&dir, 0x0001, &3_u32.to_le_bytes()));
@@ -280,6 +330,22 @@ mod tests {
         ));
         assert_eq!(record_count(&dir, 0x0028, &[]), 1);
         assert!(contains_record(&dir, 0x0010, &[]));
+    }
+
+    #[test]
+    fn dir_stream_records_are_written_in_strict_order() {
+        let dir = render_dir_stream(&two_module_project());
+        let mut expected = vec![
+            0x0001, 0x004A, 0x0002, 0x0014, 0x0003, 0x0004, 0x0005, 0x0006, 0x0007, 0x0008, 0x0009,
+            0x000C, 0x0016, 0x000D, 0x0016, 0x000D, 0x000F, 0x0013,
+        ];
+        expected.extend(module_record_ids(VbaModuleKind::Document));
+        expected.extend(module_record_ids(VbaModuleKind::Document));
+        expected.extend(module_record_ids(VbaModuleKind::Standard));
+        expected.extend(module_record_ids(VbaModuleKind::Class));
+        expected.push(0x0010);
+
+        assert_eq!(record_ids_in_order(&dir), expected);
     }
 
     #[test]
@@ -347,6 +413,93 @@ mod tests {
                     && &data[payload_start..payload_end] == payload
             })
             .count()
+    }
+
+    fn record_ids_in_order(data: &[u8]) -> Vec<u16> {
+        let mut out = Vec::new();
+        let mut pos = 0;
+        while pos < data.len() {
+            assert!(
+                pos + 6 <= data.len(),
+                "record header at byte {pos} extends past dir stream"
+            );
+            let id = read_u16_at(data, pos);
+            out.push(id);
+            pos = next_record_offset(data, pos, id);
+        }
+        out
+    }
+
+    fn next_record_offset(data: &[u8], pos: usize, id: u16) -> usize {
+        if id == 0x0009 {
+            assert_eq!(read_u32_at(data, pos + 2), 4, "PROJECTVERSION size");
+            assert!(
+                pos + 12 <= data.len(),
+                "PROJECTVERSION at byte {pos} extends past dir stream"
+            );
+            return pos + 12;
+        }
+
+        let size = read_u32_at(data, pos + 2) as usize;
+        let payload_end = pos + 6 + size;
+        assert!(
+            payload_end <= data.len(),
+            "record 0x{id:04x} at byte {pos} extends past dir stream"
+        );
+        if matches!(id, 0x0005 | 0x0006 | 0x000C | 0x0016) {
+            assert!(
+                payload_end + 6 <= data.len(),
+                "dual-string record 0x{id:04x} at byte {pos} is missing Unicode header"
+            );
+            let reserved = read_u16_at(data, payload_end);
+            let expected_reserved = match id {
+                0x0005 => 0x0040,
+                0x0006 => 0x003D,
+                0x000C => 0x003C,
+                0x0016 => 0x003E,
+                _ => unreachable!(),
+            };
+            assert_eq!(
+                reserved, expected_reserved,
+                "dual-string reserved record for 0x{id:04x}"
+            );
+            let unicode_size = read_u32_at(data, payload_end + 2) as usize;
+            let end = payload_end + 6 + unicode_size;
+            assert!(
+                end <= data.len(),
+                "dual-string record 0x{id:04x} at byte {pos} extends past dir stream"
+            );
+            return end;
+        }
+        payload_end
+    }
+
+    fn read_u16_at(data: &[u8], pos: usize) -> u16 {
+        u16::from_le_bytes([data[pos], data[pos + 1]])
+    }
+
+    fn read_u32_at(data: &[u8], pos: usize) -> u32 {
+        u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]])
+    }
+
+    fn module_record_ids(kind: VbaModuleKind) -> Vec<u16> {
+        let mut ids = vec![
+            0x0019,
+            0x0047,
+            0x001A,
+            0x0032,
+            0x001C,
+            0x0048,
+            0x0031,
+            0x001E,
+            0x002C,
+            kind.dir_record_id(),
+        ];
+        if kind == VbaModuleKind::Class {
+            ids.push(0x0028);
+        }
+        ids.push(0x002B);
+        ids
     }
 
     fn project_wm_pair(name: &str) -> Vec<u8> {

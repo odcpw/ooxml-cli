@@ -1409,6 +1409,14 @@ mod tests {
         ])
     }
 
+    fn stream_entry<'a>(file: &'a CfbFile<'_>, path: &str) -> &'a DirectoryEntry {
+        let normalized = normalize_path(path);
+        file.entries
+            .iter()
+            .find(|entry| entry.object_type == DIRECTORY_STREAM && entry.path == normalized)
+            .expect("stream directory entry should exist")
+    }
+
     #[test]
     fn build_streams_file_rejects_empty_maps() {
         let error = build_streams_file(&BTreeMap::new()).expect_err("empty CFB should fail");
@@ -1435,6 +1443,93 @@ mod tests {
                 *expected
             );
         }
+    }
+
+    #[test]
+    fn build_streams_file_roundtrips_cutoff_stream_as_regular_sector_chain() {
+        let large = (0..WRITER_MINI_STREAM_CUTOFF)
+            .map(|idx| (idx % 251) as u8)
+            .collect::<Vec<_>>();
+        let streams = BTreeMap::from([("VBA/LargeModule".to_string(), large.clone())]);
+
+        let cfb = build_streams_file(&streams).expect("fresh CFB should build");
+        let opened = CfbFile::open(&cfb).expect("fresh CFB should reopen");
+
+        assert!(opened.mini_fat.is_empty());
+        assert!(opened.mini_stream.is_empty());
+        assert_eq!(
+            opened
+                .stream("VBA/LargeModule")
+                .expect("large stream should roundtrip"),
+            large
+        );
+
+        let large_entry = stream_entry(&opened, "VBA/LargeModule");
+        assert_eq!(large_entry.size, WRITER_MINI_STREAM_CUTOFF as u64);
+        assert_eq!(large_entry.size, opened.mini_stream_cutoff);
+        assert_ne!(large_entry.start_sector, SECTOR_END);
+        assert_eq!(
+            opened
+                .regular_sector_chain(
+                    large_entry.start_sector,
+                    large_entry.size,
+                    MAX_REGULAR_SECTOR_CHAIN
+                )
+                .expect("large stream should have a regular sector chain")
+                .len(),
+            sectors_needed(large.len(), WRITER_SECTOR_SIZE)
+        );
+    }
+
+    #[test]
+    fn build_streams_file_roundtrips_mixed_mini_and_regular_streams() {
+        let small = b"mini payload".to_vec();
+        let large = (0..WRITER_MINI_STREAM_CUTOFF + 777)
+            .map(|idx| ((idx * 31) % 251) as u8)
+            .collect::<Vec<_>>();
+        let streams = BTreeMap::from([
+            ("PROJECT".to_string(), small.clone()),
+            ("VBA/LargeModule".to_string(), large.clone()),
+        ]);
+
+        let cfb = build_streams_file(&streams).expect("fresh CFB should build");
+        let opened = CfbFile::open(&cfb).expect("fresh CFB should reopen");
+
+        assert!(!opened.mini_fat.is_empty());
+        assert!(!opened.mini_stream.is_empty());
+        assert_eq!(
+            opened
+                .stream("PROJECT")
+                .expect("small stream should roundtrip"),
+            small
+        );
+        assert_eq!(
+            opened
+                .stream("VBA/LargeModule")
+                .expect("large stream should roundtrip"),
+            large
+        );
+
+        let small_entry = stream_entry(&opened, "PROJECT");
+        let large_entry = stream_entry(&opened, "VBA/LargeModule");
+        assert!(small_entry.size < opened.mini_stream_cutoff);
+        assert!(
+            usize::try_from(small_entry.start_sector).expect("mini start should fit")
+                < opened.mini_fat.len()
+        );
+        assert!(large_entry.size >= opened.mini_stream_cutoff);
+        assert_ne!(large_entry.start_sector, SECTOR_END);
+        assert_eq!(
+            opened
+                .regular_sector_chain(
+                    large_entry.start_sector,
+                    large_entry.size,
+                    MAX_REGULAR_SECTOR_CHAIN
+                )
+                .expect("large stream should have a regular sector chain")
+                .len(),
+            sectors_needed(large.len(), WRITER_SECTOR_SIZE)
+        );
     }
 
     #[test]
