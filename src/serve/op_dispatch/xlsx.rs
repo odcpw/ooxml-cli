@@ -200,6 +200,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 values if values.is_empty() => json_string_list(args, "colors")?,
                 values => values,
             };
+            validate_data_bar_flags(rule_type.as_deref(), &cfvo, &colors)?;
             let priority = json_i64(args, "priority")?;
             let stop_if_true =
                 json_bool(args, "stop-if-true").or_else(|| json_bool(args, "stopIfTrue"));
@@ -847,6 +848,27 @@ fn json_string_list(args: &Value, field: &str) -> CliResult<Vec<String>> {
             "{field} must be a string or string array"
         ))),
     }
+}
+
+fn validate_data_bar_flags(
+    rule_type: Option<&str>,
+    cfvo: &[String],
+    colors: &[String],
+) -> CliResult<()> {
+    if !matches!(rule_type.map(str::trim), Some("data-bar" | "dataBar")) {
+        return Ok(());
+    }
+    if cfvo.len() != 2 {
+        return Err(CliError::invalid_args(
+            "--type data-bar requires exactly two --cfvo values",
+        ));
+    }
+    if colors.len() != 1 {
+        return Err(CliError::invalid_args(
+            "--type data-bar requires exactly one --color value",
+        ));
+    }
+    Ok(())
 }
 
 fn json_optional_number_string(args: &Value, field: &str) -> CliResult<Option<String>> {

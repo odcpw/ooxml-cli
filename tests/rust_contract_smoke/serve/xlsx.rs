@@ -706,6 +706,157 @@ fn serve_op_supports_xlsx_conditional_formats_add_delete() {
 }
 
 #[test]
+fn serve_op_supports_xlsx_conditional_format_data_bars_when_available() {
+    if !go_oracle_supports_conditional_format_data_bar() {
+        eprintln!("default Go oracle does not yet expose xlsx conditional-format data-bar");
+        return;
+    }
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-cf-databar-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("serve-cf-databar-out.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(
+        1,
+        "open",
+        serde_json::json!({"file": input_str, "out": output_str}),
+    );
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let add_string_color = rpc_request(
+        2,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx conditional-formats add",
+            "args": {
+                "sheet": "1",
+                "range": "D1:D5",
+                "type": "data-bar",
+                "cfvo": ["min", "max"],
+                "color": "638EC6",
+                "priority": 7
+            },
+        }),
+    );
+    let add_string_response = serve_roundtrip(&mut stdin, &mut reader, &add_string_color);
+    assert!(
+        add_string_response.get("error").is_none(),
+        "conditional-format data-bar string color add op failed: {add_string_response:?}"
+    );
+    let string_rule = &add_string_response["result"]["readback"]["rule"];
+    assert_eq!(string_rule["type"], "dataBar");
+    assert_eq!(
+        string_rule["dataBar"]["cfvo"],
+        serde_json::json!([{"type": "min"}, {"type": "max"}])
+    );
+    assert_eq!(string_rule["dataBar"]["color"]["rgb"], "FF638EC6");
+
+    let add_array_color = rpc_request(
+        3,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx conditional-formats add",
+            "args": {
+                "sheet": "1",
+                "range": "E1:E5",
+                "type": "data-bar",
+                "cfvo": ["min", "max"],
+                "color": ["63C384"],
+                "priority": 8
+            },
+        }),
+    );
+    let add_array_response = serve_roundtrip(&mut stdin, &mut reader, &add_array_color);
+    assert!(
+        add_array_response.get("error").is_none(),
+        "conditional-format data-bar array color add op failed: {add_array_response:?}"
+    );
+    let array_rule = &add_array_response["result"]["readback"]["rule"];
+    assert_eq!(array_rule["type"], "dataBar");
+    assert_eq!(array_rule["dataBar"]["color"]["rgb"], "FF63C384");
+
+    let plan = rpc_request(4, "plan", serde_json::json!({"session": session}));
+    let plan_response = serve_roundtrip(&mut stdin, &mut reader, &plan);
+    let plan_items = plan_response["result"]["plan"]
+        .as_array()
+        .expect("planned operations");
+    assert_eq!(plan_items.len(), 2);
+    for plan_item in plan_items {
+        let argv = plan_item["argv"].as_array().expect("data-bar plan argv");
+        assert_eq!(
+            argv.iter().filter(|arg| *arg == "--cfvo").count(),
+            2,
+            "data-bar plan should include two threshold flags: {argv:?}"
+        );
+        assert_eq!(
+            argv.iter().filter(|arg| *arg == "--color").count(),
+            1,
+            "data-bar plan should include one color flag: {argv:?}"
+        );
+    }
+
+    let commit = rpc_request(5, "commit", serde_json::json!({"session": session}));
+    let commit_response = serve_roundtrip(&mut stdin, &mut reader, &commit);
+    assert!(
+        commit_response.get("error").is_none(),
+        "conditional-format data-bar commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "data-bar serve validate exit");
+    assert_eq!(validate_stderr, None, "data-bar serve validate stderr");
+
+    let (list_code, list_stdout, list_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "list",
+        &output_str,
+        "--sheet",
+        "1",
+    ]);
+    assert_eq!(list_code, 0, "data-bar serve list exit");
+    assert_eq!(list_stderr, None, "data-bar serve list stderr");
+    let list = list_stdout.expect("data-bar serve output list");
+    assert_eq!(list["count"], Value::from(2));
+    assert_eq!(list["rules"][0]["type"], "dataBar");
+    assert_eq!(list["rules"][0]["dataBar"]["color"]["rgb"], "FF638EC6");
+    assert_eq!(list["rules"][1]["type"], "dataBar");
+    assert_eq!(list["rules"][1]["dataBar"]["color"]["rgb"], "FF63C384");
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_op_supports_xlsx_ranges_set() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-ranges-set-{}",
@@ -843,6 +994,34 @@ fn serve_op_supports_xlsx_ranges_set() {
     let status = child.wait().expect("serve exit");
     assert!(status.success());
     let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn go_oracle_supports_conditional_format_data_bar() -> bool {
+    let (code, stdout, stderr) = run_go_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "add",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "1",
+        "--range",
+        "D1:D5",
+        "--type",
+        "data-bar",
+        "--cfvo",
+        "min",
+        "--cfvo",
+        "max",
+        "--color",
+        "638EC6",
+        "--dry-run",
+    ]);
+    code == 0
+        && stderr.is_none()
+        && stdout
+            .as_ref()
+            .is_some_and(|value| value["rule"]["dataBar"].is_object())
 }
 
 #[test]

@@ -35,8 +35,8 @@ pub(super) fn commands() -> Vec<Value> {
         ),
         capability_command(
             "ooxml xlsx conditional-formats add",
-            "add <file> --range <sqref> [--type expression|cell-is|color-scale]",
-            "Add an expression, cellIs, or color-scale conditional-formatting rule.",
+            "add <file> --range <sqref> [--type expression|cell-is|color-scale|data-bar]",
+            "Add an expression, cellIs, color-scale, or data-bar conditional-formatting rule.",
             &["conditional-format", "range", "sheet", "style"],
             true,
             None,
@@ -68,7 +68,7 @@ fn mutation_flags(include_add_flags: bool) -> Vec<Value> {
                 "--type",
                 "type",
                 "string",
-                "conditional-formatting rule type: expression, cell-is, or color-scale",
+                "conditional-formatting rule type: expression, cell-is, color-scale, or data-bar",
             ),
             flag(
                 "--operator",
@@ -92,13 +92,13 @@ fn mutation_flags(include_add_flags: bool) -> Vec<Value> {
                 "--cfvo",
                 "cfvo",
                 "string",
-                "color-scale threshold, repeat 2 or 3 times: min, max, num:0, percent:10, or percentile:50",
+                "threshold value: repeat 2 or 3 times for color-scale, exactly 2 times for data-bar; examples: min, max, num:0, percent:10, or percentile:50",
             ),
             flag(
                 "--color",
                 "color",
                 "string",
-                "color-scale color hex, repeat 2 or 3 times: #F8696B, FFEB84, or FF63BE7B",
+                "color hex: repeat 2 or 3 times for color-scale, exactly once for data-bar; examples: #F8696B, FFEB84, or FF63BE7B",
             ),
             flag("--priority", "priority", "int", "optional cfRule priority"),
             flag(

@@ -55,6 +55,7 @@ pub(super) fn dispatch_xlsx_conditional_formatting(args: &[String]) -> CliResult
             let formula2 = parse_string_flag(rest, "--formula2")?;
             let cfvo = parse_string_flags(rest, "--cfvo")?;
             let colors = parse_string_flags(rest, "--color")?;
+            validate_data_bar_flags(rule_type.as_deref(), &cfvo, &colors)?;
             let priority = parse_i64_flag(rest, "--priority")?;
             let dxf_id = parse_i64_flag(rest, "--dxf-id")?;
             let out = parse_string_flag(rest, "--out")?;
@@ -133,4 +134,25 @@ fn is_conditional_formats_group(group: &str) -> bool {
         group,
         "conditional-formats" | "conditional-formatting" | "conditional-format" | "cf"
     )
+}
+
+fn validate_data_bar_flags(
+    rule_type: Option<&str>,
+    cfvo: &[String],
+    colors: &[String],
+) -> CliResult<()> {
+    if !matches!(rule_type.map(str::trim), Some("data-bar" | "dataBar")) {
+        return Ok(());
+    }
+    if cfvo.len() != 2 {
+        return Err(CliError::invalid_args(
+            "--type data-bar requires exactly two --cfvo values",
+        ));
+    }
+    if colors.len() != 1 {
+        return Err(CliError::invalid_args(
+            "--type data-bar requires exactly one --color value",
+        ));
+    }
+    Ok(())
 }
