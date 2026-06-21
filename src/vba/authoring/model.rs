@@ -8,6 +8,7 @@ pub(super) const DEFAULT_CODE_PAGE: u16 = 1252;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum VbaHostFamily {
     Xlsx,
+    Pptx,
 }
 
 impl VbaHostFamily {
@@ -15,6 +16,7 @@ impl VbaHostFamily {
     pub(super) fn as_str(self) -> &'static str {
         match self {
             Self::Xlsx => "xlsx",
+            Self::Pptx => "pptx",
         }
     }
 }
@@ -140,6 +142,15 @@ impl VbaProjectModel {
         }
     }
 
+    pub(super) fn pptx(modules: Vec<VbaModuleModel>) -> Self {
+        Self {
+            host_family: VbaHostFamily::Pptx,
+            project_name: DEFAULT_PROJECT_NAME.to_string(),
+            code_page: DEFAULT_CODE_PAGE,
+            modules,
+        }
+    }
+
     pub(super) fn xlsx_with_default_host_modules(user_modules: Vec<VbaModuleModel>) -> Self {
         let mut modules = Vec::with_capacity(user_modules.len() + 2);
         modules.push(VbaModuleModel::excel_workbook_document());
@@ -149,11 +160,6 @@ impl VbaProjectModel {
     }
 
     pub(super) fn validate(&self) -> VbaAuthoringResult<()> {
-        if self.host_family != VbaHostFamily::Xlsx {
-            return Err(VbaAuthoringError::invalid_model(
-                "pure VBA authoring currently supports only xlsx/xlsm hosts",
-            ));
-        }
         validate_identifier("project name", &self.project_name)?;
         if self.code_page != DEFAULT_CODE_PAGE {
             return Err(VbaAuthoringError::invalid_model(
@@ -245,6 +251,20 @@ mod tests {
         assert_eq!(project.host_family.as_str(), "xlsx");
         assert_eq!(project.project_name, "VBAProject");
         assert_eq!(project.code_page, 1252);
+        assert!(project.validate().is_ok());
+    }
+
+    #[test]
+    fn pptx_model_uses_user_modules_without_host_documents() {
+        let project = VbaProjectModel::pptx(vec![VbaModuleModel::standard(
+            "Module1",
+            b"Public Sub Hello()\r\nEnd Sub\r\n".to_vec(),
+        )]);
+        assert_eq!(project.host_family.as_str(), "pptx");
+        assert_eq!(project.project_name, "VBAProject");
+        assert_eq!(project.code_page, 1252);
+        assert_eq!(project.modules.len(), 1);
+        assert_eq!(project.modules[0].name, "Module1");
         assert!(project.validate().is_ok());
     }
 

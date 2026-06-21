@@ -1,6 +1,6 @@
 # VBA Macro Support
 
-`ooxml-cli` supports practical VBA package workflows for PowerPoint and Excel macro-enabled files. The implementation is deliberately conservative: XLSM can now be authored from `.bas` / `.cls` source through the pure Rust `vba create --pure` path, while PPTM still uses Office-authored seeds for new macro projects. Package wiring is mutated safely, and source streams are only rewritten where the supported behavior is proven.
+`ooxml-cli` supports practical VBA package workflows for PowerPoint and Excel macro-enabled files. The implementation is deliberately conservative: XLSM and PPTM can now be authored from `.bas` / `.cls` source through the pure Rust `vba create --pure` path. Package wiring is mutated safely, and source streams are only rewritten where the supported behavior is proven.
 
 Authoritative specs:
 
@@ -30,8 +30,9 @@ Shared constants:
 
 ```bash
 ooxml --json vba inspect <file>
-ooxml --json vba build-bin --family xlsx --source Module1.bas --source Worker.cls --out vbaProject.bin
+ooxml --json vba build-bin --family xlsx|pptx --source Module1.bas --source Worker.cls --out vbaProject.bin
 ooxml --json vba create workbook.xlsx --pure --family xlsx --source Module1.bas --source Worker.cls --out workbook.xlsm
+ooxml --json vba create deck.pptx --pure --family pptx --source Module1.bas --out deck.pptm
 ooxml --json vba create output.xlsm|output.pptm --family xlsx|pptx --source Module1.bas --source Worker.cls [--extract-bin vbaProject.bin] [--enable-vba-object-model-access] [--force]
 ooxml --json vba extract-bin <file> --out vbaProject.bin
 ooxml --json vba inspect-bin vbaProject.bin --family xlsx|pptx
@@ -45,8 +46,8 @@ ooxml --json vba replace-module <file.xlsm|file.pptm> --module Module1 --source 
 Implemented behavior:
 
 - Detect package macro state and VBA consistency.
-- Build source-only/cache-free XLSM `vbaProject.bin` files from `.bas` / `.cls` source modules in pure Rust.
-- Attach pure-generated VBA projects to existing or freshly scaffolded `.xlsx` packages with `vba create --pure`.
+- Build source-only/cache-free XLSM/PPTM `vbaProject.bin` files from `.bas` / `.cls` source modules in pure Rust.
+- Attach pure-generated VBA projects to existing or freshly scaffolded `.xlsx` / `.pptx` packages with `vba create --pure`.
 - Create fresh Office-authored `.xlsm` / `.pptm` files from `.bas` / `.cls` source modules on Windows desktop Office as a legacy/fallback path.
 - Extract `vbaProject.bin` byte-for-byte.
 - Inspect standalone seeds before attachment with host-family compatibility warnings.
@@ -57,9 +58,9 @@ Implemented behavior:
 - Refuse signed packages for attach/remove/source-changing rewrites.
 - Refuse Office-shaped module-set add/remove before writing output.
 
-## Pure XLSM Creation Path
+## Pure XLSM/PPTM Creation Path
 
-When you need an `.xlsm` from `.bas` / `.cls` source files, use `ooxml vba create --pure`. It builds the VBA project binary in Rust, attaches it to the input workbook, and returns `ooxml` readback/validation commands:
+When you need an `.xlsm` or `.pptm` from `.bas` / `.cls` source files, use `ooxml vba create --pure`. It builds the VBA project binary in Rust, attaches it to the input package, and returns `ooxml` readback/validation commands:
 
 ```powershell
 ooxml --json xlsx scaffold .\workbook.xlsx --force
@@ -73,16 +74,31 @@ ooxml validate --strict .\out\workbook.xlsm
 ooxml --json vba list .\out\workbook.xlsm
 ```
 
+For PowerPoint:
+
+```powershell
+ooxml --json pptx scaffold .\deck.pptx --title "Macro Deck" --force
+ooxml --json vba create .\deck.pptx `
+  --pure `
+  --family pptx `
+  --source .\macros\Module1.bas `
+  --out .\out\deck.pptm
+ooxml validate --strict .\out\deck.pptm
+ooxml --json vba list .\out\deck.pptm
+```
+
 Use `vba build-bin` when you specifically want a standalone `vbaProject.bin` artifact:
 
 ```powershell
 ooxml --json vba build-bin --family xlsx --source .\macros\Module1.bas --out .\out\vbaProject.bin
 ooxml --json vba attach .\workbook.xlsx --bin .\out\vbaProject.bin --out .\out\workbook.xlsm
+ooxml --json vba build-bin --family pptx --source .\macros\Module1.bas --out .\out\ppt-vbaProject.bin
+ooxml --json vba attach .\deck.pptx --bin .\out\ppt-vbaProject.bin --out .\out\deck.pptm
 ```
 
 ## Office-Authored Creation Path
 
-When you need a PPTM, or specifically need an Office-authored XLSM seed, use legacy `ooxml vba create` without `--pure`. It drives desktop Office to author the VBA project, then returns `ooxml` readback/validation commands:
+When you specifically need an Office-authored XLSM/PPTM seed, use legacy `ooxml vba create` without `--pure`. It drives desktop Office to author the VBA project, then returns `ooxml` readback/validation commands:
 
 ```powershell
 ooxml --json vba create .\out\seed.xlsm `
@@ -105,7 +121,7 @@ ooxml --json vba list .\out\workbook.xlsm
 
 Use `--family pptx` and `.pptm` output for PowerPoint.
 
-This remains the supported PPTM creation path until pure PPTM `_VBA_PROJECT` generation is implemented.
+This remains available for troubleshooting and comparison, but pure Rust authoring is the preferred XLSM/PPTM path.
 
 `tools/windows-office-vba-create.ps1` remains the backend/fallback for direct troubleshooting. Agents should prefer `ooxml vba create` because it validates inputs, discovers the helper from the checkout, and emits normalized follow-up commands.
 
@@ -117,8 +133,7 @@ Therefore:
 
 - `vba add-module` and `vba remove-module` are only safe for synthetic/source-only test projects.
 - On real Office-shaped `.xlsm`/`.pptm` inputs, those commands fail before writing output, even with `--allow-experimental-vba-source-rewrite`.
-- The user-facing path for XLSM module-set changes is `vba create --pure` with the desired source files.
-- The user-facing path for PPTM module-set changes is still an Office-authored seed plus `vba attach`.
+- The user-facing path for XLSM/PPTM module-set changes is `vba create --pure` with the desired source files.
 
 ## Proof Gates
 

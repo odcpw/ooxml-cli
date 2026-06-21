@@ -15,7 +15,7 @@ pub(super) fn commands() -> Vec<Value> {
         ),
         capability_command(
             "ooxml vba build-bin",
-            "build-bin --family xlsx --source Module1.bas --out vbaProject.bin",
+            "build-bin --family xlsx|pptx --source Module1.bas --out vbaProject.bin",
             "Build a source-only vbaProject.bin from .bas/.cls source files using pure Rust.",
             &["module"],
             true,
@@ -27,7 +27,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--family",
                     "family",
                     "string",
-                    "target host family; currently xlsx only",
+                    "target host family; currently xlsx or pptx",
                 ),
                 flag(
                     "--force",
@@ -46,12 +46,12 @@ pub(super) fn commands() -> Vec<Value> {
         ),
         capability_command(
             "ooxml vba create",
-            "create <workbook.xlsx> --pure --source Module1.bas --out workbook.xlsm",
-            "Create an XLSM from an existing workbook and .bas/.cls source files using pure Rust.",
+            "create <workbook.xlsx|deck.pptx> --pure --source Module1.bas --out <workbook.xlsm|deck.pptm>",
+            "Create an XLSM/PPTM from an existing package and .bas/.cls source files using pure Rust.",
             &["package", "module"],
             true,
             Some(
-                "preferred cross-platform macro authoring path for XLSM; legacy Office-COM create remains available without --pure",
+                "preferred cross-platform macro authoring path for XLSM/PPTM; legacy Office-COM create remains available without --pure",
             ),
             vec![
                 flag("--backup", "backup", "string", "backup path for --in-place"),
@@ -71,7 +71,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--family",
                     "family",
                     "string",
-                    "target Office family; pure mode currently supports xlsx",
+                    "target Office family; pure mode supports xlsx or pptx and can infer from input extension",
                 ),
                 flag(
                     "--force",

@@ -1,15 +1,15 @@
-# GOAL: Pure Rust VBA Authoring
+# GOAL: First-Class Pure Rust VBA Authoring
 
-This repo is a Rust product. Go is deprecated reference material only.
+This repo is now a Rust product. Go is deprecated/reference-only.
 
-The product goal is cross-platform VBA authoring: on Linux, macOS, or Windows,
-an agent must be able to create a valid `vbaProject.bin` from `.bas` / `.cls`
-source files, attach it to Office Open XML macro-enabled packages, and iterate
-macro code safely without desktop Office.
+The product goal is cross-platform Office VBA authoring: on Linux, macOS, or
+Windows, an agent must be able to create a valid `vbaProject.bin` from `.bas`
+and `.cls` source files, attach it to XLSM/PPTM/DOCM packages, and iterate macro
+code safely. Desktop Office COM may be used as a Windows proof oracle, but it
+must not be an implementation dependency for the core authoring path.
 
-Do not treat package-level `vbaProject.bin` attach/remove as enough. The core
-authoring path must be pure Rust. Office COM may remain a proof oracle on
-Windows, but it must not be an implementation dependency.
+Do not pretend package-level `vbaProject.bin` attach/remove solves this. The
+core feature is a pure Rust VBA project authoring device.
 
 ## Primary Specs
 
@@ -18,16 +18,13 @@ Windows, but it must not be an implementation dependency.
 - MS-CFB, Compound File Binary File Format:
   https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-cfb/53989ce4-7b05-4f8d-829b-d08d6148375b
 
-The current published MS-OVBA page identifies the spec as the Office VBA file
-format for Office 97 and later and describes the storage that contains embedded
-macros and custom forms. The current MS-CFB page describes the compound-file
-container as a file-system-like structure for application-specific streams.
-Use the downloaded PDFs/DOCX specs as the detailed record source when writing
-binary records.
+Use the local/downloaded specs as the detailed record source when writing binary
+records. Validators are useful, but Office-open proof is required before any
+generated macro package is called done.
 
-## User Workflows
+## First-Class Workflows
 
-The first-class workflow is adding a macro to an existing workbook:
+Add a macro to an existing workbook:
 
 ```powershell
 ooxml vba build-bin --family xlsx --source .\Hello.bas --out .\vbaProject.bin
@@ -37,28 +34,34 @@ ooxml --json vba list .\hello.xlsm
 ooxml --json vba extract .\hello.xlsm --out-dir .\extracted
 ```
 
-The second workflow is creating a workbook from scratch and adding a macro:
+Create a workbook from scratch, then add a macro:
 
 ```powershell
 ooxml xlsx scaffold .\workbook.xlsx --out .\workbook.xlsx
 ooxml vba create --pure .\workbook.xlsx --family xlsx --source .\Hello.bas --out .\hello.xlsm
 ```
 
+The same pattern should extend to PPTM and DOCM after each host family is proven:
+
+```powershell
+ooxml pptx scaffold .\deck.pptx --out .\deck.pptx
+ooxml vba create --pure .\deck.pptx --family pptx --source .\Hello.bas --out .\hello.pptm
+```
+
 For slice 1, `vba create --pure` may require an existing host package and may
-reuse the existing scaffold command. The important part is that pure Rust builds
-the VBA project binary and attaches it. Host scaffolding can be improved after
-the binary writer is proven.
+reuse scaffold commands. Host-package scaffolding can improve later; the core
+contract is pure Rust `vbaProject.bin` generation plus safe attach.
 
 ## Target Command Surface
 
-Prefer these names unless implementation research proves a better agent-facing
-shape:
+Prefer these names unless implementation research proves a better
+agent-facing shape:
 
 - `ooxml vba build-bin --family xlsx --source Module1.bas --source Worker.cls --out vbaProject.bin`
 - `ooxml vba create --pure workbook.xlsx --family xlsx --source Module1.bas --out workbook.xlsm`
 - `ooxml vba rebuild existing.xlsm --source-dir macros --out edited.xlsm`
 
-Keep existing commands:
+Keep the existing package/source commands:
 
 - `vba attach`
 - `vba remove`
@@ -68,27 +71,35 @@ Keep existing commands:
 - `vba extract`
 - `vba extract-bin`
 
-But make pure authoring the first-class path in help, README, capabilities, and
-robot-docs once it is proven.
+Make pure authoring the first-class path in help, README, capabilities, and
+robot docs once each family is proven.
 
-Agent-ergonomic requirements:
+Agent ergonomics:
 
-- JSON output by default under `--json`.
-- Every mutating result returns follow-up `inspect`, `list`, `extract`,
-  `validate`, `conformance`, and Office-proof commands where relevant.
-- Errors must refuse unsupported module kinds or host families clearly.
-- No command may imply Office COM is required for pure authoring.
-- Dangerous overwrite paths require existing `--force` / `--out` discipline.
+- JSON output under `--json`.
+- Mutating commands return follow-up commands for `inspect`, `list`, `extract`,
+  `validate`, `conformance`, and Office proof when relevant.
+- Unsupported host families, module kinds, signatures, forms, or protected
+  projects must fail clearly.
+- No pure-authoring command may imply that Office COM is required.
+- Overwrites must follow existing `--force` / `--out` discipline.
 - Deterministic input should produce deterministic output bytes where practical.
 
 ## Implementation Shape
 
-Create a clean Rust VBA authoring module separate from package attach/remove.
-Do not let this grow into one blob. If a file starts becoming a monolith, split
-by proven boundaries: model, CFB writer, MS-OVBA records, compression, CLI
-output, and package attach integration.
+Keep VBA authoring separate from package attach/remove. Split by boring,
+observable boundaries instead of growing a blob:
 
-Model the project explicitly:
+- project model
+- source-module parsing
+- CFB writer
+- MS-OVBA record writers
+- compression/decompression
+- package attach integration
+- CLI output/ergonomics
+- conformance and Office oracle harnesses
+
+Model a VBA project explicitly:
 
 - host family: `xlsx` first, then `pptx`, then `docx`
 - project name, default `VBAProject`
@@ -119,7 +130,8 @@ Out of initial scope:
 - digital signatures
 - password/protection editing
 - macro execution by default
-- pretending validators prove Office compatibility
+- inline function lists or code editing niceties
+- shipping maybe-broken macro files when a family/feature is unsupported
 
 ## Feature Order
 
@@ -127,14 +139,15 @@ Out of initial scope:
 2. Standard `.bas` modules.
 3. Class `.cls` modules.
 4. `vba create --pure` wrapping build-bin + attach.
-5. `vba rebuild` from extracted source directory.
-6. PPTM host packaging.
-7. DOCM host packaging.
-8. Optional explicit macro-run smoke proof.
+5. Add macro to an existing `.xlsx` and to a scaffolded `.xlsx`.
+6. `vba rebuild` from extracted source directory.
+7. PPTM host packaging and pure authoring.
+8. DOCM package support, then pure authoring only after Word-specific proof.
+9. Optional explicit macro-run smoke proof.
 
 For add/remove/replace of modules, rebuild a fresh `vbaProject.bin` from the
 parsed/extracted source model. Do not rely on unsafe mutation of Office-authored
-binary metadata as the primary design.
+binary metadata as the main design.
 
 ## Testing And Proof
 
@@ -143,26 +156,26 @@ not implementation dependencies.
 
 Required local tests:
 
-- unit tests for binary record writers
+- unit tests for every binary record writer
 - CFB writer unit tests
 - compression/decompression roundtrip tests
 - golden tests for a minimal generated `vbaProject.bin`
-- determinism test: same model/source -> same bytes
+- determinism test: same model/source produces the same bytes
 - roundtrip test: `build-bin -> inspect-bin -> list/extract`
 - package test: `build-bin -> attach to scaffold workbook -> validate`
 - conformance test: `ooxml --json conformance check` on generated packages
 - Open XML SDK schema validation where available
 
-Required Windows proof before calling this done:
+Required Windows proof before calling a family done:
 
 - generated XLSM opens in Excel without repair
+- generated PPTM opens in PowerPoint without repair
+- generated DOCM opens in Word without repair
 - explicit opt-in smoke can run a harmless macro, such as writing
   `Hello from ooxml` into a known cell
-- later, generated PPTM opens in PowerPoint without repair
-- later, generated DOCM opens in Word without repair
 
-Validators are necessary but not sufficient. Office-open proof is required for
-the claim that generated macro files work.
+Validators are necessary but not sufficient. The prior `definedNames` workbook
+ordering bug proved that weak validators can pass files Office rejects.
 
 ## Conformance And Golden Discipline
 
@@ -182,25 +195,43 @@ files.
 
 ## Efficient Engineering Loop
 
-Do not micro-compile after every tiny edit. Work in coherent slices:
+This project should move quickly without churning.
 
-1. Read and design the slice.
-2. Edit a small set of owned files.
-3. Run the narrowest useful unit/contract tests.
-4. Run `cargo fmt --check` and `cargo check --all-targets` at integration
-   boundaries.
-5. Run full/focused Office proof only after the generated package is expected
-   to open.
-
-Use parallel subagents for independent read/design/bug-hunt slices. Serialize
-integration, commits, and Office COM proof gates.
-
-Rust compile speed policy:
-
+- Do not micro-compile after every tiny edit.
+- Work in coherent implementation slices.
+- Run focused tests by filter during development.
+- Run `cargo fmt --check`, `cargo check --all-targets`, and broader tests at
+  integration checkpoints.
+- Run Office proof only after generated packages are expected to open.
 - Keep dev/test debug info low unless debugging needs it.
-- Use focused tests by filter during implementation.
-- Avoid clippy/full test suite until an integration checkpoint.
-- Prefer one full verification per green milestone.
+- Use the existing fast compile settings: parallel cargo jobs, incremental
+  builds, and low debug info for dev/test profiles.
+
+Use parallel subagents for independent slices. Good lanes:
+
+- one implementation worker per host-family or command-family gap
+- one test/golden/conformance worker
+- one read-only archaeology/bug-hunt worker when design is uncertain
+- one integration lane, owned by the main agent
+
+Serialize edits that touch the same files, commits, pushes, Office COM proof,
+and any full-test gate.
+
+## Required Skills To Apply Intelligently
+
+Use the appropriate local skills as needed, especially:
+
+- `$codebase-archaeology`
+- `$testing-conformance-harnesses`
+- `$testing-golden-artifacts`
+- `$multi-pass-bug-hunting`
+- `$de-monolithize-your-codebase-isomorphically` if VBA code starts growing
+  into a blob
+- `$agent-ergonomics-and-intuitiveness-maximization-for-cli-tools` for the CLI
+  command surface
+
+Do not run a massive generic Rust-port process. The useful direction now is a
+pragmatic, proven, safe Rust implementation.
 
 ## Active Acceptance Criteria
 
@@ -216,7 +247,8 @@ ooxml --json vba extract hello.xlsm --out-dir extracted
 ```
 
 On Windows with Office installed, the same `hello.xlsm` must open in Excel
-without repair. The macro-run smoke is explicit opt-in.
+without repair and the harmless macro smoke must be possible under an explicit
+opt-in flag.
 
 Do not call the feature done until Office proves the generated file opens.
 
@@ -224,10 +256,9 @@ Do not call the feature done until Office proves the generated file opens.
 
 - Work on `master`.
 - Commit useful green checkpoints.
-- Push when a checkpoint is coherent.
+- Push coherent checkpoints.
 - Use subagents, but assign disjoint slices.
-- Use de-monolithization discipline only if the VBA authoring code starts
-  growing into large, coupled files.
+- Respect user/worktree changes; do not revert unrelated work.
 - Keep the design boring, small, and honest.
 - If a part of MS-OVBA is not implemented, the CLI must refuse clearly instead
   of producing maybe-broken macro files.

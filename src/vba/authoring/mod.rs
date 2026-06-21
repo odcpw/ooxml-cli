@@ -171,22 +171,21 @@ pub(crate) fn vba_build_bin(options: VbaBuildBinOptions<'_>) -> CliResult<Value>
     result.insert(
         "inspectBinCommand".to_string(),
         json!(format!(
-            "ooxml --json vba inspect-bin {} --family xlsx",
-            command_arg(out)
+            "ooxml --json vba inspect-bin {} --family {}",
+            command_arg(out),
+            outcome.family,
         )),
     );
     result.insert(
         "attachCommandTemplate".to_string(),
-        json!(format!(
-            "ooxml --json vba attach workbook.xlsx --bin {} --out workbook.xlsm",
-            command_arg(out)
-        )),
+        json!(attach_command_template(&outcome.family, out)),
     );
     Ok(Value::Object(result))
 }
 
 pub(crate) fn vba_create_pure(file: &str, options: VbaPureCreateOptions<'_>) -> CliResult<Value> {
-    let outcome = build_bin_from_sources(options.family, &options.sources)?;
+    let family = pure_create_family_from_input(file, options.family)?;
+    let outcome = build_bin_from_sources(Some(&family), &options.sources)?;
     let mut result = attach_vba_project_bytes(file, outcome.bin.clone(), options.mutation)?;
     let Value::Object(ref mut map) = result else {
         return Ok(result);
@@ -209,11 +208,46 @@ pub(crate) fn vba_create_pure(file: &str, options: VbaPureCreateOptions<'_>) -> 
     Ok(result)
 }
 
+fn pure_create_family_from_input(file: &str, family: Option<&str>) -> CliResult<String> {
+    let explicit = family.unwrap_or_default().trim();
+    if !explicit.is_empty() {
+        let family = normalize_build_family(explicit)?;
+        if let Some(input_family) = package_family_from_extension(file)
+            && input_family != family
+        {
+            return Err(CliError::invalid_args(format!(
+                "--family {family} does not match input package extension for {file}; expected --family {input_family}"
+            )));
+        }
+        return Ok(family);
+    }
+
+    package_family_from_extension(file).ok_or_else(|| {
+        CliError::invalid_args(
+            "--family is required when vba create --pure input extension is not .xlsx, .xlsm, .pptx, or .pptm",
+        )
+    })
+}
+
+fn package_family_from_extension(file: &str) -> Option<String> {
+    match Path::new(file)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "xlsx" | "xlsm" => Some("xlsx".to_string()),
+        "pptx" | "pptm" => Some("pptx".to_string()),
+        _ => None,
+    }
+}
+
 fn build_bin_from_sources(family: Option<&str>, sources: &[String]) -> CliResult<BuildBinOutcome> {
     let family = normalize_build_family(family.unwrap_or_default())?;
-    if family != "xlsx" {
+    if family == "docx" {
         return Err(CliError::unsupported_type(
-            "pure VBA authoring currently supports only --family xlsx",
+            "pure VBA authoring does not support --family docx yet",
         ));
     }
     let source_paths = normalize_source_values(sources)?;
@@ -223,12 +257,19 @@ fn build_bin_from_sources(family: Option<&str>, sources: &[String]) -> CliResult
         .filter(|input| input.inserted_vb_name)
         .map(|input| input.module.name.clone())
         .collect::<Vec<_>>();
-    let project = VbaProjectModel::xlsx_with_default_host_modules(
-        source_modules
-            .iter()
-            .map(|input| input.module.clone())
-            .collect(),
-    );
+    let user_modules = source_modules
+        .iter()
+        .map(|input| input.module.clone())
+        .collect::<Vec<_>>();
+    let project = match family.as_str() {
+        "xlsx" => VbaProjectModel::xlsx_with_default_host_modules(user_modules),
+        "pptx" => VbaProjectModel::pptx(user_modules),
+        _ => {
+            return Err(CliError::unsupported_type(
+                "pure VBA authoring supports only --family xlsx or pptx",
+            ));
+        }
+    };
     let bin = build_vba_project_bin(&project).map_err(authoring_error_to_cli)?;
     let mut hasher = Sha256::new();
     hasher.update(&bin);
@@ -258,6 +299,23 @@ fn module_summary_json(project: &VbaProjectModel) -> Value {
             })
             .collect(),
     )
+}
+
+fn attach_command_template(family: &str, bin_path: &str) -> String {
+    match family {
+        "pptx" => format!(
+            "ooxml --json vba attach deck.pptx --bin {} --out deck.pptm",
+            command_arg(bin_path)
+        ),
+        "xlsx" => format!(
+            "ooxml --json vba attach workbook.xlsx --bin {} --out workbook.xlsm",
+            command_arg(bin_path)
+        ),
+        _ => format!(
+            "ooxml --json vba attach <target.pptx|target.xlsx> --bin {} --out <macro-output.pptm|macro-output.xlsm>",
+            command_arg(bin_path)
+        ),
+    }
 }
 
 fn source_summary_json(source_modules: &[SourceModuleInput]) -> Value {
@@ -297,7 +355,7 @@ fn normalize_build_family(value: &str) -> CliResult<String> {
         "pptx" | "pptm" | "powerpoint" | "presentation" => Ok("pptx".to_string()),
         "docx" | "docm" | "word" | "document" => Ok("docx".to_string()),
         _ => Err(CliError::invalid_args(
-            "--family must be xlsx for pure VBA build-bin",
+            "--family must be xlsx, pptx, or docx for pure VBA authoring",
         )),
     }
 }

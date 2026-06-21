@@ -63,7 +63,7 @@ ooxml --json docx replace report.docx --find "Draft" --replace "Final" --expect-
 
 The safe VBA path is:
 
-1. For a new Excel macro file, scaffold or use an existing `.xlsx`, then run `ooxml vba create --pure`.
+1. For a new Excel or PowerPoint macro file, scaffold or use an existing `.xlsx` / `.pptx`, then run `ooxml vba create --pure`.
 2. For a standalone macro binary, run `ooxml vba build-bin` and attach it with `ooxml vba attach`.
 3. Use `vba list` / `vba extract` for source readback.
 4. Use `vba replace-module` only for existing modules, with a source hash guard.
@@ -71,8 +71,11 @@ The safe VBA path is:
 ```powershell
 ooxml --json xlsx scaffold .\workbook.xlsx --force
 ooxml --json vba create .\workbook.xlsx --pure --family xlsx --source .\macros\Module1.bas --source .\macros\Worker.cls --out .\workbook.xlsm
+ooxml --json pptx scaffold .\deck.pptx --title "Macro Deck" --force
+ooxml --json vba create .\deck.pptx --pure --family pptx --source .\macros\Module1.bas --out .\deck.pptm
 ooxml --json vba inspect workbook.xlsm
 ooxml --json vba build-bin --family xlsx --source .\macros\Module1.bas --out vbaProject.bin
+ooxml --json vba build-bin --family pptx --source .\macros\Module1.bas --out ppt-vbaProject.bin
 ooxml --json vba extract-bin workbook.xlsm --out vbaProject.bin
 ooxml --json vba inspect-bin vbaProject.bin --family xlsx
 ooxml --json vba attach workbook.xlsx --bin vbaProject.bin --out workbook.xlsm
@@ -81,7 +84,7 @@ ooxml --json vba extract workbook.xlsm --out-dir macros
 ooxml --json vba replace-module workbook.xlsm --module module:SeedModule --source .\macros\SeedModule.bas --expect-sha256 <sha256> --allow-experimental-vba-source-rewrite --out edited.xlsm
 ```
 
-`vba create --pure` is the preferred cross-platform XLSM path. It builds a source-only/cache-free `vbaProject.bin` in Rust, attaches it to the input workbook, and emits validation, conformance, readback, and Office-check commands. On Windows with desktop Office installed, the legacy helper remains available without `--pure` for Office-authored XLSM/PPTM seeds:
+`vba create --pure` is the preferred cross-platform XLSM/PPTM path. It builds a source-only/cache-free `vbaProject.bin` in Rust, attaches it to the input package, and emits validation, conformance, readback, and Office-check commands. On Windows with desktop Office installed, the legacy helper remains available without `--pure` for Office-authored XLSM/PPTM seeds:
 
 ```powershell
 ooxml --json vba create .\out\seed.xlsm --family xlsx --source .\macros\Module1.bas --source .\macros\Worker.cls --extract-bin .\out\vbaProject.bin --enable-vba-object-model-access --force
@@ -89,7 +92,7 @@ ooxml --json vba create .\out\seed.xlsm --family xlsx --source .\macros\Module1.
 ooxml --json vba attach .\testdata\xlsx\minimal-workbook\workbook.xlsx --bin .\out\vbaProject.bin --out .\out\workbook.xlsm
 ```
 
-Real Office-shaped module add/remove is intentionally refused today because Office stores version-dependent `_VBA_PROJECT` module metadata. Use `vba create --pure` for XLSM module-set changes, or the legacy Office-authored seed plus `vba attach` path when you specifically need an Office-authored binary. Macro execution, VBE compile, signatures, forms, and password/protection editing are out of scope.
+Real Office-shaped module add/remove is intentionally refused today because Office stores version-dependent `_VBA_PROJECT` module metadata. Use `vba create --pure` for XLSM/PPTM module-set changes, or the legacy Office-authored seed plus `vba attach` path when you specifically need an Office-authored binary. Macro execution, VBE compile, signatures, forms, and password/protection editing are out of scope.
 
 ## Verification
 

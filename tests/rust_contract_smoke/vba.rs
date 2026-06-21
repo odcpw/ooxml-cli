@@ -251,6 +251,138 @@ fn vba_pure_create_builds_and_reads_back_xlsm_without_office_com() {
 }
 
 #[test]
+fn vba_pure_create_builds_and_reads_back_pptm_without_office_com() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-vba-pure-pptm-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let source_path = temp_dir.join("Hello.bas");
+    fs::write(
+        &source_path,
+        "Attribute VB_Name = \"Hello\"\r\nPublic Sub HelloWorld()\r\n    MsgBox \"Hello from ooxml\"\r\nEnd Sub\r\n",
+    )
+    .expect("write VBA source");
+
+    let input_path = temp_dir.join("input.pptx");
+    let output_path = temp_dir.join("hello.pptm");
+    let bin_path = temp_dir.join("vbaProject.bin");
+    let extract_dir = temp_dir.join("macros");
+
+    let input = input_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+    let source = source_path.to_string_lossy().to_string();
+    let bin = bin_path.to_string_lossy().to_string();
+    let extract = extract_dir.to_string_lossy().to_string();
+
+    let (code, _stdout, stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "scaffold",
+        &input,
+        "--title",
+        "Macro Deck",
+        "--force",
+    ]);
+    assert_eq!(code, 0, "pptx scaffold exit");
+    assert_eq!(stderr, None, "pptx scaffold stderr");
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json", "vba", "create", &input, "--pure", "--source", &source, "--out", &output,
+    ]);
+    assert_eq!(code, 0, "pure pptm create exit");
+    assert_eq!(stderr, None, "pure pptm create stderr");
+    let create = stdout.expect("pure pptm create stdout");
+    assert_eq!(create["backend"], "pure-rust");
+    assert_eq!(create["createMode"], "pure");
+    assert_eq!(create["authoring"]["family"], "pptx");
+    assert_eq!(create["authoring"]["modules"].as_array().unwrap().len(), 1);
+    assert_eq!(create["authoring"]["modules"][0]["name"], "Hello");
+    assert_eq!(create["authoring"]["modules"][0]["hostSynthesized"], false);
+    assert_eq!(create["result"]["family"], "pptx");
+    assert_eq!(create["vba"]["hasVbaProject"], true);
+
+    let (code, _stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &output]);
+    assert_eq!(code, 0, "validate pptm output");
+    assert_eq!(stderr, None, "validate pptm stderr");
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &output]);
+    assert_eq!(code, 0, "list pptm output");
+    assert_eq!(stderr, None, "list pptm stderr");
+    let list = stdout.expect("pptm list stdout");
+    assert_eq!(list["project"]["family"], "pptx");
+    assert_eq!(list["project"]["moduleCount"], 1);
+    assert_eq!(list["project"]["warnings"], Value::Null);
+    assert_eq!(list["project"]["modules"][0]["name"], "Hello");
+    assert_eq!(list["project"]["modules"][0]["kind"], "standard");
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "extract",
+        &output,
+        "--out-dir",
+        &extract,
+        "--module",
+        "module:Hello",
+    ]);
+    assert_eq!(code, 0, "extract Hello from pptm");
+    assert_eq!(stderr, None, "extract pptm stderr");
+    assert!(stdout.is_some(), "extract pptm stdout");
+    assert!(
+        fs::read_to_string(extract_dir.join("Hello.bas"))
+            .expect("extracted Hello")
+            .contains("HelloWorld"),
+        "extracted source should contain macro body"
+    );
+
+    let (code, _stdout, stderr) =
+        run_ooxml(&["--json", "vba", "extract-bin", &output, "--out", &bin]);
+    assert_eq!(code, 0, "extract-bin pptm");
+    assert_eq!(stderr, None, "extract-bin pptm stderr");
+    let (code, stdout, stderr) =
+        run_ooxml(&["--json", "vba", "inspect-bin", &bin, "--family", "pptx"]);
+    assert_eq!(code, 0, "inspect-bin pptx");
+    assert_eq!(stderr, None, "inspect-bin pptx stderr");
+    let inspect = stdout.expect("inspect-bin pptx stdout");
+    assert_eq!(inspect["project"]["family"], "pptx");
+    assert_eq!(inspect["project"]["moduleCount"], 1);
+    assert_eq!(inspect["project"]["warnings"], Value::Null);
+
+    let mismatch_out = temp_dir.join("mismatch.pptm").to_string_lossy().to_string();
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "create",
+        &input,
+        "--pure",
+        "--family",
+        "xlsx",
+        "--source",
+        &source,
+        "--out",
+        &mismatch_out,
+    ]);
+    assert_ne!(code, 0, "family mismatch should fail");
+    assert_eq!(stdout, None, "family mismatch stdout");
+    assert!(
+        stderr
+            .expect("family mismatch stderr")
+            .to_string()
+            .contains("does not match input package extension"),
+        "family mismatch should explain extension guard"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn vba_office_check_macro_free_package_matches_go_oracle() {
     assert_go_rust_match(&[
         "--json",
