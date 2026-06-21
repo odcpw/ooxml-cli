@@ -5,11 +5,11 @@ This repo is now a Rust product. Go is deprecated/reference-only.
 The product goal is cross-platform Office VBA authoring: on Linux, macOS, or
 Windows, an agent must be able to create a valid `vbaProject.bin` from `.bas`
 and `.cls` source files, attach it to XLSM/PPTM/DOCM packages, and iterate macro
-code safely. Desktop Office COM may be used as a Windows proof oracle, but it
+code safely. Desktop Office COM is allowed only as a Windows proof oracle. It
 must not be an implementation dependency for the core authoring path.
 
 Do not pretend package-level `vbaProject.bin` attach/remove solves this. The
-core feature is a pure Rust VBA project authoring device.
+core feature is a deterministic pure Rust VBA project authoring device.
 
 ## Primary Specs
 
@@ -18,13 +18,13 @@ core feature is a pure Rust VBA project authoring device.
 - MS-CFB, Compound File Binary File Format:
   https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-cfb/53989ce4-7b05-4f8d-829b-d08d6148375b
 
-Use the local/downloaded specs as the detailed record source when writing binary
-records. Validators are useful, but Office-open proof is required before any
-generated macro package is called done.
+Use local/downloaded copies of those specs as the detailed binary-record source
+when implementing writers. Validators are useful, but Office-open proof is
+required before any generated macro package is called done.
 
-## First-Class Workflows
+## First-Class User Workflows
 
-Add a macro to an existing workbook:
+Add a macro to an existing `.xlsx`:
 
 ```powershell
 ooxml vba build-bin --family xlsx --source .\Hello.bas --out .\vbaProject.bin
@@ -34,14 +34,15 @@ ooxml --json vba list .\hello.xlsm
 ooxml --json vba extract .\hello.xlsm --out-dir .\extracted
 ```
 
-Create a workbook from scratch, then add a macro:
+Create an `.xlsx` from scratch, then add a macro:
 
 ```powershell
 ooxml xlsx scaffold .\workbook.xlsx --out .\workbook.xlsx
 ooxml vba create --pure .\workbook.xlsx --family xlsx --source .\Hello.bas --out .\hello.xlsm
 ```
 
-The same pattern should extend to PPTM and DOCM after each host family is proven:
+The same pattern should extend to PPTM and DOCM only after each host family is
+proven:
 
 ```powershell
 ooxml pptx scaffold .\deck.pptx --out .\deck.pptx
@@ -49,7 +50,7 @@ ooxml vba create --pure .\deck.pptx --family pptx --source .\Hello.bas --out .\h
 ```
 
 For slice 1, `vba create --pure` may require an existing host package and may
-reuse scaffold commands. Host-package scaffolding can improve later; the core
+reuse scaffold commands. Host-package scaffolding can improve later. The core
 contract is pure Rust `vbaProject.bin` generation plus safe attach.
 
 ## Target Command Surface
@@ -121,8 +122,8 @@ Implement MS-OVBA compression for `dir` and module source where required. Reuse
 the current parser/codec only after proving it writes the required format.
 
 Handle `MODULEOFFSET` intentionally. Prefer source-only/cache-free authoring
-where Office will regenerate compiled state. Do not patch Office-authored
-compiled cache streams as the main path.
+only if Office can regenerate compiled state and run simple macros. Do not patch
+Office-authored compiled cache streams as the main path.
 
 Out of initial scope:
 
@@ -133,6 +134,25 @@ Out of initial scope:
 - inline function lists or code editing niceties
 - shipping maybe-broken macro files when a family/feature is unsupported
 
+## Current Status
+
+Already integrated on `master`:
+
+- pure Rust XLSM authoring path
+- pure Rust PPTM authoring path
+- package-level DOCM attach/extract/remove/inspect/list support
+- `vba rebuild` from source directories
+- Office-open proof for generated XLSM/PPTM and package-level DOCM
+
+Known blocking gap:
+
+- A pure-generated XLSM opens in Excel without repair, but the explicit macro-run
+  smoke currently hangs at `Application.Run`.
+- Current evidence points at runtime metadata around `MODULEOFFSET`, module
+  stream prefixes/performance cache, and `_VBA_PROJECT` contents.
+- This gap must be resolved or explicitly scoped before claiming executable VBA
+  authoring is complete.
+
 ## Feature Order
 
 1. XLSM host packaging.
@@ -140,10 +160,10 @@ Out of initial scope:
 3. Class `.cls` modules.
 4. `vba create --pure` wrapping build-bin + attach.
 5. Add macro to an existing `.xlsx` and to a scaffolded `.xlsx`.
-6. `vba rebuild` from extracted source directory.
+6. `vba rebuild` from extracted source directories.
 7. PPTM host packaging and pure authoring.
 8. DOCM package support, then pure authoring only after Word-specific proof.
-9. Optional explicit macro-run smoke proof.
+9. Explicit opt-in macro-run smoke proof.
 
 For add/remove/replace of modules, rebuild a fresh `vbaProject.bin` from the
 parsed/extracted source model. Do not rely on unsafe mutation of Office-authored
@@ -195,17 +215,18 @@ files.
 
 ## Efficient Engineering Loop
 
-This project should move quickly without churning.
+Move quickly without churning.
 
 - Do not micro-compile after every tiny edit.
 - Work in coherent implementation slices.
 - Run focused tests by filter during development.
 - Run `cargo fmt --check`, `cargo check --all-targets`, and broader tests at
   integration checkpoints.
-- Run Office proof only after generated packages are expected to open.
+- Run Office proof only after generated packages are expected to open or execute.
 - Keep dev/test debug info low unless debugging needs it.
-- Use the existing fast compile settings: parallel cargo jobs, incremental
-  builds, and low debug info for dev/test profiles.
+- Use Cargo parallelism, incremental builds, low debug info, and an unsynced
+  local target directory.
+- Avoid OneDrive-synced build artifacts for normal Cargo work.
 
 Use parallel subagents for independent slices. Good lanes:
 
@@ -250,14 +271,16 @@ On Windows with Office installed, the same `hello.xlsm` must open in Excel
 without repair and the harmless macro smoke must be possible under an explicit
 opt-in flag.
 
-Do not call the feature done until Office proves the generated file opens.
+Do not call the feature done until Office proves the generated file opens. Do
+not call executable macro authoring done until Office proves a generated macro
+can run under the explicit smoke harness.
 
 ## Work Rules
 
 - Work on `master`.
 - Commit useful green checkpoints.
 - Push coherent checkpoints.
-- Use subagents, but assign disjoint slices.
+- Use subagents, but assign disjoint slices and do not duplicate work.
 - Respect user/worktree changes; do not revert unrelated work.
 - Keep the design boring, small, and honest.
 - If a part of MS-OVBA is not implemented, the CLI must refuse clearly instead

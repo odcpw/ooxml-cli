@@ -1,5 +1,6 @@
 [build]
 jobs = 16
+target-dir = "C:/Users/olidc/AppData/Local/ooxml-cli/cargo-target"
 
 [env]
 CARGO_INCREMENTAL = "1"
