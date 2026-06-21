@@ -1,0 +1,265 @@
+use std::collections::BTreeSet;
+
+use super::{VbaAuthoringError, VbaAuthoringResult};
+
+pub(super) const DEFAULT_PROJECT_NAME: &str = "VBAProject";
+pub(super) const DEFAULT_CODE_PAGE: u16 = 1252;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum VbaHostFamily {
+    Xlsx,
+}
+
+impl VbaHostFamily {
+    #[cfg(test)]
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Xlsx => "xlsx",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum VbaModuleKind {
+    Document,
+    Standard,
+    Class,
+}
+
+impl VbaModuleKind {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Document => "document",
+            Self::Standard => "standard",
+            Self::Class => "class",
+        }
+    }
+
+    pub(super) fn project_key(self) -> &'static str {
+        match self {
+            Self::Document => "Document",
+            Self::Standard => "Module",
+            Self::Class => "Class",
+        }
+    }
+
+    pub(super) fn dir_record_id(self) -> u16 {
+        match self {
+            Self::Document => 0x0022,
+            Self::Standard => 0x0021,
+            Self::Class => 0x0022,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct VbaModuleModel {
+    pub(super) name: String,
+    pub(super) stream_name: String,
+    pub(super) kind: VbaModuleKind,
+    pub(super) source: Vec<u8>,
+}
+
+impl VbaModuleModel {
+    pub(super) fn excel_workbook_document() -> Self {
+        Self::new(
+            "ThisWorkbook",
+            None::<String>,
+            VbaModuleKind::Document,
+            b"Attribute VB_Name = \"ThisWorkbook\"\r\nAttribute VB_Base = \"0{00020819-0000-0000-C000-000000000046}\"\r\nAttribute VB_GlobalNameSpace = False\r\nAttribute VB_Creatable = False\r\nAttribute VB_PredeclaredId = True\r\nAttribute VB_Exposed = True\r\nAttribute VB_TemplateDerived = False\r\nAttribute VB_Customizable = True\r\n".to_vec(),
+        )
+    }
+
+    pub(super) fn excel_sheet_document(name: impl Into<String>) -> Self {
+        let name = name.into();
+        let source = format!(
+            "Attribute VB_Name = \"{name}\"\r\nAttribute VB_Base = \"0{{00020820-0000-0000-C000-000000000046}}\"\r\nAttribute VB_GlobalNameSpace = False\r\nAttribute VB_Creatable = False\r\nAttribute VB_PredeclaredId = True\r\nAttribute VB_Exposed = True\r\nAttribute VB_TemplateDerived = False\r\nAttribute VB_Customizable = True\r\n"
+        );
+        Self::new(
+            name,
+            None::<String>,
+            VbaModuleKind::Document,
+            source.into_bytes(),
+        )
+    }
+
+    #[cfg(test)]
+    pub(super) fn standard(name: impl Into<String>, source: Vec<u8>) -> Self {
+        Self::new(name, None::<String>, VbaModuleKind::Standard, source)
+    }
+
+    #[cfg(test)]
+    pub(super) fn class(name: impl Into<String>, source: Vec<u8>) -> Self {
+        Self::new(name, None::<String>, VbaModuleKind::Class, source)
+    }
+
+    pub(super) fn new(
+        name: impl Into<String>,
+        stream_name: Option<impl Into<String>>,
+        kind: VbaModuleKind,
+        source: Vec<u8>,
+    ) -> Self {
+        let name = name.into();
+        let stream_name = stream_name.map(Into::into).unwrap_or_else(|| name.clone());
+        Self {
+            name,
+            stream_name,
+            kind,
+            source,
+        }
+    }
+
+    pub(super) fn validate_for_build(&self) -> VbaAuthoringResult<()> {
+        validate_identifier("module name", &self.name)?;
+        validate_identifier("module stream name", &self.stream_name)?;
+        if self.source.is_empty() {
+            return Err(VbaAuthoringError::invalid_model(format!(
+                "VBA module {} has empty source",
+                self.name
+            )));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct VbaProjectModel {
+    pub(super) host_family: VbaHostFamily,
+    pub(super) project_name: String,
+    pub(super) code_page: u16,
+    pub(super) modules: Vec<VbaModuleModel>,
+}
+
+impl VbaProjectModel {
+    pub(super) fn xlsx(modules: Vec<VbaModuleModel>) -> Self {
+        Self {
+            host_family: VbaHostFamily::Xlsx,
+            project_name: DEFAULT_PROJECT_NAME.to_string(),
+            code_page: DEFAULT_CODE_PAGE,
+            modules,
+        }
+    }
+
+    pub(super) fn xlsx_with_default_host_modules(user_modules: Vec<VbaModuleModel>) -> Self {
+        let mut modules = Vec::with_capacity(user_modules.len() + 2);
+        modules.push(VbaModuleModel::excel_workbook_document());
+        modules.push(VbaModuleModel::excel_sheet_document("Sheet1"));
+        modules.extend(user_modules);
+        Self::xlsx(modules)
+    }
+
+    pub(super) fn validate(&self) -> VbaAuthoringResult<()> {
+        if self.host_family != VbaHostFamily::Xlsx {
+            return Err(VbaAuthoringError::invalid_model(
+                "pure VBA authoring currently supports only xlsx/xlsm hosts",
+            ));
+        }
+        validate_identifier("project name", &self.project_name)?;
+        if self.code_page != DEFAULT_CODE_PAGE {
+            return Err(VbaAuthoringError::invalid_model(
+                "pure VBA authoring currently supports only Windows-1252 code page 1252",
+            ));
+        }
+        if self.modules.is_empty() {
+            return Err(VbaAuthoringError::invalid_model(
+                "VBA project must contain at least one module",
+            ));
+        }
+
+        let mut names = BTreeSet::new();
+        let mut stream_names = BTreeSet::new();
+        for module in &self.modules {
+            validate_identifier("module name", &module.name)?;
+            validate_identifier("module stream name", &module.stream_name)?;
+            if module.source.is_empty() {
+                return Err(VbaAuthoringError::invalid_model(format!(
+                    "VBA module {} has empty source",
+                    module.name
+                )));
+            }
+            let name_key = module.name.to_ascii_lowercase();
+            if !names.insert(name_key) {
+                return Err(VbaAuthoringError::invalid_model(format!(
+                    "duplicate VBA module name {}",
+                    module.name
+                )));
+            }
+            let stream_key = module.stream_name.to_ascii_lowercase();
+            if !stream_names.insert(stream_key) {
+                return Err(VbaAuthoringError::invalid_model(format!(
+                    "duplicate VBA module stream name {}",
+                    module.stream_name
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn validate_identifier(label: &str, value: &str) -> VbaAuthoringResult<()> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(VbaAuthoringError::invalid_model(format!(
+            "{label} is required"
+        )));
+    }
+    if trimmed != value {
+        return Err(VbaAuthoringError::invalid_model(format!(
+            "{label} {value:?} must not have leading or trailing whitespace"
+        )));
+    }
+    if value.len() > 255 {
+        return Err(VbaAuthoringError::invalid_model(format!(
+            "{label} {value:?} is longer than 255 bytes"
+        )));
+    }
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return Err(VbaAuthoringError::invalid_model(format!(
+            "{label} is required"
+        )));
+    };
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        return Err(VbaAuthoringError::invalid_model(format!(
+            "{label} {value:?} must start with a letter or underscore"
+        )));
+    }
+    if chars.any(|ch| !(ch == '_' || ch.is_ascii_alphanumeric())) {
+        return Err(VbaAuthoringError::invalid_model(format!(
+            "{label} {value:?} must contain only ASCII letters, digits, or underscores"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_model_is_xlsx_vbaproject_codepage_1252() {
+        let project = VbaProjectModel::xlsx(vec![VbaModuleModel::standard(
+            "Module1",
+            b"Public Sub Hello()\r\nEnd Sub\r\n".to_vec(),
+        )]);
+        assert_eq!(project.host_family.as_str(), "xlsx");
+        assert_eq!(project.project_name, "VBAProject");
+        assert_eq!(project.code_page, 1252);
+        assert!(project.validate().is_ok());
+    }
+
+    #[test]
+    fn detects_duplicate_module_stream_names_case_insensitively() {
+        let project = VbaProjectModel::xlsx(vec![
+            VbaModuleModel::standard("Module1", b"Sub A()\r\nEnd Sub\r\n".to_vec()),
+            VbaModuleModel::new(
+                "Module2",
+                Some("module1"),
+                VbaModuleKind::Standard,
+                b"Sub B()\r\nEnd Sub\r\n".to_vec(),
+            ),
+        ]);
+        let err = project.validate().expect_err("duplicate stream");
+        assert!(err.message.contains("duplicate VBA module stream name"));
+    }
+}

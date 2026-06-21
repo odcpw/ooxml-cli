@@ -10,6 +10,8 @@ const SECTOR_DIFAT: u32 = 0xFFFF_FFFC;
 const DIRECTORY_STREAM: u8 = 2;
 const DIRECTORY_STORAGE: u8 = 1;
 const DIRECTORY_ROOT: u8 = 5;
+const DIRECTORY_RED: u8 = 0;
+const DIRECTORY_BLACK: u8 = 1;
 
 const COMPOUND_SIGNATURE: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
 const WRITER_SECTOR_SIZE: usize = 512;
@@ -497,6 +499,14 @@ pub(super) fn rewrite_streams_with_adds_and_deletes(
     build_regular_sector_file(&streams, Some(&file))
 }
 
+#[allow(dead_code)]
+pub(super) fn build_streams_file(streams: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>, String> {
+    if streams.is_empty() {
+        return Err("cannot build CFB file with no streams".to_string());
+    }
+    build_regular_sector_file(streams, None)
+}
+
 fn build_regular_sector_file(
     streams: &BTreeMap<String, Vec<u8>>,
     source: Option<&CfbFile<'_>>,
@@ -757,7 +767,7 @@ fn build_directory_entries_sorted(
                 left_sibling: SECTOR_FREE,
                 right_sibling: SECTOR_FREE,
                 child: SECTOR_FREE,
-                start_sector: SECTOR_END,
+                start_sector: 0,
                 parent: parent.clone(),
                 clsid: [0; 16],
                 state_bits: 0,
@@ -892,6 +902,10 @@ fn build_directory_entries_from_source(
         if entry.color != 0 && entry.color != 1 {
             entry.color = 1;
         }
+        if entry.object_type == DIRECTORY_STORAGE {
+            entry.start_sector = 0;
+            entry.size = 0;
+        }
         let idx = entries.len();
         path_to_index.insert(entry.path.clone(), idx);
         if entry.object_type != DIRECTORY_ROOT {
@@ -928,7 +942,7 @@ fn build_directory_entries_from_source(
                 left_sibling: SECTOR_FREE,
                 right_sibling: SECTOR_FREE,
                 child: SECTOR_FREE,
-                start_sector: SECTOR_END,
+                start_sector: 0,
                 parent: parent.clone(),
                 clsid: [0; 16],
                 state_bits: 0,
@@ -1033,20 +1047,188 @@ fn assign_directory_sibling_tree(
     entries: &mut [WriteDirectoryEntry],
     child_indexes: &[usize],
 ) -> usize {
-    if child_indexes.is_empty() {
-        return SECTOR_FREE as usize;
+    let mut tree = DirectoryRbTree::new(entries);
+    for &child_index in child_indexes {
+        tree.insert(child_index);
     }
-    let mid = child_indexes.len() / 2;
-    let root = child_indexes[mid];
-    let left = assign_directory_sibling_tree(entries, &child_indexes[..mid]);
-    if left != SECTOR_FREE as usize {
-        entries[root].left_sibling = left as u32;
+    tree.root.unwrap_or(SECTOR_FREE as usize)
+}
+
+struct DirectoryRbTree<'a> {
+    entries: &'a mut [WriteDirectoryEntry],
+    root: Option<usize>,
+    parents: BTreeMap<usize, Option<usize>>,
+}
+
+impl<'a> DirectoryRbTree<'a> {
+    fn new(entries: &'a mut [WriteDirectoryEntry]) -> Self {
+        Self {
+            entries,
+            root: None,
+            parents: BTreeMap::new(),
+        }
     }
-    let right = assign_directory_sibling_tree(entries, &child_indexes[mid + 1..]);
-    if right != SECTOR_FREE as usize {
-        entries[root].right_sibling = right as u32;
+
+    fn insert(&mut self, node: usize) {
+        self.entries[node].left_sibling = SECTOR_FREE;
+        self.entries[node].right_sibling = SECTOR_FREE;
+        self.entries[node].color = DIRECTORY_RED;
+
+        let mut parent = None;
+        let mut current = self.root;
+        while let Some(current_index) = current {
+            parent = current;
+            if directory_name_compare(&self.entries[node].name, &self.entries[current_index].name)
+                == std::cmp::Ordering::Less
+            {
+                current = self.left(current_index);
+            } else {
+                current = self.right(current_index);
+            }
+        }
+        self.parents.insert(node, parent);
+        if let Some(parent_index) = parent {
+            if directory_name_compare(&self.entries[node].name, &self.entries[parent_index].name)
+                == std::cmp::Ordering::Less
+            {
+                self.entries[parent_index].left_sibling = node as u32;
+            } else {
+                self.entries[parent_index].right_sibling = node as u32;
+            }
+        } else {
+            self.root = Some(node);
+        }
+        self.fix_insert(node);
     }
-    root
+
+    fn fix_insert(&mut self, mut node: usize) {
+        while self
+            .parent(node)
+            .is_some_and(|parent| self.entries[parent].color == DIRECTORY_RED)
+        {
+            let parent = self.parent(node).expect("red parent");
+            let grandparent = self.parent(parent).expect("red parent has grandparent");
+            if self.left(grandparent) == Some(parent) {
+                let uncle = self.right(grandparent);
+                if uncle.is_some_and(|index| self.entries[index].color == DIRECTORY_RED) {
+                    self.entries[parent].color = DIRECTORY_BLACK;
+                    if let Some(uncle) = uncle {
+                        self.entries[uncle].color = DIRECTORY_BLACK;
+                    }
+                    self.entries[grandparent].color = DIRECTORY_RED;
+                    node = grandparent;
+                } else {
+                    if self.right(parent) == Some(node) {
+                        node = parent;
+                        self.rotate_left(node);
+                    }
+                    let parent = self.parent(node).expect("rotated parent");
+                    let grandparent = self.parent(parent).expect("rotated grandparent");
+                    self.entries[parent].color = DIRECTORY_BLACK;
+                    self.entries[grandparent].color = DIRECTORY_RED;
+                    self.rotate_right(grandparent);
+                }
+            } else {
+                let uncle = self.left(grandparent);
+                if uncle.is_some_and(|index| self.entries[index].color == DIRECTORY_RED) {
+                    self.entries[parent].color = DIRECTORY_BLACK;
+                    if let Some(uncle) = uncle {
+                        self.entries[uncle].color = DIRECTORY_BLACK;
+                    }
+                    self.entries[grandparent].color = DIRECTORY_RED;
+                    node = grandparent;
+                } else {
+                    if self.left(parent) == Some(node) {
+                        node = parent;
+                        self.rotate_right(node);
+                    }
+                    let parent = self.parent(node).expect("rotated parent");
+                    let grandparent = self.parent(parent).expect("rotated grandparent");
+                    self.entries[parent].color = DIRECTORY_BLACK;
+                    self.entries[grandparent].color = DIRECTORY_RED;
+                    self.rotate_left(grandparent);
+                }
+            }
+        }
+        if let Some(root) = self.root {
+            self.entries[root].color = DIRECTORY_BLACK;
+            self.parents.insert(root, None);
+        }
+    }
+
+    fn rotate_left(&mut self, node: usize) {
+        let Some(pivot) = self.right(node) else {
+            return;
+        };
+        let pivot_left = self.left(pivot);
+        self.entries[node].right_sibling = opt_index_to_sector(pivot_left);
+        if let Some(pivot_left) = pivot_left {
+            self.parents.insert(pivot_left, Some(node));
+        }
+        let parent = self.parent(node);
+        self.parents.insert(pivot, parent);
+        if let Some(parent) = parent {
+            if self.left(parent) == Some(node) {
+                self.entries[parent].left_sibling = pivot as u32;
+            } else {
+                self.entries[parent].right_sibling = pivot as u32;
+            }
+        } else {
+            self.root = Some(pivot);
+        }
+        self.entries[pivot].left_sibling = node as u32;
+        self.parents.insert(node, Some(pivot));
+    }
+
+    fn rotate_right(&mut self, node: usize) {
+        let Some(pivot) = self.left(node) else {
+            return;
+        };
+        let pivot_right = self.right(pivot);
+        self.entries[node].left_sibling = opt_index_to_sector(pivot_right);
+        if let Some(pivot_right) = pivot_right {
+            self.parents.insert(pivot_right, Some(node));
+        }
+        let parent = self.parent(node);
+        self.parents.insert(pivot, parent);
+        if let Some(parent) = parent {
+            if self.left(parent) == Some(node) {
+                self.entries[parent].left_sibling = pivot as u32;
+            } else {
+                self.entries[parent].right_sibling = pivot as u32;
+            }
+        } else {
+            self.root = Some(pivot);
+        }
+        self.entries[pivot].right_sibling = node as u32;
+        self.parents.insert(node, Some(pivot));
+    }
+
+    fn parent(&self, node: usize) -> Option<usize> {
+        self.parents.get(&node).copied().flatten()
+    }
+
+    fn left(&self, node: usize) -> Option<usize> {
+        sector_to_opt_index(self.entries[node].left_sibling)
+    }
+
+    fn right(&self, node: usize) -> Option<usize> {
+        sector_to_opt_index(self.entries[node].right_sibling)
+    }
+}
+
+fn sector_to_opt_index(value: u32) -> Option<usize> {
+    if value == SECTOR_FREE || value == SECTOR_END {
+        None
+    } else {
+        usize::try_from(value).ok()
+    }
+}
+
+fn opt_index_to_sector(value: Option<usize>) -> u32 {
+    value
+        .and_then(|index| u32::try_from(index).ok())
+        .unwrap_or(SECTOR_FREE)
 }
 
 fn validate_directory_name(name: &str) -> Result<(), String> {
@@ -1068,15 +1250,23 @@ fn serialize_directory(entries: &[WriteDirectoryEntry]) -> Vec<u8> {
         out.extend(serialize_directory_entry(entry));
     }
     while !out.len().is_multiple_of(WRITER_SECTOR_SIZE) {
-        out.push(0);
+        out.extend(serialize_free_directory_entry());
     }
+    out
+}
+
+fn serialize_free_directory_entry() -> Vec<u8> {
+    let mut out = vec![0_u8; 128];
+    out[68..72].copy_from_slice(&SECTOR_FREE.to_le_bytes());
+    out[72..76].copy_from_slice(&SECTOR_FREE.to_le_bytes());
+    out[76..80].copy_from_slice(&SECTOR_FREE.to_le_bytes());
     out
 }
 
 fn serialize_directory_entry(entry: &WriteDirectoryEntry) -> Vec<u8> {
     let mut out = vec![0_u8; 128];
     if entry.object_type == 0 && entry.name.is_empty() {
-        return out;
+        return serialize_free_directory_entry();
     }
     let name_bytes = utf16_name_bytes(&entry.name);
     out[..name_bytes.len()].copy_from_slice(&name_bytes);
@@ -1194,4 +1384,98 @@ fn decode_utf16_name(data: &[u8]) -> String {
         units.push(value);
     }
     String::from_utf16_lossy(&units)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn minimal_vba_streams() -> BTreeMap<String, Vec<u8>> {
+        BTreeMap::from([
+            (
+                "PROJECT".to_string(),
+                b"ID=\"{00000000-0000-0000-0000-000000000000}\"\r\n".to_vec(),
+            ),
+            ("PROJECTwm".to_string(), b"\0\0".to_vec()),
+            ("VBA/_VBA_PROJECT".to_string(), b"project metadata".to_vec()),
+            (
+                "VBA/Module1".to_string(),
+                b"Attribute VB_Name = \"Module1\"\r\n".to_vec(),
+            ),
+            (
+                "VBA/dir".to_string(),
+                b"compressed dir placeholder".to_vec(),
+            ),
+        ])
+    }
+
+    #[test]
+    fn build_streams_file_rejects_empty_maps() {
+        let error = build_streams_file(&BTreeMap::new()).expect_err("empty CFB should fail");
+        assert!(error.contains("no streams"));
+    }
+
+    #[test]
+    fn build_streams_file_roundtrips_vba_streams() {
+        let streams = minimal_vba_streams();
+        let cfb = build_streams_file(&streams).expect("fresh CFB should build");
+
+        assert!(cfb.len() > 512);
+        assert_eq!(
+            &cfb[..COMPOUND_SIGNATURE.len()],
+            COMPOUND_SIGNATURE.as_slice()
+        );
+
+        let opened = CfbFile::open(&cfb).expect("fresh CFB should reopen");
+        assert!(!opened.mini_fat.is_empty());
+        assert!(!opened.mini_stream.is_empty());
+        for (path, expected) in &streams {
+            assert_eq!(
+                opened.stream(path).expect("stream should roundtrip"),
+                *expected
+            );
+        }
+    }
+
+    #[test]
+    fn build_streams_file_uses_strict_directory_entry_defaults() {
+        let streams = minimal_vba_streams();
+        let cfb = build_streams_file(&streams).expect("fresh CFB should build");
+        let opened = CfbFile::open(&cfb).expect("fresh CFB should reopen");
+
+        let vba_storage = opened
+            .entries
+            .iter()
+            .find(|entry| entry.object_type == DIRECTORY_STORAGE && entry.name == "VBA")
+            .expect("VBA storage should exist");
+        assert_eq!(vba_storage.start_sector, 0);
+        assert_eq!(vba_storage.size, 0);
+
+        let free_entries = opened
+            .entries
+            .iter()
+            .filter(|entry| entry.object_type == 0 && entry.name.is_empty())
+            .collect::<Vec<_>>();
+        assert!(
+            !free_entries.is_empty(),
+            "fixture should include at least one padded free entry"
+        );
+        for entry in free_entries {
+            assert_eq!(entry.left_sibling, SECTOR_FREE);
+            assert_eq!(entry.right_sibling, SECTOR_FREE);
+            assert_eq!(entry.child, SECTOR_FREE);
+            assert_eq!(entry.start_sector, 0);
+            assert_eq!(entry.size, 0);
+        }
+    }
+
+    #[test]
+    fn build_streams_file_is_deterministic_for_identical_input() {
+        let streams = minimal_vba_streams();
+
+        let first = build_streams_file(&streams).expect("first CFB should build");
+        let second = build_streams_file(&streams).expect("second CFB should build");
+
+        assert_eq!(first, second);
+    }
 }

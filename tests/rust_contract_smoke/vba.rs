@@ -156,6 +156,101 @@ fn vba_create_source_workflow_matches_go_oracle_without_office_com() {
 }
 
 #[test]
+fn vba_pure_create_builds_and_reads_back_xlsm_without_office_com() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-vba-pure-create-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let source_path = temp_dir.join("Hello.bas");
+    fs::write(
+        &source_path,
+        "Attribute VB_Name = \"Hello\"\r\nPublic Sub HelloWorld()\r\n    ThisWorkbook.Worksheets(1).Range(\"A1\").Value = \"Hello from ooxml\"\r\nEnd Sub\r\n",
+    )
+    .expect("write VBA source");
+
+    let input_path = temp_dir.join("input.xlsx");
+    let output_path = temp_dir.join("hello.xlsm");
+    let bin_path = temp_dir.join("vbaProject.bin");
+    let extract_dir = temp_dir.join("macros");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input_path).expect("copy workbook");
+
+    let input = input_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+    let source = source_path.to_string_lossy().to_string();
+    let bin = bin_path.to_string_lossy().to_string();
+    let extract = extract_dir.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json", "vba", "create", &input, "--pure", "--family", "xlsx", "--source", &source,
+        "--out", &output,
+    ]);
+    assert_eq!(code, 0, "pure create exit");
+    assert_eq!(stderr, None, "pure create stderr");
+    let create = stdout.expect("pure create stdout");
+    assert_eq!(create["backend"], "pure-rust");
+    assert_eq!(create["createMode"], "pure");
+    assert_eq!(create["result"]["action"], "attach");
+    assert_eq!(create["vba"]["hasVbaProject"], true);
+    assert_eq!(create["authoring"]["codePage"], 1252);
+    assert_eq!(create["authoring"]["modules"][2]["name"], "Hello");
+    assert!(output_path.exists(), "pure create should write output");
+
+    let (code, _stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &output]);
+    assert_eq!(code, 0, "validate output");
+    assert_eq!(stderr, None, "validate stderr");
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &output]);
+    assert_eq!(code, 0, "list output");
+    assert_eq!(stderr, None, "list stderr");
+    let list = stdout.expect("list stdout");
+    assert_eq!(list["project"]["moduleCount"], 3);
+    assert_eq!(list["project"]["warnings"], Value::Null);
+    assert_eq!(list["project"]["modules"][2]["name"], "Hello");
+    assert_eq!(list["project"]["modules"][2]["sourceOffset"], 0);
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "extract",
+        &output,
+        "--out-dir",
+        &extract,
+        "--module",
+        "module:Hello",
+    ]);
+    assert_eq!(code, 0, "extract Hello");
+    assert_eq!(stderr, None, "extract stderr");
+    assert!(stdout.is_some(), "extract stdout");
+    assert!(
+        fs::read_to_string(extract_dir.join("Hello.bas"))
+            .expect("extracted Hello")
+            .contains("HelloWorld"),
+        "extracted source should contain macro body"
+    );
+
+    let (code, _stdout, stderr) =
+        run_ooxml(&["--json", "vba", "extract-bin", &output, "--out", &bin]);
+    assert_eq!(code, 0, "extract-bin");
+    assert_eq!(stderr, None, "extract-bin stderr");
+    let (code, stdout, stderr) =
+        run_ooxml(&["--json", "vba", "inspect-bin", &bin, "--family", "xlsx"]);
+    assert_eq!(code, 0, "inspect-bin");
+    assert_eq!(stderr, None, "inspect-bin stderr");
+    let inspect = stdout.expect("inspect-bin stdout");
+    assert_eq!(inspect["project"]["moduleCount"], 3);
+    assert_eq!(inspect["project"]["warnings"], Value::Null);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn vba_office_check_macro_free_package_matches_go_oracle() {
     assert_go_rust_match(&[
         "--json",

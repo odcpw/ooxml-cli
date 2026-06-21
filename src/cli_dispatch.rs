@@ -139,36 +139,102 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         }
         [cmd, file, rest @ ..] if cmd == "verify" => verify(file, rest),
         [family, verb, file] if family == "vba" && verb == "inspect" => vba_inspect(file),
-        [family, verb, output, rest @ ..] if family == "vba" && verb == "create" => {
-            reject_unknown_flags(
-                rest,
-                &[
-                    "--family",
-                    "--source",
-                    "--extract-bin",
-                    "--office-create-script",
-                ],
-                &["--enable-vba-object-model-access", "--visible", "--force"],
-            )?;
+        [family, verb, rest @ ..] if family == "vba" && verb == "build-bin" => {
+            reject_unknown_flags(rest, &["--family", "--source", "--out"], &["--force"])?;
             let family = parse_string_flag(rest, "--family")?;
             let sources = parse_string_flags(rest, "--source")?;
-            let extract_bin = parse_string_flag(rest, "--extract-bin")?;
-            let office_create_script = parse_string_flag(rest, "--office-create-script")?;
-            vba_create(
-                output,
-                VbaCreateOptions {
-                    family: family.as_deref(),
-                    sources,
-                    extract_bin: extract_bin.as_deref(),
-                    office_create_script: office_create_script.as_deref(),
-                    enable_vba_object_model_access: has_flag(
-                        rest,
-                        "--enable-vba-object-model-access",
-                    ),
-                    visible: has_flag(rest, "--visible"),
-                    force: has_flag(rest, "--force"),
-                },
-            )
+            let out = parse_string_flag(rest, "--out")?
+                .ok_or_else(|| CliError::invalid_args("--out is required"))?;
+            vba_build_bin(VbaBuildBinOptions {
+                family: family.as_deref(),
+                sources,
+                out: &out,
+                force: has_flag(rest, "--force"),
+            })
+        }
+        [family, verb, rest @ ..] if family == "vba" && verb == "create" => {
+            let value_flags = [
+                "--family",
+                "--source",
+                "--extract-bin",
+                "--office-create-script",
+                "--out",
+                "--backup",
+            ];
+            let bool_flags = [
+                "--enable-vba-object-model-access",
+                "--visible",
+                "--force",
+                "--pure",
+                "--dry-run",
+                "--no-validate",
+                "--in-place",
+            ];
+            reject_unknown_flags(rest, &value_flags, &bool_flags)?;
+            let positionals = positional_args(rest, &value_flags, &bool_flags)?;
+            if positionals.len() != 1 {
+                return Err(CliError::invalid_args(
+                    "vba create requires exactly one positional path",
+                ));
+            }
+            let family = parse_string_flag(rest, "--family")?;
+            let sources = parse_string_flags(rest, "--source")?;
+            if has_flag(rest, "--pure") {
+                if parse_string_flag(rest, "--extract-bin")?.is_some()
+                    || parse_string_flag(rest, "--office-create-script")?.is_some()
+                    || has_flag(rest, "--enable-vba-object-model-access")
+                    || has_flag(rest, "--visible")
+                    || has_flag(rest, "--force")
+                {
+                    return Err(CliError::invalid_args(
+                        "--pure cannot be combined with Office-COM create flags (--extract-bin, --office-create-script, --enable-vba-object-model-access, --visible, --force)",
+                    ));
+                }
+                let out = parse_string_flag(rest, "--out")?;
+                let backup = parse_string_flag(rest, "--backup")?;
+                vba_create_pure(
+                    positionals[0],
+                    VbaPureCreateOptions {
+                        family: family.as_deref(),
+                        sources,
+                        mutation: VbaMutationOptions {
+                            out: out.as_deref(),
+                            backup: backup.as_deref(),
+                            dry_run: has_flag(rest, "--dry-run"),
+                            no_validate: has_flag(rest, "--no-validate"),
+                            in_place: has_flag(rest, "--in-place"),
+                        },
+                    },
+                )
+            } else {
+                if parse_string_flag(rest, "--out")?.is_some()
+                    || parse_string_flag(rest, "--backup")?.is_some()
+                    || has_flag(rest, "--dry-run")
+                    || has_flag(rest, "--no-validate")
+                    || has_flag(rest, "--in-place")
+                {
+                    return Err(CliError::invalid_args(
+                        "--out, --backup, --dry-run, --no-validate, and --in-place are supported by vba create --pure; legacy vba create uses the positional output path",
+                    ));
+                }
+                let extract_bin = parse_string_flag(rest, "--extract-bin")?;
+                let office_create_script = parse_string_flag(rest, "--office-create-script")?;
+                vba_create(
+                    positionals[0],
+                    VbaCreateOptions {
+                        family: family.as_deref(),
+                        sources,
+                        extract_bin: extract_bin.as_deref(),
+                        office_create_script: office_create_script.as_deref(),
+                        enable_vba_object_model_access: has_flag(
+                            rest,
+                            "--enable-vba-object-model-access",
+                        ),
+                        visible: has_flag(rest, "--visible"),
+                        force: has_flag(rest, "--force"),
+                    },
+                )
+            }
         }
         [family, verb, bin_path, rest @ ..] if family == "vba" && verb == "inspect-bin" => {
             reject_unknown_flags(rest, &["--family"], &[])?;
@@ -1759,6 +1825,44 @@ fn convert_xlsm_to_xlsx(file: &str, args: &[String]) -> CliResult<Value> {
         out.as_deref(),
         dry_run,
     ))
+}
+
+fn positional_args<'a>(
+    args: &'a [String],
+    value_flags: &[&str],
+    bool_flags: &[&str],
+) -> CliResult<Vec<&'a str>> {
+    let mut out = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        if !arg.starts_with("--") {
+            out.push(arg.as_str());
+            index += 1;
+            continue;
+        }
+        if let Some((flag, _)) = arg.split_once('=') {
+            if value_flags.iter().any(|known| known == &flag)
+                || bool_flags.iter().any(|known| known == &flag)
+            {
+                index += 1;
+                continue;
+            }
+        }
+        if bool_flags.iter().any(|flag| flag == arg) {
+            index += 1;
+            continue;
+        }
+        if value_flags.iter().any(|flag| flag == arg) {
+            if args.get(index + 1).is_none() {
+                return Err(CliError::invalid_args(format!("{arg} requires a value")));
+            }
+            index += 2;
+            continue;
+        }
+        return Err(CliError::invalid_args(format!("unknown flag: {arg}")));
+    }
+    Ok(out)
 }
 
 fn add_xlsm_to_xlsx_conversion_metadata(

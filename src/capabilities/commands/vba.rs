@@ -14,44 +14,100 @@ pub(super) fn commands() -> Vec<Value> {
             vec![],
         ),
         capability_command(
-            "ooxml vba create",
-            "create <output.xlsm|output.pptm>",
-            "Create an Office-authored XLSM/PPTM from .bas/.cls source files using the Windows Office helper.",
-            &["package", "module"],
-            false,
+            "ooxml vba build-bin",
+            "build-bin --family xlsx --source Module1.bas --out vbaProject.bin",
+            "Build a source-only vbaProject.bin from .bas/.cls source files using pure Rust.",
+            &["module"],
+            true,
             Some(
-                "requires Windows desktop Office automation and does not accept op mutation output flags",
+                "pure Rust authoring path; attach the output with vba attach, then prove with Office before claiming compatibility",
             ),
             vec![
-                flag(
-                    "--enable-vba-object-model-access",
-                    "enableVbaObjectModelAccess",
-                    "bool",
-                    "temporarily enable Trust access to the VBA project object model",
-                ),
-                flag(
-                    "--extract-bin",
-                    "extractBin",
-                    "string",
-                    "optional path to write the created vbaProject.bin seed",
-                ),
                 flag(
                     "--family",
                     "family",
                     "string",
-                    "target Office family: xlsx or pptx; inferred from .xlsm/.pptm output",
+                    "target host family; currently xlsx only",
                 ),
                 flag(
                     "--force",
                     "force",
                     "bool",
-                    "overwrite existing helper outputs",
+                    "overwrite an existing vbaProject.bin output",
+                ),
+                flag("--out", "out", "string", "output vbaProject.bin path"),
+                flag(
+                    "--source",
+                    "source",
+                    "stringArray",
+                    "repeatable .bas or .cls source file",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml vba create",
+            "create <workbook.xlsx> --pure --source Module1.bas --out workbook.xlsm",
+            "Create an XLSM from an existing workbook and .bas/.cls source files using pure Rust.",
+            &["package", "module"],
+            true,
+            Some(
+                "preferred cross-platform macro authoring path for XLSM; legacy Office-COM create remains available without --pure",
+            ),
+            vec![
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--enable-vba-object-model-access",
+                    "enableVbaObjectModelAccess",
+                    "bool",
+                    "legacy Office-COM mode only: temporarily enable Trust access to the VBA project object model",
+                ),
+                flag(
+                    "--extract-bin",
+                    "extractBin",
+                    "string",
+                    "legacy Office-COM mode only: optional path to write the created vbaProject.bin seed",
+                ),
+                flag(
+                    "--family",
+                    "family",
+                    "string",
+                    "target Office family; pure mode currently supports xlsx",
+                ),
+                flag(
+                    "--force",
+                    "force",
+                    "bool",
+                    "legacy Office-COM mode only: overwrite existing helper outputs",
+                ),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write back to the input package",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict package validation after mutation",
                 ),
                 flag(
                     "--office-create-script",
                     "officeCreateScript",
                     "string",
-                    "path to windows-office-vba-create.ps1 when not running from the repo checkout",
+                    "legacy Office-COM mode only: path to windows-office-vba-create.ps1",
+                ),
+                flag(
+                    "--out",
+                    "out",
+                    "string",
+                    "pure mode output macro-enabled package path",
+                ),
+                flag(
+                    "--pure",
+                    "pure",
+                    "bool",
+                    "build vbaProject.bin in Rust and attach it to the input package",
                 ),
                 flag(
                     "--source",
@@ -137,7 +193,7 @@ pub(super) fn commands() -> Vec<Value> {
             &["package", "module"],
             false,
             Some(
-                "not a first-class macro authoring path; use vba create or vba attach for Office-loadable macro packages",
+                "not a first-class macro authoring path; use vba create --pure for XLSM or vba attach for opaque seeds",
             ),
             vec![
                 flag(
@@ -194,7 +250,7 @@ pub(super) fn commands() -> Vec<Value> {
             &["package", "module"],
             false,
             Some(
-                "not a first-class macro authoring path; use vba create or vba attach for Office-loadable macro packages",
+                "not a first-class macro authoring path; use vba create --pure for XLSM or vba attach for opaque seeds",
             ),
             vec![
                 flag(
@@ -250,7 +306,7 @@ pub(super) fn commands() -> Vec<Value> {
             &["package", "module"],
             false,
             Some(
-                "not a first-class macro authoring path; use vba create, vba attach, or vba remove for Office-loadable macro packages",
+                "not a first-class macro authoring path; use vba create --pure for XLSM, vba attach for opaque seeds, or vba remove for package-level removal",
             ),
             vec![
                 flag(

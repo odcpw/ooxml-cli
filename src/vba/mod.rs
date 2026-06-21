@@ -1,3 +1,4 @@
+mod authoring;
 mod cfb;
 mod create;
 mod inspect;
@@ -12,6 +13,9 @@ use serde_json::{Map, Value, json};
 use std::fs;
 use std::path::Path;
 
+pub(crate) use authoring::{
+    VbaBuildBinOptions, VbaPureCreateOptions, vba_build_bin, vba_create_pure,
+};
 pub(crate) use create::{VbaCreateOptions, vba_create};
 pub(crate) use model::VbaMutationOptions;
 pub(crate) use office_check::vba_office_check;

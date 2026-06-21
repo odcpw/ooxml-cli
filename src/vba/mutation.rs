@@ -33,6 +33,17 @@ pub(super) fn attach_vba_project(
     if data.is_empty() {
         return Err(CliError::invalid_args("vbaProject.bin is empty"));
     }
+    attach_vba_project_bytes(file, data, options)
+}
+
+pub(super) fn attach_vba_project_bytes(
+    file: &str,
+    data: Vec<u8>,
+    options: VbaMutationOptions<'_>,
+) -> CliResult<Value> {
+    if data.is_empty() {
+        return Err(CliError::invalid_args("vbaProject.bin is empty"));
+    }
     let info = inspect_vba_package(file)?;
     if !info.signature_artifacts.is_empty() {
         return Err(CliError::unexpected(
