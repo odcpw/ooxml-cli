@@ -42,6 +42,13 @@ Latest milestone, 2026-06-20:
   copied and retargeted to the cloned slide. Proof: focused clone-notes,
   lifecycle, layout authoring, and import/merge PPTX tests, strict validation,
   Rust `conformance check`, and worker-side Open XML SDK validation.
+- Integrated proof after the parallel worker slices is green: `cargo
+  fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo
+  test --all-targets` with 5 unit tests plus 235 Rust contract tests, and the
+  Windows edit smoke against the current `target/debug/ooxml.exe` with strict
+  validation, Rust `conformance check`, Microsoft Open XML SDK validation, and
+  desktop Office COM open proof: 52 scenarios passed / 0 failed, 52 Office
+  opens passed / 0 failed.
 - Rust agent-facing composition and proof ergonomics moved forward after
   command-path parity: `find --to-ops`, `find --replace --to-ops`, and
   `find --replace --apply` now emit/apply structured XLSX/DOCX/PPTX ops;

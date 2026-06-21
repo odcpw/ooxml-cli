@@ -37,13 +37,15 @@ history.
   - `cargo check --all-targets` passed.
   - `cargo fmt --check` passed.
   - `cargo clippy --all-targets -- -D warnings` passed.
-  - `cargo test --all-targets` passed with 5 unit tests and 232 Rust contract
+  - `cargo test --all-targets` passed with 5 unit tests and 235 Rust contract
     tests after the conformance ZIP-timestamp, reference-list,
     deep-relationship, image-payload, chart-structure, table/pivot,
     spreadsheet semantic-reference, PPTX animation-target, chart embedded
     workbook-open, PPTX media validation, lifecycle wrapper, relationship
     read-error, local office-check, find-to-ops, render-diff, new-slide image
-    slot, template target, and PPTX image batch-replacement slices.
+    slot, template target, PPTX image batch-replacement, PPTX group-shape
+    delete, DOCX mixed-content field, XLSX chart style/source, and PPTX
+    clone-notes slices.
   - The frozen Go contract, serve-flow, and PPTX mutation/validation slices are
     green on Windows.
   - Current capability ratchet: Go advertises 290 command paths and Rust
