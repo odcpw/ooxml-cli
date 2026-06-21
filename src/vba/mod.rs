@@ -14,7 +14,8 @@ use std::fs;
 use std::path::Path;
 
 pub(crate) use authoring::{
-    VbaBuildBinOptions, VbaPureCreateOptions, vba_build_bin, vba_create_pure,
+    VbaBuildBinOptions, VbaPureCreateOptions, VbaRebuildOptions, vba_build_bin, vba_create_pure,
+    vba_rebuild,
 };
 pub(crate) use create::{VbaCreateOptions, vba_create};
 pub(crate) use model::VbaMutationOptions;

@@ -251,6 +251,103 @@ fn vba_pure_create_builds_and_reads_back_xlsm_without_office_com() {
 }
 
 #[test]
+fn vba_rebuild_replaces_module_set_from_source_dir_without_office_com() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-vba-rebuild-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let original_source_path = temp_dir.join("Original.bas");
+    fs::write(
+        &original_source_path,
+        "Attribute VB_Name = \"Original\"\r\nPublic Sub OriginalMacro()\r\nEnd Sub\r\n",
+    )
+    .expect("write original VBA source");
+    let input_path = temp_dir.join("input.xlsx");
+    let original_path = temp_dir.join("original.xlsm");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input_path).expect("copy workbook");
+
+    let input = input_path.to_string_lossy().to_string();
+    let original = original_path.to_string_lossy().to_string();
+    let original_source = original_source_path.to_string_lossy().to_string();
+    let (code, _stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "create",
+        &input,
+        "--pure",
+        "--source",
+        &original_source,
+        "--out",
+        &original,
+    ]);
+    assert_eq!(code, 0, "create original macro package");
+    assert_eq!(stderr, None, "create original stderr");
+
+    let source_dir = temp_dir.join("macros");
+    let nested_dir = source_dir.join("nested");
+    fs::create_dir_all(&nested_dir).expect("nested source dir");
+    fs::write(
+        nested_dir.join("Replacement.bas"),
+        "Attribute VB_Name = \"Replacement\"\r\nPublic Sub ReplacementMacro()\r\n    ThisWorkbook.Worksheets(1).Range(\"B2\").Value = \"rebuilt\"\r\nEnd Sub\r\n",
+    )
+    .expect("write replacement source");
+    fs::write(source_dir.join("ignored.txt"), "not VBA").expect("write ignored file");
+
+    let rebuilt_path = temp_dir.join("rebuilt.xlsm");
+    let rebuilt = rebuilt_path.to_string_lossy().to_string();
+    let source_dir_arg = source_dir.to_string_lossy().to_string();
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "rebuild",
+        &original,
+        "--source-dir",
+        &source_dir_arg,
+        "--out",
+        &rebuilt,
+    ]);
+    assert_eq!(code, 0, "rebuild exit");
+    assert_eq!(stderr, None, "rebuild stderr");
+    let rebuild = stdout.expect("rebuild stdout");
+    assert_eq!(rebuild["backend"], "pure-rust");
+    assert_eq!(rebuild["rebuildMode"], "pure");
+    assert_eq!(rebuild["authoring"]["family"], "xlsx");
+    assert_eq!(rebuild["authoring"]["modules"].as_array().unwrap().len(), 3);
+    assert_eq!(rebuild["authoring"]["modules"][2]["name"], "Replacement");
+    assert_eq!(rebuild["result"]["action"], "attach");
+    assert_eq!(
+        rebuild["sourcesDiscovered"].as_array().unwrap().len(),
+        1,
+        "only .bas/.cls sources should be discovered"
+    );
+
+    let (code, _stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &rebuilt]);
+    assert_eq!(code, 0, "validate rebuilt output");
+    assert_eq!(stderr, None, "validate rebuilt stderr");
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &rebuilt]);
+    assert_eq!(code, 0, "list rebuilt output");
+    assert_eq!(stderr, None, "list rebuilt stderr");
+    let list = stdout.expect("list rebuilt stdout");
+    assert_eq!(list["project"]["moduleCount"], 3);
+    assert_eq!(list["project"]["modules"][2]["name"], "Replacement");
+    let modules = list["project"]["modules"].as_array().unwrap();
+    assert!(
+        !modules.iter().any(|module| module["name"] == "Original"),
+        "rebuild should replace the user module set"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn vba_pure_create_builds_and_reads_back_pptm_without_office_com() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -113,6 +113,12 @@ pub(crate) struct VbaPureCreateOptions<'a> {
     pub(crate) mutation: VbaMutationOptions<'a>,
 }
 
+pub(crate) struct VbaRebuildOptions<'a> {
+    pub(crate) family: Option<&'a str>,
+    pub(crate) source_dir: &'a str,
+    pub(crate) mutation: VbaMutationOptions<'a>,
+}
+
 struct SourceModuleInput {
     path: String,
     module: VbaModuleModel,
@@ -208,6 +214,34 @@ pub(crate) fn vba_create_pure(file: &str, options: VbaPureCreateOptions<'_>) -> 
     Ok(result)
 }
 
+pub(crate) fn vba_rebuild(file: &str, options: VbaRebuildOptions<'_>) -> CliResult<Value> {
+    let source_paths = collect_source_dir_sources(options.source_dir)?;
+    let family = pure_create_family_from_input(file, options.family)?;
+    let outcome = build_bin_from_sources(Some(&family), &source_paths)?;
+    let mut result = attach_vba_project_bytes(file, outcome.bin.clone(), options.mutation)?;
+    let Value::Object(ref mut map) = result else {
+        return Ok(result);
+    };
+    map.insert("backend".to_string(), json!("pure-rust"));
+    map.insert("rebuildMode".to_string(), json!("pure"));
+    map.insert("sourceDir".to_string(), json!(options.source_dir));
+    map.insert("sourcesDiscovered".to_string(), json!(source_paths));
+    map.insert(
+        "authoring".to_string(),
+        json!({
+            "family": outcome.family.clone(),
+            "projectName": outcome.project.project_name.clone(),
+            "codePage": outcome.project.code_page,
+            "bytesGenerated": outcome.bin.len(),
+            "sha256": outcome.sha256.clone(),
+            "modules": module_summary_json(&outcome.project),
+            "sources": source_summary_json(&outcome.source_modules),
+            "warnings": authoring_warnings(&outcome),
+        }),
+    );
+    Ok(result)
+}
+
 fn pure_create_family_from_input(file: &str, family: Option<&str>) -> CliResult<String> {
     let explicit = family.unwrap_or_default().trim();
     if !explicit.is_empty() {
@@ -241,6 +275,78 @@ fn package_family_from_extension(file: &str) -> Option<String> {
         "pptx" | "pptm" => Some("pptx".to_string()),
         _ => None,
     }
+}
+
+fn collect_source_dir_sources(source_dir: &str) -> CliResult<Vec<String>> {
+    let source_dir = source_dir.trim();
+    if source_dir.is_empty() {
+        return Err(CliError::invalid_args("--source-dir is required"));
+    }
+    let root = Path::new(source_dir);
+    if !root.is_dir() {
+        return Err(CliError::file_not_found(format!(
+            "--source-dir must be an existing directory: {source_dir}"
+        )));
+    }
+
+    let mut sources = Vec::new();
+    collect_source_dir_sources_rec(root, &mut sources)?;
+    sources.sort_by(|left, right| {
+        left.to_string_lossy()
+            .to_ascii_lowercase()
+            .cmp(&right.to_string_lossy().to_ascii_lowercase())
+            .then_with(|| left.cmp(right))
+    });
+    if sources.is_empty() {
+        return Err(CliError::target_not_found(format!(
+            "no .bas or .cls files found under --source-dir {source_dir}"
+        )));
+    }
+    Ok(sources
+        .into_iter()
+        .map(|path| path.to_string_lossy().to_string())
+        .collect())
+}
+
+fn collect_source_dir_sources_rec(dir: &Path, sources: &mut Vec<PathBuf>) -> CliResult<()> {
+    let entries = fs::read_dir(dir).map_err(|err| {
+        CliError::file_not_found(format!(
+            "failed to read source directory {}: {err}",
+            dir.display()
+        ))
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|err| {
+            CliError::file_not_found(format!(
+                "failed to read source directory {}: {err}",
+                dir.display()
+            ))
+        })?;
+        let path = entry.path();
+        let file_type = entry.file_type().map_err(|err| {
+            CliError::file_not_found(format!(
+                "failed to inspect source path {}: {err}",
+                path.display()
+            ))
+        })?;
+        if file_type.is_dir() {
+            collect_source_dir_sources_rec(&path, sources)?;
+        } else if file_type.is_file() && is_vba_source_path(&path) {
+            sources.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn is_vba_source_path(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "bas" | "cls"
+    )
 }
 
 fn build_bin_from_sources(family: Option<&str>, sources: &[String]) -> CliResult<BuildBinOutcome> {

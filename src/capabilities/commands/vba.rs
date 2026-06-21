@@ -124,6 +124,49 @@ pub(super) fn commands() -> Vec<Value> {
             ],
         ),
         capability_command(
+            "ooxml vba rebuild",
+            "rebuild <workbook.xlsm|deck.pptm> --source-dir macros --out <edited.xlsm|edited.pptm>",
+            "Rebuild a macro-enabled package from a directory of .bas/.cls sources using pure Rust.",
+            &["package", "module"],
+            true,
+            Some(
+                "safe module-set replacement path; rebuilds a fresh source-only vbaProject.bin rather than patching Office-authored binary metadata",
+            ),
+            vec![
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--family",
+                    "family",
+                    "string",
+                    "target Office family; supports xlsx or pptx and can infer from input extension",
+                ),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write back to the input package",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict package validation after mutation",
+                ),
+                flag(
+                    "--out",
+                    "out",
+                    "string",
+                    "output macro-enabled package path",
+                ),
+                flag(
+                    "--source-dir",
+                    "sourceDir",
+                    "string",
+                    "directory recursively scanned for .bas and .cls source files",
+                ),
+            ],
+        ),
+        capability_command(
             "ooxml vba inspect",
             "inspect <file>",
             "Inspect opaque VBA package state for XLSM/PPTM package wiring.",

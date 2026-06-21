@@ -236,6 +236,36 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
                 )
             }
         }
+        [family, verb, rest @ ..] if family == "vba" && verb == "rebuild" => {
+            let value_flags = ["--family", "--source-dir", "--out", "--backup"];
+            let bool_flags = ["--dry-run", "--no-validate", "--in-place"];
+            reject_unknown_flags(rest, &value_flags, &bool_flags)?;
+            let positionals = positional_args(rest, &value_flags, &bool_flags)?;
+            if positionals.len() != 1 {
+                return Err(CliError::invalid_args(
+                    "vba rebuild requires exactly one positional package path",
+                ));
+            }
+            let family = parse_string_flag(rest, "--family")?;
+            let source_dir = parse_string_flag(rest, "--source-dir")?
+                .ok_or_else(|| CliError::invalid_args("--source-dir is required"))?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            vba_rebuild(
+                positionals[0],
+                VbaRebuildOptions {
+                    family: family.as_deref(),
+                    source_dir: &source_dir,
+                    mutation: VbaMutationOptions {
+                        out: out.as_deref(),
+                        backup: backup.as_deref(),
+                        dry_run: has_flag(rest, "--dry-run"),
+                        no_validate: has_flag(rest, "--no-validate"),
+                        in_place: has_flag(rest, "--in-place"),
+                    },
+                },
+            )
+        }
         [family, verb, bin_path, rest @ ..] if family == "vba" && verb == "inspect-bin" => {
             reject_unknown_flags(rest, &["--family"], &[])?;
             let family = parse_string_flag(rest, "--family")?.ok_or_else(|| {

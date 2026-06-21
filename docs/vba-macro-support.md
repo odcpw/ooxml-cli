@@ -33,6 +33,7 @@ ooxml --json vba inspect <file>
 ooxml --json vba build-bin --family xlsx|pptx --source Module1.bas --source Worker.cls --out vbaProject.bin
 ooxml --json vba create workbook.xlsx --pure --family xlsx --source Module1.bas --source Worker.cls --out workbook.xlsm
 ooxml --json vba create deck.pptx --pure --family pptx --source Module1.bas --out deck.pptm
+ooxml --json vba rebuild workbook.xlsm --source-dir macros --out rebuilt.xlsm
 ooxml --json vba create output.xlsm|output.pptm --family xlsx|pptx --source Module1.bas --source Worker.cls [--extract-bin vbaProject.bin] [--enable-vba-object-model-access] [--force]
 ooxml --json vba extract-bin <file> --out vbaProject.bin
 ooxml --json vba inspect-bin vbaProject.bin --family xlsx|pptx
@@ -48,6 +49,7 @@ Implemented behavior:
 - Detect package macro state and VBA consistency.
 - Build source-only/cache-free XLSM/PPTM `vbaProject.bin` files from `.bas` / `.cls` source modules in pure Rust.
 - Attach pure-generated VBA projects to existing or freshly scaffolded `.xlsx` / `.pptx` packages with `vba create --pure`.
+- Rebuild an existing `.xlsm` / `.pptm` package from a directory of `.bas` / `.cls` source files with `vba rebuild --source-dir`.
 - Create fresh Office-authored `.xlsm` / `.pptm` files from `.bas` / `.cls` source modules on Windows desktop Office as a legacy/fallback path.
 - Extract `vbaProject.bin` byte-for-byte.
 - Inspect standalone seeds before attachment with host-family compatibility warnings.
@@ -96,6 +98,15 @@ ooxml --json vba build-bin --family pptx --source .\macros\Module1.bas --out .\o
 ooxml --json vba attach .\deck.pptx --bin .\out\ppt-vbaProject.bin --out .\out\deck.pptm
 ```
 
+Use `vba rebuild` when you have an extracted source directory and want to replace
+the package's user module set with a fresh pure Rust VBA project:
+
+```powershell
+ooxml --json vba rebuild .\workbook.xlsm --source-dir .\macros --out .\rebuilt.xlsm
+ooxml --json validate --strict .\rebuilt.xlsm
+ooxml --json vba list .\rebuilt.xlsm
+```
+
 ## Office-Authored Creation Path
 
 When you specifically need an Office-authored XLSM/PPTM seed, use legacy `ooxml vba create` without `--pure`. It drives desktop Office to author the VBA project, then returns `ooxml` readback/validation commands:
@@ -133,7 +144,7 @@ Therefore:
 
 - `vba add-module` and `vba remove-module` are only safe for synthetic/source-only test projects.
 - On real Office-shaped `.xlsm`/`.pptm` inputs, those commands fail before writing output, even with `--allow-experimental-vba-source-rewrite`.
-- The user-facing path for XLSM/PPTM module-set changes is `vba create --pure` with the desired source files.
+- The user-facing path for XLSM/PPTM module-set changes is `vba rebuild --source-dir` or `vba create --pure` with the desired source files.
 
 ## Proof Gates
 

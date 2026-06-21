@@ -73,6 +73,7 @@ ooxml --json xlsx scaffold .\workbook.xlsx --force
 ooxml --json vba create .\workbook.xlsx --pure --family xlsx --source .\macros\Module1.bas --source .\macros\Worker.cls --out .\workbook.xlsm
 ooxml --json pptx scaffold .\deck.pptx --title "Macro Deck" --force
 ooxml --json vba create .\deck.pptx --pure --family pptx --source .\macros\Module1.bas --out .\deck.pptm
+ooxml --json vba rebuild .\workbook.xlsm --source-dir .\macros --out .\rebuilt.xlsm
 ooxml --json vba inspect workbook.xlsm
 ooxml --json vba build-bin --family xlsx --source .\macros\Module1.bas --out vbaProject.bin
 ooxml --json vba build-bin --family pptx --source .\macros\Module1.bas --out ppt-vbaProject.bin
@@ -92,7 +93,7 @@ ooxml --json vba create .\out\seed.xlsm --family xlsx --source .\macros\Module1.
 ooxml --json vba attach .\testdata\xlsx\minimal-workbook\workbook.xlsx --bin .\out\vbaProject.bin --out .\out\workbook.xlsm
 ```
 
-Real Office-shaped module add/remove is intentionally refused today because Office stores version-dependent `_VBA_PROJECT` module metadata. Use `vba create --pure` for XLSM/PPTM module-set changes, or the legacy Office-authored seed plus `vba attach` path when you specifically need an Office-authored binary. Macro execution, VBE compile, signatures, forms, and password/protection editing are out of scope.
+Real Office-shaped module add/remove is intentionally refused today because Office stores version-dependent `_VBA_PROJECT` module metadata. Use `vba rebuild --source-dir` or `vba create --pure` for XLSM/PPTM module-set changes, or the legacy Office-authored seed plus `vba attach` path when you specifically need an Office-authored binary. Macro execution, VBE compile, signatures, forms, and password/protection editing are out of scope.
 
 ## Verification
 
