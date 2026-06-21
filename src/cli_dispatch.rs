@@ -97,6 +97,49 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
             exit_code,
         });
     }
+    if let [family, verb, rest @ ..] = args
+        && family == "vba"
+        && verb == "run-smoke"
+    {
+        let value_flags = [
+            "--out-dir",
+            "--macro",
+            "--expected-cell",
+            "--expected-value",
+            "--smoke-mode",
+            "--timeout-seconds",
+        ];
+        let bool_flags = ["--visible"];
+        reject_unknown_flags(rest, &value_flags, &bool_flags)?;
+        let positionals = positional_args(rest, &value_flags, &bool_flags)?;
+        if positionals.len() > 1 {
+            return Err(CliError::invalid_args(
+                "vba run-smoke accepts at most one optional .xlsm file argument",
+            ));
+        }
+        let timeout_seconds = parse_u32_flag(rest, "--timeout-seconds")?.unwrap_or(120);
+        let out_dir = parse_string_flag(rest, "--out-dir")?;
+        let macro_name = parse_string_flag(rest, "--macro")?;
+        let expected_cell = parse_string_flag(rest, "--expected-cell")?;
+        let expected_value = parse_string_flag(rest, "--expected-value")?;
+        let smoke_mode = parse_string_flag(rest, "--smoke-mode")?;
+        let (value, exit_code) = vba_run_smoke(
+            positionals.first().copied(),
+            VbaRunSmokeOptions {
+                out_dir: out_dir.as_deref(),
+                macro_name: macro_name.as_deref(),
+                expected_cell: expected_cell.as_deref(),
+                expected_value: expected_value.as_deref(),
+                smoke_mode: smoke_mode.as_deref(),
+                timeout_seconds,
+                visible: has_flag(rest, "--visible"),
+            },
+        )?;
+        return Ok(DispatchOutput {
+            body: DispatchBody::Json(value),
+            exit_code,
+        });
+    }
     dispatch_value(flags, args).map(|value| DispatchOutput {
         body: DispatchBody::Json(value),
         exit_code: EXIT_SUCCESS,

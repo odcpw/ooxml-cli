@@ -18,6 +18,10 @@ Expected binary:
 - size: 5120 bytes
 - sha256: `417f50943286b0a7e4d01afbc7a659970bc42c586ecd9843122b4bff33ea03ea`
 
+Expected inspect output:
+
+- `inspect-bin.json`
+
 This fixture covers PowerPoint/PPTM authoring with one standard `.bas` module
 and one class `.cls` module. PowerPoint Office-open proof was run separately
 with `ooxml vba office-check` on a PPTM created from these sources.

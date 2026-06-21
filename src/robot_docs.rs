@@ -155,6 +155,7 @@ fn guide_json() -> Value {
                     "ooxml --json vba extract <file> --out-dir <dir>",
                     "ooxml --json vba attach <file> --bin <vbaProject.bin> --out <file>",
                     "ooxml --json vba remove <file> --out <file>",
+                    "ooxml --json vba run-smoke [file.xlsm] --smoke-mode Standard|Class --out-dir <proof-dir>",
                     "ooxml --json convert xlsm-to-xlsx <file.xlsm> --out <file.xlsx>"
                 ]
             }
@@ -162,7 +163,8 @@ fn guide_json() -> Value {
         "warnings": [
             "Do not run mutation commands without an explicit --out, --dry-run, or user-approved --in-place path.",
             "Do not assume Go-only commands exist in the Rust port; use capabilities before invoking a command family.",
-            "Use vba office-check for macro package open proof; on Windows it prefers Microsoft Office COM, but it does not execute macros."
+            "Use vba office-check for macro package open proof; on Windows it prefers Microsoft Office COM, but it does not execute macros.",
+            "Use vba run-smoke only when the user explicitly asks for macro execution proof; it runs a harmless Excel VBA macro through desktop Office COM."
         ]
     })
 }

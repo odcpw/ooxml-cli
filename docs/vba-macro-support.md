@@ -52,7 +52,7 @@ Implemented behavior:
 - DOCM pure authoring accepts user standard `.bas` modules and synthesizes Word's `ThisDocument` host module.
 - Attach pure-generated VBA projects to existing or freshly scaffolded `.xlsx` / `.pptx` / `.docx` packages with `vba create --pure`.
 - Rebuild an existing `.xlsm` / `.pptm` / `.docm` package from a directory of supported source files with `vba rebuild --source-dir`.
-- Run an explicit local Excel macro execution smoke for a generated XLSM with `tools/windows-office-vba-run-smoke.ps1`.
+- Run an explicit local Excel macro execution smoke for a generated XLSM with `ooxml --json vba run-smoke`.
 - Create fresh Office-authored `.xlsm` / `.pptm` files from `.bas` / `.cls` source modules on Windows desktop Office as a legacy/fallback path.
 - Extract `vbaProject.bin` byte-for-byte.
 - Inspect standalone seeds before attachment with host-family compatibility warnings.
@@ -214,9 +214,9 @@ ooxml --json vba office-check .\document.docm --out-dir .\proof\pure-docm-office
 Explicit generated-XLSM macro execution proof:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass `
-  -File .\tools\windows-office-vba-run-smoke.ps1 `
-  -TimeoutSeconds 45
+ooxml --json vba run-smoke `
+  --timeout-seconds 45 `
+  --out-dir .\proof\xlsm-run-smoke
 ```
 
 Make targets:
@@ -238,9 +238,9 @@ The VBA smoke gate:
 - asserts real Office-shaped add/remove are refused;
 - opens macro-enabled outputs through Excel and PowerPoint COM in the full lane.
 - pure DOCM authoring is proven separately with `vba office-check` through Word COM.
-- separately executes a harmless generated XLSM macro in the explicit run-smoke lane.
+- separately executes a harmless generated XLSM macro in the explicit `vba run-smoke` lane.
 
-Proof level `microsoft-office-com-open` means desktop Office opened the package without repair/failure. The explicit run-smoke lane also proves one generated XLSM macro can execute under opt-in local Excel automation; it does not prove arbitrary macro security or broad VBE compile coverage.
+Proof level `microsoft-office-com-open` means desktop Office opened the package without repair/failure. The explicit `vba run-smoke` lane also proves one generated XLSM macro can execute under opt-in local Excel automation; it does not prove arbitrary macro security or broad VBE compile coverage.
 
 ## Validation Diagnostics
 

@@ -414,6 +414,60 @@ pub(super) fn commands() -> Vec<Value> {
             )],
         ),
         capability_command(
+            "ooxml vba run-smoke",
+            "run-smoke [file.xlsm]",
+            "Explicit opt-in Excel VBA macro execution smoke for a harmless generated or provided XLSM.",
+            &["module"],
+            false,
+            Some(
+                "Windows desktop Excel proof gate; executes VBA through Office COM, so use only when the user explicitly asks for macro execution proof",
+            ),
+            vec![
+                flag(
+                    "--expected-cell",
+                    "expectedCell",
+                    "string",
+                    "Excel cell to verify after the macro run; default A1",
+                ),
+                flag(
+                    "--expected-value",
+                    "expectedValue",
+                    "string",
+                    "expected cell or marker value after the macro run",
+                ),
+                flag(
+                    "--macro",
+                    "macro",
+                    "string",
+                    "macro name to run in a provided .xlsm; generated smoke workbooks use AgentSmokeRun",
+                ),
+                flag(
+                    "--out-dir",
+                    "outDir",
+                    "string",
+                    "directory for smoke artifacts and summary.json",
+                ),
+                flag(
+                    "--smoke-mode",
+                    "smokeMode",
+                    "string",
+                    "generated smoke mode when no file is supplied: Standard or Class; omit for provided .xlsm files",
+                ),
+                flag(
+                    "--timeout-seconds",
+                    "timeoutSeconds",
+                    "integer",
+                    "bounded Office COM macro-run timeout; default 120",
+                ),
+                flag(
+                    "--visible",
+                    "visible",
+                    "bool",
+                    "show Excel during the macro-run smoke",
+                ),
+            ],
+        ),
+        capability_command(
             "ooxml vba attach",
             "attach <file>",
             "Attach or replace opaque vbaProject.bin and macro package wiring.",

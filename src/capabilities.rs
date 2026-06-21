@@ -68,7 +68,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             "footer": ["ooxml pptx fields inspect", "ooxml pptx fields set", "ooxml docx footers list", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx headers list"],
             "image": ["ooxml pptx extract images", "ooxml pptx place image", "ooxml pptx replace images", "ooxml pptx xlsx-bindings apply", "ooxml docx images list", "ooxml docx images replace", "ooxml docx images insert"],
             "media": ["ooxml pptx media list", "ooxml pptx media add", "ooxml pptx media replace"],
-            "module": ["ooxml vba build-bin", "ooxml vba create", "ooxml vba rebuild", "ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba inspect-bin", "ooxml vba list", "ooxml vba extract", "ooxml vba add-module", "ooxml vba replace-module", "ooxml vba remove-module", "ooxml vba office-check", "ooxml vba attach", "ooxml vba remove"]
+            "module": ["ooxml vba build-bin", "ooxml vba create", "ooxml vba rebuild", "ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba inspect-bin", "ooxml vba list", "ooxml vba extract", "ooxml vba add-module", "ooxml vba replace-module", "ooxml vba remove-module", "ooxml vba office-check", "ooxml vba run-smoke", "ooxml vba attach", "ooxml vba remove"]
         },
         "exitCodes": [
             {"code": EXIT_SUCCESS, "name": "success", "description": "command completed successfully"},

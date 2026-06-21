@@ -150,6 +150,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml vba replace-module", false);
     assert_command(&all_caps, "ooxml vba remove-module", false);
     assert_command(&all_caps, "ooxml vba office-check", false);
+    assert_command(&all_caps, "ooxml vba run-smoke", false);
     assert_command(&all_caps, "ooxml vba attach", true);
     assert_command(&all_caps, "ooxml vba remove", true);
     for kind in [
@@ -654,6 +655,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "module", "ooxml vba list");
     assert_object_kind_command(&all_caps, "module", "ooxml vba extract");
     assert_object_kind_command(&all_caps, "module", "ooxml vba office-check");
+    assert_object_kind_command(&all_caps, "module", "ooxml vba run-smoke");
     assert_object_kind_command(&all_caps, "module", "ooxml vba attach");
     for path in [
         "ooxml xlsx ranges set-style",
@@ -1414,6 +1416,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&vba_caps, "ooxml vba replace-module", false);
     assert_command(&vba_caps, "ooxml vba remove-module", false);
     assert_command(&vba_caps, "ooxml vba office-check", false);
+    assert_command(&vba_caps, "ooxml vba run-smoke", false);
     assert_command(&vba_caps, "ooxml vba attach", true);
     assert_command(&vba_caps, "ooxml vba remove", true);
 }

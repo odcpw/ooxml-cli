@@ -19,7 +19,8 @@ Supported families:
 git clone https://github.com/odcpw/ooxml-cli.git
 cd ooxml-cli
 cargo build --bin ooxml
-.\target\debug\ooxml.exe version
+$targetDir = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).target_directory
+& (Join-Path $targetDir "debug\ooxml.exe") version
 ```
 
 During repo development, prefer the local runner so an old installed binary does not shadow your changes:
@@ -93,7 +94,7 @@ ooxml --json vba create .\out\seed.xlsm --family xlsx --source .\macros\Module1.
 ooxml --json vba attach .\testdata\xlsx\minimal-workbook\workbook.xlsx --bin .\out\vbaProject.bin --out .\out\workbook.xlsm
 ```
 
-Real Office-shaped module add/remove is intentionally refused today because Office stores version-dependent `_VBA_PROJECT` module metadata. Use `vba rebuild --source-dir` or `vba create --pure` for XLSM/PPTM module-set changes, or the legacy Office-authored seed plus `vba attach` path when you specifically need an Office-authored binary. General macro execution automation, VBE compile, signatures, forms, and password/protection editing are out of scope; `tools/windows-office-vba-run-smoke.ps1` is the explicit local proof harness for a harmless generated XLSM macro.
+Real Office-shaped module add/remove is intentionally refused today because Office stores version-dependent `_VBA_PROJECT` module metadata. Use `vba rebuild --source-dir` or `vba create --pure` for XLSM/PPTM module-set changes, or the legacy Office-authored seed plus `vba attach` path when you specifically need an Office-authored binary. General macro execution automation, VBE compile, signatures, forms, and password/protection editing are out of scope; `ooxml --json vba run-smoke` is the explicit local proof harness for a harmless generated XLSM macro.
 
 ## Verification
 
@@ -119,7 +120,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-e
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath $debugBin -SkipBuild -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance -WriteArtifactProofMatrix
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath $debugBin -SkipBuild -RequireOpenXmlSdk -RunConformance -SkipOffice -EnableVbaObjectModelAccess
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath $debugBin -SkipBuild -RequireOpenXmlSdk -RunConformance -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-run-smoke.ps1 -TimeoutSeconds 45
+& $debugBin --json vba run-smoke --timeout-seconds 45 --out-dir .\proof\xlsm-run-smoke
 ```
 
 The edit-smoke commands emit a command-by-command proof ledger next to the smoke `summary.json`. Add `-FailOnArtifactProofGap` only for a scoped release gate after the advertised operational workflows in that gate have structural, readback, strict validation, conformance, and required Office-open evidence.

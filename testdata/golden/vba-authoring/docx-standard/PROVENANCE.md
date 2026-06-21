@@ -17,6 +17,10 @@ Expected binary:
 - size: 5120 bytes
 - sha256: `d372fcdb4a7e43352242b92c67f348a630a75247087f689357537476f15502a3`
 
+Expected inspect output:
+
+- `inspect-bin.json`
+
 This fixture covers standard `.bas` module authoring for the Word/DOCM host
 family plus the synthesized Word `ThisDocument` host document module required
 for Word-open proof. It intentionally does not cover user-supplied Word `.cls`,

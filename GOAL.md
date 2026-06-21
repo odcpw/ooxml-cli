@@ -143,6 +143,8 @@ Already integrated on `master`:
 - pure Rust XLSM authoring path
 - pure Rust XLSM standard `.bas` macro execution proof in Excel
 - pure Rust XLSM class `.cls` macro execution proof in Excel
+- `ooxml --json vba run-smoke` is now the explicit opt-in CLI wrapper for
+  standard and class XLSM macro execution proof through desktop Excel
 - XLSM `build-bin -> attach` proof covers existing and scaffolded workbooks
   with validation, conformance, list, and extract readback
 - pure Rust PPTM authoring path

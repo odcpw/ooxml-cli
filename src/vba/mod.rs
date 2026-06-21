@@ -7,6 +7,7 @@ mod mutation;
 mod office_check;
 mod output;
 mod package_xml;
+mod run_smoke;
 mod source;
 mod validation;
 mod xlsx_host;
@@ -22,6 +23,7 @@ pub(crate) use authoring::{
 pub(crate) use create::{VbaCreateOptions, vba_create};
 pub(crate) use model::VbaMutationOptions;
 pub(crate) use office_check::vba_office_check;
+pub(crate) use run_smoke::{VbaRunSmokeOptions, vba_run_smoke};
 
 use crate::{CliError, CliResult, zip_bytes};
 use inspect::inspect_vba_package;
