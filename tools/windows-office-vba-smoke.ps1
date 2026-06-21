@@ -727,6 +727,9 @@ $pureScenarios = @(
     },
     [pscustomobject]@{
         name = "vba-docm-pure-standard-from-scaffold"; family = "docx"; input = $pureDocxBase; output = (Join-Path $caseDir "pure-standard.docm"); sources = @($standardSource)
+    },
+    [pscustomobject]@{
+        name = "vba-docm-pure-class-from-scaffold"; family = "docx"; input = $pureDocxBase; output = (Join-Path $caseDir "pure-class.docm"); sources = @($standardSource, $classSource)
     }
 )
 

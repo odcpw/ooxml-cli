@@ -1,6 +1,6 @@
 # VBA Macro Support
 
-`ooxml-cli` supports practical VBA package workflows for Excel, PowerPoint, and Word macro-enabled files. The implementation is deliberately conservative: XLSM and PPTM can be authored from `.bas` / `.cls` source through the pure Rust `vba create --pure` path, and DOCM can be authored from standard `.bas` modules with a synthesized Word `ThisDocument` host module. Package wiring is mutated safely, and source streams are only rewritten where the supported behavior is proven.
+`ooxml-cli` supports practical VBA package workflows for Excel, PowerPoint, and Word macro-enabled files. The implementation is deliberately conservative: XLSM, PPTM, and DOCM can be authored from `.bas` / `.cls` source through the pure Rust `vba create --pure` path, with host document modules synthesized where needed. Package wiring is mutated safely, and source streams are only rewritten where the supported behavior is proven.
 
 Authoritative specs:
 
@@ -32,7 +32,7 @@ ooxml --json vba inspect <file>
 ooxml --json vba build-bin --family xlsx|pptx|docx --source Module1.bas --source Worker.cls --out vbaProject.bin
 ooxml --json vba create workbook.xlsx --pure --family xlsx --source Module1.bas --source Worker.cls --out workbook.xlsm
 ooxml --json vba create deck.pptx --pure --family pptx --source Module1.bas --out deck.pptm
-ooxml --json vba create document.docx --pure --family docx --source Module1.bas --out document.docm
+ooxml --json vba create document.docx --pure --family docx --source Module1.bas --source Worker.cls --out document.docm
 ooxml --json vba rebuild workbook.xlsm|deck.pptm|document.docm --source-dir macros --out rebuilt.xlsm|rebuilt.pptm|rebuilt.docm
 ooxml --json vba create output.xlsm|output.pptm --family xlsx|pptx --source Module1.bas --source Worker.cls [--extract-bin vbaProject.bin] [--enable-vba-object-model-access] [--force]
 ooxml --json vba extract-bin <file> --out vbaProject.bin
@@ -48,8 +48,8 @@ Implemented behavior:
 
 - Detect package macro state and VBA consistency.
 - Build source-only/cache-free XLSM/PPTM/DOCM `vbaProject.bin` files in pure Rust.
-- XLSM/PPTM pure authoring accepts `.bas` and `.cls` source modules.
-- DOCM pure authoring accepts user standard `.bas` modules and synthesizes Word's `ThisDocument` host module.
+- XLSM/PPTM/DOCM pure authoring accepts `.bas` and `.cls` source modules.
+- DOCM pure authoring synthesizes Word's `ThisDocument` host module when needed.
 - Attach pure-generated VBA projects to existing or freshly scaffolded `.xlsx` / `.pptx` / `.docx` packages with `vba create --pure`.
 - Rebuild an existing `.xlsm` / `.pptm` / `.docm` package from a directory of supported source files with `vba rebuild --source-dir`.
 - Run an explicit local Excel macro execution smoke for a generated XLSM with `ooxml --json vba run-smoke`.
@@ -92,7 +92,7 @@ ooxml validate --strict .\out\deck.pptm
 ooxml --json vba list .\out\deck.pptm
 ```
 
-For Word, use standard `.bas` modules. User-supplied Word `.cls` / document modules are intentionally refused until their Office-open behavior is separately proven:
+For Word, pass standard `.bas` modules and optional class `.cls` modules. `ooxml-cli` synthesizes the `ThisDocument` host module:
 
 ```powershell
 ooxml --json docx scaffold .\document.docx --text "Macro document"
@@ -100,6 +100,7 @@ ooxml --json vba create .\document.docx `
   --pure `
   --family docx `
   --source .\macros\Module1.bas `
+  --source .\macros\Worker.cls `
   --out .\out\document.docm
 ooxml validate --strict .\out\document.docm
 ooxml --json vba office-check .\out\document.docm --out-dir .\proof\pure-docm-office-check
@@ -112,7 +113,7 @@ ooxml --json vba build-bin --family xlsx --source .\macros\Module1.bas --out .\o
 ooxml --json vba attach .\workbook.xlsx --bin .\out\vbaProject.bin --out .\out\workbook.xlsm
 ooxml --json vba build-bin --family pptx --source .\macros\Module1.bas --out .\out\ppt-vbaProject.bin
 ooxml --json vba attach .\deck.pptx --bin .\out\ppt-vbaProject.bin --out .\out\deck.pptm
-ooxml --json vba build-bin --family docx --source .\macros\Module1.bas --out .\out\doc-vbaProject.bin
+ooxml --json vba build-bin --family docx --source .\macros\Module1.bas --source .\macros\Worker.cls --out .\out\doc-vbaProject.bin
 ooxml --json vba attach .\document.docx --bin .\out\doc-vbaProject.bin --out .\out\document.docm
 ```
 
@@ -207,7 +208,7 @@ Pure generated DOCM Word-open proof:
 
 ```powershell
 ooxml --json docx scaffold .\document.docx --text "Macro document"
-ooxml --json vba create .\document.docx --pure --family docx --source .\macros\Module1.bas --out .\document.docm
+ooxml --json vba create .\document.docx --pure --family docx --source .\macros\Module1.bas --source .\macros\Worker.cls --out .\document.docm
 ooxml --json vba office-check .\document.docm --out-dir .\proof\pure-docm-office-check
 ```
 
@@ -236,8 +237,7 @@ The VBA smoke gate:
 - validates with `ooxml validate --strict`;
 - validates with Microsoft Open XML SDK when available;
 - asserts real Office-shaped add/remove are refused;
-- opens macro-enabled outputs through Excel and PowerPoint COM in the full lane.
-- pure DOCM authoring is proven separately with `vba office-check` through Word COM.
+- opens macro-enabled outputs, including pure-generated XLSM/PPTM/DOCM standard and class scenarios, through desktop Office COM in the full lane.
 - separately executes a harmless generated XLSM macro in the explicit `vba run-smoke` lane.
 
 Proof level `microsoft-office-com-open` means desktop Office opened the package without repair/failure. The explicit `vba run-smoke` lane also proves one generated XLSM macro can execute under opt-in local Excel automation; it does not prove arbitrary macro security or broad VBE compile coverage.
@@ -262,7 +262,7 @@ Proof level `microsoft-office-com-open` means desktop Office opened the package 
 - General `_VBA_PROJECT` regeneration.
 - General macro execution automation in the CLI.
 - VBE compile proof.
-- User-supplied Word `.cls` / `ThisDocument` authoring beyond the synthesized host module.
+- User-supplied `ThisDocument` document-module replacement beyond the synthesized host module.
 - Procedure/function-level editing helpers.
 - Signatures/resigning.
 - Forms and `.frx` import/export.

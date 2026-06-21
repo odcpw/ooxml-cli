@@ -1,0 +1,142 @@
+{
+  "attachCommandTemplate": "ooxml --json vba attach document.docx --bin 'testdata\\golden\\vba-authoring\\docx-class\\vbaProject.bin' --out document.docm",
+  "family": "docx",
+  "file": "testdata\\golden\\vba-authoring\\docx-class\\vbaProject.bin",
+  "project": {
+    "codePage": 1252,
+    "family": "docx",
+    "moduleCount": 3,
+    "modules": [
+      {
+        "codePage": 1252,
+        "extension": ".cls",
+        "kind": "class",
+        "lineCount": 8,
+        "lineEnding": "crlf",
+        "name": "ThisDocument",
+        "number": 1,
+        "primarySelector": "module:ThisDocument",
+        "selectors": [
+          "module:ThisDocument",
+          "module:1",
+          "#1",
+          "name:ThisDocument",
+          "~ThisDocument",
+          "ThisDocument",
+          "stream:ThisDocument"
+        ],
+        "sha256": "76f615001478cc8d4cce6fe76f75b2ca62880736645e205dfce15fc20f92e650",
+        "sha256Basis": "decoded-source-utf8",
+        "sourceBytes": 285,
+        "sourceOffset": 0,
+        "streamName": "ThisDocument",
+        "trailingNewline": true
+      },
+      {
+        "codePage": 1252,
+        "extension": ".bas",
+        "kind": "standard",
+        "lineCount": 6,
+        "lineEnding": "crlf",
+        "name": "AgentDoc",
+        "number": 2,
+        "primarySelector": "module:AgentDoc",
+        "selectors": [
+          "module:AgentDoc",
+          "module:2",
+          "#2",
+          "name:AgentDoc",
+          "~AgentDoc",
+          "AgentDoc",
+          "stream:AgentDoc"
+        ],
+        "sha256": "b156bf5d498a54c67b47c89ee1552221542c435822027b17dd7304beb3a548ac",
+        "sha256Basis": "decoded-source-utf8",
+        "sourceBytes": 178,
+        "sourceOffset": 0,
+        "streamName": "AgentDoc",
+        "trailingNewline": true
+      },
+      {
+        "codePage": 1252,
+        "extension": ".cls",
+        "kind": "class",
+        "lineCount": 11,
+        "lineEnding": "crlf",
+        "name": "Worker",
+        "number": 3,
+        "primarySelector": "module:Worker",
+        "selectors": [
+          "module:Worker",
+          "module:3",
+          "#3",
+          "name:Worker",
+          "~Worker",
+          "Worker",
+          "stream:Worker"
+        ],
+        "sha256": "a88104a638f283e926aceb9a02000954e23a5ba23ec11bdf46952817b9f66d03",
+        "sha256Basis": "decoded-source-utf8",
+        "sourceBytes": 392,
+        "sourceOffset": 0,
+        "streamName": "Worker",
+        "trailingNewline": true
+      }
+    ],
+    "officeCompatibility": {
+      "notes": [
+        "Package validation and source readback do not prove that Microsoft Office will load this VBA project without repair."
+      ],
+      "officeLoadVerified": false,
+      "status": "unverified"
+    },
+    "projectMetadata": {
+      "hasProjectWm": true,
+      "id": "{917DED54-440B-4FD1-A5C1-74ACF261E600}",
+      "lineCount": 18,
+      "modules": [
+        {
+          "kind": "document",
+          "line": 2,
+          "name": "ThisDocument",
+          "value": "ThisDocument/&H00000000"
+        },
+        {
+          "kind": "module",
+          "line": 3,
+          "name": "AgentDoc",
+          "value": "AgentDoc"
+        },
+        {
+          "kind": "class",
+          "line": 4,
+          "name": "Worker",
+          "value": "Worker"
+        }
+      ],
+      "name": "Project",
+      "present": true,
+      "projectWmStream": "PROJECTwm",
+      "streamName": "PROJECT",
+      "workspaceEntries": [
+        {
+          "line": 16,
+          "name": "ThisDocument",
+          "value": "0, 0, 0, 0, C"
+        },
+        {
+          "line": 17,
+          "name": "AgentDoc",
+          "value": "0, 0, 0, 0, C"
+        },
+        {
+          "line": 18,
+          "name": "Worker",
+          "value": "0, 0, 0, 0, C"
+        }
+      ]
+    }
+  },
+  "sha256": "9a0d1e425908a52909d472e794640dec13fd27d56f8b6588a3609d0420070aec",
+  "sizeBytes": 6144
+}

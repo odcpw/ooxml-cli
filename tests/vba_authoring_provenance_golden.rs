@@ -12,6 +12,15 @@ struct Fixture {
 
 const FIXTURES: &[Fixture] = &[
     Fixture {
+        name: "docx-class",
+        family: "docx",
+        provenance: include_str!("../testdata/golden/vba-authoring/docx-class/PROVENANCE.md"),
+        bin: include_bytes!("../testdata/golden/vba-authoring/docx-class/vbaProject.bin"),
+        expected_size: 6144,
+        expected_sha256: "9a0d1e425908a52909d472e794640dec13fd27d56f8b6588a3609d0420070aec",
+        sources: &["AgentDoc.bas", "Worker.cls"],
+    },
+    Fixture {
         name: "docx-standard",
         family: "docx",
         provenance: include_str!("../testdata/golden/vba-authoring/docx-standard/PROVENANCE.md"),

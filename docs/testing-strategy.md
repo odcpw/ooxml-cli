@@ -102,9 +102,9 @@ with `-SkipBuild`; an explicit `-BinaryPath` without `-SkipBuild` is rejected so
 the script cannot overwrite the subject. The helper's implicit build path is
 legacy behavior, not the normal Rust proof path.
 
-`tools/windows-office-vba-smoke.ps1` creates Office-native `.xlsm` and `.pptm` seeds from `.bas` / `.cls` sources through `ooxml vba create`, proves `vbaProject.bin` extract/attach/remove, proves existing-module replacement, validates outputs, asserts real Office-shaped add/remove are refused, and optionally opens macro-enabled outputs in Excel and PowerPoint.
+`tools/windows-office-vba-smoke.ps1` creates Office-native `.xlsm` and `.pptm` seeds from `.bas` / `.cls` sources through legacy `ooxml vba create`, proves `vbaProject.bin` extract/attach/remove, proves existing-module replacement, validates outputs, asserts real Office-shaped add/remove are refused, creates pure Rust XLSM/PPTM/DOCM standard and class packages from scaffolded hosts, and optionally opens macro-enabled outputs in desktop Office.
 
-For pure Rust PPTM/DOCM authoring, generate the macro package with `vba create --pure` or `build-bin` + `attach`, then run `ooxml --json vba office-check <file.pptm|file.docm>`. On Windows this prefers the Microsoft Office COM oracle and records `microsoftOfficeVerified: true` only when PowerPoint or Word opens the file without repair/failure.
+For one-off pure Rust authoring proof, generate the macro package with `vba create --pure` or `build-bin` + `attach`, then run `ooxml --json vba office-check <file.xlsm|file.pptm|file.docm>`. On Windows this prefers the Microsoft Office COM oracle and records `microsoftOfficeVerified: true` only when Excel, PowerPoint, or Word opens the file without repair/failure.
 
 `ooxml --json vba run-smoke` creates a pure Rust XLSM from a harmless `.bas` module, validates it, opens it in Excel, executes the macro, and verifies a marker value. Its opt-in `--smoke-mode Class` lane generates an `AgentSmoke.bas` entrypoint plus `Worker.cls` and only passes when the class method supplies the verified value. It is explicit opt-in because it runs VBA; internally it wraps `tools/windows-office-vba-run-smoke.ps1`.
 

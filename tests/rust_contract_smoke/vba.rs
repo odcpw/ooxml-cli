@@ -917,7 +917,7 @@ fn vba_rebuild_replaces_pptm_module_set_from_source_dir_without_office_com() {
 }
 
 #[test]
-fn vba_rebuild_replaces_docm_standard_modules_and_refuses_classes_without_office_com() {
+fn vba_rebuild_replaces_docm_standard_and_class_modules_without_office_com() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -938,7 +938,7 @@ fn vba_rebuild_replaces_docm_standard_modules_and_refuses_classes_without_office
     let input_path = temp_dir.join("input.docx");
     let original_path = temp_dir.join("original.docm");
     let rebuilt_path = temp_dir.join("rebuilt.docm");
-    let rejected_path = temp_dir.join("rejected.docm");
+    let class_rebuilt_path = temp_dir.join("class-rebuilt.docm");
     let source_dir = temp_dir.join("macros");
     let class_source_dir = temp_dir.join("class-macros");
     let extract_dir = temp_dir.join("extract");
@@ -948,7 +948,7 @@ fn vba_rebuild_replaces_docm_standard_modules_and_refuses_classes_without_office
     let input = input_path.to_string_lossy().to_string();
     let original = original_path.to_string_lossy().to_string();
     let rebuilt = rebuilt_path.to_string_lossy().to_string();
-    let rejected = rejected_path.to_string_lossy().to_string();
+    let class_rebuilt = class_rebuilt_path.to_string_lossy().to_string();
     let original_source = original_source_path.to_string_lossy().to_string();
     let source_dir_arg = source_dir.to_string_lossy().to_string();
     let class_source_dir_arg = class_source_dir.to_string_lossy().to_string();
@@ -1078,7 +1078,7 @@ fn vba_rebuild_replaces_docm_standard_modules_and_refuses_classes_without_office
         class_source_dir.join("Worker.cls"),
         "Attribute VB_Name = \"Worker\"\r\nPublic Function Message() As String\r\n    Message = \"not yet\"\r\nEnd Function\r\n",
     )
-    .expect("write unsupported docm class source");
+    .expect("write docm class source");
     let (code, stdout, stderr) = run_ooxml(&[
         "--json",
         "vba",
@@ -1087,22 +1087,87 @@ fn vba_rebuild_replaces_docm_standard_modules_and_refuses_classes_without_office
         "--source-dir",
         &class_source_dir_arg,
         "--out",
-        &rejected,
+        &class_rebuilt,
     ]);
-    assert_eq!(code, 4, "docm class rebuild refusal exit");
-    assert_eq!(stdout, None, "docm class rebuild refusal stdout");
-    let stderr = stderr.expect("docm class rebuild refusal stderr");
-    assert_eq!(stderr["error"]["code"], "unsupported_type");
+    assert_eq!(code, 0, "docm class rebuild exit");
+    assert_eq!(stderr, None, "docm class rebuild stderr");
+    let class_rebuild = stdout.expect("docm class rebuild stdout");
+    assert_eq!(class_rebuild["backend"], "pure-rust");
+    assert_eq!(class_rebuild["authoring"]["family"], "docx");
+    assert_eq!(
+        class_rebuild["authoring"]["modules"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        class_rebuild["authoring"]["modules"][0]["name"],
+        "ThisDocument"
+    );
+    assert_eq!(
+        class_rebuild["authoring"]["modules"][0]["hostSynthesized"],
+        true
+    );
+    assert_eq!(class_rebuild["authoring"]["modules"][1]["name"], "Worker");
+    assert_eq!(class_rebuild["authoring"]["modules"][1]["kind"], "class");
+    assert_eq!(
+        class_rebuild["sourcesDiscovered"].as_array().unwrap().len(),
+        1,
+        "only .bas/.cls sources should be discovered"
+    );
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &class_rebuilt]);
+    assert_eq!(code, 0, "validate class rebuilt docm");
+    assert_eq!(stderr, None, "validate class rebuilt docm stderr");
+    let validate = stdout.expect("validate class rebuilt docm stdout");
+    assert_eq!(validate["valid"], true);
+    assert_eq!(validate["summary"]["errors"], 0);
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "conformance", "check", &class_rebuilt]);
+    assert_eq!(code, 0, "conformance class rebuilt docm");
+    assert_eq!(stderr, None, "conformance class rebuilt docm stderr");
+    let conformance = stdout.expect("conformance class rebuilt docm stdout");
+    assert_eq!(conformance["status"], "passed");
+    assert_eq!(conformance["family"], "docx");
+    assert_eq!(conformance["summary"]["failed"], 0);
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &class_rebuilt]);
+    assert_eq!(code, 0, "list class rebuilt docm");
+    assert_eq!(stderr, None, "list class rebuilt docm stderr");
+    let list = stdout.expect("list class rebuilt docm stdout");
+    assert_eq!(list["project"]["family"], "docx");
+    assert_eq!(list["project"]["moduleCount"], 2);
+    let modules = list["project"]["modules"].as_array().unwrap();
     assert!(
-        stderr["error"]["message"]
-            .as_str()
-            .expect("message")
-            .contains("only standard .bas modules"),
-        "unexpected docm class rebuild refusal: {stderr:?}"
+        modules
+            .iter()
+            .any(|module| module["name"] == "ThisDocument")
     );
     assert!(
-        !rejected_path.exists(),
-        "refused DOCM rebuild should not write an output package"
+        modules
+            .iter()
+            .any(|module| module["name"] == "Worker" && module["kind"] == "class")
+    );
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "extract",
+        &class_rebuilt,
+        "--out-dir",
+        &extract,
+        "--module",
+        "module:Worker",
+    ]);
+    assert_eq!(code, 0, "extract class rebuilt docm Worker");
+    assert_eq!(stderr, None, "extract class rebuilt docm Worker stderr");
+    let extract_result = stdout.expect("extract class rebuilt docm Worker stdout");
+    assert_eq!(extract_result["modules"][0]["name"], "Worker");
+    assert!(
+        fs::read_to_string(extract_dir.join("Worker.cls"))
+            .expect("read class rebuilt DOCM Worker")
+            .contains("not yet")
     );
 
     let _ = fs::remove_dir_all(&temp_dir);

@@ -27,7 +27,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--family",
                     "family",
                     "string",
-                    "target host family; xlsx/pptx support .bas and .cls, docx supports standard .bas with synthesized ThisDocument",
+                    "target host family; xlsx, pptx, and docx support .bas and .cls source, with host modules synthesized where required",
                 ),
                 flag(
                     "--force",
@@ -40,7 +40,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--source",
                     "source",
                     "stringArray",
-                    "repeatable .bas or .cls source file; docx pure authoring currently accepts user .bas modules only",
+                    "repeatable .bas or .cls source file",
                 ),
             ],
         ),
@@ -113,7 +113,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--source",
                     "source",
                     "stringArray",
-                    "repeatable .bas or .cls source file to import; docx pure mode currently accepts user .bas modules only",
+                    "repeatable .bas or .cls source file to import",
                 ),
                 flag(
                     "--visible",

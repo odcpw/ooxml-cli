@@ -152,8 +152,11 @@ Already integrated on `master`:
 - pure Rust PPTM class `.cls` PowerPoint open proof through `ooxml vba office-check`
 - package-level DOCM attach/extract/remove/inspect/list support
 - pure Rust DOCM standard `.bas` authoring path
-- pure Rust DOCM Word open proof through `ooxml vba office-check`
+- pure Rust DOCM class `.cls` authoring path
+- pure Rust DOCM standard and class Word open proof through `ooxml vba office-check`
 - `vba rebuild` from source directories
+- durable Windows smoke proof for pure-generated XLSM/PPTM/DOCM standard and
+  class packages
 - Office-open proof for generated XLSM/PPTM/DOCM and package-level DOCM
 - `validate --strict` and `conformance check` reject broken VBA package wiring:
   missing/duplicate `vbaProject` relationships, wrong `vbaProject.bin` content
@@ -169,9 +172,9 @@ Known remaining gaps:
   widens.
 - PPTM pure authoring has standard and class-module package/open proof, but
   not executable macro smoke depth comparable to the XLSM Excel run harness.
-- DOCM pure authoring currently supports user standard `.bas` modules with a
-  synthesized `ThisDocument` host module; user-supplied Word `.cls` /
-  document-module authoring remains refused until separately proven.
+- DOCM pure authoring supports user standard `.bas` modules and class `.cls`
+  modules with a synthesized `ThisDocument` host module; user-supplied
+  `ThisDocument` replacement remains out of scope until separately proven.
 
 ## Feature Order
 
@@ -182,7 +185,7 @@ Known remaining gaps:
 5. Add macro to an existing `.xlsx` and to a scaffolded `.xlsx`.
 6. `vba rebuild` from extracted source directories.
 7. PPTM host packaging and pure authoring.
-8. DOCM package support, then pure standard-module authoring after Word-specific proof.
+8. DOCM package support, then pure standard/class-module authoring after Word-specific proof.
 9. Explicit opt-in macro-run smoke proof.
 
 For add/remove/replace of modules, rebuild a fresh `vbaProject.bin` from the

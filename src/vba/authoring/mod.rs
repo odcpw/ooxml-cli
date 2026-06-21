@@ -354,15 +354,6 @@ fn build_bin_from_sources(family: Option<&str>, sources: &[String]) -> CliResult
     let family = normalize_build_family(family.unwrap_or_default())?;
     let source_paths = normalize_source_values(sources)?;
     let source_modules = read_source_modules(&source_paths)?;
-    if family == "docx"
-        && source_modules
-            .iter()
-            .any(|input| input.module.kind != VbaModuleKind::Standard)
-    {
-        return Err(CliError::unsupported_type(
-            "pure VBA authoring for --family docx currently supports only standard .bas modules; .cls class/document modules need Word-specific Office proof first",
-        ));
-    }
     let inserted_vb_names = source_modules
         .iter()
         .filter(|input| input.inserted_vb_name)
