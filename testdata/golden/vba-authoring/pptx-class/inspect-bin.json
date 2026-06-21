@@ -1,0 +1,106 @@
+{
+  "attachCommandTemplate": "ooxml --json vba attach deck.pptx --bin testdata/golden/vba-authoring/pptx-class/vbaProject.bin --out deck.pptm",
+  "family": "pptx",
+  "file": "testdata/golden/vba-authoring/pptx-class/vbaProject.bin",
+  "project": {
+    "codePage": 1252,
+    "family": "pptx",
+    "moduleCount": 2,
+    "modules": [
+      {
+        "codePage": 1252,
+        "extension": ".bas",
+        "kind": "standard",
+        "lineCount": 6,
+        "lineEnding": "crlf",
+        "name": "AgentSlide",
+        "number": 1,
+        "primarySelector": "module:AgentSlide",
+        "selectors": [
+          "module:AgentSlide",
+          "module:1",
+          "#1",
+          "name:AgentSlide",
+          "~AgentSlide",
+          "AgentSlide",
+          "stream:AgentSlide"
+        ],
+        "sha256": "ff8301f03a2a427aae0349353b44642ed5bfbcfc0dced957e14a1c3c57c030dd",
+        "sha256Basis": "decoded-source-utf8",
+        "sourceBytes": 155,
+        "sourceOffset": 0,
+        "streamName": "AgentSlide",
+        "trailingNewline": true
+      },
+      {
+        "codePage": 1252,
+        "extension": ".cls",
+        "kind": "class",
+        "lineCount": 11,
+        "lineEnding": "crlf",
+        "name": "Worker",
+        "number": 2,
+        "primarySelector": "module:Worker",
+        "selectors": [
+          "module:Worker",
+          "module:2",
+          "#2",
+          "name:Worker",
+          "~Worker",
+          "Worker",
+          "stream:Worker"
+        ],
+        "sha256": "1b7170e03af1254fbf2bdcbe96715b3181d0c551a29babba3dbd46e822370c08",
+        "sha256Basis": "decoded-source-utf8",
+        "sourceBytes": 392,
+        "sourceOffset": 0,
+        "streamName": "Worker",
+        "trailingNewline": true
+      }
+    ],
+    "officeCompatibility": {
+      "notes": [
+        "Package validation and source readback do not prove that Microsoft Office will load this VBA project without repair."
+      ],
+      "officeLoadVerified": false,
+      "status": "unverified"
+    },
+    "projectMetadata": {
+      "hasProjectWm": true,
+      "id": "{917DED54-440B-4FD1-A5C1-74ACF261E600}",
+      "lineCount": 16,
+      "modules": [
+        {
+          "kind": "module",
+          "line": 2,
+          "name": "AgentSlide",
+          "value": "AgentSlide"
+        },
+        {
+          "kind": "class",
+          "line": 3,
+          "name": "Worker",
+          "value": "Worker"
+        }
+      ],
+      "name": "VBAProject",
+      "present": true,
+      "projectWmStream": "PROJECTwm",
+      "streamName": "PROJECT",
+      "workspaceEntries": [
+        {
+          "line": 15,
+          "name": "AgentSlide",
+          "value": "0, 0, 0, 0, C"
+        },
+        {
+          "line": 16,
+          "name": "Worker",
+          "value": "0, 0, 0, 0, C"
+        }
+      ]
+    }
+  },
+  "sha256": "417f50943286b0a7e4d01afbc7a659970bc42c586ecd9843122b4bff33ea03ea",
+  "sizeBytes": 5120
+}

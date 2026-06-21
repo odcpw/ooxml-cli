@@ -196,6 +196,13 @@ ooxml --json vba create .\deck.pptx --pure --family pptx --source .\macros\Modul
 ooxml --json vba office-check .\deck.pptm --out-dir .\proof\pure-pptm-office-check
 ```
 
+For PPTM class-module proof, pass both the standard entrypoint and class source:
+
+```powershell
+ooxml --json vba create .\deck.pptx --pure --family pptx --source .\macros\Module1.bas --source .\macros\Worker.cls --out .\deck.pptm
+ooxml --json vba office-check .\deck.pptm --out-dir .\proof\pure-pptm-class-office-check
+```
+
 Pure generated DOCM Word-open proof:
 
 ```powershell
