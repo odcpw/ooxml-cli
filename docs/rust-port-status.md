@@ -179,8 +179,8 @@ Latest milestone, 2026-06-21:
   `conformance_check` subset with 18 tests, `cargo fmt --check`, `cargo
   clippy --all-targets -- -D warnings`, Open XML SDK validator build, and
   `cargo test --all-targets` with 5 unit tests plus 222 Rust contract tests.
-  Current capability ratchet: Go advertises 290 command paths and Rust now
-  advertises the same 290-path Go-oracle subset.
+  Current capability ratchet: Go advertises 295 command paths and Rust now
+  advertises the same 295-path Go-oracle subset.
 - Rust `conformance check` now includes the focused Go-oracle spreadsheet
   semantic-reference invariant slice. The checks live in
   `src/conformance_invariants/spreadsheet_semantics.rs` and cover workbook
@@ -1904,8 +1904,8 @@ The first Rust slice implements and tests the CLI cases from that baseline:
 - Rust capability inventory is checked as a strict subset of the Go oracle
   capability inventory, so Rust cannot advertise non-oracle command paths while
   the partial surface grows
-- Capability surface ratchet: the current Go oracle advertises 290 command
-  paths, Rust advertises the same 290-path Go-oracle subset, and the harness
+- Capability surface ratchet: the current Go oracle advertises 295 command
+  paths, Rust advertises the same 295-path Go-oracle subset, and the harness
   pins the count so future command-path changes move deliberately
 - `--json xlsx sheets list <xlsx>` with direct Go-oracle comparison for the
   minimal workbook fixture
