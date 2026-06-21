@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path,
+    [string]$RepoRoot = "",
 
     [string]$OutputDir = "",
 
@@ -43,6 +43,17 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ($RepoRoot -eq "") {
+    $scriptRoot = $PSScriptRoot
+    if (($scriptRoot -eq $null -or $scriptRoot -eq "") -and $MyInvocation.MyCommand.Path -ne $null -and $MyInvocation.MyCommand.Path -ne "") {
+        $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+    }
+    if ($scriptRoot -eq $null -or $scriptRoot -eq "") {
+        throw "RepoRoot was not provided and the script root could not be determined."
+    }
+    $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $scriptRoot "..")).Path
+}
 
 function Resolve-GoExe {
     param([string]$Requested)
@@ -966,6 +977,10 @@ $xlsxAuthoringNamedRange = Join-Path $outRoot "xlsx-authoring-named-range.xlsx"
 Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "names", "add", $xlsxAuthoringConditionalFormat, "--name", "SalesOpsSource", "--sheet", "Sales Ops", "--range", "A1:E5", "--comment", "Scaffold-derived Office smoke source", "--out", $xlsxAuthoringNamedRange) -Label "stage:xlsx-authoring-named-range"
 Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "validate", $xlsxAuthoringNamedRange, "--strict") -Label "validate:stage:xlsx-authoring-named-range"
 
+$docxTableCreateSeed = Join-Path $outRoot "docx-table-create-seed.docx"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "docx", "scaffold", $docxTableCreateSeed, "--text", "Quarterly report table proof", "--force") -Label "stage:docx-table-create-seed"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "validate", $docxTableCreateSeed, "--strict") -Label "validate:stage:docx-table-create-seed"
+
 $docxTableHash = Get-DocxTableHash -BinaryPath $BinaryPath -DocumentPath $docxTable -Table 1
 $docxBlock1Hash = Get-DocxBlockHash -BinaryPath $BinaryPath -DocumentPath $docxMinimal -Block 1
 $docxApplyBlock1Hash = Get-DocxBlockHash -BinaryPath $BinaryPath -DocumentPath $docxApplyStyles -Block 1
@@ -1271,6 +1286,14 @@ $scenarios = @(
         -Input "" `
         -Output (Join-Path $caseDir "docx-scaffold.docx") `
         -Arguments @("--json", "docx", "scaffold", (Join-Path $caseDir "docx-scaffold.docx"), "--text", "Office scaffold")),
+
+    (New-Scenario `
+        -Name "docx-tables-create-from-scaffold" `
+        -Family "docx" `
+        -Input $docxTableCreateSeed `
+        -Output (Join-Path $caseDir "docx-tables-create-from-scaffold.docx") `
+        -Arguments @("--json", "docx", "tables", "create", $docxTableCreateSeed, "--values", '[[\"Region\",\"Units\",\"Notes\"],[\"West\",12,\"Ready\"],[\"North\",null,\"Review\"]]', "--out", (Join-Path $caseDir "docx-tables-create-from-scaffold.docx")) `
+        -InputFixtureType "scaffold-derived"),
 
     (New-Scenario `
         -Name "docx-comments-add" `

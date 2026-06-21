@@ -43,6 +43,11 @@ Updated 2026-06-21.
   - `ooxml pptx charts create` on a scaffold-derived deck
 - Workbook child ordering for `<definedNames>` is covered by focused regression tests, and local
   strict validation/conformance now catch the modeled bad order.
+- `ooxml repair normalize` is available for recoverable XLSX workbook child-order damage and has
+  focused strict-validation/conformance regression coverage.
+- `ooxml docx tables create` can append a rectangular table to a scaffolded Word document and is
+  covered by readback, structural XML, strict-validation, conformance, Open XML SDK validation, and a
+  representative Word-open smoke row.
 - VBA `.xlsm` / `.pptm` creation is real on this Windows host through desktop Office COM, but macro
   source editing remains intentionally conservative.
 
@@ -90,11 +95,9 @@ Keep the realistic workbook path safe:
 
 Next useful checks:
 
-- A focused test for recalc/cache behavior on generated formula workbooks.
 - A small Office-open smoke row for any formula-heavy workbook we intend users to rely on.
-- Guard pivot/chart creation from formula-derived ranges whose cached values have not been calculated
-  yet. The command should fail clearly or require an explicit override instead of silently building
-  stale or empty caches.
+- Keep the formula-cache guard tests green: pivot/chart creation must reject formula-derived source
+  ranges whose cached values have not been calculated yet.
 
 ### 3. DOCX Safety
 
@@ -106,10 +109,8 @@ Keep Word generation and editing safe for ordinary business docs:
 
 Next useful checks:
 
-- Add the smallest useful table creation command, likely `docx tables create`, so a scaffolded Word
-  report can get a real `w:tbl` without starting from a template.
-- Prove the result with `docx tables show`, structural XML assertions, strict validation,
-  conformance, and a representative Word-open smoke row.
+- Keep the `docx scaffold -> docx tables create` Word-open smoke row green.
+- Consider the next small DOCX authoring command only when it directly supports a real user workflow.
 
 ### 4. PPTX Safety
 
@@ -129,16 +130,12 @@ Next useful checks:
 
 Add these only where they remove real user pain:
 
-- Add a narrow `repair normalize` command for recoverable OOXML ordering/relationship issues, starting
-  with XLSX workbook child order. Do not build a broad repair framework until we have concrete
-  damaged-package cases.
+- Keep `repair normalize` narrow: XLSX workbook child order is supported; do not build a broad repair
+  framework until we have concrete damaged-package cases.
 - Keep `convert xlsm-to-xlsx` covered. It already exists as a VBA-removal alias; the next useful
   proof is conformance on the converted `.xlsx`.
 - Keep XLSX diff identity covered. Renamed-sheet alignment is already implemented; add edge tests only
   for real regressions such as rename plus reorder plus cell edits.
-
-Current main gap: users can detect recoverable workbook child-order damage, but they do not yet have
-a public "normalize this, then continue" command.
 
 ## When To Use Subagents
 
