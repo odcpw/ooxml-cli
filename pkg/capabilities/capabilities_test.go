@@ -161,6 +161,28 @@ func TestMetadataForMiss(t *testing.T) {
 	}
 }
 
+func TestConditionalFormatsAddMetadataIncludesColorScaleExample(t *testing.T) {
+	meta, ok := MetadataFor("ooxml xlsx conditional-formats add")
+	if !ok {
+		t.Fatal("missing metadata for conditional-format add")
+	}
+	found := false
+	for _, ex := range meta.Examples {
+		if strings.Contains(ex.Command, "--type color-scale") &&
+			strings.Contains(ex.Command, "--cfvo") &&
+			strings.Contains(ex.Command, "--color") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("conditional-format add metadata missing color-scale example: %+v", meta.Examples)
+	}
+	if !contains(meta.TargetObjectKinds, "conditional-format") || !contains(meta.TargetObjectKinds, "range") {
+		t.Fatalf("conditional-format add metadata targets wrong object kinds: %+v", meta.TargetObjectKinds)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {

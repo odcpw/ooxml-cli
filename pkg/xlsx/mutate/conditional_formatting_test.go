@@ -101,6 +101,127 @@ func TestConditionalFormatsAddCellIsBetween(t *testing.T) {
 	}
 }
 
+func TestConditionalFormatsAddColorScaleThreeColor(t *testing.T) {
+	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData/>
+  <dataValidations count="1"><dataValidation sqref="D1:D3" type="whole"><formula1>1</formula1></dataValidation></dataValidations>
+</worksheet>`)
+	defer pkg.Close()
+	sheet := workbook.Sheets[0]
+
+	result, err := AddConditionalFormatColorScale(&AddConditionalFormatColorScaleRequest{
+		Package:  pkg,
+		SheetRef: sheet,
+		Range:    "C1:C3",
+		CFVO: []ConditionalFormatCFVO{
+			{Type: "min"},
+			{Type: "percentile", Value: "50"},
+			{Type: "max"},
+		},
+		Colors: []ConditionalFormatColor{
+			{RGB: "F8696B"},
+			{RGB: "#FFEB84"},
+			{RGB: "FF63BE7B"},
+		},
+		Priority:    9,
+		HasPriority: true,
+	})
+	if err != nil {
+		t.Fatalf("AddConditionalFormatColorScale failed: %v", err)
+	}
+	if result.Sqref != "C1:C3" || result.CellsAffected != 3 {
+		t.Fatalf("unexpected mutation result: %+v", result)
+	}
+	if result.Rule.Type != "colorScale" || result.Rule.Priority != 9 || result.Rule.ColorScale == nil {
+		t.Fatalf("unexpected added rule: %+v", result.Rule)
+	}
+	scale := result.Rule.ColorScale
+	if len(scale.CFVO) != 3 || scale.CFVO[1].Type != "percentile" || scale.CFVO[1].Value != "50" {
+		t.Fatalf("unexpected color-scale cfvo readback: %+v", scale.CFVO)
+	}
+	if len(scale.Colors) != 3 {
+		t.Fatalf("unexpected color-scale colors readback: %+v", scale.Colors)
+	}
+	gotColors := []string{scale.Colors[0].RGB, scale.Colors[1].RGB, scale.Colors[2].RGB}
+	wantColors := []string{"FFF8696B", "FFFFEB84", "FF63BE7B"}
+	if !stringSlicesEqual(gotColors, wantColors) {
+		t.Fatalf("color-scale colors = %+v, want %+v", gotColors, wantColors)
+	}
+
+	root := readTestWorksheetRoot(t, pkg, workbook)
+	var order []string
+	for _, child := range root.ChildElements() {
+		if namespaces.IsElement(child, namespaces.NsSpreadsheetML, child.Tag) {
+			order = append(order, child.Tag)
+		}
+	}
+	if got := strings.Join(order, ","); got != "sheetData,conditionalFormatting,dataValidations" {
+		t.Fatalf("worksheet child order = %s", got)
+	}
+}
+
+func TestConditionalFormatsColorScaleValidation(t *testing.T) {
+	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData/>
+</worksheet>`)
+	defer pkg.Close()
+	sheet := workbook.Sheets[0]
+
+	cases := []struct {
+		name   string
+		cfvo   []ConditionalFormatCFVO
+		colors []ConditionalFormatColor
+		want   string
+	}{
+		{
+			name:   "one point",
+			cfvo:   []ConditionalFormatCFVO{{Type: "min"}},
+			colors: []ConditionalFormatColor{{RGB: "FF0000"}},
+			want:   "exactly 2 or 3",
+		},
+		{
+			name:   "mismatched colors",
+			cfvo:   []ConditionalFormatCFVO{{Type: "min"}, {Type: "max"}},
+			colors: []ConditionalFormatColor{{RGB: "FF0000"}},
+			want:   "same number of --color and --cfvo",
+		},
+		{
+			name:   "min has value",
+			cfvo:   []ConditionalFormatCFVO{{Type: "min", Value: "0"}, {Type: "max"}},
+			colors: []ConditionalFormatColor{{RGB: "FF0000"}, {RGB: "00FF00"}},
+			want:   "must not include a value",
+		},
+		{
+			name:   "percent out of range",
+			cfvo:   []ConditionalFormatCFVO{{Type: "percent", Value: "101"}, {Type: "max"}},
+			colors: []ConditionalFormatColor{{RGB: "FF0000"}, {RGB: "00FF00"}},
+			want:   "between 0 and 100",
+		},
+		{
+			name:   "invalid color",
+			cfvo:   []ConditionalFormatCFVO{{Type: "min"}, {Type: "max"}},
+			colors: []ConditionalFormatColor{{RGB: "nope"}, {RGB: "00FF00"}},
+			want:   "invalid color",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := AddConditionalFormatColorScale(&AddConditionalFormatColorScaleRequest{
+				Package:  pkg,
+				SheetRef: sheet,
+				Range:    "A1:A3",
+				CFVO:     tc.cfvo,
+				Colors:   tc.colors,
+			})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q error, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
 func TestConditionalFormatsCellIsFormula2Validation(t *testing.T) {
 	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">

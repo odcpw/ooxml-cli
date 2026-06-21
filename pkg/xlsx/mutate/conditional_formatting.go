@@ -2,6 +2,7 @@ package mutate
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -20,19 +21,37 @@ type ConditionalFormatBlock struct {
 
 // ConditionalFormatRule describes one cfRule inside a conditionalFormatting block.
 type ConditionalFormatRule struct {
-	Index           int      `json:"index"`
-	BlockIndex      int      `json:"blockIndex"`
-	RuleIndex       int      `json:"ruleIndex"`
-	PrimarySelector string   `json:"primarySelector,omitempty"`
-	Selectors       []string `json:"selectors,omitempty"`
-	Sqref           string   `json:"sqref"`
-	Type            string   `json:"type,omitempty"`
-	Operator        string   `json:"operator,omitempty"`
-	Priority        int      `json:"priority,omitempty"`
-	Formulas        []string `json:"formulas,omitempty"`
-	DxfID           int      `json:"dxfId,omitempty"`
-	HasDxfID        bool     `json:"hasDxfId,omitempty"`
-	StopIfTrue      bool     `json:"stopIfTrue,omitempty"`
+	Index           int                          `json:"index"`
+	BlockIndex      int                          `json:"blockIndex"`
+	RuleIndex       int                          `json:"ruleIndex"`
+	PrimarySelector string                       `json:"primarySelector,omitempty"`
+	Selectors       []string                     `json:"selectors,omitempty"`
+	Sqref           string                       `json:"sqref"`
+	Type            string                       `json:"type,omitempty"`
+	Operator        string                       `json:"operator,omitempty"`
+	Priority        int                          `json:"priority,omitempty"`
+	Formulas        []string                     `json:"formulas,omitempty"`
+	DxfID           int                          `json:"dxfId,omitempty"`
+	HasDxfID        bool                         `json:"hasDxfId,omitempty"`
+	StopIfTrue      bool                         `json:"stopIfTrue,omitempty"`
+	ColorScale      *ConditionalFormatColorScale `json:"colorScale,omitempty"`
+}
+
+// ConditionalFormatCFVO describes one color-scale threshold.
+type ConditionalFormatCFVO struct {
+	Type  string `json:"type"`
+	Value string `json:"value,omitempty"`
+}
+
+// ConditionalFormatColor describes one color-scale color.
+type ConditionalFormatColor struct {
+	RGB string `json:"rgb"`
+}
+
+// ConditionalFormatColorScale describes a colorScale cfRule payload.
+type ConditionalFormatColorScale struct {
+	CFVO   []ConditionalFormatCFVO  `json:"cfvo"`
+	Colors []ConditionalFormatColor `json:"colors"`
 }
 
 // AddConditionalFormatExpressionRequest creates an expression cfRule.
@@ -64,6 +83,17 @@ type AddConditionalFormatCellIsRequest struct {
 	HasStopIfTrue bool
 	DxfID         int
 	HasDxfID      bool
+}
+
+// AddConditionalFormatColorScaleRequest creates a colorScale cfRule.
+type AddConditionalFormatColorScaleRequest struct {
+	Package     opc.PackageSession
+	SheetRef    model.SheetRef
+	Range       string
+	CFVO        []ConditionalFormatCFVO
+	Colors      []ConditionalFormatColor
+	Priority    int
+	HasPriority bool
 }
 
 // DeleteConditionalFormatRuleRequest removes one cfRule by selector.
@@ -132,6 +162,21 @@ func conditionalFormatRuleFromElem(rule *etree.Element, blockIndex, ruleIndex, g
 	for _, formula := range namespaces.FindChildren(rule, namespaces.NsSpreadsheetML, "formula") {
 		entry.Formulas = append(entry.Formulas, formula.Text())
 	}
+	if colorScale := namespaces.FindChild(rule, namespaces.NsSpreadsheetML, "colorScale"); colorScale != nil {
+		scale := &ConditionalFormatColorScale{}
+		for _, cfvo := range namespaces.FindChildren(colorScale, namespaces.NsSpreadsheetML, "cfvo") {
+			scale.CFVO = append(scale.CFVO, ConditionalFormatCFVO{
+				Type:  cfvo.SelectAttrValue("type", ""),
+				Value: cfvo.SelectAttrValue("val", ""),
+			})
+		}
+		for _, color := range namespaces.FindChildren(colorScale, namespaces.NsSpreadsheetML, "color") {
+			scale.Colors = append(scale.Colors, ConditionalFormatColor{
+				RGB: color.SelectAttrValue("rgb", ""),
+			})
+		}
+		entry.ColorScale = scale
+	}
 	entry.Selectors = conditionalFormatRuleSelectors(entry)
 	return entry
 }
@@ -197,6 +242,96 @@ func validateConditionalFormatCellIsOperator(op string) error {
 		return fmt.Errorf("invalid operator %q (use one of between, notBetween, equal, notEqual, greaterThan, lessThan, greaterThanOrEqual, lessThanOrEqual)", op)
 	}
 	return nil
+}
+
+var validConditionalFormatCFVOTypes = map[string]bool{
+	"min":        true,
+	"max":        true,
+	"num":        true,
+	"percent":    true,
+	"percentile": true,
+}
+
+// ParseConditionalFormatCFVO parses a color-scale cfvo flag value.
+func ParseConditionalFormatCFVO(spec string) (ConditionalFormatCFVO, error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return ConditionalFormatCFVO{}, fmt.Errorf("--cfvo cannot be empty")
+	}
+	typ := spec
+	val := ""
+	if before, after, ok := strings.Cut(spec, ":"); ok {
+		typ = before
+		val = after
+	} else if before, after, ok := strings.Cut(spec, "="); ok {
+		typ = before
+		val = after
+	}
+	return normalizeConditionalFormatCFVO(ConditionalFormatCFVO{Type: typ, Value: val})
+}
+
+func normalizeConditionalFormatCFVO(cfvo ConditionalFormatCFVO) (ConditionalFormatCFVO, error) {
+	cfvo.Type = strings.TrimSpace(cfvo.Type)
+	cfvo.Value = strings.TrimSpace(cfvo.Value)
+	switch strings.ToLower(cfvo.Type) {
+	case "min":
+		cfvo.Type = "min"
+	case "max":
+		cfvo.Type = "max"
+	case "num":
+		cfvo.Type = "num"
+	case "percent":
+		cfvo.Type = "percent"
+	case "percentile":
+		cfvo.Type = "percentile"
+	}
+	if !validConditionalFormatCFVOTypes[cfvo.Type] {
+		return ConditionalFormatCFVO{}, fmt.Errorf("invalid --cfvo type %q (use min, max, num, percent, or percentile)", cfvo.Type)
+	}
+	switch cfvo.Type {
+	case "min", "max":
+		if cfvo.Value != "" {
+			return ConditionalFormatCFVO{}, fmt.Errorf("--cfvo %s must not include a value", cfvo.Type)
+		}
+	case "num", "percent", "percentile":
+		if cfvo.Value == "" {
+			return ConditionalFormatCFVO{}, fmt.Errorf("--cfvo %s requires a numeric value, e.g. %s:50", cfvo.Type, cfvo.Type)
+		}
+		n, err := strconv.ParseFloat(cfvo.Value, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
+			return ConditionalFormatCFVO{}, fmt.Errorf("--cfvo %s value %q must be a finite number", cfvo.Type, cfvo.Value)
+		}
+		if (cfvo.Type == "percent" || cfvo.Type == "percentile") && (n < 0 || n > 100) {
+			return ConditionalFormatCFVO{}, fmt.Errorf("--cfvo %s value must be between 0 and 100", cfvo.Type)
+		}
+	}
+	return cfvo, nil
+}
+
+func validateConditionalFormatColorScale(cfvos []ConditionalFormatCFVO, colors []ConditionalFormatColor) ([]ConditionalFormatCFVO, []ConditionalFormatColor, error) {
+	if len(cfvos) != 2 && len(cfvos) != 3 {
+		return nil, nil, fmt.Errorf("color-scale conditional formats require exactly 2 or 3 --cfvo values")
+	}
+	if len(colors) != len(cfvos) {
+		return nil, nil, fmt.Errorf("color-scale conditional formats require the same number of --color and --cfvo values")
+	}
+	normCFVOs := make([]ConditionalFormatCFVO, 0, len(cfvos))
+	for _, cfvo := range cfvos {
+		norm, err := normalizeConditionalFormatCFVO(cfvo)
+		if err != nil {
+			return nil, nil, err
+		}
+		normCFVOs = append(normCFVOs, norm)
+	}
+	normColors := make([]ConditionalFormatColor, 0, len(colors))
+	for _, color := range colors {
+		rgb, err := NormalizeColor(color.RGB)
+		if err != nil {
+			return nil, nil, err
+		}
+		normColors = append(normColors, ConditionalFormatColor{RGB: rgb})
+	}
+	return normCFVOs, normColors, nil
 }
 
 // AddConditionalFormatExpression adds an expression conditional-formatting rule.
@@ -327,6 +462,66 @@ func AddConditionalFormatCellIs(req *AddConditionalFormatCellIsRequest) (*Condit
 
 	blocks := conditionalFormatsFromRoot(root)
 	added := findAddedConditionalFormatRule(blocks, normSqref, "cellIs", priority, operator, formulas)
+	if err := req.Package.ReplaceXMLPart(req.SheetRef.PartURI, doc); err != nil {
+		return nil, fmt.Errorf("failed to replace worksheet %s: %w", req.SheetRef.PartURI, err)
+	}
+	return &ConditionalFormatMutationResult{Sqref: normSqref, Rule: added, CellsAffected: sqrefCellCount(normSqref)}, nil
+}
+
+// AddConditionalFormatColorScale adds a colorScale conditional-formatting rule.
+func AddConditionalFormatColorScale(req *AddConditionalFormatColorScaleRequest) (*ConditionalFormatMutationResult, error) {
+	if req == nil {
+		return nil, fmt.Errorf("add conditional format request is nil")
+	}
+	normSqref, err := NormalizeSqref(req.Range)
+	if err != nil {
+		return nil, err
+	}
+	if req.HasPriority && req.Priority < 1 {
+		return nil, fmt.Errorf("--priority must be greater than zero")
+	}
+	cfvos, colors, err := validateConditionalFormatColorScale(req.CFVO, req.Colors)
+	if err != nil {
+		return nil, err
+	}
+	doc, root, err := readWorksheetRoot(req.Package, req.SheetRef)
+	if err != nil {
+		return nil, err
+	}
+	prefix := root.Space
+	container := findConditionalFormattingBlock(root, normSqref)
+	if container == nil {
+		container = newElement(prefix, "conditionalFormatting")
+		container.CreateAttr("sqref", normSqref)
+		insertWorksheetChild(root, container, "conditionalFormatting")
+	}
+
+	rule := newElement(prefix, "cfRule")
+	rule.CreateAttr("type", "colorScale")
+	priority := req.Priority
+	if !req.HasPriority {
+		priority = nextConditionalFormatPriority(root)
+	}
+	rule.CreateAttr("priority", strconv.Itoa(priority))
+	colorScale := newElement(prefix, "colorScale")
+	for _, cfvo := range cfvos {
+		elem := newElement(prefix, "cfvo")
+		elem.CreateAttr("type", cfvo.Type)
+		if cfvo.Value != "" {
+			elem.CreateAttr("val", cfvo.Value)
+		}
+		colorScale.AddChild(elem)
+	}
+	for _, color := range colors {
+		elem := newElement(prefix, "color")
+		elem.CreateAttr("rgb", color.RGB)
+		colorScale.AddChild(elem)
+	}
+	rule.AddChild(colorScale)
+	container.AddChild(rule)
+
+	blocks := conditionalFormatsFromRoot(root)
+	added := findAddedConditionalFormatRule(blocks, normSqref, "colorScale", priority, "", nil)
 	if err := req.Package.ReplaceXMLPart(req.SheetRef.PartURI, doc); err != nil {
 		return nil, fmt.Errorf("failed to replace worksheet %s: %w", req.SheetRef.PartURI, err)
 	}

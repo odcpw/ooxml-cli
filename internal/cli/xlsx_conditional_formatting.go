@@ -15,25 +15,62 @@ var xlsxConditionalFormatsCmd = &cobra.Command{
 	Use:     "conditional-formats",
 	Aliases: []string{"conditional-formatting", "conditional-format", "cf"},
 	Short:   "Inspect and mutate worksheet conditional formatting",
-	Long:    "Commands for listing, showing, adding, and deleting worksheet conditional-formatting expression and cellIs rules.",
+	Long:    "Commands for listing, showing, adding, and deleting worksheet conditional-formatting expression, cellIs, and color-scale rules.",
 	Args:    cobra.NoArgs,
 	RunE:    showHelp,
 }
 
+type XLSXConditionalFormatCFVOJSON struct {
+	Type  string `json:"type"`
+	Value string `json:"value,omitempty"`
+}
+
+type XLSXConditionalFormatColorJSON struct {
+	RGB string `json:"rgb"`
+}
+
+type XLSXConditionalFormatColorScaleJSON struct {
+	CFVO   []XLSXConditionalFormatCFVOJSON  `json:"cfvo"`
+	Colors []XLSXConditionalFormatColorJSON `json:"colors"`
+}
+
+type conditionalFormatRepeatedFlag []string
+
+func (f *conditionalFormatRepeatedFlag) String() string {
+	if f == nil {
+		return ""
+	}
+	return strings.Join(*f, ",")
+}
+
+func (f *conditionalFormatRepeatedFlag) Set(value string) error {
+	if value == "" {
+		*f = nil
+		return nil
+	}
+	*f = append(*f, value)
+	return nil
+}
+
+func (f *conditionalFormatRepeatedFlag) Type() string {
+	return "stringArray"
+}
+
 type XLSXConditionalFormatRuleJSON struct {
-	Index           int      `json:"index"`
-	BlockIndex      int      `json:"blockIndex"`
-	RuleIndex       int      `json:"ruleIndex"`
-	PrimarySelector string   `json:"primarySelector,omitempty"`
-	Selectors       []string `json:"selectors,omitempty"`
-	Sqref           string   `json:"sqref"`
-	Type            string   `json:"type,omitempty"`
-	Operator        string   `json:"operator,omitempty"`
-	Priority        *int     `json:"priority,omitempty"`
-	Formula         string   `json:"formula,omitempty"`
-	Formulas        []string `json:"formulas,omitempty"`
-	DxfID           *int     `json:"dxfId,omitempty"`
-	StopIfTrue      bool     `json:"stopIfTrue,omitempty"`
+	Index           int                                  `json:"index"`
+	BlockIndex      int                                  `json:"blockIndex"`
+	RuleIndex       int                                  `json:"ruleIndex"`
+	PrimarySelector string                               `json:"primarySelector,omitempty"`
+	Selectors       []string                             `json:"selectors,omitempty"`
+	Sqref           string                               `json:"sqref"`
+	Type            string                               `json:"type,omitempty"`
+	Operator        string                               `json:"operator,omitempty"`
+	Priority        *int                                 `json:"priority,omitempty"`
+	Formula         string                               `json:"formula,omitempty"`
+	Formulas        []string                             `json:"formulas,omitempty"`
+	DxfID           *int                                 `json:"dxfId,omitempty"`
+	StopIfTrue      bool                                 `json:"stopIfTrue,omitempty"`
+	ColorScale      *XLSXConditionalFormatColorScaleJSON `json:"colorScale,omitempty"`
 }
 
 type XLSXConditionalFormatBlockJSON struct {
@@ -80,6 +117,8 @@ var (
 	xlsxCFOperator   string
 	xlsxCFFormula    string
 	xlsxCFFormula2   string
+	xlsxCFCFVO       conditionalFormatRepeatedFlag
+	xlsxCFColor      conditionalFormatRepeatedFlag
 	xlsxCFRule       string
 	xlsxCFPriority   int
 	xlsxCFStopIfTrue bool
@@ -110,6 +149,16 @@ func conditionalFormatRuleToJSON(rule mutate.ConditionalFormatRule) XLSXConditio
 		dxfID := rule.DxfID
 		out.DxfID = &dxfID
 	}
+	if rule.ColorScale != nil {
+		scale := &XLSXConditionalFormatColorScaleJSON{}
+		for _, cfvo := range rule.ColorScale.CFVO {
+			scale.CFVO = append(scale.CFVO, XLSXConditionalFormatCFVOJSON{Type: cfvo.Type, Value: cfvo.Value})
+		}
+		for _, color := range rule.ColorScale.Colors {
+			scale.Colors = append(scale.Colors, XLSXConditionalFormatColorJSON{RGB: color.RGB})
+		}
+		out.ColorScale = scale
+	}
 	return out
 }
 
@@ -132,6 +181,24 @@ func conditionalFormatsToJSON(blocks []mutate.ConditionalFormatBlock, filterSqre
 		out = append(out, item)
 	}
 	return out, rules
+}
+
+func conditionalFormatRuleSummary(rule XLSXConditionalFormatRuleJSON) string {
+	if rule.ColorScale != nil {
+		parts := make([]string, 0, len(rule.ColorScale.CFVO))
+		for i, cfvo := range rule.ColorScale.CFVO {
+			text := cfvo.Type
+			if cfvo.Value != "" {
+				text += ":" + cfvo.Value
+			}
+			if i < len(rule.ColorScale.Colors) {
+				text += "=" + rule.ColorScale.Colors[i].RGB
+			}
+			parts = append(parts, text)
+		}
+		return strings.Join(parts, ", ")
+	}
+	return strings.Join(rule.Formulas, ", ")
 }
 
 var xlsxConditionalFormatsListCmd = &cobra.Command{
@@ -181,7 +248,7 @@ var xlsxConditionalFormatsListCmd = &cobra.Command{
 			if rule.Operator != "" {
 				operator = " " + rule.Operator
 			}
-			fmt.Fprintf(&b, "  %s %s [%s%s]%s %s\n", rule.PrimarySelector, rule.Sqref, rule.Type, operator, priority, strings.Join(rule.Formulas, ", "))
+			fmt.Fprintf(&b, "  %s %s [%s%s]%s %s\n", rule.PrimarySelector, rule.Sqref, rule.Type, operator, priority, conditionalFormatRuleSummary(rule))
 		}
 		return writeXLSXOutput(cmd, []byte(strings.TrimRight(b.String(), "\n")))
 	},
@@ -220,7 +287,7 @@ var xlsxConditionalFormatsShowCmd = &cobra.Command{
 		if j.Operator != "" {
 			operator = " " + j.Operator
 		}
-		return writeXLSXOutput(cmd, []byte(fmt.Sprintf("%s %s [%s%s] %s", j.PrimarySelector, j.Sqref, j.Type, operator, strings.Join(j.Formulas, ", "))))
+		return writeXLSXOutput(cmd, []byte(fmt.Sprintf("%s %s [%s%s] %s", j.PrimarySelector, j.Sqref, j.Type, operator, conditionalFormatRuleSummary(j))))
 	},
 }
 
@@ -288,14 +355,42 @@ func normalizeConditionalFormatAddType(ruleType string) string {
 		return "expression"
 	case "cell-is", "cellIs":
 		return "cellIs"
+	case "color-scale", "colorScale":
+		return "colorScale"
 	default:
 		return strings.TrimSpace(ruleType)
 	}
 }
 
+func parseConditionalFormatCFVOFlags(values []string) ([]mutate.ConditionalFormatCFVO, error) {
+	out := make([]mutate.ConditionalFormatCFVO, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) == "[]" {
+			continue
+		}
+		cfvo, err := mutate.ParseConditionalFormatCFVO(value)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, cfvo)
+	}
+	return out, nil
+}
+
+func parseConditionalFormatColorFlags(values []string) []mutate.ConditionalFormatColor {
+	out := make([]mutate.ConditionalFormatColor, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) == "[]" {
+			continue
+		}
+		out = append(out, mutate.ConditionalFormatColor{RGB: value})
+	}
+	return out
+}
+
 var xlsxConditionalFormatsAddCmd = &cobra.Command{
 	Use:   "add <file>",
-	Short: "Add an expression or cellIs conditional-formatting rule",
+	Short: "Add an expression, cellIs, or color-scale conditional-formatting rule",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		filePath := args[0]
@@ -303,16 +398,19 @@ var xlsxConditionalFormatsAddCmd = &cobra.Command{
 		if strings.TrimSpace(xlsxCFRange) == "" {
 			return InvalidArgsError("--range is required")
 		}
-		if strings.TrimSpace(xlsxCFFormula) == "" {
-			return InvalidArgsError("--formula is required")
-		}
 		switch ruleType {
 		case "expression":
+			if strings.TrimSpace(xlsxCFFormula) == "" {
+				return InvalidArgsError("--formula is required")
+			}
 			if cmd.Flags().Changed("operator") {
 				return InvalidArgsError("--operator is only valid with --type cell-is")
 			}
 			if cmd.Flags().Changed("formula2") {
 				return InvalidArgsError("--formula2 is only valid with --type cell-is")
+			}
+			if cmd.Flags().Changed("cfvo") || cmd.Flags().Changed("color") {
+				return InvalidArgsError("--cfvo and --color are only valid with --type color-scale")
 			}
 			return runConditionalFormatMutation(cmd, filePath, xlsxCFSheet, "add", func(pkg opc.PackageSession, sheet model.SheetRef) (*mutate.ConditionalFormatMutationResult, error) {
 				return mutate.AddConditionalFormatExpression(&mutate.AddConditionalFormatExpressionRequest{
@@ -329,6 +427,12 @@ var xlsxConditionalFormatsAddCmd = &cobra.Command{
 				})
 			})
 		case "cellIs":
+			if strings.TrimSpace(xlsxCFFormula) == "" {
+				return InvalidArgsError("--formula is required")
+			}
+			if cmd.Flags().Changed("cfvo") || cmd.Flags().Changed("color") {
+				return InvalidArgsError("--cfvo and --color are only valid with --type color-scale")
+			}
 			return runConditionalFormatMutation(cmd, filePath, xlsxCFSheet, "add", func(pkg opc.PackageSession, sheet model.SheetRef) (*mutate.ConditionalFormatMutationResult, error) {
 				return mutate.AddConditionalFormatCellIs(&mutate.AddConditionalFormatCellIsRequest{
 					Package:       pkg,
@@ -346,8 +450,37 @@ var xlsxConditionalFormatsAddCmd = &cobra.Command{
 					HasDxfID:      cmd.Flags().Changed("dxf-id"),
 				})
 			})
+		case "colorScale":
+			if cmd.Flags().Changed("operator") {
+				return InvalidArgsError("--operator is only valid with --type cell-is")
+			}
+			if cmd.Flags().Changed("formula") || cmd.Flags().Changed("formula2") {
+				return InvalidArgsError("--formula and --formula2 are not valid with --type color-scale")
+			}
+			if cmd.Flags().Changed("stop-if-true") {
+				return InvalidArgsError("--stop-if-true is not valid with --type color-scale")
+			}
+			if cmd.Flags().Changed("dxf-id") {
+				return InvalidArgsError("--dxf-id is not valid with --type color-scale")
+			}
+			cfvos, err := parseConditionalFormatCFVOFlags([]string(xlsxCFCFVO))
+			if err != nil {
+				return InvalidArgsError(err.Error())
+			}
+			colors := parseConditionalFormatColorFlags([]string(xlsxCFColor))
+			return runConditionalFormatMutation(cmd, filePath, xlsxCFSheet, "add", func(pkg opc.PackageSession, sheet model.SheetRef) (*mutate.ConditionalFormatMutationResult, error) {
+				return mutate.AddConditionalFormatColorScale(&mutate.AddConditionalFormatColorScaleRequest{
+					Package:     pkg,
+					SheetRef:    sheet,
+					Range:       xlsxCFRange,
+					CFVO:        cfvos,
+					Colors:      colors,
+					Priority:    xlsxCFPriority,
+					HasPriority: cmd.Flags().Changed("priority"),
+				})
+			})
 		default:
-			return InvalidArgsError("--type must be expression, cell-is, or cellIs")
+			return InvalidArgsError("--type must be expression, cell-is, cellIs, color-scale, or colorScale")
 		}
 	},
 }
@@ -400,10 +533,12 @@ func init() {
 	}
 
 	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFRange, "range", "", "target range (sqref); space-separated allowed, e.g. \"A1:A10 C1:C5\"")
-	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFType, "type", "expression", "conditional-formatting rule type: expression|cell-is")
+	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFType, "type", "expression", "conditional-formatting rule type: expression|cell-is|color-scale")
 	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFOperator, "operator", "", "cellIs operator: between|notBetween|equal|notEqual|greaterThan|lessThan|greaterThanOrEqual|lessThanOrEqual")
 	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFFormula, "formula", "", "expression formula or first cellIs formula/bound, e.g. A1>0")
 	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFFormula2, "formula2", "", "second cellIs formula/bound (for between/notBetween)")
+	xlsxConditionalFormatsAddCmd.Flags().Var(&xlsxCFCFVO, "cfvo", "color-scale threshold, repeat 2 or 3 times: min|max|num:0|percent:10|percentile:50")
+	xlsxConditionalFormatsAddCmd.Flags().Var(&xlsxCFColor, "color", "color-scale color hex, repeat 2 or 3 times: #F8696B|FFEB84|FF63BE7B")
 	xlsxConditionalFormatsAddCmd.Flags().IntVar(&xlsxCFPriority, "priority", 0, "optional cfRule priority (positive integer)")
 	xlsxConditionalFormatsAddCmd.Flags().BoolVar(&xlsxCFStopIfTrue, "stop-if-true", false, "set stopIfTrue on the rule")
 	xlsxConditionalFormatsAddCmd.Flags().IntVar(&xlsxCFDxfID, "dxf-id", 0, "optional differential style id to reference")

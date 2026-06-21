@@ -165,6 +165,69 @@ func TestXLSXConditionalFormatsAddCellIs(t *testing.T) {
 	}
 }
 
+func TestXLSXConditionalFormatsAddColorScale(t *testing.T) {
+	workbookPath := getXLSXTestFilePath("minimal-workbook")
+	outPath := filepath.Join(t.TempDir(), "cf-color-scale.xlsx")
+
+	addOut, err := executeRootForXLSXTest(t,
+		"--format", "json",
+		"xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1",
+		"--range", "C1:C5",
+		"--type", "color-scale",
+		"--cfvo", "min",
+		"--cfvo", "percentile:50",
+		"--cfvo", "max",
+		"--color", "F8696B",
+		"--color", "FFEB84",
+		"--color", "63BE7B",
+		"--priority", "4",
+		"--out", outPath,
+	)
+	if err != nil {
+		t.Fatalf("conditional-formats add color-scale failed: %v", err)
+	}
+	var addResult XLSXConditionalFormatMutationResult
+	if err := json.Unmarshal([]byte(addOut), &addResult); err != nil {
+		t.Fatalf("failed to unmarshal add JSON: %v\n%s", err, addOut)
+	}
+	if addResult.Rule == nil || addResult.Rule.Type != "colorScale" || addResult.Rule.ColorScale == nil {
+		t.Fatalf("unexpected added rule: %+v", addResult.Rule)
+	}
+	scale := addResult.Rule.ColorScale
+	if len(scale.CFVO) != 3 || scale.CFVO[1].Type != "percentile" || scale.CFVO[1].Value != "50" {
+		t.Fatalf("unexpected color-scale cfvo readback: %+v", scale.CFVO)
+	}
+	if len(scale.Colors) != 3 || scale.Colors[0].RGB != "FFF8696B" || scale.Colors[1].RGB != "FFFFEB84" || scale.Colors[2].RGB != "FF63BE7B" {
+		t.Fatalf("unexpected color-scale colors readback: %+v", scale.Colors)
+	}
+	if addResult.CellsAffected != 5 || addResult.ConditionalFormatsShowCommand == "" {
+		t.Fatalf("unexpected mutation result: %+v", addResult)
+	}
+
+	listOut := executeGeneratedOOXMLCommandForXLSXTest(t, addResult.ConditionalFormatsListCommand)
+	var listResult XLSXConditionalFormatsListResult
+	if err := json.Unmarshal([]byte(listOut), &listResult); err != nil {
+		t.Fatalf("failed to unmarshal list JSON: %v\n%s", err, listOut)
+	}
+	if listResult.Count != 1 || listResult.Rules[0].Type != "colorScale" || listResult.Rules[0].ColorScale == nil {
+		t.Fatalf("unexpected list result: %+v", listResult)
+	}
+
+	showOut := executeGeneratedOOXMLCommandForXLSXTest(t, addResult.ConditionalFormatsShowCommand)
+	var showResult XLSXConditionalFormatRuleJSON
+	if err := json.Unmarshal([]byte(showOut), &showResult); err != nil {
+		t.Fatalf("failed to unmarshal show JSON: %v\n%s", err, showOut)
+	}
+	if showResult.ColorScale == nil || len(showResult.ColorScale.CFVO) != 3 || showResult.ColorScale.Colors[2].RGB != "FF63BE7B" {
+		t.Fatalf("unexpected show result: %+v", showResult)
+	}
+
+	if _, err := executeRootForXLSXTest(t, "validate", "--strict", outPath); err != nil {
+		t.Fatalf("validate --strict failed: %v", err)
+	}
+}
+
 func TestXLSXConditionalFormatsAddCellIsValidation(t *testing.T) {
 	workbookPath := getXLSXTestFilePath("minimal-workbook")
 	outPath := filepath.Join(t.TempDir(), "cf-cell-is.xlsx")
@@ -183,6 +246,36 @@ func TestXLSXConditionalFormatsAddCellIsValidation(t *testing.T) {
 		"--sheet", "1", "--range", "A1:A5", "--type", "cell-is", "--operator", "greaterThan", "--formula", "1", "--formula2", "10", "--out", outPath)
 	if err == nil || !strings.Contains(err.Error(), "--formula2 is only valid") {
 		t.Fatalf("expected non-between formula2 error, got: %v", err)
+	}
+}
+
+func TestXLSXConditionalFormatsAddColorScaleValidation(t *testing.T) {
+	workbookPath := getXLSXTestFilePath("minimal-workbook")
+	outPath := filepath.Join(t.TempDir(), "cf-color-scale.xlsx")
+
+	_, err := executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "A1:A5", "--type", "color-scale",
+		"--color", "FF0000", "--color", "00FF00", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "exactly 2 or 3 --cfvo") {
+		t.Fatalf("expected missing cfvo error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "A1:A5", "--type", "color-scale",
+		"--cfvo", "min", "--cfvo", "max", "--color", "FF0000", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "same number of --color and --cfvo") {
+		t.Fatalf("expected mismatched color error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "A1:A5", "--type", "color-scale",
+		"--cfvo", "formula:A1", "--cfvo", "max", "--color", "FF0000", "--color", "00FF00", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "invalid --cfvo type") {
+		t.Fatalf("expected invalid cfvo type error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "A1:A5", "--type", "color-scale",
+		"--cfvo", "min", "--cfvo", "max", "--color", "FF0000", "--color", "00FF00", "--formula", "A1>0", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--formula and --formula2 are not valid") {
+		t.Fatalf("expected formula rejected error, got: %v", err)
 	}
 }
 

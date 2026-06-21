@@ -948,9 +948,14 @@ var commandMetadata = map[string]CommandMetadata{
 				Description:    "Add a cellIs comparison rule without authoring new styles.",
 				ExpectedOutput: "JSON mutation result with cellIs operator/formula readback and validate command.",
 			},
+			{
+				Command:        "ooxml --json xlsx conditional-formats add workbook.xlsx --sheet Sheet1 --range A2:A20 --type color-scale --cfvo min --cfvo percentile:50 --cfvo max --color F8696B --color FFEB84 --color 63BE7B --out edited.xlsx",
+				Description:    "Add a 3-color scale with explicit cfvo thresholds and RGB colors.",
+				ExpectedOutput: "JSON mutation result with colorScale cfvo/color readback and validate command.",
+			},
 		},
 		CommonErrors: []CommonError{
-			{Pattern: "invalid_args", Solution: "Use ordinary A1 sqref ranges, --type expression or cell-is, supported cellIs operators, and an existing --dxf-id if styling is needed."},
+			{Pattern: "invalid_args", Solution: "Use ordinary A1 sqref ranges, --type expression, cell-is, or color-scale; color-scale requires 2 or 3 matching --cfvo and --color values."},
 		},
 		TargetObjectKinds: []string{"conditional-format", "range", "sheet", "style"},
 	},
