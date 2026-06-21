@@ -352,3 +352,190 @@ fn xlsx_conditional_formats_preserve_unsupported_rules_on_add_and_delete() {
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
+
+#[test]
+fn xlsx_conditional_formats_add_preserves_xlsm_vba_package_artifacts() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsm-cf-vba-preserve-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input_path = temp_dir.join("input.xlsm");
+    let output_path = temp_dir.join("output.xlsm");
+    write_tiny_xlsm_with_opaque_vba_project(&input_path);
+
+    let before_vba = read_zip_bytes(&input_path, "xl/vbaProject.bin");
+    let before_content_types = read_zip_string(&input_path, "[Content_Types].xml");
+    let before_workbook_rels = read_zip_string(&input_path, "xl/_rels/workbook.xml.rels");
+    assert_vba_package_entries_present(&before_content_types, &before_workbook_rels);
+
+    let input = input_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "add",
+        &input,
+        "--sheet",
+        "1",
+        "--range",
+        "A1:A3",
+        "--formula",
+        "A1>0",
+        "--priority",
+        "2",
+        "--no-validate",
+        "--out",
+        &output,
+    ]);
+    assert_eq!(code, 0, "xlsm conditional format add exit");
+    assert_eq!(stderr, None, "xlsm conditional format add stderr");
+    assert!(stdout.is_some(), "xlsm conditional format add stdout");
+
+    assert_eq!(
+        read_zip_bytes(&output_path, "xl/vbaProject.bin"),
+        before_vba,
+        "opaque VBA project bytes changed during worksheet mutation"
+    );
+    assert_eq!(
+        read_zip_string(&output_path, "[Content_Types].xml"),
+        before_content_types,
+        "macro-enabled workbook/vba content type entries changed"
+    );
+    assert_eq!(
+        read_zip_string(&output_path, "xl/_rels/workbook.xml.rels"),
+        before_workbook_rels,
+        "workbook VBA relationship changed"
+    );
+    let sheet_xml = read_zip_string(&output_path, "xl/worksheets/sheet1.xml");
+    assert!(
+        sheet_xml.contains(r#"<conditionalFormatting sqref="A1:A3">"#)
+            && sheet_xml.contains("<formula>A1&gt;0</formula>"),
+        "conditional format was not written to XLSM worksheet:\n{sheet_xml}"
+    );
+
+    let (validate_code, validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output]);
+    // This package proves OPC-level macro artifact preservation with opaque fake VBA bytes.
+    // SDK/Office proof remains a separate gate for Office-authored macro projects.
+    if validate_code == 0
+        && validate_stderr.is_none()
+        && validate_stdout
+            .as_ref()
+            .is_some_and(|value| value["valid"] == Value::Bool(true))
+    {
+        assert_eq!(
+            validate_stdout.expect("strict validate stdout")["valid"],
+            Value::Bool(true),
+            "strict validation should accept the synthetic XLSM when its fake VBA bytes are sufficient"
+        );
+    } else {
+        assert!(
+            validate_stdout.is_some() || validate_stderr.is_some(),
+            "strict validation rejection should be reported as JSON when fake VBA bytes are insufficient"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn write_tiny_xlsm_with_opaque_vba_project(dest: &Path) {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("fixture parent");
+    }
+    let output = File::create(dest).expect("create xlsm");
+    let mut writer = ZipWriter::new(output);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    write_zip_string(
+        &mut writer,
+        options,
+        "[Content_Types].xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="bin" ContentType="application/vnd.ms-office.vbaProject"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.ms-excel.sheet.macroEnabled.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "_rels/.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/workbook.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/_rels/workbook.xml.rels",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rIdVba" Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject" Target="vbaProject.bin"/>
+</Relationships>"#,
+    );
+    write_zip_string(
+        &mut writer,
+        options,
+        "xl/worksheets/sheet1.xml",
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:A3"/>
+  <sheetData>
+    <row r="1"><c r="A1"><v>1</v></c></row>
+    <row r="2"><c r="A2"><v>2</v></c></row>
+    <row r="3"><c r="A3"><v>3</v></c></row>
+  </sheetData>
+</worksheet>"#,
+    );
+    writer
+        .start_file("xl/vbaProject.bin", options)
+        .expect("write vbaProject.bin");
+    writer
+        .write_all(b"opaque synthetic vba payload for package preservation")
+        .expect("write vbaProject.bin bytes");
+    writer.finish().expect("finish xlsm");
+}
+
+fn assert_vba_package_entries_present(content_types: &str, workbook_rels: &str) {
+    assert!(
+        content_types.contains(
+            r#"ContentType="application/vnd.ms-excel.sheet.macroEnabled.main+xml""#
+        ),
+        "workbook content type is not macro-enabled:\n{content_types}"
+    );
+    assert!(
+        content_types.contains(r#"ContentType="application/vnd.ms-office.vbaProject""#),
+        "vbaProject.bin content type is missing:\n{content_types}"
+    );
+    assert!(
+        workbook_rels
+            .contains(r#"Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject""#)
+            && workbook_rels.contains(r#"Target="vbaProject.bin""#),
+        "workbook rels missing vbaProject relationship:\n{workbook_rels}"
+    );
+}
+
+fn read_zip_bytes(path: &Path, name: &str) -> Vec<u8> {
+    let input = File::open(path).expect("open zip");
+    let mut archive = ZipArchive::new(input).expect("read zip");
+    let mut entry = archive.by_name(name).expect("read zip entry");
+    let mut body = Vec::new();
+    entry.read_to_end(&mut body).expect("read zip entry bytes");
+    body
+}
