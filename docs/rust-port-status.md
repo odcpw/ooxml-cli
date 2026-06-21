@@ -32,6 +32,11 @@ Latest milestone, 2026-06-20:
   table-nested and mixed-content field cases. Proof: focused `docx_fields`
   Rust contract shard, strict validation, and Rust `conformance check` on the
   mutated DOCX output.
+- XLSX chart style output now emits the Go-shaped `chartShowCommand`, and chart
+  source updates preserve existing series fill, line color, and line width
+  styling while updating formulas and caches. Proof: focused XLSX chart
+  preservation test, `xlsx_charts` and `pptx_charts` Rust contract shards,
+  strict validation, and Rust `conformance check` on the generated workbook.
 - Rust agent-facing composition and proof ergonomics moved forward after
   command-path parity: `find --to-ops`, `find --replace --to-ops`, and
   `find --replace --apply` now emit/apply structured XLSX/DOCX/PPTX ops;

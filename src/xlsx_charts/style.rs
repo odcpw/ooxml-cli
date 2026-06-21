@@ -225,10 +225,7 @@ pub(super) fn xlsx_chart_style_result(args: ChartStyleResultArgs<'_>) -> Value {
     } else {
         args.chart.primary_selector.as_str()
     };
-    let sheet = args
-        .sheet_selector
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or(&args.chart.sheet);
+    let sheet = args.sheet_selector.filter(|value| !value.trim().is_empty());
     let target = args.output.unwrap_or("<out.xlsx>");
     let validate_key = if args.output.is_some() {
         "validateCommand"
@@ -246,12 +243,7 @@ pub(super) fn xlsx_chart_style_result(args: ChartStyleResultArgs<'_>) -> Value {
     );
     result.insert(
         show_key.to_string(),
-        json!(format!(
-            "ooxml --json xlsx charts show {} --sheet {} --chart {}",
-            command_arg(target),
-            command_arg(sheet),
-            command_arg(selector)
-        )),
+        json!(xlsx_chart_show_command_for_update(target, sheet, selector)),
     );
     Value::Object(result)
 }

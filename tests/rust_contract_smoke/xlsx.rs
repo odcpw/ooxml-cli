@@ -705,6 +705,162 @@ fn xlsx_charts_create_and_update_source_saved_outputs_validate_and_read_back() {
 }
 
 #[test]
+fn xlsx_charts_update_source_preserves_series_style() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-chart-update-style-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
+    let go_style_in_path = temp_dir.join("go-style-in.xlsx");
+    let rust_style_in_path = temp_dir.join("rust-style-in.xlsx");
+    let go_styled_path = temp_dir.join("go-styled.xlsx");
+    let rust_styled_path = temp_dir.join("rust-styled.xlsx");
+    let go_update_out_path = temp_dir.join("go-updated.xlsx");
+    let rust_update_out_path = temp_dir.join("rust-updated.xlsx");
+    fs::copy(workbook, &go_style_in_path).expect("go style input");
+    fs::copy(workbook, &rust_style_in_path).expect("rust style input");
+
+    let go_style_in = go_style_in_path.to_string_lossy().to_string();
+    let rust_style_in = rust_style_in_path.to_string_lossy().to_string();
+    let go_styled = go_styled_path.to_string_lossy().to_string();
+    let rust_styled = rust_styled_path.to_string_lossy().to_string();
+    let go_update_out = go_update_out_path.to_string_lossy().to_string();
+    let rust_update_out = rust_update_out_path.to_string_lossy().to_string();
+
+    let style_go_args = [
+        "--json",
+        "xlsx",
+        "charts",
+        "set-series-style",
+        &go_style_in,
+        "--chart",
+        "chart:1",
+        "--series",
+        "1",
+        "--fill-color",
+        "FF8800",
+        "--line-color",
+        "114477",
+        "--line-width-pt",
+        "2",
+        "--out",
+        &go_styled,
+    ];
+    let style_rust_args = [
+        "--json",
+        "xlsx",
+        "charts",
+        "set-series-style",
+        &rust_style_in,
+        "--chart",
+        "chart:1",
+        "--series",
+        "1",
+        "--fill-color",
+        "FF8800",
+        "--line-color",
+        "114477",
+        "--line-width-pt",
+        "2",
+        "--out",
+        &rust_styled,
+    ];
+    let style_replacements = [
+        (go_style_in.as_str(), "[IN]"),
+        (rust_style_in.as_str(), "[IN]"),
+        (go_styled.as_str(), "[OUT]"),
+        (rust_styled.as_str(), "[OUT]"),
+    ];
+    let rust_style = assert_xlsx_structure_command_matches(
+        "xlsx charts set-series-style before update-source",
+        &style_go_args,
+        &style_rust_args,
+        &style_replacements,
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_style, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_style, "chartShowCommand");
+
+    let update_go_args = [
+        "--json",
+        "xlsx",
+        "charts",
+        "update-source",
+        &go_styled,
+        "--chart",
+        "chart:1",
+        "--series",
+        "1",
+        "--role",
+        "values",
+        "--source-sheet",
+        "Data",
+        "--source-range",
+        "$B$2:$B$3",
+        "--expect-source-range",
+        "$B$2:$B$4",
+        "--out",
+        &go_update_out,
+    ];
+    let update_rust_args = [
+        "--json",
+        "xlsx",
+        "charts",
+        "update-source",
+        &rust_styled,
+        "--chart",
+        "chart:1",
+        "--series",
+        "1",
+        "--role",
+        "values",
+        "--source-sheet",
+        "Data",
+        "--source-range",
+        "$B$2:$B$3",
+        "--expect-source-range",
+        "$B$2:$B$4",
+        "--out",
+        &rust_update_out,
+    ];
+    let update_replacements = [
+        (go_styled.as_str(), "[IN]"),
+        (rust_styled.as_str(), "[IN]"),
+        (go_update_out.as_str(), "[OUT]"),
+        (rust_update_out.as_str(), "[OUT]"),
+    ];
+    let rust_update = assert_xlsx_structure_command_matches(
+        "xlsx charts update-source preserves series style",
+        &update_go_args,
+        &update_rust_args,
+        &update_replacements,
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_update, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_update, "chartShowCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_update, "rangesExportCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_update, "sourceRangeExportCommand");
+    assert_xlsx_chart_style_valid_strict(&rust_update_out);
+
+    let chart_xml = read_zip_string(&rust_update_out_path, "xl/charts/chart1.xml");
+    for needle in [
+        "Data!$B$2:$B$3",
+        r#"<c:ptCount val="2"/>"#,
+        r#"<a:srgbClr val="FF8800"/>"#,
+        r#"<a:srgbClr val="114477"/>"#,
+        r#"<a:ln w="25400">"#,
+    ] {
+        assert!(
+            chart_xml.contains(needle),
+            "updated chart XML missing {needle:?}:\n{chart_xml}"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_charts_style_saved_outputs_validate_and_read_back() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-chart-style-{}",
