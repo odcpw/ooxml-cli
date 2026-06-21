@@ -115,13 +115,26 @@ The Rust port is done when all of the following are true:
    - Excel opens XLSX/XLSM outputs without repair prompts.
    - PowerPoint opens PPTX/PPTM outputs without repair prompts.
    - Macro-enabled surfaces receive VBA-specific Office proof when touched.
-8. The Rust implementation is no longer a single-file accumulation zone. The
+8. After the current parity goal is otherwise green, Rust supports Excel
+   conditional formatting as an explicit final feature slice. The slice must be
+   proven against the Go oracle where Go already has matching surface, or
+   against an explicitly added Go oracle slice if needed. XLSX/XLSM outputs must
+   pass strict validation, Open XML SDK validation, Excel desktop open proof, and
+   readback/round-trip checks without repair prompts.
+9. The super-heavy `$running-the-gauntlet-on-your-rust-port` certification has
+   completed before this goal is declared done: all three pillars are covered,
+   at least 10 full iterations have run, two consecutive rounds are clean, every
+   open hypothesis is resolved, and the final gauntlet artifacts exist.
+10. Rust safety polish is complete: unsafe-site classification and UB-focused
+    audit passes have either found no actionable findings or produced tracked
+    remediation with proof gates.
+11. The Rust implementation is no longer a single-file accumulation zone. The
    monolith is split into proven, behavior-preserving modules with clear seams,
    no command drift, and no casual reshuffling.
-9. The agent-facing CLI remains excellent: stable JSON, stdout as data, stderr
+12. The agent-facing CLI remains excellent: stable JSON, stdout as data, stderr
    as diagnostics, useful errors, deterministic handles, pasteable readback
    commands, discoverable capabilities, and no surprise interactivity.
-10. The branch is committed and pushed at stable milestones with a concise status
+13. The branch is committed and pushed at stable milestones with a concise status
     update in `docs/rust-port-status.md`.
 
 ## Non-Negotiables
@@ -158,9 +171,18 @@ Use installed skills explicitly with `$` names when doing work under this goal:
   path/date/session scrubbing deterministic on Windows.
 - `$testing-conformance-harnesses`: keep Go-vs-Rust subject/oracle/comparator
   tests as the main correctness loop.
-- `$running-the-gauntlet-on-your-rust-port`: use the three-pillar lens:
-  conformance, surface parity, and performance. Do not run the full gauntlet
-  unless explicitly chosen; use the discipline continuously.
+- `$running-the-gauntlet-on-your-rust-port`: explicitly chosen for final
+  certification. Use `gauntlet-full` / super-heavy discipline before declaring
+  the Rust port complete: 16 phases, three pillars, minimum 10 full iterations,
+  two consecutive clean rounds, every hypothesis resolved, negative ledgers, and
+  final certification artifacts.
+- `$rust-unsafe-code-exorcist`: audit every Rust `unsafe` site if any exist,
+  classify unavoidable / perf-only / refactorable, harden remaining SAFETY
+  comments, and require proof for any safe rewrite or `safe-only` path.
+- `$rust-undefined-behavior-exorcist`: run the UB/soundness lens over the Rust
+  port and harness before release: Miri where practical, sanitizer/loom/fuzz
+  coverage where applicable, experiment ledgers for suspects, and no untracked
+  UB hypotheses.
 - `$de-monolithize-your-codebase-isomorphically`: split remaining Rust and test
   accumulation points only through proven seams and proof gates.
 - `$simplify-and-refactor-code-isomorphically`: simplify after behavior is
@@ -248,6 +270,82 @@ irrelevant and the reason is written in the handoff.
    - relevant Office smoke
    - status doc update
    - commit and push
+
+## Conditional Formatting Final Slice
+
+Conditional formatting is now part of the Rust port completion bar, but it
+should come after the current command-surface parity work is green enough that
+the proof loop is trusted.
+
+Scope:
+
+- Implement Rust support for creating and mutating Excel conditional formatting
+  in XLSX and XLSM files.
+- Preserve existing workbook structure, worksheets, relationships, styles,
+  content types, calc metadata, VBA parts, and unrelated formatting.
+- Support the first operationally useful set: cell/range rules, formula rules,
+  color scales, data bars, icon sets, priority ordering, stop-if-true where
+  applicable, and safe readback/inspection.
+- If the Go CLI already exposes a matching command, match it exactly. If not,
+  add the smallest Go oracle slice needed for a fair contract before promoting
+  the Rust command.
+
+Proof gates:
+
+- Go-vs-Rust oracle comparison for command output, generated file behavior, and
+  readback.
+- Strict repo validation and Open XML SDK validation.
+- Excel desktop open proof for XLSX and XLSM outputs without repair prompts.
+- Round-trip preservation: unrelated workbook parts are unchanged except for
+  known, normalized packaging differences.
+- Metamorphic checks: apply-then-readback, repeated apply idempotence where
+  intended, priority/order stability, relationship/content-type integrity, and
+  macro preservation for XLSM.
+
+## Final Rust-Port Gauntlet and Polish Bar
+
+The final goal explicitly chooses the super-heavy Rust-port gauntlet. Do not use
+this as day-to-day churn; use it as the certification lane once ordinary parity,
+Office proof, and the conditional-formatting slice are green.
+
+Required final artifacts:
+
+- `<project>__gauntlet_workspace/` or an explicitly documented equivalent.
+- `FINAL_GAUNTLET_REPORT.md`
+- `PARITY_RUNBOOK.md`
+- `RELEASE_CERTIFICATION_TEMPLATE.md`
+- Surface parity matrix / FeatureUniverse for the Rust CLI surface.
+- Conformance evidence bundle for Go-oracle parity and Office/Open XML proof.
+- Performance evidence or written rationale for why a command-family is not
+  performance-sensitive.
+- Negative ledgers for conformance, surface, and performance candidates with
+  retry-condition predicates.
+- Remediation plan for every confirmed gap, with no orphan findings.
+
+Required convergence:
+
+- `gauntlet-full` / super-heavy mode or equivalent.
+- 16 phases accounted for, even when a phase is intentionally not applicable.
+- At least 10 full iterations of the conformance/surface/performance loop.
+- Two consecutive clean rounds.
+- Every open hypothesis resolved as confirmed gap, no evidence, deferred with
+  rationale, or remediated with proof.
+
+Rust polish passes before final certification:
+
+- `$rust-unsafe-code-exorcist` for unsafe-site classification, SAFETY comments,
+  and safe-only/refactorable paths.
+- `$rust-undefined-behavior-exorcist` for Miri/UB/soundness coverage and
+  experiment-ledger discipline.
+- `$multi-pass-bug-hunting` until fix/rescan cycles stop producing meaningful
+  findings.
+- `$testing-fuzzing` and `$testing-metamorphic` for OOXML ingest/mutation
+  boundaries.
+- `$de-monolithize-your-codebase-isomorphically` and
+  `$simplify-and-refactor-code-isomorphically` for final architecture cleanup
+  after behavior is pinned.
+- `$agent-ergonomics-and-intuitiveness-maximization-for-cli-tools` before
+  release, so the finished CLI remains pleasant for agents and humans.
 
 ## Windows Office Proof Policy
 
