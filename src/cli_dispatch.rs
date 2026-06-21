@@ -149,6 +149,7 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
 fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
     match args {
         [cmd] if cmd == "version" => Ok(json!({"tool": "ooxml", "version": "0.0.1"})),
+        [cmd, rest @ ..] if cmd == "agent-triage" => crate::agent_triage::agent_triage(rest),
         [cmd, rest @ ..] if cmd == "capabilities" => capabilities::capabilities(rest),
         [cmd, file, rest @ ..] if cmd == "apply" => apply(file, rest),
         [cmd, conversion, file, rest @ ..] if cmd == "convert" && conversion == "xlsm-to-xlsx" => {

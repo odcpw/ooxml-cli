@@ -1,5 +1,8 @@
 use serde_json::{Value, json};
 
+use crate::agent_aliases::{
+    CAPABILITY_COMMAND_FAMILY_FILTERS, CAPABILITY_OBJECT_KINDS, capability_filter_alias_strings,
+};
 use crate::cli_dispatch::{DispatchBody, DispatchOutput};
 use crate::{CliError, CliResult, EXIT_SUCCESS, GlobalFlags, has_flag, reject_unknown_flags};
 
@@ -17,6 +20,10 @@ pub(crate) fn robot_docs(flags: &GlobalFlags, args: &[String]) -> CliResult<Disp
 pub(crate) fn agent_alias(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {
     match args {
         [sub, rest @ ..] if sub == "guide" => guide(flags, rest),
+        [sub, rest @ ..] if sub == "triage" => Ok(DispatchOutput {
+            body: DispatchBody::Json(crate::agent_triage::agent_triage(rest)?),
+            exit_code: EXIT_SUCCESS,
+        }),
         _ => Err(CliError::invalid_args(format!(
             "unsupported Rust-port contract command: agent {}",
             args.join(" ")
@@ -70,38 +77,18 @@ fn guide_json() -> Value {
                     "ooxml --json capabilities --for slides",
                     "ooxml --json capabilities --for conditional-formats",
                     "ooxml --json capabilities --for modules",
+                    "ooxml agent-triage",
                     "ooxml robot-docs guide",
                     "ooxml --json inspect <file>",
                     "ooxml --json find <query> <file>",
                     "ooxml --json doctor health"
                 ],
-                "filters": [
-                    "pptx",
-                    "xlsx",
-                    "docx",
-                    "vba",
-                    "slide",
-                    "shape",
-                    "sheet",
-                    "range",
-                    "conditional-format",
-                    "data-validation",
-                    "table",
-                    "chart",
-                    "comment",
-                    "module"
-                ],
-                "filterAliases": [
-                    "slides -> slide",
-                    "shapes -> shape",
-                    "ranges -> range",
-                    "conditional-formats -> conditional-format",
-                    "conditional-formatting -> conditional-format",
-                    "cf -> conditional-format",
-                    "data-validations -> data-validation",
-                    "modules -> module",
-                    "macros -> module"
-                ]
+                "filters": CAPABILITY_COMMAND_FAMILY_FILTERS
+                    .iter()
+                    .copied()
+                    .chain(CAPABILITY_OBJECT_KINDS.iter().copied())
+                    .collect::<Vec<_>>(),
+                "filterAliases": capability_filter_alias_strings()
             },
             {
                 "name": "Preflight and release proof",

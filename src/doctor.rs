@@ -63,23 +63,10 @@ fn doctor_health(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutp
         &["--only", "--format"],
         &["--json", "--online", "--pretty"],
     )?;
-    let report = run_report(parse_only(args)?);
-    let exit_code = if report["healthy"].as_bool().unwrap_or(false) {
-        EXIT_SUCCESS
-    } else {
-        EXIT_UNEXPECTED
-    };
-    let value = json!({
-        "schemaVersion": report["schemaVersion"],
-        "contractVersion": report["schemaVersion"],
-        "tool": report["tool"],
-        "toolVersion": report["toolVersion"],
-        "doctorVersion": report["doctorVersion"],
-        "healthy": report["healthy"],
-        "summary": report["summary"],
-        "findings": report["summary"]["findings"],
-        "exitCode": exit_code,
-    });
+    let value = doctor_health_snapshot(parse_only(args)?);
+    let exit_code = value["exitCode"]
+        .as_i64()
+        .unwrap_or(i64::from(EXIT_UNEXPECTED)) as i32;
     if wants_json(flags, args) {
         Ok(DispatchOutput {
             body: DispatchBody::Json(value),
@@ -95,6 +82,26 @@ fn doctor_health(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutp
             exit_code,
         })
     }
+}
+
+pub(crate) fn doctor_health_snapshot(only: Option<Vec<String>>) -> Value {
+    let report = run_report(only);
+    let exit_code = if report["healthy"].as_bool().unwrap_or(false) {
+        EXIT_SUCCESS
+    } else {
+        EXIT_UNEXPECTED
+    };
+    json!({
+        "schemaVersion": report["schemaVersion"],
+        "contractVersion": report["schemaVersion"],
+        "tool": report["tool"],
+        "toolVersion": report["toolVersion"],
+        "doctorVersion": report["doctorVersion"],
+        "healthy": report["healthy"],
+        "summary": report["summary"],
+        "findings": report["summary"]["findings"],
+        "exitCode": exit_code,
+    })
 }
 
 fn doctor_capabilities(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {

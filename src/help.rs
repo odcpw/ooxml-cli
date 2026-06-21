@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
+use crate::agent_aliases::{CONDITIONAL_FORMAT_TOPIC_ALIASES, DATA_VALIDATION_TOPIC_ALIASES};
 use crate::capabilities::capability_commands;
 use crate::cli_dispatch::{DispatchBody, DispatchOutput};
 use crate::{CliError, CliResult, EXIT_SUCCESS};
@@ -231,13 +232,13 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
         &["xlsx", "conditional-formats"],
         "Inspect and mutate worksheet conditional formatting.",
         "Commands for conditional-formatting expression rules.",
-        &["conditional-format", "conditional-formatting", "cf"],
+        CONDITIONAL_FORMAT_TOPIC_ALIASES,
     ),
     (
         &["xlsx", "data-validations"],
         "Inspect and mutate worksheet data validations.",
         "Commands for data-validation rules.",
-        &["data-validation", "dv"],
+        DATA_VALIDATION_TOPIC_ALIASES,
     ),
     (
         &["xlsx", "filters-sorts"],

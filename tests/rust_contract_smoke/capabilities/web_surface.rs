@@ -6,6 +6,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let all_caps = all_stdout.expect("all capabilities");
     assert_command(&all_caps, "ooxml version", false);
     assert_command(&all_caps, "ooxml capabilities", false);
+    assert_command(&all_caps, "ooxml agent-triage", false);
     assert_command(&all_caps, "ooxml help", false);
     assert_command(&all_caps, "ooxml apply", false);
     assert_command(&all_caps, "ooxml convert xlsm-to-xlsx", false);

@@ -54,6 +54,7 @@ fn utility_capabilities_advertise_only_implemented_paths() {
 
     for path in [
         "ooxml help",
+        "ooxml agent-triage",
         "ooxml doctor",
         "ooxml doctor capabilities",
         "ooxml doctor health",
@@ -175,12 +176,87 @@ fn doctor_contract_commands_are_machine_readable() {
         "--only",
         "openxml-sdk-validator",
     ]);
-    assert_eq!(health_code, 0);
+    assert!(
+        matches!(health_code, 0 | 1),
+        "doctor health is advisory and may warn when dotnet is absent"
+    );
     assert_eq!(health_stderr, None);
     let health = health_stdout.expect("doctor health");
     assert_eq!(health["tool"], "ooxml");
-    assert_eq!(health["exitCode"], 0);
+    assert_eq!(health["exitCode"], health_code);
     assert_eq!(health["summary"]["total"], 1);
+    if health_code == 0 {
+        assert_eq!(health["healthy"], true);
+    } else {
+        assert_eq!(health["healthy"], false);
+        assert!(
+            health["findings"].as_i64().unwrap_or_default() >= 1,
+            "warning health response should report at least one finding: {health:?}"
+        );
+    }
+}
+
+#[test]
+fn agent_triage_returns_one_call_agent_contract() {
+    let (code, stdout, stderr) = run_ooxml(&["agent-triage"]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    let triage = stdout.expect("agent triage");
+
+    assert_eq!(triage["tool"], "ooxml");
+    assert_eq!(triage["contractVersion"], "ooxml-cli.agent-triage.v1");
+    assert_eq!(triage["readOnly"], true);
+    assert!(
+        triage["dataHash"]
+            .as_str()
+            .expect("dataHash")
+            .starts_with("sha256:"),
+        "triage should include a stable payload hash: {triage:?}"
+    );
+    assert!(
+        triage["quickRef"]["topCommands"]
+            .as_array()
+            .expect("topCommands")
+            .iter()
+            .any(|command| command == "ooxml --json capabilities --for <filter>"),
+        "triage should make filtered discovery obvious: {triage:?}"
+    );
+    assert!(
+        triage["discovery"]["filters"]
+            .as_array()
+            .expect("filters")
+            .iter()
+            .any(|filter| filter == "data-validation"),
+        "triage should enumerate capability filters: {triage:?}"
+    );
+    assert!(
+        triage["discovery"]["filterAliases"]
+            .as_array()
+            .expect("filterAliases")
+            .iter()
+            .any(|alias| alias == "dv -> data-validation"),
+        "triage should expose shared alias vocabulary: {triage:?}"
+    );
+    assert!(
+        triage["health"]["summary"].is_object(),
+        "triage should include compact doctor health: {triage:?}"
+    );
+    assert!(
+        triage["warnings"]
+            .as_array()
+            .expect("warnings")
+            .iter()
+            .any(|warning| warning["code"] == "explicit-output-required"),
+        "triage should include mutation safety warnings: {triage:?}"
+    );
+
+    let (alias_code, alias_stdout, alias_stderr) = run_ooxml(&["agent", "triage"]);
+    assert_eq!(alias_code, 0);
+    assert_eq!(alias_stderr, None);
+    assert_eq!(
+        alias_stdout.expect("agent triage alias")["contractVersion"],
+        "ooxml-cli.agent-triage.v1"
+    );
 }
 
 #[test]
@@ -191,9 +267,11 @@ fn robot_docs_guide_is_filtered_to_rust_supported_commands() {
     let guide = stdout.expect("robot guide");
     let text = serde_json::to_string(&guide).expect("guide string");
     assert!(text.contains("ooxml --json doctor capabilities"));
+    assert!(text.contains("ooxml agent-triage"));
     assert!(text.contains("ooxml --json find <query> <file>"));
     assert!(text.contains("ooxml --json capabilities --for slides"));
     assert!(text.contains("conditional-formats -> conditional-format"));
+    assert!(text.contains("dv -> data-validation"));
     assert!(text.contains("modules -> module"));
     let discovery = guide["sections"]
         .as_array()

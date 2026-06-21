@@ -15,6 +15,7 @@ const DOCX_PARENT_GROUP_COMMANDS: &[&str] = &[
 ];
 
 const RUST_ONLY_CAPABILITY_PATHS: &[&str] = &[
+    "ooxml agent-triage",
     "ooxml convert xlsm-to-xlsx",
     "ooxml docx scaffold",
     "ooxml docx tables create",
@@ -349,6 +350,111 @@ fn xlsx_conditional_format_add_capability_advertises_rule_constraints() {
                     .contains(&Value::String("--color".to_string()))
         }),
         "icon-set mode should forbid color flags: {constraints:?}"
+    );
+}
+
+#[test]
+fn xlsx_data_validation_create_capability_advertises_type_constraints() {
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(rust_code, 0);
+    assert_eq!(rust_stderr, None);
+    let rust_caps = rust_stdout.expect("rust capabilities");
+    let create = command_by_path(&rust_caps, "ooxml xlsx data-validations create");
+    let constraints = &create["flagConstraints"];
+
+    assert_eq!(constraints["modeFlag"], "--type");
+    assert_eq!(
+        constraints["outputRequiredOneOf"],
+        serde_json::json!(["--out", "--in-place", "--dry-run"])
+    );
+    let modes = constraints["modes"].as_array().expect("constraint modes");
+    assert!(
+        modes.iter().any(|mode| {
+            mode["value"] == "list"
+                && mode["oneOf"] == serde_json::json!(["--list-values", "--list-range"])
+                && mode["forbidden"]
+                    .as_array()
+                    .expect("list forbidden flags")
+                    .contains(&Value::String("--operator".to_string()))
+        }),
+        "list mode should advertise its required source and forbidden flags: {constraints:?}"
+    );
+    assert!(
+        modes.iter().any(|mode| {
+            mode["value"] == "textLength"
+                && mode["aliases"]
+                    .as_array()
+                    .expect("textLength aliases")
+                    .contains(&Value::String("text-length".to_string()))
+        }),
+        "textLength mode should advertise accepted CLI aliases: {constraints:?}"
+    );
+    assert!(
+        constraints["rules"]
+            .as_array()
+            .expect("constraint rules")
+            .iter()
+            .any(|rule| rule.as_str().unwrap_or_default().contains("between")),
+        "data-validation constraints should explain formula2 for between operators: {constraints:?}"
+    );
+}
+
+#[test]
+fn chart_create_capabilities_advertise_source_constraints() {
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(rust_code, 0);
+    assert_eq!(rust_stderr, None);
+    let rust_caps = rust_stdout.expect("rust capabilities");
+
+    let xlsx = command_by_path(&rust_caps, "ooxml xlsx charts create");
+    let xlsx_constraints = &xlsx["flagConstraints"];
+    assert_eq!(xlsx_constraints["modeFlag"], "--type");
+    let xlsx_sources = xlsx_constraints["sourceModes"]
+        .as_array()
+        .expect("xlsx chart source modes");
+    assert!(
+        xlsx_sources.iter().any(|mode| {
+            mode["name"] == "range"
+                && mode["required"] == serde_json::json!(["--sheet", "--range"])
+                && mode["conflictsWith"] == serde_json::json!(["--table"])
+        }),
+        "xlsx chart create should advertise range source constraints: {xlsx_constraints:?}"
+    );
+    assert!(
+        xlsx_sources.iter().any(|mode| {
+            mode["name"] == "table"
+                && mode["required"] == serde_json::json!(["--table"])
+                && mode["conflictsWith"] == serde_json::json!(["--range"])
+        }),
+        "xlsx chart create should advertise table source constraints: {xlsx_constraints:?}"
+    );
+
+    let pptx = command_by_path(&rust_caps, "ooxml pptx charts create");
+    let pptx_constraints = &pptx["flagConstraints"];
+    let pptx_sources = pptx_constraints["sourceModes"]
+        .as_array()
+        .expect("pptx chart source modes");
+    assert!(
+        pptx_sources.iter().any(|mode| {
+            mode["name"] == "inline-json"
+                && mode["required"] == serde_json::json!(["--values-json"])
+                && mode["conflictsWith"]
+                    .as_array()
+                    .expect("inline-json conflicts")
+                    .contains(&Value::String("--source-file".to_string()))
+        }),
+        "pptx chart create should advertise inline JSON source constraints: {pptx_constraints:?}"
+    );
+    assert!(
+        pptx_sources.iter().any(|mode| {
+            mode["name"] == "external-xlsx"
+                && mode["required"] == serde_json::json!(["--source-file", "--source-range"])
+                && mode["optional"]
+                    .as_array()
+                    .expect("external optional flags")
+                    .contains(&Value::String("--embed-workbook".to_string()))
+        }),
+        "pptx chart create should advertise external workbook source constraints: {pptx_constraints:?}"
     );
 }
 

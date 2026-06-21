@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::super::{capability_command, flag};
 use super::xlsx_chart_fill_flags;
@@ -26,49 +26,82 @@ pub(super) fn commands() -> Vec<Value> {
                 flag("--chart", "chart", "string", "chart selector"),
             ],
         ),
-        capability_command(
-            "ooxml xlsx charts create",
-            "create <file> --type <bar|line|area|pie|scatter> --range <A1:C5>",
-            "Create an embedded worksheet chart from a range or table source.",
-            &["chart"],
-            false,
-            Some("direct CLI mutation; serve/MCP op support is not wired yet"),
-            vec![
-                flag(
-                    "--type",
-                    "type",
-                    "string",
-                    "chart type: bar, line, area, pie, or scatter",
-                ),
-                flag("--sheet", "sheet", "string", "target/source sheet selector"),
-                flag("--range", "range", "string", "source range"),
-                flag("--table", "table", "string", "source table selector"),
-                flag("--title", "title", "string", "chart title"),
-                flag("--anchor", "anchor", "string", "chart anchor top-left cell"),
-                flag(
-                    "--expect-source-range",
-                    "expectSourceRange",
-                    "string",
-                    "guard: resolved source range",
-                ),
-                flag("--max-cells", "maxCells", "int", "maximum source cells"),
-                flag("--out", "out", "string", "write edited workbook"),
-                flag(
-                    "--in-place",
-                    "inPlace",
-                    "bool",
-                    "edit the workbook in place",
-                ),
-                flag("--backup", "backup", "string", "backup path for --in-place"),
-                flag("--dry-run", "dryRun", "bool", "validate without writing"),
-                flag(
-                    "--no-validate",
-                    "noValidate",
-                    "bool",
-                    "skip strict validation",
-                ),
-            ],
-        ),
+        {
+            let mut create = capability_command(
+                "ooxml xlsx charts create",
+                "create <file> --type <bar|line|area|pie|scatter> --range <A1:C5>",
+                "Create an embedded worksheet chart from a range or table source.",
+                &["chart"],
+                false,
+                Some("direct CLI mutation; serve/MCP op support is not wired yet"),
+                vec![
+                    flag(
+                        "--type",
+                        "type",
+                        "string",
+                        "chart type: bar, line, area, pie, or scatter",
+                    ),
+                    flag("--sheet", "sheet", "string", "target/source sheet selector"),
+                    flag("--range", "range", "string", "source range"),
+                    flag("--table", "table", "string", "source table selector"),
+                    flag("--title", "title", "string", "chart title"),
+                    flag("--anchor", "anchor", "string", "chart anchor top-left cell"),
+                    flag(
+                        "--expect-source-range",
+                        "expectSourceRange",
+                        "string",
+                        "guard: resolved source range",
+                    ),
+                    flag("--max-cells", "maxCells", "int", "maximum source cells"),
+                    flag("--out", "out", "string", "write edited workbook"),
+                    flag(
+                        "--in-place",
+                        "inPlace",
+                        "bool",
+                        "edit the workbook in place",
+                    ),
+                    flag("--backup", "backup", "string", "backup path for --in-place"),
+                    flag("--dry-run", "dryRun", "bool", "validate without writing"),
+                    flag(
+                        "--no-validate",
+                        "noValidate",
+                        "bool",
+                        "skip strict validation",
+                    ),
+                ],
+            );
+            create["flagConstraints"] = json!({
+                "modeFlag": "--type",
+                "modes": [
+                    {"value": "bar", "required": ["--type"]},
+                    {"value": "line", "required": ["--type"]},
+                    {"value": "area", "required": ["--type"]},
+                    {"value": "pie", "required": ["--type"], "notes": ["Pie charts use only the first series when the source has multiple series."]},
+                    {"value": "scatter", "required": ["--type"]}
+                ],
+                "sourceModes": [
+                    {
+                        "name": "range",
+                        "required": ["--sheet", "--range"],
+                        "conflictsWith": ["--table"]
+                    },
+                    {
+                        "name": "table",
+                        "required": ["--table"],
+                        "optional": ["--sheet"],
+                        "conflictsWith": ["--range"]
+                    }
+                ],
+                "outputRequiredOneOf": ["--out", "--in-place", "--dry-run"],
+                "rules": [
+                    "--type is required and must be bar, line, area, pie, or scatter.",
+                    "Specify exactly one source: --range or --table.",
+                    "--sheet is required when using --range.",
+                    "--expect-source-range guards the resolved source range after table/range resolution."
+                ]
+            });
+            create
+        },
         capability_command(
             "ooxml xlsx charts update-source",
             "update-source <file> --chart <selector> --series <n> --role <role>",

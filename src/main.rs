@@ -2,6 +2,8 @@
 
 use serde_json::json;
 
+mod agent_aliases;
+mod agent_triage;
 mod apply;
 mod capabilities;
 mod cli_args;
@@ -443,6 +445,7 @@ fn is_text_utility_command(args: &[String]) -> bool {
     }
     match args {
         [cmd, ..] if cmd == "capabilities" => true,
+        [cmd, ..] if cmd == "agent-triage" => true,
         [cmd, ..] if cmd == "version" => true,
         [cmd, ..] if cmd == "doctor" => true,
         [cmd, ..] if cmd == "find" => true,

@@ -28,6 +28,15 @@ pub(super) fn commands() -> Vec<Value> {
             )],
         ),
         capability_command(
+            "ooxml agent-triage",
+            "agent-triage",
+            "Emit one-call agent triage JSON with quick refs, health, discovery filters, and safe next actions.",
+            &[],
+            false,
+            Some("read-only agent mega-command"),
+            vec![],
+        ),
+        capability_command(
             "ooxml help",
             "help [command]",
             "Show Rust-supported command help.",

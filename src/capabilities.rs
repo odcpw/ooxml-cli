@@ -3,6 +3,10 @@ pub(crate) use commands::capability_commands;
 
 use serde_json::{Value, json};
 
+use crate::agent_aliases::{
+    CAPABILITY_OBJECT_KINDS, capability_filter_aliases_json, capability_filter_suggestions,
+    is_command_family_filter, normalize_capability_filter,
+};
 use crate::{
     CliError, CliResult, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS, EXIT_RENDER_FAILED, EXIT_SUCCESS,
     EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED, EXIT_UNSUPPORTED_TYPE, parse_string_flag,
@@ -69,7 +73,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             {"name": "--strict", "argName": "strict", "type": "bool", "default": "false", "description": "enable strict validation mode"}
         ],
         "commands": commands,
-        "objectKinds": ["package", "template", "slide", "shape", "animation", "master", "layout", "placeholder", "sheet", "range", "conditional-format", "data-validation", "cell", "hyperlink", "table", "pivot", "name", "block", "paragraph", "style", "theme", "comment", "chart", "field", "header", "footer", "image", "media", "module"],
+        "objectKinds": CAPABILITY_OBJECT_KINDS,
         "filterAliases": capability_filter_aliases_json(),
         "objectKindsIndex": {
             "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml apply", "ooxml convert xlsm-to-xlsx", "ooxml repair normalize", "ooxml docx scaffold", "ooxml docx text", "ooxml pptx scaffold", "ooxml xlsx scaffold", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update", "ooxml vba build-bin", "ooxml vba create", "ooxml vba rebuild", "ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba inspect-bin", "ooxml vba list", "ooxml vba extract", "ooxml vba add-module", "ooxml vba replace-module", "ooxml vba remove-module", "ooxml vba attach", "ooxml vba remove"],
@@ -181,169 +185,8 @@ fn capability_matches_filter(command: &Value, filter: &str) -> bool {
         .unwrap_or(false)
 }
 
-const CAPABILITY_FILTER_ALIASES: &[(&str, &str)] = &[
-    ("slides", "slide"),
-    ("shapes", "shape"),
-    ("animations", "animation"),
-    ("masters", "master"),
-    ("layouts", "layout"),
-    ("placeholders", "placeholder"),
-    ("sheets", "sheet"),
-    ("ranges", "range"),
-    ("conditional-formats", "conditional-format"),
-    ("conditional-formatting", "conditional-format"),
-    ("cf", "conditional-format"),
-    ("data-validations", "data-validation"),
-    ("cells", "cell"),
-    ("hyperlinks", "hyperlink"),
-    ("tables", "table"),
-    ("pivots", "pivot"),
-    ("names", "name"),
-    ("blocks", "block"),
-    ("paragraphs", "paragraph"),
-    ("styles", "style"),
-    ("themes", "theme"),
-    ("comments", "comment"),
-    ("charts", "chart"),
-    ("fields", "field"),
-    ("headers", "header"),
-    ("footers", "footer"),
-    ("images", "image"),
-    ("modules", "module"),
-    ("macros", "module"),
-    ("macro", "module"),
-];
-
-fn is_command_family_filter(filter: &str) -> bool {
-    matches!(
-        filter,
-        "pptx"
-            | "xlsx"
-            | "docx"
-            | "vba"
-            | "apply"
-            | "convert"
-            | "diff"
-            | "repair"
-            | "template"
-            | "capabilities"
-            | "help"
-            | "doctor"
-            | "find"
-            | "robot-docs"
-            | "agent"
-            | "completion"
-            | "conformance"
-            | "serve"
-            | "mcp"
-            | "version"
-    )
-}
-
 fn is_path_segment_filter(filter: &str) -> bool {
     matches!(filter, "template")
-}
-
-fn normalize_capability_filter(raw: &str) -> String {
-    let mut filter = raw.trim().to_ascii_lowercase().replace('_', "-");
-    if let Some(stripped) = filter.strip_prefix("ooxml ") {
-        filter = stripped.to_string();
-    }
-    CAPABILITY_FILTER_ALIASES
-        .iter()
-        .find_map(|(alias, canonical)| (*alias == filter).then_some((*canonical).to_string()))
-        .unwrap_or(filter)
-}
-
-fn capability_filter_aliases_json() -> Value {
-    json!(
-        CAPABILITY_FILTER_ALIASES
-            .iter()
-            .map(|(alias, canonical)| json!({
-                "alias": alias,
-                "canonical": canonical
-            }))
-            .collect::<Vec<_>>()
-    )
-}
-
-fn capability_filter_suggestions(filter: &str) -> Vec<String> {
-    let mut suggestions = Vec::new();
-    for candidate in capability_known_filters() {
-        if candidate.contains(filter) || filter.contains(&candidate) {
-            suggestions.push(candidate);
-        }
-    }
-    if suggestions.is_empty() {
-        suggestions.extend([
-            "pptx".to_string(),
-            "xlsx".to_string(),
-            "docx".to_string(),
-            "slide".to_string(),
-            "sheet".to_string(),
-            "range".to_string(),
-            "conditional-format".to_string(),
-        ]);
-    }
-    suggestions.sort();
-    suggestions.dedup();
-    suggestions.truncate(8);
-    suggestions
-}
-
-fn capability_known_filters() -> Vec<String> {
-    let mut filters = vec![
-        "pptx",
-        "xlsx",
-        "docx",
-        "vba",
-        "convert",
-        "template",
-        "capabilities",
-        "serve",
-        "mcp",
-        "version",
-        "package",
-        "template",
-        "slide",
-        "shape",
-        "animation",
-        "master",
-        "layout",
-        "placeholder",
-        "sheet",
-        "range",
-        "conditional-format",
-        "data-validation",
-        "cell",
-        "hyperlink",
-        "table",
-        "pivot",
-        "name",
-        "block",
-        "paragraph",
-        "style",
-        "theme",
-        "comment",
-        "chart",
-        "field",
-        "header",
-        "footer",
-        "image",
-        "media",
-        "module",
-    ]
-    .into_iter()
-    .map(str::to_string)
-    .collect::<Vec<_>>();
-    filters.extend(
-        CAPABILITY_FILTER_ALIASES
-            .iter()
-            .map(|(alias, _)| (*alias).to_string()),
-    );
-    filters.sort();
-    filters.dedup();
-    filters
 }
 
 fn reject_capabilities_unknown_flags(args: &[String]) -> CliResult<()> {

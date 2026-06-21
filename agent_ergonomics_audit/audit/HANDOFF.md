@@ -1,50 +1,41 @@
-# Pass 1 Handoff
+# Pass 2 Handoff
 
 ## What We Did
 
-- mode: full
-- surfaces inventoried: 2,086
-- surfaces re-scored: 6 focused surfaces
-- recommendations applied: 6 / 8
+- mode: focused follow-up
+- recommendations applied this pass: 4 / 4
 - branch: `master`
 - audit workspace: in-tree at `agent_ergonomics_audit/`
-- commit status: working tree only; no commit was made
+- commit status: working tree only until the follow-up commit lands
 
 ## Uplift Summary
 
-- median estimated uplift: +240 pts across applied surfaces
-- regressions: none in focused verification
-- environmental warning: full utility filter is blocked by missing `dotnet` for the OpenXML SDK validator doctor check
+- `ooxml agent-triage` now provides one-call read-only agent triage JSON.
+- Capabilities/help/robot-docs share alias vocabulary through `src/agent_aliases.rs`.
+- Data-validation create and chart create now advertise machine-readable `flagConstraints`.
+- The local `dotnet` doctor gate is resolved as an advisory contract check: exit 0 when healthy, exit 1 with JSON findings when the SDK is absent.
 
-## Top Wins
+## Verification
 
-- R-001: natural `capabilities --for` aliases and filter metadata
-- R-002: exact correction for malformed capabilities flags
-- R-003: `xlsx cf --help` and `xlsx dv --help` topic aliases
-- R-005: `vba create` pure Rust versus legacy Office-COM mode split
-- R-006: conditional-format add mode-specific flag constraints
+- `cargo fmt`
+- `cargo build`
+- `cargo test --test rust_contract_smoke utility`
+- `cargo test --test rust_contract_smoke capabilities`
+- `bash agent_ergonomics_audit/audit/regression_tests/R-007__agent_triage_shape.test.sh`
+- `bash agent_ergonomics_audit/audit/regression_tests/R-008__shared_alias_registry.test.sh`
+- `bash agent_ergonomics_audit/audit/regression_tests/R-009__chart_data_validation_constraints.test.sh`
+- `bash agent_ergonomics_audit/audit/regression_tests/R-010__doctor_health_advisory.test.sh`
 
-## Deferred Recs
+## Remaining Work
 
-- R-007: add a single `agent-triage` mega-command.
-- R-008: extract a shared alias registry across capabilities, help, and robot-docs.
-
-## Rubric Refinements Suggested
-
-- For mature CLIs with existing `capabilities` and `robot-docs`, score the friction inside the discovery vocabulary separately from the existence of those surfaces.
-- Add a first-class scoring row for machine-readable flag constraints; this was the biggest gap on otherwise strong command inventories.
-
-## Pass 2 Focus
-
-- Implement `agent-triage` as a read-only JSON mega-command.
-- Share alias vocabulary across capabilities/help/robot-docs.
-- Add `flagConstraints` for the next set of complex worksheet and chart authoring commands.
+- Run broader release gates before a release tag.
+- If chart create grows `column` support later, update the create constraints; current constraints intentionally reflect the accepted create types.
 
 ## Land-The-Plane Status
 
 - [ ] target's current branch pushed
 - [x] no new branch was created
-- [ ] workspace folder committed alongside code
+- [x] workspace folder will be committed alongside code
 - [ ] beads created for queued work
-- [x] manifest updated with `pass_N+1_ready=true`
-- [x] ambition_bar_check.md present and records deferrals
+- [x] manifest updated with `current_pass=2`
+- [x] pass-2 regression checks present

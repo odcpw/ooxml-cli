@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::super::{capability_command, flag};
 
@@ -40,103 +40,141 @@ pub(super) fn commands() -> Vec<Value> {
                 ),
             ],
         ),
-        capability_command(
-            "ooxml pptx charts create",
-            "create <file> --slide <n> --type <type> (--values-json <json>|--values-file <path>|--source-file <xlsx> --source-range <range>)",
-            "Create a new PPTX slide chart from an inline matrix or an XLSX range.",
-            &["chart", "slide", "range"],
-            false,
-            Some(
-                "direct CLI mutation; supports dry-run/readback commands but serve/MCP op support is not wired yet",
-            ),
-            vec![
-                flag(
-                    "--slide",
-                    "slide",
-                    "int",
-                    "1-based slide number to add the chart to",
+        {
+            let mut create = capability_command(
+                "ooxml pptx charts create",
+                "create <file> --slide <n> --type <type> (--values-json <json>|--values-file <path>|--source-file <xlsx> --source-range <range>)",
+                "Create a new PPTX slide chart from an inline matrix or an XLSX range.",
+                &["chart", "slide", "range"],
+                false,
+                Some(
+                    "direct CLI mutation; supports dry-run/readback commands but serve/MCP op support is not wired yet",
                 ),
-                flag(
-                    "--type",
-                    "type",
-                    "string",
-                    "chart type: bar, line, area, pie, or scatter",
-                ),
-                flag("--title", "title", "string", "chart title"),
-                flag(
-                    "--values-json",
-                    "valuesJson",
-                    "string",
-                    "inline row-major JSON matrix",
-                ),
-                flag(
-                    "--values-file",
-                    "valuesFile",
-                    "string",
-                    "path to an inline JSON matrix file",
-                ),
-                flag(
-                    "--source-file",
-                    "sourceFile",
-                    "string",
-                    "xlsx workbook to source chart data from",
-                ),
-                flag(
-                    "--source-sheet",
-                    "sourceSheet",
-                    "string",
-                    "source sheet number or name",
-                ),
-                flag(
-                    "--source-range",
-                    "sourceRange",
-                    "string",
-                    "source A1 range such as A1:C5",
-                ),
-                flag(
-                    "--expect-source-range",
-                    "expectSourceRange",
-                    "string",
-                    "fail unless the resolved source range matches",
-                ),
-                flag(
-                    "--max-cells",
-                    "maxCells",
-                    "int",
-                    "maximum source cells to read, 0 for unlimited",
-                ),
-                flag(
-                    "--embed-workbook",
-                    "embedWorkbook",
-                    "bool",
-                    "embed --source-file as the editable chart workbook",
-                ),
-                flag("--x", "x", "int", "left position in EMUs"),
-                flag("--y", "y", "int", "top position in EMUs"),
-                flag("--cx", "cx", "int", "width in EMUs"),
-                flag("--cy", "cy", "int", "height in EMUs"),
-                flag("--out", "out", "string", "output file path"),
-                flag("--backup", "backup", "string", "backup path for --in-place"),
-                flag(
-                    "--dry-run",
-                    "dryRun",
-                    "bool",
-                    "plan and validate without writing",
-                ),
-                flag(
-                    "--in-place",
-                    "inPlace",
-                    "bool",
-                    "write back to the input file",
-                ),
-                flag(
-                    "--no-validate",
-                    "noValidate",
-                    "bool",
-                    "skip strict validation of the mutated package",
-                ),
-            ],
-        ),
+                vec![
+                    flag(
+                        "--slide",
+                        "slide",
+                        "int",
+                        "1-based slide number to add the chart to",
+                    ),
+                    flag(
+                        "--type",
+                        "type",
+                        "string",
+                        "chart type: bar, line, area, pie, or scatter",
+                    ),
+                    flag("--title", "title", "string", "chart title"),
+                    flag(
+                        "--values-json",
+                        "valuesJson",
+                        "string",
+                        "inline row-major JSON matrix",
+                    ),
+                    flag(
+                        "--values-file",
+                        "valuesFile",
+                        "string",
+                        "path to an inline JSON matrix file",
+                    ),
+                    flag(
+                        "--source-file",
+                        "sourceFile",
+                        "string",
+                        "xlsx workbook to source chart data from",
+                    ),
+                    flag(
+                        "--source-sheet",
+                        "sourceSheet",
+                        "string",
+                        "source sheet number or name",
+                    ),
+                    flag(
+                        "--source-range",
+                        "sourceRange",
+                        "string",
+                        "source A1 range such as A1:C5",
+                    ),
+                    flag(
+                        "--expect-source-range",
+                        "expectSourceRange",
+                        "string",
+                        "fail unless the resolved source range matches",
+                    ),
+                    flag(
+                        "--max-cells",
+                        "maxCells",
+                        "int",
+                        "maximum source cells to read, 0 for unlimited",
+                    ),
+                    flag(
+                        "--embed-workbook",
+                        "embedWorkbook",
+                        "bool",
+                        "embed --source-file as the editable chart workbook",
+                    ),
+                    flag("--x", "x", "int", "left position in EMUs"),
+                    flag("--y", "y", "int", "top position in EMUs"),
+                    flag("--cx", "cx", "int", "width in EMUs"),
+                    flag("--cy", "cy", "int", "height in EMUs"),
+                    flag("--out", "out", "string", "output file path"),
+                    flag("--backup", "backup", "string", "backup path for --in-place"),
+                    flag(
+                        "--dry-run",
+                        "dryRun",
+                        "bool",
+                        "plan and validate without writing",
+                    ),
+                    flag(
+                        "--in-place",
+                        "inPlace",
+                        "bool",
+                        "write back to the input file",
+                    ),
+                    flag(
+                        "--no-validate",
+                        "noValidate",
+                        "bool",
+                        "skip strict validation of the mutated package",
+                    ),
+                ],
+            );
+            create["flagConstraints"] = json!({
+                "modeFlag": "--type",
+                "modes": [
+                    {"value": "bar", "required": ["--slide", "--type"]},
+                    {"value": "line", "required": ["--slide", "--type"]},
+                    {"value": "area", "required": ["--slide", "--type"]},
+                    {"value": "pie", "required": ["--slide", "--type"], "notes": ["Pie charts use only the first series when the source has multiple series."]},
+                    {"value": "scatter", "required": ["--slide", "--type"]}
+                ],
+                "sourceModes": [
+                    {
+                        "name": "inline-json",
+                        "required": ["--values-json"],
+                        "conflictsWith": ["--values-file", "--source-file", "--source-sheet", "--source-range", "--expect-source-range", "--embed-workbook"]
+                    },
+                    {
+                        "name": "inline-file",
+                        "required": ["--values-file"],
+                        "conflictsWith": ["--values-json", "--source-file", "--source-sheet", "--source-range", "--expect-source-range", "--embed-workbook"]
+                    },
+                    {
+                        "name": "external-xlsx",
+                        "required": ["--source-file", "--source-range"],
+                        "optional": ["--source-sheet", "--expect-source-range", "--embed-workbook"],
+                        "conflictsWith": ["--values-json", "--values-file"]
+                    }
+                ],
+                "outputRequiredOneOf": ["--out", "--in-place", "--dry-run"],
+                "rules": [
+                    "--slide must be a 1-based slide number.",
+                    "--type is required and must be bar, line, area, pie, or scatter.",
+                    "Specify exactly one source family: --values-json, --values-file, or --source-file.",
+                    "--source-file requires --source-range; --source-sheet defaults to 1 when omitted."
+                ]
+            });
+            create
+        },
         capability_command(
             "ooxml pptx charts update-data",
             "update-data <file> --chart <selector> --series <n> [--values <csv>|--values-json <json>] [--categories <csv>|--categories-json <json>]",
