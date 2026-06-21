@@ -21,6 +21,12 @@ Latest milestone, 2026-06-20:
   fmt --check`, `cargo check --all-targets`, `cargo clippy --all-targets --
   -D warnings`, and the full `capabilities` Rust contract shard with 8 passed
   tests.
+- PPTX `shapes delete --target shape:<id>` now traverses nested group shapes
+  when deleting non-group children, while leaving flat direct-child helpers in
+  place for operations where grouped coordinate semantics are not yet promoted.
+  Proof: focused nested-group delete test, existing PPTX shape mutation parity
+  test, strict validation, Rust/Go `conformance check` parity, and worker-side
+  Open XML SDK validation.
 - Rust agent-facing composition and proof ergonomics moved forward after
   command-path parity: `find --to-ops`, `find --replace --to-ops`, and
   `find --replace --apply` now emit/apply structured XLSX/DOCX/PPTX ops;

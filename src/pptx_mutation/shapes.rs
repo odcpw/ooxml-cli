@@ -241,7 +241,7 @@ fn build_delete_shape_mutation(
     }
     let slide_part = pptx_slide_part(file, slide)?;
     let slide_xml = zip_text(file, &slide_part)?;
-    let shape = find_shape_span_by_id(&slide_xml, shape_id)?
+    let shape = find_shape_span_by_id_deep(&slide_xml, shape_id)?
         .ok_or_else(|| CliError::target_not_found(format!("target not found: shape:{shape_id}")))?;
     if shape.kind == "grpSp" {
         return Err(CliError::invalid_args(format!(
@@ -658,11 +658,37 @@ fn find_shape_span_by_id(xml: &str, shape_id: u32) -> CliResult<Option<ShapeSpan
         return Err(CliError::unexpected("shape tree not found in slide"));
     };
     let (content_start, content_end) = element_content_bounds(&xml[sp_tree.start..sp_tree.end])?;
-    let shapes = xml_direct_child_ranges(
+    find_shape_span_by_id_in_range(
         xml,
         sp_tree.start + content_start,
         sp_tree.start + content_end,
-    )?;
+        shape_id,
+        false,
+    )
+}
+
+fn find_shape_span_by_id_deep(xml: &str, shape_id: u32) -> CliResult<Option<ShapeSpan>> {
+    let Some(sp_tree) = find_first_element_span(xml, "spTree")? else {
+        return Err(CliError::unexpected("shape tree not found in slide"));
+    };
+    let (content_start, content_end) = element_content_bounds(&xml[sp_tree.start..sp_tree.end])?;
+    find_shape_span_by_id_in_range(
+        xml,
+        sp_tree.start + content_start,
+        sp_tree.start + content_end,
+        shape_id,
+        true,
+    )
+}
+
+fn find_shape_span_by_id_in_range(
+    xml: &str,
+    start: usize,
+    end: usize,
+    shape_id: u32,
+    recurse_groups: bool,
+) -> CliResult<Option<ShapeSpan>> {
+    let shapes = xml_direct_child_ranges(xml, start, end)?;
     for shape in shapes
         .into_iter()
         .filter(|shape| matches!(shape.kind.as_str(), "sp" | "pic" | "graphicFrame" | "grpSp"))
@@ -676,6 +702,18 @@ fn find_shape_span_by_id(xml: &str, shape_id: u32) -> CliResult<Option<ShapeSpan
                 },
                 kind: shape.kind,
             }));
+        }
+        if recurse_groups && shape.kind == "grpSp" {
+            let (content_start, content_end) = element_content_bounds(fragment)?;
+            if let Some(found) = find_shape_span_by_id_in_range(
+                xml,
+                shape.start + content_start,
+                shape.start + content_end,
+                shape_id,
+                true,
+            )? {
+                return Ok(Some(found));
+            }
         }
     }
     Ok(None)

@@ -4902,6 +4902,180 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
 }
 
 #[test]
+fn pptx_shapes_delete_nested_group_child_preserves_siblings_and_conforms() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-nested-group-delete-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx nested group temp dir");
+
+    let fixture = temp_dir.join("grouped-shapes.pptx");
+    write_grouped_shapes_pptx(&fixture);
+    let fixture_str = fixture.to_str().expect("grouped fixture path");
+
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "show",
+        fixture_str,
+        "--slide",
+        "1",
+        "--include-text",
+        "--include-bounds",
+    ]);
+    assert_eq!(show_code, 0, "nested group source show exit");
+    assert_eq!(show_stderr, None, "nested group source show stderr");
+    let show_json = show_stdout.expect("nested group source show stdout");
+    assert!(
+        pptx_show_contains_shape_id(&show_json, 3),
+        "source should publish first nested group child: {show_json}"
+    );
+    assert!(
+        pptx_show_contains_shape_id(&show_json, 4),
+        "source should publish deeper nested group child: {show_json}"
+    );
+
+    let rust_delete_out = temp_dir.join("rust-delete-nested.pptx");
+    let rust_delete_out_str = rust_delete_out.to_str().expect("rust delete nested path");
+    let (delete_code, delete_stdout, delete_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "delete",
+        fixture_str,
+        "--slide",
+        "1",
+        "--target",
+        "shape:3",
+        "--out",
+        rust_delete_out_str,
+    ]);
+    assert_eq!(delete_code, 0, "nested group child delete exit");
+    assert_eq!(delete_stderr, None, "nested group child delete stderr");
+    let delete_json = delete_stdout.expect("nested group child delete stdout");
+    assert_eq!(delete_json["shapeId"], Value::from(3));
+    assert_eq!(delete_json["deleted"]["shapeId"], Value::from(3));
+    assert!(
+        rust_delete_out.exists(),
+        "nested group delete output missing"
+    );
+
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "show",
+        rust_delete_out_str,
+        "--slide",
+        "1",
+        "--include-text",
+        "--include-bounds",
+    ]);
+    assert_eq!(show_code, 0, "nested group delete readback exit");
+    assert_eq!(show_stderr, None, "nested group delete readback stderr");
+    let show_json = show_stdout.expect("nested group delete readback stdout");
+    assert!(
+        !pptx_show_contains_shape_id(&show_json, 3),
+        "deleted nested child should be absent: {show_json}"
+    );
+    assert!(
+        pptx_show_contains_shape_id(&show_json, 4),
+        "deeper nested sibling should remain: {show_json}"
+    );
+
+    let (validate_code, validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "validate", "--strict", rust_delete_out_str]);
+    assert_eq!(validate_code, 0, "nested group delete strict validate exit");
+    assert_eq!(
+        validate_stderr, None,
+        "nested group delete strict validate stderr"
+    );
+    assert_eq!(
+        validate_stdout.expect("nested group delete validate stdout")["valid"],
+        Value::Bool(true)
+    );
+
+    let conformance_args = ["--json", "conformance", "check", rust_delete_out_str];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&conformance_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&conformance_args);
+    assert_eq!(rust_code, go_code, "nested group delete conformance exit");
+    assert_eq!(
+        rust_stderr, go_stderr,
+        "nested group delete conformance stderr"
+    );
+    assert_eq!(
+        rust_stdout, go_stdout,
+        "nested group delete conformance stdout"
+    );
+}
+
+fn pptx_show_contains_shape_id(show: &Value, shape_id: i64) -> bool {
+    show.get("shapes")
+        .and_then(Value::as_array)
+        .is_some_and(|shapes| {
+            shapes
+                .iter()
+                .any(|shape| shape.get("shapeId").and_then(Value::as_i64) == Some(shape_id))
+        })
+}
+
+fn write_grouped_shapes_pptx(dest: &Path) {
+    rewrite_zip_fixture(
+        "testdata/pptx/minimal-title/presentation.pptx",
+        dest,
+        |name, data| {
+            let data = if name == "ppt/slides/slide1.xml" {
+                grouped_shapes_slide_xml().as_bytes().to_vec()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+}
+
+fn grouped_shapes_slide_xml() -> &'static str {
+    r#"<?xml version="1.0" encoding="UTF-8"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr/>
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="2" name="Top Text"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="100000" y="100000"/><a:ext cx="2000000" cy="500000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
+        <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Top level</a:t></a:r></a:p></p:txBody>
+      </p:sp>
+      <p:grpSp>
+        <p:nvGrpSpPr><p:cNvPr id="10" name="Outer Group"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+        <p:grpSpPr><a:xfrm><a:off x="500000" y="500000"/><a:ext cx="4000000" cy="2000000"/><a:chOff x="0" y="0"/><a:chExt cx="4000000" cy="2000000"/></a:xfrm></p:grpSpPr>
+        <p:sp>
+          <p:nvSpPr><p:cNvPr id="3" name="Nested Box"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x="600000" y="700000"/><a:ext cx="1200000" cy="500000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
+          <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Delete me</a:t></a:r></a:p></p:txBody>
+        </p:sp>
+        <p:grpSp>
+          <p:nvGrpSpPr><p:cNvPr id="11" name="Inner Group"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+          <p:grpSpPr><a:xfrm><a:off x="2100000" y="800000"/><a:ext cx="1400000" cy="700000"/><a:chOff x="0" y="0"/><a:chExt cx="1400000" cy="700000"/></a:xfrm></p:grpSpPr>
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="4" name="Deep Box"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr><a:xfrm><a:off x="2200000" y="900000"/><a:ext cx="1000000" cy="400000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
+            <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Keep me</a:t></a:r></a:p></p:txBody>
+          </p:sp>
+        </p:grpSp>
+      </p:grpSp>
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>"#
+}
+
+#[test]
 fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
