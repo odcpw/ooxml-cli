@@ -8,7 +8,7 @@ use std::path::Path;
 
 use crate::{
     CliError, CliResult, RelationshipEntry, WorkbookSheet, add_relationship_to_xml,
-    allocate_relationship_id, command_arg, copy_zip_with_binary_part_overrides_and_removals,
+    allocate_relationship_id, copy_zip_with_binary_part_overrides_and_removals,
     ensure_content_type_override, local_name, needs_xml_space_preserve, normalize_xlsx_cell_ref,
     relationship_entries_from_xml, relationship_target_from_source_to_target,
     relationships_part_for, remove_xml_span, replace_xml_span, resolve_relationship_target,
@@ -16,6 +16,12 @@ use crate::{
     workbook_sheets, xlsx_ranges_set_temp_path, xml_attr_escape, xml_attrs_map,
     xml_direct_child_ranges, xml_escape, xml_open_tag_from_start, xml_tag_prefix, zip_entry_exists,
     zip_entry_names, zip_text,
+};
+
+mod output;
+
+use self::output::{
+    add_comment_readback_commands, comment_json, mutation_base_result, xlsx_comments_list_command,
 };
 
 const XLSX_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -843,143 +849,6 @@ fn render_comments_doc(doc: &XlsxCommentsDoc) -> String {
     }
     out.push_str("</commentList></comments>");
     out
-}
-
-fn mutation_base_result(
-    file: &str,
-    context: &XlsxCommentsSheet,
-    comment: &XlsxCommentInfo,
-    output: Option<&str>,
-    dry_run: bool,
-) -> Map<String, Value> {
-    let mut result = Map::new();
-    result.insert("file".to_string(), json!(file));
-    result.insert("sheet".to_string(), json!(context.sheet.name));
-    result.insert("sheetNumber".to_string(), json!(context.sheet.position));
-    result.insert("commentId".to_string(), json!(comment.id));
-    let handle = xlsx_comment_handle(&context.sheet, &context.sheets, &comment.anchored_to_cell);
-    if !handle.is_empty() {
-        result.insert("handle".to_string(), json!(handle.clone()));
-    }
-    result.insert(
-        "primarySelector".to_string(),
-        json!(xlsx_comment_primary_selector(&handle, comment.id)),
-    );
-    result.insert(
-        "selectors".to_string(),
-        json!(xlsx_comment_selectors(
-            &handle,
-            comment.id,
-            &comment.anchored_to_cell
-        )),
-    );
-    if let Some(output) = output {
-        result.insert("output".to_string(), json!(output));
-    }
-    result.insert("dryRun".to_string(), json!(dry_run));
-    result
-}
-
-fn comment_json(
-    comment: &XlsxCommentInfo,
-    sheet: &WorkbookSheet,
-    sheets: &[WorkbookSheet],
-) -> Value {
-    let handle = xlsx_comment_handle(sheet, sheets, &comment.anchored_to_cell);
-    let mut item = Map::new();
-    item.insert("id".to_string(), json!(comment.id));
-    item.insert("author".to_string(), json!(comment.author));
-    item.insert("text".to_string(), json!(comment.text));
-    item.insert("contentHash".to_string(), json!(comment.content_hash));
-    item.insert(
-        "anchoredToCell".to_string(),
-        json!(comment.anchored_to_cell),
-    );
-    if let Some(row) = comment.anchored_to_cell_row {
-        item.insert("anchoredToCellRow".to_string(), json!(row));
-    }
-    if let Some(col) = comment.anchored_to_cell_column {
-        item.insert("anchoredToCellColumn".to_string(), json!(col));
-    }
-    if !handle.is_empty() {
-        item.insert("handle".to_string(), json!(handle.clone()));
-    }
-    item.insert(
-        "primarySelector".to_string(),
-        json!(xlsx_comment_primary_selector(&handle, comment.id)),
-    );
-    item.insert(
-        "selectors".to_string(),
-        json!(xlsx_comment_selectors(
-            &handle,
-            comment.id,
-            &comment.anchored_to_cell
-        )),
-    );
-    Value::Object(item)
-}
-
-fn xlsx_comment_handle(sheet: &WorkbookSheet, sheets: &[WorkbookSheet], cell: &str) -> String {
-    if cell.trim().is_empty() {
-        return String::new();
-    }
-    let count = sheets
-        .iter()
-        .filter(|candidate| candidate.sheet_id == sheet.sheet_id)
-        .count();
-    if count != 1 {
-        return String::new();
-    }
-    format!("H:xlsx/ws:{}/comment:a:{cell}", sheet.sheet_id)
-}
-
-fn xlsx_comment_primary_selector(handle: &str, comment_id: i64) -> String {
-    if !handle.trim().is_empty() {
-        handle.to_string()
-    } else if comment_id >= 0 {
-        comment_id.to_string()
-    } else {
-        String::new()
-    }
-}
-
-fn xlsx_comment_selectors(handle: &str, comment_id: i64, cell: &str) -> Vec<String> {
-    let mut selectors = Vec::new();
-    if !handle.trim().is_empty() {
-        selectors.push(handle.to_string());
-    }
-    if comment_id >= 0 {
-        selectors.push(comment_id.to_string());
-    }
-    if !cell.trim().is_empty() {
-        selectors.push(cell.to_string());
-    }
-    selectors
-}
-
-fn xlsx_comments_list_command(file: &str, sheet: &WorkbookSheet) -> String {
-    format!(
-        "ooxml --json xlsx comments list {} --sheet {}",
-        command_arg(file),
-        command_arg(&format!("sheetId:{}", sheet.sheet_id))
-    )
-}
-
-fn add_comment_readback_commands(
-    result: &mut Map<String, Value>,
-    output: Option<&str>,
-    sheet: &WorkbookSheet,
-) {
-    if let Some(output) = output {
-        result.insert(
-            "validateCommand".to_string(),
-            json!(format!("ooxml validate --strict {}", command_arg(output))),
-        );
-        result.insert(
-            "listCommand".to_string(),
-            json!(xlsx_comments_list_command(output, sheet)),
-        );
-    }
 }
 
 fn resolve_comment_mutation_target(
