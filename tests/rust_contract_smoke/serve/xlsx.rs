@@ -377,6 +377,175 @@ fn serve_inspect_supports_xlsx_tables_show() {
 }
 
 #[test]
+fn serve_op_supports_xlsx_conditional_formats_add_delete() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-cf-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("serve-cf-out.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(
+        1,
+        "open",
+        serde_json::json!({"file": input_str, "out": output_str}),
+    );
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let add_cell_is = rpc_request(
+        2,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx conditional-formats add",
+            "args": {
+                "sheet": "1",
+                "range": "A1:A5",
+                "type": "cell-is",
+                "operator": "between",
+                "formula": "1",
+                "formula2": "10",
+                "priority": 4
+            },
+        }),
+    );
+    let add_cell_is_response = serve_roundtrip(&mut stdin, &mut reader, &add_cell_is);
+    assert!(
+        add_cell_is_response.get("error").is_none(),
+        "conditional-format cellIs add op failed: {add_cell_is_response:?}"
+    );
+    let cell_is_readback = &add_cell_is_response["result"]["readback"];
+    assert_eq!(cell_is_readback["rule"]["type"], "cellIs");
+    assert_eq!(cell_is_readback["rule"]["operator"], "between");
+    assert_eq!(cell_is_readback["rule"]["formulas"], serde_json::json!(["1", "10"]));
+
+    let add_expression = rpc_request(
+        3,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx cf add",
+            "args": {
+                "sheet": "1",
+                "range": "B1:B5",
+                "formula": "B1>0",
+                "priority": 5,
+                "stopIfTrue": true
+            },
+        }),
+    );
+    let add_expression_response = serve_roundtrip(&mut stdin, &mut reader, &add_expression);
+    assert!(
+        add_expression_response.get("error").is_none(),
+        "conditional-format expression add op failed: {add_expression_response:?}"
+    );
+    assert_eq!(
+        add_expression_response["result"]["readback"]["rule"]["type"],
+        "expression"
+    );
+    assert_eq!(
+        add_expression_response["result"]["readback"]["rule"]["formula"],
+        "B1>0"
+    );
+
+    let delete_expression = rpc_request(
+        4,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx conditional-formats delete",
+            "args": {"sheet": "1", "rule": "priority:5"},
+        }),
+    );
+    let delete_response = serve_roundtrip(&mut stdin, &mut reader, &delete_expression);
+    assert!(
+        delete_response.get("error").is_none(),
+        "conditional-format delete op failed: {delete_response:?}"
+    );
+    assert_eq!(delete_response["result"]["readback"]["action"], "delete");
+    assert_eq!(delete_response["result"]["readback"]["rule"]["priority"], 5);
+
+    let plan = rpc_request(5, "plan", serde_json::json!({"session": session}));
+    let plan_response = serve_roundtrip(&mut stdin, &mut reader, &plan);
+    let plan_items = plan_response["result"]["plan"]
+        .as_array()
+        .expect("planned operations");
+    assert_eq!(plan_items.len(), 3);
+    assert_eq!(plan_items[0]["argv"][1], "conditional-formats");
+    assert_eq!(plan_items[0]["argv"][2], "add");
+    assert_eq!(plan_items[1]["argv"][2], "add");
+    assert_eq!(plan_items[2]["argv"][2], "delete");
+    assert!(
+        plan_items[0]["argv"]
+            .as_array()
+            .expect("add plan argv")
+            .iter()
+            .any(|arg| arg == "--formula2")
+    );
+
+    let commit = rpc_request(6, "commit", serde_json::json!({"session": session}));
+    let commit_response = serve_roundtrip(&mut stdin, &mut reader, &commit);
+    assert!(
+        commit_response.get("error").is_none(),
+        "conditional-format commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+    assert_eq!(
+        commit_response["result"]["applied"][0]["readback"]["file"],
+        Value::String(output_str.clone())
+    );
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "conditional formats serve validate exit");
+    assert_eq!(
+        validate_stderr, None,
+        "conditional formats serve validate stderr"
+    );
+
+    let (list_code, list_stdout, list_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "list",
+        &output_str,
+        "--sheet",
+        "1",
+    ]);
+    assert_eq!(list_code, 0, "conditional formats serve list exit");
+    assert_eq!(list_stderr, None, "conditional formats serve list stderr");
+    let list = list_stdout.expect("conditional formats serve output list");
+    assert_eq!(list["count"], Value::from(1));
+    assert_eq!(list["rules"][0]["type"], "cellIs");
+    assert_eq!(list["rules"][0]["operator"], "between");
+    assert_eq!(list["rules"][0]["formulas"], serde_json::json!(["1", "10"]));
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_op_supports_xlsx_ranges_set() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-ranges-set-{}",

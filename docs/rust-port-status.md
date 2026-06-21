@@ -9,6 +9,16 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-21:
 
+- Agent-facing conditional-formatting support was closed through the serve
+  JSON-RPC op path: `xlsx conditional-formats add/delete` now work as session
+  mutations with plan/readback/commit behavior, including `cellIs` `--operator`
+  and `--formula2`. Two behavior-preserving split lanes also landed: PPTX notes
+  contract tests moved into a child shard, and XLSX conditional-formatting sqref
+  math/XML helpers moved into private child modules. Proof: `cargo fmt
+  --check`, `cargo check --all-targets`, clippy with warnings denied, focused
+  `serve_op_supports_xlsx_conditional_formats_add_delete`, focused
+  `pptx_notes`, focused default-oracle `xlsx_conditional`, full `serve`
+  contract filter, and full `capabilities` contract filter.
 - XLSX conditional-formatting now covers the first useful Go-oracle and Rust
   parity slice for expression and `cellIs` rules: `xlsx
   conditional-formats list/show/add/delete` supports stable selectors,

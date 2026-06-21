@@ -3,11 +3,12 @@ use serde_json::{Value, json};
 use crate::{
     CliError, CliResult, XlsxCellsSetOptions, XlsxChartSetSeriesStyleOptions,
     XlsxColWidthsSetOptions, XlsxCommentsAddOptions, XlsxCommentsRemoveOptions,
-    XlsxCommentsUpdateOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions,
-    XlsxRowHeightsSetOptions, XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions,
-    XlsxWorkbookMetadataUpdateOptions, json_bool, json_i64, json_optional_serialized,
-    json_optional_string, json_string, xlsx_cells_set, xlsx_charts_set_series_style,
-    xlsx_colwidths_set, xlsx_comments_add, xlsx_comments_remove, xlsx_comments_update,
+    XlsxCommentsUpdateOptions, XlsxConditionalFormatMutationOptions, XlsxRangesSetFormatOptions,
+    XlsxRangesSetOptions, XlsxRowHeightsSetOptions, XlsxTablesAppendRecordsOptions,
+    XlsxTablesAppendRowsOptions, XlsxWorkbookMetadataUpdateOptions, json_bool, json_i64,
+    json_optional_serialized, json_optional_string, json_string, xlsx_cells_set,
+    xlsx_charts_set_series_style, xlsx_colwidths_set, xlsx_comments_add, xlsx_comments_remove,
+    xlsx_comments_update, xlsx_conditional_formats_add, xlsx_conditional_formats_delete,
     xlsx_ranges_set, xlsx_ranges_set_format, xlsx_rowheights_set, xlsx_tables_append_records,
     xlsx_tables_append_rows, xlsx_workbook_metadata_update,
 };
@@ -179,6 +180,110 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
             push_serve_plan_string_flag(&mut plan_flags, "--expect-hash", expect_hash.as_deref());
             ServeOp::XlsxCommentsOp {
                 command: command.to_string(),
+                plan_flags,
+                readback_file: working.to_string(),
+                readback,
+            }
+        }
+        "xlsx conditional-formats add"
+        | "xlsx conditional-formatting add"
+        | "xlsx conditional-format add"
+        | "xlsx cf add" => {
+            let sheet = json_optional_string(args, "sheet");
+            let range = json_string(args, "range")?;
+            let rule_type = json_optional_string(args, "type");
+            let operator = json_optional_string(args, "operator");
+            let formula = json_string(args, "formula")?;
+            let formula2 = json_optional_string(args, "formula2");
+            let priority = json_i64(args, "priority")?;
+            let stop_if_true =
+                json_bool(args, "stop-if-true").or_else(|| json_bool(args, "stopIfTrue"));
+            let dxf_id = match json_i64(args, "dxf-id")? {
+                Some(value) => Some(value),
+                None => json_i64(args, "dxfId")?,
+            };
+            let readback = xlsx_conditional_formats_add(
+                working,
+                XlsxConditionalFormatMutationOptions {
+                    sheet: sheet.as_deref(),
+                    range: Some(&range),
+                    rule: None,
+                    formula: Some(&formula),
+                    rule_type: rule_type.as_deref(),
+                    operator: operator.as_deref(),
+                    formula2: formula2.as_deref(),
+                    has_formula2: args.get("formula2").is_some(),
+                    priority,
+                    stop_if_true: stop_if_true.unwrap_or(false),
+                    has_stop_if_true: stop_if_true.is_some(),
+                    dxf_id,
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    no_validate: true,
+                    in_place: true,
+                },
+            )?;
+            let mut plan_flags = Vec::new();
+            push_serve_plan_string_flag(&mut plan_flags, "--sheet", sheet.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--range", Some(&range));
+            push_serve_plan_string_flag(&mut plan_flags, "--type", rule_type.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--operator", operator.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--formula", Some(&formula));
+            push_serve_plan_string_flag(&mut plan_flags, "--formula2", formula2.as_deref());
+            if let Some(priority) = priority {
+                plan_flags.push(json!("--priority"));
+                plan_flags.push(json!(priority.to_string()));
+            }
+            push_serve_plan_bool_flag(&mut plan_flags, "--stop-if-true", stop_if_true);
+            if let Some(dxf_id) = dxf_id {
+                plan_flags.push(json!("--dxf-id"));
+                plan_flags.push(json!(dxf_id.to_string()));
+            }
+            ServeOp::XlsxConditionalFormatsOp {
+                command: "xlsx conditional-formats add".to_string(),
+                plan_flags,
+                readback_file: working.to_string(),
+                readback,
+            }
+        }
+        "xlsx conditional-formats delete"
+        | "xlsx conditional-formats remove"
+        | "xlsx conditional-formatting delete"
+        | "xlsx conditional-formatting remove"
+        | "xlsx conditional-format delete"
+        | "xlsx conditional-format remove"
+        | "xlsx cf delete"
+        | "xlsx cf remove" => {
+            let sheet = json_optional_string(args, "sheet");
+            let rule = json_string(args, "rule")?;
+            let readback = xlsx_conditional_formats_delete(
+                working,
+                XlsxConditionalFormatMutationOptions {
+                    sheet: sheet.as_deref(),
+                    range: None,
+                    rule: Some(&rule),
+                    formula: None,
+                    rule_type: None,
+                    operator: None,
+                    formula2: None,
+                    has_formula2: false,
+                    priority: None,
+                    stop_if_true: false,
+                    has_stop_if_true: false,
+                    dxf_id: None,
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    no_validate: true,
+                    in_place: true,
+                },
+            )?;
+            let mut plan_flags = Vec::new();
+            push_serve_plan_string_flag(&mut plan_flags, "--sheet", sheet.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--rule", Some(&rule));
+            ServeOp::XlsxConditionalFormatsOp {
+                command: "xlsx conditional-formats delete".to_string(),
                 plan_flags,
                 readback_file: working.to_string(),
                 readback,

@@ -79,6 +79,12 @@ pub(super) enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    XlsxConditionalFormatsOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
     XlsxDimensionsOp {
         command: String,
         plan_flags: Vec<Value>,
@@ -169,6 +175,7 @@ impl ServeOp {
             | ServeOp::XlsxRangeSetFormat { command, .. }
             | ServeOp::XlsxWorkbookMetadataUpdate { command, .. }
             | ServeOp::XlsxCommentsOp { command, .. }
+            | ServeOp::XlsxConditionalFormatsOp { command, .. }
             | ServeOp::XlsxDimensionsOp { command, .. }
             | ServeOp::XlsxTablesOp { command, .. }
             | ServeOp::XlsxChartsOp { command, .. }
@@ -381,6 +388,27 @@ impl ServeOp {
                 let mut argv = vec![
                     json!("xlsx"),
                     json!("comments"),
+                    json!(verb),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
+            ServeOp::XlsxConditionalFormatsOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command.split_whitespace().nth(2).unwrap_or("add");
+                let mut argv = vec![
+                    json!("xlsx"),
+                    json!("conditional-formats"),
                     json!(verb),
                     json!(source_file),
                 ];
@@ -727,6 +755,11 @@ impl ServeOp {
                 ..
             }
             | ServeOp::XlsxCommentsOp {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::XlsxConditionalFormatsOp {
                 readback_file,
                 readback,
                 ..
