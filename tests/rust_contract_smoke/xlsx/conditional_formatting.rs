@@ -39,7 +39,7 @@ fn xlsx_conditional_formats_list_show_match_go_oracle() {
 </worksheet>"#,
     );
     let workbook = workbook.to_string_lossy().to_string();
-    assert_current_go_rust_match(&[
+    assert_go_rust_match(&[
         "--json",
         "xlsx",
         "conditional-formatting",
@@ -48,7 +48,7 @@ fn xlsx_conditional_formats_list_show_match_go_oracle() {
         "--sheet",
         "Sheet1",
     ]);
-    assert_current_go_rust_match(&[
+    assert_go_rust_match(&[
         "--json",
         "xlsx",
         "conditional-formats",
@@ -59,7 +59,7 @@ fn xlsx_conditional_formats_list_show_match_go_oracle() {
         "--range",
         "A1:A5",
     ]);
-    assert_current_go_rust_match(&[
+    assert_go_rust_match(&[
         "--json",
         "xlsx",
         "cf",
@@ -70,7 +70,7 @@ fn xlsx_conditional_formats_list_show_match_go_oracle() {
         "--rule",
         "priority:3",
     ]);
-    assert_current_go_rust_match(&[
+    assert_go_rust_match(&[
         "--json",
         "xlsx",
         "conditional-format",
@@ -412,7 +412,7 @@ fn xlsx_conditional_formats_cell_is_saved_outputs_match_go_oracle() {
 }
 
 #[test]
-fn xlsx_conditional_formats_color_scale_saved_outputs_match_current_go_oracle() {
+fn xlsx_conditional_formats_color_scale_saved_outputs_match_go_oracle() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-cf-colorscale-{}",
         std::process::id()
@@ -460,7 +460,7 @@ fn xlsx_conditional_formats_color_scale_saved_outputs_match_current_go_oracle() 
     go_args.push(&go_out);
     let mut rust_args = add_common.to_vec();
     rust_args.push(&rust_out);
-    let (go_code, go_stdout, go_stderr) = run_current_go_ooxml(&go_args);
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
     assert_eq!(rust_code, go_code, "color-scale add exit");
     assert_eq!(rust_stderr, go_stderr, "color-scale add stderr");
@@ -517,7 +517,7 @@ fn xlsx_conditional_formats_color_scale_saved_outputs_match_current_go_oracle() 
         "--rule",
         "cfRule:1",
     ];
-    let (go_code, go_show, go_stderr) = run_current_go_ooxml(&show_go);
+    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
     assert_eq!(rust_code, go_code, "saved color-scale show exit");
     assert_eq!(rust_stderr, go_stderr, "saved color-scale show stderr");
@@ -773,54 +773,6 @@ fn write_tiny_xlsm_with_opaque_vba_project(dest: &Path) {
         .write_all(b"opaque synthetic vba payload for package preservation")
         .expect("write vbaProject.bin bytes");
     writer.finish().expect("finish xlsm");
-}
-
-static CURRENT_GO_OOXML_BIN: OnceLock<PathBuf> = OnceLock::new();
-
-fn run_current_go_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
-    let output = Command::new(current_go_ooxml_binary())
-        .args(args)
-        .env("GOCACHE", go_cache_dir())
-        .output()
-        .expect("run current Go ooxml oracle");
-    let code = output.status.code().unwrap_or(-1);
-    let stdout = parse_json(&output.stdout);
-    let stderr = parse_json(&output.stderr);
-    (code, stdout, stderr)
-}
-
-fn assert_current_go_rust_match(args: &[&str]) {
-    let (go_code, go_stdout, go_stderr) = run_current_go_ooxml(args);
-    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(args);
-    assert_eq!(rust_code, go_code, "current Go exit code for {args:?}");
-    assert_eq!(rust_stderr, go_stderr, "current Go stderr for {args:?}");
-    assert_eq!(rust_stdout, go_stdout, "current Go stdout for {args:?}");
-}
-
-fn current_go_ooxml_binary() -> &'static PathBuf {
-    CURRENT_GO_OOXML_BIN.get_or_init(|| {
-        let binary_name = if cfg!(windows) {
-            format!("ooxml-current-go-oracle-{}.exe", std::process::id())
-        } else {
-            format!("ooxml-current-go-oracle-{}", std::process::id())
-        };
-        let binary = std::env::temp_dir().join(binary_name);
-        let output = Command::new("go")
-            .args(["build", "-buildvcs=false", "-o"])
-            .arg(&binary)
-            .arg("./cmd/ooxml")
-            .current_dir(std::env::current_dir().expect("current repo dir"))
-            .env("GOCACHE", go_cache_dir())
-            .output()
-            .expect("build current Go ooxml oracle");
-        assert!(
-            output.status.success(),
-            "build current Go ooxml oracle failed\nstdout:\n{}\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        binary
-    })
 }
 
 fn assert_vba_package_entries_present(content_types: &str, workbook_rels: &str) {
