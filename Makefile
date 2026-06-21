@@ -1,54 +1,45 @@
-.PHONY: build test test-race-coverage test-short test-roundtrip rust-test rust-contract fixtures install clean help render-smoke web-smoke-agent web-smoke-nonpptx office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check vet verify verify-strict
+.PHONY: build test test-unit test-smoke fixtures install clean help web-smoke-agent web-smoke-nonpptx office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check clippy verify verify-strict go-reference-build go-reference-test go-reference-test-short go-reference-contract go-reference-fmt-check go-reference-vet go-reference-render-smoke
 
 # Default target
 .DEFAULT_GOAL := help
 
 # Variables
 BINARY_NAME := ooxml
-MAIN_PATH := ./cmd/ooxml
-INSTALL_PATH := $(shell go env GOPATH)/bin
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+CARGO ?= cargo
+GO ?= go
+GO_REFERENCE_DIR ?= $(if $(wildcard go/go.mod),go,.)
+
+ifeq ($(OS),Windows_NT)
+EXE := .exe
+else
+EXE :=
+endif
+
+RUST_DEBUG_BIN := target/debug/$(BINARY_NAME)$(EXE)
+GO_REFERENCE_BIN := target/go-reference/$(BINARY_NAME)$(EXE)
 
 # help: Show this help message
 help:
 	@echo "ooxml-cli build targets:"
 	@echo ""
-	@sed -n 's/^# //p' $(MAKEFILE_LIST) | sed -n '/^[a-z]/p' | awk -F': ' '{printf "  %-20s %s\n", $$1, $$2}'
+	@sed -n 's/^# //p' $(MAKEFILE_LIST) | sed -n '/^[a-z]/p' | awk -F': ' '{printf "  %-28s %s\n", $$1, $$2}'
 
-# build: Build the ooxml binary
+# build: Build the Rust ooxml binary
 build:
-	@echo "Building $(BINARY_NAME)..."
-	@go build -ldflags "-X github.com/ooxml-cli/ooxml-cli/internal/cli.Version=$(VERSION)" -o $(BINARY_NAME) $(MAIN_PATH)
-	@echo "✓ Built $(BINARY_NAME)"
+	@echo "Building Rust $(BINARY_NAME)..."
+	@$(CARGO) build --bin $(BINARY_NAME)
+	@echo "Built $(RUST_DEBUG_BIN)"
 
-# test: Run all tests with race detector and coverage
-test: test-race-coverage
+# test: Run the normal Rust test gate without live Go oracle calls
+test: test-unit test-smoke
 
-# test-race-coverage: Run all tests with race detector and coverage
-test-race-coverage:
-	@echo "Running tests..."
-	@go test -v -race -coverprofile=coverage.txt ./...
-	@echo "✓ Tests passed"
+# test-unit: Run Rust unit tests for the CLI binary
+test-unit:
+	@$(CARGO) test --bin $(BINARY_NAME)
 
-# test-short: Run tests in short mode (faster, no integration tests)
-test-short:
-	@echo "Running tests (short mode)..."
-	@go test -short -race ./...
-	@echo "✓ Tests passed"
-
-# test-roundtrip: Run no-op roundtrip preservation tests
-test-roundtrip:
-	@echo "Running roundtrip preservation tests..."
-	@go test -v -run TestRoundtrip ./pkg/opc/...
-	@echo "✓ Roundtrip tests passed"
-
-# rust-test: Run the Rust port tests
-rust-test:
-	@cargo test
-
-# rust-contract: Run the Rust port frozen Go-baseline contract smoke
-rust-contract:
-	@cargo test --test rust_contract_smoke
+# test-smoke: Run the frozen Rust integration smoke that does not invoke Go
+test-smoke:
+	@$(CARGO) test --test rust_contract_smoke frozen_cli_slice_matches_go_baseline -- --exact
 
 # fixtures: Generate test fixtures using python-pptx
 fixtures:
@@ -91,44 +82,33 @@ fixtures:
 	python testdata/generate/python/create_producer_fixtures.py && \
 	python testdata/generate/python/create_xlsx_fixtures.py && \
 	python testdata/generate/python/create_docx_fixtures.py
-	@echo "✓ Test fixtures generated"
+	@echo "Test fixtures generated"
 
-# render-smoke: Run the Linux render smoke test
-render-smoke:
-	@echo "Running render smoke test..."
-	@go test -v ./pkg/render -run TestRenderSmokeMinimalTitle
-	@echo "✓ Render smoke test passed"
-
-# web-smoke-agent: Run the web agent smoke against the freshly built local binary (requires a running web server)
+# web-smoke-agent: Run the web agent smoke against the freshly built local Rust binary
 web-smoke-agent: build
-	@cd web && OOXML_BIN="$(abspath $(BINARY_NAME))" npm run smoke:agent
+	@cd web && OOXML_BIN="$(abspath $(RUST_DEBUG_BIN))" npm run smoke:agent
 
-# web-smoke-nonpptx: Run the web DOCX/XLSX smoke against the freshly built local binary (requires a running web server)
+# web-smoke-nonpptx: Run the web DOCX/XLSX smoke against the freshly built local Rust binary
 web-smoke-nonpptx: build
-	@cd web && OOXML_BIN="$(abspath $(BINARY_NAME))" npm run smoke:nonpptx
+	@cd web && OOXML_BIN="$(abspath $(RUST_DEBUG_BIN))" npm run smoke:nonpptx
 
-# check-fast: Run the fastest normal Go test loop
+# check-fast: Compile all Rust targets without running live Go oracle tests
 check-fast:
-	@go test -short ./...
+	@$(CARGO) check --all-targets
 
-# check-local: Run the normal local Go test gate
-check-local:
-	@go test ./...
+# check-local: Run the normal local Rust gate
+check-local: fmt-check check-fast clippy test build
 
-# check-ci: Run the Linux CI-equivalent gate
-check-ci:
-	@$(MAKE) check-local
-	@$(MAKE) render-smoke
-	@$(MAKE) vet
-	@$(MAKE) build
+# check-ci: Run the Rust CI-equivalent gate
+check-ci: verify
 
-# office-edit-smoke: Windows only: build, mutate DOCX/XLSX/PPTX fixtures, validate with Open XML SDK, and open outputs in desktop Office
-office-edit-smoke:
-	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk
+# office-edit-smoke: Windows only: build Rust, mutate DOCX/XLSX/PPTX fixtures, validate with Open XML SDK, and open outputs in desktop Office
+office-edit-smoke: build
+	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath "$(abspath $(RUST_DEBUG_BIN))" -SkipBuild -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk
 
-# office-edit-smoke-fast: Windows only: run mutation validation plus Open XML SDK schema validation, skipping desktop Office COM
-office-edit-smoke-fast:
-	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -RequireOpenXmlSdk -SkipOffice
+# office-edit-smoke-fast: Windows only: run Rust mutation validation plus Open XML SDK schema validation, skipping desktop Office COM
+office-edit-smoke-fast: build
+	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath "$(abspath $(RUST_DEBUG_BIN))" -SkipBuild -MutationParallelism 4 -RequireOpenXmlSdk -SkipOffice
 
 # office-edit-smoke-windows: Alias for office-edit-smoke
 office-edit-smoke-windows: office-edit-smoke
@@ -154,44 +134,66 @@ check-office-vba-schema: office-vba-smoke-fast
 check-office-vba-com: office-vba-smoke
 
 # check-release-fast: Release readiness without Office COM: verify + edit smoke + Open XML SDK + conformance
-check-release-fast:
+check-release-fast: build
 	@$(MAKE) verify
-	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice
+	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath "$(abspath $(RUST_DEBUG_BIN))" -SkipBuild -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice
 
 # check-release-slow: Release readiness with Office COM: verify + edit smoke + Open XML SDK + conformance + desktop Office open
-check-release-slow:
+check-release-slow: build
 	@$(MAKE) verify
-	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance
+	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath "$(abspath $(RUST_DEBUG_BIN))" -SkipBuild -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance
 	@$(MAKE) office-vba-smoke
 
-# install: Install the binary to GOPATH/bin
+# install: Install the Rust binary with cargo
 install: build
-	@echo "Installing $(BINARY_NAME) to $(INSTALL_PATH)..."
-	@go install -ldflags "-X github.com/ooxml-cli/ooxml-cli/internal/cli.Version=$(VERSION)" $(MAIN_PATH)
-	@echo "✓ Installed to $(INSTALL_PATH)/$(BINARY_NAME)"
+	@$(CARGO) install --path . --bin $(BINARY_NAME)
 
-# clean: Remove build artifacts
+# clean: Remove Rust build artifacts
 clean:
-	@echo "Cleaning up..."
-	@rm -f $(BINARY_NAME)
-	@rm -f coverage.txt
-	@go clean ./...
-	@echo "✓ Clean complete"
+	@$(CARGO) clean
 
-# fmt-check: Check Go formatting without modifying files
+# fmt-check: Check Rust formatting without modifying files
 fmt-check:
-	@echo "Checking gofmt..."
-	@files="$$(gofmt -l $$(git ls-files '*.go'))"; if [ -n "$$files" ]; then echo "$$files"; exit 1; fi
+	@$(CARGO) fmt --all -- --check
 
-# vet: Run go vet
-vet:
-	@echo "Running go vet..."
-	@go vet ./...
+# clippy: Run Rust clippy with warnings denied
+clippy:
+	@$(CARGO) clippy --all-targets -- -D warnings
 
-# verify: Run the normal local test gate without the repo-wide formatting gate
-verify: vet check-local
-	@echo "✓ Verification passed"
+# verify: Run the normal Rust verification gate
+verify: check-local
+	@echo "Verification passed"
 
-# verify-strict: Run gofmt check, vet, and the normal local test gate
-verify-strict: fmt-check vet check-local
-	@echo "✓ Strict verification passed"
+# verify-strict: Run the normal Rust gate plus doc tests
+verify-strict: verify
+	@$(CARGO) test --doc
+	@echo "Strict verification passed"
+
+# go-reference-build: Optional legacy Go reference build; not part of normal CI
+go-reference-build:
+	@mkdir -p target/go-reference
+	@$(GO) -C "$(GO_REFERENCE_DIR)" build -buildvcs=false -o "$(abspath $(GO_REFERENCE_BIN))" ./cmd/ooxml
+
+# go-reference-test: Optional legacy Go reference test suite; not part of normal CI
+go-reference-test:
+	@$(GO) -C "$(GO_REFERENCE_DIR)" test ./...
+
+# go-reference-test-short: Optional fast legacy Go reference tests; not part of normal CI
+go-reference-test-short:
+	@$(GO) -C "$(GO_REFERENCE_DIR)" test -short ./...
+
+# go-reference-contract: Optional live Go-vs-Rust parity contract; not part of normal CI
+go-reference-contract:
+	@$(CARGO) test --test rust_contract_smoke
+
+# go-reference-fmt-check: Optional legacy Go formatting check; not part of normal CI
+go-reference-fmt-check:
+	@cd "$(GO_REFERENCE_DIR)" && files="$$(gofmt -l $$(git ls-files '*.go'))"; if [ -n "$$files" ]; then echo "$$files"; exit 1; fi
+
+# go-reference-vet: Optional legacy Go vet check; not part of normal CI
+go-reference-vet:
+	@$(GO) -C "$(GO_REFERENCE_DIR)" vet ./...
+
+# go-reference-render-smoke: Optional legacy Go render smoke; not part of normal CI
+go-reference-render-smoke:
+	@$(GO) -C "$(GO_REFERENCE_DIR)" test -v ./pkg/render -run TestRenderSmokeMinimalTitle
