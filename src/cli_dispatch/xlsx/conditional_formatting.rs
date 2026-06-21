@@ -38,6 +38,8 @@ pub(super) fn dispatch_xlsx_conditional_formatting(args: &[String]) -> CliResult
                     "--operator",
                     "--formula",
                     "--formula2",
+                    "--cfvo",
+                    "--color",
                     "--priority",
                     "--dxf-id",
                     "--out",
@@ -51,6 +53,8 @@ pub(super) fn dispatch_xlsx_conditional_formatting(args: &[String]) -> CliResult
             let operator = parse_string_flag(rest, "--operator")?;
             let formula = parse_string_flag(rest, "--formula")?;
             let formula2 = parse_string_flag(rest, "--formula2")?;
+            let cfvo = parse_string_flags(rest, "--cfvo")?;
+            let colors = parse_string_flags(rest, "--color")?;
             let priority = parse_i64_flag(rest, "--priority")?;
             let dxf_id = parse_i64_flag(rest, "--dxf-id")?;
             let out = parse_string_flag(rest, "--out")?;
@@ -66,6 +70,8 @@ pub(super) fn dispatch_xlsx_conditional_formatting(args: &[String]) -> CliResult
                     operator: operator.as_deref(),
                     formula2: formula2.as_deref(),
                     has_formula2: value_flag_present(rest, "--formula2"),
+                    cfvo,
+                    colors,
                     priority,
                     stop_if_true: has_flag(rest, "--stop-if-true"),
                     has_stop_if_true: value_flag_present(rest, "--stop-if-true"),
@@ -101,6 +107,8 @@ pub(super) fn dispatch_xlsx_conditional_formatting(args: &[String]) -> CliResult
                     operator: None,
                     formula2: None,
                     has_formula2: false,
+                    cfvo: Vec::new(),
+                    colors: Vec::new(),
                     priority: None,
                     stop_if_true: false,
                     has_stop_if_true: false,

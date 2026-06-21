@@ -193,8 +193,13 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
             let range = json_string(args, "range")?;
             let rule_type = json_optional_string(args, "type");
             let operator = json_optional_string(args, "operator");
-            let formula = json_string(args, "formula")?;
+            let formula = json_optional_string(args, "formula");
             let formula2 = json_optional_string(args, "formula2");
+            let cfvo = json_string_list(args, "cfvo")?;
+            let colors = match json_string_list(args, "color")? {
+                values if values.is_empty() => json_string_list(args, "colors")?,
+                values => values,
+            };
             let priority = json_i64(args, "priority")?;
             let stop_if_true =
                 json_bool(args, "stop-if-true").or_else(|| json_bool(args, "stopIfTrue"));
@@ -208,11 +213,13 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                     sheet: sheet.as_deref(),
                     range: Some(&range),
                     rule: None,
-                    formula: Some(&formula),
+                    formula: formula.as_deref(),
                     rule_type: rule_type.as_deref(),
                     operator: operator.as_deref(),
                     formula2: formula2.as_deref(),
                     has_formula2: args.get("formula2").is_some(),
+                    cfvo: cfvo.clone(),
+                    colors: colors.clone(),
                     priority,
                     stop_if_true: stop_if_true.unwrap_or(false),
                     has_stop_if_true: stop_if_true.is_some(),
@@ -229,8 +236,14 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
             push_serve_plan_string_flag(&mut plan_flags, "--range", Some(&range));
             push_serve_plan_string_flag(&mut plan_flags, "--type", rule_type.as_deref());
             push_serve_plan_string_flag(&mut plan_flags, "--operator", operator.as_deref());
-            push_serve_plan_string_flag(&mut plan_flags, "--formula", Some(&formula));
+            push_serve_plan_string_flag(&mut plan_flags, "--formula", formula.as_deref());
             push_serve_plan_string_flag(&mut plan_flags, "--formula2", formula2.as_deref());
+            for value in &cfvo {
+                push_serve_plan_string_flag(&mut plan_flags, "--cfvo", Some(value));
+            }
+            for value in &colors {
+                push_serve_plan_string_flag(&mut plan_flags, "--color", Some(value));
+            }
             if let Some(priority) = priority {
                 plan_flags.push(json!("--priority"));
                 plan_flags.push(json!(priority.to_string()));
@@ -268,6 +281,8 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                     operator: None,
                     formula2: None,
                     has_formula2: false,
+                    cfvo: Vec::new(),
+                    colors: Vec::new(),
                     priority: None,
                     stop_if_true: false,
                     has_stop_if_true: false,
@@ -812,6 +827,26 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
 fn json_number_string(args: &Value, field: &str) -> CliResult<String> {
     json_optional_number_string(args, field)?
         .ok_or_else(|| CliError::invalid_args(format!("{field} is required")))
+}
+
+fn json_string_list(args: &Value, field: &str) -> CliResult<Vec<String>> {
+    let Some(value) = args.get(field) else {
+        return Ok(Vec::new());
+    };
+    match value {
+        Value::String(text) => Ok(vec![text.clone()]),
+        Value::Array(items) => items
+            .iter()
+            .map(|item| {
+                item.as_str()
+                    .map(ToString::to_string)
+                    .ok_or_else(|| CliError::invalid_args(format!("{field} must contain strings")))
+            })
+            .collect(),
+        _ => Err(CliError::invalid_args(format!(
+            "{field} must be a string or string array"
+        ))),
+    }
 }
 
 fn json_optional_number_string(args: &Value, field: &str) -> CliResult<Option<String>> {

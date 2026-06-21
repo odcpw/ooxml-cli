@@ -13,9 +13,14 @@ use crate::{
     xml_fragment_bounds, xml_general_ref, xml_tag_prefix, zip_text,
 };
 
+mod color_scale;
 mod sqref;
 mod xml_support;
 
+use color_scale::{
+    ConditionalFormatCfvo, ConditionalFormatColor, ConditionalFormatColorScale, color_scale_json,
+    parse_cfvo_spec, parse_color_scale, render_color_scale, validate_color_scale,
+};
 use sqref::{normalize_sqref, sqref_cell_count};
 use xml_support::{
     WorksheetRootBounds, attr_is_true, attr_local, element_name, first_element,
@@ -43,6 +48,7 @@ struct ConditionalFormatRule {
     formulas: Vec<String>,
     dxf_id: Option<i64>,
     stop_if_true: bool,
+    color_scale: Option<ConditionalFormatColorScale>,
 }
 
 #[derive(Clone, Copy)]
@@ -63,6 +69,8 @@ pub(crate) struct XlsxConditionalFormatMutationOptions<'a> {
     pub(crate) operator: Option<&'a str>,
     pub(crate) formula2: Option<&'a str>,
     pub(crate) has_formula2: bool,
+    pub(crate) cfvo: Vec<String>,
+    pub(crate) colors: Vec<String>,
     pub(crate) priority: Option<i64>,
     pub(crate) stop_if_true: bool,
     pub(crate) has_stop_if_true: bool,
@@ -125,11 +133,11 @@ pub(crate) fn xlsx_conditional_formats_add(
     if options.range.is_none_or(|value| value.trim().is_empty()) {
         return Err(CliError::invalid_args("--range is required"));
     }
-    if options.formula.is_none_or(|value| value.trim().is_empty()) {
-        return Err(CliError::invalid_args("--formula is required"));
-    }
     match rule_type.as_str() {
         "expression" => {
+            if options.formula.is_none_or(|value| value.trim().is_empty()) {
+                return Err(CliError::invalid_args("--formula is required"));
+            }
             if options.operator.is_some() {
                 return Err(CliError::invalid_args(
                     "--operator is only valid with --type cell-is",
@@ -140,11 +148,47 @@ pub(crate) fn xlsx_conditional_formats_add(
                     "--formula2 is only valid with --type cell-is",
                 ));
             }
+            if !options.cfvo.is_empty() || !options.colors.is_empty() {
+                return Err(CliError::invalid_args(
+                    "--cfvo and --color are only valid with --type color-scale",
+                ));
+            }
         }
-        "cellIs" => {}
+        "cellIs" => {
+            if options.formula.is_none_or(|value| value.trim().is_empty()) {
+                return Err(CliError::invalid_args("--formula is required"));
+            }
+            if !options.cfvo.is_empty() || !options.colors.is_empty() {
+                return Err(CliError::invalid_args(
+                    "--cfvo and --color are only valid with --type color-scale",
+                ));
+            }
+        }
+        "colorScale" => {
+            if options.operator.is_some() {
+                return Err(CliError::invalid_args(
+                    "--operator is only valid with --type cell-is",
+                ));
+            }
+            if options.formula.is_some() || options.has_formula2 {
+                return Err(CliError::invalid_args(
+                    "--formula and --formula2 are not valid with --type color-scale",
+                ));
+            }
+            if options.has_stop_if_true {
+                return Err(CliError::invalid_args(
+                    "--stop-if-true is not valid with --type color-scale",
+                ));
+            }
+            if options.dxf_id.is_some() {
+                return Err(CliError::invalid_args(
+                    "--dxf-id is not valid with --type color-scale",
+                ));
+            }
+        }
         _ => {
             return Err(CliError::invalid_args(
-                "--type must be expression, cell-is, or cellIs",
+                "--type must be expression, cell-is, cellIs, color-scale, or colorScale",
             ));
         }
     }
@@ -352,6 +396,9 @@ fn conditional_format_rule_json(rule: &ConditionalFormatRule) -> Value {
     if rule.stop_if_true {
         object.insert("stopIfTrue".to_string(), json!(true));
     }
+    if let Some(color_scale) = rule.color_scale.as_ref() {
+        object.insert("colorScale".to_string(), color_scale_json(color_scale));
+    }
     Value::Object(object)
 }
 
@@ -363,13 +410,14 @@ fn add_conditional_format_xml(
     let norm_sqref = normalize_sqref(options.range.unwrap_or_default())?;
     let rule_type = normalize_conditional_format_add_type(options.rule_type);
     let formula = options.formula.unwrap_or_default().trim();
-    if formula.is_empty() {
-        return Err(CliError::invalid_args("--formula is required"));
-    }
     let mut operator = String::new();
-    let mut formulas = vec![formula.to_string()];
+    let mut formulas = Vec::<String>::new();
+    let mut color_scale = None;
     match rule_type.as_str() {
         "expression" => {
+            if formula.is_empty() {
+                return Err(CliError::invalid_args("--formula is required"));
+            }
             if options.operator.is_some() {
                 return Err(CliError::invalid_args(
                     "--operator is only valid with --type cell-is",
@@ -380,8 +428,22 @@ fn add_conditional_format_xml(
                     "--formula2 is only valid with --type cell-is",
                 ));
             }
+            if !options.cfvo.is_empty() || !options.colors.is_empty() {
+                return Err(CliError::invalid_args(
+                    "--cfvo and --color are only valid with --type color-scale",
+                ));
+            }
+            formulas.push(formula.to_string());
         }
         "cellIs" => {
+            if formula.is_empty() {
+                return Err(CliError::invalid_args("--formula is required"));
+            }
+            if !options.cfvo.is_empty() || !options.colors.is_empty() {
+                return Err(CliError::invalid_args(
+                    "--cfvo and --color are only valid with --type color-scale",
+                ));
+            }
             operator = options.operator.unwrap_or_default().trim().to_string();
             validate_conditional_format_cell_is_operator(&operator)?;
             let formula2 = options.formula2.unwrap_or_default().trim();
@@ -396,13 +458,39 @@ fn add_conditional_format_xml(
                     "--formula2 is only valid with between or notBetween",
                 ));
             }
+            formulas.push(formula.to_string());
             if needs_formula2 {
                 formulas.push(formula2.to_string());
             }
         }
+        "colorScale" => {
+            if options.operator.is_some() {
+                return Err(CliError::invalid_args(
+                    "--operator is only valid with --type cell-is",
+                ));
+            }
+            if options.formula.is_some() || options.has_formula2 {
+                return Err(CliError::invalid_args(
+                    "--formula and --formula2 are not valid with --type color-scale",
+                ));
+            }
+            if options.has_stop_if_true {
+                return Err(CliError::invalid_args(
+                    "--stop-if-true is not valid with --type color-scale",
+                ));
+            }
+            if options.dxf_id.is_some() {
+                return Err(CliError::invalid_args(
+                    "--dxf-id is not valid with --type color-scale",
+                ));
+            }
+            let cfvo = parse_conditional_format_cfvo_flags(&options.cfvo)?;
+            let colors = parse_conditional_format_color_flags(&options.colors);
+            color_scale = Some(validate_color_scale(&cfvo, &colors)?);
+        }
         _ => {
             return Err(CliError::invalid_args(
-                "--type must be expression, cell-is, or cellIs",
+                "--type must be expression, cell-is, cellIs, color-scale, or colorScale",
             ));
         }
     }
@@ -422,15 +510,19 @@ fn add_conditional_format_xml(
     let priority = options
         .priority
         .unwrap_or_else(|| next_conditional_format_priority(xml));
-    let rule_xml = render_conditional_format_rule(
-        prefix,
-        &rule_type,
-        &operator,
-        &formulas,
-        priority,
-        options.has_stop_if_true.then_some(options.stop_if_true),
-        options.dxf_id,
-    );
+    let rule_xml = if let Some(color_scale) = color_scale.as_ref() {
+        render_conditional_format_color_scale_rule(prefix, priority, color_scale)
+    } else {
+        render_conditional_format_rule(
+            prefix,
+            &rule_type,
+            &operator,
+            &formulas,
+            priority,
+            options.has_stop_if_true.then_some(options.stop_if_true),
+            options.dxf_id,
+        )
+    };
     let updated_xml =
         if let Some(container) = find_conditional_format_container(xml, &root, &norm_sqref)? {
             insert_rule_into_container(xml, &container, &rule_xml)?
@@ -448,6 +540,7 @@ fn add_conditional_format_xml(
                 && rule.operator == operator
                 && rule.priority == Some(priority)
                 && rule.formulas == formulas
+                && rule.color_scale == color_scale
         })
         .unwrap_or_else(|| ConditionalFormatRule {
             index: 0,
@@ -462,6 +555,7 @@ fn add_conditional_format_xml(
             formulas: formulas.clone(),
             dxf_id: options.dxf_id,
             stop_if_true: options.has_stop_if_true && options.stop_if_true,
+            color_scale: color_scale.clone(),
         });
     Ok(ConditionalFormatMutation {
         updated_xml,
@@ -561,6 +655,7 @@ fn parse_conditional_format_rule(
         formulas: Vec::new(),
         dxf_id,
         stop_if_true: attr_is_true(&attrs, "stopIfTrue"),
+        color_scale: parse_color_scale(fragment)?,
     };
     let mut reader = Reader::from_str(fragment);
     reader.config_mut().trim_text(false);
@@ -770,6 +865,7 @@ fn normalize_conditional_format_add_type(rule_type: Option<&str>) -> String {
     match rule_type.unwrap_or_default().trim() {
         "" | "expression" => "expression".to_string(),
         "cell-is" | "cellIs" => "cellIs".to_string(),
+        "color-scale" | "colorScale" => "colorScale".to_string(),
         other => other.to_string(),
     }
 }
@@ -796,6 +892,22 @@ fn validate_conditional_format_cell_is_operator(operator: &str) -> CliResult<()>
         )));
     }
     Ok(())
+}
+
+fn parse_conditional_format_cfvo_flags(values: &[String]) -> CliResult<Vec<ConditionalFormatCfvo>> {
+    values
+        .iter()
+        .filter(|value| value.trim() != "[]")
+        .map(|value| parse_cfvo_spec(value))
+        .collect()
+}
+
+fn parse_conditional_format_color_flags(values: &[String]) -> Vec<ConditionalFormatColor> {
+    values
+        .iter()
+        .filter(|value| value.trim() != "[]")
+        .map(|value| ConditionalFormatColor { rgb: value.clone() })
+        .collect()
 }
 
 fn render_conditional_format_rule(
@@ -833,6 +945,25 @@ fn render_conditional_format_rule(
         render_xml_attrs(&attrs),
         formula_xml,
         tag
+    )
+}
+
+fn render_conditional_format_color_scale_rule(
+    prefix: &str,
+    priority: i64,
+    color_scale: &ConditionalFormatColorScale,
+) -> String {
+    let rule_tag = element_name(prefix, "cfRule");
+    let mut attrs = BTreeMap::new();
+    attrs.insert("priority".to_string(), priority.to_string());
+    attrs.insert("type".to_string(), "colorScale".to_string());
+    let color_scale_xml = render_color_scale(prefix, color_scale);
+    format!(
+        "<{}{}>{}</{}>",
+        rule_tag,
+        render_xml_attrs(&attrs),
+        color_scale_xml,
+        rule_tag
     )
 }
 
