@@ -704,6 +704,42 @@ $pptmCreateResult = Invoke-OfficeBackedChecked -FilePath $BinaryPath -Arguments 
 $script:Scenarios = New-Object System.Collections.Generic.List[object]
 $script:OfficeInputs = New-Object System.Collections.Generic.List[string]
 
+$pureXlsxBase = Join-Path $caseDir "pure-base.xlsx"
+$purePptxBase = Join-Path $caseDir "pure-base.pptx"
+$pureDocxBase = Join-Path $caseDir "pure-base.docx"
+
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--format", "json", "xlsx", "scaffold", $pureXlsxBase, "--force") -Label "pure:xlsx:scaffold" | Out-Null
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--format", "json", "pptx", "scaffold", $purePptxBase, "--title", "Pure VBA Deck", "--subtitle", "Office proof", "--force") -Label "pure:pptx:scaffold" | Out-Null
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--format", "json", "docx", "scaffold", $pureDocxBase, "--text", "Pure VBA document", "--force") -Label "pure:docx:scaffold" | Out-Null
+
+$pureScenarios = @(
+    [pscustomobject]@{
+        name = "vba-xlsm-pure-standard-from-scaffold"; family = "xlsx"; input = $pureXlsxBase; output = (Join-Path $caseDir "pure-standard.xlsm"); sources = @($standardSource)
+    },
+    [pscustomobject]@{
+        name = "vba-xlsm-pure-class-from-scaffold"; family = "xlsx"; input = $pureXlsxBase; output = (Join-Path $caseDir "pure-class.xlsm"); sources = @($standardSource, $classSource)
+    },
+    [pscustomobject]@{
+        name = "vba-pptm-pure-standard-from-scaffold"; family = "pptx"; input = $purePptxBase; output = (Join-Path $caseDir "pure-standard.pptm"); sources = @($standardSource)
+    },
+    [pscustomobject]@{
+        name = "vba-pptm-pure-class-from-scaffold"; family = "pptx"; input = $purePptxBase; output = (Join-Path $caseDir "pure-class.pptm"); sources = @($standardSource, $classSource)
+    },
+    [pscustomobject]@{
+        name = "vba-docm-pure-standard-from-scaffold"; family = "docx"; input = $pureDocxBase; output = (Join-Path $caseDir "pure-standard.docm"); sources = @($standardSource)
+    }
+)
+
+foreach ($pure in $pureScenarios) {
+    $args = @("--format", "json", "vba", "create", $pure.input, "--pure", "--family", $pure.family)
+    foreach ($source in @($pure.sources)) {
+        $args += @("--source", $source)
+    }
+    $args += @("--out", $pure.output)
+    $pureResult = Invoke-Checked -FilePath $BinaryPath -Arguments $args -Label ("pure:{0}:create" -f $pure.name)
+    Add-FileScenario -Name $pure.name -Family $pure.family -Path $pure.output -CommandPath "ooxml vba create" -ExactCommand $pureResult.command -InputFixtureType "pure Rust authored macro package"
+}
+
 $families = @(
     [pscustomobject]@{
         family = "xlsx"; macroFamily = "xlsm"; base = (Join-Path $root "testdata\xlsx\minimal-workbook\workbook.xlsx"); seed = $xlsmSeed; createCommand = $xlsmCreateResult.command; attached = (Join-Path $caseDir "attached.xlsm"); removed = (Join-Path $caseDir "removed.xlsx"); converted = (Join-Path $caseDir "converted-alias.xlsx"); replaced = (Join-Path $caseDir "replaced.xlsm"); addBlocked = (Join-Path $caseDir "add-blocked.xlsm"); removeBlocked = (Join-Path $caseDir "remove-blocked.xlsm")

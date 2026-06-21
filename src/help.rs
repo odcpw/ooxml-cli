@@ -460,12 +460,11 @@ fn group_help(topic: &[String]) -> CliResult<String> {
 }
 
 fn leaf_help(topic: &[String], command: &Value) -> String {
-    let path = topic.join(" ");
     let use_text = command["use"].as_str().unwrap_or_default();
     let short = command["short"]
         .as_str()
         .unwrap_or("Rust-supported command.");
-    let usage = if use_text.is_empty() { &path } else { use_text };
+    let usage = leaf_usage(topic, use_text);
     let mut out = format!("{short}\n\nUsage:\n  ooxml {usage}\n");
     if let Some(flags) = command["localFlags"].as_array()
         && !flags.is_empty()
@@ -480,6 +479,37 @@ fn leaf_help(topic: &[String], command: &Value) -> String {
     out.push_str("\nGlobal Flags:\n");
     out.push_str(global_flags_text());
     out
+}
+
+fn leaf_usage(topic: &[String], use_text: &str) -> String {
+    if use_text.is_empty() {
+        return topic.join(" ");
+    }
+    if topic.is_empty() {
+        return use_text.to_string();
+    }
+
+    let use_head = use_text.split_whitespace().collect::<Vec<_>>();
+    for suffix_len in (1..=topic.len()).rev() {
+        let suffix = &topic[topic.len() - suffix_len..];
+        if use_head.len() < suffix.len() {
+            continue;
+        }
+        if suffix
+            .iter()
+            .zip(&use_head)
+            .all(|(topic_part, use_part)| topic_part == use_part)
+        {
+            let prefix = topic[..topic.len() - suffix_len].join(" ");
+            return if prefix.is_empty() {
+                use_text.to_string()
+            } else {
+                format!("{prefix} {use_text}")
+            };
+        }
+    }
+
+    use_text.to_string()
 }
 
 fn available_children(topic: &[String]) -> Vec<(String, String)> {

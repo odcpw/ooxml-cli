@@ -295,6 +295,34 @@ fn root_and_parent_help_text_surfaces_are_useful() {
 }
 
 #[test]
+fn nested_leaf_help_usage_includes_full_command_path() {
+    let cases: &[(&[&str], &str)] = &[
+        (
+            &["xlsx", "scaffold", "--help"],
+            "Usage:\n  ooxml xlsx scaffold <output.xlsx>",
+        ),
+        (
+            &["vba", "office-check", "--help"],
+            "Usage:\n  ooxml vba office-check <file>",
+        ),
+        (
+            &["pptx", "slides", "list", "--help"],
+            "Usage:\n  ooxml pptx slides list <file>",
+        ),
+    ];
+
+    for (args, expected) in cases {
+        let (code, stdout, stderr) = run_ooxml_raw(args);
+        assert_eq!(code, 0, "help exit for {args:?}: {stderr}");
+        assert_eq!(stderr, "", "help stderr for {args:?}");
+        assert!(
+            stdout.contains(expected),
+            "help stdout for {args:?} missing {expected:?}: {stdout}"
+        );
+    }
+}
+
+#[test]
 fn pptx_parent_group_help_paths_share_go_success_shape() {
     for args in PPTX_PARENT_GROUP_HELP_PATHS {
         let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(args);
