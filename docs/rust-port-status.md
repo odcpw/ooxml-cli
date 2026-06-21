@@ -9,6 +9,15 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-21:
 
+- The XLSX conditional-formatting agent surface is now complete for the
+  promoted command family: serve/MCP `inspect` supports
+  `xlsx conditional-formats list/show` and the same CLI aliases used by direct
+  commands, while serve `op` already covers `add/delete`. Capability metadata
+  now points read-only discovery at inspect instead of direct CLI only, and the
+  old conditional-formatting reconnaissance note is marked as design history.
+  Proof: focused `serve_inspect_supports_xlsx_conditional_formats`,
+  `capabilities`, `cargo fmt --check`, `cargo check --all-targets`, and clippy
+  with warnings denied.
 - XLSX conditional-formatting now has Go-oracle and Rust parity for
   color-scale rules. The Go oracle commit `e2546a4` adds `--type
   color-scale` with repeated `--cfvo` and `--color` flags, JSON readback of

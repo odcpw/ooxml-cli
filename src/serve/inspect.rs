@@ -9,9 +9,10 @@ use crate::{
     pptx_extract_text, pptx_extract_text_json_args, pptx_layouts_list, pptx_layouts_show,
     pptx_masters_list, pptx_masters_show, pptx_notes_show, pptx_shapes_show, pptx_slide_selectors,
     pptx_slide_show, pptx_slides_list, pptx_tables_show, require_json_data_format,
-    xlsx_cells_extract, xlsx_comments_list, xlsx_filters_sorts_show, xlsx_names_list,
-    xlsx_names_show, xlsx_range_export_with_options, xlsx_sheets_list, xlsx_sheets_show,
-    xlsx_tables_export, xlsx_tables_list, xlsx_tables_show, xlsx_workbook_metadata_inspect,
+    xlsx_cells_extract, xlsx_comments_list, xlsx_conditional_formats_list,
+    xlsx_conditional_formats_show, xlsx_filters_sorts_show, xlsx_names_list, xlsx_names_show,
+    xlsx_range_export_with_options, xlsx_sheets_list, xlsx_sheets_show, xlsx_tables_export,
+    xlsx_tables_list, xlsx_tables_show, xlsx_workbook_metadata_inspect,
 };
 
 pub(super) fn serve_inspect_command(
@@ -86,6 +87,22 @@ pub(super) fn serve_inspect_command(
                 return Err(CliError::invalid_args("--comment-id must be >= 0"));
             }
             xlsx_comments_list(working, sheet.as_deref(), comment_id)
+        }
+        "xlsx conditional-formats list"
+        | "xlsx conditional-formatting list"
+        | "xlsx conditional-format list"
+        | "xlsx cf list" => {
+            let sheet = json_optional_string(args, "sheet");
+            let range = json_optional_string(args, "range");
+            xlsx_conditional_formats_list(working, sheet.as_deref(), range.as_deref())
+        }
+        "xlsx conditional-formats show"
+        | "xlsx conditional-formatting show"
+        | "xlsx conditional-format show"
+        | "xlsx cf show" => {
+            let sheet = json_optional_string(args, "sheet");
+            let rule = json_string(args, "rule")?;
+            xlsx_conditional_formats_show(working, sheet.as_deref(), &rule)
         }
         "xlsx sheets list" => xlsx_sheets_list(working),
         "xlsx sheets show" => {

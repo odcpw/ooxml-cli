@@ -377,6 +377,118 @@ fn serve_inspect_supports_xlsx_tables_show() {
 }
 
 #[test]
+fn serve_inspect_supports_xlsx_conditional_formats() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-cf-inspect-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("conditional-formats.xlsx");
+    write_simple_xlsx_with_sheet_xml(
+        &input,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:C5"/>
+  <sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData>
+  <conditionalFormatting sqref="A1:A5">
+    <cfRule type="expression" priority="3" stopIfTrue="1"><formula>A1&gt;0</formula></cfRule>
+  </conditionalFormatting>
+  <conditionalFormatting sqref="B1:B5">
+    <cfRule type="colorScale" priority="4">
+      <colorScale>
+        <cfvo type="min"/>
+        <cfvo type="max"/>
+        <color rgb="FFFF0000"/>
+        <color rgb="FF00FF00"/>
+      </colorScale>
+    </cfRule>
+  </conditionalFormatting>
+</worksheet>"#,
+    );
+    let input_str = input.to_str().expect("input path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(1, "open", serde_json::json!({"file": input_str}));
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let list = rpc_request(
+        2,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx cf list",
+            "args": {"sheet": "1", "range": "B1:B5"},
+        }),
+    );
+    let list_response = serve_roundtrip(&mut stdin, &mut reader, &list);
+    let working = list_response["result"]["file"]
+        .as_str()
+        .expect("working file");
+    let (list_code, list_expected, list_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "list",
+        working,
+        "--sheet",
+        "1",
+        "--range",
+        "B1:B5",
+    ]);
+    assert_eq!(list_code, 0);
+    assert_eq!(list_stderr, None);
+    assert_eq!(list_response["result"], list_expected.expect("list stdout"));
+
+    let show = rpc_request(
+        3,
+        "inspect",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx conditional-formatting show",
+            "args": {"sheet": "1", "rule": "block:2/rule:1"},
+        }),
+    );
+    let show_response = serve_roundtrip(&mut stdin, &mut reader, &show);
+    let (show_code, show_expected, show_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "show",
+        working,
+        "--sheet",
+        "1",
+        "--rule",
+        "block:2/rule:1",
+    ]);
+    assert_eq!(show_code, 0);
+    assert_eq!(show_stderr, None);
+    assert_eq!(show_response["result"], show_expected.expect("show stdout"));
+    assert_eq!(
+        show_response["result"]["colorScale"]["colors"][1]["rgb"],
+        "FF00FF00"
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_op_supports_xlsx_conditional_formats_add_delete() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-cf-{}",

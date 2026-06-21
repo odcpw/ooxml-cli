@@ -10,7 +10,7 @@ pub(super) fn commands() -> Vec<Value> {
             "List worksheet conditional-formatting rules.",
             &["conditional-format", "range", "sheet"],
             false,
-            Some("read-only command; call via direct CLI in the current Rust slice"),
+            Some("read-only command; call via inspect in serve/MCP"),
             vec![
                 flag("--sheet", "sheet", "string", "sheet selector"),
                 flag("--range", "range", "string", "optional sqref filter"),
@@ -22,7 +22,7 @@ pub(super) fn commands() -> Vec<Value> {
             "Show one worksheet conditional-formatting rule.",
             &["conditional-format", "range", "sheet"],
             false,
-            Some("read-only command; call via direct CLI in the current Rust slice"),
+            Some("read-only command; call via inspect in serve/MCP"),
             vec![
                 flag("--sheet", "sheet", "string", "sheet selector"),
                 flag(

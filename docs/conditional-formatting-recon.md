@@ -7,34 +7,43 @@ Base: origin/codex/ooxml-rust-port at 0fcc7d22fe1cd03a783b924a6d9b675eae5e7f2c
 
 ## Summary
 
-Conditional formatting is not currently exposed as a user-facing command in either the Go oracle or the Rust port. The current surface is guard and preservation infrastructure:
+This reconnaissance was written before the conditional-formatting surface was
+implemented. It is retained as design history, not as current status.
 
-- Go and Rust XLSX CLI capabilities/help list cells, ranges, sheets, workbook metadata, tables, pivots, charts, comments, hyperlinks, data validations, filters/sorts, freeze panes, row/column dimensions, and structure edits. No command path, help text, object kind, or capability entry currently contains `conditional`.
-- Go mutation helpers know the worksheet child-order position for `conditionalFormatting`, and row/column structure edits refuse worksheets that already contain conditional formatting.
-- Rust mirrors the same broad behavior: child-order maps preserve `conditionalFormatting`, and structure edits refuse worksheets that already contain it.
-- Conformance checks know where worksheet `conditionalFormatting` and pivot `conditionalFormats` belong, but there is no semantic conditional-formatting validation or operational CLI support.
-- There are no checked-in XLSX/XLSM fixtures found with `conditionalFormatting`, `cfRule`, `colorScale`, `dataBar`, or `iconSet`.
+Current status on 2026-06-21:
 
-Conclusion: the final slice should start with a small Go oracle command surface before Rust implementation. A Rust-only implementation would not have an existing user-facing Go behavior to compare against.
+- Go and Rust both expose `ooxml xlsx conditional-formats` with
+  `list`, `show`, `add`, and `delete`.
+- The promoted add surface covers expression, `cellIs`, and `colorScale`
+  rules, with stable JSON readback, readback commands, strict validation, and
+  Go-vs-Rust contract coverage.
+- Serve/MCP supports read-only `list`/`show` through `inspect` and mutating
+  `add`/`delete` through `op`.
+- XLSM package-artifact preservation is covered for conditional-formatting
+  worksheet mutations. Rust-generated XLSX outputs for the promoted rules have
+  passed strict validation, Open XML SDK validation, and desktop Excel open
+  proof.
+- Data bars, icon sets, richer x14 extension authoring, and style/dxf creation
+  remain intentionally deferred feature slices.
 
-## Current Surface
+## Historical Surface At Recon Time
 
 ### Go CLI and capabilities
 
-- `internal/cli/xlsx.go`: registers the top-level XLSX command and the current XLSX groups. No conditional-formatting group is registered.
+- `internal/cli/xlsx.go`: registered the top-level XLSX command and the XLSX groups that existed at the recon base. No conditional-formatting group was registered then.
 - `internal/cli/xlsx_cells.go`, `internal/cli/xlsx_ranges.go`, `internal/cli/xlsx_data_validations.go`, `internal/cli/xlsx_hyperlinks.go`, `internal/cli/xlsx_structure.go`: adjacent command patterns for command registration, JSON output, mutation writing, and workbook/sheet selection.
-- Runtime probe `go run ./cmd/ooxml --json capabilities`: no `ooxml xlsx ... conditional...` path and no conditional-formatting object kind.
-- Runtime probe `go run ./cmd/ooxml xlsx --help`: no conditional-formatting command group.
+- Runtime probe at the recon base, `go run ./cmd/ooxml --json capabilities`: no `ooxml xlsx ... conditional...` path and no conditional-formatting object kind.
+- Runtime probe at the recon base, `go run ./cmd/ooxml xlsx --help`: no conditional-formatting command group.
 - `internal/cli/xlsx_structure.go`: maps `ErrWorksheetHasConditionalFormatting` to an invalid-args CLI error for structure edits.
 
 ### Rust CLI and capabilities
 
-- `src/cli_dispatch/xlsx.rs`: dispatches current XLSX groups. No conditional-formatting branch.
-- `src/capabilities/commands/xlsx.rs`: declares XLSX capability metadata. No conditional-formatting group or object kind.
-- `src/help.rs`: help text covers adjacent XLSX groups, including data validations, filters/sorts, freeze panes, hyperlinks, names, pivots, ranges, sheets, tables, and workbook metadata. No conditional-formatting help.
-- `src/main.rs`: no conditional-formatting module or re-export.
-- Runtime probe `cargo run --quiet -- --json capabilities`: no conditional-formatting path.
-- Runtime probe `cargo run --quiet -- xlsx --help`: no conditional-formatting command group.
+- `src/cli_dispatch/xlsx.rs`: dispatched the XLSX groups that existed at the recon base. No conditional-formatting branch existed then.
+- `src/capabilities/commands/xlsx.rs`: declared XLSX capability metadata. No conditional-formatting group or object kind existed then.
+- `src/help.rs`: help text covered adjacent XLSX groups, including data validations, filters/sorts, freeze panes, hyperlinks, names, pivots, ranges, sheets, tables, and workbook metadata. No conditional-formatting help existed then.
+- `src/main.rs`: had no conditional-formatting module or re-export then.
+- Runtime probe at the recon base, `cargo run --quiet -- --json capabilities`: no conditional-formatting path.
+- Runtime probe at the recon base, `cargo run --quiet -- xlsx --help`: no conditional-formatting command group.
 
 ### Mutation and preservation helpers
 
@@ -67,7 +76,7 @@ These helpers are preservation/order infrastructure, not creation, editing, dele
 
 ## Likely Go Oracle Requirement
 
-Because Go has no user-facing conditional-formatting command, the first operational slice should add the smallest Go oracle behavior that is worth porting and proving. The oracle should produce stable JSON readback, deterministic package mutations, and explicit error behavior before Rust follows.
+At the time of this reconnaissance, Go had no user-facing conditional-formatting command, so the first operational slice needed to add the smallest Go oracle behavior worth porting and proving. That recommendation has since been implemented for list/show/add/delete plus expression, `cellIs`, and `colorScale` rules.
 
 Recommended Go-first order:
 
