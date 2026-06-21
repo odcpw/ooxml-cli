@@ -216,6 +216,12 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
         &["comment"],
     ),
     (
+        &["xlsx", "conditional-formats"],
+        "Inspect and mutate worksheet conditional formatting.",
+        "Commands for conditional-formatting expression rules.",
+        &["conditional-format"],
+    ),
+    (
         &["xlsx", "data-validations"],
         "Inspect and mutate worksheet data validations.",
         "Commands for data-validation rules.",

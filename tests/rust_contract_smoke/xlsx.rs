@@ -122,6 +122,7 @@ fn xlsx_rowheights_show_matches_go_oracle() {
 }
 
 include!("xlsx/charts.rs");
+include!("xlsx/conditional_formatting.rs");
 
 fn assert_xlsx_structure_command_matches(
     label: &str,

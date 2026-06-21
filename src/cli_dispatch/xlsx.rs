@@ -1,6 +1,7 @@
 mod cells;
 mod charts;
 mod comments;
+mod conditional_formatting;
 mod data_validations;
 mod dimensions;
 mod filters_sorts;
@@ -18,6 +19,7 @@ use serde_json::Value;
 use self::cells::dispatch_xlsx_cells;
 use self::charts::dispatch_xlsx_charts;
 use self::comments::dispatch_xlsx_comments;
+use self::conditional_formatting::dispatch_xlsx_conditional_formatting;
 use self::data_validations::dispatch_xlsx_data_validations;
 use self::dimensions::dispatch_xlsx_dimensions;
 use self::filters_sorts::dispatch_xlsx_filters_sorts;
@@ -72,6 +74,15 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
                 ) =>
         {
             dispatch_xlsx_data_validations(args)
+        }
+        [family, group, ..]
+            if family == "xlsx"
+                && matches!(
+                    group.as_str(),
+                    "conditional-formats" | "conditional-formatting" | "conditional-format" | "cf"
+                ) =>
+        {
+            dispatch_xlsx_conditional_formatting(args)
         }
         [family, group, ..] if family == "xlsx" && group == "filters-sorts" => {
             dispatch_xlsx_filters_sorts(args)

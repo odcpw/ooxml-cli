@@ -53,6 +53,7 @@ mod vba;
 mod verify;
 mod xlsx_charts;
 mod xlsx_comments;
+mod xlsx_conditional_formatting;
 mod xlsx_data_validations;
 mod xlsx_dimensions;
 mod xlsx_filters_sorts;
@@ -200,6 +201,10 @@ pub(crate) use xlsx_charts::{
 pub(crate) use xlsx_comments::{
     XlsxCommentsAddOptions, XlsxCommentsRemoveOptions, XlsxCommentsUpdateOptions,
     xlsx_comments_add, xlsx_comments_list, xlsx_comments_remove, xlsx_comments_update,
+};
+pub(crate) use xlsx_conditional_formatting::{
+    XlsxConditionalFormatMutationOptions, xlsx_conditional_formats_add,
+    xlsx_conditional_formats_delete, xlsx_conditional_formats_list, xlsx_conditional_formats_show,
 };
 pub(crate) use xlsx_data_validations::{
     XlsxDataValidationFields, XlsxDataValidationMutationOptions, xlsx_data_validations_create,

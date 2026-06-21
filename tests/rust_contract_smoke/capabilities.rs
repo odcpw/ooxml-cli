@@ -21,6 +21,7 @@ const XLSX_PARENT_GROUP_PATHS: &[&str] = &[
     "ooxml xlsx cols",
     "ooxml xlsx colwidths",
     "ooxml xlsx comments",
+    "ooxml xlsx conditional-formats",
     "ooxml xlsx data-validations",
     "ooxml xlsx filters-sorts",
     "ooxml xlsx freeze",
@@ -233,10 +234,10 @@ fn rust_capability_inventory_is_go_oracle_subset() {
 
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
-    assert_eq!(go_paths.len(), 290, "Go oracle command count changed");
+    assert_eq!(go_paths.len(), 295, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        290,
+        295,
         "Rust supported command count changed"
     );
     assert_eq!(

@@ -1,5 +1,6 @@
 mod charts;
 mod comments;
+mod conditional_formatting;
 mod data_validations;
 mod freeze;
 mod links_filters;
@@ -20,6 +21,7 @@ pub(super) fn commands() -> Vec<Value> {
     commands.extend(structure::commands());
     commands.extend(charts::commands());
     commands.extend(comments::commands());
+    commands.extend(conditional_formatting::commands());
     commands.extend(data_validations::commands());
     commands.extend(links_filters::commands());
     commands.extend(names::commands());
@@ -53,6 +55,11 @@ fn group_commands() -> Vec<Value> {
             "ooxml xlsx comments",
             "comments",
             "Inspect and mutate XLSX cell comments (legacy notes)",
+        ),
+        command_group(
+            "ooxml xlsx conditional-formats",
+            "conditional-formats",
+            "Inspect and mutate worksheet conditional formatting",
         ),
         command_group(
             "ooxml xlsx data-validations",
