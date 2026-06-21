@@ -35,8 +35,8 @@ pub(super) fn commands() -> Vec<Value> {
         ),
         capability_command(
             "ooxml xlsx conditional-formats add",
-            "add <file> --range <sqref> [--type expression|cell-is|color-scale|data-bar]",
-            "Add an expression, cellIs, color-scale, or data-bar conditional-formatting rule.",
+            "add <file> --range <sqref> [--type expression|cell-is|color-scale|data-bar|icon-set]",
+            "Add an expression, cellIs, color-scale, data-bar, or icon-set conditional-formatting rule.",
             &["conditional-format", "range", "sheet", "style"],
             true,
             None,
@@ -68,7 +68,7 @@ fn mutation_flags(include_add_flags: bool) -> Vec<Value> {
                 "--type",
                 "type",
                 "string",
-                "conditional-formatting rule type: expression, cell-is, color-scale, or data-bar",
+                "conditional-formatting rule type: expression, cell-is, color-scale, data-bar, or icon-set",
             ),
             flag(
                 "--operator",
@@ -92,13 +92,19 @@ fn mutation_flags(include_add_flags: bool) -> Vec<Value> {
                 "--cfvo",
                 "cfvo",
                 "string",
-                "threshold value: repeat 2 or 3 times for color-scale, exactly 2 times for data-bar; examples: min, max, num:0, percent:10, or percentile:50",
+                "threshold value: repeat 2 or 3 times for color-scale, exactly 2 times for data-bar, or 3/4/5 times for icon-set based on --icon-set; examples: min, max, num:0, percent:10, or percentile:50",
             ),
             flag(
                 "--color",
                 "color",
                 "string",
-                "color hex: repeat 2 or 3 times for color-scale, exactly once for data-bar; examples: #F8696B, FFEB84, or FF63BE7B",
+                "color hex: repeat 2 or 3 times for color-scale, exactly once for data-bar, and never for icon-set; examples: #F8696B, FFEB84, or FF63BE7B",
+            ),
+            flag(
+                "--icon-set",
+                "iconSet",
+                "string",
+                "icon-set name for --type icon-set; examples: 3TrafficLights1, 4Arrows, or 5Rating",
             ),
             flag("--priority", "priority", "int", "optional cfRule priority"),
             flag(

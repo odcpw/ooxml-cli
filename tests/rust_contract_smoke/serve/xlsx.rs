@@ -852,6 +852,164 @@ fn serve_op_supports_xlsx_conditional_format_data_bars() {
 }
 
 #[test]
+fn serve_op_supports_xlsx_conditional_format_icon_sets() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-cf-iconset-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("serve-cf-iconset-out.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(
+        1,
+        "open",
+        serde_json::json!({"file": input_str, "out": output_str}),
+    );
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let add_kebab_icon_set = rpc_request(
+        2,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx conditional-formats add",
+            "args": {
+                "sheet": "1",
+                "range": "E1:E5",
+                "type": "icon-set",
+                "icon-set": "3TrafficLights1",
+                "cfvo": ["percent:0", "percent:33", "percent:67"],
+                "priority": 9
+            },
+        }),
+    );
+    let add_kebab_response = serve_roundtrip(&mut stdin, &mut reader, &add_kebab_icon_set);
+    assert!(
+        add_kebab_response.get("error").is_none(),
+        "conditional-format icon-set kebab add op failed: {add_kebab_response:?}"
+    );
+    let kebab_rule = &add_kebab_response["result"]["readback"]["rule"];
+    assert_eq!(kebab_rule["type"], "iconSet");
+    assert_eq!(kebab_rule["iconSet"]["iconSet"], "3TrafficLights1");
+    assert_eq!(
+        kebab_rule["iconSet"]["cfvo"],
+        serde_json::json!([
+            {"type": "percent", "value": "0"},
+            {"type": "percent", "value": "33"},
+            {"type": "percent", "value": "67"}
+        ])
+    );
+
+    let add_camel_icon_set = rpc_request(
+        3,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx conditional-formats add",
+            "args": {
+                "sheet": "1",
+                "range": "F1:F5",
+                "type": "iconSet",
+                "iconSet": "4Arrows",
+                "cfvo": ["percent:0", "percent:25", "percent:50", "percent:75"],
+                "priority": 10
+            },
+        }),
+    );
+    let add_camel_response = serve_roundtrip(&mut stdin, &mut reader, &add_camel_icon_set);
+    assert!(
+        add_camel_response.get("error").is_none(),
+        "conditional-format iconSet camel add op failed: {add_camel_response:?}"
+    );
+    let camel_rule = &add_camel_response["result"]["readback"]["rule"];
+    assert_eq!(camel_rule["type"], "iconSet");
+    assert_eq!(camel_rule["iconSet"]["iconSet"], "4Arrows");
+    assert_eq!(
+        camel_rule["iconSet"]["cfvo"].as_array().expect("cfvo").len(),
+        4
+    );
+
+    let plan = rpc_request(4, "plan", serde_json::json!({"session": session}));
+    let plan_response = serve_roundtrip(&mut stdin, &mut reader, &plan);
+    let plan_items = plan_response["result"]["plan"]
+        .as_array()
+        .expect("planned operations");
+    assert_eq!(plan_items.len(), 2);
+    for (plan_item, cfvo_count) in plan_items.iter().zip([3usize, 4usize]) {
+        let argv = plan_item["argv"].as_array().expect("icon-set plan argv");
+        assert_eq!(
+            argv.iter().filter(|arg| *arg == "--icon-set").count(),
+            1,
+            "icon-set plan should include one icon-set flag: {argv:?}"
+        );
+        assert_eq!(
+            argv.iter().filter(|arg| *arg == "--cfvo").count(),
+            cfvo_count,
+            "icon-set plan should include matching threshold flags: {argv:?}"
+        );
+        assert!(
+            !argv.iter().any(|arg| arg == "--color"),
+            "icon-set plan should not include color flags: {argv:?}"
+        );
+    }
+
+    let commit = rpc_request(5, "commit", serde_json::json!({"session": session}));
+    let commit_response = serve_roundtrip(&mut stdin, &mut reader, &commit);
+    assert!(
+        commit_response.get("error").is_none(),
+        "conditional-format icon-set commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "icon-set serve validate exit");
+    assert_eq!(validate_stderr, None, "icon-set serve validate stderr");
+
+    let (list_code, list_stdout, list_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "list",
+        &output_str,
+        "--sheet",
+        "1",
+    ]);
+    assert_eq!(list_code, 0, "icon-set serve list exit");
+    assert_eq!(list_stderr, None, "icon-set serve list stderr");
+    let list = list_stdout.expect("icon-set serve output list");
+    assert_eq!(list["count"], Value::from(2));
+    assert_eq!(list["rules"][0]["type"], "iconSet");
+    assert_eq!(list["rules"][0]["iconSet"]["iconSet"], "3TrafficLights1");
+    assert_eq!(list["rules"][1]["type"], "iconSet");
+    assert_eq!(list["rules"][1]["iconSet"]["iconSet"], "4Arrows");
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_op_supports_xlsx_ranges_set() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-ranges-set-{}",

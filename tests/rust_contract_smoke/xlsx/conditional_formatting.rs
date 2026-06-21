@@ -635,6 +635,283 @@ fn xlsx_conditional_formats_data_bar_saved_outputs_match_go_oracle() {
 }
 
 #[test]
+fn xlsx_conditional_formats_icon_set_saved_readback() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-cf-iconset-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let rust_out = temp_dir
+        .join("rust-icon-set.xlsx")
+        .to_string_lossy()
+        .to_string();
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "add",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "1",
+        "--range",
+        "E1:E5",
+        "--type",
+        "icon-set",
+        "--icon-set",
+        "3TrafficLights1",
+        "--cfvo",
+        "percent:0",
+        "--cfvo",
+        "percent:33",
+        "--cfvo",
+        "percent:67",
+        "--priority",
+        "6",
+        "--out",
+        &rust_out,
+    ]);
+    assert_eq!(code, 0, "icon-set add exit");
+    assert_eq!(stderr, None, "icon-set add stderr");
+    let rust_add = stdout.expect("rust icon-set add stdout");
+    assert_eq!(rust_add["rule"]["type"], "iconSet");
+    assert_eq!(rust_add["rule"]["iconSet"]["iconSet"], "3TrafficLights1");
+    assert_eq!(
+        rust_add["rule"]["iconSet"]["cfvo"],
+        serde_json::json!([
+            {"type": "percent", "value": "0"},
+            {"type": "percent", "value": "33"},
+            {"type": "percent", "value": "67"}
+        ])
+    );
+    assert!(rust_add["rule"]["iconSet"]["colors"].is_null());
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_add, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_add, "conditionalFormatsListCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_add, "conditionalFormatsShowCommand");
+
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "show",
+        &rust_out,
+        "--sheet",
+        "1",
+        "--rule",
+        "cfRule:1",
+    ]);
+    assert_eq!(show_code, 0, "saved icon-set show exit");
+    assert_eq!(show_stderr, None, "saved icon-set show stderr");
+    assert_eq!(
+        show_stdout.expect("saved icon-set show")["iconSet"]["iconSet"],
+        "3TrafficLights1"
+    );
+
+    assert_xlsx_strict_valid(&rust_out);
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_conditional_formats_icon_set_saved_outputs_match_go_oracle_when_available() {
+    // Temporary guard: remove this early return once the local Go oracle branch includes
+    // XLSX icon-set conditional-format add/readback support.
+    if !go_oracle_supports_xlsx_icon_sets() {
+        return;
+    }
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-cf-iconset-oracle-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let go_out = temp_dir
+        .join("go-icon-set.xlsx")
+        .to_string_lossy()
+        .to_string();
+    let rust_out = temp_dir
+        .join("rust-icon-set.xlsx")
+        .to_string_lossy()
+        .to_string();
+    let add_common = [
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "add",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "1",
+        "--range",
+        "E1:E5",
+        "--type",
+        "icon-set",
+        "--icon-set",
+        "3TrafficLights1",
+        "--cfvo",
+        "percent:0",
+        "--cfvo",
+        "percent:33",
+        "--cfvo",
+        "percent:67",
+        "--priority",
+        "6",
+        "--out",
+    ];
+    let mut go_args = add_common.to_vec();
+    go_args.push(&go_out);
+    let mut rust_args = add_common.to_vec();
+    rust_args.push(&rust_out);
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "icon-set add exit");
+    assert_eq!(rust_stderr, go_stderr, "icon-set add stderr");
+    let rust_add = rust_stdout.expect("rust icon-set add stdout");
+    assert_eq!(
+        scrub_path(rust_add.clone(), &rust_out, "[ICON_SET_OUT]"),
+        scrub_path(
+            go_stdout.expect("go icon-set add stdout"),
+            &go_out,
+            "[ICON_SET_OUT]"
+        ),
+        "icon-set add stdout"
+    );
+
+    let show_go = [
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "show",
+        &go_out,
+        "--sheet",
+        "1",
+        "--rule",
+        "cfRule:1",
+    ];
+    let show_rust = [
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "show",
+        &rust_out,
+        "--sheet",
+        "1",
+        "--rule",
+        "cfRule:1",
+    ];
+    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
+    assert_eq!(rust_code, go_code, "saved icon-set show exit");
+    assert_eq!(rust_stderr, go_stderr, "saved icon-set show stderr");
+    assert_eq!(
+        rust_show.expect("rust saved icon-set show"),
+        go_show.expect("go saved icon-set show"),
+        "saved icon-set show"
+    );
+
+    assert_xlsx_strict_valid(&rust_out);
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_conditional_formats_icon_set_rejects_bad_cli_arity() {
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "add",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "1",
+        "--range",
+        "E1:E5",
+        "--type",
+        "icon-set",
+        "--icon-set",
+        "3TrafficLights1",
+        "--cfvo",
+        "percent:0",
+        "--cfvo",
+        "percent:33",
+        "--dry-run",
+    ]);
+    assert_eq!(code, 2, "icon-set missing cfvo exit");
+    assert_eq!(stdout, None, "icon-set missing cfvo stdout");
+    let error = stderr.expect("icon-set missing cfvo stderr");
+    assert_eq!(error["error"]["code"], "invalid_args");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("requires exactly 3 --cfvo values"),
+        "unexpected missing cfvo error: {error:?}"
+    );
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "add",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "1",
+        "--range",
+        "E1:E5",
+        "--type",
+        "icon-set",
+        "--icon-set",
+        "3TrafficLights1",
+        "--cfvo",
+        "percent:0",
+        "--cfvo",
+        "percent:33",
+        "--cfvo",
+        "percent:67",
+        "--color",
+        "638EC6",
+        "--dry-run",
+    ]);
+    assert_eq!(code, 2, "icon-set color exit");
+    assert_eq!(stdout, None, "icon-set color stdout");
+    let error = stderr.expect("icon-set color stderr");
+    assert_eq!(error["error"]["code"], "invalid_args");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("does not accept --color"),
+        "unexpected color error: {error:?}"
+    );
+}
+
+fn go_oracle_supports_xlsx_icon_sets() -> bool {
+    let (code, stdout, stderr) = run_go_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "add",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "1",
+        "--range",
+        "E1:E5",
+        "--type",
+        "icon-set",
+        "--icon-set",
+        "3TrafficLights1",
+        "--cfvo",
+        "percent:0",
+        "--cfvo",
+        "percent:33",
+        "--cfvo",
+        "percent:67",
+        "--dry-run",
+    ]);
+    code == 0 && stderr.is_none() && stdout.is_some()
+}
+
+#[test]
 fn xlsx_conditional_formats_data_bar_rejects_bad_cli_arity() {
     let (code, stdout, stderr) = run_ooxml(&[
         "--json",

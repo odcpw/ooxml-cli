@@ -81,6 +81,7 @@ pub(crate) struct XlsxConditionalFormatMutationOptions<'a> {
     pub(crate) has_formula2: bool,
     pub(crate) cfvo: Vec<String>,
     pub(crate) colors: Vec<String>,
+    pub(crate) icon_set: Option<&'a str>,
     pub(crate) priority: Option<i64>,
     pub(crate) stop_if_true: bool,
     pub(crate) has_stop_if_true: bool,
@@ -163,6 +164,11 @@ pub(crate) fn xlsx_conditional_formats_add(
                     "--cfvo and --color are only valid with --type color-scale, data-bar, or icon-set",
                 ));
             }
+            if options.icon_set.is_some() {
+                return Err(CliError::invalid_args(
+                    "--icon-set is only valid with --type icon-set",
+                ));
+            }
         }
         "cellIs" => {
             if options.formula.is_none_or(|value| value.trim().is_empty()) {
@@ -171,6 +177,11 @@ pub(crate) fn xlsx_conditional_formats_add(
             if !options.cfvo.is_empty() || !options.colors.is_empty() {
                 return Err(CliError::invalid_args(
                     "--cfvo and --color are only valid with --type color-scale, data-bar, or icon-set",
+                ));
+            }
+            if options.icon_set.is_some() {
+                return Err(CliError::invalid_args(
+                    "--icon-set is only valid with --type icon-set",
                 ));
             }
         }
@@ -195,6 +206,11 @@ pub(crate) fn xlsx_conditional_formats_add(
                     "--dxf-id is not valid with --type color-scale",
                 ));
             }
+            if options.icon_set.is_some() {
+                return Err(CliError::invalid_args(
+                    "--icon-set is only valid with --type icon-set",
+                ));
+            }
         }
         "dataBar" => {
             if options.operator.is_some() {
@@ -217,8 +233,18 @@ pub(crate) fn xlsx_conditional_formats_add(
                     "--dxf-id is not valid with --type data-bar",
                 ));
             }
+            if options.icon_set.is_some() {
+                return Err(CliError::invalid_args(
+                    "--icon-set is only valid with --type icon-set",
+                ));
+            }
         }
         "iconSet" => {
+            if options.operator.is_some() {
+                return Err(CliError::invalid_args(
+                    "--operator is only valid with --type cell-is",
+                ));
+            }
             if options.formula.is_some() || options.has_formula2 {
                 return Err(CliError::invalid_args(
                     "--formula and --formula2 are not valid with --type icon-set",
@@ -239,6 +265,14 @@ pub(crate) fn xlsx_conditional_formats_add(
                     "--color is not valid with --type icon-set",
                 ));
             }
+            let icon_set_name = options
+                .icon_set
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    CliError::invalid_args("--icon-set is required with --type icon-set")
+                })?;
+            let cfvo = parse_conditional_format_cfvo_flags(&options.cfvo)?;
+            validate_icon_set(icon_set_name, &cfvo)?;
         }
         _ => {
             return Err(CliError::invalid_args(
@@ -495,6 +529,11 @@ fn add_conditional_format_xml(
                     "--cfvo and --color are only valid with --type color-scale, data-bar, or icon-set",
                 ));
             }
+            if options.icon_set.is_some() {
+                return Err(CliError::invalid_args(
+                    "--icon-set is only valid with --type icon-set",
+                ));
+            }
             formulas.push(formula.to_string());
         }
         "cellIs" => {
@@ -504,6 +543,11 @@ fn add_conditional_format_xml(
             if !options.cfvo.is_empty() || !options.colors.is_empty() {
                 return Err(CliError::invalid_args(
                     "--cfvo and --color are only valid with --type color-scale, data-bar, or icon-set",
+                ));
+            }
+            if options.icon_set.is_some() {
+                return Err(CliError::invalid_args(
+                    "--icon-set is only valid with --type icon-set",
                 ));
             }
             operator = options.operator.unwrap_or_default().trim().to_string();
@@ -546,6 +590,11 @@ fn add_conditional_format_xml(
                     "--dxf-id is not valid with --type color-scale",
                 ));
             }
+            if options.icon_set.is_some() {
+                return Err(CliError::invalid_args(
+                    "--icon-set is only valid with --type icon-set",
+                ));
+            }
             let cfvo = parse_conditional_format_cfvo_flags(&options.cfvo)?;
             let colors = parse_conditional_format_color_flags(&options.colors);
             color_scale = Some(validate_color_scale(&cfvo, &colors)?);
@@ -571,11 +620,21 @@ fn add_conditional_format_xml(
                     "--dxf-id is not valid with --type data-bar",
                 ));
             }
+            if options.icon_set.is_some() {
+                return Err(CliError::invalid_args(
+                    "--icon-set is only valid with --type icon-set",
+                ));
+            }
             let cfvo = parse_conditional_format_cfvo_flags(&options.cfvo)?;
             let colors = parse_conditional_format_color_flags(&options.colors);
             data_bar = Some(validate_data_bar(&cfvo, &colors)?);
         }
         "iconSet" => {
+            if options.operator.is_some() {
+                return Err(CliError::invalid_args(
+                    "--operator is only valid with --type cell-is",
+                ));
+            }
             if options.formula.is_some() || options.has_formula2 {
                 return Err(CliError::invalid_args(
                     "--formula and --formula2 are not valid with --type icon-set",
@@ -597,7 +656,12 @@ fn add_conditional_format_xml(
                 ));
             }
             let cfvo = parse_conditional_format_cfvo_flags(&options.cfvo)?;
-            let icon_set_name = options.operator.unwrap_or("3TrafficLights1");
+            let icon_set_name = options
+                .icon_set
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    CliError::invalid_args("--icon-set is required with --type icon-set")
+                })?;
             icon_set = Some(validate_icon_set(icon_set_name, &cfvo)?);
         }
         _ => {
@@ -1301,6 +1365,7 @@ mod tests {
             has_formula2: false,
             cfvo: vec!["min".to_string(), "max".to_string()],
             colors: vec!["638EC6".to_string()],
+            icon_set: None,
             priority: Some(7),
             stop_if_true: false,
             has_stop_if_true: false,
@@ -1341,7 +1406,7 @@ mod tests {
             rule: None,
             formula: None,
             rule_type: Some("icon-set"),
-            operator: Some("3TrafficLights1"),
+            operator: None,
             formula2: None,
             has_formula2: false,
             cfvo: vec![
@@ -1350,6 +1415,7 @@ mod tests {
                 "percent:67".to_string(),
             ],
             colors: Vec::new(),
+            icon_set: Some("3TrafficLights1"),
             priority: Some(8),
             stop_if_true: false,
             has_stop_if_true: false,

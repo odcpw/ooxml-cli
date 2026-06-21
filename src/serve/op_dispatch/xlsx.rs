@@ -200,7 +200,14 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 values if values.is_empty() => json_string_list(args, "colors")?,
                 values => values,
             };
-            validate_data_bar_flags(rule_type.as_deref(), &cfvo, &colors)?;
+            let icon_set = json_optional_string(args, "icon-set")
+                .or_else(|| json_optional_string(args, "iconSet"));
+            validate_conditional_format_flags(
+                rule_type.as_deref(),
+                icon_set.as_deref(),
+                &cfvo,
+                &colors,
+            )?;
             let priority = json_i64(args, "priority")?;
             let stop_if_true =
                 json_bool(args, "stop-if-true").or_else(|| json_bool(args, "stopIfTrue"));
@@ -221,6 +228,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                     has_formula2: args.get("formula2").is_some(),
                     cfvo: cfvo.clone(),
                     colors: colors.clone(),
+                    icon_set: icon_set.as_deref(),
                     priority,
                     stop_if_true: stop_if_true.unwrap_or(false),
                     has_stop_if_true: stop_if_true.is_some(),
@@ -239,6 +247,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
             push_serve_plan_string_flag(&mut plan_flags, "--operator", operator.as_deref());
             push_serve_plan_string_flag(&mut plan_flags, "--formula", formula.as_deref());
             push_serve_plan_string_flag(&mut plan_flags, "--formula2", formula2.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--icon-set", icon_set.as_deref());
             for value in &cfvo {
                 push_serve_plan_string_flag(&mut plan_flags, "--cfvo", Some(value));
             }
@@ -284,6 +293,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                     has_formula2: false,
                     cfvo: Vec::new(),
                     colors: Vec::new(),
+                    icon_set: None,
                     priority: None,
                     stop_if_true: false,
                     has_stop_if_true: false,
@@ -850,25 +860,64 @@ fn json_string_list(args: &Value, field: &str) -> CliResult<Vec<String>> {
     }
 }
 
-fn validate_data_bar_flags(
+fn validate_conditional_format_flags(
     rule_type: Option<&str>,
+    icon_set: Option<&str>,
     cfvo: &[String],
     colors: &[String],
 ) -> CliResult<()> {
-    if !matches!(rule_type.map(str::trim), Some("data-bar" | "dataBar")) {
-        return Ok(());
-    }
-    if cfvo.len() != 2 {
-        return Err(CliError::invalid_args(
-            "--type data-bar requires exactly two --cfvo values",
-        ));
-    }
-    if colors.len() != 1 {
-        return Err(CliError::invalid_args(
-            "--type data-bar requires exactly one --color value",
-        ));
+    match rule_type.map(str::trim) {
+        Some("data-bar" | "dataBar") => {
+            if icon_set.is_some() {
+                return Err(CliError::invalid_args(
+                    "--icon-set is only valid with --type icon-set",
+                ));
+            }
+            if cfvo.len() != 2 {
+                return Err(CliError::invalid_args(
+                    "--type data-bar requires exactly two --cfvo values",
+                ));
+            }
+            if colors.len() != 1 {
+                return Err(CliError::invalid_args(
+                    "--type data-bar requires exactly one --color value",
+                ));
+            }
+        }
+        Some("icon-set" | "iconSet") => {
+            let icon_set = icon_set
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| CliError::invalid_args("--type icon-set requires --icon-set"))?;
+            if !colors.is_empty() {
+                return Err(CliError::invalid_args(
+                    "--type icon-set does not accept --color",
+                ));
+            }
+            let expected = expected_icon_set_cfvo_count(icon_set)?;
+            if cfvo.len() != expected {
+                return Err(CliError::invalid_args(format!(
+                    "--type icon-set with {icon_set} requires exactly {expected} --cfvo values",
+                )));
+            }
+        }
+        _ => {
+            if icon_set.is_some() {
+                return Err(CliError::invalid_args(
+                    "--icon-set is only valid with --type icon-set",
+                ));
+            }
+        }
     }
     Ok(())
+}
+
+fn expected_icon_set_cfvo_count(icon_set: &str) -> CliResult<usize> {
+    match icon_set.as_bytes().first().copied() {
+        Some(b'3' | b'4' | b'5') => Ok((icon_set.as_bytes()[0] - b'0') as usize),
+        _ => Err(CliError::invalid_args(
+            "icon-set must begin with 3, 4, or 5",
+        )),
+    }
 }
 
 fn json_optional_number_string(args: &Value, field: &str) -> CliResult<Option<String>> {
