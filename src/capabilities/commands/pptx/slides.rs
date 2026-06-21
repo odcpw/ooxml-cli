@@ -236,11 +236,11 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml pptx clone-slide",
             "clone-slide <file> --slide <n>",
-            "Clone a simple slide within a PowerPoint presentation.",
+            "Clone a slide within a PowerPoint presentation, including notes when present.",
             &["slide"],
             false,
             Some(
-                "direct CLI mutation; notes and deep-copy of media/chart related parts are deferred in the Rust port",
+                "direct CLI mutation; serve/MCP op support and deep-copy of non-notes media/chart related parts are not wired in this slice",
             ),
             vec![
                 flag("--slide", "slide", "int", "1-based source slide number"),
