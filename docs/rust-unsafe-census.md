@@ -19,6 +19,8 @@ Scope: read-only census of Rust files under `src/` and `tests/`, plus a best-eff
 - `src/` and `tests/` contain no literal `unsafe` keyword matches.
 - No matches were found for direct unsafe forms, FFI extern blocks, inline assembly, or common unsafe-adjacent primitives in `src/` or `tests/`.
 - No `#![forbid(unsafe_code)]`, `#![deny(unsafe_code)]`, or `#![allow(unsafe_code)]` attribute was found in `src/` or `tests/`.
+- Follow-up integration added a Cargo lint guard: `[lints.rust] unsafe_code = "forbid"`.
+- Follow-up integration installed nightly `miri`/`rust-src` and proved the pure ZIP I/O unit tests under Miri on Windows.
 - Dependency-side unsafe is not proven clean. `cargo tree` is available, but `cargo-geiger`, `cargo-expand`, and `ast-grep` are not installed.
 
 ## Commands Run
@@ -208,6 +210,41 @@ zopfli 0.8.3 unsafe_text_lines=4
 
 Dependency conclusion: the application crate has no in-tree unsafe sites, but it does depend on crates that contain unsafe token lines. A full release-readiness claim therefore still needs dependency reachability and proof-obligation analysis, preferably with `cargo-geiger` and the skill's dependency-soundness workflow.
 
+## Miri Follow-Up
+
+After integrating this census, the main integration lane installed the nightly
+Miri components:
+
+```powershell
+rustup component add --toolchain nightly-x86_64-pc-windows-msvc miri rust-src
+```
+
+The full unit-test binary is not currently a clean Miri target on Windows
+because `conformance_invariants::relationships::tests::parse_relationship_part_classifies_zip_read_errors`
+uses filesystem operations that hit Windows Miri unsupported syscalls
+(`GetTempPathW` under isolation, then `CreateFileW` access-mode support with
+isolation disabled). This is a Miri platform/tooling limitation for that test
+shape, not an in-tree unsafe finding.
+
+The pure ZIP I/O unit-test subset did pass:
+
+```powershell
+$env:MIRIFLAGS='-Zmiri-disable-isolation'
+cargo +nightly miri test --bin ooxml zip_io::tests
+```
+
+Result:
+
+```text
+running 4 tests
+test zip_io::tests::zip_archive_check_rejects_declared_part_oversize ... ok
+test zip_io::tests::zip_archive_check_rejects_total_uncompressed_oversize ... ok
+test zip_io::tests::zip_text_reader_rejects_declared_oversize_entry ... ok
+test zip_io::tests::zip_text_reader_rejects_underdeclared_stream_oversize ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out
+```
+
 ## Recommended Next Full Audit Step
 
 Under `rust-unsafe-code-exorcist`, the next full step should be:
@@ -215,7 +252,7 @@ Under `rust-unsafe-code-exorcist`, the next full step should be:
 1. Get explicit user confirmation to create the full in-project `.unsafe-audit/` artifact directory.
 2. Install or otherwise make available the missing audit tools: `ast-grep`, `cargo-expand`, and `cargo-geiger`.
 3. Run a full `pre-release-soundness-gate` or `dependency-soundness` pass focused on dependency reachability, since the in-tree unsafe inventory is empty.
-4. Consider adding an explicit `unsafe_code = "forbid"` policy in Cargo lints or a crate-level `#![forbid(unsafe_code)]`, then run the skill's `forbid-soundness` mode to verify the policy is structurally enforced.
+4. Keep the Cargo `unsafe_code = "forbid"` lint green in normal check/test gates.
 
 ## What Remains Unproven
 
@@ -223,6 +260,7 @@ Under `rust-unsafe-code-exorcist`, the next full step should be:
 - AST-level unsafe classification was not checked because `ast-grep` is unavailable.
 - Dependency unsafe counts were not measured with `cargo-geiger`.
 - The rough dependency text scan is not a reachability analysis and does not prove whether dependency unsafe is reachable through this crate's public behavior.
-- No `miri`, `cargo-careful`, fuzzing, mutation testing, or formal verification was run.
+- Miri was run only on the pure ZIP I/O unit-test subset; the filesystem-heavy unit test needs a Miri-specific shim or refactor before the full unit-test binary can be a clean Windows Miri target.
+- No `cargo-careful`, fuzzing, mutation testing, or formal verification was run.
 - No full `rust-unsafe-code-exorcist` Phase 1-10 audit was performed.
-- No future-drift guard is currently proven; a later commit could introduce in-tree unsafe unless the project adds and enforces an unsafe-code lint.
+- Dependency-side unsafe remains unproven without `cargo-geiger`/reachability analysis.

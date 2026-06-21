@@ -8,6 +8,9 @@ rust-version = "1.96"
 name = "ooxml"
 path = "src/main.rs"
 
+[lints.rust]
+unsafe_code = "forbid"
+
 [dependencies]
 quick-xml = "0.38"
 regex = "1"
