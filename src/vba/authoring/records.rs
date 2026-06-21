@@ -56,7 +56,7 @@ pub(super) fn render_project_wm_stream(project: &VbaProjectModel) -> Vec<u8> {
 }
 
 pub(super) fn render_vba_project_stream() -> Vec<u8> {
-    vec![0xCC, 0x61, 0xFF, 0xFF, 0x00, 0x00, 0x00]
+    vec![0xCC, 0x61, 0xFF, 0xFF, 0x00, 0x01, 0x00]
 }
 
 pub(super) fn render_dir_stream(project: &VbaProjectModel) -> Vec<u8> {
@@ -227,6 +227,14 @@ mod tests {
         );
         assert!(stream.windows(worker.len()).any(|window| window == worker));
         assert!(stream.ends_with(&[0, 0]));
+    }
+
+    #[test]
+    fn vba_project_stream_uses_spec_write_version_without_cache() {
+        assert_eq!(
+            render_vba_project_stream(),
+            vec![0xCC, 0x61, 0xFF, 0xFF, 0x00, 0x01, 0x00]
+        );
     }
 
     #[test]
