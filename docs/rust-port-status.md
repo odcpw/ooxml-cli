@@ -9,6 +9,13 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-21:
 
+- The next parallel de-monolithization batch landed without behavior changes:
+  XLSX filters/sorts and ranges/cells contract tests, DOCX table contract
+  tests, XLSX comment output helpers, PPTX slide output helpers, and PPTX chart
+  data output helpers now live in focused child modules. Proof: `cargo
+  fmt --check`, `cargo check --all-targets`, `cargo clippy --all-targets --`
+  with `-D warnings`, focused Rust/Go contract filters for every touched slice,
+  and `cargo test --all-targets` with 5 unit tests plus 235 Rust contract tests.
 - The Windows Office edit smoke now defaults its working output directory to
   `target/ooxml-office-edit-smoke` under the repo instead of `%TEMP%`. This
   avoids an Excel COM false negative where byte-identical minimal workbooks
