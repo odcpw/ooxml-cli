@@ -500,11 +500,113 @@ fn xlsx_scaffold_rust_only_builds_formula_table_workbook() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+#[test]
+fn xlsx_pivot_and_chart_create_reject_uncached_formula_sources() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-formula-cache-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("xlsx formula cache temp dir");
+
+    let scaffold_path = temp_dir.join("01-scaffold.xlsx");
+    let data_path = temp_dir.join("02-formulas.xlsx");
+    let scaffold = scaffold_path.to_string_lossy().to_string();
+    let data = data_path.to_string_lossy().to_string();
+
+    run_ooxml_json_ok("formula cache scaffold", &[
+        "--json",
+        "xlsx",
+        "scaffold",
+        &scaffold,
+        "--sheet",
+        "Data",
+    ]);
+    let values = r#"[
+        ["Region","Units","Revenue"],
+        ["North",2,{"formula":"B2*10"}],
+        ["South",3,{"formula":"B3*10"}]
+    ]"#;
+    let set_result = run_ooxml_json_ok("formula cache ranges set", &[
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &scaffold,
+        "--sheet",
+        "Data",
+        "--range",
+        "A1:C3",
+        "--values",
+        values,
+        "--out",
+        &data,
+    ]);
+    assert_eq!(set_result["formulaCount"], Value::from(2));
+
+    let (pivot_code, pivot_stdout, pivot_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "pivots",
+        "create",
+        &data,
+        "--sheet",
+        "Data",
+        "--range",
+        "A1:C3",
+        "--rows",
+        "Region",
+        "--values",
+        "Revenue:sum",
+        "--dry-run",
+    ]);
+    assert_eq!(pivot_code, 2, "pivot create should reject uncached formulas");
+    assert_eq!(pivot_stdout, None, "pivot create stdout");
+    assert_formula_cache_error("pivot", pivot_stderr, "pivot source cell C2");
+
+    let (chart_code, chart_stdout, chart_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "charts",
+        "create",
+        &data,
+        "--type",
+        "bar",
+        "--sheet",
+        "Data",
+        "--range",
+        "A1:C3",
+        "--title",
+        "Revenue",
+        "--dry-run",
+    ]);
+    assert_eq!(chart_code, 2, "chart create should reject uncached formulas");
+    assert_eq!(chart_stdout, None, "chart create stdout");
+    assert_formula_cache_error("chart", chart_stderr, "chart source cell C2");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
 fn run_ooxml_json_ok(label: &str, args: &[&str]) -> Value {
     let (code, stdout, stderr) = run_ooxml(args);
     assert_eq!(code, 0, "{label} exit");
     assert_eq!(stderr, None, "{label} stderr");
     stdout.unwrap_or_else(|| panic!("{label} stdout"))
+}
+
+fn assert_formula_cache_error(label: &str, stderr: Option<Value>, expected_prefix: &str) {
+    let error = stderr.unwrap_or_else(|| panic!("{label} stderr"));
+    assert_eq!(
+        error["error"]["code"],
+        Value::String("invalid_args".to_string())
+    );
+    let message = error["error"]["message"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{label} error message"));
+    assert!(
+        message.contains(expected_prefix) && message.contains("cached calculated value"),
+        "{label} error should explain uncached formula source: {message}"
+    );
 }
 
 fn assert_conformance_check_passed(label: &str, file: &str) {

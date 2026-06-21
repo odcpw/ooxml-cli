@@ -767,18 +767,46 @@ fn pivot_cells_from_range_export(exported: &Value) -> CliResult<Vec<Vec<PivotCel
         .get("values")
         .and_then(Value::as_array)
         .ok_or_else(|| CliError::unexpected("range export omitted values"))?;
+    let formulas = exported.get("formulas").and_then(Value::as_array);
     let mut cells = Vec::new();
-    for row in values {
+    for (row_idx, row) in values.iter().enumerate() {
         let row = row
             .as_array()
             .ok_or_else(|| CliError::unexpected("range export value row is not an array"))?;
+        let formula_row = formulas
+            .and_then(|rows| rows.get(row_idx))
+            .and_then(Value::as_array);
         let mut out_row = Vec::new();
-        for value in row {
+        for (col_idx, value) in row.iter().enumerate() {
+            let formula = formula_row
+                .and_then(|row| row.get(col_idx))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !formula.trim().is_empty() && value.is_null() {
+                let cell_ref = exported_range_cell_ref(exported, row_idx, col_idx);
+                return Err(CliError::invalid_args(format!(
+                    "pivot source cell {cell_ref} contains a formula without a cached calculated value; open and recalculate the workbook in Excel, then save it before creating a pivot from that range"
+                )));
+            }
             out_row.push(json_value_to_pivot_cell(value));
         }
         cells.push(out_row);
     }
     Ok(cells)
+}
+
+fn exported_range_cell_ref(exported: &Value, row_idx: usize, col_idx: usize) -> String {
+    let Some(range) = exported.get("range").and_then(Value::as_str) else {
+        return format!("row {}, column {}", row_idx + 1, col_idx + 1);
+    };
+    let Ok(bounds) = parse_range(range).map(|bounds| bounds.normalized()) else {
+        return format!("row {}, column {}", row_idx + 1, col_idx + 1);
+    };
+    format!(
+        "{}{}",
+        col_name(bounds.min_col() + col_idx as u32),
+        bounds.min_row() + row_idx as u32
+    )
 }
 
 fn json_value_to_pivot_cell(value: &Value) -> PivotCell {

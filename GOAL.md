@@ -1,336 +1,169 @@
-# GOAL: Rust-Only First-Class ooxml-cli
+# GOAL: Safe, Practical ooxml-cli
 
 This repo is now a Rust product. The old Go implementation is deprecated reference material only.
-Do not build new behavior in Go. Do not keep measuring success as "matches Go" when Go lacks the
-feature, misses an Office failure, or encodes a historical limitation.
+Do not build new behavior in Go.
 
-The product promise is simple:
+The practical product promise is:
 
 > An agent or human can use `ooxml-cli` as a precise OOXML scalpel to create, inspect, edit, repair,
-> and verify Word, Excel, and PowerPoint files that desktop Office accepts.
+> and verify the Office files they actually need, without producing files that desktop Office rejects.
 
-That promise is stronger than "the zip parses" and stronger than "our tests are green". It means the
-file opens in the relevant Office app, the command surface is predictable for agents, and validation
-guards catch the classes of mistakes that Office rejects.
-
-## Current Baseline
-
-- Rust is the default CLI, docs, CI target, and implementation lane.
-- Go lives under `go/` as deprecated reference. Use it only for frozen historical comparison when it
-  is helpful; never let it veto a correct Rust improvement.
-- Conditional formatting exists in Rust: `xlsx conditional-formats list/show/add/delete/reorder`.
-- VBA macro creation for `.xlsm` and `.pptm` has been proven on this Windows machine through desktop
-  Office COM automation.
-- Manual Office smoke has opened generated `.docx`, `.xlsx`, and `.pptx` in Word, Excel, and
-  PowerPoint.
-- Known urgent defect: `xlsx names add` exposed an Office-rejecting workbook child-order failure
-  around `<definedNames>`. The correct CT_Workbook order is:
-  `workbookPr -> bookViews -> sheets -> definedNames -> calcPr`.
-- Known validator defect: `validate --strict` and `conformance check` must catch OOXML child-order
-  errors that desktop Office rejects, even when the Open XML SDK tier is unavailable.
+This is not a giant Rust-port certification project. Do not run a massive "gauntlet" or chase every
+possible command before the tool is useful. The bar is simpler and stricter: the core workflows we
+advertise must be safe, bug-resistant, validated, and proven with Office where it matters.
 
 ## Non-Negotiables
 
-- Rust-only feature work. Go changes are limited to archival moves, build isolation, or frozen
-  reference harness maintenance.
-- Every mutating command that writes an Office package must either run strict validation or clearly
-  require an explicit skip flag.
-- "Valid" means structurally valid enough for Office, not just parseable XML.
-- Generated proof artifacts must be opened locally with desktop Office on Windows for release-grade
-  gates.
-- Keep command output useful for agents: JSON, command templates, selectors/handles, validation
-  commands, and clear diagnostics.
-- Keep code simple. Prefer small focused modules over another Rust monolith.
-- Use subagents aggressively for independent slices, but serialize integration, Office COM, and
-  full-suite gates.
-- Do not churn tests for vanity. Add tests that prevent real breakage or prove new user value.
-
-## Skills To Apply
-
-Use these skills intentionally, in this rough order:
-
-1. `$planning-workflow` for this file and milestone discipline.
-2. `$agent-fungibility-philosophy` for parallel subagent lanes with clear ownership boundaries.
-3. `$de-monolithize-your-codebase-isomorphically` before large additions touch already-large Rust
-   files.
-4. `$simplify-and-refactor-code-isomorphically` when a slice starts duplicating OOXML helpers.
-5. `$testing-conformance-harnesses` for validation, Office-open, and regression proof.
-6. `$multi-pass-bug-hunting` after each integration pass, especially on OOXML insertion/rewrite code.
-7. `$agent-ergonomics-and-intuitiveness-maximization-for-cli-tools` before finalizing new command
-   names and JSON output.
-8. `$world-class-doctor-mode-for-cli-tools` if doctor output needs to explain local Office/SDK proof
-   availability.
-9. `$readme-writing` only after behavior is real and stable.
-10. `$running-the-gauntlet-on-your-rust-port` for the final honest parity/readiness audit.
-
-## Parallel Work Model
-
-Use one integration lane and multiple worker lanes. Workers may develop and write code in separate
-worktrees. The integration lane owns conflict resolution, final command naming, Office gates, and
-commits to the main Rust branch.
-
-### Integration Lane
-
-- Own `GOAL.md`, branch hygiene, commits, push, and release readiness.
-- Keep subagents pointed at narrow command-family gaps.
-- Merge worker results in small batches.
-- Run the serialized gates:
-  - `cargo fmt --check`
-  - `cargo check --all-targets`
-  - focused `cargo test` for changed command families
-  - broad Rust test suite when stable
-  - `ooxml validate --strict`
-  - `ooxml --json conformance check`
-  - Windows Office oracle for representative generated files
-
-### Worker A: XLSX Core Authoring
-
-Own XLSX from-nothing and spreadsheet authoring gaps:
-
-- Implement pure Rust `xlsx` scaffold creation without desktop Office.
-- Add table creation, not just append-to-existing-table.
-- Prove formulas written by `xlsx cells set` and range commands preserve formula XML correctly.
-- Ensure formula writes set recalc state and do not leave stale cached values that mislead Excel.
-- Ensure pivots, tables, formulas, conditional formats, comments, freeze panes, styles, hyperlinks,
-  and data validations can coexist in one generated workbook.
-- Add Office-open proof for a generated `.xlsx` with formulas, a table, conditional formatting, and
-  a pivot/table-derived view.
-
-### Worker B: DOCX Authoring
-
-Own Word from-nothing and block construction:
-
-- Implement pure Rust `docx` scaffold creation.
-- Add real block constructors for paragraphs, headings, lists, tables, and styled runs where the
-  current surface is mutation-only.
-- Ensure style creation/application is usable from commands and JSON.
-- Prove generated `.docx` opens in Word and survives strict validation/conformance.
-- Avoid giant XML string blobs when a reusable document builder helper is warranted.
-
-### Worker C: PPTX Authoring
-
-Own PowerPoint creation and fragile template areas:
-
-- Implement pure Rust `pptx` scaffold creation.
-- Harden `pptx template capture` against real decks where shapes exist but the expected `spTree`
-  lookup path fails.
-- Make footer field updates visible by synthesizing missing footer placeholders when requested.
-- Ensure table/text/chart placement from XLSX works on generated decks, not only fixtures.
-- Prove generated `.pptx` opens in PowerPoint and survives strict validation/conformance.
-
-### Worker D: Repair, Normalize, and Validation
-
-Own the safety rails:
-
-- Add or improve `repair`/`normalize` behavior for recoverable OOXML ordering and relationship
-  problems that block unrelated edits.
-- Ensure `validate --strict` catches Office-rejecting child-element ordering for workbook, worksheet,
-  presentation, slides, charts, tables, pivots, and any other locally modeled package parts.
-- Keep `conformance check` as the deeper package proof, with optional Office-open tier.
-- Add focused tests for every validator false-confidence bug discovered.
-- Current first target: workbook `<definedNames>` ordering must be caught by both `validate --strict`
-  and `conformance check`.
-
-### Worker E: Diff and Conversion Ergonomics
-
-Own agent-facing sharp edges:
-
-- Fix XLSX diff so renamed sheets still cell-align using stable identity such as sheetId, relationship
-  id, or part URI when names change.
-- Add discoverable conversion aliases where behavior already exists, for example `.xlsm` to `.xlsx`
-  as a macro-removal/save-as workflow.
-- Keep JSON output explicit about what changed, what was removed, and what proof command to run.
-
-### Worker F: CLI Ergonomics and Docs
-
-Own the human/agent surface:
-
-- Review new commands for predictable names, required flags, examples, and JSON shape.
-- Update capabilities so agents can discover from-scratch creation and safety commands.
-- Keep README short, honest, and operational.
-- Avoid docs that advertise features before they pass local proof gates.
-
-## Implementation Priorities
-
-### Milestone 0: Stabilize The Current Branch
-
-- Keep the Rust-default commits.
-- Keep the Windows VBA helper fallback fix.
-- Fix the workbook child-order validator gap.
-- Run focused tests for XLSX names and validation.
-- Commit and push a stable checkpoint.
-
-### Milestone 1: Pure Package Scaffolds
-
-Add from-nothing creation for:
-
-- `.xlsx`: workbook, workbook rels, content types, one sheet, styles baseline, calc settings.
-- `.docx`: document, relationships, content types, body, section properties, minimal styles if useful.
-- `.pptx`: presentation, slide master/layout, one slide, relationships, content types, theme baseline.
-
-Acceptance:
-
-- Each scaffold validates strictly.
-- Each scaffold passes conformance check.
-- Each scaffold opens in the corresponding desktop Office app on this Windows host.
-- Each scaffold can be used as input to existing mutation commands.
-
-### Milestone 2: XLSX First-Class Authoring
-
-Add and prove:
-
-- Table creation.
-- Formula authoring with calc invalidation/recalc proof.
-- Conditional formatting in a from-scratch workbook.
-- Pivot/table/formula coexistence.
-- Office-open proof for a generated workbook that uses a realistic mix of features.
-
-Acceptance:
-
-- Excel opens the generated workbook without repair prompts.
-- Formula cells are formulas, not only cached literals.
-- Validation catches stale/order-invalid workbook XML.
-
-### Milestone 3: DOCX First-Class Authoring
-
-Add and prove:
-
-- Create document from scratch.
-- Append/insert block commands that build paragraphs, headings, lists, and tables.
-- Style application suitable for template adaptation work.
-
-Acceptance:
-
-- Word opens generated documents.
-- Existing mutation commands work on generated documents.
-- No giant monolith accumulates in DOCX code.
-
-### Milestone 4: PPTX First-Class Authoring
-
-Add and prove:
-
-- Create presentation from scratch.
-- Add slides and place text, tables, and charts.
-- Synthesize visible footer placeholders when fields require them.
-- Harden template capture on real-world decks.
-
-Acceptance:
-
-- PowerPoint opens generated decks.
-- Existing table/chart/text commands work on generated decks.
-- Template capture fails with actionable diagnostics or succeeds; no misleading "missing spTree"
-  when shapes are present.
-
-### Milestone 5: Repair, Diff, Convert
-
-Add and prove:
-
-- Repair/normalize for common safe OOXML ordering and relationship issues.
-- Diff aligns renamed sheets by stable identity.
-- Conversion aliases for common workflows, especially macro removal/save-as.
-
-Acceptance:
-
-- Broken-but-recoverable packages can be normalized before edit.
-- Diff reports real cell changes across sheet renames.
-- Conversion commands are discoverable through capabilities and README.
-
-### Milestone 6: Gauntlet
-
-Run the honest release-readiness pass:
-
-- Full Rust test suite.
-- Conformance check on representative generated and mutated artifacts.
-- Windows Office open proof for `.docx`, `.xlsx`, `.xlsm`, `.pptx`, and `.pptm` where applicable.
-- Doctor output reviewed for local SDK/Office availability.
-- README is short and matches reality.
-- No stale TODO docs, dead scripts, or Go-first references remain in the active path.
-
-## Current Gap Ledger
-
-Updated 2026-06-21. The following findings are treated as live work until closed by code and proof:
-
-1. Scaffolds for `.docx`, `.xlsx`, and `.pptx` exist, but every scaffold family needs explicit
-   Office-open evidence in the artifact matrix. `docx scaffold` was the missing scaffold-family row
-   and now has a focused smoke scenario.
-2. XLSX table creation exists, and the next risk is realistic generated-workbook coexistence:
-   scaffold -> formulas/data -> table -> conditional format -> defined name -> pivot/chart -> Excel
-   open.
-3. Formula-heavy workbook proof is still incomplete around recalc/cache invalidation and Office-open
-   behavior on realistic generated workbooks.
-4. DOCX authoring still lacks first-class table creation, list construction, and styled-run creation
-   for new content. Existing scaffold, paragraph insertion, block insertion, and style application are
-   real and tested.
-5. PPTX scaffold exists, footer placeholder synthesis exists, and generated-deck text placement is
-   partly tested. The remaining proof gap is scaffold-derived table placement, table-from-XLSX,
-   charts, and PowerPoint-open evidence.
-6. PPTX template capture needs a targeted regression for real decks where shapes exist but older
-   `spTree` lookup assumptions failed.
-7. No repair/normalize command exists yet for safe recoverable OOXML ordering and relationship issues.
-8. XLSM-to-XLSX works through VBA removal but needs a clear conversion alias.
-9. Existing VBA and template proof artifacts need matrix ingestion so already-proven Office-open rows
-   are visible in the command coverage ledger.
-10. Validator false confidence must stay closed: local strict validation and conformance must catch
-    modeled schema child ordering, including workbook `<definedNames>`, `<calcPr>`, and
-    `<pivotCaches>` placement.
-
-## Proof Rules
-
-Every new feature lands with:
-
-- A focused Rust integration test.
-- A saved-readback assertion through the CLI where possible.
-- `validate --strict` success for generated outputs.
-- `conformance check` success for generated outputs.
-- A negative test for at least one realistic broken case when adding validator coverage.
-- Office-open proof for release-grade artifact families on Windows.
-
-Office COM gates are serialized. Rust unit/integration tests can run in parallel. Subagents can work
-in parallel worktrees, but integration commits must stay small enough to review.
-
-## Generated Artifact Matrix
-
-The repo needs a command-to-artifact proof matrix. This is how bugs like invalid workbook child order
-stop slipping through.
-
-Scope the matrix around public user-facing commands, not every private Rust helper. Internal helper
-tests are useful, but users care whether `ooxml xlsx names add ... --out file.xlsx` creates a file
-that Excel can open.
-
-Each mutating command family should have at least one row with:
-
-- The exact CLI command.
-- The input fixture type: scaffold, clean fixture, realistic fixture, or intentionally damaged file.
-- The generated output path.
-- Structural assertions against the OOXML part most likely to break.
-- Saved-readback through the CLI.
-- `validate --strict`.
-- `conformance check`.
-- Office-open status for representative rows.
-- Golden/semantic snapshot where the output structure is complex enough that field assertions are
-  too weak.
-
-Coverage target:
-
-- Fast CI: all mutators get structural/readback/validate/conformance proof where practical.
-- Local Windows release gate: representative generated files for every Office family open in desktop
-  Word, Excel, and PowerPoint.
-- Nightly/deep gate: broader Office-open matrix across command families, serialized to avoid COM
-  flakiness.
-
-The matrix must be able to answer:
-
-- Which commands create or mutate files?
+- Rust is the active product path. Go is legacy reference material only.
+- Do not advertise a workflow unless the current Rust CLI can do it.
+- Validate changed packages by default. Use skip flags only for diagnosed, explicit cases.
+- Treat desktop Office open proof as stronger than XML/package validation.
+- Keep code small and boring. Refactor before adding to a growing monolith.
+- Use subagents for independent audits or slices, but keep integration, commits, and Office COM gates
+  serialized.
+- Avoid churn. Add tests and docs only when they prevent real breakage or make the tool safer to use.
+
+## Current Known-Good Evidence
+
+Updated 2026-06-21.
+
+- `tools/windows-office-edit-smoke.ps1` fast gate passed 63/63 scenarios with:
+  - `validate --strict`
+  - `conformance check`
+  - Microsoft Open XML SDK validation
+  - artifact proof matrix generation
+- A focused desktop Office COM subset passed 7/7 representative generated outputs:
+  - `ooxml xlsx scaffold`
+  - `ooxml docx scaffold`
+  - `ooxml pptx scaffold`
+  - `ooxml xlsx pivots create` on a scaffold-derived workbook containing formulas, a table,
+    conditional formatting, and a defined name
+  - `ooxml pptx place table` on a scaffold-derived deck
+  - `ooxml pptx place table-from-xlsx` on a scaffold-derived deck
+  - `ooxml pptx charts create` on a scaffold-derived deck
+- Workbook child ordering for `<definedNames>` is covered by focused regression tests, and local
+  strict validation/conformance now catch the modeled bad order.
+- VBA `.xlsm` / `.pptm` creation is real on this Windows host through desktop Office COM, but macro
+  source editing remains intentionally conservative.
+
+## Practical Safety Loop
+
+Use this loop for ongoing work:
+
+1. Pick one user workflow or one suspected bug class.
+2. Reproduce it with the CLI, preferably from a from-scratch scaffold or a realistic fixture.
+3. Add the smallest test that would catch the bug or prove the workflow.
+4. Fix code only as needed.
+5. Run focused verification:
+   - `cargo fmt --check`
+   - focused `cargo test`
+   - `cargo check --all-targets` when Rust changed
+   - `ooxml validate --strict` on generated outputs
+   - `ooxml --json conformance check` on generated outputs
+   - desktop Office COM only for representative release-grade files
+6. Commit and push useful green checkpoints.
+
+## Bug-Hunt Priorities
+
+### 1. Artifact Proof Matrix Truthfulness
+
+The matrix is how we avoid false confidence. Keep improving it until it answers:
+
+- Which public mutating commands have no proof row?
 - Which commands are proven on from-scratch scaffolds?
-- Which commands are proven on realistic files?
-- Which commands have Office-open proof?
-- Which commands only have parser-level proof and need a stronger row?
+- Which commands are proven on realistic fixtures?
+- Which representative outputs opened in desktop Office?
+- Which rows are validation-only and need stronger evidence?
 
-## Commit Discipline
+Current state: the matrix can ingest Office edit smoke summaries with explicit `commandPath` and can
+classify Office-open proof. The remaining work is to add focused smoke rows only for commands that
+matter operationally, not to blanket-test every edge command immediately.
 
-- Commit stable milestones.
-- Push after meaningful green checkpoints.
-- Mention Office proof status in commit messages or follow-up notes when it is part of the change.
-- Keep generated manual artifacts out of git unless they are deliberate small fixtures.
-- Do not hide failures behind `--no-validate`; use it only for diagnosed pre-existing package damage
-  and then add repair/normalize work if the pattern matters.
+### 2. XLSX Safety
+
+Keep the realistic workbook path safe:
+
+- scaffold -> formulas/data -> table -> conditional formatting -> defined name -> pivot/chart
+- formula XML must be formulas, not cached literals pretending to be formulas
+- formula writes must invalidate stale calculation state where appropriate
+- workbook child order must stay Office-compatible
+
+Next useful checks:
+
+- A focused test for recalc/cache behavior on generated formula workbooks.
+- A small Office-open smoke row for any formula-heavy workbook we intend users to rely on.
+- Guard pivot/chart creation from formula-derived ranges whose cached values have not been calculated
+  yet. The command should fail clearly or require an explicit override instead of silently building
+  stale or empty caches.
+
+### 3. DOCX Safety
+
+Keep Word generation and editing safe for ordinary business docs:
+
+- `docx scaffold` must remain Office-open proven.
+- Existing block/table/comment/header/style mutations must not corrupt generated or fixture docs.
+- Add new DOCX authoring only when it supports real user workflows.
+
+Next useful checks:
+
+- Add the smallest useful table creation command, likely `docx tables create`, so a scaffolded Word
+  report can get a real `w:tbl` without starting from a template.
+- Prove the result with `docx tables show`, structural XML assertions, strict validation,
+  conformance, and a representative Word-open smoke row.
+
+### 4. PPTX Safety
+
+Keep generated decks safe for template adaptation:
+
+- `pptx scaffold` must remain Office-open proven.
+- Table placement, table-from-XLSX, and chart creation on scaffold-derived decks must remain
+  Office-open proven.
+- Template capture must not fail with misleading "missing spTree" diagnostics when shapes exist.
+
+Next useful checks:
+
+- Add a targeted regression for the real-deck `spTree` capture failure if a fixture can be kept small.
+- Keep footer placeholder synthesis covered by focused tests.
+
+### 5. Repair, Convert, And Diff Safety
+
+Add these only where they remove real user pain:
+
+- Add a narrow `repair normalize` command for recoverable OOXML ordering/relationship issues, starting
+  with XLSX workbook child order. Do not build a broad repair framework until we have concrete
+  damaged-package cases.
+- Keep `convert xlsm-to-xlsx` covered. It already exists as a VBA-removal alias; the next useful
+  proof is conformance on the converted `.xlsx`.
+- Keep XLSX diff identity covered. Renamed-sheet alignment is already implemented; add edge tests only
+  for real regressions such as rename plus reorder plus cell edits.
+
+Current main gap: users can detect recoverable workbook child-order damage, but they do not yet have
+a public "normalize this, then continue" command.
+
+## When To Use Subagents
+
+Use parallel agents for:
+
+- Read-only audits across XLSX, DOCX, PPTX, repair/diff/convert, and proof-matrix slices.
+- Disjoint implementation work with separate file ownership.
+- Fresh-eyes review of a changed command family.
+
+Do not use parallel agents for:
+
+- Office COM gates.
+- One-file edits where coordination costs more than the work.
+- Vague "make it first-class" assignments.
+
+## Done For Now Means
+
+The tool is safe enough to use when:
+
+- The README only describes workflows that work.
+- The core scaffold and representative generated-file workflows open in desktop Office.
+- Known Office-rejecting bugs have regression tests.
+- The proof matrix is honest about what is proven and what is not.
+- `doctor` tells the user clearly whether local Office/Open XML SDK proof is available.
+- There are no stale docs or scripts that push agents toward broken workflows.
+
+This file should stay short. If it starts becoming a giant certification document again, trim it back
+to the current bugs, proofs, and next safe workflow.
