@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/odcpw/ooxml-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/odcpw/ooxml-cli/actions/workflows/ci.yml)
 
-`ooxml-cli` is a Go CLI for inspecting, editing, validating, and automating Office Open XML files. It is built for agent workflows: commands return stable JSON handles, safe mutation paths, validation/readback commands, and useful failure hints instead of forcing raw ZIP/XML surgery.
+`ooxml-cli` is a Rust CLI for inspecting, editing, validating, and automating Office Open XML files. It is built for agent workflows: commands return stable JSON handles, safe mutation paths, validation/readback commands, and useful failure hints instead of forcing raw ZIP/XML surgery.
+
+Rust is the current/default product path. The old Go implementation is deprecated for product development and kept only as a legacy oracle/reference for parity checks and historical behavior.
 
 Supported families:
 
@@ -16,16 +18,16 @@ Supported families:
 ```powershell
 git clone https://github.com/odcpw/ooxml-cli.git
 cd ooxml-cli
-go build -o ooxml.exe .\cmd\ooxml
-.\ooxml.exe version
+cargo build --bin ooxml
+.\target\debug\ooxml.exe version
 ```
 
 During repo development, prefer the local runner so an old installed binary does not shadow your changes:
 
 ```powershell
-go run .\cmd\ooxml --help
-go run .\cmd\ooxml capabilities --json
-go run .\cmd\ooxml doctor
+cargo run -- --help
+cargo run -- --json capabilities
+cargo run -- doctor
 ```
 
 ## Everyday Commands
@@ -92,30 +94,31 @@ Real Office-shaped module add/remove is intentionally refused today because Offi
 Fast local loop:
 
 ```powershell
-go vet ./...
-go test ./...
+$env:CARGO_PROFILE_DEV_DEBUG = "0"
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets
 ```
 
-If `make` is installed, `make verify` runs the same local gate. `make verify-strict` also enforces repo-wide gofmt.
+Run Go only when deliberately refreshing or checking the legacy oracle/reference, not as the normal product build.
 
-Windows Office proof gates:
+Windows Office proof gates for the Rust CLI:
 
 ```powershell
-make check-office-schema      # strict validation + Open XML SDK, skips Office COM
-make check-office-com         # Word/Excel/PowerPoint desktop open proof
-make check-office-vba-schema  # Office-authored VBA seeds + strict/Open XML SDK
-make check-office-vba-com     # VBA attach/remove/replace + Excel/PowerPoint open proof
-make check-release-fast       # verify + schema smoke + conformance, skips COM
-make check-release-slow       # verify + schema smoke + conformance + COM + VBA smoke
+cargo build --bin ooxml
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -SkipOffice -EnableVbaObjectModelAccess
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
 ```
 
-Without `make`:
+The first and third commands are schema/Open XML SDK gates without Office COM. The second and fourth add desktop Word/Excel/PowerPoint open proof.
+
+Focused checks are usually enough while developing one command family:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -SkipOffice -EnableVbaObjectModelAccess
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
+cargo test --test rust_contract_smoke <filter> -- --nocapture
+cargo test <module_filter> --bin ooxml -- --nocapture
 ```
 
 The strongest current proof level is `microsoft-office-com-open`: desktop Office opened the edited file without repair/failure. This does not execute macros.
@@ -123,6 +126,7 @@ The strongest current proof level is `microsoft-office-com-open`: desktop Office
 ## Docs
 
 - `skills/ooxml/SKILL.md`: agent-facing operating guide
+- `docs/rust-port-status.md`: Rust default path and legacy Go oracle status
 - `docs/vba-macro-support.md`: VBA implementation status and limits
 - `docs/testing-strategy.md`: fixture and proof-gate strategy
 - `docs/windows-office-oracle.md`: Windows Office COM open oracle

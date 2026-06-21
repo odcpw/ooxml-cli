@@ -1,14 +1,15 @@
 # Testing Strategy
 
-The test strategy is practical compatibility, not exhaustive OOXML conformance. A change is trustworthy when it is covered at the right level for its risk: unit tests for pure logic, command-path tests for CLI contracts, validation for every mutation, and Office-open proof for compatibility-sensitive package writes.
+The test strategy is practical compatibility, not exhaustive OOXML conformance. Rust is the current/default product path; the Go implementation is deprecated for product development and remains only a legacy oracle/reference for parity and historical behavior. A change is trustworthy when it is covered at the right level for its risk: unit tests for pure logic, command-path tests for CLI contracts, validation for every mutation, and Office-open proof for compatibility-sensitive package writes.
 
 ## Proof Ladder
 
-1. `go test ./...`: Go unit, package, integration, and golden tests.
-2. `ooxml validate --strict <file>`: package, relationship, XML, semantic, and VBA consistency checks.
-3. Microsoft Open XML SDK validation: schema-order and enum checks that local validation can miss.
-4. LibreOffice/render/open checks: useful headless evidence for generated artifacts.
-5. Desktop Microsoft Office COM open proof: strongest local proof that Word, Excel, or PowerPoint opens the file without repair/failure.
+1. `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`: Rust format, lint, unit, and contract tests.
+2. Rust/Go oracle contract tests where parity is still being guarded.
+3. `ooxml validate --strict <file>`: package, relationship, XML, semantic, and VBA consistency checks.
+4. Microsoft Open XML SDK validation: schema-order and enum checks that local validation can miss.
+5. LibreOffice/render/open checks: useful headless evidence for generated artifacts.
+6. Desktop Microsoft Office COM open proof: strongest local proof that Word, Excel, or PowerPoint opens the file without repair/failure.
 
 Macro execution and VBE compile are not part of the automated proof ladder.
 
@@ -17,37 +18,29 @@ Macro execution and VBE compile are not part of the automated proof ladder.
 Fast normal loop:
 
 ```powershell
-go vet ./...
-go test ./...
+$env:CARGO_PROFILE_DEV_DEBUG = "0"
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets
 ```
 
-If `make` is installed, `make verify` runs the same local gate. `make verify-strict` also enforces repo-wide gofmt.
+Run Go only when deliberately refreshing or checking the legacy oracle/reference, not as the normal product build.
 
 Focused loop:
 
 ```powershell
-go test -count=1 ./internal/cli -run '<focused-regex>'
-go test -count=1 ./pkg/vba ./pkg/validate
+cargo test --test rust_contract_smoke <filter> -- --nocapture
+cargo test <module_filter> --bin ooxml -- --nocapture
 ```
 
 Windows Office proof:
 
 ```powershell
-make check-office-schema
-make check-office-com
-make check-office-vba-schema
-make check-office-vba-com
-make check-release-fast
-make check-release-slow
-```
-
-PowerShell equivalents:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -SkipOffice -EnableVbaObjectModelAccess
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
+cargo build --bin ooxml
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -SkipOffice -EnableVbaObjectModelAccess
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
 ```
 
 ## What To Test
@@ -95,12 +88,12 @@ When intentional output changes occur, update goldens with `UPDATE_GOLDENS=1` an
 
 ## Office And VBA Smoke Gates
 
-`tools/windows-office-edit-smoke.ps1` builds the CLI, mutates representative DOCX/XLSX/PPTX files, runs strict validation and Open XML SDK validation, optionally runs conformance, and optionally opens outputs in desktop Office.
+`tools/windows-office-edit-smoke.ps1` mutates representative DOCX/XLSX/PPTX files, runs strict validation and Open XML SDK validation, optionally runs conformance, and optionally opens outputs in desktop Office.
 
-The Office smoke scripts build the Go CLI by default. When validating the Rust
-port or another prebuilt subject, pass `-BinaryPath <path-to-ooxml.exe>` together
+When validating the Rust CLI, pass `-BinaryPath <path-to-ooxml.exe>` together
 with `-SkipBuild`; an explicit `-BinaryPath` without `-SkipBuild` is rejected so
-the script cannot overwrite the subject with a Go build.
+the script cannot overwrite the subject. The helper's implicit build path is
+legacy behavior, not the normal Rust proof path.
 
 `tools/windows-office-vba-smoke.ps1` creates Office-native `.xlsm` and `.pptm` seeds from `.bas` / `.cls` sources through `ooxml vba create`, proves `vbaProject.bin` extract/attach/remove, proves existing-module replacement, validates outputs, asserts real Office-shaped add/remove are refused, and optionally opens macro-enabled outputs in Excel and PowerPoint.
 
@@ -110,8 +103,9 @@ the script cannot overwrite the subject with a Go build.
 
 Before calling a Windows-compatible editing path ready:
 
-1. Run `go test ./...`.
-2. Run `go vet ./...`.
-3. Run the appropriate Office schema gate.
-4. For compatibility-sensitive package writes, run the corresponding Office COM gate.
-5. Report the proof level and the summary JSON path.
+1. Run `cargo fmt --check`.
+2. Run `cargo clippy --all-targets -- -D warnings`.
+3. Run `cargo test --all-targets`.
+4. Run the appropriate Office schema gate against the Rust binary.
+5. For compatibility-sensitive package writes, run the corresponding Office COM gate.
+6. Report the proof level and the summary JSON path.
