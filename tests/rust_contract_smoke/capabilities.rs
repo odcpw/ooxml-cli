@@ -362,6 +362,7 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
 
     let capabilities_path = temp_dir.join("capabilities.json");
     let evidence_path = temp_dir.join("evidence.json");
+    let office_edit_summary_path = temp_dir.join("office-edit-smoke-summary.json");
     let oracle_evidence_path = temp_dir.join("office-oracle-evidence.json");
     let oracle_summary_path = temp_dir.join("office-oracle-summary.json");
     let out_json = temp_dir.join("matrix.json");
@@ -493,6 +494,82 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
             "errorMessage": ""
         }
     ]);
+    let office_edit_summary = serde_json::json!({
+        "schemaVersion": "ooxml-cli.office-edit-smoke.v1",
+        "scenarios": [
+            {
+                "name": "xlsx-scaffold-explicit-command-path",
+                "commandPath": "ooxml xlsx scaffold",
+                "family": "xlsx",
+                "inputFixtureType": "scaffold",
+                "output": "proof-artifacts/xlsx-scaffold.xlsx",
+                "mutation": {
+                    "status": "passed",
+                    "command": "smoke summary carried explicit commandPath"
+                },
+                "readback": {
+                    "status": "passed",
+                    "command": "ooxml --json inspect proof-artifacts/xlsx-scaffold.xlsx",
+                    "artifact": "proof-artifacts/xlsx-scaffold.xlsx"
+                },
+                "openXmlSdk": {
+                    "status": "passed",
+                    "command": "dotnet run --project tools/openxml-validator proof-artifacts/xlsx-scaffold.xlsx",
+                    "artifact": "proof-artifacts/xlsx-scaffold.xlsx"
+                },
+                "validation": {
+                    "status": "passed",
+                    "command": "ooxml --json validate --strict proof-artifacts/xlsx-scaffold.xlsx",
+                    "artifact": "proof-artifacts/xlsx-scaffold.xlsx"
+                },
+                "conformance": {
+                    "status": "passed",
+                    "command": "ooxml --json conformance check proof-artifacts/xlsx-scaffold.xlsx",
+                    "artifact": "proof-artifacts/xlsx-scaffold.xlsx"
+                },
+                "microsoftOffice": {
+                    "status": "passed",
+                    "detail": "Excel opened the scaffold without repair.",
+                    "artifact": "proof-artifacts/xlsx-scaffold.xlsx"
+                }
+            },
+            {
+                "name": "xlsx-comments-add",
+                "family": "xlsx",
+                "inputFixtureType": "scaffold-derived",
+                "output": "proof-artifacts/xlsx-comments-add.xlsx",
+                "mutation": {
+                    "status": "passed",
+                    "command": "ooxml --json xlsx comments add input.xlsx --sheet Sheet1 --cell A1 --text Note --out proof-artifacts/xlsx-comments-add.xlsx"
+                },
+                "readback": {
+                    "status": "passed",
+                    "command": "ooxml --json inspect proof-artifacts/xlsx-comments-add.xlsx",
+                    "artifact": "proof-artifacts/xlsx-comments-add.xlsx"
+                },
+                "openXmlSdk": {
+                    "status": "passed",
+                    "command": "dotnet run --project tools/openxml-validator proof-artifacts/xlsx-comments-add.xlsx",
+                    "artifact": "proof-artifacts/xlsx-comments-add.xlsx"
+                },
+                "validation": {
+                    "status": "passed",
+                    "command": "ooxml --json validate --strict proof-artifacts/xlsx-comments-add.xlsx",
+                    "artifact": "proof-artifacts/xlsx-comments-add.xlsx"
+                },
+                "conformance": {
+                    "status": "passed",
+                    "command": "ooxml --json conformance check proof-artifacts/xlsx-comments-add.xlsx",
+                    "artifact": "proof-artifacts/xlsx-comments-add.xlsx"
+                },
+                "microsoftOffice": {
+                    "status": "passed",
+                    "detail": "Excel opened the file without repair.",
+                    "artifact": "proof-artifacts/xlsx-comments-add.xlsx"
+                }
+            }
+        ]
+    });
     fs::write(
         &capabilities_path,
         serde_json::to_vec_pretty(&capabilities).expect("capabilities JSON"),
@@ -503,6 +580,11 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         serde_json::to_vec_pretty(&evidence).expect("evidence JSON"),
     )
     .expect("write evidence JSON");
+    fs::write(
+        &office_edit_summary_path,
+        serde_json::to_vec_pretty(&office_edit_summary).expect("office edit summary JSON"),
+    )
+    .expect("write office edit summary JSON");
     fs::write(
         &oracle_evidence_path,
         serde_json::to_vec_pretty(&oracle_evidence).expect("oracle evidence JSON"),
@@ -529,6 +611,8 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         .arg(&capabilities_path)
         .arg("-EvidencePath")
         .arg(&evidence_path)
+        .arg("-OfficeEditSmokeSummaryPath")
+        .arg(&office_edit_summary_path)
         .arg("-OfficeOracleSummaryPath")
         .arg(&oracle_summary_path)
         .arg("-OfficeOracleEvidencePath")
@@ -554,15 +638,15 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         "ooxml-cli.artifact-proof-matrix.v2"
     );
     assert_eq!(matrix["summary"]["mutatingCommandCount"], 6);
-    assert_eq!(matrix["summary"]["proofRowsPresent"], 5);
-    assert_eq!(matrix["summary"]["commandsWithoutProofRows"], 1);
+    assert_eq!(matrix["summary"]["proofRowsPresent"], 6);
+    assert_eq!(matrix["summary"]["commandsWithoutProofRows"], 0);
     assert_eq!(
         matrix["summary"]["commandsLackingStrictValidationConformanceOrOfficeOpenProof"],
-        5
+        3
     );
     assert_eq!(
         matrix["summary"]["proofCoverageByClass"]["office-proven"],
-        3
+        5
     );
     assert_eq!(
         matrix["summary"]["proofCoverageByClass"]["strict-conformance-proven"],
@@ -570,18 +654,25 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
     );
     assert_eq!(
         matrix["summary"]["proofCoverageByClass"]["partial-proof"],
-        1
+        0
     );
     assert_eq!(
         matrix["summary"]["proofCoverageByClass"]["contract-only"],
-        1
+        0
     );
-    assert_eq!(matrix["summary"]["scaffoldDerivedProvenCommandCount"], 1);
+    assert_eq!(matrix["summary"]["scaffoldDerivedProvenCommandCount"], 2);
+    assert_eq!(matrix["summary"]["officeEditSmokeEvidenceCommandCount"], 2);
     assert_eq!(matrix["summary"]["officeOracleEvidenceCommandCount"], 2);
 
     let cells_set = proof_matrix_row_by_path(&matrix, "ooxml xlsx cells set");
     assert_eq!(cells_set["inputFixtureType"], "scaffold-derived");
     assert_eq!(cells_set["requiredGaps"], serde_json::json!([]));
+    let xlsx_scaffold = proof_matrix_row_by_path(&matrix, "ooxml xlsx scaffold");
+    assert_eq!(xlsx_scaffold["proofCoverage"], "office-proven");
+    assert_eq!(xlsx_scaffold["proofRowStatus"], "present");
+    assert_eq!(xlsx_scaffold["inputFixtureType"], "scaffold");
+    assert_eq!(xlsx_scaffold["requiredGaps"], serde_json::json!([]));
+    assert_eq!(xlsx_scaffold["tiers"]["office"]["status"], "passed");
     let vba_attach = proof_matrix_row_by_path(&matrix, "ooxml vba attach");
     assert_eq!(vba_attach["proofCoverage"], "office-proven");
     assert_eq!(vba_attach["proofRowStatus"], "present");
@@ -597,15 +688,19 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
     );
     assert_eq!(template_compile["tiers"]["office"]["status"], "passed");
     let comments = proof_matrix_row_by_path(&matrix, "ooxml xlsx comments add");
-    assert_eq!(comments["proofCoverage"], "contract-only");
-    assert_eq!(comments["proofRowStatus"], "missing");
-    assert_eq!(
-        comments["strictProofGaps"],
-        serde_json::json!(["validate", "conformance", "office"])
-    );
+    assert_eq!(comments["proofCoverage"], "office-proven");
+    assert_eq!(comments["proofRowStatus"], "present");
+    assert_eq!(comments["inputFixtureType"], "scaffold-derived");
+    assert_eq!(comments["requiredGaps"], serde_json::json!([]));
+    assert_eq!(comments["strictProofGaps"], serde_json::json!([]));
+    assert_eq!(comments["tiers"]["structural"]["status"], "passed");
+    assert_eq!(comments["tiers"]["readback"]["status"], "passed");
+    assert_eq!(comments["tiers"]["validate"]["status"], "passed");
+    assert_eq!(comments["tiers"]["conformance"]["status"], "passed");
+    assert_eq!(comments["tiers"]["office"]["status"], "passed");
     assert_eq!(
         comments["lacksStrictValidationConformanceOrOfficeOpenProof"],
-        Value::Bool(true)
+        Value::Bool(false)
     );
     assert!(proof_matrix_row(&matrix, "ooxml xlsx cells list").is_none());
 
@@ -613,22 +708,26 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         .as_array()
         .expect("office proven commands");
     assert!(office_commands.contains(&Value::String("ooxml xlsx cells set".to_string())));
+    assert!(office_commands.contains(&Value::String("ooxml xlsx comments add".to_string())));
     assert!(office_commands.contains(&Value::String("ooxml vba attach".to_string())));
     assert!(office_commands.contains(&Value::String("ooxml pptx template compile".to_string())));
     let scaffold_derived_commands = matrix["questions"]["scaffoldDerivedProvenCommands"]
         .as_array()
         .expect("scaffold-derived proven commands");
     assert!(scaffold_derived_commands.contains(&Value::String("ooxml xlsx cells set".to_string())));
+    assert!(
+        scaffold_derived_commands.contains(&Value::String("ooxml xlsx comments add".to_string()))
+    );
     let missing_proof_rows = matrix["questions"]["commandsWithoutProofRows"]
         .as_array()
         .expect("commands without proof rows");
-    assert!(missing_proof_rows.contains(&Value::String("ooxml xlsx comments add".to_string())));
+    assert!(missing_proof_rows.is_empty());
 
     let markdown = fs::read_to_string(&out_markdown).expect("matrix markdown");
-    assert!(markdown.contains("Commands with no proof row yet: 1"));
-    assert!(markdown.contains("Scaffold-derived commands with complete proof: 1"));
-    assert!(markdown.contains("| contract-only | 1 |"));
-    assert!(markdown.contains("| office-proven | 3 |"));
+    assert!(markdown.contains("Commands with no proof row yet: 0"));
+    assert!(markdown.contains("Scaffold-derived commands with complete proof: 2"));
+    assert!(markdown.contains("| contract-only | 0 |"));
+    assert!(markdown.contains("| office-proven | 5 |"));
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

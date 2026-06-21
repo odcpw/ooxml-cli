@@ -32,7 +32,9 @@ param(
 
     [string]$ArtifactProofMatrixJson = "",
 
-    [string]$ArtifactProofMatrixMarkdown = ""
+    [string]$ArtifactProofMatrixMarkdown = "",
+
+    [string]$OfficeEditSmokeSummaryPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -830,6 +832,10 @@ if ($WriteArtifactProofMatrix -or $FailOnArtifactProofGap) {
         "-OutMarkdown",
         $ArtifactProofMatrixMarkdown
     )
+    if ($OfficeEditSmokeSummaryPath -ne "") {
+        $matrixArgs += "-OfficeEditSmokeSummaryPath"
+        $matrixArgs += $OfficeEditSmokeSummaryPath
+    }
     if ($FailOnArtifactProofGap) {
         $matrixArgs += "-FailOnGap"
     }

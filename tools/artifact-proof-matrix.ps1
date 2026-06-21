@@ -1104,7 +1104,14 @@ function Import-OfficeEditSmokeEvidence {
         foreach ($scenario in @((Get-PropertyValue -Object $doc -Name "scenarios"))) {
             $mutation = Get-PropertyValue -Object $scenario -Name "mutation"
             $commandLine = [string](Get-PropertyValue -Object $mutation -Name "command")
-            $commandPath = Find-CommandPathInSmokeCommand -CommandLine $commandLine -CommandPaths $CommandPaths
+            $explicitCommandPath = [string](Get-PropertyValue -Object $scenario -Name "commandPath")
+            $commandPath = ""
+            if ($explicitCommandPath -ne "" -and $CommandPaths -contains $explicitCommandPath) {
+                $commandPath = $explicitCommandPath
+            }
+            else {
+                $commandPath = Find-CommandPathInSmokeCommand -CommandLine $commandLine -CommandPaths $CommandPaths
+            }
             if ($commandPath -eq "") {
                 continue
             }
