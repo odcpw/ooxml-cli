@@ -679,7 +679,9 @@ fn vba_rebuild_replaces_module_set_from_source_dir_without_office_com() {
     fs::write(source_dir.join("ignored.txt"), "not VBA").expect("write ignored file");
 
     let rebuilt_path = temp_dir.join("rebuilt.xlsm");
+    let rebuilt_extract_dir = temp_dir.join("rebuilt-extract");
     let rebuilt = rebuilt_path.to_string_lossy().to_string();
+    let rebuilt_extract = rebuilt_extract_dir.to_string_lossy().to_string();
     let source_dir_arg = source_dir.to_string_lossy().to_string();
     let (code, stdout, stderr) = run_ooxml(&[
         "--json",
@@ -706,9 +708,20 @@ fn vba_rebuild_replaces_module_set_from_source_dir_without_office_com() {
         "only .bas/.cls sources should be discovered"
     );
 
-    let (code, _stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &rebuilt]);
+    let (code, stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &rebuilt]);
     assert_eq!(code, 0, "validate rebuilt output");
     assert_eq!(stderr, None, "validate rebuilt stderr");
+    let validate = stdout.expect("validate rebuilt stdout");
+    assert_eq!(validate["valid"], true);
+    assert_eq!(validate["summary"]["errors"], 0);
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "conformance", "check", &rebuilt]);
+    assert_eq!(code, 0, "conformance rebuilt output");
+    assert_eq!(stderr, None, "conformance rebuilt stderr");
+    let conformance = stdout.expect("conformance rebuilt stdout");
+    assert_eq!(conformance["status"], "passed");
+    assert_eq!(conformance["family"], "xlsx");
+    assert_eq!(conformance["summary"]["failed"], 0);
 
     let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &rebuilt]);
     assert_eq!(code, 0, "list rebuilt output");
@@ -720,6 +733,376 @@ fn vba_rebuild_replaces_module_set_from_source_dir_without_office_com() {
     assert!(
         !modules.iter().any(|module| module["name"] == "Original"),
         "rebuild should replace the user module set"
+    );
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "extract",
+        &rebuilt,
+        "--out-dir",
+        &rebuilt_extract,
+        "--module",
+        "module:Replacement",
+    ]);
+    assert_eq!(code, 0, "extract rebuilt Replacement");
+    assert_eq!(stderr, None, "extract rebuilt Replacement stderr");
+    let extract_result = stdout.expect("extract rebuilt Replacement stdout");
+    assert_eq!(extract_result["modules"][0]["name"], "Replacement");
+    assert!(
+        fs::read_to_string(rebuilt_extract_dir.join("Replacement.bas"))
+            .expect("read rebuilt Replacement")
+            .contains("ReplacementMacro")
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn vba_rebuild_replaces_pptm_module_set_from_source_dir_without_office_com() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-vba-rebuild-pptm-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let original_source_path = temp_dir.join("Original.bas");
+    fs::write(
+        &original_source_path,
+        "Attribute VB_Name = \"Original\"\r\nPublic Sub OriginalMacro()\r\nEnd Sub\r\n",
+    )
+    .expect("write original PPTM source");
+    let input_path = temp_dir.join("input.pptx");
+    let original_path = temp_dir.join("original.pptm");
+    let rebuilt_path = temp_dir.join("rebuilt.pptm");
+    let source_dir = temp_dir.join("macros");
+    let nested_dir = source_dir.join("nested");
+    let extract_dir = temp_dir.join("extract");
+    fs::create_dir_all(&nested_dir).expect("nested source dir");
+
+    let input = input_path.to_string_lossy().to_string();
+    let original = original_path.to_string_lossy().to_string();
+    let rebuilt = rebuilt_path.to_string_lossy().to_string();
+    let original_source = original_source_path.to_string_lossy().to_string();
+    let source_dir_arg = source_dir.to_string_lossy().to_string();
+    let extract = extract_dir.to_string_lossy().to_string();
+
+    let (code, _stdout, stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "scaffold",
+        &input,
+        "--title",
+        "Rebuild target",
+        "--force",
+    ]);
+    assert_eq!(code, 0, "pptx scaffold for rebuild");
+    assert_eq!(stderr, None, "pptx scaffold stderr");
+
+    let (code, _stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "create",
+        &input,
+        "--pure",
+        "--source",
+        &original_source,
+        "--out",
+        &original,
+    ]);
+    assert_eq!(code, 0, "create original pptm");
+    assert_eq!(stderr, None, "create original pptm stderr");
+
+    fs::write(
+        source_dir.join("AgentSlide.bas"),
+        "Attribute VB_Name = \"AgentSlide\"\r\nPublic Sub MarkDeck()\r\n    Dim worker As Worker\r\n    Set worker = New Worker\r\n    MsgBox worker.Message()\r\nEnd Sub\r\n",
+    )
+    .expect("write replacement standard source");
+    fs::write(
+        nested_dir.join("Worker.cls"),
+        "Attribute VB_Name = \"Worker\"\r\nPublic Function Message() As String\r\n    Message = \"Hello from PPTM rebuild\"\r\nEnd Function\r\n",
+    )
+    .expect("write replacement class source");
+    fs::write(source_dir.join("ignored.txt"), "not VBA").expect("write ignored source");
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "rebuild",
+        &original,
+        "--source-dir",
+        &source_dir_arg,
+        "--out",
+        &rebuilt,
+    ]);
+    assert_eq!(code, 0, "rebuild pptm exit");
+    assert_eq!(stderr, None, "rebuild pptm stderr");
+    let rebuild = stdout.expect("rebuild pptm stdout");
+    assert_eq!(rebuild["backend"], "pure-rust");
+    assert_eq!(rebuild["rebuildMode"], "pure");
+    assert_eq!(rebuild["authoring"]["family"], "pptx");
+    assert_eq!(rebuild["authoring"]["modules"].as_array().unwrap().len(), 2);
+    assert_eq!(rebuild["authoring"]["modules"][0]["name"], "AgentSlide");
+    assert_eq!(rebuild["authoring"]["modules"][0]["kind"], "standard");
+    assert_eq!(rebuild["authoring"]["modules"][1]["name"], "Worker");
+    assert_eq!(rebuild["authoring"]["modules"][1]["kind"], "class");
+    assert_eq!(rebuild["result"]["action"], "attach");
+    assert_eq!(rebuild["result"]["family"], "pptx");
+    assert_eq!(
+        rebuild["sourcesDiscovered"].as_array().unwrap().len(),
+        2,
+        "only .bas/.cls sources should be discovered"
+    );
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &rebuilt]);
+    assert_eq!(code, 0, "validate rebuilt pptm");
+    assert_eq!(stderr, None, "validate rebuilt pptm stderr");
+    let validate = stdout.expect("validate rebuilt pptm stdout");
+    assert_eq!(validate["valid"], true);
+    assert_eq!(validate["summary"]["errors"], 0);
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "conformance", "check", &rebuilt]);
+    assert_eq!(code, 0, "conformance rebuilt pptm");
+    assert_eq!(stderr, None, "conformance rebuilt pptm stderr");
+    let conformance = stdout.expect("conformance rebuilt pptm stdout");
+    assert_eq!(conformance["status"], "passed");
+    assert_eq!(conformance["family"], "pptx");
+    assert_eq!(conformance["summary"]["failed"], 0);
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &rebuilt]);
+    assert_eq!(code, 0, "list rebuilt pptm");
+    assert_eq!(stderr, None, "list rebuilt pptm stderr");
+    let list = stdout.expect("list rebuilt pptm stdout");
+    assert_eq!(list["project"]["family"], "pptx");
+    assert_eq!(list["project"]["moduleCount"], 2);
+    assert_eq!(list["project"]["warnings"], Value::Null);
+    let modules = list["project"]["modules"].as_array().unwrap();
+    assert!(modules.iter().any(|module| module["name"] == "AgentSlide"));
+    assert!(
+        modules
+            .iter()
+            .any(|module| module["name"] == "Worker" && module["kind"] == "class")
+    );
+    assert!(
+        !modules.iter().any(|module| module["name"] == "Original"),
+        "rebuild should replace the previous PPTM module set"
+    );
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "extract",
+        &rebuilt,
+        "--out-dir",
+        &extract,
+        "--module",
+        "module:Worker",
+    ]);
+    assert_eq!(code, 0, "extract rebuilt pptm Worker");
+    assert_eq!(stderr, None, "extract rebuilt pptm Worker stderr");
+    let extract_result = stdout.expect("extract rebuilt pptm Worker stdout");
+    assert_eq!(extract_result["modules"][0]["name"], "Worker");
+    assert!(
+        fs::read_to_string(extract_dir.join("Worker.cls"))
+            .expect("read rebuilt PPTM Worker")
+            .contains("Hello from PPTM rebuild")
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn vba_rebuild_replaces_docm_standard_modules_and_refuses_classes_without_office_com() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-vba-rebuild-docm-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let original_source_path = temp_dir.join("OriginalDoc.bas");
+    fs::write(
+        &original_source_path,
+        "Attribute VB_Name = \"OriginalDoc\"\r\nPublic Sub OriginalMacro()\r\nEnd Sub\r\n",
+    )
+    .expect("write original DOCM source");
+    let input_path = temp_dir.join("input.docx");
+    let original_path = temp_dir.join("original.docm");
+    let rebuilt_path = temp_dir.join("rebuilt.docm");
+    let rejected_path = temp_dir.join("rejected.docm");
+    let source_dir = temp_dir.join("macros");
+    let class_source_dir = temp_dir.join("class-macros");
+    let extract_dir = temp_dir.join("extract");
+    fs::create_dir_all(&source_dir).expect("source dir");
+    fs::create_dir_all(&class_source_dir).expect("class source dir");
+
+    let input = input_path.to_string_lossy().to_string();
+    let original = original_path.to_string_lossy().to_string();
+    let rebuilt = rebuilt_path.to_string_lossy().to_string();
+    let rejected = rejected_path.to_string_lossy().to_string();
+    let original_source = original_source_path.to_string_lossy().to_string();
+    let source_dir_arg = source_dir.to_string_lossy().to_string();
+    let class_source_dir_arg = class_source_dir.to_string_lossy().to_string();
+    let extract = extract_dir.to_string_lossy().to_string();
+
+    let (code, _stdout, stderr) = run_ooxml(&[
+        "--json",
+        "docx",
+        "scaffold",
+        &input,
+        "--text",
+        "Rebuild target",
+    ]);
+    assert_eq!(code, 0, "docx scaffold for rebuild");
+    assert_eq!(stderr, None, "docx scaffold stderr");
+
+    let (code, _stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "create",
+        &input,
+        "--pure",
+        "--source",
+        &original_source,
+        "--out",
+        &original,
+    ]);
+    assert_eq!(code, 0, "create original docm");
+    assert_eq!(stderr, None, "create original docm stderr");
+
+    fs::write(
+        source_dir.join("AgentDoc.bas"),
+        "Attribute VB_Name = \"AgentDoc\"\r\nPublic Sub MarkDocument()\r\n    MsgBox \"Hello from DOCM rebuild\"\r\nEnd Sub\r\n",
+    )
+    .expect("write replacement doc source");
+    fs::write(source_dir.join("ignored.txt"), "not VBA").expect("write ignored source");
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "rebuild",
+        &original,
+        "--source-dir",
+        &source_dir_arg,
+        "--out",
+        &rebuilt,
+    ]);
+    assert_eq!(code, 0, "rebuild docm exit");
+    assert_eq!(stderr, None, "rebuild docm stderr");
+    let rebuild = stdout.expect("rebuild docm stdout");
+    assert_eq!(rebuild["backend"], "pure-rust");
+    assert_eq!(rebuild["rebuildMode"], "pure");
+    assert_eq!(rebuild["authoring"]["family"], "docx");
+    assert_eq!(rebuild["authoring"]["modules"].as_array().unwrap().len(), 2);
+    assert_eq!(rebuild["authoring"]["modules"][0]["name"], "ThisDocument");
+    assert_eq!(rebuild["authoring"]["modules"][0]["hostSynthesized"], true);
+    assert_eq!(rebuild["authoring"]["modules"][1]["name"], "AgentDoc");
+    assert_eq!(rebuild["authoring"]["modules"][1]["kind"], "standard");
+    assert_eq!(rebuild["result"]["action"], "attach");
+    assert_eq!(rebuild["result"]["family"], "docx");
+    assert_eq!(
+        rebuild["sourcesDiscovered"].as_array().unwrap().len(),
+        1,
+        "only .bas/.cls sources should be discovered"
+    );
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &rebuilt]);
+    assert_eq!(code, 0, "validate rebuilt docm");
+    assert_eq!(stderr, None, "validate rebuilt docm stderr");
+    let validate = stdout.expect("validate rebuilt docm stdout");
+    assert_eq!(validate["valid"], true);
+    assert_eq!(validate["summary"]["errors"], 0);
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "conformance", "check", &rebuilt]);
+    assert_eq!(code, 0, "conformance rebuilt docm");
+    assert_eq!(stderr, None, "conformance rebuilt docm stderr");
+    let conformance = stdout.expect("conformance rebuilt docm stdout");
+    assert_eq!(conformance["status"], "passed");
+    assert_eq!(conformance["family"], "docx");
+    assert_eq!(conformance["summary"]["failed"], 0);
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &rebuilt]);
+    assert_eq!(code, 0, "list rebuilt docm");
+    assert_eq!(stderr, None, "list rebuilt docm stderr");
+    let list = stdout.expect("list rebuilt docm stdout");
+    assert_eq!(list["project"]["family"], "docx");
+    assert_eq!(list["project"]["moduleCount"], 2);
+    assert_eq!(list["project"]["warnings"], Value::Null);
+    let host_warnings = &list["project"]["hostCompatibilityWarnings"];
+    assert!(
+        host_warnings.is_null() || host_warnings.as_array().is_some_and(Vec::is_empty),
+        "standard-only rebuilt DOCM should not carry host compatibility warnings: {list:?}"
+    );
+    let modules = list["project"]["modules"].as_array().unwrap();
+    assert!(
+        modules
+            .iter()
+            .any(|module| module["name"] == "ThisDocument")
+    );
+    assert!(modules.iter().any(|module| module["name"] == "AgentDoc"));
+    assert!(
+        !modules.iter().any(|module| module["name"] == "OriginalDoc"),
+        "rebuild should replace the previous DOCM user module set"
+    );
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "extract",
+        &rebuilt,
+        "--out-dir",
+        &extract,
+        "--module",
+        "module:AgentDoc",
+    ]);
+    assert_eq!(code, 0, "extract rebuilt docm AgentDoc");
+    assert_eq!(stderr, None, "extract rebuilt docm AgentDoc stderr");
+    let extract_result = stdout.expect("extract rebuilt docm AgentDoc stdout");
+    assert_eq!(extract_result["modules"][0]["name"], "AgentDoc");
+    assert!(
+        fs::read_to_string(extract_dir.join("AgentDoc.bas"))
+            .expect("read rebuilt DOCM AgentDoc")
+            .contains("Hello from DOCM rebuild")
+    );
+
+    fs::write(
+        class_source_dir.join("Worker.cls"),
+        "Attribute VB_Name = \"Worker\"\r\nPublic Function Message() As String\r\n    Message = \"not yet\"\r\nEnd Function\r\n",
+    )
+    .expect("write unsupported docm class source");
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "rebuild",
+        &original,
+        "--source-dir",
+        &class_source_dir_arg,
+        "--out",
+        &rejected,
+    ]);
+    assert_eq!(code, 4, "docm class rebuild refusal exit");
+    assert_eq!(stdout, None, "docm class rebuild refusal stdout");
+    let stderr = stderr.expect("docm class rebuild refusal stderr");
+    assert_eq!(stderr["error"]["code"], "unsupported_type");
+    assert!(
+        stderr["error"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("only standard .bas modules"),
+        "unexpected docm class rebuild refusal: {stderr:?}"
+    );
+    assert!(
+        !rejected_path.exists(),
+        "refused DOCM rebuild should not write an output package"
     );
 
     let _ = fs::remove_dir_all(&temp_dir);
