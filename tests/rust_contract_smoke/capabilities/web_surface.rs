@@ -159,6 +159,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         "table",
         "pivot",
         "name",
+        "conditional-format",
         "data-validation",
         "hyperlink",
         "chart",
@@ -537,6 +538,20 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_object_kind_command(&all_caps, "cell", "ooxml xlsx comments remove");
     assert_command_target_kind(&all_caps, "ooxml xlsx comments add", "comment");
     assert_command_target_kind(&all_caps, "ooxml xlsx comments add", "cell");
+    for path in [
+        "ooxml xlsx conditional-formats list",
+        "ooxml xlsx conditional-formats show",
+        "ooxml xlsx conditional-formats add",
+        "ooxml xlsx conditional-formats delete",
+        "ooxml xlsx conditional-formats reorder",
+    ] {
+        assert_object_kind_command(&all_caps, "conditional-format", path);
+        assert_object_kind_command(&all_caps, "range", path);
+        assert_object_kind_command(&all_caps, "sheet", path);
+        assert_command_target_kind(&all_caps, path, "conditional-format");
+        assert_command_target_kind(&all_caps, path, "range");
+        assert_command_target_kind(&all_caps, path, "sheet");
+    }
     assert_object_kind_command(
         &all_caps,
         "data-validation",
@@ -837,6 +852,15 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx comments add", true);
     assert_command(&xlsx_caps, "ooxml xlsx comments update", true);
     assert_command(&xlsx_caps, "ooxml xlsx comments remove", true);
+    assert_command(&xlsx_caps, "ooxml xlsx conditional-formats list", false);
+    assert_command(&xlsx_caps, "ooxml xlsx conditional-formats show", false);
+    assert_command(&xlsx_caps, "ooxml xlsx conditional-formats add", true);
+    assert_command(&xlsx_caps, "ooxml xlsx conditional-formats delete", true);
+    assert_command(
+        &xlsx_caps,
+        "ooxml xlsx conditional-formats reorder",
+        true,
+    );
     assert_command(&xlsx_caps, "ooxml xlsx data-validations list", false);
     assert_command(&xlsx_caps, "ooxml xlsx data-validations show", false);
     assert_command(&xlsx_caps, "ooxml xlsx data-validations create", true);
@@ -924,6 +948,15 @@ fn capabilities_advertise_supported_web_agent_surface() {
     );
     assert_command(&range_caps, "ooxml xlsx filters-sorts set-sort", false);
     assert_command(&range_caps, "ooxml xlsx filters-sorts clear-sort", false);
+    assert_command(&range_caps, "ooxml xlsx conditional-formats list", false);
+    assert_command(&range_caps, "ooxml xlsx conditional-formats show", false);
+    assert_command(&range_caps, "ooxml xlsx conditional-formats add", true);
+    assert_command(&range_caps, "ooxml xlsx conditional-formats delete", true);
+    assert_command(
+        &range_caps,
+        "ooxml xlsx conditional-formats reorder",
+        true,
+    );
     assert_command(&range_caps, "ooxml xlsx data-validations list", false);
     assert_command(&range_caps, "ooxml xlsx data-validations show", false);
     assert_command(&range_caps, "ooxml xlsx data-validations create", true);
@@ -1055,6 +1088,18 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&dv_caps, "ooxml xlsx data-validations update", true);
     assert_command(&dv_caps, "ooxml xlsx data-validations delete", true);
     assert_no_command(&dv_caps, "ooxml xlsx tables list");
+
+    let (cf_code, cf_stdout, cf_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "conditional-format"]);
+    assert_eq!(cf_code, 0);
+    assert_eq!(cf_stderr, None);
+    let cf_caps = cf_stdout.expect("conditional-format capabilities");
+    assert_command(&cf_caps, "ooxml xlsx conditional-formats list", false);
+    assert_command(&cf_caps, "ooxml xlsx conditional-formats show", false);
+    assert_command(&cf_caps, "ooxml xlsx conditional-formats add", true);
+    assert_command(&cf_caps, "ooxml xlsx conditional-formats delete", true);
+    assert_command(&cf_caps, "ooxml xlsx conditional-formats reorder", true);
+    assert_no_command(&cf_caps, "ooxml xlsx data-validations list");
 
     let (hyperlink_code, hyperlink_stdout, hyperlink_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "hyperlink"]);

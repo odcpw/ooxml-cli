@@ -234,16 +234,19 @@ fn rust_capability_inventory_is_go_oracle_subset() {
 
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
-    assert_eq!(go_paths.len(), 295, "Go oracle command count changed");
+    assert_eq!(go_paths.len(), 296, "Go oracle command count changed");
     assert_eq!(
         rust_paths.len(),
-        295,
+        296,
         "Rust supported command count changed"
     );
-    assert_eq!(
-        go_paths.len() - rust_paths.len(),
-        0,
-        "Rust missing-command count changed"
+    let missing = go_paths
+        .difference(&rust_paths)
+        .cloned()
+        .collect::<Vec<_>>();
+    assert!(
+        missing.is_empty(),
+        "Rust missing-command set changed: {missing:?}"
     );
     let invented = rust_paths
         .difference(&go_paths)
@@ -252,6 +255,41 @@ fn rust_capability_inventory_is_go_oracle_subset() {
     assert!(
         invented.is_empty(),
         "Rust capabilities must be a Go-oracle command subset; invented paths: {invented:?}"
+    );
+}
+
+#[test]
+fn xlsx_conditional_format_reorder_capability_metadata() {
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(rust_code, 0);
+    assert_eq!(rust_stderr, None);
+    let rust_caps = rust_stdout.expect("rust capabilities");
+    let reorder = command_by_path(&rust_caps, "ooxml xlsx conditional-formats reorder");
+
+    assert_eq!(reorder["opCompatible"], Value::Bool(true));
+    assert_eq!(
+        reorder["use"],
+        "reorder <file> --sheet <selector> --rule <selector> --priority <n>"
+    );
+    assert!(
+        reorder["short"]
+            .as_str()
+            .expect("short")
+            .contains("list rules first"),
+        "reorder capability should include a recovery hint: {reorder:?}"
+    );
+    assert_eq!(
+        local_flag_field(reorder, "name"),
+        serde_json::json!([
+            "--sheet",
+            "--rule",
+            "--priority",
+            "--out",
+            "--in-place",
+            "--backup",
+            "--dry-run",
+            "--no-validate"
+        ])
     );
 }
 

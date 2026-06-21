@@ -204,7 +204,8 @@ pub(crate) use xlsx_comments::{
 };
 pub(crate) use xlsx_conditional_formatting::{
     XlsxConditionalFormatMutationOptions, xlsx_conditional_formats_add,
-    xlsx_conditional_formats_delete, xlsx_conditional_formats_list, xlsx_conditional_formats_show,
+    xlsx_conditional_formats_delete, xlsx_conditional_formats_list,
+    xlsx_conditional_formats_reorder, xlsx_conditional_formats_show,
 };
 pub(crate) use xlsx_data_validations::{
     XlsxDataValidationFields, XlsxDataValidationMutationOptions, xlsx_data_validations_create,

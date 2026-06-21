@@ -98,6 +98,8 @@ struct ConditionalFormatMutation {
     sqref: String,
     rule: ConditionalFormatRule,
     cells_affected: i64,
+    old_priority: Option<i64>,
+    new_priority: Option<i64>,
 }
 
 pub(crate) fn xlsx_conditional_formats_list(
@@ -297,7 +299,6 @@ pub(crate) fn xlsx_conditional_formats_delete(
     })
 }
 
-#[allow(dead_code)]
 pub(crate) fn xlsx_conditional_formats_reorder(
     file: &str,
     options: XlsxConditionalFormatMutationOptions<'_>,
@@ -381,6 +382,16 @@ where
         conditional_format_rule_json(&mutation.rule),
     );
     result.insert("cellsAffected".to_string(), json!(mutation.cells_affected));
+    if let Some(old_priority) = mutation.old_priority
+        && old_priority > 0
+    {
+        result.insert("oldPriority".to_string(), json!(old_priority));
+    }
+    if let Some(new_priority) = mutation.new_priority
+        && new_priority > 0
+    {
+        result.insert("newPriority".to_string(), json!(new_priority));
+    }
     if let Some(output_path) = output_path.as_deref() {
         result.insert("output".to_string(), json!(output_path));
     }
@@ -767,6 +778,8 @@ fn add_conditional_format_xml(
         sqref: norm_sqref.clone(),
         rule: added,
         cells_affected: sqref_cell_count(&norm_sqref),
+        old_priority: None,
+        new_priority: None,
     })
 }
 
@@ -805,6 +818,8 @@ fn delete_conditional_format_xml(
         sqref: rule.sqref.clone(),
         cells_affected: sqref_cell_count(&rule.sqref),
         rule,
+        old_priority: None,
+        new_priority: None,
     })
 }
 
@@ -882,6 +897,8 @@ fn reorder_conditional_format_xml(
         sqref: updated_rule.sqref.clone(),
         cells_affected: sqref_cell_count(&updated_rule.sqref),
         rule: updated_rule,
+        old_priority: selected.priority,
+        new_priority: Some(target_priority),
     })
 }
 
@@ -1220,7 +1237,7 @@ fn replace_or_insert_start_tag_attr(
             ));
         }
         let value_end = cursor;
-        if local_name(tag[name_start..name_end].as_bytes()) == attr_local_name {
+        if local_name(&tag.as_bytes()[name_start..name_end]) == attr_local_name {
             let mut out = String::with_capacity(tag.len() + value.len());
             out.push_str(&tag[..value_start]);
             out.push_str(&xml_attr_escape(value));
