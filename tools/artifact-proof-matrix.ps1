@@ -270,6 +270,7 @@ function Test-PublicPackageMutator {
     $path = [string](Get-PropertyValue -Object $Command -Name "path")
     $flagNames = @(Get-FlagNames -Command $Command)
     $hasPackageWriteFlags = (Test-HasAnyFlag -FlagNames $flagNames -Needles @("--out", "--in-place")) -and (Test-HasAnyFlag -FlagNames $flagNames -Needles @("--dry-run", "--in-place"))
+    $opCompatible = [bool](Get-PropertyValue -Object $Command -Name "opCompatible")
 
     if ($path -eq "ooxml vba create" -or $path -eq "ooxml pptx template compile") {
         return $true
@@ -278,6 +279,9 @@ function Test-PublicPackageMutator {
         return $true
     }
     if ($path -eq "ooxml find" -and ($flagNames -contains "--apply")) {
+        return $true
+    }
+    if ($opCompatible -and (Test-HasAnyFlag -FlagNames $flagNames -Needles @("--out", "--in-place"))) {
         return $true
     }
     if ($hasPackageWriteFlags) {

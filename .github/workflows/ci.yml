@@ -70,4 +70,5 @@ jobs:
             -MutationParallelism 4 `
             -RequireOpenXmlSdk `
             -RunConformance `
-            -SkipOffice
+            -SkipOffice `
+            -WriteArtifactProofMatrix

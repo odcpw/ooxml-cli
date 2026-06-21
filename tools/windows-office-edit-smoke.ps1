@@ -28,7 +28,15 @@ param(
 
     [switch]$SkipOffice,
 
-    [switch]$Visible
+    [switch]$Visible,
+
+    [switch]$WriteArtifactProofMatrix,
+
+    [switch]$FailOnArtifactProofGap,
+
+    [string]$ArtifactProofMatrixJson = "",
+
+    [string]$ArtifactProofMatrixMarkdown = ""
 )
 
 Set-StrictMode -Version Latest
@@ -1348,8 +1356,95 @@ $summary = [pscustomobject]@{
 $summaryPath = Join-Path $outRoot "summary.json"
 $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
 
+$artifactProofMatrix = [pscustomobject]@{
+    enabled              = [bool]($WriteArtifactProofMatrix -or $FailOnArtifactProofGap)
+    status               = "not-run"
+    json                 = ""
+    markdown             = ""
+    command              = ""
+    exitCode             = $null
+    mutatingCommandCount = $null
+    rowsWithRequiredGaps = $null
+    gapsByTier           = $null
+}
+
+if ($WriteArtifactProofMatrix -or $FailOnArtifactProofGap) {
+    $matrixScript = Join-Path $PSScriptRoot "artifact-proof-matrix.ps1"
+    if (-not (Test-Path -LiteralPath $matrixScript -PathType Leaf)) {
+        throw "artifact proof matrix script was not found: $matrixScript"
+    }
+    if ($ArtifactProofMatrixJson -eq "") {
+        $ArtifactProofMatrixJson = Join-Path $outRoot "artifact-proof-matrix.json"
+    }
+    if ($ArtifactProofMatrixMarkdown -eq "") {
+        $ArtifactProofMatrixMarkdown = Join-Path $outRoot "artifact-proof-matrix.md"
+    }
+
+    $matrixArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $matrixScript,
+        "-RepoRoot",
+        $root,
+        "-BinaryPath",
+        $BinaryPath,
+        "-OfficeEditSmokeSummaryPath",
+        $summaryPath,
+        "-OutJson",
+        $ArtifactProofMatrixJson,
+        "-OutMarkdown",
+        $ArtifactProofMatrixMarkdown
+    )
+    if ($FailOnArtifactProofGap) {
+        $matrixArgs += "-FailOnGap"
+    }
+
+    $artifactProofMatrix.json = $ArtifactProofMatrixJson
+    $artifactProofMatrix.markdown = $ArtifactProofMatrixMarkdown
+    $artifactProofMatrix.command = Format-CommandLine -FilePath "powershell.exe" -Arguments $matrixArgs
+
+    Write-Host ("[artifact-proof-matrix] {0}" -f $artifactProofMatrix.command)
+    & powershell.exe @matrixArgs
+    $matrixExitCode = $LASTEXITCODE
+    $artifactProofMatrix.exitCode = $matrixExitCode
+    $artifactProofMatrix.status = if ($matrixExitCode -eq 0) { "written" } else { "failed" }
+    if (Test-Path -LiteralPath $ArtifactProofMatrixJson -PathType Leaf) {
+        try {
+            $matrixDoc = Get-Content -LiteralPath $ArtifactProofMatrixJson -Raw | ConvertFrom-Json
+            $artifactProofMatrix.mutatingCommandCount = [int]$matrixDoc.summary.mutatingCommandCount
+            $artifactProofMatrix.rowsWithRequiredGaps = [int]$matrixDoc.summary.rowsWithRequiredGaps
+            $artifactProofMatrix.gapsByTier = $matrixDoc.summary.gapsByTier
+            if ($artifactProofMatrix.rowsWithRequiredGaps -gt 0) {
+                $artifactProofMatrix.status = "gaps"
+            }
+            elseif ($matrixExitCode -eq 0) {
+                $artifactProofMatrix.status = "covered"
+            }
+        }
+        catch {
+            if ($matrixExitCode -eq 0) {
+                $artifactProofMatrix.status = "written"
+            }
+        }
+    }
+    $summary | Add-Member -NotePropertyName artifactProofMatrix -NotePropertyValue $artifactProofMatrix -Force
+    $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
+    if ($matrixExitCode -ne 0) {
+        exit $matrixExitCode
+    }
+}
+else {
+    $summary | Add-Member -NotePropertyName artifactProofMatrix -NotePropertyValue $artifactProofMatrix -Force
+    $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
+}
+
 Write-Host ("Office edit smoke checked {0} scenario(s); {1} passed, {2} failed." -f $results.Count, ($results.Count - $failed.Count), $failed.Count)
 Write-Host ("Summary: {0}" -f $summaryPath)
+if ($artifactProofMatrix.enabled) {
+    Write-Host ("Artifact proof matrix: {0}" -f $artifactProofMatrix.json)
+}
 
 if ($failed.Count -gt 0 -or $oracleExitCode -ne 0) {
     exit 1
