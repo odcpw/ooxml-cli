@@ -30,7 +30,6 @@ pub(super) fn parse_cfvo_spec(spec: &str) -> CliResult<ConditionalFormatCfvo> {
     let (cfvo_type, value) = spec
         .split_once(':')
         .or_else(|| spec.split_once('='))
-        .map(|(before, after)| (before, after))
         .unwrap_or((spec, ""));
     normalize_cfvo(ConditionalFormatCfvo {
         cfvo_type: cfvo_type.to_string(),
