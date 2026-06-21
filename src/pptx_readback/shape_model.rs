@@ -3,7 +3,7 @@ use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
-use crate::{add_selector, attr, local_name};
+use crate::{add_selector, attr, decode_xml_text, local_name, xml_general_ref};
 #[derive(Default)]
 pub(super) struct Shape {
     pub(super) id: u32,
@@ -311,7 +311,7 @@ fn normalized_text_preview(text: &str) -> String {
 
 pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
+    reader.config_mut().trim_text(false);
     let mut shapes = Vec::new();
     let mut current: Option<Shape> = None;
     let mut current_end = String::new();
@@ -462,17 +462,24 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
                 in_text = true;
             }
             Ok(Event::Text(e)) if in_text => {
-                let text = String::from_utf8_lossy(e.as_ref()).to_string();
-                if let Some(cell) = current_cell.as_mut() {
-                    cell.text.push_str(&text);
-                } else if let Some(shape) = current.as_mut()
-                    && shape.kind == "sp"
-                {
-                    shape.text.push_str(&text);
-                    if in_shape_text_body && let Some(paragraph) = current_paragraph.as_mut() {
-                        paragraph.push(text);
-                    }
-                }
+                let text = decode_xml_text(e.as_ref());
+                push_pptx_text(
+                    &mut current,
+                    &mut current_cell,
+                    &mut current_paragraph,
+                    in_shape_text_body,
+                    text,
+                );
+            }
+            Ok(Event::GeneralRef(e)) if in_text => {
+                let text = xml_general_ref(e.as_ref());
+                push_pptx_text(
+                    &mut current,
+                    &mut current_cell,
+                    &mut current_paragraph,
+                    in_shape_text_body,
+                    text,
+                );
             }
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "t" => {
                 in_text = false;
@@ -520,4 +527,23 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
         }
     }
     shapes
+}
+
+fn push_pptx_text(
+    current: &mut Option<Shape>,
+    current_cell: &mut Option<TableCell>,
+    current_paragraph: &mut Option<Vec<String>>,
+    in_shape_text_body: bool,
+    text: String,
+) {
+    if let Some(cell) = current_cell.as_mut() {
+        cell.text.push_str(&text);
+    } else if let Some(shape) = current.as_mut()
+        && shape.kind == "sp"
+    {
+        shape.text.push_str(&text);
+        if in_shape_text_body && let Some(paragraph) = current_paragraph.as_mut() {
+            paragraph.push(text);
+        }
+    }
 }

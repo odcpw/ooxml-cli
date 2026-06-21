@@ -17,6 +17,7 @@ const DOCX_PARENT_GROUP_COMMANDS: &[&str] = &[
 const RUST_ONLY_CAPABILITY_PATHS: &[&str] = &[
     "ooxml convert xlsm-to-xlsx",
     "ooxml docx scaffold",
+    "ooxml pptx scaffold",
     "ooxml xlsx scaffold",
     "ooxml xlsx tables create",
 ];
@@ -304,6 +305,193 @@ fn xlsx_conditional_format_reorder_capability_metadata() {
     );
 }
 
+#[test]
+fn artifact_proof_matrix_classifies_inventory_coverage() {
+    let Some(powershell) = powershell_for_artifact_proof_matrix_test() else {
+        eprintln!("skipping artifact proof matrix test because PowerShell is not available");
+        return;
+    };
+
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-artifact-proof-matrix-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("artifact proof matrix temp dir");
+
+    let capabilities_path = temp_dir.join("capabilities.json");
+    let evidence_path = temp_dir.join("evidence.json");
+    let out_json = temp_dir.join("matrix.json");
+    let out_markdown = temp_dir.join("matrix.md");
+
+    let capabilities = serde_json::json!({
+        "commands": [
+            proof_matrix_capability_command(
+                "ooxml xlsx cells set",
+                "set <file> --sheet <selector> --cell <cell> --value <value>",
+                &["--sheet", "--cell", "--value", "--out", "--in-place", "--dry-run"],
+                true,
+                &["cell"],
+            ),
+            proof_matrix_capability_command(
+                "ooxml docx scaffold",
+                "scaffold --out <file>",
+                &["--out"],
+                false,
+                &["package"],
+            ),
+            proof_matrix_capability_command(
+                "ooxml xlsx scaffold",
+                "scaffold --out <file>",
+                &["--out"],
+                false,
+                &["package", "sheet"],
+            ),
+            proof_matrix_capability_command(
+                "ooxml xlsx comments add",
+                "add <file> --sheet <selector> --cell <cell> --text <text>",
+                &["--sheet", "--cell", "--text", "--out", "--in-place", "--dry-run"],
+                true,
+                &["comment"],
+            ),
+            proof_matrix_capability_command(
+                "ooxml xlsx cells list",
+                "list <file> --sheet <selector>",
+                &["--sheet"],
+                false,
+                &["cell"],
+            ),
+        ]
+    });
+    let evidence = serde_json::json!({
+        "proofs": [
+            {
+                "commandPath": "ooxml xlsx cells set",
+                "generatedOutputPath": "proof-artifacts/cells-set.xlsx",
+                "tiers": {
+                    "validate": { "status": "passed" },
+                    "conformance": { "status": "passed" },
+                    "office": { "status": "passed" }
+                }
+            },
+            {
+                "commandPath": "ooxml docx scaffold",
+                "tiers": {
+                    "validate": { "status": "passed" },
+                    "conformance": { "status": "passed" }
+                }
+            },
+            {
+                "commandPath": "ooxml xlsx scaffold",
+                "tiers": {
+                    "readback": { "status": "passed" }
+                }
+            }
+        ]
+    });
+    fs::write(
+        &capabilities_path,
+        serde_json::to_vec_pretty(&capabilities).expect("capabilities JSON"),
+    )
+    .expect("write capabilities JSON");
+    fs::write(
+        &evidence_path,
+        serde_json::to_vec_pretty(&evidence).expect("evidence JSON"),
+    )
+    .expect("write evidence JSON");
+
+    let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tools")
+        .join("artifact-proof-matrix.ps1");
+    let output = Command::new(powershell)
+        .arg("-NoProfile")
+        .arg("-ExecutionPolicy")
+        .arg("Bypass")
+        .arg("-File")
+        .arg(&script)
+        .arg("-RepoRoot")
+        .arg(env!("CARGO_MANIFEST_DIR"))
+        .arg("-CapabilitiesJsonPath")
+        .arg(&capabilities_path)
+        .arg("-EvidencePath")
+        .arg(&evidence_path)
+        .arg("-OutJson")
+        .arg(&out_json)
+        .arg("-OutMarkdown")
+        .arg(&out_markdown)
+        .output()
+        .expect("run artifact proof matrix");
+    assert!(
+        output.status.success(),
+        "artifact proof matrix failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let matrix_text = fs::read_to_string(&out_json).expect("matrix JSON text");
+    let matrix: Value =
+        serde_json::from_str(matrix_text.trim_start_matches('\u{feff}')).expect("matrix JSON");
+    assert_eq!(
+        matrix["schemaVersion"],
+        "ooxml-cli.artifact-proof-matrix.v2"
+    );
+    assert_eq!(matrix["summary"]["mutatingCommandCount"], 4);
+    assert_eq!(matrix["summary"]["proofRowsPresent"], 3);
+    assert_eq!(matrix["summary"]["commandsWithoutProofRows"], 1);
+    assert_eq!(
+        matrix["summary"]["commandsLackingStrictValidationConformanceOrOfficeOpenProof"],
+        3
+    );
+    assert_eq!(
+        matrix["summary"]["proofCoverageByClass"]["office-proven"],
+        1
+    );
+    assert_eq!(
+        matrix["summary"]["proofCoverageByClass"]["strict-conformance-proven"],
+        1
+    );
+    assert_eq!(
+        matrix["summary"]["proofCoverageByClass"]["partial-proof"],
+        1
+    );
+    assert_eq!(
+        matrix["summary"]["proofCoverageByClass"]["contract-only"],
+        1
+    );
+
+    let comments = proof_matrix_row_by_path(&matrix, "ooxml xlsx comments add");
+    assert_eq!(comments["proofCoverage"], "contract-only");
+    assert_eq!(comments["proofRowStatus"], "missing");
+    assert_eq!(
+        comments["strictProofGaps"],
+        serde_json::json!(["validate", "conformance", "office"])
+    );
+    assert_eq!(
+        comments["lacksStrictValidationConformanceOrOfficeOpenProof"],
+        Value::Bool(true)
+    );
+    assert!(proof_matrix_row(&matrix, "ooxml xlsx cells list").is_none());
+
+    let office_commands = matrix["questions"]["officeProvenCommands"]
+        .as_array()
+        .expect("office proven commands");
+    assert!(office_commands.contains(&Value::String("ooxml xlsx cells set".to_string())));
+    let missing_proof_rows = matrix["questions"]["commandsWithoutProofRows"]
+        .as_array()
+        .expect("commands without proof rows");
+    assert!(missing_proof_rows.contains(&Value::String("ooxml xlsx comments add".to_string())));
+
+    let markdown = fs::read_to_string(&out_markdown).expect("matrix markdown");
+    assert!(markdown.contains("Commands with no proof row yet: 1"));
+    assert!(markdown.contains("| contract-only | 1 |"));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
 fn assert_no_duplicate_command_paths(capabilities: &Value, label: &str) {
     let commands = capabilities["commands"].as_array().expect("commands array");
     let mut seen = BTreeSet::new();
@@ -344,4 +532,57 @@ fn optional_array_is_empty(value: &Value, field: &str) -> bool {
         .and_then(Value::as_array)
         .map(|items| items.is_empty())
         .unwrap_or(true)
+}
+
+fn powershell_for_artifact_proof_matrix_test() -> Option<&'static str> {
+    ["powershell.exe", "powershell", "pwsh"]
+        .into_iter()
+        .find(|candidate| {
+            Command::new(candidate)
+                .arg("-NoProfile")
+                .arg("-ExecutionPolicy")
+                .arg("Bypass")
+                .arg("-Command")
+                .arg("$PSVersionTable.PSVersion.ToString()")
+                .output()
+                .map(|output| output.status.success())
+                .unwrap_or(false)
+        })
+}
+
+fn proof_matrix_capability_command(
+    path: &str,
+    use_text: &str,
+    flags: &[&str],
+    op_compatible: bool,
+    target_object_kinds: &[&str],
+) -> Value {
+    serde_json::json!({
+        "path": path,
+        "use": use_text,
+        "short": format!("Synthetic proof matrix command for {path}"),
+        "opCompatible": op_compatible,
+        "opIneligibleReason": if op_compatible {
+            Value::Null
+        } else {
+            Value::String("synthetic read-only or generator command".to_string())
+        },
+        "localFlags": flags
+            .iter()
+            .map(|name| serde_json::json!({ "name": name }))
+            .collect::<Vec<_>>(),
+        "targetObjectKinds": target_object_kinds,
+    })
+}
+
+fn proof_matrix_row_by_path<'a>(matrix: &'a Value, path: &str) -> &'a Value {
+    proof_matrix_row(matrix, path).unwrap_or_else(|| panic!("missing matrix row {path}"))
+}
+
+fn proof_matrix_row<'a>(matrix: &'a Value, path: &str) -> Option<&'a Value> {
+    matrix["rows"]
+        .as_array()
+        .expect("matrix rows")
+        .iter()
+        .find(|row| row["commandPath"].as_str() == Some(path))
 }

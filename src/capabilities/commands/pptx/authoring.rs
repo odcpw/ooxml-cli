@@ -5,6 +5,30 @@ use super::super::{capability_command, flag};
 pub(super) fn commands() -> Vec<Value> {
     vec![
         capability_command(
+            "ooxml pptx scaffold",
+            "scaffold <output.pptx>",
+            "Create a minimal PowerPoint presentation from scratch.",
+            &["package", "slide", "shape"],
+            false,
+            None,
+            vec![
+                flag("--title", "title", "string", "initial title text"),
+                flag("--subtitle", "subtitle", "string", "initial subtitle text"),
+                flag(
+                    "--force",
+                    "force",
+                    "bool",
+                    "replace an existing output file",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict validation of the generated package",
+                ),
+            ],
+        ),
+        capability_command(
             "ooxml pptx shapes show",
             "show <file> --slide <n>",
             "Show targetable shapes on a slide.",

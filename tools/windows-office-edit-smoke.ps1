@@ -997,6 +997,13 @@ $scenarios = @(
         -Arguments @("--json", "xlsx", "names", "add", $xlsxPivotData, "--name", "OfficeSmokeRange", "--sheet", "1", "--range", "A1:C5", "--comment", "Office smoke defined name", "--out", (Join-Path $caseDir "xlsx-names-add.xlsx"))),
 
     (New-Scenario `
+        -Name "pptx-scaffold" `
+        -Family "pptx" `
+        -Input "" `
+        -Output (Join-Path $caseDir "pptx-scaffold.pptx") `
+        -Arguments @("--json", "pptx", "scaffold", (Join-Path $caseDir "pptx-scaffold.pptx"), "--title", "Office Scaffold", "--subtitle", "Opened by PowerPoint")),
+
+    (New-Scenario `
         -Name "pptx-replace-text" `
         -Family "pptx" `
         -Input $pptxMinimal `

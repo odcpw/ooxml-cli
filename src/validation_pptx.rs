@@ -44,6 +44,8 @@ pub(crate) fn validate_pptx_semantics(
     let mut diagnostics = Vec::new();
     let mut stale_media_diagnostics = Vec::new();
 
+    diagnostics.extend(validate_presentation_child_order(file)?);
+
     for slide in slides {
         let rels = slide_relationships(file, &slide.part_uri);
         let rel_by_id = relationship_map(&rels);
@@ -102,6 +104,108 @@ fn presentation_slides(file: &str) -> CliResult<Vec<SlideRef>> {
     }
 
     Ok(slides)
+}
+
+fn validate_presentation_child_order(file: &str) -> CliResult<Vec<Value>> {
+    let xml = zip_text(file, "ppt/presentation.xml")?;
+    let mut reader = Reader::from_str(&xml);
+    reader.config_mut().trim_text(false);
+    let mut diagnostics = Vec::new();
+    let mut depth = 0_u32;
+    let mut last_order = 0usize;
+    let mut last_name = String::new();
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if depth == 1 {
+                    push_presentation_child_order_diagnostic(
+                        &name,
+                        &last_name,
+                        &mut last_order,
+                        &mut diagnostics,
+                    );
+                    last_name = name;
+                }
+                depth += 1;
+            }
+            Ok(Event::Empty(e)) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if depth == 1 {
+                    push_presentation_child_order_diagnostic(
+                        &name,
+                        &last_name,
+                        &mut last_order,
+                        &mut diagnostics,
+                    );
+                    last_name = name;
+                }
+            }
+            Ok(Event::End(_)) => {
+                depth = depth.saturating_sub(1);
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => {
+                diagnostics.push(validation_diagnostic(
+                    "PPTX_PARSE_ERROR",
+                    "error",
+                    format!("failed to parse presentation XML child order: {err}"),
+                ));
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(diagnostics)
+}
+
+fn push_presentation_child_order_diagnostic(
+    name: &str,
+    last_name: &str,
+    last_order: &mut usize,
+    diagnostics: &mut Vec<Value>,
+) {
+    let current = presentation_child_order(name);
+    if current == 0 {
+        return;
+    }
+    if *last_order > current {
+        diagnostics.push(validation_diagnostic(
+            "PPTX_PRESENTATION_CHILD_ORDER",
+            "error",
+            format!(
+                "/ppt/presentation.xml has <{name}> after <{last_name}>; expected schema child order"
+            ),
+        ));
+        return;
+    }
+    *last_order = current;
+}
+
+fn presentation_child_order(name: &str) -> usize {
+    [
+        "sldMasterIdLst",
+        "notesMasterIdLst",
+        "handoutMasterIdLst",
+        "sldIdLst",
+        "sldSz",
+        "notesSz",
+        "smartTags",
+        "embeddedFontLst",
+        "custShowLst",
+        "photoAlbum",
+        "custDataLst",
+        "kinsoku",
+        "defaultTextStyle",
+        "modifyVerifier",
+        "extLst",
+    ]
+    .iter()
+    .position(|candidate| *candidate == name)
+    .map(|idx| idx + 1)
+    .unwrap_or(0)
 }
 
 fn slide_relationships(file: &str, slide_part_uri: &str) -> Vec<RelationshipEntry> {

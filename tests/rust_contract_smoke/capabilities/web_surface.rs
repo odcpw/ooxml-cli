@@ -25,6 +25,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         assert_command(&all_caps, path, false);
     }
     assert_command(&all_caps, "ooxml pptx diff", false);
+    assert_command(&all_caps, "ooxml pptx scaffold", false);
     assert_command(&all_caps, "ooxml pptx extract text", false);
     assert_command(&all_caps, "ooxml pptx extract notes", false);
     assert_command(&all_caps, "ooxml pptx extract images", false);
@@ -208,6 +209,12 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command_target_kind(&all_caps, "ooxml convert xlsm-to-xlsx", "package");
     assert_object_kind_command(&all_caps, "package", "ooxml docx scaffold");
     assert_command_target_kind(&all_caps, "ooxml docx scaffold", "package");
+    assert_object_kind_command(&all_caps, "package", "ooxml pptx scaffold");
+    assert_object_kind_command(&all_caps, "slide", "ooxml pptx scaffold");
+    assert_object_kind_command(&all_caps, "shape", "ooxml pptx scaffold");
+    assert_command_target_kind(&all_caps, "ooxml pptx scaffold", "package");
+    assert_command_target_kind(&all_caps, "ooxml pptx scaffold", "slide");
+    assert_command_target_kind(&all_caps, "ooxml pptx scaffold", "shape");
     assert_object_kind_command(&all_caps, "package", "ooxml xlsx scaffold");
     assert_object_kind_command(&all_caps, "sheet", "ooxml xlsx scaffold");
     assert_command_target_kind(&all_caps, "ooxml xlsx scaffold", "package");
@@ -718,6 +725,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
         pptx_caps["contractVersion"],
         Value::String("ooxml-cli.agent-capabilities.v4".to_string())
     );
+    assert_command(&pptx_caps, "ooxml pptx scaffold", false);
     assert_command(&pptx_caps, "ooxml pptx slides list", false);
     assert_command(&pptx_caps, "ooxml pptx slides selectors", false);
     assert_command(&pptx_caps, "ooxml pptx slides show", false);
@@ -821,6 +829,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&package_caps, "ooxml template apply", true);
     assert_command(&package_caps, "ooxml convert xlsm-to-xlsx", false);
     assert_command(&package_caps, "ooxml docx scaffold", false);
+    assert_command(&package_caps, "ooxml pptx scaffold", false);
     assert_command(&package_caps, "ooxml xlsx scaffold", false);
     assert_no_command(&package_caps, "ooxml docx blocks");
 

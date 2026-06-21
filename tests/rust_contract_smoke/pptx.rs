@@ -2,6 +2,8 @@
 // baseline and process helpers remain in the parent integration test crate.
 use super::*;
 
+include!("pptx/scaffold.rs");
+
 const PPTX_NOTES_REL_TYPE: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
 const PPTX_SLIDE_REL_TYPE: &str =

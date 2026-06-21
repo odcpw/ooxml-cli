@@ -20,8 +20,17 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$SchemaVersion = "ooxml-cli.artifact-proof-matrix.v1"
+$SchemaVersion = "ooxml-cli.artifact-proof-matrix.v2"
 $TierNames = @("structural", "readback", "validate", "conformance", "office")
+$StrictProofTierNames = @("validate", "conformance", "office")
+$ProofCoverageClasses = @(
+    "office-proven",
+    "strict-conformance-proven",
+    "strict-validation-proven",
+    "conformance-proven",
+    "partial-proof",
+    "contract-only"
+)
 $PassingTierStatuses = @("passed", "not-required", "not-applicable", "waived")
 
 function Quote-Argument {
@@ -549,6 +558,71 @@ function Test-TierGap {
     return -not ($PassingTierStatuses -contains [string]$Tier.status)
 }
 
+function Test-TierProofPassed {
+    param([System.Collections.IDictionary]$Tier)
+
+    if ($null -eq $Tier) {
+        return $false
+    }
+    return ([string]$Tier.status -eq "passed")
+}
+
+function Get-StrictProofGaps {
+    param([hashtable]$Tiers)
+
+    $gaps = @()
+    foreach ($tierName in $StrictProofTierNames) {
+        if (Test-TierGap -Tier $Tiers[$tierName]) {
+            $gaps += $tierName
+        }
+    }
+    return $gaps
+}
+
+function Get-ProofCoverageClass {
+    param([hashtable]$Tiers)
+
+    $officePassed = Test-TierProofPassed -Tier $Tiers["office"]
+    $validatePassed = Test-TierProofPassed -Tier $Tiers["validate"]
+    $conformancePassed = Test-TierProofPassed -Tier $Tiers["conformance"]
+    $structuralPassed = Test-TierProofPassed -Tier $Tiers["structural"]
+    $readbackPassed = Test-TierProofPassed -Tier $Tiers["readback"]
+
+    if ($officePassed) {
+        return "office-proven"
+    }
+    if ($validatePassed -and $conformancePassed) {
+        return "strict-conformance-proven"
+    }
+    if ($validatePassed) {
+        return "strict-validation-proven"
+    }
+    if ($conformancePassed) {
+        return "conformance-proven"
+    }
+    if ($structuralPassed -or $readbackPassed) {
+        return "partial-proof"
+    }
+    return "contract-only"
+}
+
+function Get-ProofCoverageDetail {
+    param(
+        [string]$CoverageClass,
+        [bool]$ProofRowPresent
+    )
+
+    $rowText = if ($ProofRowPresent) { "An external proof row was supplied." } else { "No external proof row was supplied; this row is inferred from capabilities." }
+    switch ($CoverageClass) {
+        "office-proven" { return "Desktop Microsoft Office open proof is passing. $rowText" }
+        "strict-conformance-proven" { return "Strict validation and conformance proof are passing, but Office-open proof is not passing in this matrix run. $rowText" }
+        "strict-validation-proven" { return "Strict validation is passing, but conformance and Office-open proof are not both passing in this matrix run. $rowText" }
+        "conformance-proven" { return "Conformance proof is passing, but strict validation and Office-open proof are not both passing in this matrix run. $rowText" }
+        "partial-proof" { return "Structural or readback evidence exists, but strict validation, conformance, and Office-open proof are not passing in this matrix run. $rowText" }
+        default { return "Only the capabilities contract currently accounts for this mutating command in this matrix run. $rowText" }
+    }
+}
+
 function Get-HighestEvidenceTier {
     param([hashtable]$Tiers)
 
@@ -813,6 +887,16 @@ function Escape-MarkdownCell {
     return $text
 }
 
+function Join-MarkdownListCell {
+    param([object[]]$Values)
+
+    $items = @($Values | Where-Object { $null -ne $_ -and [string]$_ -ne "" } | ForEach-Object { [string]$_ })
+    if ($items.Count -eq 0) {
+        return ""
+    }
+    return ($items -join ", ")
+}
+
 function Write-MarkdownReport {
     param(
         [object]$Matrix,
@@ -826,6 +910,9 @@ function Write-MarkdownReport {
     [void]$lines.Add("")
     [void]$lines.Add(("Mutating commands: {0}" -f $Matrix.summary.mutatingCommandCount))
     [void]$lines.Add(("Rows with required proof gaps: {0}" -f $Matrix.summary.rowsWithRequiredGaps))
+    [void]$lines.Add(("Proof rows present: {0}" -f $Matrix.summary.proofRowsPresent))
+    [void]$lines.Add(("Commands with no proof row yet: {0}" -f $Matrix.summary.commandsWithoutProofRows))
+    [void]$lines.Add(("Commands lacking strict validation/conformance/Office-open proof: {0}" -f $Matrix.summary.commandsLackingStrictValidationConformanceOrOfficeOpenProof))
     [void]$lines.Add("")
     [void]$lines.Add("| tier | gaps |")
     [void]$lines.Add("| --- | ---: |")
@@ -833,15 +920,24 @@ function Write-MarkdownReport {
         [void]$lines.Add(("| {0} | {1} |" -f $tier, $Matrix.summary.gapsByTier.$tier))
     }
     [void]$lines.Add("")
-    [void]$lines.Add("| family | command | fixture | artifact | structural | readback | validate | conformance | office |")
-    [void]$lines.Add("| --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    [void]$lines.Add("| proof coverage | commands |")
+    [void]$lines.Add("| --- | ---: |")
+    foreach ($coverageClass in $ProofCoverageClasses) {
+        [void]$lines.Add(("| {0} | {1} |" -f $coverageClass, $Matrix.summary.proofCoverageByClass.$coverageClass))
+    }
+    [void]$lines.Add("")
+    [void]$lines.Add("| family | coverage | proof row | command | fixture | artifact | strict gaps | structural | readback | validate | conformance | office |")
+    [void]$lines.Add("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     foreach ($row in @($Matrix.rows)) {
         [void]$lines.Add((
-            "| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} | {8} |" -f
+            "| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} | {8} | {9} | {10} | {11} |" -f
             (Escape-MarkdownCell $row.outputFamily),
+            (Escape-MarkdownCell $row.proofCoverage),
+            (Escape-MarkdownCell $row.proofRowStatus),
             (Escape-MarkdownCell $row.commandPath),
             (Escape-MarkdownCell $row.inputFixtureType),
             (Escape-MarkdownCell $row.generatedOutputPath),
+            (Escape-MarkdownCell (Join-MarkdownListCell $row.strictProofGaps)),
             (Escape-MarkdownCell $row.tiers.structural.status),
             (Escape-MarkdownCell $row.tiers.readback.status),
             (Escape-MarkdownCell $row.tiers.validate.status),
@@ -887,7 +983,9 @@ foreach ($command in @($capabilities.commands)) {
     if ($family -eq "package") {
         $artifactPath = "proof-artifacts/$slug.<docx|xlsx|pptx>"
     }
-    $evidence = $evidenceMap[$path]
+    $proofRowPresent = $evidenceMap.ContainsKey($path)
+    $proofRowStatus = if ($proofRowPresent) { "present" } else { "missing" }
+    $evidence = if ($proofRowPresent) { $evidenceMap[$path] } else { $null }
 
     $inputFixtureType = Get-InputFixtureType -Command $command
     $evidenceFixture = Get-PropertyValue -Object $evidence -Name "inputFixtureType"
@@ -921,6 +1019,9 @@ foreach ($command in @($capabilities.commands)) {
             $requiredGaps += $tierName
         }
     }
+    $strictProofGaps = @(Get-StrictProofGaps -Tiers $tiers)
+    $proofCoverage = Get-ProofCoverageClass -Tiers $tiers
+    $proofCoverageDetail = Get-ProofCoverageDetail -CoverageClass $proofCoverage -ProofRowPresent $proofRowPresent
 
     $exactCommand = Get-PropertyValue -Object $evidence -Name "exactCommand"
     $row = [ordered]@{
@@ -944,7 +1045,13 @@ foreach ($command in @($capabilities.commands)) {
         opIneligibleReason = Get-PropertyValue -Object $command -Name "opIneligibleReason"
         tiers = $tiers
         highestEvidenceTier = Get-HighestEvidenceTier -Tiers $tiers
+        proofCoverage = $proofCoverage
+        proofCoverageDetail = $proofCoverageDetail
+        proofRowStatus = $proofRowStatus
+        proofRowPresent = $proofRowPresent
         requiredGaps = $requiredGaps
+        strictProofGaps = $strictProofGaps
+        lacksStrictValidationConformanceOrOfficeOpenProof = (@($strictProofGaps).Count -gt 0)
     }
     [void]$rows.Add([pscustomobject]$row)
 }
@@ -972,6 +1079,17 @@ $conformanceProven = @($sortedRows | Where-Object { $_.tiers.conformance.status 
 $officeProven = @($sortedRows | Where-Object { $_.tiers.office.status -eq "passed" })
 $scaffoldProven = @($sortedRows | Where-Object { $_.inputFixtureType -eq "scaffold" -and @($_.requiredGaps).Count -eq 0 })
 $parserOnly = @($sortedRows | Where-Object { $_.highestEvidenceTier -eq "structural" })
+$rowsWithProofRows = @($sortedRows | Where-Object { $_.proofRowPresent })
+$rowsWithoutProofRows = @($sortedRows | Where-Object { -not $_.proofRowPresent })
+$strictConformanceProven = @($sortedRows | Where-Object { $_.proofCoverage -eq "strict-conformance-proven" })
+$contractOnly = @($sortedRows | Where-Object { $_.proofCoverage -eq "contract-only" })
+$partialProof = @($sortedRows | Where-Object { $_.proofCoverage -eq "partial-proof" })
+$lackingStrictOrOfficeProof = @($sortedRows | Where-Object { $_.lacksStrictValidationConformanceOrOfficeOpenProof })
+
+$proofCoverageByClass = [ordered]@{}
+foreach ($coverageClass in $ProofCoverageClasses) {
+    $proofCoverageByClass[$coverageClass] = @($sortedRows | Where-Object { $_.proofCoverage -eq $coverageClass }).Count
+}
 
 $matrix = [pscustomobject][ordered]@{
     schemaVersion = $SchemaVersion
@@ -986,6 +1104,10 @@ $matrix = [pscustomobject][ordered]@{
     policy = [ordered]@{
         rowSource = "Public package-creating and package-mutating commands inferred from ooxml --json capabilities."
         requiredTiers = $TierNames
+        strictProofTiers = $StrictProofTierNames
+        proofCoverageClasses = $ProofCoverageClasses
+        contractOnlyDefinition = "The command exists in capabilities, but this matrix run has no passing structural/readback/strict validation/conformance/Office-open proof tiers for it."
+        proofRowStatusDefinition = "present means an explicit evidence or Office smoke row was supplied; missing means the row was inferred only from capabilities inventory."
         passingTierStatuses = $PassingTierStatuses
         note = "Missing means no proof evidence was provided to this matrix run; pass -EvidencePath to overlay checked proof rows."
     }
@@ -1003,12 +1125,23 @@ $matrix = [pscustomobject][ordered]@{
         officeProvenCommandCount = $officeProven.Count
         scaffoldProvenCommandCount = $scaffoldProven.Count
         parserOnlyCommandCount = $parserOnly.Count
+        proofCoverageByClass = $proofCoverageByClass
+        proofRowsPresent = $rowsWithProofRows.Count
+        commandsWithoutProofRows = $rowsWithoutProofRows.Count
+        strictConformanceProvenCommandCount = $strictConformanceProven.Count
+        contractOnlyCommandCount = $contractOnly.Count
+        partialProofCommandCount = $partialProof.Count
+        commandsLackingStrictValidationConformanceOrOfficeOpenProof = $lackingStrictOrOfficeProof.Count
     }
     questions = [ordered]@{
         createOrMutateCommands = @($sortedRows | ForEach-Object { $_.commandPath })
         scaffoldProvenCommands = @($scaffoldProven | ForEach-Object { $_.commandPath })
         realisticFixtureCommands = @($sortedRows | Where-Object { $_.inputFixtureType -eq "realistic fixture" } | ForEach-Object { $_.commandPath })
         officeProvenCommands = @($officeProven | ForEach-Object { $_.commandPath })
+        strictConformanceProvenCommands = @($strictConformanceProven | ForEach-Object { $_.commandPath })
+        contractOnlyCommands = @($contractOnly | ForEach-Object { $_.commandPath })
+        commandsWithoutProofRows = @($rowsWithoutProofRows | ForEach-Object { $_.commandPath })
+        commandsLackingStrictValidationConformanceOrOfficeOpenProof = @($lackingStrictOrOfficeProof | ForEach-Object { $_.commandPath })
         parserOnlyCommands = @($parserOnly | ForEach-Object { $_.commandPath })
     }
     rows = $sortedRows

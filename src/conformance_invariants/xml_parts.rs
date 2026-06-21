@@ -83,7 +83,10 @@ pub(super) fn check_part_xml_invariants(file: &str, part: &PartInfo) -> CliResul
             "presentation",
             PRESENTATIONML_NAMESPACE,
             "PPTX_PRESENTATION_ROOT",
-            None,
+            Some((
+                "PPTX_PRESENTATION_CHILD_ORDER",
+                presentation_child_order as fn(&str) -> usize,
+            )),
         )),
         CONTENT_TYPE_DOCX_DOCUMENT => Some((
             "document",
@@ -514,6 +517,29 @@ fn slide_child_order(name: &str) -> usize {
     order_index(
         name,
         &["cSld", "clrMapOvr", "transition", "timing", "extLst"],
+    )
+}
+
+fn presentation_child_order(name: &str) -> usize {
+    order_index(
+        name,
+        &[
+            "sldMasterIdLst",
+            "notesMasterIdLst",
+            "handoutMasterIdLst",
+            "sldIdLst",
+            "sldSz",
+            "notesSz",
+            "smartTags",
+            "embeddedFontLst",
+            "custShowLst",
+            "photoAlbum",
+            "custDataLst",
+            "kinsoku",
+            "defaultTextStyle",
+            "modifyVerifier",
+            "extLst",
+        ],
     )
 }
 
