@@ -11,6 +11,7 @@ fn docx_scaffold_creates_readable_valid_conformant_package() {
         "--json",
         "docx",
         "scaffold",
+        "--out",
         &out_str,
         "--text",
         "Created in Rust",

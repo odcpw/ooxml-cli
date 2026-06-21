@@ -119,6 +119,69 @@ pub(crate) fn reject_unknown_flags(
     Ok(())
 }
 
+pub(crate) fn positional_args<'a>(
+    args: &'a [String],
+    value_flags: &[&str],
+    bool_flags: &[&str],
+) -> CliResult<Vec<&'a str>> {
+    let mut out = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        if !arg.starts_with("--") {
+            out.push(arg.as_str());
+            index += 1;
+            continue;
+        }
+        if let Some((flag, _)) = arg.split_once('=') {
+            if value_flags.iter().any(|known| known == &flag)
+                || bool_flags.iter().any(|known| known == &flag)
+            {
+                index += 1;
+                continue;
+            }
+        }
+        if bool_flags.iter().any(|flag| flag == arg) {
+            index += 1;
+            continue;
+        }
+        if value_flags.iter().any(|flag| flag == arg) {
+            if args.get(index + 1).is_none() {
+                return Err(CliError::invalid_args(format!("{arg} requires a value")));
+            }
+            index += 2;
+            continue;
+        }
+        return Err(CliError::invalid_args(format!("unknown flag: {arg}")));
+    }
+    Ok(out)
+}
+
+pub(crate) fn output_path_arg(
+    args: &[String],
+    value_flags: &[&str],
+    bool_flags: &[&str],
+    command: &str,
+) -> CliResult<String> {
+    let output_flag = parse_string_flag(args, "--out")?;
+    let positionals = positional_args(args, value_flags, bool_flags)?;
+    match (positionals.as_slice(), output_flag.as_deref()) {
+        ([positional], Some(flag_output)) if *positional != flag_output => {
+            Err(CliError::invalid_args(format!(
+                "{command} received conflicting output paths: positional {positional} and --out {flag_output}"
+            )))
+        }
+        ([positional], _) => Ok((*positional).to_string()),
+        ([], Some(flag_output)) => Ok(flag_output.to_string()),
+        ([], None) => Err(CliError::invalid_args(format!(
+            "{command} requires an output path; pass it positionally or with --out"
+        ))),
+        _ => Err(CliError::invalid_args(format!(
+            "{command} accepts exactly one output path; pass it positionally or with --out"
+        ))),
+    }
+}
+
 pub(crate) fn has_flag(args: &[String], name: &str) -> bool {
     parse_bool_flag(args, name).ok().flatten().unwrap_or(false)
 }

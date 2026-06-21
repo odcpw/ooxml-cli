@@ -36,12 +36,18 @@ pub(super) fn commands() -> Vec<Value> {
 fn scaffold_commands() -> Vec<Value> {
     vec![capability_command(
         "ooxml xlsx scaffold",
-        "scaffold <output.xlsx>",
+        "scaffold <output.xlsx> (or --out <output.xlsx>)",
         "Create a minimal XLSX workbook from scratch and validate it by default.",
         &["package", "sheet"],
         false,
         Some("it creates a package and is not an apply/serve mutation op"),
         vec![
+            flag(
+                "--out",
+                "out",
+                "string",
+                "output workbook path; accepted as an alternative to positional <output.xlsx>",
+            ),
             flag("--sheet", "sheet", "string", "initial worksheet name"),
             flag(
                 "--force",

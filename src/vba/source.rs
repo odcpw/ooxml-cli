@@ -22,9 +22,9 @@ use crate::{
 use super::inspect::inspect_vba_package;
 use super::model::{VbaInfo, VbaMutationOptions};
 use super::output::{
-    vba_extract_modules_template, vba_info_json, vba_inspect_command, vba_list_command,
-    vba_office_check_command, vba_output_placeholder, vba_package_readback_command,
-    vba_standalone_attach_template, vba_validate_command,
+    vba_conformance_command, vba_extract_modules_template, vba_info_json, vba_inspect_command,
+    vba_list_command, vba_office_check_command, vba_output_placeholder,
+    vba_package_readback_command, vba_standalone_attach_template, vba_validate_command,
 };
 use super::package_xml::package_part_name;
 
@@ -188,6 +188,10 @@ pub(crate) fn vba_list(file: &str) -> CliResult<Value> {
         "validateCommand".to_string(),
         json!(vba_validate_command(file)),
     );
+    result.insert(
+        "conformanceCommand".to_string(),
+        json!(vba_conformance_command(file)),
+    );
     if let Some(command) = vba_office_check_command(file, &info) {
         result.insert("officeCheckCommand".to_string(), json!(command));
     }
@@ -259,6 +263,10 @@ pub(crate) fn vba_extract(file: &str, out_dir: &str, selector: Option<&str>) -> 
     result.insert(
         "validateCommand".to_string(),
         json!(vba_validate_command(file)),
+    );
+    result.insert(
+        "conformanceCommand".to_string(),
+        json!(vba_conformance_command(file)),
     );
     if let Some(command) = vba_office_check_command(file, &info) {
         result.insert("officeCheckCommand".to_string(), json!(command));

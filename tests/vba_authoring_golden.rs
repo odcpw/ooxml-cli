@@ -59,6 +59,36 @@ fn sha256_hex(bytes: &[u8]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+fn command_arg_for_test(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    let needs_quotes = value.chars().any(|ch| {
+        matches!(
+            ch,
+            ' ' | '\t'
+                | '\r'
+                | '\n'
+                | '\''
+                | '"'
+                | '\\'
+                | '$'
+                | '`'
+                | '<'
+                | '>'
+                | '|'
+                | '&'
+                | ';'
+                | '('
+                | ')'
+        )
+    });
+    if !needs_quotes {
+        return value.to_string();
+    }
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
 #[test]
 fn xlsx_class_vba_build_bin_matches_golden_and_attaches() {
     let temp_dir = temp_dir("vba-authoring-golden");
@@ -122,7 +152,9 @@ fn xlsx_class_vba_build_bin_matches_golden_and_attaches() {
     assert_eq!(inspect, golden_inspect, "inspect-bin JSON golden drift");
 
     let attached_path = temp_dir.join("workbook.xlsm");
+    let extract_dir = temp_dir.join("macros");
     let attached = path_string(&attached_path);
+    let extract = path_string(&extract_dir);
     let attach = assert_ok(
         "attach generated vbaProject.bin",
         run_ooxml(&[
@@ -144,6 +176,74 @@ fn xlsx_class_vba_build_bin_matches_golden_and_attaches() {
         run_ooxml(&["--json", "validate", "--strict", &attached]),
     );
     assert_eq!(validate["valid"], true);
+
+    let conformance = assert_ok(
+        "conformance check attached workbook",
+        run_ooxml(&["--json", "conformance", "check", &attached]),
+    );
+    assert_eq!(conformance["status"], "passed");
+    assert_eq!(conformance["summary"]["failed"], 0);
+
+    let list = assert_ok(
+        "list attached workbook VBA",
+        run_ooxml(&["--json", "vba", "list", &attached]),
+    );
+    assert_eq!(list["project"]["family"], "xlsx");
+    assert_eq!(list["project"]["moduleCount"], 4);
+    assert_eq!(list["project"]["warnings"], Value::Null);
+    assert!(
+        list["project"]["modules"]
+            .as_array()
+            .expect("list modules")
+            .iter()
+            .any(|module| module["name"] == "AgentSmoke" && module["kind"] == "standard")
+    );
+    assert!(
+        list["project"]["modules"]
+            .as_array()
+            .expect("list modules")
+            .iter()
+            .any(|module| module["name"] == "Worker" && module["kind"] == "class")
+    );
+    assert_eq!(
+        list["validateCommand"],
+        format!(
+            "ooxml --json validate --strict {}",
+            command_arg_for_test(&attached)
+        )
+    );
+    assert_eq!(
+        list["conformanceCommand"],
+        format!(
+            "ooxml --json conformance check {}",
+            command_arg_for_test(&attached)
+        )
+    );
+
+    let extract_result = assert_ok(
+        "extract Worker from attached workbook",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "extract",
+            &attached,
+            "--out-dir",
+            &extract,
+            "--module",
+            "module:Worker",
+        ]),
+    );
+    assert_eq!(
+        extract_result["conformanceCommand"],
+        format!(
+            "ooxml --json conformance check {}",
+            command_arg_for_test(&attached)
+        )
+    );
+    let extracted_worker =
+        fs::read_to_string(extract_dir.join("Worker.cls")).expect("read extracted Worker");
+    assert!(extracted_worker.contains("Public Function Message()"));
+    assert!(extracted_worker.contains("Hello from build-bin attach"));
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

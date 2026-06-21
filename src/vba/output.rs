@@ -122,7 +122,7 @@ pub(super) fn vba_list_command(file: &str) -> String {
 }
 
 pub(super) fn vba_validate_command(file: &str) -> String {
-    format!("ooxml validate --strict {}", command_arg(file))
+    format!("ooxml --json validate --strict {}", command_arg(file))
 }
 
 pub(super) fn vba_conformance_command(file: &str) -> String {

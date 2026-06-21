@@ -6,12 +6,18 @@ pub(super) fn commands() -> Vec<Value> {
     vec![
         capability_command(
             "ooxml pptx scaffold",
-            "scaffold <output.pptx>",
+            "scaffold <output.pptx> (or --out <output.pptx>)",
             "Create a minimal PowerPoint presentation from scratch.",
             &["package", "slide", "shape"],
             false,
             None,
             vec![
+                flag(
+                    "--out",
+                    "out",
+                    "string",
+                    "output presentation path; accepted as an alternative to positional <output.pptx>",
+                ),
                 flag("--title", "title", "string", "initial title text"),
                 flag("--subtitle", "subtitle", "string", "initial subtitle text"),
                 flag(

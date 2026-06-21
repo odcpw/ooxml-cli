@@ -11,6 +11,7 @@ fn xlsx_scaffold_creates_valid_readable_mutable_ordered_workbook() {
         "--json",
         "xlsx",
         "scaffold",
+        "--out",
         &out_str,
         "--sheet",
         "Budget & Ops",
@@ -292,6 +293,26 @@ fn xlsx_scaffold_rejects_existing_output_unless_forced_and_validates_sheet_name(
             .expect("invalid sheet message")
             .contains("invalid Excel worksheet name"),
         "invalid sheet error should explain worksheet-name rules: {invalid_error:?}"
+    );
+
+    let conflict = temp_dir.join("conflict.xlsx").to_string_lossy().to_string();
+    let (conflict_code, conflict_stdout, conflict_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "scaffold",
+        &out_str,
+        "--out",
+        &conflict,
+    ]);
+    assert_eq!(conflict_code, 2, "conflicting scaffold output exit");
+    assert_eq!(conflict_stdout, None, "conflicting scaffold output stdout");
+    let conflict_error = conflict_stderr.expect("conflicting scaffold output stderr");
+    assert!(
+        conflict_error["error"]["message"]
+            .as_str()
+            .expect("conflict message")
+            .contains("conflicting output paths"),
+        "conflict should teach that positional and --out disagree: {conflict_error:?}"
     );
 
     let _ = fs::remove_dir_all(&temp_dir);

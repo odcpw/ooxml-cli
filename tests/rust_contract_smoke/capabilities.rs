@@ -404,8 +404,8 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
             ),
             proof_matrix_capability_command(
                 "ooxml vba attach",
-                "attach <file> --vba-project <vbaProject.bin> --out <file>",
-                &["--vba-project", "--out"],
+                "attach <file> --bin <vbaProject.bin> --out <file>",
+                &["--bin", "--out"],
                 true,
                 &["vba", "module"],
             ),

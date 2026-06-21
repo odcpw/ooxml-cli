@@ -21,16 +21,15 @@ use tables::dispatch_docx_tables;
 
 pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
     match args {
-        [cmd, verb, output, rest @ ..] if cmd == "docx" && verb == "scaffold" => {
-            reject_unknown_flags(
-                rest,
-                &["--text", "--text-file"],
-                &["--force", "--no-validate"],
-            )?;
+        [cmd, verb, rest @ ..] if cmd == "docx" && verb == "scaffold" => {
+            let value_flags = ["--out", "--text", "--text-file"];
+            let bool_flags = ["--force", "--no-validate"];
+            reject_unknown_flags(rest, &value_flags, &bool_flags)?;
+            let output = output_path_arg(rest, &value_flags, &bool_flags, "docx scaffold")?;
             let text = parse_string_flag(rest, "--text")?;
             let text_file = parse_string_flag(rest, "--text-file")?;
             docx_scaffold(
-                output,
+                &output,
                 DocxScaffoldOptions {
                     text: text.as_deref(),
                     text_file: text_file.as_deref(),

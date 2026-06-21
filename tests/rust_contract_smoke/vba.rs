@@ -206,6 +206,13 @@ fn vba_pure_create_builds_and_reads_back_xlsm_without_office_com() {
     let (code, _stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &output]);
     assert_eq!(code, 0, "validate output");
     assert_eq!(stderr, None, "validate stderr");
+    let (code, stdout, stderr) = run_ooxml(&["--json", "conformance", "check", &output]);
+    assert_eq!(code, 0, "conformance output");
+    assert_eq!(stderr, None, "conformance stderr");
+    assert_eq!(
+        stdout.expect("conformance stdout")["status"],
+        Value::String("passed".to_string())
+    );
 
     let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &output]);
     assert_eq!(code, 0, "list output");
@@ -215,6 +222,20 @@ fn vba_pure_create_builds_and_reads_back_xlsm_without_office_com() {
     assert_eq!(list["project"]["warnings"], Value::Null);
     assert_eq!(list["project"]["modules"][0]["name"], "Hello");
     assert_eq!(list["project"]["modules"][0]["sourceOffset"], 0);
+    assert_eq!(
+        list["validateCommand"],
+        format!(
+            "ooxml --json validate --strict {}",
+            command_arg_for_test(&output)
+        )
+    );
+    assert_eq!(
+        list["conformanceCommand"],
+        format!(
+            "ooxml --json conformance check {}",
+            command_arg_for_test(&output)
+        )
+    );
 
     let (code, stdout, stderr) = run_ooxml(&[
         "--json",
@@ -228,7 +249,14 @@ fn vba_pure_create_builds_and_reads_back_xlsm_without_office_com() {
     ]);
     assert_eq!(code, 0, "extract Hello");
     assert_eq!(stderr, None, "extract stderr");
-    assert!(stdout.is_some(), "extract stdout");
+    let extract_result = stdout.expect("extract stdout");
+    assert_eq!(
+        extract_result["conformanceCommand"],
+        format!(
+            "ooxml --json conformance check {}",
+            command_arg_for_test(&output)
+        )
+    );
     assert!(
         fs::read_to_string(extract_dir.join("Hello.bas"))
             .expect("extracted Hello")
@@ -400,6 +428,7 @@ fn vba_build_bin_class_xlsm_attaches_existing_and_scaffolded_workbooks() {
     let bin_path = temp_dir.join("vbaProject.bin");
     let bin_again_path = temp_dir.join("vbaProject-again.bin");
     let extract_dir = temp_dir.join("macros");
+    let scaffold_extract_dir = temp_dir.join("scaffold-macros");
     fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input_path).expect("copy workbook");
 
     let macro_source = macro_source_path.to_string_lossy().to_string();
@@ -411,6 +440,7 @@ fn vba_build_bin_class_xlsm_attaches_existing_and_scaffolded_workbooks() {
     let bin = bin_path.to_string_lossy().to_string();
     let bin_again = bin_again_path.to_string_lossy().to_string();
     let extract = extract_dir.to_string_lossy().to_string();
+    let scaffold_extract = scaffold_extract_dir.to_string_lossy().to_string();
 
     for out in [&bin, &bin_again] {
         let (code, stdout, stderr) = run_ooxml(&[
@@ -558,6 +588,42 @@ fn vba_build_bin_class_xlsm_attaches_existing_and_scaffolded_workbooks() {
         run_ooxml(&["--json", "validate", "--strict", &scaffold_attached]);
     assert_eq!(code, 0, "validate scaffold-attached");
     assert_eq!(stderr, None, "validate scaffold-attached stderr");
+    let (code, stdout, stderr) = run_ooxml(&["--json", "conformance", "check", &scaffold_attached]);
+    assert_eq!(code, 0, "conformance scaffold-attached");
+    assert_eq!(stderr, None, "conformance scaffold-attached stderr");
+    assert_eq!(
+        stdout.expect("scaffold conformance stdout")["status"],
+        Value::String("passed".to_string())
+    );
+    let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &scaffold_attached]);
+    assert_eq!(code, 0, "list scaffold-attached");
+    assert_eq!(stderr, None, "list scaffold-attached stderr");
+    let scaffold_list = stdout.expect("list scaffold-attached stdout");
+    assert_eq!(scaffold_list["project"]["moduleCount"], 4);
+    assert!(
+        scaffold_list["project"]["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|module| module["name"] == "Worker" && module["kind"] == "class")
+    );
+    let (code, _stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "extract",
+        &scaffold_attached,
+        "--out-dir",
+        &scaffold_extract,
+        "--module",
+        "module:Worker",
+    ]);
+    assert_eq!(code, 0, "extract scaffold-attached Worker");
+    assert_eq!(stderr, None, "extract scaffold-attached Worker stderr");
+    assert!(
+        fs::read_to_string(scaffold_extract_dir.join("Worker.cls"))
+            .expect("scaffold extracted Worker")
+            .contains("Hello from build-bin attach")
+    );
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -1688,7 +1754,10 @@ fn vba_convert_xlsm_to_xlsx_alias_removes_macros() {
     assert_eq!(result["conversion"]["targetExtension"], ".xlsx");
     assert_eq!(
         result["conversion"]["validateCommand"],
-        format!("ooxml validate --strict {}", command_arg_for_test(&xlsx))
+        format!(
+            "ooxml --json validate --strict {}",
+            command_arg_for_test(&xlsx)
+        )
     );
     assert_eq!(
         result["conversion"]["conformanceCommand"],

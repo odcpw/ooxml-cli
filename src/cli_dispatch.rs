@@ -469,16 +469,15 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         }
         [family, ..] if family == "docx" => docx::dispatch_docx(args),
         [family, ..] if family == "xlsx" => xlsx::dispatch_xlsx(args),
-        [family, verb, output, rest @ ..] if family == "pptx" && verb == "scaffold" => {
-            reject_unknown_flags(
-                rest,
-                &["--title", "--subtitle"],
-                &["--force", "--no-validate"],
-            )?;
+        [family, verb, rest @ ..] if family == "pptx" && verb == "scaffold" => {
+            let value_flags = ["--out", "--title", "--subtitle"];
+            let bool_flags = ["--force", "--no-validate"];
+            reject_unknown_flags(rest, &value_flags, &bool_flags)?;
+            let output = output_path_arg(rest, &value_flags, &bool_flags, "pptx scaffold")?;
             let title = parse_string_flag(rest, "--title")?;
             let subtitle = parse_string_flag(rest, "--subtitle")?;
             pptx_scaffold(
-                output,
+                &output,
                 PptxScaffoldOptions {
                     title: title.as_deref(),
                     subtitle: subtitle.as_deref(),
@@ -1855,44 +1854,6 @@ fn convert_xlsm_to_xlsx(file: &str, args: &[String]) -> CliResult<Value> {
         out.as_deref(),
         dry_run,
     ))
-}
-
-fn positional_args<'a>(
-    args: &'a [String],
-    value_flags: &[&str],
-    bool_flags: &[&str],
-) -> CliResult<Vec<&'a str>> {
-    let mut out = Vec::new();
-    let mut index = 0;
-    while index < args.len() {
-        let arg = &args[index];
-        if !arg.starts_with("--") {
-            out.push(arg.as_str());
-            index += 1;
-            continue;
-        }
-        if let Some((flag, _)) = arg.split_once('=') {
-            if value_flags.iter().any(|known| known == &flag)
-                || bool_flags.iter().any(|known| known == &flag)
-            {
-                index += 1;
-                continue;
-            }
-        }
-        if bool_flags.iter().any(|flag| flag == arg) {
-            index += 1;
-            continue;
-        }
-        if value_flags.iter().any(|flag| flag == arg) {
-            if args.get(index + 1).is_none() {
-                return Err(CliError::invalid_args(format!("{arg} requires a value")));
-            }
-            index += 2;
-            continue;
-        }
-        return Err(CliError::invalid_args(format!("unknown flag: {arg}")));
-    }
-    Ok(out)
 }
 
 fn add_xlsm_to_xlsx_conversion_metadata(

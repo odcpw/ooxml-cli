@@ -10,7 +10,8 @@ fn pptx_scaffold_creates_readable_valid_conformant_mutable_package() {
     let subtitle = "Built by Rust";
 
     let (create_code, create_stdout, create_stderr) = run_ooxml(&[
-        "--json", "pptx", "scaffold", &out_str, "--title", title, "--subtitle", subtitle,
+        "--json", "pptx", "scaffold", "--out", &out_str, "--title", title, "--subtitle",
+        subtitle,
     ]);
     assert_eq!(create_code, 0, "pptx scaffold exit");
     assert_eq!(create_stderr, None, "pptx scaffold stderr");

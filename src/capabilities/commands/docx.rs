@@ -33,12 +33,18 @@ pub(super) fn commands() -> Vec<Value> {
 fn scaffold_commands() -> Vec<Value> {
     vec![capability_command(
         "ooxml docx scaffold",
-        "scaffold <output.docx>",
+        "scaffold <output.docx> (or --out <output.docx>)",
         "Create a minimal DOCX package from scratch and validate it by default.",
         &["package"],
         false,
         Some("it creates a package and is not an apply/serve mutation op"),
         vec![
+            flag(
+                "--out",
+                "out",
+                "string",
+                "output document path; accepted as an alternative to positional <output.docx>",
+            ),
             flag(
                 "--text",
                 "text",

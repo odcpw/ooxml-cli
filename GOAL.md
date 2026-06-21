@@ -143,6 +143,8 @@ Already integrated on `master`:
 - pure Rust XLSM authoring path
 - pure Rust XLSM standard `.bas` macro execution proof in Excel
 - pure Rust XLSM class `.cls` macro execution proof in Excel
+- XLSM `build-bin -> attach` proof covers existing and scaffolded workbooks
+  with validation, conformance, list, and extract readback
 - pure Rust PPTM authoring path
 - pure Rust PPTM PowerPoint open proof through `ooxml vba office-check`
 - pure Rust PPTM class `.cls` PowerPoint open proof through `ooxml vba office-check`
