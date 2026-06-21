@@ -9,6 +9,21 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-21:
 
+- The Windows Office edit smoke now defaults its working output directory to
+  `target/ooxml-office-edit-smoke` under the repo instead of `%TEMP%`. This
+  avoids an Excel COM false negative where byte-identical minimal workbooks
+  opened from the repo but timed out from Windows temp. Proof after the harness
+  fix: strict validation, Rust `conformance check`, Open XML SDK validation,
+  and desktop Office COM open proof passed for all 52 mutation scenarios /
+  52 Office opens.
+- Additional behavior-preserving splits landed for parallel-agent throughput:
+  DOCX comment contract tests, XLSX workbook metadata contract tests, the XLSX
+  chart serve-op contract test, PPTX import/merge output helpers, PPTX media
+  type helpers, and XLSX pivot model types now live in focused shard/modules.
+  Proof: `cargo fmt --check`, `cargo check --all-targets`, `cargo clippy
+  --all-targets -- -D warnings`, and focused `docx_comments`, XLSX chart serve
+  op, PPTX import/merge, `pptx_media`, `xlsx_workbook_metadata`, and
+  `xlsx_pivots` Rust/Go contract filters.
 - Agent-facing serve/MCP coverage expanded after command-path parity:
   `pptx shapes delete` and `xlsx charts set-series-style` now run through the
   JSON op dispatcher using the proven CLI mutation paths. The web-agent
