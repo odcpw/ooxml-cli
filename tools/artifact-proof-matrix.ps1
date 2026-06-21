@@ -733,6 +733,11 @@ function Import-OfficeEditSmokeEvidence {
             $output = [string](Get-PropertyValue -Object $scenario -Name "output")
             $scenarioEvidence = @("office-edit-smoke summary: $resolved", "scenario: $scenarioName", "output: $output")
             $tiers = [ordered]@{}
+            $tiers.readback = New-SmokeTierEvidence `
+                -Stage (Get-PropertyValue -Object $scenario -Name "readback") `
+                -PassedDetail "ooxml inspect read the saved smoke output and reported the expected Office family." `
+                -FallbackDetail "ooxml inspect did not read the saved smoke output cleanly." `
+                -ExtraEvidence $scenarioEvidence
             $tiers.structural = New-SmokeTierEvidence `
                 -Stage (Get-PropertyValue -Object $scenario -Name "openXmlSdk") `
                 -PassedDetail "Microsoft Open XML SDK schema validation passed for the smoke output." `
@@ -944,6 +949,7 @@ foreach ($row in $sortedRows) {
 
 $rowsWithGaps = @($sortedRows | Where-Object { @($_.requiredGaps).Count -gt 0 })
 $structuralProven = @($sortedRows | Where-Object { $_.tiers.structural.status -eq "passed" })
+$readbackProven = @($sortedRows | Where-Object { $_.tiers.readback.status -eq "passed" })
 $validateProven = @($sortedRows | Where-Object { $_.tiers.validate.status -eq "passed" })
 $conformanceProven = @($sortedRows | Where-Object { $_.tiers.conformance.status -eq "passed" })
 $officeProven = @($sortedRows | Where-Object { $_.tiers.office.status -eq "passed" })
@@ -974,6 +980,7 @@ $matrix = [pscustomobject][ordered]@{
         mutatingCommandsByFamily = $byFamily
         officeEditSmokeEvidenceCommandCount = $officeEditSmokeEvidence.Count
         structuralProvenCommandCount = $structuralProven.Count
+        readbackProvenCommandCount = $readbackProven.Count
         validateProvenCommandCount = $validateProven.Count
         conformanceProvenCommandCount = $conformanceProven.Count
         officeProvenCommandCount = $officeProven.Count

@@ -298,6 +298,7 @@ function New-SkippedScenarioResult {
         output          = $Scenario.output
         proofLevel      = "failed"
         mutation        = (New-StageResult -Status "skipped" -Detail $Reason)
+        readback        = (New-StageResult -Status "skipped" -Detail $Reason)
         validation      = (New-StageResult -Status "skipped" -Detail $Reason)
         conformance     = (New-StageResult -Status "skipped" -Detail $Reason)
         openXmlSdk      = (New-StageResult -Status "skipped" -Detail $Reason)
@@ -398,6 +399,7 @@ function Invoke-ScenarioWorker {
         output          = $Scenario.output
         proofLevel      = "strict-validation"
         mutation        = (New-WorkerStageResult -Status "pending")
+        readback        = (New-WorkerStageResult -Status "pending")
         validation      = (New-WorkerStageResult -Status "pending")
         conformance     = $conformanceStage
         openXmlSdk      = (New-WorkerStageResult -Status "not-run" -Detail "Open XML SDK validation was not available for this run.")
@@ -413,6 +415,7 @@ function Invoke-ScenarioWorker {
             $detail = "{0} {1}" -f $detail, $mutation.output
         }
         $result.mutation = (New-WorkerStageResult -Status "failed" -Detail $detail -Command $mutation.command -ElapsedMs $mutation.elapsedMs)
+        $result.readback = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
         $result.validation = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
         $result.conformance = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
         $result.openXmlSdk = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
@@ -420,6 +423,51 @@ function Invoke-ScenarioWorker {
         return $result
     }
     $result.mutation = (New-WorkerStageResult -Status "passed" -Detail "Mutation command completed." -Command $mutation.command -ElapsedMs $mutation.elapsedMs)
+
+    $readbackArgs = @("--json", "inspect", $Scenario.output)
+    $readback = Invoke-WorkerProcess -FilePath $BinaryPath -Arguments $readbackArgs
+    if ($readback.exitCode -ne 0) {
+        $result.proofLevel = "failed"
+        $detail = "ooxml inspect readback failed with exit code {0}." -f $readback.exitCode
+        if ($readback.output -ne "") {
+            $detail = "{0} {1}" -f $detail, $readback.output
+        }
+        $result.readback = (New-WorkerStageResult -Status "failed" -Detail $detail -Command $readback.command -ElapsedMs $readback.elapsedMs)
+        $result.validation = (New-WorkerStageResult -Status "skipped" -Detail "Readback failed.")
+        $result.conformance = (New-WorkerStageResult -Status "skipped" -Detail "Readback failed.")
+        $result.openXmlSdk = (New-WorkerStageResult -Status "skipped" -Detail "Readback failed.")
+        $result.microsoftOffice = (New-WorkerStageResult -Status "skipped" -Detail "Readback failed.")
+        return $result
+    }
+    try {
+        $readbackJson = $readback.output | ConvertFrom-Json
+        $readbackType = [string]$readbackJson.type
+    }
+    catch {
+        $result.proofLevel = "failed"
+        $detail = "ooxml inspect readback returned invalid JSON."
+        if ($readback.output -ne "") {
+            $detail = "{0} {1}" -f $detail, $readback.output
+        }
+        $result.readback = (New-WorkerStageResult -Status "failed" -Detail $detail -Command $readback.command -ElapsedMs $readback.elapsedMs)
+        $result.validation = (New-WorkerStageResult -Status "skipped" -Detail "Readback failed.")
+        $result.conformance = (New-WorkerStageResult -Status "skipped" -Detail "Readback failed.")
+        $result.openXmlSdk = (New-WorkerStageResult -Status "skipped" -Detail "Readback failed.")
+        $result.microsoftOffice = (New-WorkerStageResult -Status "skipped" -Detail "Readback failed.")
+        return $result
+    }
+    if ($readbackType -ne [string]$Scenario.family) {
+        $result.proofLevel = "failed"
+        $detail = "ooxml inspect readback reported family {0}; expected {1}." -f $readbackType, $Scenario.family
+        $result.readback = (New-WorkerStageResult -Status "failed" -Detail $detail -Command $readback.command -ElapsedMs $readback.elapsedMs)
+        $result.validation = (New-WorkerStageResult -Status "skipped" -Detail "Readback failed.")
+        $result.conformance = (New-WorkerStageResult -Status "skipped" -Detail "Readback failed.")
+        $result.openXmlSdk = (New-WorkerStageResult -Status "skipped" -Detail "Readback failed.")
+        $result.microsoftOffice = (New-WorkerStageResult -Status "skipped" -Detail "Readback failed.")
+        return $result
+    }
+    $result.proofLevel = "saved-readback"
+    $result.readback = (New-WorkerStageResult -Status "passed" -Detail ("ooxml inspect read the saved {0} output." -f $readbackType) -Command $readback.command -ElapsedMs $readback.elapsedMs)
 
     $validationArgs = @("--json", "validate", $Scenario.output, "--strict")
     $validation = Invoke-WorkerProcess -FilePath $BinaryPath -Arguments $validationArgs
@@ -541,6 +589,7 @@ function Invoke-ScenarioSet {
                     output          = ""
                     proofLevel      = "failed"
                     mutation        = (New-StageResult -Status "failed" -Detail "Scenario worker returned no result.")
+                    readback        = (New-StageResult -Status "skipped" -Detail "Scenario worker returned no result.")
                     validation      = (New-StageResult -Status "skipped" -Detail "Scenario worker returned no result.")
                     conformance     = (New-StageResult -Status "not-run" -Detail "Broader conformance checks are run separately.")
                     openXmlSdk      = (New-StageResult -Status "skipped" -Detail "Scenario worker returned no result.")
@@ -1245,6 +1294,7 @@ foreach ($result in $results) {
 
 $failed = @($results | Where-Object {
     $_.mutation.status -ne "passed" -or
+    $_.readback.status -ne "passed" -or
     $_.validation.status -ne "passed" -or
     ($RunConformance -and $_.conformance.status -ne "passed") -or
     $_.openXmlSdk.status -eq "failed" -or
@@ -1282,6 +1332,7 @@ $summary = [pscustomobject]@{
     passedCount          = ($results.Count - $failed.Count)
     failedCount          = $failed.Count
     proofLevels          = @(
+        [pscustomobject]@{ id = "saved-readback"; description = "ooxml inspect reopened the edited package and reported the expected Office family." },
         [pscustomobject]@{ id = "strict-validation"; description = "ooxml validate --strict accepted the edited package." },
         [pscustomobject]@{ id = "repair-conformance"; description = "ooxml conformance check accepted the edited package's repair-focused invariants." },
         [pscustomobject]@{ id = "openxml-sdk-schema"; description = "Microsoft Open XML SDK schema validator reported 0 errors." },
