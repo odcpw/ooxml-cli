@@ -121,13 +121,13 @@ office-edit-smoke-fast: build
 # office-edit-smoke-windows: Alias for office-edit-smoke
 office-edit-smoke-windows: office-edit-smoke
 
-# office-vba-smoke: Windows only: generate real XLSM/PPTM macro seeds from .bas/.cls sources, validate with Open XML SDK, and open outputs in desktop Office
-office-vba-smoke:
-	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
+# office-vba-smoke: Windows only: generate real XLSM/PPTM macro seeds from .bas/.cls sources, validate with Open XML SDK/conformance, and open outputs in desktop Office
+office-vba-smoke: build
+	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath "$(abspath $(RUST_DEBUG_BIN))" -SkipBuild -RequireOpenXmlSdk -RunConformance -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
 
-# office-vba-smoke-fast: Windows only: generate Office-native VBA seeds, run strict/Open XML SDK validation, and skip the final desktop Office open oracle
-office-vba-smoke-fast:
-	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -SkipOffice -EnableVbaObjectModelAccess
+# office-vba-smoke-fast: Windows only: generate Office-native VBA seeds, run strict/Open XML SDK/conformance validation, and skip the final desktop Office open oracle
+office-vba-smoke-fast: build
+	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath "$(abspath $(RUST_DEBUG_BIN))" -SkipBuild -RequireOpenXmlSdk -RunConformance -SkipOffice -EnableVbaObjectModelAccess
 
 # check-office-schema: Windows only: run edit smoke with strict validation and Open XML SDK, skipping desktop Office COM
 check-office-schema: office-edit-smoke-fast

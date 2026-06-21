@@ -125,6 +125,10 @@ pub(super) fn vba_validate_command(file: &str) -> String {
     format!("ooxml validate --strict {}", command_arg(file))
 }
 
+pub(super) fn vba_conformance_command(file: &str) -> String {
+    format!("ooxml --json conformance check {}", command_arg(file))
+}
+
 pub(super) fn vba_office_check_command(file: &str, info: &VbaInfo) -> Option<String> {
     if !info.macro_enabled && !info.project.as_ref().is_some_and(|project| project.exists) {
         return None;

@@ -1051,8 +1051,19 @@ fn vba_convert_xlsm_to_xlsx_alias_removes_macros() {
     assert_eq!(result["conversion"]["sourceExtension"], ".xlsm");
     assert_eq!(result["conversion"]["targetExtension"], ".xlsx");
     assert_eq!(
-        result["conversion"]["proofCommand"],
+        result["conversion"]["validateCommand"],
         format!("ooxml validate --strict {}", command_arg_for_test(&xlsx))
+    );
+    assert_eq!(
+        result["conversion"]["conformanceCommand"],
+        format!(
+            "ooxml --json conformance check {}",
+            command_arg_for_test(&xlsx)
+        )
+    );
+    assert_eq!(
+        result["conversion"]["proofCommand"],
+        result["conversion"]["conformanceCommand"]
     );
     assert!(
         result["conversion"]["macroRemovalCommand"]
@@ -1074,6 +1085,14 @@ fn vba_convert_xlsm_to_xlsx_alias_removes_macros() {
         run_ooxml(&["--json", "validate", "--strict", &xlsx]);
     assert_eq!(validate_code, 0, "validate converted exit");
     assert_eq!(validate_stderr, None, "validate converted stderr");
+
+    let (conformance_code, conformance_stdout, conformance_stderr) =
+        run_ooxml(&["--json", "conformance", "check", &xlsx]);
+    assert_eq!(conformance_code, 0, "conformance converted exit");
+    assert_eq!(conformance_stderr, None, "conformance converted stderr");
+    let conformance = conformance_stdout.expect("conformance converted stdout");
+    assert_eq!(conformance["status"], "passed");
+    assert_eq!(conformance["summary"]["failed"], 0);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

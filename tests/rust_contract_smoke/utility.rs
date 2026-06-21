@@ -140,11 +140,17 @@ fn doctor_contract_commands_are_machine_readable() {
     assert_eq!(caps["tool"], "ooxml");
     assert_eq!(caps["doctorVersion"], "1.3.0");
     assert_eq!(caps["readOnly"], true);
-    assert!(caps["checks"].as_array().expect("checks").len() >= 10);
+    assert!(caps["checks"].as_array().expect("checks").len() >= 9);
     let doctor_contract = serde_json::to_string(&caps).expect("doctor capabilities JSON");
     assert!(
         !doctor_contract.contains("scripts/") && !doctor_contract.contains("scripts\\\\"),
         "doctor capabilities should not advertise removed scripts/ proof commands: {doctor_contract}"
+    );
+    assert!(
+        !doctor_contract.contains("go-toolchain")
+            && !doctor_contract.contains("Go toolchain")
+            && !doctor_contract.contains("go test"),
+        "doctor capabilities should not advertise Go as a product proof prerequisite: {doctor_contract}"
     );
     assert!(
         doctor_contract.contains("tools\\\\windows-office-oracle.ps1"),
@@ -162,8 +168,13 @@ fn doctor_contract_commands_are_machine_readable() {
         );
     }
 
-    let (health_code, health_stdout, health_stderr) =
-        run_ooxml(&["--json", "doctor", "health", "--only", "go-toolchain"]);
+    let (health_code, health_stdout, health_stderr) = run_ooxml(&[
+        "--json",
+        "doctor",
+        "health",
+        "--only",
+        "openxml-sdk-validator",
+    ]);
     assert_eq!(health_code, 0);
     assert_eq!(health_stderr, None);
     let health = health_stdout.expect("doctor health");

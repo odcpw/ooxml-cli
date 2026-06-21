@@ -12,7 +12,8 @@ opens on Linux but Excel or PowerPoint says the file needs repair.
 Install:
 
 - Git
-- Go
+- Rust/Cargo
+- .NET SDK for the Open XML SDK validator
 - PowerShell 7, optional but preferred
 - Microsoft 365 or desktop Microsoft Office with Excel, PowerPoint, and Word
 - Codex, if development will continue on the Windows machine
@@ -20,7 +21,8 @@ Install:
 Clone the repo normally and run:
 
 ```powershell
-go test ./...
+cargo build --bin ooxml
+cargo run -- doctor
 ```
 
 ## Office Open Check
@@ -57,26 +59,28 @@ make check-release-fast   # verify + schema smoke + conformance, skips Office CO
 make check-release-slow   # verify + schema smoke + conformance + Office COM
 ```
 
-If `make` is not installed, run the Go `verify` equivalent first:
+If `make` is not installed, run the Rust verification commands first:
 
 ```powershell
-$gofmt = gofmt -l (git ls-files '*.go')
-if ($gofmt) { $gofmt; exit 1 }
-go vet ./...
+cargo fmt --check
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-go test ./...
+cargo check --all-targets
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+cargo test --all-targets
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+cargo build --bin ooxml
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -SkipOffice -EnableVbaObjectModelAccess
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -RunConformance -SkipOffice -EnableVbaObjectModelAccess
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -RunConformance -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
 ```
 
-The edit and VBA smoke scripts build the Go CLI by default. To prove an
-already-built Rust binary or any other external subject, pass both
-`-BinaryPath <path-to-ooxml.exe>` and `-SkipBuild`; the scripts refuse to build
-Go into an explicit `-BinaryPath`.
+The edit and VBA smoke scripts still have a legacy build fallback for reference
+workflows. Normal product proof should pass both `-BinaryPath
+.\target\debug\ooxml.exe` and `-SkipBuild` so the checked subject is the Rust
+binary you just built.
 
 This script builds `ooxml`, runs representative XLSX, PPTX, and DOCX mutations,
 runs `ooxml validate --strict` and Microsoft Open XML SDK schema validation on
@@ -124,7 +128,7 @@ The useful loop is:
 2. Inspect the broken package with `ooxml inspect` and strict validation.
 3. Fix the writer or mutation path that emitted invalid OOXML.
 4. Add a focused regression fixture or golden artifact.
-5. Run `go test ./...`.
+5. Run the focused Rust regression test, then the relevant Windows proof gate.
 6. Run the Windows Office oracle again on the fixed output.
 
 Do not start by automating Office UI clicks. The high-value signal is whether

@@ -108,11 +108,11 @@ Windows Office proof gates for the Rust CLI:
 cargo build --bin ooxml
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice -WriteArtifactProofMatrix
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance -WriteArtifactProofMatrix
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -SkipOffice -EnableVbaObjectModelAccess
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -RunConformance -SkipOffice -EnableVbaObjectModelAccess
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -RunConformance -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
 ```
 
-The edit-smoke commands emit a command-by-command proof ledger next to the smoke `summary.json`. Add `-FailOnArtifactProofGap` only for a full release gate once every public mutator has structural, readback, strict validation, conformance, and required Office-open evidence.
+The edit-smoke commands emit a command-by-command proof ledger next to the smoke `summary.json`. Add `-FailOnArtifactProofGap` only for a scoped release gate after the advertised operational workflows in that gate have structural, readback, strict validation, conformance, and required Office-open evidence.
 
 The first and third commands are schema/Open XML SDK gates without Office COM. The second and fourth add desktop Word/Excel/PowerPoint open proof.
 

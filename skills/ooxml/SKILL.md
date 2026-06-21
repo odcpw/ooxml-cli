@@ -23,12 +23,16 @@ Make the first reasonable command an agent tries either work or return the exact
 
 ## Runner Discipline
 
-Inside the repo, prefer the repo runner until the installed binary is proven current.
+Inside the repo, use the Rust product binary. Prefer building once and calling
+`target/debug/ooxml` so repeated commands stay fast. Use the installed `ooxml`
+only after `ooxml doctor` says the PATH binary is not stale.
 
 PowerShell:
 
 ```powershell
-function oox { go run ./cmd/ooxml @args }
+cargo build --bin ooxml
+$env:OOXML_BIN = (Resolve-Path .\target\debug\ooxml.exe).Path
+function oox { & $env:OOXML_BIN @args }
 oox version
 oox capabilities --json
 oox robot-docs guide
@@ -37,13 +41,17 @@ oox robot-docs guide
 Bash:
 
 ```bash
-oox() { go run ./cmd/ooxml "$@"; }
+cargo build --bin ooxml
+OOXML_BIN="$PWD/target/debug/ooxml"
+oox() { "$OOXML_BIN" "$@"; }
 oox version
 oox capabilities --json
 oox robot-docs guide
 ```
 
-Outside the repo, use `ooxml` only after `ooxml doctor` says the PATH binary is not stale.
+The deprecated Go implementation in `go/` is legacy reference material only.
+Do not use it for normal product work, docs, or proofs unless a task explicitly
+requires refreshing a parity oracle.
 
 ## Scope Router
 
@@ -205,11 +213,15 @@ Avoid broad refactors unless the baseline is green and a scored isomorphism case
 Repo work:
 
 ```bash
-go test -count=1 ./internal/cli -run '<focused-regex>'
-go test ./...
-go vet ./...
+cargo fmt --check
+cargo check --all-targets
+cargo test --all-targets
+cargo test --test rust_contract_smoke '<focused-filter>' -- --nocapture
+cargo clippy --all-targets -- -D warnings
 git diff --check
 ```
+
+Run `make go-reference-*` targets only for deliberate legacy oracle refreshes.
 
 Windows Office gates:
 
@@ -227,8 +239,8 @@ PowerShell equivalents:
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -SkipOffice -EnableVbaObjectModelAccess
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -RequireOpenXmlSdk -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -RunConformance -SkipOffice -EnableVbaObjectModelAccess
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -RunConformance -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
 ```
 
 Use shared gates when shared surfaces changed:

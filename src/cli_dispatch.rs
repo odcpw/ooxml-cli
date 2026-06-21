@@ -1770,12 +1770,18 @@ fn add_xlsm_to_xlsx_conversion_metadata(
     let Value::Object(object) = &mut value else {
         return value;
     };
-    let proof_command_key = if dry_run {
+    let validate_command_key = if dry_run {
         "validateCommandTemplate"
     } else {
         "validateCommand"
     };
-    let proof_command = object.get(proof_command_key).cloned();
+    let conformance_command_key = if dry_run {
+        "conformanceCommandTemplate"
+    } else {
+        "conformanceCommand"
+    };
+    let validate_command = object.get(validate_command_key).cloned();
+    let conformance_command = object.get(conformance_command_key).cloned();
     let mut conversion = json!({
         "alias": "xlsm-to-xlsx",
         "implementation": "vba remove",
@@ -1802,10 +1808,19 @@ fn add_xlsm_to_xlsx_conversion_metadata(
     {
         conversion_object.insert("output".to_string(), json!(output));
     }
-    if let Some(proof_command) = proof_command
+    if let Some(validate_command) = validate_command
         && let Value::Object(conversion_object) = &mut conversion
     {
-        conversion_object.insert("proofCommand".to_string(), proof_command);
+        conversion_object.insert(validate_command_key.to_string(), validate_command);
+    }
+    if let Some(conformance_command) = conformance_command
+        && let Value::Object(conversion_object) = &mut conversion
+    {
+        conversion_object.insert(
+            conformance_command_key.to_string(),
+            conformance_command.clone(),
+        );
+        conversion_object.insert("proofCommand".to_string(), conformance_command);
     }
     object.insert("conversion".to_string(), conversion);
     value

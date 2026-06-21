@@ -264,7 +264,6 @@ fn all_checks() -> Vec<CheckReport> {
         check_fonts(),
         check_tempdir(),
         check_workdir(),
-        check_go_toolchain(),
         check_openxml_sdk_validator(),
         check_microsoft_office_com(),
         check_office_edit_smoke(),
@@ -398,22 +397,6 @@ fn check_workdir() -> CheckReport {
             "Run from a writable working directory or choose an explicit --out path.",
             None,
         ),
-    }
-}
-
-fn check_go_toolchain() -> CheckReport {
-    if let Some(path) = find_on_path(if cfg!(windows) { "go.exe" } else { "go" }) {
-        ok(
-            "go-toolchain",
-            "Go toolchain available (for rebuilds)",
-            format!("found {}", path.display()),
-        )
-    } else {
-        info(
-            "go-toolchain",
-            "Go toolchain available (for rebuilds)",
-            "go was not found on PATH; Go-oracle rebuilds will be unavailable".to_string(),
-        )
     }
 }
 
@@ -659,7 +642,6 @@ fn doctor_check_catalog() -> Vec<Value> {
         json!({"id": "fonts", "title": "Fonts available for rendering"}),
         json!({"id": "tempdir", "title": "Temp directory is writable"}),
         json!({"id": "workdir", "title": "Working directory is writable"}),
-        json!({"id": "go-toolchain", "title": "Go toolchain available (for rebuilds)"}),
         json!({"id": "openxml-sdk-validator", "title": "Open XML SDK validator available"}),
         json!({"id": "microsoft-office-com", "title": "Microsoft Office COM automation available"}),
         json!({"id": "office-edit-smoke", "title": "Windows Office edit smoke gate available"}),

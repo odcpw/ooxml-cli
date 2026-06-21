@@ -11,9 +11,9 @@ use crate::{
 use super::inspect::{candidate_vba_project_parts, inspect_vba_package};
 use super::model::{VBA_PROJECT_CONTENT_TYPE, VbaInfo, VbaMutationOptions};
 use super::output::{
-    vba_extract_bin_command, vba_info_json, vba_inspect_command, vba_mutation_result_json,
-    vba_next_mutation_template, vba_office_check_command, vba_output_placeholder,
-    vba_package_readback_command, vba_validate_command,
+    vba_conformance_command, vba_extract_bin_command, vba_info_json, vba_inspect_command,
+    vba_mutation_result_json, vba_next_mutation_template, vba_office_check_command,
+    vba_output_placeholder, vba_package_readback_command, vba_validate_command,
 };
 use super::package_xml::{
     package_part_name, remove_content_type_override, remove_vba_relationships_xml,
@@ -246,6 +246,10 @@ where
             "validateCommandTemplate".to_string(),
             json!(vba_validate_command(&target)),
         );
+        result.insert(
+            "conformanceCommandTemplate".to_string(),
+            json!(vba_conformance_command(&target)),
+        );
         if let Some(command) = vba_office_check_command(&target, &output_info) {
             result.insert("officeCheckCommandTemplate".to_string(), json!(command));
         }
@@ -264,6 +268,10 @@ where
         result.insert(
             "validateCommand".to_string(),
             json!(vba_validate_command(&target)),
+        );
+        result.insert(
+            "conformanceCommand".to_string(),
+            json!(vba_conformance_command(&target)),
         );
         if let Some(command) = vba_office_check_command(&target, &output_info) {
             result.insert("officeCheckCommand".to_string(), json!(command));

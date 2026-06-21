@@ -410,6 +410,13 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
                 &["vba", "module"],
             ),
             proof_matrix_capability_command(
+                "ooxml convert xlsm-to-xlsx",
+                "xlsm-to-xlsx <input.xlsm> --out <output.xlsx>",
+                &["--out"],
+                true,
+                &["package", "vba"],
+            ),
+            proof_matrix_capability_command(
                 "ooxml pptx template compile",
                 "compile <spec> --out <file>",
                 &["--out"],
@@ -450,6 +457,18 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
                 "commandPath": "ooxml xlsx scaffold",
                 "tiers": {
                     "readback": { "status": "passed" }
+                }
+            },
+            {
+                "commandPath": "ooxml convert xlsm-to-xlsx",
+                "generatedOutputPath": "proof-artifacts/converted-alias.xlsx",
+                "inputFixtureType": "office-authored macro package",
+                "tiers": {
+                    "structural": { "status": "passed" },
+                    "readback": { "status": "passed" },
+                    "validate": { "status": "passed" },
+                    "conformance": { "status": "passed" },
+                    "office": { "status": "passed" }
                 }
             }
         ]
@@ -639,8 +658,8 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         matrix["schemaVersion"],
         "ooxml-cli.artifact-proof-matrix.v2"
     );
-    assert_eq!(matrix["summary"]["mutatingCommandCount"], 6);
-    assert_eq!(matrix["summary"]["proofRowsPresent"], 6);
+    assert_eq!(matrix["summary"]["mutatingCommandCount"], 7);
+    assert_eq!(matrix["summary"]["proofRowsPresent"], 7);
     assert_eq!(matrix["summary"]["commandsWithoutProofRows"], 0);
     assert_eq!(
         matrix["summary"]["commandsLackingStrictValidationConformanceOrOfficeOpenProof"],
@@ -648,7 +667,7 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
     );
     assert_eq!(
         matrix["summary"]["proofCoverageByClass"]["office-proven"],
-        5
+        6
     );
     assert_eq!(
         matrix["summary"]["proofCoverageByClass"]["strict-conformance-proven"],
@@ -683,6 +702,18 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         vba_attach["strictProofGaps"],
         serde_json::json!(["validate", "conformance"])
     );
+    let converted = proof_matrix_row_by_path(&matrix, "ooxml convert xlsm-to-xlsx");
+    assert_eq!(converted["proofCoverage"], "office-proven");
+    assert_eq!(converted["proofRowStatus"], "present");
+    assert_eq!(
+        converted["inputFixtureType"],
+        "office-authored macro package"
+    );
+    assert_eq!(converted["requiredGaps"], serde_json::json!([]));
+    assert_eq!(converted["strictProofGaps"], serde_json::json!([]));
+    assert_eq!(converted["tiers"]["validate"]["status"], "passed");
+    assert_eq!(converted["tiers"]["conformance"]["status"], "passed");
+    assert_eq!(converted["tiers"]["office"]["status"], "passed");
     let template_compile = proof_matrix_row_by_path(&matrix, "ooxml pptx template compile");
     assert_eq!(
         template_compile["inputFixtureType"],
@@ -711,6 +742,7 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         .expect("office proven commands");
     assert!(office_commands.contains(&Value::String("ooxml xlsx cells set".to_string())));
     assert!(office_commands.contains(&Value::String("ooxml xlsx comments add".to_string())));
+    assert!(office_commands.contains(&Value::String("ooxml convert xlsm-to-xlsx".to_string())));
     assert!(office_commands.contains(&Value::String("ooxml vba attach".to_string())));
     assert!(office_commands.contains(&Value::String("ooxml pptx template compile".to_string())));
     let scaffold_derived_commands = matrix["questions"]["scaffoldDerivedProvenCommands"]
@@ -729,7 +761,7 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
     assert!(markdown.contains("Commands with no proof row yet: 0"));
     assert!(markdown.contains("Scaffold-derived commands with complete proof: 2"));
     assert!(markdown.contains("| contract-only | 0 |"));
-    assert!(markdown.contains("| office-proven | 5 |"));
+    assert!(markdown.contains("| office-proven | 6 |"));
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

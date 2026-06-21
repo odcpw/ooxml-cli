@@ -20,6 +20,8 @@ param(
 
     [switch]$RequireOpenXmlSdk,
 
+    [switch]$RunConformance,
+
     [switch]$SkipOffice,
 
     [switch]$EnableVbaObjectModelAccess,
@@ -289,6 +291,37 @@ function Invoke-OpenXmlValidation {
     return New-Stage -Status "failed" -Detail $result.output -Command $result.command -Artifact $Path -ElapsedMs $result.elapsedMs
 }
 
+function Invoke-PackageReadback {
+    param([string]$Path, [string]$Family)
+    $result = Invoke-Process -FilePath $BinaryPath -Arguments @("--json", "inspect", $Path)
+    if ($result.exitCode -ne 0) {
+        return New-Stage -Status "failed" -Detail $result.output -Command $result.command -Artifact $Path -ElapsedMs $result.elapsedMs
+    }
+    try {
+        $doc = $result.output | ConvertFrom-Json
+        $actualFamily = [string]$doc.type
+        if ($actualFamily -ne $Family) {
+            return New-Stage -Status "failed" -Detail ("ooxml inspect reported family {0}; expected {1}." -f $actualFamily, $Family) -Command $result.command -Artifact $Path -ElapsedMs $result.elapsedMs
+        }
+    }
+    catch {
+        return New-Stage -Status "failed" -Detail "ooxml inspect returned invalid JSON." -Command $result.command -Artifact $Path -ElapsedMs $result.elapsedMs
+    }
+    return New-Stage -Status "passed" -Detail ("ooxml inspect read the saved {0} package." -f $Family) -Command $result.command -Artifact $Path -ElapsedMs $result.elapsedMs
+}
+
+function Invoke-ConformanceCheck {
+    param([string]$Path)
+    if (-not $RunConformance) {
+        return New-Stage -Status "not-run" -Detail "Run with -RunConformance to include repair invariant checks." -Artifact $Path
+    }
+    $result = Invoke-Process -FilePath $BinaryPath -Arguments @("--json", "conformance", "check", $Path)
+    if ($result.exitCode -eq 0) {
+        return New-Stage -Status "passed" -Detail "ooxml conformance check accepted the file." -Command $result.command -Artifact $Path -ElapsedMs $result.elapsedMs
+    }
+    return New-Stage -Status "failed" -Detail $result.output -Command $result.command -Artifact $Path -ElapsedMs $result.elapsedMs
+}
+
 function Add-FileScenario {
     param(
         [string]$Name,
@@ -298,8 +331,20 @@ function Add-FileScenario {
         [string]$ExactCommand = "",
         [string]$InputFixtureType = "office-created macro fixture"
     )
+    $readback = Invoke-PackageReadback -Path $Path -Family $Family
     $strict = Invoke-StrictValidation -Path $Path
-    $openXml = Invoke-OpenXmlValidation -Path $Path
+    $conformance = if ($readback.status -eq "passed" -and $strict.status -eq "passed") {
+        Invoke-ConformanceCheck -Path $Path
+    }
+    else {
+        New-Stage -Status "skipped" -Detail "Readback or strict validation failed." -Artifact $Path
+    }
+    $openXml = if ($conformance.status -ne "failed") {
+        Invoke-OpenXmlValidation -Path $Path
+    }
+    else {
+        New-Stage -Status "skipped" -Detail "Conformance check failed." -Artifact $Path
+    }
     $script:Scenarios.Add([pscustomobject]@{
         name            = $Name
         family          = $Family
@@ -308,11 +353,13 @@ function Add-FileScenario {
         exactCommand    = $ExactCommand
         inputFixtureType = $InputFixtureType
         proofLevel      = "pending-office"
+        readback        = $readback
         strict          = $strict
+        conformance     = $conformance
         openXmlSdk      = $openXml
         microsoftOffice = (New-Stage -Status "pending" -Detail "Waiting for desktop Office COM oracle.")
     })
-    if ($strict.status -eq "passed" -and $openXml.status -ne "failed") {
+    if ($readback.status -eq "passed" -and $strict.status -eq "passed" -and $conformance.status -ne "failed" -and $openXml.status -ne "failed") {
         $script:OfficeInputs.Add($Path)
     }
 }
@@ -337,7 +384,9 @@ function Add-GuardScenario {
         exactCommand    = $result.command
         inputFixtureType = "guarded macro fixture"
         proofLevel      = if ($passed) { "guarded-refusal" } else { "failed" }
+        readback        = (New-Stage -Status "not-run" -Detail "Guard scenario does not write an output file.")
         strict          = (New-Stage -Status "not-run" -Detail "Guard scenario does not write an output file.")
+        conformance     = (New-Stage -Status "not-run" -Detail "Guard scenario does not write an output file.")
         openXmlSdk      = (New-Stage -Status "not-run" -Detail "Guard scenario does not write an output file.")
         microsoftOffice = (New-Stage -Status "not-run" -Detail "Guard scenario does not write an output file.")
         guard           = if ($passed) {
@@ -454,10 +503,20 @@ function New-VbaProofEvidence {
                 -PassedDetail "Microsoft Open XML SDK schema validation passed for the macro smoke output." `
                 -FallbackDetail "Microsoft Open XML SDK schema validation did not pass for the macro smoke output." `
                 -ExtraEvidence $baseEvidence
+            $tiers.readback = New-ProofTierFromStage `
+                -Stage $scenario.readback `
+                -PassedDetail "ooxml inspect read the saved macro smoke output." `
+                -FallbackDetail "ooxml inspect did not read the saved macro smoke output." `
+                -ExtraEvidence $baseEvidence
             $tiers.validate = New-ProofTierFromStage `
                 -Stage $scenario.strict `
                 -PassedDetail "ooxml validate --strict accepted the macro smoke output." `
                 -FallbackDetail "ooxml validate --strict did not accept the macro smoke output." `
+                -ExtraEvidence $baseEvidence
+            $tiers.conformance = New-ProofTierFromStage `
+                -Stage $scenario.conformance `
+                -PassedDetail "ooxml conformance check accepted the macro smoke output." `
+                -FallbackDetail "ooxml conformance check did not accept the macro smoke output." `
                 -ExtraEvidence $baseEvidence
             $tiers.office = New-ProofTierFromStage `
                 -Stage $scenario.microsoftOffice `
@@ -688,6 +747,7 @@ if ($SkipOffice) {
         if ($scenario.microsoftOffice.status -eq "pending") {
             $scenario.microsoftOffice = New-Stage -Status "skipped" -Detail "Skipped by -SkipOffice."
             if ($scenario.openXmlSdk.status -eq "passed") { $scenario.proofLevel = "openxml-sdk-schema" }
+            elseif ($scenario.conformance.status -eq "passed") { $scenario.proofLevel = "repair-conformance" }
             elseif ($scenario.strict.status -eq "passed") { $scenario.proofLevel = "strict-validation" }
         }
     }
@@ -750,7 +810,9 @@ elseif ($script:OfficeInputs.Count -gt 0) {
 }
 
 $failed = @($script:Scenarios | Where-Object {
+    $_.readback.status -eq "failed" -or
     $_.strict.status -eq "failed" -or
+    $_.conformance.status -eq "failed" -or
     $_.openXmlSdk.status -eq "failed" -or
     $_.microsoftOffice.status -eq "failed" -or
     $_.microsoftOffice.status -eq "missing" -or
@@ -761,6 +823,9 @@ $proofLevel = if ($failed.Count -gt 0) {
 }
 elseif ($SkipOffice -and $script:RunOpenXmlSdk) {
     "openxml-sdk-schema"
+}
+elseif ($SkipOffice -and $RunConformance) {
+    "repair-conformance"
 }
 elseif ($SkipOffice) {
     "strict-validation"
@@ -789,6 +854,7 @@ $summary = [pscustomobject]@{
     binary              = $BinaryPath
     proofLevel          = $proofLevel
     openXmlSetup        = $openXmlSetup
+    runConformance      = [bool]$RunConformance
     skipOffice          = [bool]$SkipOffice
     officeOracleSummary = if (Test-Path -LiteralPath $oracleSummaryPath -PathType Leaf) { $oracleSummaryPath } else { "" }
     scenarioCount       = $script:Scenarios.Count
