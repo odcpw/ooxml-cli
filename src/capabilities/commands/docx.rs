@@ -10,13 +10,14 @@ mod tables;
 
 use serde_json::Value;
 
-use super::capability_command;
+use super::{capability_command, flag};
 
 const GROUP_COMMAND_REASON: &str = "it is a command group, not a leaf mutation command";
 
 pub(super) fn commands() -> Vec<Value> {
     let mut commands = Vec::new();
     commands.extend(group_commands());
+    commands.extend(scaffold_commands());
     commands.extend(blocks::commands());
     commands.extend(paragraphs::commands());
     commands.extend(styles::commands());
@@ -27,6 +28,43 @@ pub(super) fn commands() -> Vec<Value> {
     commands.extend(replace::commands());
     commands.extend(tables::commands());
     commands
+}
+
+fn scaffold_commands() -> Vec<Value> {
+    vec![capability_command(
+        "ooxml docx scaffold",
+        "scaffold <output.docx>",
+        "Create a minimal DOCX package from scratch and validate it by default.",
+        &["package"],
+        false,
+        Some("it creates a package and is not an apply/serve mutation op"),
+        vec![
+            flag(
+                "--text",
+                "text",
+                "string",
+                "optional initial paragraph text",
+            ),
+            flag(
+                "--text-file",
+                "textFile",
+                "string",
+                "path to optional initial paragraph text",
+            ),
+            flag(
+                "--force",
+                "force",
+                "bool",
+                "replace an existing output file",
+            ),
+            flag(
+                "--no-validate",
+                "noValidate",
+                "bool",
+                "skip post-write strict validation",
+            ),
+        ],
+    )]
 }
 
 fn group_commands() -> Vec<Value> {

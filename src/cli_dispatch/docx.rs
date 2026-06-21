@@ -7,6 +7,7 @@ use serde_json::Value;
 use super::require_docx_block_hash;
 use crate::cli_args::*;
 use crate::cli_core::{CliError, CliResult};
+use crate::docx_authoring::*;
 use crate::docx_block_commands::*;
 use crate::docx_fields::*;
 use crate::docx_headers::*;
@@ -20,6 +21,24 @@ use tables::dispatch_docx_tables;
 
 pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
     match args {
+        [cmd, verb, output, rest @ ..] if cmd == "docx" && verb == "scaffold" => {
+            reject_unknown_flags(
+                rest,
+                &["--text", "--text-file"],
+                &["--force", "--no-validate"],
+            )?;
+            let text = parse_string_flag(rest, "--text")?;
+            let text_file = parse_string_flag(rest, "--text-file")?;
+            docx_scaffold(
+                output,
+                DocxScaffoldOptions {
+                    text: text.as_deref(),
+                    text_file: text_file.as_deref(),
+                    force: has_flag(rest, "--force"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                },
+            )
+        }
         [cmd, family, file] if cmd == "docx" && family == "text" => docx_text(file),
         [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && group == "blocks" && verb == "replace" =>

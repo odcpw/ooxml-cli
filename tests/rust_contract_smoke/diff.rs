@@ -35,6 +35,93 @@ fn top_level_diff_xlsx_matches_go_oracle_for_cell_value_change() {
 }
 
 #[test]
+fn top_level_diff_xlsx_aligns_renamed_sheet_by_stable_identity() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-diff-xlsx-rename-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let baseline_path = temp_dir.join("baseline.xlsx");
+    let candidate_path = temp_dir.join("candidate.xlsx");
+    write_simple_xlsx_with_sheet_xml(
+        &baseline_path,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData>
+</worksheet>"#,
+    );
+    rewrite_zip_fixture(
+        baseline_path.to_str().expect("baseline path"),
+        &candidate_path,
+        |name, data| {
+            let data = if name == "xl/workbook.xml" {
+                replace_ascii(data, r#"name="Sheet1""#, r#"name="Renamed""#)
+            } else if name == "xl/worksheets/sheet1.xml" {
+                replace_ascii(data, "<v>1</v>", "<v>2</v>")
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let baseline = baseline_path.to_string_lossy().to_string();
+    let candidate = candidate_path.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "diff", &baseline, &candidate]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    let output = stdout.expect("diff stdout");
+    let sheets = output["semantic"]["sheets"]
+        .as_array()
+        .expect("sheet diffs");
+    let rename = sheets
+        .iter()
+        .find(|item| item["change"] == "renamed")
+        .expect("renamed sheet diff");
+    assert_eq!(rename["sheet"], "Renamed");
+    assert_eq!(rename["before"], "Sheet1");
+    assert_eq!(rename["after"], "Renamed");
+    assert_eq!(
+        rename["identity"]["partUriBefore"],
+        "xl/worksheets/sheet1.xml"
+    );
+    assert_eq!(
+        rename["identity"]["partUriAfter"],
+        "xl/worksheets/sheet1.xml"
+    );
+    assert!(
+        sheets
+            .iter()
+            .all(|item| item["change"] != "removed" && item["change"] != "added"),
+        "rename should not be reported as removed+added: {sheets:?}"
+    );
+    let cell_diffs = output["semantic"]["cellDiffs"]
+        .as_array()
+        .expect("cell diffs");
+    let value_diff = cell_diffs
+        .iter()
+        .find(|item| item["cell"] == "A1" && item["property"] == "value")
+        .expect("A1 value diff");
+    assert_eq!(value_diff["sheet"], "Renamed");
+    assert_eq!(value_diff["before"], "1");
+    assert_eq!(value_diff["after"], "2");
+    assert!(
+        output["semantic"]["changedSheets"]
+            .as_array()
+            .expect("changed sheets")
+            .iter()
+            .any(|item| item.as_str() == Some("Renamed"))
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn top_level_diff_docx_matches_go_oracle_for_paragraph_text_change() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-diff-docx-{}", std::process::id()));

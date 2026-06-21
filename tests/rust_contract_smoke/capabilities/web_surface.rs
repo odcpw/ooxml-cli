@@ -8,6 +8,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml capabilities", false);
     assert_command(&all_caps, "ooxml help", false);
     assert_command(&all_caps, "ooxml apply", false);
+    assert_command(&all_caps, "ooxml convert xlsm-to-xlsx", false);
     assert_command(&all_caps, "ooxml diff", false);
     assert_command(&all_caps, "ooxml template", false);
     assert_command(&all_caps, "ooxml template apply", true);
@@ -104,6 +105,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     for path in DOCX_PARENT_GROUP_COMMANDS {
         assert_command(&all_caps, path, false);
     }
+    assert_command(&all_caps, "ooxml docx scaffold", false);
     assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx fields insert", true);
     assert_command(&all_caps, "ooxml docx fields set-result", true);
@@ -201,6 +203,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command_target_kind(&all_caps, "ooxml pptx fields set", "field");
     assert_command_target_kind(&all_caps, "ooxml pptx theme update", "style");
     assert_object_kind_command(&all_caps, "package", "ooxml apply");
+    assert_object_kind_command(&all_caps, "package", "ooxml convert xlsm-to-xlsx");
+    assert_command_target_kind(&all_caps, "ooxml convert xlsm-to-xlsx", "package");
+    assert_object_kind_command(&all_caps, "package", "ooxml docx scaffold");
+    assert_command_target_kind(&all_caps, "ooxml docx scaffold", "package");
     for path in [
         "ooxml vba add-module",
         "ooxml vba replace-module",
@@ -808,7 +814,17 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&package_caps, "ooxml conformance check", false);
     assert_command(&package_caps, "ooxml diff", false);
     assert_command(&package_caps, "ooxml template apply", true);
+    assert_command(&package_caps, "ooxml convert xlsm-to-xlsx", false);
+    assert_command(&package_caps, "ooxml docx scaffold", false);
     assert_no_command(&package_caps, "ooxml docx blocks");
+
+    let (convert_code, convert_stdout, convert_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "convert"]);
+    assert_eq!(convert_code, 0);
+    assert_eq!(convert_stderr, None);
+    let convert_caps = convert_stdout.expect("convert capabilities");
+    assert_command(&convert_caps, "ooxml convert xlsm-to-xlsx", false);
+    assert_no_command(&convert_caps, "ooxml vba remove");
 
     let (xlsx_code, xlsx_stdout, xlsx_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "xlsx"]);
@@ -856,11 +872,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx conditional-formats show", false);
     assert_command(&xlsx_caps, "ooxml xlsx conditional-formats add", true);
     assert_command(&xlsx_caps, "ooxml xlsx conditional-formats delete", true);
-    assert_command(
-        &xlsx_caps,
-        "ooxml xlsx conditional-formats reorder",
-        true,
-    );
+    assert_command(&xlsx_caps, "ooxml xlsx conditional-formats reorder", true);
     assert_command(&xlsx_caps, "ooxml xlsx data-validations list", false);
     assert_command(&xlsx_caps, "ooxml xlsx data-validations show", false);
     assert_command(&xlsx_caps, "ooxml xlsx data-validations create", true);
@@ -952,11 +964,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&range_caps, "ooxml xlsx conditional-formats show", false);
     assert_command(&range_caps, "ooxml xlsx conditional-formats add", true);
     assert_command(&range_caps, "ooxml xlsx conditional-formats delete", true);
-    assert_command(
-        &range_caps,
-        "ooxml xlsx conditional-formats reorder",
-        true,
-    );
+    assert_command(&range_caps, "ooxml xlsx conditional-formats reorder", true);
     assert_command(&range_caps, "ooxml xlsx data-validations list", false);
     assert_command(&range_caps, "ooxml xlsx data-validations show", false);
     assert_command(&range_caps, "ooxml xlsx data-validations create", true);
@@ -1341,6 +1349,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     for path in DOCX_PARENT_GROUP_COMMANDS {
         assert_command(&docx_caps, path, false);
     }
+    assert_command(&docx_caps, "ooxml docx scaffold", false);
     assert_command(&docx_caps, "ooxml docx fields list", false);
     assert_command(&docx_caps, "ooxml docx fields insert", true);
     assert_command(&docx_caps, "ooxml docx fields set-result", true);
@@ -1390,4 +1399,3 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&vba_caps, "ooxml vba attach", true);
     assert_command(&vba_caps, "ooxml vba remove", true);
 }
-

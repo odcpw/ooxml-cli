@@ -4,8 +4,9 @@ use crate::cli_args::*;
 use crate::cli_core::{CliError, CliResult};
 use crate::xlsx_tables::*;
 use crate::{
-    XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions, XlsxTablesSetColumnFormatOptions,
-    xlsx_tables_append_records, xlsx_tables_append_rows, xlsx_tables_set_column_format,
+    XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions, XlsxTablesCreateOptions,
+    XlsxTablesSetColumnFormatOptions, xlsx_tables_append_records, xlsx_tables_append_rows,
+    xlsx_tables_create, xlsx_tables_set_column_format,
 };
 
 pub(super) fn dispatch_xlsx_tables(args: &[String]) -> CliResult<Value> {
@@ -54,6 +55,37 @@ pub(super) fn dispatch_xlsx_tables(args: &[String]) -> CliResult<Value> {
                     max_cells,
                     include_types,
                     include_formulas,
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "tables" && verb == "create" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--sheet", "--range", "--table", "--style", "--out", "--backup",
+                ],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let range = parse_string_flag(rest, "--range")?;
+            let table = parse_string_flag(rest, "--table")?;
+            let style = parse_string_flag(rest, "--style")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_tables_create(
+                file,
+                XlsxTablesCreateOptions {
+                    sheet: sheet.as_deref(),
+                    range: range.as_deref(),
+                    table: table.as_deref(),
+                    style: style.as_deref(),
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
                 },
             )
         }

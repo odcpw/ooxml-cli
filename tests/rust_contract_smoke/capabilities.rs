@@ -14,6 +14,12 @@ const DOCX_PARENT_GROUP_COMMANDS: &[&str] = &[
     "ooxml docx tables",
 ];
 
+const RUST_ONLY_CAPABILITY_PATHS: &[&str] = &[
+    "ooxml convert xlsm-to-xlsx",
+    "ooxml docx scaffold",
+    "ooxml xlsx tables create",
+];
+
 const XLSX_PARENT_GROUP_PATHS: &[&str] = &[
     "ooxml xlsx",
     "ooxml xlsx cells",
@@ -234,12 +240,6 @@ fn rust_capability_inventory_is_go_oracle_subset() {
 
     let go_paths = capability_paths(&go_caps);
     let rust_paths = capability_paths(&rust_caps);
-    assert_eq!(go_paths.len(), 296, "Go oracle command count changed");
-    assert_eq!(
-        rust_paths.len(),
-        296,
-        "Rust supported command count changed"
-    );
     let missing = go_paths
         .difference(&rust_paths)
         .cloned()
@@ -248,13 +248,23 @@ fn rust_capability_inventory_is_go_oracle_subset() {
         missing.is_empty(),
         "Rust missing-command set changed: {missing:?}"
     );
+    let allowed_rust_only = RUST_ONLY_CAPABILITY_PATHS
+        .iter()
+        .map(|path| (*path).to_string())
+        .collect::<BTreeSet<_>>();
     let invented = rust_paths
         .difference(&go_paths)
+        .filter(|path| !allowed_rust_only.contains(*path))
         .cloned()
         .collect::<Vec<_>>();
     assert!(
         invented.is_empty(),
-        "Rust capabilities must be a Go-oracle command subset; invented paths: {invented:?}"
+        "Rust capabilities have unreviewed Rust-only paths: {invented:?}"
+    );
+    assert_eq!(
+        rust_paths.len(),
+        go_paths.len() + allowed_rust_only.len(),
+        "Rust command count should equal Go oracle plus reviewed Rust-only features"
     );
 }
 

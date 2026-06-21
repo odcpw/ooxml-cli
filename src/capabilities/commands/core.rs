@@ -327,6 +327,29 @@ pub(super) fn commands() -> Vec<Value> {
             ],
         ),
         capability_command(
+            "ooxml convert xlsm-to-xlsx",
+            "convert xlsm-to-xlsx <input.xlsm> --out <output.xlsx>",
+            "Convert XLSM to XLSX by removing VBA package wiring through the proven vba remove workflow.",
+            &["package"],
+            false,
+            Some("package conversion alias; run it as a CLI command, not as a serve/MCP op"),
+            vec![
+                flag("--out", "out", "string", "output .xlsx file path"),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "plan conversion without writing output",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict validation after conversion",
+                ),
+            ],
+        ),
+        capability_command(
             "ooxml template",
             "template",
             "Extract and apply design tokens across PPTX/XLSX templates.",

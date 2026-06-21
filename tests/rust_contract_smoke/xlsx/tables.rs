@@ -196,6 +196,151 @@ fn xlsx_tables_export_matches_go_oracle() {
 }
 
 #[test]
+fn xlsx_tables_create_rust_only_saved_readback_and_formula_preservation() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-table-create-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input_path = temp_dir.join("input.xlsx");
+    let output_path = temp_dir.join("output.xlsx");
+    write_simple_xlsx_with_sheet_xml(
+        &input_path,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:C3"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Region</t></is></c><c r="B1" t="inlineStr"><is><t>Amount</t></is></c><c r="C1" t="inlineStr"><is><t>Margin</t></is></c></row>
+    <row r="2"><c r="A2" t="inlineStr"><is><t>East</t></is></c><c r="B2"><v>10</v></c><c r="C2"><f>B2*0.2</f><v>2</v></c></row>
+    <row r="3"><c r="A3" t="inlineStr"><is><t>West</t></is></c><c r="B3"><v>15</v></c><c r="C3"><f>B3*0.2</f><v>3</v></c></row>
+  </sheetData>
+</worksheet>"#,
+    );
+    let input = input_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "tables",
+        "create",
+        &input,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:C3",
+        "--table",
+        "SalesData",
+        "--out",
+        &output,
+    ]);
+    assert_eq!(code, 0, "tables create exit stderr={stderr:?}");
+    assert_eq!(stderr, None, "tables create stderr");
+    let result = stdout.expect("tables create stdout");
+    assert_eq!(result["table"], "SalesData");
+    assert_eq!(result["range"], "A1:C3");
+    assert_eq!(
+        result["columns"],
+        serde_json::json!(["Region", "Amount", "Margin"])
+    );
+    assert_eq!(result["relationshipId"], "rId1");
+    assert_eq!(result["tablePartUri"], "/xl/tables/table1.xml");
+    for field in ["validateCommand", "tableShowCommand", "tableExportCommand"] {
+        assert_rust_emitted_ooxml_command_succeeds(&result, field);
+    }
+
+    assert_xlsx_strict_valid(&output);
+    assert!(zip_entry_exists(&output_path, "xl/tables/table1.xml"));
+    let table_xml = read_zip_string(&output_path, "xl/tables/table1.xml");
+    assert!(
+        table_xml.contains(r#"displayName="SalesData""#),
+        "created table missing displayName:\n{table_xml}"
+    );
+    assert!(
+        table_xml.contains(r#"ref="A1:C3""#),
+        "created table missing range:\n{table_xml}"
+    );
+    assert!(
+        table_xml.contains(r#"<tableColumn id="3" name="Margin"/>"#),
+        "created table missing third column:\n{table_xml}"
+    );
+    let content_types = read_zip_string(&output_path, "[Content_Types].xml");
+    assert!(
+        content_types.contains(
+            r#"PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml""#
+        ),
+        "content types missing table override:\n{content_types}"
+    );
+    let sheet_rels = read_zip_string(&output_path, "xl/worksheets/_rels/sheet1.xml.rels");
+    assert!(
+        sheet_rels.contains(
+            r#"Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table""#
+        ) && sheet_rels.contains(r#"Target="../tables/table1.xml""#),
+        "worksheet rels missing table relationship:\n{sheet_rels}"
+    );
+    let sheet_xml = read_zip_string(&output_path, "xl/worksheets/sheet1.xml");
+    assert!(
+        sheet_xml.contains(
+            r#"xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#
+        ),
+        "worksheet missing relationship namespace:\n{sheet_xml}"
+    );
+    assert!(
+        sheet_xml.contains(r#"<tableParts count="1"><tablePart r:id="rId1"/></tableParts>"#),
+        "worksheet missing tableParts:\n{sheet_xml}"
+    );
+    assert!(
+        sheet_xml.contains(r#"<c r="C2"><f>B2*0.2</f><v>2</v></c>"#),
+        "table create should preserve formula cache cell XML:\n{sheet_xml}"
+    );
+
+    let (export_code, export_stdout, export_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "tables",
+        "export",
+        &output,
+        "--table",
+        "SalesData",
+        "--include-types",
+        "--include-formulas",
+    ]);
+    assert_eq!(export_code, 0, "created table export exit");
+    assert_eq!(export_stderr, None, "created table export stderr");
+    let exported = export_stdout.expect("created table export stdout");
+    assert_eq!(exported["range"], "A1:C3");
+    assert_eq!(exported["formulas"][1][2], "B2*0.2");
+    assert_eq!(exported["formulas"][2][2], "B3*0.2");
+
+    let before_dry_run = read_zip_string(&input_path, "xl/worksheets/sheet1.xml");
+    let (dry_code, dry_stdout, dry_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "tables",
+        "create",
+        &input,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B3",
+        "--table",
+        "PreviewTable",
+        "--dry-run",
+    ]);
+    assert_eq!(dry_code, 0, "tables create dry-run exit");
+    assert_eq!(dry_stderr, None, "tables create dry-run stderr");
+    assert!(dry_stdout.is_some(), "tables create dry-run stdout");
+    assert_eq!(
+        read_zip_string(&input_path, "xl/worksheets/sheet1.xml"),
+        before_dry_run,
+        "dry-run should not mutate source worksheet"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-table-column-format-{}",

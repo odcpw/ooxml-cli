@@ -1,6 +1,8 @@
 // DOCX command-family parity tests live here while Go-oracle helpers remain in the parent integration test crate.
 use super::*;
 
+include!("docx/scaffold.rs");
+
 #[test]
 fn docx_text_matches_go_oracle() {
     let cases: Vec<Vec<&str>> = vec![

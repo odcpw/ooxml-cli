@@ -507,27 +507,32 @@ fn xlsx_diff(baseline: &str, candidate: &str) -> CliResult<Value> {
     let mut sheet_diffs = Vec::<Value>::new();
     let mut cell_diffs = Vec::<Value>::new();
 
-    for sheet in before
-        .sheets
-        .keys()
-        .chain(after.sheets.keys())
-        .cloned()
-        .collect::<BTreeSet<_>>()
-    {
-        match (before.sheets.get(&sheet), after.sheets.get(&sheet)) {
+    for pair in align_xlsx_sheets(&before.sheets, &after.sheets) {
+        match (pair.before, pair.after) {
             (Some(left), Some(right)) => {
-                for diff in compare_xlsx_cells(&sheet, left, right) {
+                let sheet_name = xlsx_sheet_diff_name(left, right);
+                if left.name != right.name {
+                    sheet_diffs.push(json!({
+                        "sheet": sheet_name,
+                        "change": "renamed",
+                        "before": left.name,
+                        "after": right.name,
+                        "identity": xlsx_sheet_identity_json(left, right),
+                    }));
+                    changed_sheets.insert(sheet_name.clone());
+                }
+                for diff in compare_xlsx_cells(&sheet_name, left, right) {
                     cell_diffs.push(diff);
-                    changed_sheets.insert(sheet.clone());
+                    changed_sheets.insert(sheet_name.clone());
                 }
             }
-            (Some(_), None) => {
-                sheet_diffs.push(json!({"sheet": sheet, "change": "removed"}));
-                changed_sheets.insert(sheet);
+            (Some(left), None) => {
+                sheet_diffs.push(json!({"sheet": left.name, "change": "removed"}));
+                changed_sheets.insert(left.name.clone());
             }
-            (None, Some(_)) => {
-                sheet_diffs.push(json!({"sheet": sheet, "change": "added"}));
-                changed_sheets.insert(sheet);
+            (None, Some(right)) => {
+                sheet_diffs.push(json!({"sheet": right.name, "change": "added"}));
+                changed_sheets.insert(right.name.clone());
             }
             (None, None) => {}
         }
@@ -556,13 +561,23 @@ fn xlsx_diff(baseline: &str, candidate: &str) -> CliResult<Value> {
 
 struct XlsxSnapshot {
     sheet_count: usize,
-    sheets: BTreeMap<String, XlsxSheetSnapshot>,
+    sheets: Vec<XlsxSheetSnapshot>,
     defined_names: Vec<XlsxDefinedNameSnapshot>,
     tables: Vec<XlsxTableRef>,
 }
 
 struct XlsxSheetSnapshot {
+    name: String,
+    sheet_id: u32,
+    rel_id: String,
+    part_uri: String,
     cells: BTreeMap<String, XlsxCellSnapshot>,
+}
+
+#[derive(Clone, Copy)]
+struct XlsxSheetPair<'a> {
+    before: Option<&'a XlsxSheetSnapshot>,
+    after: Option<&'a XlsxSheetSnapshot>,
 }
 
 #[derive(Clone, Default)]
@@ -598,7 +613,7 @@ fn read_xlsx_snapshot(file: &str) -> CliResult<XlsxSnapshot> {
     let shared_strings = shared_strings(file).unwrap_or_default();
     let styles = xlsx_styles(file).unwrap_or_default();
 
-    let mut sheet_snapshots = BTreeMap::new();
+    let mut sheet_snapshots = Vec::new();
     for sheet in &sheets {
         let Some(rel) = rels.iter().find(|rel| rel.id == sheet.rel_id) else {
             return Err(CliError::unexpected(format!(
@@ -624,7 +639,13 @@ fn read_xlsx_snapshot(file: &str) -> CliResult<XlsxSnapshot> {
                 },
             );
         }
-        sheet_snapshots.insert(sheet.name.clone(), XlsxSheetSnapshot { cells });
+        sheet_snapshots.push(XlsxSheetSnapshot {
+            name: sheet.name.clone(),
+            sheet_id: sheet.sheet_id,
+            rel_id: sheet.rel_id.clone(),
+            part_uri: sheet_part,
+            cells,
+        });
     }
 
     Ok(XlsxSnapshot {
@@ -632,6 +653,161 @@ fn read_xlsx_snapshot(file: &str) -> CliResult<XlsxSnapshot> {
         sheets: sheet_snapshots,
         defined_names: parse_xlsx_defined_names(&workbook_xml, &sheets)?,
         tables: xlsx_tables(file, None)?,
+    })
+}
+
+fn align_xlsx_sheets<'a>(
+    before: &'a [XlsxSheetSnapshot],
+    after: &'a [XlsxSheetSnapshot],
+) -> Vec<XlsxSheetPair<'a>> {
+    let mut matched_before = BTreeSet::new();
+    let mut matched_after = BTreeSet::new();
+    let mut pairs = Vec::new();
+
+    match_xlsx_sheets_by(
+        before,
+        after,
+        &mut matched_before,
+        &mut matched_after,
+        &mut pairs,
+        |sheet| sheet.part_uri.clone(),
+    );
+    match_xlsx_sheets_by(
+        before,
+        after,
+        &mut matched_before,
+        &mut matched_after,
+        &mut pairs,
+        |sheet| format!("sheetId:{}", sheet.sheet_id),
+    );
+    match_xlsx_sheets_by(
+        before,
+        after,
+        &mut matched_before,
+        &mut matched_after,
+        &mut pairs,
+        |sheet| sheet.rel_id.clone(),
+    );
+    match_xlsx_sheets_by(
+        before,
+        after,
+        &mut matched_before,
+        &mut matched_after,
+        &mut pairs,
+        |sheet| sheet.name.clone(),
+    );
+
+    for (index, sheet) in before.iter().enumerate() {
+        if !matched_before.contains(&index) {
+            pairs.push(XlsxSheetPair {
+                before: Some(sheet),
+                after: None,
+            });
+        }
+    }
+    for (index, sheet) in after.iter().enumerate() {
+        if !matched_after.contains(&index) {
+            pairs.push(XlsxSheetPair {
+                before: None,
+                after: Some(sheet),
+            });
+        }
+    }
+
+    pairs.sort_by_key(xlsx_sheet_pair_sort_key);
+    pairs
+}
+
+fn match_xlsx_sheets_by<'a, F>(
+    before: &'a [XlsxSheetSnapshot],
+    after: &'a [XlsxSheetSnapshot],
+    matched_before: &mut BTreeSet<usize>,
+    matched_after: &mut BTreeSet<usize>,
+    pairs: &mut Vec<XlsxSheetPair<'a>>,
+    key_for: F,
+) where
+    F: Fn(&XlsxSheetSnapshot) -> String,
+{
+    let before_index = unmatched_xlsx_sheet_identity_index(before, matched_before, &key_for);
+    let after_index = unmatched_xlsx_sheet_identity_index(after, matched_after, &key_for);
+    for key in before_index
+        .keys()
+        .chain(after_index.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>()
+    {
+        let Some(left) = before_index.get(&key).and_then(|items| {
+            if items.len() == 1 {
+                Some(items[0])
+            } else {
+                None
+            }
+        }) else {
+            continue;
+        };
+        let Some(right) = after_index.get(&key).and_then(|items| {
+            if items.len() == 1 {
+                Some(items[0])
+            } else {
+                None
+            }
+        }) else {
+            continue;
+        };
+        if matched_before.insert(left) && matched_after.insert(right) {
+            pairs.push(XlsxSheetPair {
+                before: Some(&before[left]),
+                after: Some(&after[right]),
+            });
+        }
+    }
+}
+
+fn unmatched_xlsx_sheet_identity_index<F>(
+    sheets: &[XlsxSheetSnapshot],
+    matched: &BTreeSet<usize>,
+    key_for: F,
+) -> BTreeMap<String, Vec<usize>>
+where
+    F: Fn(&XlsxSheetSnapshot) -> String,
+{
+    let mut index = BTreeMap::<String, Vec<usize>>::new();
+    for (position, sheet) in sheets.iter().enumerate() {
+        if matched.contains(&position) {
+            continue;
+        }
+        let key = key_for(sheet);
+        if !key.trim().is_empty() {
+            index.entry(key).or_default().push(position);
+        }
+    }
+    index
+}
+
+fn xlsx_sheet_pair_sort_key(pair: &XlsxSheetPair<'_>) -> String {
+    match (pair.before, pair.after) {
+        (_, Some(after)) => after.name.clone(),
+        (Some(before), None) => before.name.clone(),
+        (None, None) => String::new(),
+    }
+}
+
+fn xlsx_sheet_diff_name(left: &XlsxSheetSnapshot, right: &XlsxSheetSnapshot) -> String {
+    if !right.name.is_empty() {
+        right.name.clone()
+    } else {
+        left.name.clone()
+    }
+}
+
+fn xlsx_sheet_identity_json(left: &XlsxSheetSnapshot, right: &XlsxSheetSnapshot) -> Value {
+    json!({
+        "sheetIdBefore": left.sheet_id,
+        "sheetIdAfter": right.sheet_id,
+        "relationshipIdBefore": left.rel_id,
+        "relationshipIdAfter": right.rel_id,
+        "partUriBefore": left.part_uri,
+        "partUriAfter": right.part_uri,
     })
 }
 

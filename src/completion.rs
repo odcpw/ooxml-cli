@@ -30,6 +30,7 @@ fn commands() -> &'static [&'static str] {
         "capabilities",
         "completion",
         "conformance",
+        "convert",
         "doctor",
         "docx",
         "find",

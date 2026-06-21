@@ -4374,24 +4374,8 @@ fn pptx_fields_inspect_set_readback_dry_run_and_errors_match_go_oracle() {
     ));
     std::fs::create_dir_all(&temp_dir).expect("pptx fields temp dir");
 
-    let go_out = temp_dir.join("go-fields-set.pptx");
     let rust_out = temp_dir.join("rust-fields-set.pptx");
-    let go_out_str = go_out.to_str().expect("go fields set path");
     let rust_out_str = rust_out.to_str().expect("rust fields set path");
-    let go_args = [
-        "--json",
-        "pptx",
-        "fields",
-        "set",
-        header_footer_fixture,
-        "--footer",
-        "Confidential",
-        "--show-slide-number=false",
-        "--date-format",
-        "date-only",
-        "--out",
-        go_out_str,
-    ];
     let rust_args = [
         "--json",
         "pptx",
@@ -4406,54 +4390,61 @@ fn pptx_fields_inspect_set_readback_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "fields set saved exit");
-    assert_eq!(rust_stderr, go_stderr, "fields set saved stderr");
+    assert_eq!(rust_code, 0, "fields set saved exit");
+    assert_eq!(rust_stderr, None, "fields set saved stderr");
     let rust_json = rust_stdout.expect("rust fields set stdout");
+    let scrubbed = scrub_path(rust_json.clone(), rust_out_str, "[OUT]");
+    assert_eq!(scrubbed["output"], Value::String("[OUT]".to_string()));
     assert_eq!(
-        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
-        scrub_path(
-            go_stdout.expect("go fields set stdout"),
-            go_out_str,
-            "[OUT]"
-        ),
-        "fields set saved stdout"
+        scrubbed["footerText"],
+        Value::String("Confidential".to_string())
     );
-    assert!(go_out.exists(), "Go fields set output missing");
+    assert_eq!(scrubbed["footerPlaceholdersUpdated"], Value::from(2));
+    assert_eq!(scrubbed["footerPlaceholdersCreated"], Value::from(1));
+    assert_eq!(scrubbed.get("slidesWithoutFooterPlaceholder"), None);
     assert!(rust_out.exists(), "Rust fields set output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let (go_read_code, go_read_stdout, go_read_stderr) =
-        run_go_ooxml(&["--json", "pptx", "fields", "inspect", go_out_str]);
     let (rust_read_code, rust_read_stdout, rust_read_stderr) =
         run_ooxml(&["--json", "pptx", "fields", "inspect", rust_out_str]);
-    assert_eq!(rust_read_code, go_read_code, "fields readback exit");
-    assert_eq!(rust_read_stderr, go_read_stderr, "fields readback stderr");
-    assert_eq!(
-        rust_read_stdout.expect("rust fields readback"),
-        go_read_stdout.expect("go fields readback"),
-        "fields readback stdout"
-    );
+    assert_eq!(rust_read_code, 0, "fields readback exit");
+    assert_eq!(rust_read_stderr, None, "fields readback stderr");
+    let readback = rust_read_stdout.expect("rust fields readback");
+    let slides = readback["slides"]
+        .as_array()
+        .expect("fields readback slides");
+    assert_eq!(slides.len(), 2, "header-footer fixture slide count");
+    for slide in slides {
+        assert_eq!(
+            slide["footerPlaceholder"]["text"],
+            Value::String("Confidential".to_string()),
+            "fields readback footer text: {slide:?}"
+        );
+    }
+
+    let (dry_code, dry_stdout, dry_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "fields",
+        "set",
+        header_footer_fixture,
+        "--footer",
+        "Confidential",
+        "--show-slide-number=false",
+        "--date-format",
+        "date-only",
+        "--dry-run",
+    ]);
+    assert_eq!(dry_code, 0, "fields set dry-run exit");
+    assert_eq!(dry_stderr, None, "fields set dry-run stderr");
+    let dry_result = dry_stdout.expect("fields set dry-run stdout");
+    assert_eq!(dry_result["footerPlaceholdersUpdated"], Value::from(2));
+    assert_eq!(dry_result["footerPlaceholdersCreated"], Value::from(1));
+    assert_eq!(dry_result.get("slidesWithoutFooterPlaceholder"), None);
 
     for (label, args) in [
-        (
-            "fields set dry-run",
-            vec![
-                "--json",
-                "pptx",
-                "fields",
-                "set",
-                header_footer_fixture,
-                "--footer",
-                "Confidential",
-                "--show-slide-number=false",
-                "--date-format",
-                "date-only",
-                "--dry-run",
-            ],
-        ),
         (
             "fields set creates master hf dry-run",
             vec![
@@ -4515,6 +4506,65 @@ fn pptx_fields_inspect_set_readback_dry_run_and_errors_match_go_oracle() {
         ),
     ] {
         assert_go_rust_json_match(&args, label);
+    }
+}
+
+#[test]
+fn pptx_fields_set_synthesizes_missing_footer_placeholders() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-footer-synthesis-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx footer synthesis temp dir");
+    let out = temp_dir.join("footer-visible.pptx");
+    let out_str = out.to_str().expect("footer output path");
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "fields",
+        "set",
+        "testdata/pptx/title-content/presentation.pptx",
+        "--footer",
+        "Confidential",
+        "--show-footer=true",
+        "--out",
+        out_str,
+    ]);
+    assert_eq!(code, 0, "fields set footer synthesis exit");
+    assert_eq!(stderr, None, "fields set footer synthesis stderr");
+    let result = stdout.expect("fields set footer synthesis stdout");
+    assert_eq!(result["footerPlaceholdersCreated"], Value::from(2));
+    assert_eq!(result.get("slidesWithoutFooterPlaceholder"), None);
+    assert_rust_emitted_ooxml_command_exits_zero(&result, "validateCommand");
+
+    let slide_xml = read_zip_string(&out, "ppt/slides/slide1.xml");
+    assert!(
+        slide_xml.contains(r#"type="ftr""#),
+        "synthesized slide XML should contain a footer placeholder: {slide_xml}"
+    );
+    assert!(
+        slide_xml.contains("Confidential"),
+        "synthesized slide XML should contain footer text: {slide_xml}"
+    );
+
+    let (inspect_code, inspect_stdout, inspect_stderr) =
+        run_ooxml(&["--json", "pptx", "fields", "inspect", out_str]);
+    assert_eq!(inspect_code, 0, "footer synthesis inspect exit");
+    assert_eq!(inspect_stderr, None, "footer synthesis inspect stderr");
+    let inspect = inspect_stdout.expect("footer synthesis inspect stdout");
+    let slides = inspect["slides"].as_array().expect("inspect slides");
+    assert_eq!(slides.len(), 2, "title-content fixture slide count");
+    for slide in slides {
+        assert_eq!(
+            slide["footerPlaceholder"]["text"],
+            Value::String("Confidential".to_string()),
+            "slide footer placeholder should be inspectable: {slide:?}"
+        );
     }
 }
 

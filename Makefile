@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-smoke fixtures install clean help web-smoke-agent web-smoke-nonpptx office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check clippy verify verify-strict go-reference-build go-reference-test go-reference-test-short go-reference-contract go-reference-fmt-check go-reference-vet go-reference-render-smoke
+.PHONY: build test test-unit test-smoke fixtures install clean help web-smoke-agent web-smoke-nonpptx artifact-proof-matrix office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check clippy verify verify-strict go-reference-build go-reference-test go-reference-test-short go-reference-contract go-reference-fmt-check go-reference-vet go-reference-render-smoke
 
 # Default target
 .DEFAULT_GOAL := help
@@ -91,6 +91,10 @@ web-smoke-agent: build
 # web-smoke-nonpptx: Run the web DOCX/XLSX smoke against the freshly built local Rust binary
 web-smoke-nonpptx: build
 	@cd web && OOXML_BIN="$(abspath $(RUST_DEBUG_BIN))" npm run smoke:nonpptx
+
+# artifact-proof-matrix: Generate the mutating command artifact proof gap matrix
+artifact-proof-matrix: build
+	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\artifact-proof-matrix.ps1 -RepoRoot . -BinaryPath "$(abspath $(RUST_DEBUG_BIN))"
 
 # check-fast: Compile all Rust targets without running live Go oracle tests
 check-fast:

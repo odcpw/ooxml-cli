@@ -150,7 +150,8 @@ fn guide_json() -> Value {
                     "ooxml --json vba list <file>",
                     "ooxml --json vba extract <file> --out-dir <dir>",
                     "ooxml --json vba attach <file> --bin <vbaProject.bin> --out <file>",
-                    "ooxml --json vba remove <file> --out <file>"
+                    "ooxml --json vba remove <file> --out <file>",
+                    "ooxml --json convert xlsm-to-xlsx <file.xlsm> --out <file.xlsx>"
                 ]
             }
         ],

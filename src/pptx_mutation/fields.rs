@@ -102,6 +102,7 @@ struct FieldsSetResult {
     masters_updated: Vec<String>,
     created_header_footer: bool,
     footer_placeholders_updated: usize,
+    footer_placeholders_created: usize,
     date_placeholders_updated: usize,
     slides_without_footer_placeholder: Vec<usize>,
     slides_without_date_placeholder: Vec<usize>,
@@ -121,6 +122,7 @@ fn build_fields_mutation(file: &str, options: &FieldsSetOptions) -> CliResult<Fi
         masters_updated: Vec::new(),
         created_header_footer: false,
         footer_placeholders_updated: 0,
+        footer_placeholders_created: 0,
         date_placeholders_updated: 0,
         slides_without_footer_placeholder: Vec::new(),
         slides_without_date_placeholder: Vec::new(),
@@ -158,6 +160,15 @@ fn build_fields_mutation(file: &str, options: &FieldsSetOptions) -> CliResult<Fi
                     xml = replace_span(&xml, span.0, span.1, &updated);
                     changed = true;
                     result.footer_placeholders_updated += 1;
+                }
+            } else if !footer.is_empty() && options.show_footer != Some(false) {
+                if let Some(updated) = add_footer_placeholder_shape(&xml, footer)? {
+                    xml = updated;
+                    changed = true;
+                    result.footer_placeholders_created += 1;
+                    result.footer_placeholders_updated += 1;
+                } else {
+                    result.slides_without_footer_placeholder.push(slide_number);
                 }
             } else {
                 result.slides_without_footer_placeholder.push(slide_number);
@@ -472,6 +483,157 @@ fn set_date_field_type(shape_xml: &str, field_type: &str) -> CliResult<DateField
     Ok(DateFieldUpdate::NoField)
 }
 
+fn add_footer_placeholder_shape(xml: &str, text: &str) -> CliResult<Option<String>> {
+    let Some(c_sld) = first_element_span(xml, "cSld", 0, xml.len()) else {
+        return Ok(None);
+    };
+    let Some(sp_tree) = first_element_span(xml, "spTree", c_sld.0, c_sld.1) else {
+        return Ok(None);
+    };
+    let Some(content_start) = content_start(xml, sp_tree) else {
+        return Ok(None);
+    };
+    let Some(content_end) = content_end(xml, sp_tree) else {
+        return Ok(None);
+    };
+    let children = xml_direct_child_ranges(xml, content_start, content_end)?;
+    let insert_at = children
+        .iter()
+        .find(|child| child.kind == "extLst")
+        .map(|child| child.start)
+        .unwrap_or(content_end);
+    let id = next_sp_tree_shape_id(&xml[sp_tree.0..sp_tree.1]);
+    let prefix = xml_fragment_bounds(&xml[sp_tree.0..sp_tree.1])
+        .map(|(_, tag_name, _, _)| tag_prefix(&tag_name))
+        .unwrap_or_else(|_| "p".to_string());
+    let drawing_prefix = drawingml_prefix(xml);
+    let shape = footer_placeholder_shape_xml(&prefix, &drawing_prefix, id, text);
+    Ok(Some(insert_at_index(xml, insert_at, &shape)))
+}
+
+fn next_sp_tree_shape_id(sp_tree_xml: &str) -> u32 {
+    let mut reader = Reader::from_str(sp_tree_xml);
+    reader.config_mut().trim_text(true);
+    let mut max_id = 1_u32;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "cNvPr" =>
+            {
+                if let Some(id) = attr(&e, "id").and_then(|value| value.parse::<u32>().ok()) {
+                    max_id = max_id.max(id);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    max_id.saturating_add(1)
+}
+
+fn drawingml_prefix(xml: &str) -> String {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                let qname = e.name();
+                let name = local_name(qname.as_ref());
+                if matches!(
+                    name,
+                    "bodyPr"
+                        | "lstStyle"
+                        | "p"
+                        | "r"
+                        | "t"
+                        | "spLocks"
+                        | "xfrm"
+                        | "off"
+                        | "ext"
+                        | "prstGeom"
+                        | "avLst"
+                ) {
+                    let raw = String::from_utf8_lossy(qname.as_ref());
+                    if let Some((prefix, _)) = raw.split_once(':') {
+                        return prefix.to_string();
+                    }
+                    return String::new();
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    "a".to_string()
+}
+
+fn footer_placeholder_shape_xml(prefix: &str, drawing_prefix: &str, id: u32, text: &str) -> String {
+    let p_sp = qualified_name(prefix, "sp");
+    let p_nv_sp_pr = qualified_name(prefix, "nvSpPr");
+    let p_c_nv_pr = qualified_name(prefix, "cNvPr");
+    let p_c_nv_sp_pr = qualified_name(prefix, "cNvSpPr");
+    let p_nv_pr = qualified_name(prefix, "nvPr");
+    let p_ph = qualified_name(prefix, "ph");
+    let p_sp_pr = qualified_name(prefix, "spPr");
+    let p_tx_body = qualified_name(prefix, "txBody");
+    let a_sp_locks = qualified_name(drawing_prefix, "spLocks");
+    let a_xfrm = qualified_name(drawing_prefix, "xfrm");
+    let a_off = qualified_name(drawing_prefix, "off");
+    let a_ext = qualified_name(drawing_prefix, "ext");
+    let a_prst_geom = qualified_name(drawing_prefix, "prstGeom");
+    let a_av_lst = qualified_name(drawing_prefix, "avLst");
+    let a_body_pr = qualified_name(drawing_prefix, "bodyPr");
+    let a_lst_style = qualified_name(drawing_prefix, "lstStyle");
+    let a_lvl1p_pr = qualified_name(drawing_prefix, "lvl1pPr");
+    let a_def_r_pr = qualified_name(drawing_prefix, "defRPr");
+    let a_p = qualified_name(drawing_prefix, "p");
+    let a_end_para_r_pr = qualified_name(drawing_prefix, "endParaRPr");
+    format!(
+        concat!(
+            "<{p_sp}>",
+            "<{p_nv_sp_pr}>",
+            "<{p_c_nv_pr} id=\"{id}\" name=\"Footer Placeholder {id}\"/>",
+            "<{p_c_nv_sp_pr}><{a_sp_locks} noGrp=\"1\"/></{p_c_nv_sp_pr}>",
+            "<{p_nv_pr}><{p_ph} type=\"ftr\" sz=\"quarter\" idx=\"11\"/></{p_nv_pr}>",
+            "</{p_nv_sp_pr}>",
+            "<{p_sp_pr}>",
+            "<{a_xfrm}><{a_off} x=\"3124200\" y=\"6356350\"/><{a_ext} cx=\"2895600\" cy=\"365125\"/></{a_xfrm}>",
+            "<{a_prst_geom} prst=\"rect\"><{a_av_lst}/></{a_prst_geom}>",
+            "</{p_sp_pr}>",
+            "<{p_tx_body}>",
+            "<{a_body_pr} vert=\"horz\" lIns=\"91440\" tIns=\"45720\" rIns=\"91440\" bIns=\"45720\" rtlCol=\"0\" anchor=\"ctr\"/>",
+            "<{a_lst_style}><{a_lvl1p_pr} algn=\"ctr\"><{a_def_r_pr} sz=\"1200\"/></{a_lvl1p_pr}></{a_lst_style}>",
+            "<{a_p}>{}<{a_end_para_r_pr} lang=\"en-US\"/></{a_p}>",
+            "</{p_tx_body}>",
+            "</{p_sp}>"
+        ),
+        text_run_xml(drawing_prefix, text),
+        a_av_lst = a_av_lst,
+        a_body_pr = a_body_pr,
+        a_def_r_pr = a_def_r_pr,
+        a_end_para_r_pr = a_end_para_r_pr,
+        a_ext = a_ext,
+        a_lst_style = a_lst_style,
+        a_lvl1p_pr = a_lvl1p_pr,
+        a_off = a_off,
+        a_p = a_p,
+        a_prst_geom = a_prst_geom,
+        a_sp_locks = a_sp_locks,
+        a_xfrm = a_xfrm,
+        id = id,
+        p_c_nv_pr = p_c_nv_pr,
+        p_c_nv_sp_pr = p_c_nv_sp_pr,
+        p_nv_pr = p_nv_pr,
+        p_nv_sp_pr = p_nv_sp_pr,
+        p_ph = p_ph,
+        p_sp = p_sp,
+        p_sp_pr = p_sp_pr,
+        p_tx_body = p_tx_body,
+    )
+}
+
 fn find_placeholder_shape_span(xml: &str, placeholder_type: &str) -> Option<(usize, usize)> {
     let c_sld = first_element_span(xml, "cSld", 0, xml.len())?;
     let sp_tree = first_element_span(xml, "spTree", c_sld.0, c_sld.1)?;
@@ -675,6 +837,12 @@ fn fields_set_result_json(
         "footerPlaceholdersUpdated".to_string(),
         json!(result.footer_placeholders_updated),
     );
+    if result.footer_placeholders_created > 0 {
+        out.insert(
+            "footerPlaceholdersCreated".to_string(),
+            json!(result.footer_placeholders_created),
+        );
+    }
     out.insert(
         "datePlaceholdersUpdated".to_string(),
         json!(result.date_placeholders_updated),

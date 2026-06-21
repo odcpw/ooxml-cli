@@ -14,7 +14,7 @@ use crate::validation::validate;
 use crate::vba::*;
 use crate::verify::verify;
 use crate::{
-    apply, diff, diff_command, pptx_diff_command, pptx_diff_dispatch, pptx_media_add,
+    apply, command_arg, diff, diff_command, pptx_diff_command, pptx_diff_dispatch, pptx_media_add,
     pptx_media_list, pptx_media_replace, pptx_template_capture, pptx_template_compile,
     pptx_template_inspect, pptx_translate_apply, pptx_translate_export, pptx_validate_layout,
     pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan, template_apply, template_profile_inspect,
@@ -107,6 +107,9 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [cmd] if cmd == "version" => Ok(json!({"tool": "ooxml", "version": "0.0.1"})),
         [cmd, rest @ ..] if cmd == "capabilities" => capabilities::capabilities(rest),
         [cmd, file, rest @ ..] if cmd == "apply" => apply(file, rest),
+        [cmd, conversion, file, rest @ ..] if cmd == "convert" && conversion == "xlsm-to-xlsx" => {
+            convert_xlsm_to_xlsx(file, rest)
+        }
         [cmd, verb, file, rest @ ..] if cmd == "template" && verb == "apply" => {
             template_apply(file, rest)
         }
@@ -1684,6 +1687,111 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             args.join(" ")
         ))),
     }
+}
+
+fn convert_xlsm_to_xlsx(file: &str, args: &[String]) -> CliResult<Value> {
+    reject_unknown_flags(
+        args,
+        &["--out"],
+        &["--dry-run", "--no-validate", "--in-place"],
+    )?;
+    if !path_has_extension(file, ".xlsm") {
+        return Err(CliError::invalid_args(
+            "convert xlsm-to-xlsx expects an .xlsm input; use `ooxml --json convert xlsm-to-xlsx <input.xlsm> --out <output.xlsx>`",
+        ));
+    }
+    if has_flag(args, "--in-place") {
+        return Err(CliError::invalid_args(
+            "convert xlsm-to-xlsx writes a non-macro .xlsx save-as output; use --out <output.xlsx>, or use `ooxml --json vba remove <file> --in-place` for generic macro removal",
+        ));
+    }
+
+    let dry_run = has_flag(args, "--dry-run");
+    let out = parse_string_flag(args, "--out")?;
+    if !dry_run {
+        let Some(out) = out.as_deref() else {
+            return Err(CliError::invalid_args(
+                "convert xlsm-to-xlsx requires --out <output.xlsx>",
+            ));
+        };
+        if !path_has_extension(out, ".xlsx") {
+            return Err(CliError::invalid_args(
+                "convert xlsm-to-xlsx requires an .xlsx --out path",
+            ));
+        }
+    }
+
+    let value = vba_remove(
+        file,
+        VbaMutationOptions {
+            out: out.as_deref(),
+            backup: None,
+            dry_run,
+            no_validate: has_flag(args, "--no-validate"),
+            in_place: false,
+        },
+    )?;
+    Ok(add_xlsm_to_xlsx_conversion_metadata(
+        value,
+        file,
+        out.as_deref(),
+        dry_run,
+    ))
+}
+
+fn add_xlsm_to_xlsx_conversion_metadata(
+    mut value: Value,
+    input: &str,
+    output: Option<&str>,
+    dry_run: bool,
+) -> Value {
+    let Value::Object(object) = &mut value else {
+        return value;
+    };
+    let proof_command_key = if dry_run {
+        "validateCommandTemplate"
+    } else {
+        "validateCommand"
+    };
+    let proof_command = object.get(proof_command_key).cloned();
+    let mut conversion = json!({
+        "alias": "xlsm-to-xlsx",
+        "implementation": "vba remove",
+        "input": input,
+        "sourceExtension": ".xlsm",
+        "targetExtension": ".xlsx",
+        "macroRemovalCommand": format!(
+            "ooxml --json vba remove {} --out {}",
+            command_arg(input),
+            command_arg(output.unwrap_or("<out.xlsx>"))
+        ),
+        "changed": [
+            "main workbook content type changed from macro-enabled to non-macro xlsx"
+        ],
+        "removed": [
+            "vbaProject.bin part",
+            "VBA project relationships",
+            "VBA project content type override"
+        ],
+        "dryRun": dry_run,
+    });
+    if let Some(output) = output.filter(|_| !dry_run)
+        && let Value::Object(conversion_object) = &mut conversion
+    {
+        conversion_object.insert("output".to_string(), json!(output));
+    }
+    if let Some(proof_command) = proof_command
+        && let Value::Object(conversion_object) = &mut conversion
+    {
+        conversion_object.insert("proofCommand".to_string(), proof_command);
+    }
+    object.insert("conversion".to_string(), conversion);
+    value
+}
+
+fn path_has_extension(path: &str, extension: &str) -> bool {
+    path.to_ascii_lowercase()
+        .ends_with(&extension.to_ascii_lowercase())
 }
 
 fn parse_pptx_slide_lifecycle_position(value: &str, label: &str) -> CliResult<i64> {

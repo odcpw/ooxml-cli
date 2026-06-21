@@ -18,6 +18,12 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
         &[],
     ),
     (
+        &["convert"],
+        "Convert supported OOXML packages.",
+        "Safe Rust-supported package conversion aliases.",
+        &["package"],
+    ),
+    (
         &["template"],
         "Extract and apply design tokens across PPTX/XLSX templates.",
         "Cross-family design-token commands.",

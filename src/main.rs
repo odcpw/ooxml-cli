@@ -14,6 +14,7 @@ mod conformance_invariants;
 mod conformance_office;
 mod diff;
 mod doctor;
+mod docx_authoring;
 mod docx_block_commands;
 mod docx_block_readers;
 mod docx_comments;
@@ -71,6 +72,7 @@ mod xlsx_sheet_xml;
 mod xlsx_sheets;
 mod xlsx_structure;
 mod xlsx_table_append;
+mod xlsx_table_create;
 mod xlsx_table_format;
 mod xlsx_tables;
 mod xml_util;
@@ -244,7 +246,8 @@ pub(crate) use xlsx_model::{
 };
 pub(crate) use xlsx_mutation::{
     XlsxCellsSetOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions,
-    validate_xlsx_mutation_output_flags, xlsx_cells_set, xlsx_ranges_set, xlsx_ranges_set_format,
+    validate_xlsx_mutation_output_flags, xlsx_cells_set, xlsx_range_destination_json,
+    xlsx_ranges_set, xlsx_ranges_set_format,
 };
 pub(crate) use xlsx_names::{xlsx_names_list, xlsx_names_show};
 pub(crate) use xlsx_pivots::{
@@ -272,6 +275,7 @@ pub(crate) use xlsx_table_append::{
     XlsxTablesAppendRecordsOptions, XlsxTablesAppendRowsOptions, xlsx_tables_append_records,
     xlsx_tables_append_rows,
 };
+pub(crate) use xlsx_table_create::{XlsxTablesCreateOptions, xlsx_tables_create};
 pub(crate) use xlsx_table_format::{
     XlsxTablesSetColumnFormatOptions, xlsx_tables_set_column_format,
 };

@@ -922,6 +922,80 @@ fn vba_opaque_attach_extract_remove_matches_go_oracle() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+#[test]
+fn vba_convert_xlsm_to_xlsx_alias_removes_macros() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-vba-convert-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let bin_path = temp_dir.join("vbaProject.bin");
+    fs::write(&bin_path, b"not-real-vba-but-nonempty").expect("write vbaProject.bin");
+    let input_path = temp_dir.join("input.xlsx");
+    let xlsm_path = temp_dir.join("macro-enabled.xlsm");
+    let xlsx_path = temp_dir.join("converted.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input_path).expect("input xlsx");
+
+    let bin = bin_path.to_string_lossy().to_string();
+    let input = input_path.to_string_lossy().to_string();
+    let xlsm = xlsm_path.to_string_lossy().to_string();
+    let xlsx = xlsx_path.to_string_lossy().to_string();
+
+    let (attach_code, _attach_stdout, attach_stderr) = run_ooxml(&[
+        "--json", "vba", "attach", &input, "--bin", &bin, "--out", &xlsm,
+    ]);
+    assert_eq!(attach_code, 0, "attach exit");
+    assert_eq!(attach_stderr, None, "attach stderr");
+
+    let (convert_code, convert_stdout, convert_stderr) =
+        run_ooxml(&["--json", "convert", "xlsm-to-xlsx", &xlsm, "--out", &xlsx]);
+    assert_eq!(convert_code, 0, "convert exit");
+    assert_eq!(convert_stderr, None, "convert stderr");
+    assert!(xlsx_path.exists(), "converted workbook should exist");
+    let result = convert_stdout.expect("convert stdout");
+    assert_eq!(result["result"]["action"], "remove");
+    assert_eq!(result["result"]["macroEnabled"], false);
+    assert_eq!(result["vba"]["macroEnabled"], false);
+    assert_eq!(result["vba"]["hasVbaProject"], false);
+    assert_eq!(result["conversion"]["alias"], "xlsm-to-xlsx");
+    assert_eq!(result["conversion"]["implementation"], "vba remove");
+    assert_eq!(result["conversion"]["input"], xlsm);
+    assert_eq!(result["conversion"]["output"], xlsx);
+    assert_eq!(result["conversion"]["sourceExtension"], ".xlsm");
+    assert_eq!(result["conversion"]["targetExtension"], ".xlsx");
+    assert_eq!(
+        result["conversion"]["proofCommand"],
+        format!("ooxml validate --strict {}", command_arg_for_test(&xlsx))
+    );
+    assert!(
+        result["conversion"]["macroRemovalCommand"]
+            .as_str()
+            .expect("macro removal command")
+            .contains("ooxml --json vba remove")
+    );
+
+    let (inspect_code, inspect_stdout, inspect_stderr) =
+        run_ooxml(&["--json", "vba", "inspect", &xlsx]);
+    assert_eq!(inspect_code, 0, "inspect converted exit");
+    assert_eq!(inspect_stderr, None, "inspect converted stderr");
+    let inspect = inspect_stdout.expect("inspect converted stdout");
+    assert_eq!(inspect["vba"]["packageType"], "xlsx");
+    assert_eq!(inspect["vba"]["macroEnabled"], false);
+    assert_eq!(inspect["vba"]["hasVbaProject"], false);
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "validate", "--strict", &xlsx]);
+    assert_eq!(validate_code, 0, "validate converted exit");
+    assert_eq!(validate_stderr, None, "validate converted stderr");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
 fn module_sha256(list_result: &Value, name: &str) -> String {
     list_result["project"]["modules"]
         .as_array()
