@@ -191,7 +191,7 @@ fn handle_color_scale_element(
     }
 }
 
-fn normalize_cfvo(mut cfvo: ConditionalFormatCfvo) -> CliResult<ConditionalFormatCfvo> {
+pub(super) fn normalize_cfvo(mut cfvo: ConditionalFormatCfvo) -> CliResult<ConditionalFormatCfvo> {
     cfvo.cfvo_type = cfvo.cfvo_type.trim().to_string();
     cfvo.value = cfvo.value.trim().to_string();
     match cfvo.cfvo_type.to_ascii_lowercase().as_str() {
@@ -253,7 +253,7 @@ fn normalize_cfvo(mut cfvo: ConditionalFormatCfvo) -> CliResult<ConditionalForma
     Ok(cfvo)
 }
 
-fn normalize_color(value: &str) -> CliResult<String> {
+pub(super) fn normalize_color(value: &str) -> CliResult<String> {
     let raw = value.trim();
     let color = raw.strip_prefix('#').unwrap_or(raw).to_ascii_uppercase();
     if !color.chars().all(|ch| ch.is_ascii_hexdigit()) {

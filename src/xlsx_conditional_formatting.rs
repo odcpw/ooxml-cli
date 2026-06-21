@@ -14,12 +14,16 @@ use crate::{
 };
 
 mod color_scale;
+mod data_bar;
 mod sqref;
 mod xml_support;
 
 use color_scale::{
     ConditionalFormatCfvo, ConditionalFormatColor, ConditionalFormatColorScale, color_scale_json,
     parse_cfvo_spec, parse_color_scale, render_color_scale, validate_color_scale,
+};
+use data_bar::{
+    ConditionalFormatDataBar, data_bar_json, parse_data_bar, render_data_bar, validate_data_bar,
 };
 use sqref::{normalize_sqref, sqref_cell_count};
 use xml_support::{
@@ -49,6 +53,7 @@ struct ConditionalFormatRule {
     dxf_id: Option<i64>,
     stop_if_true: bool,
     color_scale: Option<ConditionalFormatColorScale>,
+    data_bar: Option<ConditionalFormatDataBar>,
 }
 
 #[derive(Clone, Copy)]
@@ -150,7 +155,7 @@ pub(crate) fn xlsx_conditional_formats_add(
             }
             if !options.cfvo.is_empty() || !options.colors.is_empty() {
                 return Err(CliError::invalid_args(
-                    "--cfvo and --color are only valid with --type color-scale",
+                    "--cfvo and --color are only valid with --type color-scale or data-bar",
                 ));
             }
         }
@@ -160,7 +165,7 @@ pub(crate) fn xlsx_conditional_formats_add(
             }
             if !options.cfvo.is_empty() || !options.colors.is_empty() {
                 return Err(CliError::invalid_args(
-                    "--cfvo and --color are only valid with --type color-scale",
+                    "--cfvo and --color are only valid with --type color-scale or data-bar",
                 ));
             }
         }
@@ -186,9 +191,31 @@ pub(crate) fn xlsx_conditional_formats_add(
                 ));
             }
         }
+        "dataBar" => {
+            if options.operator.is_some() {
+                return Err(CliError::invalid_args(
+                    "--operator is only valid with --type cell-is",
+                ));
+            }
+            if options.formula.is_some() || options.has_formula2 {
+                return Err(CliError::invalid_args(
+                    "--formula and --formula2 are not valid with --type data-bar",
+                ));
+            }
+            if options.has_stop_if_true {
+                return Err(CliError::invalid_args(
+                    "--stop-if-true is not valid with --type data-bar",
+                ));
+            }
+            if options.dxf_id.is_some() {
+                return Err(CliError::invalid_args(
+                    "--dxf-id is not valid with --type data-bar",
+                ));
+            }
+        }
         _ => {
             return Err(CliError::invalid_args(
-                "--type must be expression, cell-is, cellIs, color-scale, or colorScale",
+                "--type must be expression, cell-is, cellIs, color-scale, colorScale, data-bar, or dataBar",
             ));
         }
     }
@@ -399,6 +426,9 @@ fn conditional_format_rule_json(rule: &ConditionalFormatRule) -> Value {
     if let Some(color_scale) = rule.color_scale.as_ref() {
         object.insert("colorScale".to_string(), color_scale_json(color_scale));
     }
+    if let Some(data_bar) = rule.data_bar.as_ref() {
+        object.insert("dataBar".to_string(), data_bar_json(data_bar));
+    }
     Value::Object(object)
 }
 
@@ -413,6 +443,7 @@ fn add_conditional_format_xml(
     let mut operator = String::new();
     let mut formulas = Vec::<String>::new();
     let mut color_scale = None;
+    let mut data_bar = None;
     match rule_type.as_str() {
         "expression" => {
             if formula.is_empty() {
@@ -430,7 +461,7 @@ fn add_conditional_format_xml(
             }
             if !options.cfvo.is_empty() || !options.colors.is_empty() {
                 return Err(CliError::invalid_args(
-                    "--cfvo and --color are only valid with --type color-scale",
+                    "--cfvo and --color are only valid with --type color-scale or data-bar",
                 ));
             }
             formulas.push(formula.to_string());
@@ -441,7 +472,7 @@ fn add_conditional_format_xml(
             }
             if !options.cfvo.is_empty() || !options.colors.is_empty() {
                 return Err(CliError::invalid_args(
-                    "--cfvo and --color are only valid with --type color-scale",
+                    "--cfvo and --color are only valid with --type color-scale or data-bar",
                 ));
             }
             operator = options.operator.unwrap_or_default().trim().to_string();
@@ -488,9 +519,34 @@ fn add_conditional_format_xml(
             let colors = parse_conditional_format_color_flags(&options.colors);
             color_scale = Some(validate_color_scale(&cfvo, &colors)?);
         }
+        "dataBar" => {
+            if options.operator.is_some() {
+                return Err(CliError::invalid_args(
+                    "--operator is only valid with --type cell-is",
+                ));
+            }
+            if options.formula.is_some() || options.has_formula2 {
+                return Err(CliError::invalid_args(
+                    "--formula and --formula2 are not valid with --type data-bar",
+                ));
+            }
+            if options.has_stop_if_true {
+                return Err(CliError::invalid_args(
+                    "--stop-if-true is not valid with --type data-bar",
+                ));
+            }
+            if options.dxf_id.is_some() {
+                return Err(CliError::invalid_args(
+                    "--dxf-id is not valid with --type data-bar",
+                ));
+            }
+            let cfvo = parse_conditional_format_cfvo_flags(&options.cfvo)?;
+            let colors = parse_conditional_format_color_flags(&options.colors);
+            data_bar = Some(validate_data_bar(&cfvo, &colors)?);
+        }
         _ => {
             return Err(CliError::invalid_args(
-                "--type must be expression, cell-is, cellIs, color-scale, or colorScale",
+                "--type must be expression, cell-is, cellIs, color-scale, colorScale, data-bar, or dataBar",
             ));
         }
     }
@@ -512,6 +568,8 @@ fn add_conditional_format_xml(
         .unwrap_or_else(|| next_conditional_format_priority(xml));
     let rule_xml = if let Some(color_scale) = color_scale.as_ref() {
         render_conditional_format_color_scale_rule(prefix, priority, color_scale)
+    } else if let Some(data_bar) = data_bar.as_ref() {
+        render_conditional_format_data_bar_rule(prefix, priority, data_bar)
     } else {
         render_conditional_format_rule(
             prefix,
@@ -541,6 +599,7 @@ fn add_conditional_format_xml(
                 && rule.priority == Some(priority)
                 && rule.formulas == formulas
                 && rule.color_scale == color_scale
+                && rule.data_bar == data_bar
         })
         .unwrap_or_else(|| ConditionalFormatRule {
             index: 0,
@@ -556,6 +615,7 @@ fn add_conditional_format_xml(
             dxf_id: options.dxf_id,
             stop_if_true: options.has_stop_if_true && options.stop_if_true,
             color_scale: color_scale.clone(),
+            data_bar: data_bar.clone(),
         });
     Ok(ConditionalFormatMutation {
         updated_xml,
@@ -656,6 +716,7 @@ fn parse_conditional_format_rule(
         dxf_id,
         stop_if_true: attr_is_true(&attrs, "stopIfTrue"),
         color_scale: parse_color_scale(fragment)?,
+        data_bar: parse_data_bar(fragment)?,
     };
     let mut reader = Reader::from_str(fragment);
     reader.config_mut().trim_text(false);
@@ -866,6 +927,7 @@ fn normalize_conditional_format_add_type(rule_type: Option<&str>) -> String {
         "" | "expression" => "expression".to_string(),
         "cell-is" | "cellIs" => "cellIs".to_string(),
         "color-scale" | "colorScale" => "colorScale".to_string(),
+        "data-bar" | "dataBar" => "dataBar".to_string(),
         other => other.to_string(),
     }
 }
@@ -963,6 +1025,25 @@ fn render_conditional_format_color_scale_rule(
         rule_tag,
         render_xml_attrs(&attrs),
         color_scale_xml,
+        rule_tag
+    )
+}
+
+fn render_conditional_format_data_bar_rule(
+    prefix: &str,
+    priority: i64,
+    data_bar: &ConditionalFormatDataBar,
+) -> String {
+    let rule_tag = element_name(prefix, "cfRule");
+    let mut attrs = BTreeMap::new();
+    attrs.insert("priority".to_string(), priority.to_string());
+    attrs.insert("type".to_string(), "dataBar".to_string());
+    let data_bar_xml = render_data_bar(prefix, data_bar);
+    format!(
+        "<{}{}>{}</{}>",
+        rule_tag,
+        render_xml_attrs(&attrs),
+        data_bar_xml,
         rule_tag
     )
 }
@@ -1077,4 +1158,76 @@ fn resolve_conditional_format_sheet(
 
 fn conditional_format_sheet_selector(sheet: &WorkbookSheet) -> String {
     format!("sheetId:{}", sheet.sheet_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_data_bar_rule_json() {
+        let xml = r#"<cfRule type="dataBar" priority="4"><dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="FF638EC6"/></dataBar></cfRule>"#;
+        let rule =
+            parse_conditional_format_rule(xml, 1, 1, 1, "A1:A5").expect("parse data bar rule");
+        let readback = conditional_format_rule_json(&rule);
+
+        assert_eq!(readback["type"], "dataBar");
+        assert_eq!(readback["priority"], 4);
+        assert_eq!(
+            readback["dataBar"]["cfvo"],
+            serde_json::json!([
+                { "type": "min" },
+                { "type": "max" },
+            ])
+        );
+        assert_eq!(
+            readback["dataBar"]["color"],
+            serde_json::json!({ "rgb": "FF638EC6" })
+        );
+    }
+
+    #[test]
+    fn adds_data_bar_rule_xml() {
+        let xml = r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>"#;
+        let options = XlsxConditionalFormatMutationOptions {
+            sheet: None,
+            range: Some("A1:A5"),
+            rule: None,
+            formula: None,
+            rule_type: Some("data-bar"),
+            operator: None,
+            formula2: None,
+            has_formula2: false,
+            cfvo: vec!["min".to_string(), "max".to_string()],
+            colors: vec!["638EC6".to_string()],
+            priority: Some(7),
+            stop_if_true: false,
+            has_stop_if_true: false,
+            dxf_id: None,
+            out: None,
+            backup: None,
+            dry_run: true,
+            no_validate: true,
+            in_place: false,
+        };
+
+        let mutation =
+            add_conditional_format_xml(xml, "", &options).expect("add data bar rule XML");
+
+        assert_eq!(mutation.rule.rule_type, "dataBar");
+        assert_eq!(mutation.rule.priority, Some(7));
+        assert_eq!(
+            mutation
+                .rule
+                .data_bar
+                .as_ref()
+                .expect("data bar")
+                .cfvo
+                .len(),
+            2
+        );
+        assert!(mutation.updated_xml.contains(
+            r#"<cfRule priority="7" type="dataBar"><dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="FF638EC6"/></dataBar></cfRule>"#
+        ));
+    }
 }
