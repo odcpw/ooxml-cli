@@ -24,7 +24,15 @@ param(
 
     [switch]$EnableVbaObjectModelAccess,
 
-    [switch]$Visible
+    [switch]$Visible,
+
+    [switch]$WriteArtifactProofMatrix,
+
+    [switch]$FailOnArtifactProofGap,
+
+    [string]$ArtifactProofMatrixJson = "",
+
+    [string]$ArtifactProofMatrixMarkdown = ""
 )
 
 Set-StrictMode -Version Latest
@@ -83,10 +91,119 @@ function Invoke-Process {
     }
 }
 
+function Get-OfficeProcessNamesForFamily {
+    param([string]$Family)
+
+    switch ($Family) {
+        "xlsx" { return @("EXCEL") }
+        "pptx" { return @("POWERPNT") }
+        default { return @("EXCEL", "POWERPNT", "WINWORD") }
+    }
+}
+
+function Get-ProcessIdSet {
+    param([string[]]$Names)
+
+    $ids = @{}
+    foreach ($process in @(Get-Process -Name $Names -ErrorAction SilentlyContinue)) {
+        $ids[[int]$process.Id] = $true
+    }
+    return $ids
+}
+
+function Stop-NewOfficeProcesses {
+    param(
+        [string[]]$Names,
+        [hashtable]$ExistingIds,
+        [datetime]$StartedAt
+    )
+
+    foreach ($process in @(Get-Process -Name $Names -ErrorAction SilentlyContinue)) {
+        if ($ExistingIds.ContainsKey([int]$process.Id)) {
+            continue
+        }
+        try {
+            if ($null -ne $process.StartTime -and $process.StartTime -lt $StartedAt.AddSeconds(-2)) {
+                continue
+            }
+        }
+        catch {
+            continue
+        }
+        try {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        }
+        catch {}
+    }
+}
+
+function Invoke-OfficeBackedProcess {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments,
+        [string]$Family,
+        [int]$TimeoutSeconds
+    )
+
+    if ($TimeoutSeconds -le 0) {
+        return (Invoke-Process -FilePath $FilePath -Arguments $Arguments)
+    }
+
+    if ($script:ProcessCaptureDir -eq "") {
+        $script:ProcessCaptureDir = [System.IO.Path]::GetTempPath()
+    }
+    $script:ProcessCaptureIndex++
+    $capturePrefix = Join-Path $script:ProcessCaptureDir ("office-backed-{0}" -f $script:ProcessCaptureIndex)
+    $stdoutPath = "$capturePrefix.stdout.txt"
+    $stderrPath = "$capturePrefix.stderr.txt"
+    Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+
+    $officeProcessNames = @(Get-OfficeProcessNamesForFamily -Family $Family)
+    $officeProcessIdsBefore = Get-ProcessIdSet -Names $officeProcessNames
+    $startedAt = Get-Date
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+    $argumentLine = ($Arguments | ForEach-Object { Quote-Argument -Value $_ }) -join " "
+    $process = Start-Process -FilePath $FilePath -ArgumentList $argumentLine -WorkingDirectory $root -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -WindowStyle Hidden -PassThru
+    $finished = $process.WaitForExit($TimeoutSeconds * 1000)
+    $timer.Stop()
+
+    $stdout = if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) { Get-Content -LiteralPath $stdoutPath -Raw } else { "" }
+    $stderr = if (Test-Path -LiteralPath $stderrPath -PathType Leaf) { Get-Content -LiteralPath $stderrPath -Raw } else { "" }
+    $output = (($stdout, $stderr | Where-Object { $null -ne $_ -and [string]$_ -ne "" }) -join [Environment]::NewLine).Trim()
+
+    if (-not $finished) {
+        try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
+        Stop-NewOfficeProcesses -Names $officeProcessNames -ExistingIds $officeProcessIdsBefore -StartedAt $startedAt
+        return [pscustomobject]@{
+            exitCode  = 124
+            output    = ("Office-backed process exceeded {0} second(s). {1}" -f $TimeoutSeconds, $output).Trim()
+            elapsedMs = $timer.ElapsedMilliseconds
+            command   = (Format-CommandLine -FilePath $FilePath -Arguments $Arguments)
+        }
+    }
+
+    [pscustomobject]@{
+        exitCode  = $process.ExitCode
+        output    = $output
+        elapsedMs = $timer.ElapsedMilliseconds
+        command   = (Format-CommandLine -FilePath $FilePath -Arguments $Arguments)
+    }
+}
+
 function Invoke-Checked {
     param([string]$FilePath, [string[]]$Arguments, [string]$Label)
     Write-Host ("[{0}] {1}" -f $Label, (Format-CommandLine -FilePath $FilePath -Arguments $Arguments))
     $result = Invoke-Process -FilePath $FilePath -Arguments $Arguments
+    if ($result.exitCode -ne 0) {
+        throw ("{0} failed with exit code {1}. {2}" -f $Label, $result.exitCode, $result.output)
+    }
+    return $result
+}
+
+function Invoke-OfficeBackedChecked {
+    param([string]$FilePath, [string[]]$Arguments, [string]$Label, [string]$Family)
+    Write-Host ("[{0}] {1}" -f $Label, (Format-CommandLine -FilePath $FilePath -Arguments $Arguments))
+    $result = Invoke-OfficeBackedProcess -FilePath $FilePath -Arguments $Arguments -Family $Family -TimeoutSeconds $OfficeOracleTimeoutSeconds
     if ($result.exitCode -ne 0) {
         throw ("{0} failed with exit code {1}. {2}" -f $Label, $result.exitCode, $result.output)
     }
@@ -132,13 +249,23 @@ function Invoke-OpenXmlValidation {
 }
 
 function Add-FileScenario {
-    param([string]$Name, [string]$Family, [string]$Path)
+    param(
+        [string]$Name,
+        [string]$Family,
+        [string]$Path,
+        [string]$CommandPath = "",
+        [string]$ExactCommand = "",
+        [string]$InputFixtureType = "office-created macro fixture"
+    )
     $strict = Invoke-StrictValidation -Path $Path
     $openXml = Invoke-OpenXmlValidation -Path $Path
     $script:Scenarios.Add([pscustomobject]@{
         name            = $Name
         family          = $Family
         file            = $Path
+        commandPath     = $CommandPath
+        exactCommand    = $ExactCommand
+        inputFixtureType = $InputFixtureType
         proofLevel      = "pending-office"
         strict          = $strict
         openXmlSdk      = $openXml
@@ -150,7 +277,13 @@ function Add-FileScenario {
 }
 
 function Add-GuardScenario {
-    param([string]$Name, [string]$Family, [string[]]$Arguments, [string]$OutputPath)
+    param(
+        [string]$Name,
+        [string]$Family,
+        [string[]]$Arguments,
+        [string]$OutputPath,
+        [string]$CommandPath = ""
+    )
     $result = Invoke-Process -FilePath $BinaryPath -Arguments $Arguments
     $passed = $result.exitCode -ne 0 -and
         $result.output -match "version-dependent _VBA_PROJECT metadata" -and
@@ -159,6 +292,9 @@ function Add-GuardScenario {
         name            = $Name
         family          = $Family
         file            = $OutputPath
+        commandPath     = $CommandPath
+        exactCommand    = $result.command
+        inputFixtureType = "guarded macro fixture"
         proofLevel      = if ($passed) { "guarded-refusal" } else { "failed" }
         strict          = (New-Stage -Status "not-run" -Detail "Guard scenario does not write an output file.")
         openXmlSdk      = (New-Stage -Status "not-run" -Detail "Guard scenario does not write an output file.")
@@ -169,6 +305,103 @@ function Add-GuardScenario {
             New-Stage -Status "failed" -Detail ("Expected guarded refusal, got exit {0}: {1}" -f $result.exitCode, $result.output) -Command $result.command -ElapsedMs $result.elapsedMs
         }
     })
+}
+
+function New-ProofTierFromStage {
+    param(
+        [object]$Stage,
+        [string]$PassedDetail,
+        [string]$FallbackDetail,
+        [string[]]$ExtraEvidence = @()
+    )
+
+    if ($null -eq $Stage) { return $null }
+    $status = [string]$Stage.status
+    if ($status -eq "" -or $status -eq "not-run" -or $status -eq "skipped") {
+        return $null
+    }
+
+    $detail = [string]$Stage.detail
+    if ($status -eq "passed" -and $PassedDetail -ne "") {
+        $detail = $PassedDetail
+    }
+    elseif ($detail -eq "") {
+        $detail = $FallbackDetail
+    }
+
+    $evidence = New-Object System.Collections.Generic.List[string]
+    foreach ($value in @($ExtraEvidence)) {
+        if ($null -ne $value -and [string]$value -ne "") {
+            [void]$evidence.Add([string]$value)
+        }
+    }
+    foreach ($name in @("command", "artifact")) {
+        if ($Stage.PSObject.Properties.Name -contains $name) {
+            $value = $Stage.$name
+            if ($null -ne $value -and [string]$value -ne "") {
+                [void]$evidence.Add([string]$value)
+            }
+        }
+    }
+
+    [pscustomobject][ordered]@{
+        status = $status
+        detail = $detail
+        evidence = @($evidence)
+    }
+}
+
+function New-VbaProofEvidence {
+    param([string]$SummaryPath)
+
+    $proofs = New-Object System.Collections.Generic.List[object]
+    foreach ($scenario in @($script:Scenarios)) {
+        if (-not ($scenario.PSObject.Properties.Name -contains "commandPath")) { continue }
+        $commandPath = [string]$scenario.commandPath
+        $file = [string]$scenario.file
+        if ($commandPath -eq "" -or $file -eq "" -or -not (Test-Path -LiteralPath $file -PathType Leaf)) {
+            continue
+        }
+
+        $baseEvidence = @("windows-office-vba-smoke summary: $SummaryPath", "scenario: $($scenario.name)", "output: $file")
+        $tiers = [ordered]@{}
+        $tiers.structural = New-ProofTierFromStage `
+            -Stage $scenario.openXmlSdk `
+            -PassedDetail "Microsoft Open XML SDK schema validation passed for the macro smoke output." `
+            -FallbackDetail "Microsoft Open XML SDK schema validation did not pass for the macro smoke output." `
+            -ExtraEvidence $baseEvidence
+        $tiers.validate = New-ProofTierFromStage `
+            -Stage $scenario.strict `
+            -PassedDetail "ooxml validate --strict accepted the macro smoke output." `
+            -FallbackDetail "ooxml validate --strict did not accept the macro smoke output." `
+            -ExtraEvidence $baseEvidence
+        $tiers.office = New-ProofTierFromStage `
+            -Stage $scenario.microsoftOffice `
+            -PassedDetail "Desktop Microsoft Office opened the macro smoke output without repair/failure." `
+            -FallbackDetail "Desktop Microsoft Office did not open the macro smoke output cleanly." `
+            -ExtraEvidence $baseEvidence
+
+        foreach ($tierName in @("structural", "validate", "office")) {
+            if ($null -eq $tiers[$tierName]) {
+                $tiers.Remove($tierName)
+            }
+        }
+
+        [void]$proofs.Add([pscustomobject][ordered]@{
+            commandPath = $commandPath
+            inputFixtureType = [string]$scenario.inputFixtureType
+            generatedOutputPath = $file
+            exactCommand = [string]$scenario.exactCommand
+            sourceSummary = $SummaryPath
+            scenarioName = [string]$scenario.name
+            tiers = [pscustomobject]$tiers
+        })
+    }
+
+    [pscustomobject][ordered]@{
+        schemaVersion = "ooxml-cli.vba-smoke-evidence.v1"
+        proofs = @($proofs)
+    }
 }
 
 function Add-OfficeResultToMap {
@@ -192,7 +425,10 @@ $seedDir = Join-Path $outRoot "seeds"
 $sourceDir = Join-Path $outRoot "sources"
 $caseDir = Join-Path $outRoot "outputs"
 $oracleDir = Join-Path $outRoot "office-oracle"
-New-Item -ItemType Directory -Force -Path $outRoot, $binDir, $seedDir, $sourceDir, $caseDir, $oracleDir | Out-Null
+$processCaptureDir = Join-Path $outRoot "process-captures"
+New-Item -ItemType Directory -Force -Path $outRoot, $binDir, $seedDir, $sourceDir, $caseDir, $oracleDir, $processCaptureDir | Out-Null
+$script:ProcessCaptureDir = $processCaptureDir
+$script:ProcessCaptureIndex = 0
 
 $script:DotNet = Resolve-DotNetExe -Requested $DotNetExe
 $explicitBinaryPath = $BinaryPath -ne ""
@@ -318,31 +554,36 @@ if ($EnableVbaObjectModelAccess) {
 if ($Visible) {
     $seedTailArgs += "--visible"
 }
-Invoke-Checked -FilePath $BinaryPath -Arguments ($seedPrefixArgs + @($xlsmSeed, "--family", "xlsx") + $seedTailArgs) -Label "seed:xlsm:create" | Out-Null
-Invoke-Checked -FilePath $BinaryPath -Arguments ($seedPrefixArgs + @($pptmSeed, "--family", "pptx") + $seedTailArgs) -Label "seed:pptm:create" | Out-Null
+$xlsmCreateResult = Invoke-OfficeBackedChecked -FilePath $BinaryPath -Arguments ($seedPrefixArgs + @($xlsmSeed, "--family", "xlsx") + $seedTailArgs) -Label "seed:xlsm:create" -Family "xlsx"
+$pptmCreateResult = Invoke-OfficeBackedChecked -FilePath $BinaryPath -Arguments ($seedPrefixArgs + @($pptmSeed, "--family", "pptx") + $seedTailArgs) -Label "seed:pptm:create" -Family "pptx"
 
 $script:Scenarios = New-Object System.Collections.Generic.List[object]
 $script:OfficeInputs = New-Object System.Collections.Generic.List[string]
 
 $families = @(
     [pscustomobject]@{
-        family = "xlsx"; macroFamily = "xlsm"; base = (Join-Path $root "testdata\xlsx\minimal-workbook\workbook.xlsx"); seed = $xlsmSeed; attached = (Join-Path $caseDir "attached.xlsm"); removed = (Join-Path $caseDir "removed.xlsx"); replaced = (Join-Path $caseDir "replaced.xlsm"); addBlocked = (Join-Path $caseDir "add-blocked.xlsm"); removeBlocked = (Join-Path $caseDir "remove-blocked.xlsm")
+        family = "xlsx"; macroFamily = "xlsm"; base = (Join-Path $root "testdata\xlsx\minimal-workbook\workbook.xlsx"); seed = $xlsmSeed; createCommand = $xlsmCreateResult.command; attached = (Join-Path $caseDir "attached.xlsm"); removed = (Join-Path $caseDir "removed.xlsx"); converted = (Join-Path $caseDir "converted-alias.xlsx"); replaced = (Join-Path $caseDir "replaced.xlsm"); addBlocked = (Join-Path $caseDir "add-blocked.xlsm"); removeBlocked = (Join-Path $caseDir "remove-blocked.xlsm")
     },
     [pscustomobject]@{
-        family = "pptx"; macroFamily = "pptm"; base = (Join-Path $root "testdata\pptx\minimal-title\presentation.pptx"); seed = $pptmSeed; attached = (Join-Path $caseDir "attached.pptm"); removed = (Join-Path $caseDir "removed.pptx"); replaced = (Join-Path $caseDir "replaced.pptm"); addBlocked = (Join-Path $caseDir "add-blocked.pptm"); removeBlocked = (Join-Path $caseDir "remove-blocked.pptm")
+        family = "pptx"; macroFamily = "pptm"; base = (Join-Path $root "testdata\pptx\minimal-title\presentation.pptx"); seed = $pptmSeed; createCommand = $pptmCreateResult.command; attached = (Join-Path $caseDir "attached.pptm"); removed = (Join-Path $caseDir "removed.pptx"); converted = ""; replaced = (Join-Path $caseDir "replaced.pptm"); addBlocked = (Join-Path $caseDir "add-blocked.pptm"); removeBlocked = (Join-Path $caseDir "remove-blocked.pptm")
     }
 )
 
 foreach ($item in $families) {
-    Add-FileScenario -Name ("vba-{0}-office-seed" -f $item.macroFamily) -Family $item.family -Path $item.seed
+    Add-FileScenario -Name ("vba-{0}-office-seed" -f $item.macroFamily) -Family $item.family -Path $item.seed -CommandPath "ooxml vba create" -ExactCommand $item.createCommand -InputFixtureType "office-created macro seed"
 
     $binPath = Join-Path $caseDir ("{0}-vbaProject.bin" -f $item.macroFamily)
     Invoke-Checked -FilePath $BinaryPath -Arguments @("--format", "json", "vba", "extract-bin", $item.seed, "--out", $binPath) -Label ("vba:{0}:extract-bin" -f $item.macroFamily) | Out-Null
-    Invoke-Checked -FilePath $BinaryPath -Arguments @("--format", "json", "vba", "attach", $item.base, "--bin", $binPath, "--out", $item.attached) -Label ("vba:{0}:attach" -f $item.macroFamily) | Out-Null
-    Add-FileScenario -Name ("vba-{0}-attach-office-bin" -f $item.macroFamily) -Family $item.family -Path $item.attached
+    $attachResult = Invoke-Checked -FilePath $BinaryPath -Arguments @("--format", "json", "vba", "attach", $item.base, "--bin", $binPath, "--out", $item.attached) -Label ("vba:{0}:attach" -f $item.macroFamily)
+    Add-FileScenario -Name ("vba-{0}-attach-office-bin" -f $item.macroFamily) -Family $item.family -Path $item.attached -CommandPath "ooxml vba attach" -ExactCommand $attachResult.command -InputFixtureType "office-authored macro bin"
 
-    Invoke-Checked -FilePath $BinaryPath -Arguments @("--format", "json", "vba", "remove", $item.attached, "--out", $item.removed) -Label ("vba:{0}:remove-project" -f $item.macroFamily) | Out-Null
-    Add-FileScenario -Name ("vba-{0}-remove-project" -f $item.macroFamily) -Family $item.family -Path $item.removed
+    $removeResult = Invoke-Checked -FilePath $BinaryPath -Arguments @("--format", "json", "vba", "remove", $item.attached, "--out", $item.removed) -Label ("vba:{0}:remove-project" -f $item.macroFamily)
+    Add-FileScenario -Name ("vba-{0}-remove-project" -f $item.macroFamily) -Family $item.family -Path $item.removed -CommandPath "ooxml vba remove" -ExactCommand $removeResult.command -InputFixtureType "office-authored macro package"
+
+    if ($item.macroFamily -eq "xlsm") {
+        $convertResult = Invoke-Checked -FilePath $BinaryPath -Arguments @("--format", "json", "convert", "xlsm-to-xlsx", $item.attached, "--out", $item.converted) -Label "vba:xlsm:convert-xlsm-to-xlsx"
+        Add-FileScenario -Name "vba-xlsm-convert-xlsm-to-xlsx" -Family $item.family -Path $item.converted -CommandPath "ooxml convert xlsm-to-xlsx" -ExactCommand $convertResult.command -InputFixtureType "office-authored macro package"
+    }
 
     $list = (& $BinaryPath --format json vba list $item.seed | ConvertFrom-Json)
     $standard = $list.project.modules | Where-Object { $_.name -eq "SeedModule" } | Select-Object -First 1
@@ -350,11 +591,11 @@ foreach ($item in $families) {
     if ($null -eq $standard -or $null -eq $classModule) {
         throw ("{0} seed did not expose SeedModule and SeedClass through vba list." -f $item.macroFamily)
     }
-    Invoke-Checked -FilePath $BinaryPath -Arguments @("--format", "json", "vba", "replace-module", $item.seed, "--module", $standard.primarySelector, "--source", $replacementSource, "--expect-sha256", $standard.sha256, "--allow-experimental-vba-source-rewrite", "--out", $item.replaced) -Label ("vba:{0}:replace-module" -f $item.macroFamily) | Out-Null
-    Add-FileScenario -Name ("vba-{0}-replace-existing-bas" -f $item.macroFamily) -Family $item.family -Path $item.replaced
+    $replaceResult = Invoke-Checked -FilePath $BinaryPath -Arguments @("--format", "json", "vba", "replace-module", $item.seed, "--module", $standard.primarySelector, "--source", $replacementSource, "--expect-sha256", $standard.sha256, "--allow-experimental-vba-source-rewrite", "--out", $item.replaced) -Label ("vba:{0}:replace-module" -f $item.macroFamily)
+    Add-FileScenario -Name ("vba-{0}-replace-existing-bas" -f $item.macroFamily) -Family $item.family -Path $item.replaced -CommandPath "ooxml vba replace-module" -ExactCommand $replaceResult.command -InputFixtureType "office-created macro package"
 
-    Add-GuardScenario -Name ("vba-{0}-add-module-guard" -f $item.macroFamily) -Family $item.family -Arguments @("--format", "json", "vba", "add-module", $item.seed, "--source", $agentSource, "--allow-experimental-vba-source-rewrite", "--out", $item.addBlocked) -OutputPath $item.addBlocked
-    Add-GuardScenario -Name ("vba-{0}-remove-module-guard" -f $item.macroFamily) -Family $item.family -Arguments @("--format", "json", "vba", "remove-module", $item.seed, "--module", $classModule.primarySelector, "--expect-sha256", $classModule.sha256, "--allow-experimental-vba-source-rewrite", "--out", $item.removeBlocked) -OutputPath $item.removeBlocked
+    Add-GuardScenario -Name ("vba-{0}-add-module-guard" -f $item.macroFamily) -Family $item.family -Arguments @("--format", "json", "vba", "add-module", $item.seed, "--source", $agentSource, "--allow-experimental-vba-source-rewrite", "--out", $item.addBlocked) -OutputPath $item.addBlocked -CommandPath "ooxml vba add-module"
+    Add-GuardScenario -Name ("vba-{0}-remove-module-guard" -f $item.macroFamily) -Family $item.family -Arguments @("--format", "json", "vba", "remove-module", $item.seed, "--module", $classModule.primarySelector, "--expect-sha256", $classModule.sha256, "--allow-experimental-vba-source-rewrite", "--out", $item.removeBlocked) -OutputPath $item.removeBlocked -CommandPath "ooxml vba remove-module"
 }
 
 $oracleSummaryPath = Join-Path $oracleDir "summary.json"
@@ -426,6 +667,19 @@ else {
     "microsoft-office-com-open"
 }
 
+$artifactProofMatrix = [pscustomobject]@{
+    enabled              = [bool]($WriteArtifactProofMatrix -or $FailOnArtifactProofGap)
+    status               = "not-run"
+    json                 = ""
+    markdown             = ""
+    evidence             = ""
+    command              = ""
+    exitCode             = $null
+    mutatingCommandCount = $null
+    rowsWithRequiredGaps = $null
+    gapsByTier           = $null
+}
+
 $summary = [pscustomobject]@{
     timestampUtc        = [DateTime]::UtcNow.ToString("o")
     repoRoot            = $root
@@ -438,13 +692,89 @@ $summary = [pscustomobject]@{
     scenarioCount       = $script:Scenarios.Count
     passedCount         = $script:Scenarios.Count - $failed.Count
     failedCount         = $failed.Count
+    artifactProofMatrix = $artifactProofMatrix
     scenarios           = $script:Scenarios
 }
 
 $summaryPath = Join-Path $outRoot "summary.json"
 $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
+
+if ($WriteArtifactProofMatrix -or $FailOnArtifactProofGap) {
+    $matrixScript = Join-Path $PSScriptRoot "artifact-proof-matrix.ps1"
+    if (-not (Test-Path -LiteralPath $matrixScript -PathType Leaf)) {
+        throw "artifact proof matrix script was not found: $matrixScript"
+    }
+    if ($ArtifactProofMatrixJson -eq "") {
+        $ArtifactProofMatrixJson = Join-Path $outRoot "artifact-proof-matrix.json"
+    }
+    if ($ArtifactProofMatrixMarkdown -eq "") {
+        $ArtifactProofMatrixMarkdown = Join-Path $outRoot "artifact-proof-matrix.md"
+    }
+
+    $evidencePath = Join-Path $outRoot "vba-artifact-proof-evidence.json"
+    New-VbaProofEvidence -SummaryPath $summaryPath | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $evidencePath -Encoding UTF8
+    $matrixArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $matrixScript,
+        "-RepoRoot",
+        $root,
+        "-BinaryPath",
+        $BinaryPath,
+        "-EvidencePath",
+        $evidencePath,
+        "-OutJson",
+        $ArtifactProofMatrixJson,
+        "-OutMarkdown",
+        $ArtifactProofMatrixMarkdown
+    )
+    if ($FailOnArtifactProofGap) {
+        $matrixArgs += "-FailOnGap"
+    }
+
+    $artifactProofMatrix.json = $ArtifactProofMatrixJson
+    $artifactProofMatrix.markdown = $ArtifactProofMatrixMarkdown
+    $artifactProofMatrix.evidence = $evidencePath
+    $artifactProofMatrix.command = Format-CommandLine -FilePath "powershell.exe" -Arguments $matrixArgs
+
+    Write-Host ("[artifact-proof-matrix] {0}" -f $artifactProofMatrix.command)
+    & powershell.exe @matrixArgs
+    $matrixExitCode = $LASTEXITCODE
+    $artifactProofMatrix.exitCode = $matrixExitCode
+    $artifactProofMatrix.status = if ($matrixExitCode -eq 0) { "written" } else { "failed" }
+    if (Test-Path -LiteralPath $ArtifactProofMatrixJson -PathType Leaf) {
+        try {
+            $matrixDoc = Get-Content -LiteralPath $ArtifactProofMatrixJson -Raw | ConvertFrom-Json
+            $artifactProofMatrix.mutatingCommandCount = [int]$matrixDoc.summary.mutatingCommandCount
+            $artifactProofMatrix.rowsWithRequiredGaps = [int]$matrixDoc.summary.rowsWithRequiredGaps
+            $artifactProofMatrix.gapsByTier = $matrixDoc.summary.gapsByTier
+            if ($artifactProofMatrix.rowsWithRequiredGaps -gt 0) {
+                $artifactProofMatrix.status = "gaps"
+            }
+            elseif ($matrixExitCode -eq 0) {
+                $artifactProofMatrix.status = "covered"
+            }
+        }
+        catch {
+            if ($matrixExitCode -eq 0) {
+                $artifactProofMatrix.status = "written"
+            }
+        }
+    }
+    $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
+    if ($matrixExitCode -ne 0) {
+        Write-Host ("Summary: {0}" -f $summaryPath)
+        throw ("artifact proof matrix failed with exit code {0}" -f $matrixExitCode)
+    }
+}
+
 Write-Host ("Summary: {0}" -f $summaryPath)
 Write-Host ("Result: {0} ({1}/{2} passed)" -f $proofLevel, $summary.passedCount, $summary.scenarioCount)
+if ($artifactProofMatrix.enabled) {
+    Write-Host ("Artifact proof matrix: {0}" -f $artifactProofMatrix.json)
+}
 
 if ($failed.Count -gt 0) {
     exit 1

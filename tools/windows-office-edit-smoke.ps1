@@ -755,6 +755,17 @@ Set-Content -LiteralPath $authoringValuesFile -Encoding ASCII -Value @'
 $pptxChartExtLstValuesFile = Join-Path $outRoot "pptx-chart-extlst-values.json"
 Set-Content -LiteralPath $pptxChartExtLstValuesFile -Encoding ASCII -Value '[["Region","S1"],["North",10],["South",20]]'
 
+$pptxTableValuesFile = Join-Path $outRoot "pptx-table-values.csv"
+Set-Content -LiteralPath $pptxTableValuesFile -Encoding ASCII -Value @(
+    "Region,Plan,Status",
+    "North,Launch,Green",
+    "South,Refresh,Amber",
+    "West,Risk Review,Red"
+)
+
+$pptxChartSourceValuesFile = Join-Path $outRoot "pptx-chart-source-values.json"
+Set-Content -LiteralPath $pptxChartSourceValuesFile -Encoding ASCII -Value '[["Region","Units"],["North",12],["South",8],["West",15]]'
+
 $explicitBinaryPath = $BinaryPath -ne ""
 if ($BinaryPath -eq "") {
     $BinaryPath = Join-Path $binDir "ooxml.exe"
@@ -852,6 +863,15 @@ $audioFixture = Join-Path $outRoot "smoke-audio.wav"
 New-SmokeWavFile -Path $audioFixture
 
 $pptxExtLst = New-PptxSlideExtLstFixture -SourcePath $pptxMinimal -OutputPath (Join-Path $outRoot "pptx-extlst-input.pptx")
+
+$pptxAuthoringSeed = Join-Path $outRoot "pptx-authoring-seed.pptx"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "pptx", "scaffold", $pptxAuthoringSeed, "--title", "Generated Office Proof", "--subtitle", "Scaffold-derived table and chart proof", "--force") -Label "stage:pptx-authoring-seed"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "validate", $pptxAuthoringSeed, "--strict") -Label "validate:stage:pptx-authoring-seed"
+
+$pptxChartSourceWorkbook = Join-Path $outRoot "pptx-chart-source.xlsx"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "scaffold", $pptxChartSourceWorkbook, "--sheet", "Chart Data", "--force") -Label "stage:pptx-chart-source-workbook"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "ranges", "set", $pptxChartSourceWorkbook, "--sheet", "Chart Data", "--range", "A1:B4", "--values-file", $pptxChartSourceValuesFile, "--out", $pptxChartSourceWorkbook) -Label "stage:pptx-chart-source-data"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "validate", $pptxChartSourceWorkbook, "--strict") -Label "validate:stage:pptx-chart-source-workbook"
 
 $xlsxPivotData = Join-Path $outRoot "xlsx-pivot-data.xlsx"
 Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "ranges", "set", $xlsxMinimal, "--sheet", "1", "--anchor", "A1", "--data-format", "csv", "--values-file", $pivotValuesFile, "--out", $xlsxPivotData) -Label "stage:xlsx-pivot-data"
@@ -1055,6 +1075,30 @@ $scenarios = @(
         -Input $pptxExtLst `
         -Output (Join-Path $caseDir "pptx-chart-create-extlst.pptx") `
         -Arguments @("--json", "pptx", "charts", "create", $pptxExtLst, "--slide", "1", "--type", "bar", "--title", "ExtLst Chart", "--values-file", $pptxChartExtLstValuesFile, "--x", "914400", "--y", "914400", "--cx", "5486400", "--cy", "2743200", "--out", (Join-Path $caseDir "pptx-chart-create-extlst.pptx"))),
+
+    (New-Scenario `
+        -Name "pptx-place-table-from-scaffold" `
+        -Family "pptx" `
+        -Input $pptxAuthoringSeed `
+        -Output (Join-Path $caseDir "pptx-place-table-from-scaffold.pptx") `
+        -Arguments @("--json", "pptx", "place", "table", $pptxAuthoringSeed, "--slide", "1", "--data", $pptxTableValuesFile, "--format", "csv", "--x", "914400", "--y", "2286000", "--cx", "5486400", "--cy", "1371600", "--header", "--name", "Scaffold Table", "--out", (Join-Path $caseDir "pptx-place-table-from-scaffold.pptx")) `
+        -InputFixtureType "scaffold-derived"),
+
+    (New-Scenario `
+        -Name "pptx-place-table-from-xlsx-from-scaffold" `
+        -Family "pptx" `
+        -Input $pptxAuthoringSeed `
+        -Output (Join-Path $caseDir "pptx-place-table-from-xlsx-from-scaffold.pptx") `
+        -Arguments @("--json", "pptx", "place", "table-from-xlsx", $pptxAuthoringSeed, "--workbook", $xlsxAuthoringTable, "--sheet", "Sales Ops", "--range", "A1:C5", "--formula-mode", "value", "--expect-source-range", "A1:C5", "--slide", "1", "--x", "914400", "--y", "2286000", "--cx", "5486400", "--cy", "1828800", "--header", "--name", "Scaffold XLSX Table", "--out", (Join-Path $caseDir "pptx-place-table-from-xlsx-from-scaffold.pptx")) `
+        -InputFixtureType "scaffold-derived"),
+
+    (New-Scenario `
+        -Name "pptx-chart-create-from-scaffold" `
+        -Family "pptx" `
+        -Input $pptxAuthoringSeed `
+        -Output (Join-Path $caseDir "pptx-chart-create-from-scaffold.pptx") `
+        -Arguments @("--json", "pptx", "charts", "create", $pptxAuthoringSeed, "--slide", "1", "--type", "bar", "--title", "Units by Region", "--source-file", $pptxChartSourceWorkbook, "--source-sheet", "Chart Data", "--source-range", "A1:B4", "--expect-source-range", "A1:B4", "--embed-workbook", "--x", "914400", "--y", "2286000", "--cx", "5486400", "--cy", "2743200", "--out", (Join-Path $caseDir "pptx-chart-create-from-scaffold.pptx")) `
+        -InputFixtureType "scaffold-derived"),
 
     (New-Scenario `
         -Name "pptx-comments-add" `
@@ -1311,7 +1355,11 @@ $scenarios = @(
 )
 
 if ($ScenarioName.Count -gt 0) {
-    $requestedScenarioNames = @($ScenarioName | Where-Object { $null -ne $_ -and $_ -ne "" })
+    $requestedScenarioNames = @($ScenarioName | ForEach-Object {
+            if ($null -ne $_) {
+                [string]$_ -split ","
+            }
+        } | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
     $knownScenarioNames = @{}
     foreach ($scenario in $scenarios) {
         $knownScenarioNames[[string]$scenario.name] = $true

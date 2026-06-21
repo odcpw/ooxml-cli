@@ -10,6 +10,10 @@ param(
 
     [string[]]$OfficeEditSmokeSummaryPath = @(),
 
+    [string[]]$OfficeOracleSummaryPath = @(),
+
+    [string]$OfficeOracleEvidencePath = "",
+
     [string]$OutJson = "",
 
     [string]$OutMarkdown = "",
@@ -755,6 +759,271 @@ function Merge-EvidenceMaps {
     }
 }
 
+function Get-FirstNonEmptyPropertyValue {
+    param(
+        [object]$Object,
+        [string[]]$Names
+    )
+
+    foreach ($name in $Names) {
+        $value = Get-PropertyValue -Object $Object -Name $name
+        if ($null -ne $value -and [string]$value -ne "") {
+            return [string]$value
+        }
+    }
+    return ""
+}
+
+function Resolve-ArtifactIdentityPath {
+    param(
+        [string]$Path,
+        [string]$Root
+    )
+
+    if ($Path -eq "") {
+        return ""
+    }
+    try {
+        if ([System.IO.Path]::IsPathRooted($Path)) {
+            return ([System.IO.Path]::GetFullPath($Path)).ToLowerInvariant()
+        }
+        return ([System.IO.Path]::GetFullPath((Join-Path $Root $Path))).ToLowerInvariant()
+    }
+    catch {
+        return $Path.ToLowerInvariant()
+    }
+}
+
+function New-OfficeOracleMappingItemFromPair {
+    param(
+        [string]$CommandPath,
+        [object]$Value
+    )
+
+    if ($Value -is [string]) {
+        return [pscustomobject][ordered]@{
+            commandPath = $CommandPath
+            artifact = [string]$Value
+        }
+    }
+
+    $artifact = Get-FirstNonEmptyPropertyValue -Object $Value -Names @("generatedOutputPath", "artifact", "artifactPath", "file", "output")
+    $inputFixtureType = Get-PropertyValue -Object $Value -Name "inputFixtureType"
+    $exactCommand = Get-PropertyValue -Object $Value -Name "exactCommand"
+    return [pscustomobject][ordered]@{
+        commandPath = $CommandPath
+        artifact = $artifact
+        inputFixtureType = $inputFixtureType
+        exactCommand = $exactCommand
+    }
+}
+
+function ConvertFrom-OfficeOracleMappingObject {
+    param([object]$Object)
+
+    $items = New-Object System.Collections.Generic.List[object]
+    if ($null -eq $Object) {
+        return @()
+    }
+    foreach ($property in @($Object.PSObject.Properties)) {
+        [void]$items.Add((New-OfficeOracleMappingItemFromPair -CommandPath $property.Name -Value $property.Value))
+    }
+    return @($items.ToArray())
+}
+
+function Get-OfficeOracleMappingItems {
+    param([object]$Doc)
+
+    if ($Doc -is [System.Array]) {
+        return @($Doc)
+    }
+
+    $items = Get-PropertyValue -Object $Doc -Name "officeOracleProofs"
+    if ($null -ne $items) {
+        return @($items)
+    }
+
+    $items = Get-PropertyValue -Object $Doc -Name "oracleProofs"
+    if ($null -ne $items) {
+        return @($items)
+    }
+
+    $items = Get-PropertyValue -Object $Doc -Name "proofs"
+    if ($null -ne $items) {
+        return @($items)
+    }
+
+    $items = Get-PropertyValue -Object $Doc -Name "rows"
+    if ($null -ne $items) {
+        return @($items)
+    }
+
+    $mappings = Get-PropertyValue -Object $Doc -Name "mappings"
+    if ($null -ne $mappings) {
+        return @(ConvertFrom-OfficeOracleMappingObject -Object $mappings)
+    }
+
+    $commandPath = Get-PropertyValue -Object $Doc -Name "commandPath"
+    if ($null -ne $commandPath -and [string]$commandPath -ne "") {
+        return @($Doc)
+    }
+
+    $flatCommandProperties = @($Doc.PSObject.Properties | Where-Object { $_.Name -match '^ooxml\s+' })
+    if ($flatCommandProperties.Count -gt 0) {
+        return @(ConvertFrom-OfficeOracleMappingObject -Object $Doc)
+    }
+
+    return @()
+}
+
+function Import-OfficeOracleArtifactMap {
+    param(
+        [string]$Path,
+        [string]$Root
+    )
+
+    if ($Path -eq "") {
+        return @{}
+    }
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "OfficeOracleEvidencePath does not exist: $Path"
+    }
+
+    $doc = Get-JsonObject -JsonText (Get-Content -LiteralPath $Path -Raw)
+    $map = @{}
+    foreach ($item in @(Get-OfficeOracleMappingItems -Doc $doc)) {
+        $commandPath = [string](Get-PropertyValue -Object $item -Name "commandPath")
+        $artifact = Get-FirstNonEmptyPropertyValue -Object $item -Names @("generatedOutputPath", "artifact", "artifactPath", "file", "output")
+        if ($commandPath -eq "" -or $artifact -eq "") {
+            throw "OfficeOracleEvidencePath entries must include commandPath and artifact/generatedOutputPath."
+        }
+        $key = Resolve-ArtifactIdentityPath -Path $artifact -Root $Root
+        if (-not $map.ContainsKey($key)) {
+            $map[$key] = New-Object System.Collections.Generic.List[object]
+        }
+        [void]$map[$key].Add($item)
+    }
+    return $map
+}
+
+function New-OfficeOracleTierEvidence {
+    param(
+        [object]$Result,
+        [string]$SummaryPath,
+        [string]$Artifact
+    )
+
+    $status = [string](Get-PropertyValue -Object $Result -Name "status")
+    if ($status -eq "") {
+        return $null
+    }
+
+    $application = [string](Get-PropertyValue -Object $Result -Name "officeApplication")
+    $version = [string](Get-PropertyValue -Object $Result -Name "officeVersion")
+    $build = [string](Get-PropertyValue -Object $Result -Name "officeBuild")
+    $errorType = [string](Get-PropertyValue -Object $Result -Name "errorType")
+    $errorMessage = [string](Get-PropertyValue -Object $Result -Name "errorMessage")
+
+    $detail = ""
+    if ($status -eq "passed") {
+        $detail = "Desktop Microsoft Office opened the mapped oracle artifact without repair/failure."
+        if ($application -ne "") {
+            $detail = "$detail Application: $application."
+        }
+    }
+    else {
+        $detail = "Desktop Microsoft Office did not open the mapped oracle artifact cleanly."
+        if ($errorType -ne "" -or $errorMessage -ne "") {
+            $detail = "$detail $errorType $errorMessage".Trim()
+        }
+    }
+
+    $evidence = New-Object System.Collections.Generic.List[string]
+    [void]$evidence.Add("windows-office-oracle summary: $SummaryPath")
+    [void]$evidence.Add("artifact: $Artifact")
+    if ($application -ne "") {
+        [void]$evidence.Add("officeApplication: $application")
+    }
+    if ($version -ne "" -or $build -ne "") {
+        [void]$evidence.Add(("officeVersion: {0} build {1}" -f $version, $build).Trim())
+    }
+
+    return [pscustomobject][ordered]@{
+        status = $status
+        detail = $detail
+        evidence = @($evidence)
+    }
+}
+
+function Import-OfficeOracleEvidence {
+    param(
+        [string[]]$Paths,
+        [string]$MappingPath,
+        [string]$Root
+    )
+
+    $map = @{}
+    $summaryPaths = @($Paths | Where-Object { $null -ne $_ -and $_ -ne "" })
+    if ($summaryPaths.Count -eq 0) {
+        return $map
+    }
+    if ($MappingPath -eq "") {
+        throw "OfficeOracleEvidencePath is required when OfficeOracleSummaryPath is supplied; oracle summaries do not contain command paths."
+    }
+
+    $artifactMap = Import-OfficeOracleArtifactMap -Path $MappingPath -Root $Root
+    foreach ($path in $summaryPaths) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "OfficeOracleSummaryPath does not exist: $path"
+        }
+        $resolved = (Resolve-Path -LiteralPath $path).Path
+        $doc = Get-JsonObject -JsonText (Get-Content -LiteralPath $resolved -Raw)
+        foreach ($result in @($doc)) {
+            $file = [string](Get-PropertyValue -Object $result -Name "file")
+            if ($file -eq "") {
+                continue
+            }
+            $key = Resolve-ArtifactIdentityPath -Path $file -Root $Root
+            if (-not $artifactMap.ContainsKey($key)) {
+                continue
+            }
+            foreach ($mapping in @($artifactMap[$key].ToArray())) {
+                $commandPath = [string](Get-PropertyValue -Object $mapping -Name "commandPath")
+                if ($commandPath -eq "") {
+                    continue
+                }
+                $artifact = Get-FirstNonEmptyPropertyValue -Object $mapping -Names @("generatedOutputPath", "artifact", "artifactPath", "file", "output")
+                if ($artifact -eq "") {
+                    $artifact = $file
+                }
+                $tiers = [ordered]@{
+                    office = New-OfficeOracleTierEvidence -Result $result -SummaryPath $resolved -Artifact $artifact
+                }
+                $inputFixtureType = [string](Get-PropertyValue -Object $mapping -Name "inputFixtureType")
+                if ($inputFixtureType -eq "") {
+                    $inputFixtureType = "office oracle artifact"
+                }
+                $item = [pscustomobject][ordered]@{
+                    commandPath = $commandPath
+                    inputFixtureType = $inputFixtureType
+                    generatedOutputPath = $artifact
+                    exactCommand = Get-PropertyValue -Object $mapping -Name "exactCommand"
+                    sourceSummary = $resolved
+                    oracleFile = $file
+                    tiers = [pscustomobject]$tiers
+                }
+                if ($map.ContainsKey($commandPath)) {
+                    $map[$commandPath] = Merge-EvidenceItem -Existing $map[$commandPath] -Incoming $item
+                }
+                else {
+                    $map[$commandPath] = $item
+                }
+            }
+        }
+    }
+    return $map
+}
+
 function Find-CommandPathInSmokeCommand {
     param(
         [string]$CommandLine,
@@ -1004,7 +1273,11 @@ $capabilityCommandPaths = @($capabilities.commands | ForEach-Object { [string](G
 $evidenceMap = Import-Evidence -Path $EvidencePath
 $officeEditSmokeEvidence = Import-OfficeEditSmokeEvidence -Paths $OfficeEditSmokeSummaryPath -CommandPaths $capabilityCommandPaths
 Merge-EvidenceMaps -Target $evidenceMap -Incoming $officeEditSmokeEvidence
+$officeOracleEvidence = Import-OfficeOracleEvidence -Paths $OfficeOracleSummaryPath -MappingPath $OfficeOracleEvidencePath -Root $resolvedRepoRoot
+Merge-EvidenceMaps -Target $evidenceMap -Incoming $officeOracleEvidence
 $resolvedOfficeEditSmokeSummaryPaths = @($OfficeEditSmokeSummaryPath | Where-Object { $null -ne $_ -and $_ -ne "" } | ForEach-Object { (Resolve-Path -LiteralPath $_).Path })
+$resolvedOfficeOracleSummaryPaths = @($OfficeOracleSummaryPath | Where-Object { $null -ne $_ -and $_ -ne "" } | ForEach-Object { (Resolve-Path -LiteralPath $_).Path })
+$resolvedOfficeOracleEvidencePath = if ($OfficeOracleEvidencePath -ne "") { (Resolve-Path -LiteralPath $OfficeOracleEvidencePath).Path } else { "" }
 
 $rows = New-Object System.Collections.Generic.List[object]
 foreach ($command in @($capabilities.commands)) {
@@ -1156,6 +1429,8 @@ $matrix = [pscustomobject][ordered]@{
         capabilitiesCommand = $capabilitiesResult.Command
         evidencePath = if ($EvidencePath -ne "") { (Resolve-Path -LiteralPath $EvidencePath).Path } else { "" }
         officeEditSmokeSummaryPaths = $resolvedOfficeEditSmokeSummaryPaths
+        officeOracleSummaryPaths = $resolvedOfficeOracleSummaryPaths
+        officeOracleEvidencePath = $resolvedOfficeOracleEvidencePath
     }
     policy = [ordered]@{
         rowSource = "Public package-creating and package-mutating commands inferred from ooxml --json capabilities."
@@ -1194,6 +1469,7 @@ $matrix = [pscustomobject][ordered]@{
         contractOnlyCommandCount = $contractOnly.Count
         partialProofCommandCount = $partialProof.Count
         commandsLackingStrictValidationConformanceOrOfficeOpenProof = $lackingStrictOrOfficeProof.Count
+        officeOracleEvidenceCommandCount = $officeOracleEvidence.Count
     }
     questions = [ordered]@{
         createOrMutateCommands = @($sortedRows | ForEach-Object { $_.commandPath })

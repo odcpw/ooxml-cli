@@ -362,8 +362,12 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
 
     let capabilities_path = temp_dir.join("capabilities.json");
     let evidence_path = temp_dir.join("evidence.json");
+    let oracle_evidence_path = temp_dir.join("office-oracle-evidence.json");
+    let oracle_summary_path = temp_dir.join("office-oracle-summary.json");
     let out_json = temp_dir.join("matrix.json");
     let out_markdown = temp_dir.join("matrix.md");
+    let oracle_vba_artifact = temp_dir.join("oracle").join("vba-attached.xlsm");
+    let oracle_template_artifact = temp_dir.join("oracle").join("template-compiled.pptx");
 
     let capabilities = serde_json::json!({
         "commands": [
@@ -394,6 +398,20 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
                 &["--sheet", "--cell", "--text", "--out", "--in-place", "--dry-run"],
                 true,
                 &["comment"],
+            ),
+            proof_matrix_capability_command(
+                "ooxml vba attach",
+                "attach <file> --vba-project <vbaProject.bin> --out <file>",
+                &["--vba-project", "--out"],
+                true,
+                &["vba", "module"],
+            ),
+            proof_matrix_capability_command(
+                "ooxml pptx template compile",
+                "compile <spec> --out <file>",
+                &["--out"],
+                false,
+                &["template", "slide"],
             ),
             proof_matrix_capability_command(
                 "ooxml xlsx cells list",
@@ -433,6 +451,48 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
             }
         ]
     });
+    let oracle_evidence = serde_json::json!({
+        "officeOracleProofs": [
+            {
+                "commandPath": "ooxml vba attach",
+                "artifact": oracle_vba_artifact,
+                "inputFixtureType": "realistic fixture"
+            },
+            {
+                "commandPath": "ooxml pptx template compile",
+                "generatedOutputPath": oracle_template_artifact,
+                "inputFixtureType": "template manifest/spec"
+            }
+        ]
+    });
+    let oracle_summary = serde_json::json!([
+        {
+            "timestampUtc": "2026-06-20T18:26:56.6796007Z",
+            "file": oracle_vba_artifact,
+            "family": "xlsx",
+            "officeApplication": "Excel",
+            "officeVersion": "16.0",
+            "officeBuild": "20026",
+            "status": "passed",
+            "visible": false,
+            "elapsedMs": 5175,
+            "errorType": "",
+            "errorMessage": ""
+        },
+        {
+            "timestampUtc": "2026-06-20T19:58:13.1570108Z",
+            "file": oracle_template_artifact,
+            "family": "pptx",
+            "officeApplication": "PowerPoint",
+            "officeVersion": "16.0",
+            "officeBuild": "20026",
+            "status": "passed",
+            "visible": false,
+            "elapsedMs": 4880,
+            "errorType": "",
+            "errorMessage": ""
+        }
+    ]);
     fs::write(
         &capabilities_path,
         serde_json::to_vec_pretty(&capabilities).expect("capabilities JSON"),
@@ -443,6 +503,16 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         serde_json::to_vec_pretty(&evidence).expect("evidence JSON"),
     )
     .expect("write evidence JSON");
+    fs::write(
+        &oracle_evidence_path,
+        serde_json::to_vec_pretty(&oracle_evidence).expect("oracle evidence JSON"),
+    )
+    .expect("write oracle evidence JSON");
+    fs::write(
+        &oracle_summary_path,
+        serde_json::to_vec_pretty(&oracle_summary).expect("oracle summary JSON"),
+    )
+    .expect("write oracle summary JSON");
 
     let script = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tools")
@@ -459,6 +529,10 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         .arg(&capabilities_path)
         .arg("-EvidencePath")
         .arg(&evidence_path)
+        .arg("-OfficeOracleSummaryPath")
+        .arg(&oracle_summary_path)
+        .arg("-OfficeOracleEvidencePath")
+        .arg(&oracle_evidence_path)
         .arg("-OutJson")
         .arg(&out_json)
         .arg("-OutMarkdown")
@@ -479,16 +553,16 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         matrix["schemaVersion"],
         "ooxml-cli.artifact-proof-matrix.v2"
     );
-    assert_eq!(matrix["summary"]["mutatingCommandCount"], 4);
-    assert_eq!(matrix["summary"]["proofRowsPresent"], 3);
+    assert_eq!(matrix["summary"]["mutatingCommandCount"], 6);
+    assert_eq!(matrix["summary"]["proofRowsPresent"], 5);
     assert_eq!(matrix["summary"]["commandsWithoutProofRows"], 1);
     assert_eq!(
         matrix["summary"]["commandsLackingStrictValidationConformanceOrOfficeOpenProof"],
-        3
+        5
     );
     assert_eq!(
         matrix["summary"]["proofCoverageByClass"]["office-proven"],
-        1
+        3
     );
     assert_eq!(
         matrix["summary"]["proofCoverageByClass"]["strict-conformance-proven"],
@@ -503,10 +577,25 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         1
     );
     assert_eq!(matrix["summary"]["scaffoldDerivedProvenCommandCount"], 1);
+    assert_eq!(matrix["summary"]["officeOracleEvidenceCommandCount"], 2);
 
     let cells_set = proof_matrix_row_by_path(&matrix, "ooxml xlsx cells set");
     assert_eq!(cells_set["inputFixtureType"], "scaffold-derived");
     assert_eq!(cells_set["requiredGaps"], serde_json::json!([]));
+    let vba_attach = proof_matrix_row_by_path(&matrix, "ooxml vba attach");
+    assert_eq!(vba_attach["proofCoverage"], "office-proven");
+    assert_eq!(vba_attach["proofRowStatus"], "present");
+    assert_eq!(vba_attach["tiers"]["office"]["status"], "passed");
+    assert_eq!(
+        vba_attach["strictProofGaps"],
+        serde_json::json!(["validate", "conformance"])
+    );
+    let template_compile = proof_matrix_row_by_path(&matrix, "ooxml pptx template compile");
+    assert_eq!(
+        template_compile["inputFixtureType"],
+        "template manifest/spec"
+    );
+    assert_eq!(template_compile["tiers"]["office"]["status"], "passed");
     let comments = proof_matrix_row_by_path(&matrix, "ooxml xlsx comments add");
     assert_eq!(comments["proofCoverage"], "contract-only");
     assert_eq!(comments["proofRowStatus"], "missing");
@@ -524,6 +613,8 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         .as_array()
         .expect("office proven commands");
     assert!(office_commands.contains(&Value::String("ooxml xlsx cells set".to_string())));
+    assert!(office_commands.contains(&Value::String("ooxml vba attach".to_string())));
+    assert!(office_commands.contains(&Value::String("ooxml pptx template compile".to_string())));
     let scaffold_derived_commands = matrix["questions"]["scaffoldDerivedProvenCommands"]
         .as_array()
         .expect("scaffold-derived proven commands");
@@ -537,6 +628,7 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
     assert!(markdown.contains("Commands with no proof row yet: 1"));
     assert!(markdown.contains("Scaffold-derived commands with complete proof: 1"));
     assert!(markdown.contains("| contract-only | 1 |"));
+    assert!(markdown.contains("| office-proven | 3 |"));
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

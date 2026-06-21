@@ -124,6 +124,53 @@ function Invoke-OfficeOpenForPath {
     }
 }
 
+function Get-OfficeProcessNamesForFamily {
+    param([string]$Family)
+
+    switch ($Family) {
+        "xlsx" { return @("EXCEL") }
+        "pptx" { return @("POWERPNT") }
+        "docx" { return @("WINWORD") }
+        default { return @("EXCEL", "POWERPNT", "WINWORD") }
+    }
+}
+
+function Get-ProcessIdSet {
+    param([string[]]$Names)
+
+    $ids = @{}
+    foreach ($process in @(Get-Process -Name $Names -ErrorAction SilentlyContinue)) {
+        $ids[[int]$process.Id] = $true
+    }
+    return $ids
+}
+
+function Stop-NewOfficeProcesses {
+    param(
+        [string[]]$Names,
+        [hashtable]$ExistingIds,
+        [datetime]$StartedAt
+    )
+
+    foreach ($process in @(Get-Process -Name $Names -ErrorAction SilentlyContinue)) {
+        if ($ExistingIds.ContainsKey([int]$process.Id)) {
+            continue
+        }
+        try {
+            if ($null -ne $process.StartTime -and $process.StartTime -lt $StartedAt.AddSeconds(-2)) {
+                continue
+            }
+        }
+        catch {
+            continue
+        }
+        try {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        }
+        catch {}
+    }
+}
+
 function Invoke-OfficeOpenWithTimeout {
     param(
         [Parameter(Mandatory = $true)]
@@ -148,6 +195,8 @@ function Invoke-OfficeOpenWithTimeout {
 
     $family = Get-OracleFamily -Path $Path
     $application = Get-OracleApplication -Family $family
+    $officeProcessNames = @(Get-OfficeProcessNamesForFamily -Family $family)
+    $officeProcessIdsBefore = Get-ProcessIdSet -Names $officeProcessNames
     $childJson = Join-Path $OutputDir ("child-{0}.json" -f $Index)
     $childStdout = Join-Path $OutputDir ("child-{0}.stdout.txt" -f $Index)
     $childStderr = Join-Path $OutputDir ("child-{0}.stderr.txt" -f $Index)
@@ -180,6 +229,7 @@ function Invoke-OfficeOpenWithTimeout {
         $args += "-Visible"
     }
 
+    $startedAt = Get-Date
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     $argumentLine = ($args | ForEach-Object { Quote-OracleArgument -Value $_ }) -join " "
     $process = Start-Process -FilePath powershell.exe -ArgumentList $argumentLine -WorkingDirectory $Root -RedirectStandardOutput $childStdout -RedirectStandardError $childStderr -WindowStyle Hidden -PassThru
@@ -188,6 +238,7 @@ function Invoke-OfficeOpenWithTimeout {
 
     if (-not $finished) {
         try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
+        Stop-NewOfficeProcesses -Names $officeProcessNames -ExistingIds $officeProcessIdsBefore -StartedAt $startedAt
         return (New-OracleResult -Path $Path -Family $family -Application $application -Status "timeout" -ElapsedMs $timer.ElapsedMilliseconds -ErrorType "Timeout" -ErrorMessage ("Office COM open exceeded {0} second(s)." -f $TimeoutSeconds))
     }
 
@@ -210,6 +261,7 @@ function Invoke-OfficeOpenWithTimeout {
     if ($message -eq "") {
         $message = ("Office oracle child exited with code {0} without writing a result." -f $process.ExitCode)
     }
+    Stop-NewOfficeProcesses -Names $officeProcessNames -ExistingIds $officeProcessIdsBefore -StartedAt $startedAt
     return (New-OracleResult -Path $Path -Family $family -Application $application -Status "failed" -ElapsedMs $timer.ElapsedMilliseconds -ErrorType "ChildProcessFailed" -ErrorMessage $message)
 }
 
