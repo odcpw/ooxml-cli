@@ -161,6 +161,94 @@ func TestConditionalFormatsAddColorScaleThreeColor(t *testing.T) {
 	}
 }
 
+func TestConditionalFormatsAddDataBar(t *testing.T) {
+	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData/>
+  <dataValidations count="1"><dataValidation sqref="D1:D3" type="whole"><formula1>1</formula1></dataValidation></dataValidations>
+</worksheet>`)
+	defer pkg.Close()
+	sheet := workbook.Sheets[0]
+
+	result, err := AddConditionalFormatDataBar(&AddConditionalFormatDataBarRequest{
+		Package:  pkg,
+		SheetRef: sheet,
+		Range:    "D1:D5",
+		CFVO: []ConditionalFormatCFVO{
+			{Type: "min"},
+			{Type: "max"},
+		},
+		Colors: []ConditionalFormatColor{
+			{RGB: "638EC6"},
+		},
+		Priority:    7,
+		HasPriority: true,
+	})
+	if err != nil {
+		t.Fatalf("AddConditionalFormatDataBar failed: %v", err)
+	}
+	if result.Sqref != "D1:D5" || result.CellsAffected != 5 {
+		t.Fatalf("unexpected mutation result: %+v", result)
+	}
+	if result.Rule.Type != "dataBar" || result.Rule.Priority != 7 || result.Rule.DataBar == nil {
+		t.Fatalf("unexpected added rule: %+v", result.Rule)
+	}
+	bar := result.Rule.DataBar
+	if len(bar.CFVO) != 2 || bar.CFVO[0].Type != "min" || bar.CFVO[1].Type != "max" {
+		t.Fatalf("unexpected data-bar cfvo readback: %+v", bar.CFVO)
+	}
+	if bar.Color.RGB != "FF638EC6" {
+		t.Fatalf("data-bar color = %q, want FF638EC6", bar.Color.RGB)
+	}
+
+	root := readTestWorksheetRoot(t, pkg, workbook)
+	var order []string
+	for _, child := range root.ChildElements() {
+		if namespaces.IsElement(child, namespaces.NsSpreadsheetML, child.Tag) {
+			order = append(order, child.Tag)
+		}
+	}
+	if got := strings.Join(order, ","); got != "sheetData,conditionalFormatting,dataValidations" {
+		t.Fatalf("worksheet child order = %s", got)
+	}
+}
+
+func TestConditionalFormatsListExistingDataBar(t *testing.T) {
+	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData/>
+  <conditionalFormatting sqref="D1:D5">
+    <cfRule type="dataBar" priority="7">
+      <dataBar>
+        <cfvo type="min"/>
+        <cfvo type="max"/>
+        <color rgb="FF638EC6"/>
+      </dataBar>
+    </cfRule>
+  </conditionalFormatting>
+</worksheet>`)
+	defer pkg.Close()
+	sheet := workbook.Sheets[0]
+
+	blocks, err := ListConditionalFormats(pkg, sheet)
+	if err != nil {
+		t.Fatalf("ListConditionalFormats failed: %v", err)
+	}
+	if len(blocks) != 1 || len(blocks[0].Rules) != 1 {
+		t.Fatalf("unexpected conditional-format list: %+v", blocks)
+	}
+	rule := blocks[0].Rules[0]
+	if rule.Type != "dataBar" || rule.DataBar == nil {
+		t.Fatalf("expected dataBar readback, got %+v", rule)
+	}
+	if len(rule.DataBar.CFVO) != 2 || rule.DataBar.CFVO[0].Type != "min" || rule.DataBar.CFVO[1].Type != "max" {
+		t.Fatalf("unexpected dataBar cfvo readback: %+v", rule.DataBar.CFVO)
+	}
+	if rule.DataBar.Color.RGB != "FF638EC6" {
+		t.Fatalf("unexpected dataBar color readback: %+v", rule.DataBar.Color)
+	}
+}
+
 func TestConditionalFormatsColorScaleValidation(t *testing.T) {
 	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -212,6 +300,61 @@ func TestConditionalFormatsColorScaleValidation(t *testing.T) {
 				Package:  pkg,
 				SheetRef: sheet,
 				Range:    "A1:A3",
+				CFVO:     tc.cfvo,
+				Colors:   tc.colors,
+			})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q error, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestConditionalFormatsDataBarValidation(t *testing.T) {
+	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData/>
+</worksheet>`)
+	defer pkg.Close()
+	sheet := workbook.Sheets[0]
+
+	cases := []struct {
+		name   string
+		cfvo   []ConditionalFormatCFVO
+		colors []ConditionalFormatColor
+		want   string
+	}{
+		{
+			name:   "one cfvo",
+			cfvo:   []ConditionalFormatCFVO{{Type: "min"}},
+			colors: []ConditionalFormatColor{{RGB: "638EC6"}},
+			want:   "exactly 2 --cfvo",
+		},
+		{
+			name:   "two colors",
+			cfvo:   []ConditionalFormatCFVO{{Type: "min"}, {Type: "max"}},
+			colors: []ConditionalFormatColor{{RGB: "638EC6"}, {RGB: "FF0000"}},
+			want:   "exactly 1 --color",
+		},
+		{
+			name:   "min has value",
+			cfvo:   []ConditionalFormatCFVO{{Type: "min", Value: "0"}, {Type: "max"}},
+			colors: []ConditionalFormatColor{{RGB: "638EC6"}},
+			want:   "must not include a value",
+		},
+		{
+			name:   "invalid color",
+			cfvo:   []ConditionalFormatCFVO{{Type: "min"}, {Type: "max"}},
+			colors: []ConditionalFormatColor{{RGB: "nope"}},
+			want:   "invalid color",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := AddConditionalFormatDataBar(&AddConditionalFormatDataBarRequest{
+				Package:  pkg,
+				SheetRef: sheet,
+				Range:    "D1:D5",
 				CFVO:     tc.cfvo,
 				Colors:   tc.colors,
 			})

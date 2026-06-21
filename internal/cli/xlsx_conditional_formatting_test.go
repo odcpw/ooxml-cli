@@ -228,6 +228,69 @@ func TestXLSXConditionalFormatsAddColorScale(t *testing.T) {
 	}
 }
 
+func TestXLSXConditionalFormatsAddDataBar(t *testing.T) {
+	workbookPath := getXLSXTestFilePath("minimal-workbook")
+	outPath := filepath.Join(t.TempDir(), "cf-data-bar.xlsx")
+
+	addOut, err := executeRootForXLSXTest(t,
+		"--json",
+		"xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1",
+		"--range", "D1:D5",
+		"--type", "data-bar",
+		"--cfvo", "min",
+		"--cfvo", "max",
+		"--color", "638EC6",
+		"--priority", "7",
+		"--out", outPath,
+	)
+	if err != nil {
+		t.Fatalf("conditional-formats add data-bar failed: %v", err)
+	}
+	var addResult XLSXConditionalFormatMutationResult
+	if err := json.Unmarshal([]byte(addOut), &addResult); err != nil {
+		t.Fatalf("failed to unmarshal add JSON: %v\n%s", err, addOut)
+	}
+	if addResult.Rule == nil || addResult.Rule.Type != "dataBar" || addResult.Rule.DataBar == nil {
+		t.Fatalf("unexpected added rule: %+v", addResult.Rule)
+	}
+	bar := addResult.Rule.DataBar
+	if len(bar.CFVO) != 2 || bar.CFVO[0].Type != "min" || bar.CFVO[1].Type != "max" {
+		t.Fatalf("unexpected data-bar cfvo readback: %+v", bar.CFVO)
+	}
+	if bar.Color.RGB != "FF638EC6" {
+		t.Fatalf("unexpected data-bar color readback: %+v", bar.Color)
+	}
+	if addResult.CellsAffected != 5 || addResult.ConditionalFormatsShowCommand == "" {
+		t.Fatalf("unexpected mutation result: %+v", addResult)
+	}
+
+	listOut := executeGeneratedOOXMLCommandForXLSXTest(t, addResult.ConditionalFormatsListCommand)
+	var listResult XLSXConditionalFormatsListResult
+	if err := json.Unmarshal([]byte(listOut), &listResult); err != nil {
+		t.Fatalf("failed to unmarshal list JSON: %v\n%s", err, listOut)
+	}
+	if listResult.Count != 1 || listResult.Rules[0].Type != "dataBar" || listResult.Rules[0].DataBar == nil {
+		t.Fatalf("unexpected list result: %+v", listResult)
+	}
+	if listResult.Rules[0].DataBar.Color.RGB != "FF638EC6" {
+		t.Fatalf("unexpected list dataBar color: %+v", listResult.Rules[0].DataBar)
+	}
+
+	showOut := executeGeneratedOOXMLCommandForXLSXTest(t, addResult.ConditionalFormatsShowCommand)
+	var showResult XLSXConditionalFormatRuleJSON
+	if err := json.Unmarshal([]byte(showOut), &showResult); err != nil {
+		t.Fatalf("failed to unmarshal show JSON: %v\n%s", err, showOut)
+	}
+	if showResult.DataBar == nil || len(showResult.DataBar.CFVO) != 2 || showResult.DataBar.Color.RGB != "FF638EC6" {
+		t.Fatalf("unexpected show result: %+v", showResult)
+	}
+
+	if _, err := executeRootForXLSXTest(t, "validate", "--strict", outPath); err != nil {
+		t.Fatalf("validate --strict failed: %v", err)
+	}
+}
+
 func TestXLSXConditionalFormatsAddCellIsValidation(t *testing.T) {
 	workbookPath := getXLSXTestFilePath("minimal-workbook")
 	outPath := filepath.Join(t.TempDir(), "cf-cell-is.xlsx")
@@ -276,6 +339,48 @@ func TestXLSXConditionalFormatsAddColorScaleValidation(t *testing.T) {
 		"--cfvo", "min", "--cfvo", "max", "--color", "FF0000", "--color", "00FF00", "--formula", "A1>0", "--out", outPath)
 	if err == nil || !strings.Contains(err.Error(), "--formula and --formula2 are not valid") {
 		t.Fatalf("expected formula rejected error, got: %v", err)
+	}
+}
+
+func TestXLSXConditionalFormatsAddDataBarValidation(t *testing.T) {
+	workbookPath := getXLSXTestFilePath("minimal-workbook")
+	outPath := filepath.Join(t.TempDir(), "cf-data-bar.xlsx")
+
+	_, err := executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "D1:D5", "--type", "data-bar",
+		"--cfvo", "min", "--color", "638EC6", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "exactly 2 --cfvo") {
+		t.Fatalf("expected missing cfvo error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "D1:D5", "--type", "data-bar",
+		"--cfvo", "min", "--cfvo", "max", "--color", "638EC6", "--color", "FF0000", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "exactly 1 --color") {
+		t.Fatalf("expected extra color error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "D1:D5", "--type", "data-bar",
+		"--cfvo", "min", "--cfvo", "max", "--color", "638EC6", "--formula", "D1>0", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--formula and --formula2 are not valid with --type data-bar") {
+		t.Fatalf("expected formula rejected error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "D1:D5", "--type", "data-bar",
+		"--cfvo", "min", "--cfvo", "max", "--color", "638EC6", "--operator", "greaterThan", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--operator is only valid with --type cell-is") {
+		t.Fatalf("expected operator rejected error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "D1:D5", "--type", "data-bar",
+		"--cfvo", "min", "--cfvo", "max", "--color", "638EC6", "--stop-if-true", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--stop-if-true is not valid with --type data-bar") {
+		t.Fatalf("expected stop-if-true rejected error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "D1:D5", "--type", "data-bar",
+		"--cfvo", "min", "--cfvo", "max", "--color", "638EC6", "--dxf-id", "0", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--dxf-id is not valid with --type data-bar") {
+		t.Fatalf("expected dxf-id rejected error, got: %v", err)
 	}
 }
 

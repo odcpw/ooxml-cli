@@ -166,17 +166,25 @@ func TestConditionalFormatsAddMetadataIncludesColorScaleExample(t *testing.T) {
 	if !ok {
 		t.Fatal("missing metadata for conditional-format add")
 	}
-	found := false
+	foundColorScale := false
+	foundDataBar := false
 	for _, ex := range meta.Examples {
 		if strings.Contains(ex.Command, "--type color-scale") &&
 			strings.Contains(ex.Command, "--cfvo") &&
 			strings.Contains(ex.Command, "--color") {
-			found = true
-			break
+			foundColorScale = true
+		}
+		if strings.Contains(ex.Command, "--type data-bar") &&
+			strings.Contains(ex.Command, "--cfvo min --cfvo max") &&
+			strings.Contains(ex.Command, "--color 638EC6") {
+			foundDataBar = true
 		}
 	}
-	if !found {
+	if !foundColorScale {
 		t.Fatalf("conditional-format add metadata missing color-scale example: %+v", meta.Examples)
+	}
+	if !foundDataBar {
+		t.Fatalf("conditional-format add metadata missing data-bar example: %+v", meta.Examples)
 	}
 	if !contains(meta.TargetObjectKinds, "conditional-format") || !contains(meta.TargetObjectKinds, "range") {
 		t.Fatalf("conditional-format add metadata targets wrong object kinds: %+v", meta.TargetObjectKinds)

@@ -918,7 +918,7 @@ var commandMetadata = map[string]CommandMetadata{
 			{
 				Command:        "ooxml --json xlsx conditional-formats list workbook.xlsx --sheet Sheet1",
 				Description:    "List worksheet conditional-formatting blocks and cfRule selectors.",
-				ExpectedOutput: "JSON conditional-formatting records with sqref, rule selectors, type, operator, priority, formulas, dxfId, and stopIfTrue.",
+				ExpectedOutput: "JSON conditional-formatting records with sqref, rule selectors, type, operator, priority, formulas, dxfId, stopIfTrue, colorScale, and dataBar payloads.",
 			},
 		},
 		TargetObjectKinds: []string{"conditional-format", "range", "sheet"},
@@ -928,7 +928,7 @@ var commandMetadata = map[string]CommandMetadata{
 			{
 				Command:        "ooxml --json xlsx conditional-formats show workbook.xlsx --sheet Sheet1 --rule cfRule:1",
 				Description:    "Show one conditional-formatting rule by a selector returned from list.",
-				ExpectedOutput: "JSON conditional-formatting rule with sqref, type, operator, priority, formulas, dxfId, and stopIfTrue.",
+				ExpectedOutput: "JSON conditional-formatting rule with sqref, type, operator, priority, formulas, dxfId, stopIfTrue, colorScale, and dataBar payloads.",
 			},
 		},
 		CommonErrors: []CommonError{
@@ -953,9 +953,14 @@ var commandMetadata = map[string]CommandMetadata{
 				Description:    "Add a 3-color scale with explicit cfvo thresholds and RGB colors.",
 				ExpectedOutput: "JSON mutation result with colorScale cfvo/color readback and validate command.",
 			},
+			{
+				Command:        "ooxml --json xlsx conditional-formats add workbook.xlsx --sheet 1 --range D1:D5 --type data-bar --cfvo min --cfvo max --color 638EC6 --priority 7 --out out.xlsx",
+				Description:    "Add a data bar with min/max cfvo thresholds and one RGB color.",
+				ExpectedOutput: "JSON mutation result with dataBar cfvo/color readback and validate command.",
+			},
 		},
 		CommonErrors: []CommonError{
-			{Pattern: "invalid_args", Solution: "Use ordinary A1 sqref ranges, --type expression, cell-is, or color-scale; color-scale requires 2 or 3 matching --cfvo and --color values."},
+			{Pattern: "invalid_args", Solution: "Use ordinary A1 sqref ranges, --type expression, cell-is, color-scale, or data-bar; color-scale requires 2 or 3 matching --cfvo/--color values, while data-bar requires exactly 2 --cfvo values and exactly 1 --color."},
 		},
 		TargetObjectKinds: []string{"conditional-format", "range", "sheet", "style"},
 	},

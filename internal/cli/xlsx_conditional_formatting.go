@@ -15,7 +15,7 @@ var xlsxConditionalFormatsCmd = &cobra.Command{
 	Use:     "conditional-formats",
 	Aliases: []string{"conditional-formatting", "conditional-format", "cf"},
 	Short:   "Inspect and mutate worksheet conditional formatting",
-	Long:    "Commands for listing, showing, adding, and deleting worksheet conditional-formatting expression, cellIs, and color-scale rules.",
+	Long:    "Commands for listing, showing, adding, and deleting worksheet conditional-formatting expression, cellIs, color-scale, and data-bar rules.",
 	Args:    cobra.NoArgs,
 	RunE:    showHelp,
 }
@@ -32,6 +32,11 @@ type XLSXConditionalFormatColorJSON struct {
 type XLSXConditionalFormatColorScaleJSON struct {
 	CFVO   []XLSXConditionalFormatCFVOJSON  `json:"cfvo"`
 	Colors []XLSXConditionalFormatColorJSON `json:"colors"`
+}
+
+type XLSXConditionalFormatDataBarJSON struct {
+	CFVO  []XLSXConditionalFormatCFVOJSON `json:"cfvo"`
+	Color XLSXConditionalFormatColorJSON  `json:"color"`
 }
 
 type conditionalFormatRepeatedFlag []string
@@ -71,6 +76,7 @@ type XLSXConditionalFormatRuleJSON struct {
 	DxfID           *int                                 `json:"dxfId,omitempty"`
 	StopIfTrue      bool                                 `json:"stopIfTrue,omitempty"`
 	ColorScale      *XLSXConditionalFormatColorScaleJSON `json:"colorScale,omitempty"`
+	DataBar         *XLSXConditionalFormatDataBarJSON    `json:"dataBar,omitempty"`
 }
 
 type XLSXConditionalFormatBlockJSON struct {
@@ -159,6 +165,15 @@ func conditionalFormatRuleToJSON(rule mutate.ConditionalFormatRule) XLSXConditio
 		}
 		out.ColorScale = scale
 	}
+	if rule.DataBar != nil {
+		bar := &XLSXConditionalFormatDataBarJSON{
+			Color: XLSXConditionalFormatColorJSON{RGB: rule.DataBar.Color.RGB},
+		}
+		for _, cfvo := range rule.DataBar.CFVO {
+			bar.CFVO = append(bar.CFVO, XLSXConditionalFormatCFVOJSON{Type: cfvo.Type, Value: cfvo.Value})
+		}
+		out.DataBar = bar
+	}
 	return out
 }
 
@@ -195,6 +210,20 @@ func conditionalFormatRuleSummary(rule XLSXConditionalFormatRuleJSON) string {
 				text += "=" + rule.ColorScale.Colors[i].RGB
 			}
 			parts = append(parts, text)
+		}
+		return strings.Join(parts, ", ")
+	}
+	if rule.DataBar != nil {
+		parts := make([]string, 0, len(rule.DataBar.CFVO)+1)
+		for _, cfvo := range rule.DataBar.CFVO {
+			text := cfvo.Type
+			if cfvo.Value != "" {
+				text += ":" + cfvo.Value
+			}
+			parts = append(parts, text)
+		}
+		if rule.DataBar.Color.RGB != "" {
+			parts = append(parts, rule.DataBar.Color.RGB)
 		}
 		return strings.Join(parts, ", ")
 	}
@@ -357,6 +386,8 @@ func normalizeConditionalFormatAddType(ruleType string) string {
 		return "cellIs"
 	case "color-scale", "colorScale":
 		return "colorScale"
+	case "data-bar", "dataBar":
+		return "dataBar"
 	default:
 		return strings.TrimSpace(ruleType)
 	}
@@ -390,7 +421,7 @@ func parseConditionalFormatColorFlags(values []string) []mutate.ConditionalForma
 
 var xlsxConditionalFormatsAddCmd = &cobra.Command{
 	Use:   "add <file>",
-	Short: "Add an expression, cellIs, or color-scale conditional-formatting rule",
+	Short: "Add an expression, cellIs, color-scale, or data-bar conditional-formatting rule",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		filePath := args[0]
@@ -410,7 +441,7 @@ var xlsxConditionalFormatsAddCmd = &cobra.Command{
 				return InvalidArgsError("--formula2 is only valid with --type cell-is")
 			}
 			if cmd.Flags().Changed("cfvo") || cmd.Flags().Changed("color") {
-				return InvalidArgsError("--cfvo and --color are only valid with --type color-scale")
+				return InvalidArgsError("--cfvo and --color are only valid with --type color-scale or data-bar")
 			}
 			return runConditionalFormatMutation(cmd, filePath, xlsxCFSheet, "add", func(pkg opc.PackageSession, sheet model.SheetRef) (*mutate.ConditionalFormatMutationResult, error) {
 				return mutate.AddConditionalFormatExpression(&mutate.AddConditionalFormatExpressionRequest{
@@ -431,7 +462,7 @@ var xlsxConditionalFormatsAddCmd = &cobra.Command{
 				return InvalidArgsError("--formula is required")
 			}
 			if cmd.Flags().Changed("cfvo") || cmd.Flags().Changed("color") {
-				return InvalidArgsError("--cfvo and --color are only valid with --type color-scale")
+				return InvalidArgsError("--cfvo and --color are only valid with --type color-scale or data-bar")
 			}
 			return runConditionalFormatMutation(cmd, filePath, xlsxCFSheet, "add", func(pkg opc.PackageSession, sheet model.SheetRef) (*mutate.ConditionalFormatMutationResult, error) {
 				return mutate.AddConditionalFormatCellIs(&mutate.AddConditionalFormatCellIsRequest{
@@ -479,8 +510,37 @@ var xlsxConditionalFormatsAddCmd = &cobra.Command{
 					HasPriority: cmd.Flags().Changed("priority"),
 				})
 			})
+		case "dataBar":
+			if cmd.Flags().Changed("operator") {
+				return InvalidArgsError("--operator is only valid with --type cell-is")
+			}
+			if cmd.Flags().Changed("formula") || cmd.Flags().Changed("formula2") {
+				return InvalidArgsError("--formula and --formula2 are not valid with --type data-bar")
+			}
+			if cmd.Flags().Changed("stop-if-true") {
+				return InvalidArgsError("--stop-if-true is not valid with --type data-bar")
+			}
+			if cmd.Flags().Changed("dxf-id") {
+				return InvalidArgsError("--dxf-id is not valid with --type data-bar")
+			}
+			cfvos, err := parseConditionalFormatCFVOFlags([]string(xlsxCFCFVO))
+			if err != nil {
+				return InvalidArgsError(err.Error())
+			}
+			colors := parseConditionalFormatColorFlags([]string(xlsxCFColor))
+			return runConditionalFormatMutation(cmd, filePath, xlsxCFSheet, "add", func(pkg opc.PackageSession, sheet model.SheetRef) (*mutate.ConditionalFormatMutationResult, error) {
+				return mutate.AddConditionalFormatDataBar(&mutate.AddConditionalFormatDataBarRequest{
+					Package:     pkg,
+					SheetRef:    sheet,
+					Range:       xlsxCFRange,
+					CFVO:        cfvos,
+					Colors:      colors,
+					Priority:    xlsxCFPriority,
+					HasPriority: cmd.Flags().Changed("priority"),
+				})
+			})
 		default:
-			return InvalidArgsError("--type must be expression, cell-is, cellIs, color-scale, or colorScale")
+			return InvalidArgsError("--type must be expression, cell-is, cellIs, color-scale, colorScale, data-bar, or dataBar")
 		}
 	},
 }
@@ -533,12 +593,12 @@ func init() {
 	}
 
 	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFRange, "range", "", "target range (sqref); space-separated allowed, e.g. \"A1:A10 C1:C5\"")
-	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFType, "type", "expression", "conditional-formatting rule type: expression|cell-is|color-scale")
+	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFType, "type", "expression", "conditional-formatting rule type: expression|cell-is|color-scale|data-bar")
 	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFOperator, "operator", "", "cellIs operator: between|notBetween|equal|notEqual|greaterThan|lessThan|greaterThanOrEqual|lessThanOrEqual")
 	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFFormula, "formula", "", "expression formula or first cellIs formula/bound, e.g. A1>0")
 	xlsxConditionalFormatsAddCmd.Flags().StringVar(&xlsxCFFormula2, "formula2", "", "second cellIs formula/bound (for between/notBetween)")
-	xlsxConditionalFormatsAddCmd.Flags().Var(&xlsxCFCFVO, "cfvo", "color-scale threshold, repeat 2 or 3 times: min|max|num:0|percent:10|percentile:50")
-	xlsxConditionalFormatsAddCmd.Flags().Var(&xlsxCFColor, "color", "color-scale color hex, repeat 2 or 3 times: #F8696B|FFEB84|FF63BE7B")
+	xlsxConditionalFormatsAddCmd.Flags().Var(&xlsxCFCFVO, "cfvo", "color-scale/data-bar threshold: min|max|num:0|percent:10|percentile:50")
+	xlsxConditionalFormatsAddCmd.Flags().Var(&xlsxCFColor, "color", "color-scale/data-bar color hex: #F8696B|FFEB84|FF63BE7B")
 	xlsxConditionalFormatsAddCmd.Flags().IntVar(&xlsxCFPriority, "priority", 0, "optional cfRule priority (positive integer)")
 	xlsxConditionalFormatsAddCmd.Flags().BoolVar(&xlsxCFStopIfTrue, "stop-if-true", false, "set stopIfTrue on the rule")
 	xlsxConditionalFormatsAddCmd.Flags().IntVar(&xlsxCFDxfID, "dxf-id", 0, "optional differential style id to reference")

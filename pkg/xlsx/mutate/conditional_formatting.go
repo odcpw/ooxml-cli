@@ -35,15 +35,16 @@ type ConditionalFormatRule struct {
 	HasDxfID        bool                         `json:"hasDxfId,omitempty"`
 	StopIfTrue      bool                         `json:"stopIfTrue,omitempty"`
 	ColorScale      *ConditionalFormatColorScale `json:"colorScale,omitempty"`
+	DataBar         *ConditionalFormatDataBar    `json:"dataBar,omitempty"`
 }
 
-// ConditionalFormatCFVO describes one color-scale threshold.
+// ConditionalFormatCFVO describes one threshold value.
 type ConditionalFormatCFVO struct {
 	Type  string `json:"type"`
 	Value string `json:"value,omitempty"`
 }
 
-// ConditionalFormatColor describes one color-scale color.
+// ConditionalFormatColor describes one conditional-format color.
 type ConditionalFormatColor struct {
 	RGB string `json:"rgb"`
 }
@@ -52,6 +53,12 @@ type ConditionalFormatColor struct {
 type ConditionalFormatColorScale struct {
 	CFVO   []ConditionalFormatCFVO  `json:"cfvo"`
 	Colors []ConditionalFormatColor `json:"colors"`
+}
+
+// ConditionalFormatDataBar describes a dataBar cfRule payload.
+type ConditionalFormatDataBar struct {
+	CFVO  []ConditionalFormatCFVO `json:"cfvo"`
+	Color ConditionalFormatColor  `json:"color"`
 }
 
 // AddConditionalFormatExpressionRequest creates an expression cfRule.
@@ -87,6 +94,17 @@ type AddConditionalFormatCellIsRequest struct {
 
 // AddConditionalFormatColorScaleRequest creates a colorScale cfRule.
 type AddConditionalFormatColorScaleRequest struct {
+	Package     opc.PackageSession
+	SheetRef    model.SheetRef
+	Range       string
+	CFVO        []ConditionalFormatCFVO
+	Colors      []ConditionalFormatColor
+	Priority    int
+	HasPriority bool
+}
+
+// AddConditionalFormatDataBarRequest creates a dataBar cfRule.
+type AddConditionalFormatDataBarRequest struct {
 	Package     opc.PackageSession
 	SheetRef    model.SheetRef
 	Range       string
@@ -176,6 +194,21 @@ func conditionalFormatRuleFromElem(rule *etree.Element, blockIndex, ruleIndex, g
 			})
 		}
 		entry.ColorScale = scale
+	}
+	if dataBar := namespaces.FindChild(rule, namespaces.NsSpreadsheetML, "dataBar"); dataBar != nil {
+		bar := &ConditionalFormatDataBar{}
+		for _, cfvo := range namespaces.FindChildren(dataBar, namespaces.NsSpreadsheetML, "cfvo") {
+			bar.CFVO = append(bar.CFVO, ConditionalFormatCFVO{
+				Type:  cfvo.SelectAttrValue("type", ""),
+				Value: cfvo.SelectAttrValue("val", ""),
+			})
+		}
+		if color := namespaces.FindChild(dataBar, namespaces.NsSpreadsheetML, "color"); color != nil {
+			bar.Color = ConditionalFormatColor{
+				RGB: color.SelectAttrValue("rgb", ""),
+			}
+		}
+		entry.DataBar = bar
 	}
 	entry.Selectors = conditionalFormatRuleSelectors(entry)
 	return entry
@@ -332,6 +365,28 @@ func validateConditionalFormatColorScale(cfvos []ConditionalFormatCFVO, colors [
 		normColors = append(normColors, ConditionalFormatColor{RGB: rgb})
 	}
 	return normCFVOs, normColors, nil
+}
+
+func validateConditionalFormatDataBar(cfvos []ConditionalFormatCFVO, colors []ConditionalFormatColor) ([]ConditionalFormatCFVO, ConditionalFormatColor, error) {
+	if len(cfvos) != 2 {
+		return nil, ConditionalFormatColor{}, fmt.Errorf("data-bar conditional formats require exactly 2 --cfvo values")
+	}
+	if len(colors) != 1 {
+		return nil, ConditionalFormatColor{}, fmt.Errorf("data-bar conditional formats require exactly 1 --color value")
+	}
+	normCFVOs := make([]ConditionalFormatCFVO, 0, len(cfvos))
+	for _, cfvo := range cfvos {
+		norm, err := normalizeConditionalFormatCFVO(cfvo)
+		if err != nil {
+			return nil, ConditionalFormatColor{}, err
+		}
+		normCFVOs = append(normCFVOs, norm)
+	}
+	rgb, err := NormalizeColor(colors[0].RGB)
+	if err != nil {
+		return nil, ConditionalFormatColor{}, err
+	}
+	return normCFVOs, ConditionalFormatColor{RGB: rgb}, nil
 }
 
 // AddConditionalFormatExpression adds an expression conditional-formatting rule.
@@ -522,6 +577,64 @@ func AddConditionalFormatColorScale(req *AddConditionalFormatColorScaleRequest) 
 
 	blocks := conditionalFormatsFromRoot(root)
 	added := findAddedConditionalFormatRule(blocks, normSqref, "colorScale", priority, "", nil)
+	if err := req.Package.ReplaceXMLPart(req.SheetRef.PartURI, doc); err != nil {
+		return nil, fmt.Errorf("failed to replace worksheet %s: %w", req.SheetRef.PartURI, err)
+	}
+	return &ConditionalFormatMutationResult{Sqref: normSqref, Rule: added, CellsAffected: sqrefCellCount(normSqref)}, nil
+}
+
+// AddConditionalFormatDataBar adds a dataBar conditional-formatting rule.
+func AddConditionalFormatDataBar(req *AddConditionalFormatDataBarRequest) (*ConditionalFormatMutationResult, error) {
+	if req == nil {
+		return nil, fmt.Errorf("add conditional format request is nil")
+	}
+	normSqref, err := NormalizeSqref(req.Range)
+	if err != nil {
+		return nil, err
+	}
+	if req.HasPriority && req.Priority < 1 {
+		return nil, fmt.Errorf("--priority must be greater than zero")
+	}
+	cfvos, color, err := validateConditionalFormatDataBar(req.CFVO, req.Colors)
+	if err != nil {
+		return nil, err
+	}
+	doc, root, err := readWorksheetRoot(req.Package, req.SheetRef)
+	if err != nil {
+		return nil, err
+	}
+	prefix := root.Space
+	container := findConditionalFormattingBlock(root, normSqref)
+	if container == nil {
+		container = newElement(prefix, "conditionalFormatting")
+		container.CreateAttr("sqref", normSqref)
+		insertWorksheetChild(root, container, "conditionalFormatting")
+	}
+
+	rule := newElement(prefix, "cfRule")
+	rule.CreateAttr("type", "dataBar")
+	priority := req.Priority
+	if !req.HasPriority {
+		priority = nextConditionalFormatPriority(root)
+	}
+	rule.CreateAttr("priority", strconv.Itoa(priority))
+	dataBar := newElement(prefix, "dataBar")
+	for _, cfvo := range cfvos {
+		elem := newElement(prefix, "cfvo")
+		elem.CreateAttr("type", cfvo.Type)
+		if cfvo.Value != "" {
+			elem.CreateAttr("val", cfvo.Value)
+		}
+		dataBar.AddChild(elem)
+	}
+	colorElem := newElement(prefix, "color")
+	colorElem.CreateAttr("rgb", color.RGB)
+	dataBar.AddChild(colorElem)
+	rule.AddChild(dataBar)
+	container.AddChild(rule)
+
+	blocks := conditionalFormatsFromRoot(root)
+	added := findAddedConditionalFormatRule(blocks, normSqref, "dataBar", priority, "", nil)
 	if err := req.Package.ReplaceXMLPart(req.SheetRef.PartURI, doc); err != nil {
 		return nil, fmt.Errorf("failed to replace worksheet %s: %w", req.SheetRef.PartURI, err)
 	}
