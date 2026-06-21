@@ -6,12 +6,14 @@ use std::fs;
 use std::path::Path;
 
 mod model;
+mod output;
 
 pub(crate) use model::XlsxPivotsCreateOptions;
 use model::{
     PivotCell, PivotCreateArtifacts, PivotDataField, PivotFieldModel, PivotSource, PivotValueSpec,
     XlsxPivotCacheField, XlsxPivotCacheRef, XlsxPivotFieldRef, XlsxPivotRef,
 };
+use output::{select_xlsx_pivot, xlsx_pivot_item_json};
 
 use crate::{
     CliError, CliResult, RelationshipEntry, WorkbookSheet, XlsxRangeExportOptions,
@@ -19,10 +21,9 @@ use crate::{
     copy_zip_with_part_overrides, ensure_content_type_override, local_name, parse_cell_ref,
     parse_range, relationship_entries, relationship_entries_from_xml,
     relationship_target_from_source_to_target, relationships_part_for, resolve_relationship_target,
-    resolve_sheet, select_xlsx_table, selector_candidates, validate,
-    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_range_export_with_options,
-    xlsx_ranges_set_temp_path, xlsx_source_command, xlsx_tables, xml_attr_escape, zip_entry_names,
-    zip_text,
+    resolve_sheet, select_xlsx_table, validate, validate_xlsx_mutation_output_flags,
+    workbook_sheets, xlsx_range_export_with_options, xlsx_ranges_set_temp_path, xlsx_tables,
+    xml_attr_escape, zip_entry_names, zip_text,
 };
 
 const XLSX_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -524,116 +525,6 @@ fn field_ref_for_cache(
         axis,
         ..Default::default()
     }
-}
-
-fn xlsx_pivot_item_json(file: &str, pivot: &XlsxPivotRef) -> Value {
-    let mut object = pivot.to_json_object();
-    let pivot_selector = xlsx_pivot_selector(pivot);
-    let sheet_selector = xlsx_pivot_sheet_selector(pivot);
-    object.insert(
-        "showCommand".to_string(),
-        json!(xlsx_source_command(
-            vec!["ooxml", "--json", "xlsx", "pivots", "show", file],
-            &[("--sheet", &sheet_selector), ("--pivot", &pivot_selector)]
-        )),
-    );
-    if let Some(cache) = &pivot.cache
-        && !cache.source.sheet.is_empty()
-        && !cache.source.range.is_empty()
-    {
-        object.insert(
-            "sourceExportCommand".to_string(),
-            json!(format!(
-                "ooxml --json xlsx ranges export {} --sheet {} --range {} --include-types",
-                command_arg(file),
-                command_arg(&cache.source.sheet),
-                command_arg(&cache.source.range),
-            )),
-        );
-    }
-    Value::Object(object)
-}
-
-fn xlsx_pivot_selector(pivot: &XlsxPivotRef) -> String {
-    if !pivot.primary_selector.is_empty() {
-        pivot.primary_selector.clone()
-    } else if !pivot.name.is_empty() {
-        pivot.name.clone()
-    } else if pivot.number > 0 {
-        format!("pivot:{}", pivot.number)
-    } else {
-        "1".to_string()
-    }
-}
-
-fn xlsx_pivot_sheet_selector(pivot: &XlsxPivotRef) -> String {
-    if !pivot.sheet.is_empty() {
-        pivot.sheet.clone()
-    } else if pivot.sheet_number > 0 {
-        pivot.sheet_number.to_string()
-    } else {
-        "1".to_string()
-    }
-}
-
-fn select_xlsx_pivot(pivots: &[XlsxPivotRef], selector: &str) -> CliResult<XlsxPivotRef> {
-    if pivots.is_empty() {
-        return Err(CliError::invalid_args("workbook has no pivots"));
-    }
-    let selector = selector.trim();
-    if selector.is_empty() {
-        if pivots.len() == 1 {
-            return Ok(pivots[0].clone());
-        }
-        return Err(CliError::invalid_args(
-            "--pivot is required when workbook has multiple pivots",
-        ));
-    }
-    let matches = pivots
-        .iter()
-        .filter(|pivot| {
-            pivot
-                .selectors
-                .iter()
-                .any(|candidate| candidate == selector)
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    if matches.len() == 1 {
-        return Ok(matches[0].clone());
-    }
-    if matches.len() > 1 {
-        let selectors = matches
-            .iter()
-            .map(xlsx_pivot_selector)
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(CliError::invalid_args(format!(
-            "pivot selector {selector:?} matched multiple pivots ({selectors}); use a more specific selector"
-        )));
-    }
-    if let Ok(number) = selector.parse::<usize>() {
-        if (1..=pivots.len()).contains(&number) {
-            return Ok(pivots[number - 1].clone());
-        }
-        return Err(CliError::target_not_found(format!(
-            "pivot {number} is out of range (1-{})",
-            pivots.len()
-        )));
-    }
-    let candidates = pivots
-        .iter()
-        .map(|pivot| (pivot.primary_selector.as_str(), pivot.selectors.as_slice()))
-        .collect::<Vec<_>>();
-    let suggestions = selector_candidates(&candidates, selector, 5);
-    let hint = if suggestions.is_empty() {
-        String::new()
-    } else {
-        format!("; did you mean: {}", suggestions.join(", "))
-    };
-    Err(CliError::target_not_found(format!(
-        "pivot not found: {selector}{hint}; discover with `ooxml --json xlsx pivots list <file>`"
-    )))
 }
 
 fn resolve_pivot_source(
