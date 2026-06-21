@@ -152,6 +152,7 @@ pub(super) fn vba_extract_bin_command(file: &str, info: &VbaInfo) -> Option<Stri
 pub(super) fn vba_package_readback_command(file: &str, family: &str) -> String {
     match family {
         "pptx" => format!("ooxml --json pptx slides list {}", command_arg(file)),
+        "docx" => format!("ooxml --json docx blocks {}", command_arg(file)),
         "xlsx" => format!("ooxml --json xlsx sheets list {}", command_arg(file)),
         _ => String::new(),
     }
@@ -185,12 +186,16 @@ pub(super) fn vba_standalone_attach_template(bin_path: &str, family: &str) -> St
             "ooxml --json vba attach deck.pptx --bin {} --out deck.pptm",
             command_arg(bin_path)
         ),
+        "docx" => format!(
+            "ooxml --json vba attach document.docx --bin {} --out document.docm",
+            command_arg(bin_path)
+        ),
         "xlsx" => format!(
             "ooxml --json vba attach workbook.xlsx --bin {} --out workbook.xlsm",
             command_arg(bin_path)
         ),
         _ => format!(
-            "ooxml --json vba attach <target.pptx|target.xlsx> --bin {} --out <macro-output.pptm|macro-output.xlsm>",
+            "ooxml --json vba attach <target.pptx|target.docx|target.xlsx> --bin {} --out <macro-output.pptm|macro-output.docm|macro-output.xlsm>",
             command_arg(bin_path)
         ),
     }

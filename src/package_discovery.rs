@@ -28,9 +28,7 @@ pub(crate) fn detect_inspect_package_type(file: &str, entries: &[String]) -> Ins
         if rel.rel_type.contains("wordprocessingml.document") {
             return InspectPackageKind::Docx;
         }
-        if target_content_type.contains("wordprocessingml.document")
-            || target_uri.starts_with("/word/")
-        {
+        if is_docx_document_content_type(&target_content_type) || target_uri.starts_with("/word/") {
             return InspectPackageKind::Docx;
         }
 
@@ -47,7 +45,8 @@ pub(crate) fn detect_inspect_package_type(file: &str, entries: &[String]) -> Ins
         if content_type.contains("presentationml") {
             return InspectPackageKind::Pptx;
         }
-        if content_type.contains("wordprocessingml") {
+        if content_type.contains("wordprocessingml") || is_docx_document_content_type(&content_type)
+        {
             return InspectPackageKind::Docx;
         }
         if content_type.contains("spreadsheetml") {
@@ -141,7 +140,9 @@ fn is_docx_document_candidate(file: &str, uri: &str) -> bool {
 fn is_docx_document_content_type(content_type: &str) -> bool {
     content_type
         == "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+        || content_type == "application/vnd.ms-word.document.macroEnabled.main+xml"
         || content_type.contains("wordprocessingml.document.main+xml")
+        || content_type.contains("ms-word.document.macroEnabled.main+xml")
 }
 
 pub(crate) fn is_xlsx_worksheet_part(uri: &str, content_type: &str) -> bool {

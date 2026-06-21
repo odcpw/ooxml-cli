@@ -27,6 +27,16 @@ pub(super) const VBA_FAMILIES: &[VbaFamilySpec] = &[
         macro_extension: ".pptm",
     },
     VbaFamilySpec {
+        family: "docx",
+        package_kind: InspectPackageKind::Docx,
+        default_main_part: "/word/document.xml",
+        default_vba_part: "/word/vbaProject.bin",
+        non_macro_content_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+        macro_content_type: "application/vnd.ms-word.document.macroEnabled.main+xml",
+        non_macro_extension: ".docx",
+        macro_extension: ".docm",
+    },
+    VbaFamilySpec {
         family: "xlsx",
         package_kind: InspectPackageKind::Xlsx,
         default_main_part: "/xl/workbook.xml",

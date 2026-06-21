@@ -22,10 +22,11 @@ pub(crate) fn vba_office_check(file: &str, out_dir: Option<&str>) -> CliResult<(
     let family = match package_kind {
         InspectPackageKind::Pptx => "pptx",
         InspectPackageKind::Xlsx => "xlsx",
-        InspectPackageKind::Docx | InspectPackageKind::Unknown => {
+        InspectPackageKind::Docx => "docx",
+        InspectPackageKind::Unknown => {
             let detected = package_type(file).unwrap_or("unknown");
             return Err(CliError::unsupported_type(format!(
-                "vba office-check supports PPTM/XLSM packages only (detected: {detected})"
+                "vba office-check supports PPTM/DOCM/XLSM packages only (detected: {detected})"
             )));
         }
     };
@@ -503,8 +504,9 @@ fn conversion_format(family: &str) -> CliResult<&'static str> {
     match family {
         "pptx" => Ok("pdf"),
         "xlsx" => Ok("csv"),
+        "docx" => Ok("pdf"),
         _ => Err(CliError::unexpected(format!(
-            "office open-check supports pptx/pptm and xlsx/xlsm only (family {family:?})"
+            "office open-check supports pptx/pptm, docx/docm, and xlsx/xlsm only (family {family:?})"
         ))),
     }
 }

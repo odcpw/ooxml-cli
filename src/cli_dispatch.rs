@@ -269,7 +269,7 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [family, verb, bin_path, rest @ ..] if family == "vba" && verb == "inspect-bin" => {
             reject_unknown_flags(rest, &["--family"], &[])?;
             let family = parse_string_flag(rest, "--family")?.ok_or_else(|| {
-                CliError::invalid_args("--family is required for inspect-bin (pptx or xlsx)")
+                CliError::invalid_args("--family is required for inspect-bin (pptx, docx, or xlsx)")
             })?;
             vba_inspect_bin(bin_path, &family)
         }

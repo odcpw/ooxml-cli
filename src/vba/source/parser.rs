@@ -53,11 +53,14 @@ pub(super) fn parse_source_project_for_family(
 pub(super) fn normalize_inspect_bin_family(value: &str) -> CliResult<String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "" => Err(CliError::invalid_args(
-            "--family is required for inspect-bin (pptx or xlsx)",
+            "--family is required for inspect-bin (pptx, docx, or xlsx)",
         )),
         "pptx" | "pptm" | "powerpoint" | "presentation" => Ok("pptx".to_string()),
+        "docx" | "docm" | "word" | "document" => Ok("docx".to_string()),
         "xlsx" | "xlsm" | "excel" | "workbook" => Ok("xlsx".to_string()),
-        _ => Err(CliError::invalid_args("--family must be pptx or xlsx")),
+        _ => Err(CliError::invalid_args(
+            "--family must be pptx, docx, or xlsx",
+        )),
     }
 }
 

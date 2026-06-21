@@ -33,6 +33,7 @@ fn host_compatibility_warnings(project: &SourceProject) -> Vec<HostCompatibility
     }
     let mut excel_doc_modules = Vec::new();
     let mut powerpoint_doc_modules = Vec::new();
+    let mut word_doc_modules = Vec::new();
     for module in &project.modules {
         if !module_is_document_like(module) {
             continue;
@@ -42,6 +43,8 @@ fn host_compatibility_warnings(project: &SourceProject) -> Vec<HostCompatibility
             excel_doc_modules.push(name.to_string());
         } else if is_powerpoint_document_module_name(name) {
             powerpoint_doc_modules.push(name.to_string());
+        } else if is_word_document_module_name(name) {
+            word_doc_modules.push(name.to_string());
         }
     }
     let mut warnings = Vec::new();
@@ -52,7 +55,17 @@ fn host_compatibility_warnings(project: &SourceProject) -> Vec<HostCompatibility
                 "PowerPoint macro package contains Excel document module(s): {}. The package can be structurally valid while Office may repair or reject the VBA project; use a PowerPoint-native vbaProject.bin seed for PPTM outputs.",
                 excel_doc_modules.join(", ")
             ),
-            modules: excel_doc_modules,
+            modules: excel_doc_modules.clone(),
+        });
+    }
+    if project.family == "pptx" && !word_doc_modules.is_empty() {
+        warnings.push(HostCompatibilityWarning {
+            code: "VBA_HOST_WORD_MODULES_IN_PPTM".to_string(),
+            message: format!(
+                "PowerPoint macro package contains Word document module(s): {}. The package can be structurally valid while Office may repair or reject the VBA project; use a PowerPoint-native vbaProject.bin seed for PPTM outputs.",
+                word_doc_modules.join(", ")
+            ),
+            modules: word_doc_modules.clone(),
         });
     }
     if project.family == "xlsx" && !powerpoint_doc_modules.is_empty() {
@@ -62,7 +75,31 @@ fn host_compatibility_warnings(project: &SourceProject) -> Vec<HostCompatibility
                 "Excel macro package contains PowerPoint document-like module(s): {}. The package can be structurally valid while Office may repair or reject the VBA project; use an Excel-native vbaProject.bin seed for XLSM outputs.",
                 powerpoint_doc_modules.join(", ")
             ),
-            modules: powerpoint_doc_modules,
+            modules: powerpoint_doc_modules.clone(),
+        });
+    }
+    if project.family == "xlsx" && !word_doc_modules.is_empty() {
+        warnings.push(HostCompatibilityWarning {
+            code: "VBA_HOST_WORD_MODULES_IN_XLSM".to_string(),
+            message: format!(
+                "Excel macro package contains Word document module(s): {}. The package can be structurally valid while Office may repair or reject the VBA project; use an Excel-native vbaProject.bin seed for XLSM outputs.",
+                word_doc_modules.join(", ")
+            ),
+            modules: word_doc_modules.clone(),
+        });
+    }
+    if project.family == "docx"
+        && (!excel_doc_modules.is_empty() || !powerpoint_doc_modules.is_empty())
+    {
+        let mut modules = excel_doc_modules;
+        modules.extend(powerpoint_doc_modules);
+        warnings.push(HostCompatibilityWarning {
+            code: "VBA_HOST_NON_WORD_MODULES_IN_DOCM".to_string(),
+            message: format!(
+                "Word macro package contains non-Word document module(s): {}. The package can be structurally valid while Office may repair or reject the VBA project; use a Word-native vbaProject.bin seed for DOCM outputs.",
+                modules.join(", ")
+            ),
+            modules,
         });
     }
     warnings
@@ -89,6 +126,10 @@ fn is_powerpoint_document_module_name(name: &str) -> bool {
         || normalized
             .strip_prefix("slide")
             .is_some_and(all_ascii_digits)
+}
+
+fn is_word_document_module_name(name: &str) -> bool {
+    name.trim().eq_ignore_ascii_case("ThisDocument")
 }
 
 fn all_ascii_digits(text: &str) -> bool {

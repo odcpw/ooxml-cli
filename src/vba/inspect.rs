@@ -59,7 +59,7 @@ fn detect_vba_family(file: &str, entries: &[String]) -> CliResult<&'static VbaFa
         .ok_or_else(|| {
             let detected = crate::package_type(file).unwrap_or("unknown");
             CliError::unsupported_type(format!(
-                "VBA package operations support PPTX/PPTM and XLSX/XLSM only (detected: {detected})"
+                "VBA package operations support PPTX/PPTM, DOCX/DOCM, and XLSX/XLSM (detected: {detected})"
             ))
         })
 }
