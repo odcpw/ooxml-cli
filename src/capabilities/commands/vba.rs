@@ -133,10 +133,12 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml vba add-module",
             "add-module <file>",
-            "Add one .bas/.cls source module to a parseable macro package VBA project.",
+            "Experimental source-stream rewrite for non-Office-shaped VBA projects; Office-authored projects are guarded.",
             &["package", "module"],
             false,
-            Some("direct CLI source-module mutation; serve/MCP op dispatch is not wired"),
+            Some(
+                "not a first-class macro authoring path; use vba create or vba attach for Office-loadable macro packages",
+            ),
             vec![
                 flag(
                     "--allow-experimental-vba-source-rewrite",
@@ -188,10 +190,12 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml vba replace-module",
             "replace-module <file>",
-            "Replace one existing VBA source module stream with a .bas/.cls source file.",
+            "Experimental source-stream rewrite for non-Office-shaped VBA projects; Office-authored projects are guarded.",
             &["package", "module"],
             false,
-            Some("direct CLI source-module mutation; serve/MCP op dispatch is not wired"),
+            Some(
+                "not a first-class macro authoring path; use vba create or vba attach for Office-loadable macro packages",
+            ),
             vec![
                 flag(
                     "--allow-experimental-vba-source-rewrite",
@@ -242,10 +246,12 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml vba remove-module",
             "remove-module <file>",
-            "Remove one existing VBA source module from a parseable macro package VBA project.",
+            "Experimental source-stream rewrite for non-Office-shaped VBA projects; Office-authored projects are guarded.",
             &["package", "module"],
             false,
-            Some("direct CLI source-module mutation; serve/MCP op dispatch is not wired"),
+            Some(
+                "not a first-class macro authoring path; use vba create, vba attach, or vba remove for Office-loadable macro packages",
+            ),
             vec![
                 flag(
                     "--allow-experimental-vba-source-rewrite",

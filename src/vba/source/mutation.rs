@@ -108,6 +108,11 @@ pub(super) fn replace_module_source_in_project_data(
         &cfb_file,
         options.allow_experimental_source_rewrite,
     )?;
+    if has_version_dependent_project_metadata(&cfb_file) {
+        return Err(CliError::unexpected(
+            "refusing to replace VBA module because this Office-shaped project has version-dependent _VBA_PROJECT metadata and source-stream rewrites are not Office-load safe; create a new Office-authored macro package with vba create, or attach an Office-authored vbaProject.bin seed",
+        ));
+    }
     let dir_compressed = cfb_file
         .stream(DIR_STREAM_PATH)
         .map_err(CliError::unexpected)?;

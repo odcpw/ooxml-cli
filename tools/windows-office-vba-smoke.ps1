@@ -137,6 +137,30 @@ function Stop-NewOfficeProcesses {
     }
 }
 
+function Stop-ProcessTree {
+    param([int]$ProcessId)
+
+    foreach ($child in @(Get-CimInstance Win32_Process -Filter ("ParentProcessId = {0}" -f $ProcessId) -ErrorAction SilentlyContinue)) {
+        Stop-ProcessTree -ProcessId ([int]$child.ProcessId)
+    }
+    try {
+        Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    catch {}
+}
+
+function Read-TextFileBestEffort {
+    param([string]$Path)
+
+    try {
+        if (Test-Path -LiteralPath $Path -PathType Leaf) {
+            return (Get-Content -LiteralPath $Path -Raw)
+        }
+    }
+    catch {}
+    return ""
+}
+
 function Invoke-OfficeBackedProcess {
     param(
         [string]$FilePath,
@@ -167,13 +191,12 @@ function Invoke-OfficeBackedProcess {
     $finished = $process.WaitForExit($TimeoutSeconds * 1000)
     $timer.Stop()
 
-    $stdout = if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) { Get-Content -LiteralPath $stdoutPath -Raw } else { "" }
-    $stderr = if (Test-Path -LiteralPath $stderrPath -PathType Leaf) { Get-Content -LiteralPath $stderrPath -Raw } else { "" }
-    $output = (($stdout, $stderr | Where-Object { $null -ne $_ -and [string]$_ -ne "" }) -join [Environment]::NewLine).Trim()
-
     if (-not $finished) {
-        try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
+        Stop-ProcessTree -ProcessId $process.Id
         Stop-NewOfficeProcesses -Names $officeProcessNames -ExistingIds $officeProcessIdsBefore -StartedAt $startedAt
+        $stdout = Read-TextFileBestEffort -Path $stdoutPath
+        $stderr = Read-TextFileBestEffort -Path $stderrPath
+        $output = (($stdout, $stderr | Where-Object { $null -ne $_ -and [string]$_ -ne "" }) -join [Environment]::NewLine).Trim()
         return [pscustomobject]@{
             exitCode  = 124
             output    = ("Office-backed process exceeded {0} second(s). {1}" -f $TimeoutSeconds, $output).Trim()
@@ -182,8 +205,24 @@ function Invoke-OfficeBackedProcess {
         }
     }
 
+    try {
+        $process.WaitForExit()
+        $process.Refresh()
+    }
+    catch {}
+    $exitCode = $process.ExitCode
+    if ($null -eq $exitCode) {
+        $exitCode = 0
+    }
+    if ($exitCode -ne 0) {
+        Stop-NewOfficeProcesses -Names $officeProcessNames -ExistingIds $officeProcessIdsBefore -StartedAt $startedAt
+    }
+    $stdout = Read-TextFileBestEffort -Path $stdoutPath
+    $stderr = Read-TextFileBestEffort -Path $stderrPath
+    $output = (($stdout, $stderr | Where-Object { $null -ne $_ -and [string]$_ -ne "" }) -join [Environment]::NewLine).Trim()
+
     [pscustomobject]@{
-        exitCode  = $process.ExitCode
+        exitCode  = $exitCode
         output    = $output
         elapsedMs = $timer.ElapsedMilliseconds
         command   = (Format-CommandLine -FilePath $FilePath -Arguments $Arguments)
@@ -347,7 +386,20 @@ function New-ProofTierFromStage {
     [pscustomobject][ordered]@{
         status = $status
         detail = $detail
-        evidence = @($evidence)
+        evidence = @($evidence.ToArray())
+    }
+}
+
+function New-WaivedProofTier {
+    param(
+        [string]$Detail,
+        [string[]]$Evidence = @()
+    )
+
+    [pscustomobject][ordered]@{
+        status = "waived"
+        detail = $Detail
+        evidence = @($Evidence | Where-Object { $null -ne $_ -and [string]$_ -ne "" })
     }
 }
 
@@ -355,33 +407,64 @@ function New-VbaProofEvidence {
     param([string]$SummaryPath)
 
     $proofs = New-Object System.Collections.Generic.List[object]
-    foreach ($scenario in @($script:Scenarios)) {
+    $scenarios = if ($script:Scenarios -is [System.Array]) {
+        $script:Scenarios
+    }
+    elseif ($null -ne $script:Scenarios -and ($script:Scenarios.PSObject.Methods.Name -contains "ToArray")) {
+        $script:Scenarios.ToArray()
+    }
+    else {
+        @($script:Scenarios)
+    }
+    foreach ($scenario in $scenarios) {
         if (-not ($scenario.PSObject.Properties.Name -contains "commandPath")) { continue }
         $commandPath = [string]$scenario.commandPath
         $file = [string]$scenario.file
-        if ($commandPath -eq "" -or $file -eq "" -or -not (Test-Path -LiteralPath $file -PathType Leaf)) {
+        if ($commandPath -eq "") {
             continue
         }
 
-        $baseEvidence = @("windows-office-vba-smoke summary: $SummaryPath", "scenario: $($scenario.name)", "output: $file")
-        $tiers = [ordered]@{}
-        $tiers.structural = New-ProofTierFromStage `
-            -Stage $scenario.openXmlSdk `
-            -PassedDetail "Microsoft Open XML SDK schema validation passed for the macro smoke output." `
-            -FallbackDetail "Microsoft Open XML SDK schema validation did not pass for the macro smoke output." `
-            -ExtraEvidence $baseEvidence
-        $tiers.validate = New-ProofTierFromStage `
-            -Stage $scenario.strict `
-            -PassedDetail "ooxml validate --strict accepted the macro smoke output." `
-            -FallbackDetail "ooxml validate --strict did not accept the macro smoke output." `
-            -ExtraEvidence $baseEvidence
-        $tiers.office = New-ProofTierFromStage `
-            -Stage $scenario.microsoftOffice `
-            -PassedDetail "Desktop Microsoft Office opened the macro smoke output without repair/failure." `
-            -FallbackDetail "Desktop Microsoft Office did not open the macro smoke output cleanly." `
-            -ExtraEvidence $baseEvidence
+        $guard = if ($scenario.PSObject.Properties.Name -contains "guard") { $scenario.guard } else { $null }
+        $guardPassed = $null -ne $guard -and [string]$guard.status -eq "passed"
+        $fileExists = $file -ne "" -and (Test-Path -LiteralPath $file -PathType Leaf)
+        if (-not $fileExists -and -not $guardPassed) {
+            continue
+        }
 
-        foreach ($tierName in @("structural", "validate", "office")) {
+        $baseEvidence = @("windows-office-vba-smoke summary: $SummaryPath", "scenario: $($scenario.name)")
+        if ($file -ne "") {
+            $baseEvidence += "blocked output: $file"
+        }
+        $tiers = [ordered]@{}
+        if ($guardPassed) {
+            $guardEvidence = @($baseEvidence + @($guard.command, $guard.detail))
+            $waivedDetail = "Command refused to write an Office-shaped macro source rewrite before producing an artifact."
+            $tiers.structural = New-WaivedProofTier -Detail $waivedDetail -Evidence $guardEvidence
+            $tiers.readback = New-WaivedProofTier -Detail $waivedDetail -Evidence $guardEvidence
+            $tiers.validate = New-WaivedProofTier -Detail $waivedDetail -Evidence $guardEvidence
+            $tiers.conformance = New-WaivedProofTier -Detail $waivedDetail -Evidence $guardEvidence
+            $tiers.office = New-WaivedProofTier -Detail $waivedDetail -Evidence $guardEvidence
+        }
+        else {
+            $baseEvidence += "output: $file"
+            $tiers.structural = New-ProofTierFromStage `
+                -Stage $scenario.openXmlSdk `
+                -PassedDetail "Microsoft Open XML SDK schema validation passed for the macro smoke output." `
+                -FallbackDetail "Microsoft Open XML SDK schema validation did not pass for the macro smoke output." `
+                -ExtraEvidence $baseEvidence
+            $tiers.validate = New-ProofTierFromStage `
+                -Stage $scenario.strict `
+                -PassedDetail "ooxml validate --strict accepted the macro smoke output." `
+                -FallbackDetail "ooxml validate --strict did not accept the macro smoke output." `
+                -ExtraEvidence $baseEvidence
+            $tiers.office = New-ProofTierFromStage `
+                -Stage $scenario.microsoftOffice `
+                -PassedDetail "Desktop Microsoft Office opened the macro smoke output without repair/failure." `
+                -FallbackDetail "Desktop Microsoft Office did not open the macro smoke output cleanly." `
+                -ExtraEvidence $baseEvidence
+        }
+
+        foreach ($tierName in @("structural", "readback", "validate", "conformance", "office")) {
             if ($null -eq $tiers[$tierName]) {
                 $tiers.Remove($tierName)
             }
@@ -390,7 +473,7 @@ function New-VbaProofEvidence {
         [void]$proofs.Add([pscustomobject][ordered]@{
             commandPath = $commandPath
             inputFixtureType = [string]$scenario.inputFixtureType
-            generatedOutputPath = $file
+            generatedOutputPath = if ($fileExists) { $file } else { "" }
             exactCommand = [string]$scenario.exactCommand
             sourceSummary = $SummaryPath
             scenarioName = [string]$scenario.name
@@ -400,7 +483,7 @@ function New-VbaProofEvidence {
 
     [pscustomobject][ordered]@{
         schemaVersion = "ooxml-cli.vba-smoke-evidence.v1"
-        proofs = @($proofs)
+        proofs = @($proofs.ToArray())
     }
 }
 
@@ -591,8 +674,7 @@ foreach ($item in $families) {
     if ($null -eq $standard -or $null -eq $classModule) {
         throw ("{0} seed did not expose SeedModule and SeedClass through vba list." -f $item.macroFamily)
     }
-    $replaceResult = Invoke-Checked -FilePath $BinaryPath -Arguments @("--format", "json", "vba", "replace-module", $item.seed, "--module", $standard.primarySelector, "--source", $replacementSource, "--expect-sha256", $standard.sha256, "--allow-experimental-vba-source-rewrite", "--out", $item.replaced) -Label ("vba:{0}:replace-module" -f $item.macroFamily)
-    Add-FileScenario -Name ("vba-{0}-replace-existing-bas" -f $item.macroFamily) -Family $item.family -Path $item.replaced -CommandPath "ooxml vba replace-module" -ExactCommand $replaceResult.command -InputFixtureType "office-created macro package"
+    Add-GuardScenario -Name ("vba-{0}-replace-module-guard" -f $item.macroFamily) -Family $item.family -Arguments @("--format", "json", "vba", "replace-module", $item.seed, "--module", $standard.primarySelector, "--source", $replacementSource, "--expect-sha256", $standard.sha256, "--allow-experimental-vba-source-rewrite", "--out", $item.replaced) -OutputPath $item.replaced -CommandPath "ooxml vba replace-module"
 
     Add-GuardScenario -Name ("vba-{0}-add-module-guard" -f $item.macroFamily) -Family $item.family -Arguments @("--format", "json", "vba", "add-module", $item.seed, "--source", $agentSource, "--allow-experimental-vba-source-rewrite", "--out", $item.addBlocked) -OutputPath $item.addBlocked -CommandPath "ooxml vba add-module"
     Add-GuardScenario -Name ("vba-{0}-remove-module-guard" -f $item.macroFamily) -Family $item.family -Arguments @("--format", "json", "vba", "remove-module", $item.seed, "--module", $classModule.primarySelector, "--expect-sha256", $classModule.sha256, "--allow-experimental-vba-source-rewrite", "--out", $item.removeBlocked) -OutputPath $item.removeBlocked -CommandPath "ooxml vba remove-module"
@@ -611,11 +693,29 @@ if ($SkipOffice) {
 elseif ($script:OfficeInputs.Count -gt 0) {
     $oracle = Join-Path $root "tools\windows-office-oracle.ps1"
     Write-Host ("[office-oracle] {0} file(s)" -f $script:OfficeInputs.Count)
+    $oracleInputList = Join-Path $oracleDir "inputs.json"
+    @($script:OfficeInputs) | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $oracleInputList -Encoding UTF8
+    $oracleArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $oracle,
+        "-RepoRoot",
+        $root,
+        "-InputListJson",
+        $oracleInputList,
+        "-OutputDir",
+        $oracleDir,
+        "-TimeoutSeconds",
+        [string]$OfficeOracleTimeoutSeconds
+    )
     if ($Visible) {
-        & $oracle -RepoRoot $root -InputFile @($script:OfficeInputs) -OutputDir $oracleDir -TimeoutSeconds $OfficeOracleTimeoutSeconds -Visible
+        $oracleArgs += "-Visible"
     }
-    else {
-        & $oracle -RepoRoot $root -InputFile @($script:OfficeInputs) -OutputDir $oracleDir -TimeoutSeconds $OfficeOracleTimeoutSeconds
+    $oracleResult = Invoke-Process -FilePath "powershell.exe" -Arguments $oracleArgs
+    if ($oracleResult.exitCode -ne 0) {
+        Write-Warning ("Office oracle exited with code {0}. {1}" -f $oracleResult.exitCode, $oracleResult.output)
     }
     $officeResults = @()
     if (Test-Path -LiteralPath $oracleSummaryPath -PathType Leaf) {

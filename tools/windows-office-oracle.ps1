@@ -3,6 +3,8 @@ param(
     [Alias("File", "Path")]
     [string[]]$InputFile = @(),
 
+    [string]$InputListJson = "",
+
     [string]$RepoRoot = (Get-Location).Path,
 
     [string]$OutputDir = "office-oracle-proof",
@@ -171,6 +173,18 @@ function Stop-NewOfficeProcesses {
     }
 }
 
+function Stop-ProcessTree {
+    param([int]$ProcessId)
+
+    foreach ($child in @(Get-CimInstance Win32_Process -Filter ("ParentProcessId = {0}" -f $ProcessId) -ErrorAction SilentlyContinue)) {
+        Stop-ProcessTree -ProcessId ([int]$child.ProcessId)
+    }
+    try {
+        Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    catch {}
+}
+
 function Invoke-OfficeOpenWithTimeout {
     param(
         [Parameter(Mandatory = $true)]
@@ -237,13 +251,15 @@ function Invoke-OfficeOpenWithTimeout {
     $timer.Stop()
 
     if (-not $finished) {
-        try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
+        Stop-ProcessTree -ProcessId $process.Id
         Stop-NewOfficeProcesses -Names $officeProcessNames -ExistingIds $officeProcessIdsBefore -StartedAt $startedAt
         return (New-OracleResult -Path $Path -Family $family -Application $application -Status "timeout" -ElapsedMs $timer.ElapsedMilliseconds -ErrorType "Timeout" -ErrorMessage ("Office COM open exceeded {0} second(s)." -f $TimeoutSeconds))
     }
 
     if (Test-Path -LiteralPath $childJson -PathType Leaf) {
-        return (Get-Content -LiteralPath $childJson -Raw | ConvertFrom-Json)
+        $result = Get-Content -LiteralPath $childJson -Raw | ConvertFrom-Json
+        Stop-NewOfficeProcesses -Names $officeProcessNames -ExistingIds $officeProcessIdsBefore -StartedAt $startedAt
+        return $result
     }
 
     $stderr = ""
@@ -254,12 +270,21 @@ function Invoke-OfficeOpenWithTimeout {
     if (Test-Path -LiteralPath $childStdout -PathType Leaf) {
         $stdout = (Get-Content -LiteralPath $childStdout -Raw).Trim()
     }
+    try {
+        $process.WaitForExit()
+        $process.Refresh()
+    }
+    catch {}
+    $exitCode = $process.ExitCode
+    if ($null -eq $exitCode) {
+        $exitCode = "unknown"
+    }
     $message = $stderr
     if ($message -eq "") {
         $message = $stdout
     }
     if ($message -eq "") {
-        $message = ("Office oracle child exited with code {0} without writing a result." -f $process.ExitCode)
+        $message = ("Office oracle child exited with code {0} without writing a result." -f $exitCode)
     }
     Stop-NewOfficeProcesses -Names $officeProcessNames -ExistingIds $officeProcessIdsBefore -StartedAt $startedAt
     return (New-OracleResult -Path $Path -Family $family -Application $application -Status "failed" -ElapsedMs $timer.ElapsedMilliseconds -ErrorType "ChildProcessFailed" -ErrorMessage $message)
@@ -415,12 +440,32 @@ $root = (Resolve-Path -LiteralPath $RepoRoot).Path
 $output = Resolve-OraclePath -Path $OutputDir -Root $root
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 
-if ($InputFile.Count -eq 0) {
+$oracleInputs = New-Object System.Collections.Generic.List[string]
+foreach ($input in @($InputFile)) {
+    if ($null -ne $input -and [string]$input -ne "") {
+        [void]$oracleInputs.Add([string]$input)
+    }
+}
+if ($InputListJson -ne "") {
+    $manifestPath = Resolve-OraclePath -Path $InputListJson -Root $root
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw "Input list JSON was not found: $manifestPath"
+    }
+    $manifestInputs = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $manifestInputItems = if ($manifestInputs -is [System.Array]) { $manifestInputs } else { @($manifestInputs) }
+    foreach ($input in $manifestInputItems) {
+        if ($null -ne $input -and [string]$input -ne "") {
+            [void]$oracleInputs.Add([string]$input)
+        }
+    }
+}
+
+if ($oracleInputs.Count -eq 0) {
     throw "Provide one or more files with -InputFile."
 }
 
 if ($ChildOpenOnly) {
-    $path = Resolve-OraclePath -Path $InputFile[0] -Root $root
+    $path = Resolve-OraclePath -Path $oracleInputs[0] -Root $root
     $result = $null
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         $result = New-OracleResult -Path $path -Family "unknown" -Application "none" -Status "failed" -ErrorType "FileNotFound" -ErrorMessage "File does not exist."
@@ -443,7 +488,7 @@ if ($ChildOpenOnly) {
 $results = New-Object System.Collections.Generic.List[object]
 $inputIndex = 0
 
-foreach ($input in $InputFile) {
+foreach ($input in $oracleInputs) {
     $path = Resolve-OraclePath -Path $input -Root $root
 
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {

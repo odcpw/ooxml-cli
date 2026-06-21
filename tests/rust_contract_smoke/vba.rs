@@ -719,6 +719,88 @@ fn vba_source_module_mutations_match_go_oracle() {
 }
 
 #[test]
+fn vba_replace_module_refuses_office_shaped_project_metadata() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-vba-replace-office-shaped-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let bin_path = temp_dir.join("office-shaped-vbaProject.bin");
+    fs::write(
+        &bin_path,
+        synthetic_vba_project_bin_with_vba_project_stream(vec![0xCC; 32]),
+    )
+    .expect("write synthetic Office-shaped vbaProject.bin");
+    let input_path = temp_dir.join("input.xlsx");
+    let xlsm_path = temp_dir.join("macro-enabled.xlsm");
+    let replacement_path = temp_dir.join("Module1.bas");
+    let output_path = temp_dir.join("should-not-exist.xlsm");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input_path).expect("input");
+    fs::write(
+        &replacement_path,
+        "Attribute VB_Name = \"Module1\"\r\nPublic Sub Replaced()\r\nEnd Sub\r\n",
+    )
+    .expect("replacement source");
+
+    let bin = bin_path.to_string_lossy().to_string();
+    let input = input_path.to_string_lossy().to_string();
+    let xlsm = xlsm_path.to_string_lossy().to_string();
+    let replacement = replacement_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+
+    let (code, _stdout, stderr) = run_ooxml(&[
+        "--json", "vba", "attach", &input, "--bin", &bin, "--out", &xlsm,
+    ]);
+    assert_eq!(code, 0, "attach synthetic Office-shaped project");
+    assert_eq!(stderr, None, "attach stderr");
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &xlsm]);
+    assert_eq!(code, 0, "list exit");
+    assert_eq!(stderr, None, "list stderr");
+    let module_hash = module_sha256(&stdout.expect("list stdout"), "Module1");
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "replace-module",
+        &xlsm,
+        "--module",
+        "module:Module1",
+        "--source",
+        &replacement,
+        "--expect-sha256",
+        &module_hash,
+        "--allow-experimental-vba-source-rewrite",
+        "--out",
+        &output,
+    ]);
+    assert_ne!(
+        code, 0,
+        "replace-module should refuse Office-shaped project"
+    );
+    assert_eq!(stdout, None, "refusal should not write JSON stdout");
+    let stderr = stderr.expect("replace-module stderr");
+    assert!(
+        stderr
+            .to_string()
+            .contains("version-dependent _VBA_PROJECT metadata"),
+        "unexpected stderr: {stderr}"
+    );
+    assert!(
+        !output_path.exists(),
+        "guarded replace-module must not write an output package"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn vba_opaque_attach_extract_remove_matches_go_oracle() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-vba-opaque-{}", std::process::id()));
@@ -1027,6 +1109,10 @@ struct SyntheticCfbEntry {
 }
 
 fn synthetic_vba_project_bin() -> Vec<u8> {
+    synthetic_vba_project_bin_with_vba_project_stream(vec![0xCC, 0x61])
+}
+
+fn synthetic_vba_project_bin_with_vba_project_stream(vba_project_stream: Vec<u8>) -> Vec<u8> {
     let modules = vec![
         SyntheticVbaModule {
             name: "Module1",
@@ -1046,7 +1132,7 @@ fn synthetic_vba_project_bin() -> Vec<u8> {
         "VBA/dir".to_string(),
         compressed_vba_literals(&synthetic_dir_stream(&modules)),
     );
-    streams.insert("VBA/_VBA_PROJECT".to_string(), vec![0xCC, 0x61]);
+    streams.insert("VBA/_VBA_PROJECT".to_string(), vba_project_stream);
     for module in modules {
         streams.insert(
             format!("VBA/{}", module.stream_name),
