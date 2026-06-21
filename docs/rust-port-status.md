@@ -37,6 +37,11 @@ Latest milestone, 2026-06-20:
   styling while updating formulas and caches. Proof: focused XLSX chart
   preservation test, `xlsx_charts` and `pptx_charts` Rust contract shards,
   strict validation, and Rust `conformance check` on the generated workbook.
+- PPTX `clone-slide` now clones notes-bearing slides like the Go oracle:
+  notesSlide parts, notes relationships, and the notes-to-slide back-link are
+  copied and retargeted to the cloned slide. Proof: focused clone-notes,
+  lifecycle, layout authoring, and import/merge PPTX tests, strict validation,
+  Rust `conformance check`, and worker-side Open XML SDK validation.
 - Rust agent-facing composition and proof ergonomics moved forward after
   command-path parity: `find --to-ops`, `find --replace --to-ops`, and
   `find --replace --apply` now emit/apply structured XLSX/DOCX/PPTX ops;

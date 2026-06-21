@@ -2,6 +2,11 @@
 // baseline and process helpers remain in the parent integration test crate.
 use super::*;
 
+const PPTX_NOTES_REL_TYPE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
+const PPTX_SLIDE_REL_TYPE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide";
+
 fn assert_export_dirs_match(go_dir: &std::path::Path, rust_dir: &std::path::Path) {
     let go_files = sorted_export_files(go_dir);
     let rust_files = sorted_export_files(rust_dir);
@@ -33,6 +38,41 @@ fn sorted_export_files(root: &std::path::Path) -> Vec<String> {
     collect_export_files(root, root, &mut files);
     files.sort();
     files
+}
+
+fn rels_part_for_uri(uri: &str) -> String {
+    let part = uri.trim_start_matches('/');
+    let (dir, name) = part
+        .rsplit_once('/')
+        .unwrap_or_else(|| panic!("relationship source should be a package part: {uri}"));
+    format!("{dir}/_rels/{name}.rels")
+}
+
+fn relationship_target_between_parts(source_uri: &str, target_uri: &str) -> String {
+    let source = source_uri.trim_start_matches('/');
+    let target = target_uri.trim_start_matches('/');
+    let source_dirs: Vec<&str> = source
+        .rsplit_once('/')
+        .map(|(dir, _)| dir.split('/').filter(|part| !part.is_empty()).collect())
+        .unwrap_or_default();
+    let target_parts: Vec<&str> = target.split('/').filter(|part| !part.is_empty()).collect();
+    let common = source_dirs
+        .iter()
+        .zip(target_parts.iter())
+        .take_while(|(left, right)| left == right)
+        .count();
+    let mut parts = Vec::new();
+    for _ in common..source_dirs.len() {
+        parts.push("..".to_string());
+    }
+    for part in target_parts.iter().skip(common) {
+        parts.push((*part).to_string());
+    }
+    if parts.is_empty() {
+        target.rsplit('/').next().unwrap_or(target).to_string()
+    } else {
+        parts.join("/")
+    }
 }
 
 fn scrub_created_at(value: Value) -> Value {
@@ -5784,6 +5824,94 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
     );
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
+}
+
+#[test]
+fn pptx_clone_slide_clones_notes_part_and_backlink_like_go() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-clone-notes-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("pptx clone notes temp dir");
+
+    let fixture = "testdata/pptx/slide-assembly-notes-media/presentation.pptx";
+    let go_out = temp_dir.join("go-clone-notes.pptx");
+    let rust_out = temp_dir.join("rust-clone-notes.pptx");
+    let go_out_str = go_out.to_str().expect("go clone notes path");
+    let rust_out_str = rust_out.to_str().expect("rust clone notes path");
+    let go_args = [
+        "--json",
+        "pptx",
+        "clone-slide",
+        fixture,
+        "--slide",
+        "1",
+        "--out",
+        go_out_str,
+    ];
+    let rust_args = [
+        "--json",
+        "pptx",
+        "clone-slide",
+        fixture,
+        "--slide",
+        "1",
+        "--out",
+        rust_out_str,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "clone notes exit");
+    assert_eq!(rust_stderr, go_stderr, "clone notes stderr");
+    let rust_json = rust_stdout.expect("rust clone notes stdout");
+    assert_eq!(
+        scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
+        scrub_path(
+            go_stdout.expect("go clone notes stdout"),
+            go_out_str,
+            "[OUT]"
+        ),
+        "clone notes stdout"
+    );
+
+    let new_slide_uri = rust_json["newSlideUri"].as_str().expect("new slide URI");
+    let notes_uri = rust_json["notesUri"].as_str().expect("cloned notes URI");
+    assert_eq!(
+        rust_json["destination"]["notesPartUri"],
+        Value::String(notes_uri.to_string()),
+        "destination readback should report cloned notes"
+    );
+    assert_eq!(rust_json["destination"]["notes"], true);
+
+    let slide_rels = read_zip_string(&rust_out, &rels_part_for_uri(new_slide_uri));
+    assert!(
+        slide_rels.contains(PPTX_NOTES_REL_TYPE),
+        "cloned slide notes rel"
+    );
+    assert!(
+        slide_rels.contains(&relationship_target_between_parts(new_slide_uri, notes_uri)),
+        "cloned slide should point at cloned notes part: {slide_rels}"
+    );
+    assert!(
+        zip_entry_exists(&rust_out, notes_uri.trim_start_matches('/')),
+        "cloned notes part should exist"
+    );
+    let notes_rels = read_zip_string(&rust_out, &rels_part_for_uri(notes_uri));
+    assert!(
+        notes_rels.contains(PPTX_SLIDE_REL_TYPE),
+        "cloned notes backlink rel"
+    );
+    assert!(
+        notes_rels.contains(&relationship_target_between_parts(notes_uri, new_slide_uri)),
+        "cloned notes should link back to cloned slide: {notes_rels}"
+    );
+
+    assert_strict_validate_succeeds(rust_out_str, "clone notes output");
+    assert_conformance_check_runs(rust_out_str, "clone notes output");
 }
 
 #[test]

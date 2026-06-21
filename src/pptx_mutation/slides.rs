@@ -26,6 +26,8 @@ const IMAGE_REL_TYPE: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 const SLIDE_CONTENT_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.presentationml.slide+xml";
+const NOTES_CONTENT_TYPE: &str =
+    "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml";
 
 #[derive(Clone)]
 struct PptxSlideMutationOptions {
@@ -78,6 +80,14 @@ struct CloneSlideMutation {
     new_slide_number: i64,
     new_slide_id: u32,
     new_slide_uri: String,
+    notes_uri: String,
+}
+
+struct CloneNotesForSlideContext<'a> {
+    file: &'a str,
+    allocated_entries: &'a mut Vec<String>,
+    content_types: &'a mut String,
+    overrides: &'a mut BTreeMap<String, String>,
 }
 
 struct NewSlideFromLayoutMutation {
@@ -451,17 +461,44 @@ fn build_clone_slide_mutation(
     }
 
     let entries = zip_entry_names(file)?;
+    let mut allocated_entries = entries.clone();
     let new_slide_part = allocate_numbered_part_name(&entries, "ppt/slides/slide", ".xml");
+    allocated_entries.push(new_slide_part.clone());
     let new_slide_uri = package_uri(&new_slide_part);
     let source_ref = &refs[slide as usize - 1];
     let slide_xml = zip_text(file, &source_ref.part)?;
     let source_rels_part = relationships_part_for(&source_ref.part);
     let source_rels_xml = zip_text(file, &source_rels_part).unwrap_or_else(|_| relationships_xml());
     let source_rels = relationship_entries_from_xml(&source_rels_xml);
-    let cloned_rels = source_rels
-        .into_iter()
-        .filter(|rel| rel.rel_type != NOTES_REL_TYPE)
-        .collect::<Vec<_>>();
+    let mut content_types = ensure_content_type_override(
+        zip_text(file, "[Content_Types].xml")?,
+        &new_slide_part,
+        SLIDE_CONTENT_TYPE,
+    );
+    let mut overrides = BTreeMap::new();
+    let mut cloned_rels = Vec::new();
+    let mut cloned_notes_uri = String::new();
+    for rel in source_rels {
+        if rel.rel_type == NOTES_REL_TYPE {
+            let mut notes_ctx = CloneNotesForSlideContext {
+                file,
+                allocated_entries: &mut allocated_entries,
+                content_types: &mut content_types,
+                overrides: &mut overrides,
+            };
+            let (notes_uri, notes_rel) = clone_notes_for_cloned_slide(
+                &mut notes_ctx,
+                &source_ref.part,
+                &new_slide_part,
+                &rel,
+                &cloned_rels,
+            )?;
+            cloned_notes_uri = notes_uri;
+            cloned_rels.push(notes_rel);
+            continue;
+        }
+        cloned_rels.push(rel);
+    }
     let new_slide_rels = render_relationships_xml(&cloned_rels);
 
     let new_slide_id = next_presentation_slide_id(&presentation_xml);
@@ -483,13 +520,6 @@ fn build_clone_slide_mutation(
         insert_after as usize,
         &new_fragment,
     )?;
-    let content_types = ensure_content_type_override(
-        zip_text(file, "[Content_Types].xml")?,
-        &new_slide_part,
-        SLIDE_CONTENT_TYPE,
-    );
-
-    let mut overrides = BTreeMap::new();
     overrides.insert(new_slide_part.clone(), slide_xml);
     overrides.insert(relationships_part_for(&new_slide_part), new_slide_rels);
     overrides.insert("ppt/presentation.xml".to_string(), updated_presentation);
@@ -512,6 +542,7 @@ fn build_clone_slide_mutation(
         new_slide_number: insert_after + 1,
         new_slide_id,
         new_slide_uri,
+        notes_uri: cloned_notes_uri,
     })
 }
 
@@ -917,6 +948,70 @@ fn related_part_by_type(source_part: &str, rels_xml: &str, rel_type: &str) -> Op
         })
 }
 
+fn clone_notes_for_cloned_slide(
+    ctx: &mut CloneNotesForSlideContext<'_>,
+    source_slide_part: &str,
+    new_slide_part: &str,
+    source_notes_rel: &RelationshipEntry,
+    destination_rels: &[RelationshipEntry],
+) -> CliResult<(String, RelationshipEntry)> {
+    let source_slide_uri = package_uri(source_slide_part);
+    let source_notes_uri = resolve_relationship_target(&source_slide_uri, &source_notes_rel.target);
+    let source_notes_part = package_part_name(&source_notes_uri);
+    let notes_xml = zip_text(ctx.file, &source_notes_part)?;
+    let new_notes_part =
+        allocate_numbered_part_name(ctx.allocated_entries, "ppt/notesSlides/notesSlide", ".xml");
+    ctx.allocated_entries.push(new_notes_part.clone());
+    let new_notes_uri = package_uri(&new_notes_part);
+
+    ctx.overrides.insert(new_notes_part.clone(), notes_xml);
+    *ctx.content_types = ensure_content_type_override(
+        ctx.content_types.clone(),
+        &new_notes_part,
+        NOTES_CONTENT_TYPE,
+    );
+
+    let source_notes_rels_part = relationships_part_for(&source_notes_part);
+    if let Ok(source_notes_rels_xml) = zip_text(ctx.file, &source_notes_rels_part) {
+        let new_slide_uri = package_uri(new_slide_part);
+        let mut new_notes_rels = Vec::new();
+        for rel in relationship_entries_from_xml(&source_notes_rels_xml) {
+            if rel.target_mode == "External" {
+                new_notes_rels.push(rel);
+                continue;
+            }
+            let target_uri = if rel.rel_type == SLIDE_REL_TYPE {
+                new_slide_uri.clone()
+            } else {
+                resolve_relationship_target(&source_notes_uri, &rel.target)
+            };
+            new_notes_rels.push(RelationshipEntry {
+                id: rel.id,
+                rel_type: rel.rel_type,
+                target: relationship_target_from_source_to_target(&new_notes_uri, &target_uri),
+                target_mode: String::new(),
+            });
+        }
+        ctx.overrides.insert(
+            relationships_part_for(&new_notes_part),
+            render_relationships_xml(&new_notes_rels),
+        );
+    }
+
+    Ok((
+        new_notes_uri.clone(),
+        RelationshipEntry {
+            id: allocate_relationship_id(destination_rels),
+            rel_type: NOTES_REL_TYPE.to_string(),
+            target: relationship_target_from_source_to_target(
+                &package_uri(new_slide_part),
+                &new_notes_uri,
+            ),
+            target_mode: String::new(),
+        },
+    ))
+}
+
 fn stage_slide_mutation(
     file: &str,
     mutation: &PptxPackageMutation,
@@ -1104,6 +1199,9 @@ fn clone_slide_result_json(
     );
     result.insert("newSlideId".to_string(), json!(mutation.new_slide_id));
     result.insert("newSlideUri".to_string(), json!(mutation.new_slide_uri));
+    if !mutation.notes_uri.is_empty() {
+        result.insert("notesUri".to_string(), json!(mutation.notes_uri));
+    }
     result.insert("source".to_string(), source);
     result.insert("destination".to_string(), destination);
     if let Some(output_path) = output_path {
