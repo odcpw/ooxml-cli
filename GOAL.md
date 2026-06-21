@@ -139,19 +139,23 @@ Out of initial scope:
 Already integrated on `master`:
 
 - pure Rust XLSM authoring path
+- pure Rust XLSM standard `.bas` macro execution proof in Excel
+- pure Rust XLSM class `.cls` macro execution proof in Excel
 - pure Rust PPTM authoring path
 - package-level DOCM attach/extract/remove/inspect/list support
 - `vba rebuild` from source directories
 - Office-open proof for generated XLSM/PPTM and package-level DOCM
 
-Known blocking gap:
+Known remaining gaps:
 
-- A pure-generated XLSM opens in Excel without repair, but the explicit macro-run
-  smoke currently hangs at `Application.Run`.
-- Current evidence points at runtime metadata around `MODULEOFFSET`, module
-  stream prefixes/performance cache, and `_VBA_PROJECT` contents.
-- This gap must be resolved or explicitly scoped before claiming executable VBA
-  authoring is complete.
+- Keep strengthening the explicit `build-bin -> attach existing/scaffolded host`
+  workflows, because that is the agent-facing contract for adding macros to
+  user workbooks.
+- Golden/provenance coverage for generated `vbaProject.bin` outputs is still
+  thin.
+- PPTM pure authoring has package/open proof, but not the same executable macro
+  smoke depth as XLSM.
+- DOCM has package-level support, but pure DOCM authoring is not complete.
 
 ## Feature Order
 

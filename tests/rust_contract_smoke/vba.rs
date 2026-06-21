@@ -368,6 +368,201 @@ fn vba_pure_create_class_xlsm_adds_excel_host_codenames_without_office_com() {
 }
 
 #[test]
+fn vba_build_bin_class_xlsm_attaches_existing_and_scaffolded_workbooks() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-vba-build-bin-class-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let macro_source_path = temp_dir.join("AgentSmoke.bas");
+    let worker_source_path = temp_dir.join("Worker.cls");
+    fs::write(
+        &macro_source_path,
+        "Attribute VB_Name = \"AgentSmoke\"\r\nPublic Sub AgentSmokeRun()\r\n    Dim worker As Worker\r\n    Set worker = New Worker\r\n    ThisWorkbook.Worksheets(1).Range(\"A1\").Value = worker.Message()\r\nEnd Sub\r\n",
+    )
+    .expect("write standard source");
+    fs::write(
+        &worker_source_path,
+        "Attribute VB_Name = \"Worker\"\r\nPublic Function Message() As String\r\n    Message = \"Hello from build-bin attach\"\r\nEnd Function\r\n",
+    )
+    .expect("write class source");
+
+    let input_path = temp_dir.join("input.xlsx");
+    let attached_path = temp_dir.join("attached.xlsm");
+    let scaffold_path = temp_dir.join("scaffold.xlsx");
+    let scaffold_attached_path = temp_dir.join("scaffold-attached.xlsm");
+    let bin_path = temp_dir.join("vbaProject.bin");
+    let bin_again_path = temp_dir.join("vbaProject-again.bin");
+    let extract_dir = temp_dir.join("macros");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input_path).expect("copy workbook");
+
+    let macro_source = macro_source_path.to_string_lossy().to_string();
+    let worker_source = worker_source_path.to_string_lossy().to_string();
+    let input = input_path.to_string_lossy().to_string();
+    let attached = attached_path.to_string_lossy().to_string();
+    let scaffold = scaffold_path.to_string_lossy().to_string();
+    let scaffold_attached = scaffold_attached_path.to_string_lossy().to_string();
+    let bin = bin_path.to_string_lossy().to_string();
+    let bin_again = bin_again_path.to_string_lossy().to_string();
+    let extract = extract_dir.to_string_lossy().to_string();
+
+    for out in [&bin, &bin_again] {
+        let (code, stdout, stderr) = run_ooxml(&[
+            "--json",
+            "vba",
+            "build-bin",
+            "--family",
+            "xlsx",
+            "--source",
+            &macro_source,
+            "--source",
+            &worker_source,
+            "--out",
+            out,
+        ]);
+        assert_eq!(code, 0, "build-bin {out}");
+        assert_eq!(stderr, None, "build-bin stderr {out}");
+        let build = stdout.expect("build-bin stdout");
+        assert_eq!(build["backend"], "pure-rust");
+        assert_eq!(build["family"], "xlsx");
+        assert_eq!(build["codePage"], 1252);
+        assert_eq!(build["modules"].as_array().unwrap().len(), 4);
+        assert_eq!(build["modules"][0]["name"], "ThisWorkbook");
+        assert_eq!(build["modules"][0]["hostSynthesized"], true);
+        assert_eq!(build["modules"][1]["name"], "Sheet1");
+        assert_eq!(build["modules"][1]["hostSynthesized"], true);
+        assert_eq!(build["modules"][2]["name"], "AgentSmoke");
+        assert_eq!(build["modules"][2]["kind"], "standard");
+        assert_eq!(build["modules"][3]["name"], "Worker");
+        assert_eq!(build["modules"][3]["kind"], "class");
+        assert!(
+            build["inspectBinCommand"]
+                .as_str()
+                .unwrap()
+                .contains("inspect-bin")
+        );
+        assert!(
+            build["attachCommandTemplate"]
+                .as_str()
+                .unwrap()
+                .contains("vba attach workbook.xlsx")
+        );
+    }
+
+    assert_eq!(
+        fs::read(&bin_path).expect("first vbaProject.bin"),
+        fs::read(&bin_again_path).expect("second vbaProject.bin"),
+        "same source model should build deterministic vbaProject.bin bytes"
+    );
+
+    let (code, stdout, stderr) =
+        run_ooxml(&["--json", "vba", "inspect-bin", &bin, "--family", "xlsx"]);
+    assert_eq!(code, 0, "inspect-bin");
+    assert_eq!(stderr, None, "inspect-bin stderr");
+    let inspect = stdout.expect("inspect-bin stdout");
+    assert_eq!(inspect["project"]["moduleCount"], 4);
+    assert_eq!(inspect["project"]["warnings"], Value::Null);
+    assert!(
+        inspect["project"]["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|module| module["name"] == "Worker" && module["kind"] == "class")
+    );
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json", "vba", "attach", &input, "--bin", &bin, "--out", &attached,
+    ]);
+    assert_eq!(code, 0, "attach existing xlsx");
+    assert_eq!(stderr, None, "attach existing stderr");
+    let attach = stdout.expect("attach existing stdout");
+    assert_eq!(attach["result"]["action"], "attach");
+    assert_eq!(attach["result"]["macroEnabled"], true);
+
+    let workbook_xml = read_zip_string(&attached_path, "xl/workbook.xml");
+    let sheet_xml = read_zip_string(&attached_path, "xl/worksheets/sheet1.xml");
+    assert!(workbook_xml.contains(r#"codeName="ThisWorkbook""#));
+    assert!(sheet_xml.contains(r#"codeName="Sheet1""#));
+
+    let (code, _stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &attached]);
+    assert_eq!(code, 0, "validate attached");
+    assert_eq!(stderr, None, "validate attached stderr");
+    let (code, stdout, stderr) = run_ooxml(&["--json", "conformance", "check", &attached]);
+    assert_eq!(code, 0, "conformance attached");
+    assert_eq!(stderr, None, "conformance attached stderr");
+    let conformance = stdout.expect("conformance attached stdout");
+    assert_eq!(conformance["status"], "passed");
+    assert_eq!(conformance["summary"]["failed"], 0);
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &attached]);
+    assert_eq!(code, 0, "list attached");
+    assert_eq!(stderr, None, "list attached stderr");
+    let list = stdout.expect("list attached stdout");
+    assert_eq!(list["project"]["moduleCount"], 4);
+    assert!(
+        list["project"]["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|module| module["name"] == "AgentSmoke" && module["kind"] == "standard")
+    );
+    assert!(
+        list["project"]["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|module| module["name"] == "Worker" && module["kind"] == "class")
+    );
+
+    let (code, _stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "extract",
+        &attached,
+        "--out-dir",
+        &extract,
+        "--module",
+        "module:Worker",
+    ]);
+    assert_eq!(code, 0, "extract attached Worker");
+    assert_eq!(stderr, None, "extract attached Worker stderr");
+    let extracted_worker =
+        fs::read_to_string(extract_dir.join("Worker.cls")).expect("extracted Worker");
+    assert!(extracted_worker.contains("Attribute VB_Base"));
+    assert!(extracted_worker.contains("Attribute VB_TemplateDerived = False"));
+    assert!(extracted_worker.contains("Public Function Message()"));
+    assert!(!extracted_worker.contains("VERSION 1.0 CLASS"));
+
+    let (code, _stdout, stderr) = run_ooxml(&["--json", "xlsx", "scaffold", &scaffold, "--force"]);
+    assert_eq!(code, 0, "xlsx scaffold");
+    assert_eq!(stderr, None, "xlsx scaffold stderr");
+    let (code, _stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "attach",
+        &scaffold,
+        "--bin",
+        &bin,
+        "--out",
+        &scaffold_attached,
+    ]);
+    assert_eq!(code, 0, "attach scaffolded xlsx");
+    assert_eq!(stderr, None, "attach scaffolded stderr");
+    let (code, _stdout, stderr) =
+        run_ooxml(&["--json", "validate", "--strict", &scaffold_attached]);
+    assert_eq!(code, 0, "validate scaffold-attached");
+    assert_eq!(stderr, None, "validate scaffold-attached stderr");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn vba_rebuild_replaces_module_set_from_source_dir_without_office_com() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
