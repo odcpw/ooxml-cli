@@ -39,7 +39,9 @@ PowerShell:
 
 ```powershell
 cargo build --bin ooxml
-$env:OOXML_BIN = (Resolve-Path .\target\debug\ooxml.exe).Path
+$targetDir = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).target_directory
+$env:OOXML_BIN = Join-Path $targetDir "debug\ooxml.exe"
+Write-Output $env:OOXML_BIN
 function oox { & $env:OOXML_BIN @args }
 oox version
 oox --json capabilities
@@ -51,7 +53,9 @@ Bash:
 
 ```bash
 cargo build --bin ooxml
-OOXML_BIN="$PWD/target/debug/ooxml"
+TARGET_DIR="$(cargo metadata --format-version 1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+OOXML_BIN="$TARGET_DIR/debug/ooxml"
+printf '%s\n' "$OOXML_BIN"
 oox() { "$OOXML_BIN" "$@"; }
 oox version
 oox --json capabilities
@@ -61,17 +65,31 @@ oox --json doctor
 
 `doctor` may exit nonzero for warnings such as "PATH binary missing" or
 "LibreOffice unavailable". Read the JSON/text findings and remediation commands;
-do not abandon the local `target/debug/ooxml` runner just because PATH is not
-configured.
+do not abandon the locally built runner just because PATH is not configured.
+
+For longer work in OneDrive folders, consider setting an unsynced target dir
+before building, such as `$env:CARGO_TARGET_DIR="$env:TEMP\ooxml-target"` in
+PowerShell or `export CARGO_TARGET_DIR="${TMPDIR:-/tmp}/ooxml-target"` in Bash.
+If README, docs, or memory disagree with live capabilities, rebuild once and
+trust the binary's current capabilities/help.
 
 The deprecated Go implementation in `go/` is legacy reference material only. Do
 not use it for normal product work, docs, or proofs unless the task explicitly
 requires refreshing or comparing a parity oracle.
 
+## Choose Mode First
+
+Pick the mode before reading deeply or editing:
+
+| Mode | Do | Stop when |
+|---|---|---|
+| User artifact | Inspect the live package, mutate to `--out`, run generated proof commands, report evidence. | The changed artifact has readback plus validation/open/render proof for the claim. |
+| Binary improvement | Reproduce the bad first command, patch the CLI contract/capabilities/robot docs/tests, re-run the command path. | The first reasonable command works or returns the exact next command. |
+
 ## Agent-Ergonomic Lessons
 
-Borrow these rules from the agent-ergonomics methodology and apply them to both
-the CLI and this skill:
+Borrow these rules from the agent-ergonomics methodology and apply them to the
+binary surface:
 
 - First-try inevitability: start with commands that either work or teach the
   next command.
@@ -86,8 +104,8 @@ the CLI and this skill:
   `conformanceCommand`, run those exact commands.
 - Safe mutation: prefer `--out <new-file>`; use `--in-place` only when the user
   explicitly asks and a backup/guard exists.
-- Drift resistance: if this skill's example conflicts with capabilities/help,
-  capabilities/help wins and the skill should be fixed.
+- Current contract wins: if an example, doc, or memory conflicts with
+  capabilities/help, capabilities/help wins.
 
 ## Live Discovery Router
 
@@ -106,6 +124,22 @@ oox help pptx
 oox help xlsx
 oox help vba
 ```
+
+Mine command paths from the live contract instead of guessing:
+
+```powershell
+$caps = oox --json capabilities --for docx | ConvertFrom-Json
+$caps.commands | Where-Object path -like "*blocks*" | Select-Object path, use, short
+```
+
+```bash
+oox --json capabilities --for vba |
+  python3 -c 'import json,sys; [print("{} :: {}".format(c.get("path"), c.get("use"))) for c in json.load(sys.stdin).get("commands", [])]'
+```
+
+After a mutation, inspect the JSON for `validateCommand`, `readbackCommand`,
+`conformanceCommand`, `renderCommand`, or `officeCheckCommand` fields and run
+the exact applicable commands before inventing your own proof path.
 
 Route work by object kind:
 
@@ -165,6 +199,19 @@ If a command cannot provide this contract, that is a CLI improvement target.
 - Treat validation as necessary but not sufficient for Office compatibility
   claims; use Office/Open XML SDK/LibreOffice proof appropriate to the claim.
 
+## Claim-To-Proof Matrix
+
+Use the smallest proof that actually supports the claim, then name what remains
+unproven.
+
+| Claim | Minimum proof | Stronger proof | Does not prove |
+|---|---|---|---|
+| Package is structurally valid | `oox validate --strict <file>` | Open XML SDK or schema gate | Office opens cleanly |
+| Package wiring or OOXML semantics are coherent | `oox --json conformance check <file>` | release/schema smoke | visual fidelity |
+| PPTX layout or appearance changed correctly | render and readback | Office/LibreOffice open proof | human design quality |
+| Office compatibility | `office-check` or Windows Office gate | `make check-office-*` | macro execution |
+| VBA executes | `oox --json vba run-smoke` for the generated smoke case | Windows VBA smoke gate | arbitrary user macro safety |
+
 ## Common Workflows
 
 ### Discover And Batch Edit
@@ -218,7 +265,7 @@ formula-invalidation/readback fields.
 
 ```bash
 oox --json capabilities --for docx
-oox --json docx blocks show report.docx
+oox --json docx blocks report.docx
 oox --json docx styles list report.docx
 oox --json docx tables show report.docx --table 1
 oox --json docx replace report.docx --find "Draft" --replace "Final" --expect-count 3 --out edited.docx
@@ -300,7 +347,16 @@ For each improvement loop:
    skill, or repo docs. Prefer CLI self-documentation for command contracts.
 3. Add or update tests that execute the same command path an agent will run.
 4. Re-run the focused command, generated proof command, and relevant test.
-5. Patch this skill only for stable workflow knowledge, not for every flag.
+5. Update repo docs only when the binary contract or workflow has truly changed.
+
+Agent-hostile moment triage:
+
+| Symptom | Fix target | Test shape |
+|---|---|---|
+| Stale or missing command | capabilities, help, robot docs, or skill example | command-path smoke |
+| Missing handle, readback, or proof command | JSON output contract | rust contract smoke runs generated command |
+| Bad error | accepted syntax plus next command | invalid-args/error test |
+| Validation gap | validation or conformance invariant | focused fixture regression |
 
 Highest leverage usually ranks this way:
 
@@ -319,13 +375,6 @@ Avoid broad refactors unless the baseline is green and a scored isomorphism case
 shows real simplification value. Do not de-monolithize by taste.
 
 ## Verification Gates
-
-Skill-only changes:
-
-```bash
-jsm validate skills/ooxml --offline
-git diff --check -- skills/ooxml/SKILL.md
-```
 
 Repo work:
 
@@ -356,9 +405,11 @@ PowerShell equivalents:
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -RequireOpenXmlSdk -RunConformance -SkipOffice
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -RepoRoot . -MutationParallelism 4 -OfficeOracleTimeoutSeconds 120 -RequireOpenXmlSdk -RunConformance
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -RunConformance -SkipOffice -EnableVbaObjectModelAccess
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath .\target\debug\ooxml.exe -SkipBuild -RequireOpenXmlSdk -RunConformance -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
-.\target\debug\ooxml.exe --json vba run-smoke --timeout-seconds 45 --out-dir .\proof\xlsm-run-smoke
+$targetDir = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).target_directory
+$debugBin = Join-Path $targetDir "debug\ooxml.exe"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath $debugBin -SkipBuild -RequireOpenXmlSdk -RunConformance -SkipOffice -EnableVbaObjectModelAccess
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -RepoRoot . -BinaryPath $debugBin -SkipBuild -RequireOpenXmlSdk -RunConformance -EnableVbaObjectModelAccess -OfficeOracleTimeoutSeconds 120
+& $debugBin --json vba run-smoke --timeout-seconds 45 --out-dir .\proof\xlsm-run-smoke
 ```
 
 Use shared gates when shared surfaces changed:
@@ -384,27 +435,6 @@ Use repo-local docs first:
 - `docs/translation-id-rules.md`
 
 Then use official references when touching format internals: Microsoft MS-OVBA, MS-CFB, Office implementation notes for ISO/IEC 29500, OPC documentation, and Open XML SDK docs.
-
-## Skill Improvement Loop
-
-This skill should itself be treated as an agent surface. Improve it whenever a
-fresh agent would waste time or make a stale guess.
-
-Score it informally on:
-
-- activation: does the description trigger for every OOXML/ooxml-cli task?
-- first-run path: can a cold agent get to a working local runner in under one
-  minute?
-- live discovery: does it force capabilities/help before stale memorized flags?
-- task routing: can the agent pick a PPTX/XLSX/DOCX/VBA lane quickly?
-- proof discipline: does it name the minimum evidence for the claim?
-- drift resistance: does it tell agents what to do when examples conflict with
-  live capabilities?
-
-Each pass should land one concrete improvement: remove stale commands, add a
-missing live-discovery route, tighten a proof ladder, or encode a repeated
-agent failure as a short rule. Keep SKILL.md compact; move only genuinely large
-reference material out of the skill.
 
 ## Final Evidence
 

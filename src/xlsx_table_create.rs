@@ -384,7 +384,7 @@ fn next_xlsx_table_part(file: &str) -> CliResult<String> {
 
 fn render_xlsx_table_xml(target: &XlsxTableCreateTarget) -> CliResult<String> {
     let mut body = String::new();
-    body.push_str(&format!(r#"<?xml version="1.0" encoding="UTF-8"?>"#));
+    body.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>"#);
     body.push_str(&format!(
         r#"<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="{}" name="{}" displayName="{}" ref="{}" headerRowCount="1" totalsRowShown="0">"#,
         target.table_id,

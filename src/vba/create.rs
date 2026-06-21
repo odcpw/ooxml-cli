@@ -496,9 +496,6 @@ fn find_program(name: &str) -> Option<PathBuf> {
                 ".CMD".to_string(),
             ]
         });
-    #[cfg(not(windows))]
-    let extensions = Vec::<String>::new();
-
     for dir in env::split_paths(&path) {
         let candidate = dir.join(name);
         if candidate.is_file() {

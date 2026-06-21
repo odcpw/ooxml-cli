@@ -133,13 +133,12 @@ pub(crate) fn positional_args<'a>(
             index += 1;
             continue;
         }
-        if let Some((flag, _)) = arg.split_once('=') {
-            if value_flags.iter().any(|known| known == &flag)
-                || bool_flags.iter().any(|known| known == &flag)
-            {
-                index += 1;
-                continue;
-            }
+        if let Some((flag, _)) = arg.split_once('=')
+            && (value_flags.iter().any(|known| known == &flag)
+                || bool_flags.iter().any(|known| known == &flag))
+        {
+            index += 1;
+            continue;
         }
         if bool_flags.iter().any(|flag| flag == arg) {
             index += 1;

@@ -1,7 +1,3 @@
-[build]
-jobs = 16
-target-dir = "C:/Users/olidc/AppData/Local/ooxml-cli/cargo-target"
-
 [registries.crates-io]
 protocol = "sparse"
 

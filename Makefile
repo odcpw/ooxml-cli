@@ -8,6 +8,7 @@ BINARY_NAME := ooxml
 CARGO ?= cargo
 GO ?= go
 GO_REFERENCE_DIR ?= $(if $(wildcard go/go.mod),go,.)
+CARGO_TARGET_DIR ?= target
 
 ifeq ($(OS),Windows_NT)
 EXE := .exe
@@ -15,7 +16,8 @@ else
 EXE :=
 endif
 
-RUST_DEBUG_BIN := target/debug/$(BINARY_NAME)$(EXE)
+CARGO_TARGET_ROOT := $(CARGO_TARGET_DIR)
+RUST_DEBUG_BIN := $(CARGO_TARGET_ROOT)/debug/$(BINARY_NAME)$(EXE)
 GO_REFERENCE_BIN := target/go-reference/$(BINARY_NAME)$(EXE)
 ARTIFACT_PROOF_MATRIX_ARGS :=
 ifneq ($(strip $(OFFICE_EDIT_SMOKE_SUMMARY)),)
