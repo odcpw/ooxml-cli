@@ -4,7 +4,8 @@ use crate::cli_args::*;
 use crate::cli_core::{CliError, CliResult};
 use crate::{
     XlsxConditionalFormatMutationOptions, xlsx_conditional_formats_add,
-    xlsx_conditional_formats_delete, xlsx_conditional_formats_list, xlsx_conditional_formats_show,
+    xlsx_conditional_formats_delete, xlsx_conditional_formats_list,
+    xlsx_conditional_formats_reorder, xlsx_conditional_formats_show,
 };
 
 pub(super) fn dispatch_xlsx_conditional_formatting(args: &[String]) -> CliResult<Value> {
@@ -120,6 +121,45 @@ pub(super) fn dispatch_xlsx_conditional_formatting(args: &[String]) -> CliResult
                     colors: Vec::new(),
                     icon_set: None,
                     priority: None,
+                    stop_if_true: false,
+                    has_stop_if_true: false,
+                    dxf_id: None,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && is_conditional_formats_group(group) && verb == "reorder" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--sheet", "--rule", "--priority", "--out", "--backup"],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let rule = parse_string_flag(rest, "--rule")?;
+            let priority = parse_i64_flag(rest, "--priority")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_conditional_formats_reorder(
+                file,
+                XlsxConditionalFormatMutationOptions {
+                    sheet: sheet.as_deref(),
+                    range: None,
+                    rule: rule.as_deref(),
+                    formula: None,
+                    rule_type: None,
+                    operator: None,
+                    formula2: None,
+                    has_formula2: false,
+                    cfvo: Vec::new(),
+                    colors: Vec::new(),
+                    icon_set: None,
+                    priority,
                     stop_if_true: false,
                     has_stop_if_true: false,
                     dxf_id: None,

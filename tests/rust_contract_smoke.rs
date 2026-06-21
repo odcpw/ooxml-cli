@@ -1274,6 +1274,13 @@ fn capability_paths(capabilities: &Value) -> BTreeSet<String> {
         .collect()
 }
 
+fn go_oracle_supports_command(path: &str) -> bool {
+    let (code, stdout, stderr) = run_go_ooxml(&["--json", "capabilities"]);
+    assert_eq!(code, 0, "Go oracle capabilities exit");
+    assert_eq!(stderr, None, "Go oracle capabilities stderr");
+    capability_paths(&stdout.expect("Go oracle capabilities")).contains(path)
+}
+
 fn assert_command(capabilities: &Value, path: &str, op_compatible: bool) {
     let commands = capabilities["commands"].as_array().expect("commands array");
     let command = commands

@@ -297,6 +297,21 @@ pub(crate) fn xlsx_conditional_formats_delete(
     })
 }
 
+pub(crate) fn xlsx_conditional_formats_reorder(
+    file: &str,
+    options: XlsxConditionalFormatMutationOptions<'_>,
+) -> CliResult<Value> {
+    if options.rule.is_none_or(|value| value.trim().is_empty()) {
+        return Err(CliError::invalid_args("--rule is required"));
+    }
+    if options.priority.is_none() {
+        return Err(CliError::invalid_args("--priority is required"));
+    }
+    run_conditional_format_mutation(file, "reorder", options, |xml, _prefix, options| {
+        reorder_conditional_format_xml(xml, options)
+    })
+}
+
 fn run_conditional_format_mutation<F>(
     file: &str,
     action: &str,
@@ -785,6 +800,72 @@ fn delete_conditional_format_xml(
         cells_affected: sqref_cell_count(&rule.sqref),
         rule,
     })
+}
+
+fn reorder_conditional_format_xml(
+    xml: &str,
+    options: &XlsxConditionalFormatMutationOptions<'_>,
+) -> CliResult<ConditionalFormatMutation> {
+    let selector = options.rule.unwrap_or_default().trim();
+    if selector.is_empty() {
+        return Err(CliError::invalid_args("--rule is required"));
+    }
+    let priority = options
+        .priority
+        .ok_or_else(|| CliError::invalid_args("--priority is required"))?;
+    if priority < 1 {
+        return Err(CliError::invalid_args(
+            "--priority must be greater than zero",
+        ));
+    }
+
+    let root = worksheet_root_bounds(xml)?;
+    let blocks = read_conditional_formats(xml)?;
+    let rule = select_conditional_format_rule(&blocks, selector)?;
+    let Some(container) = conditional_format_container_ranges(xml, &root)?
+        .into_iter()
+        .nth(rule.block_index.saturating_sub(1))
+    else {
+        return Err(CliError::unexpected(
+            "conditional format block disappeared during lookup",
+        ));
+    };
+    let rule_ranges = conditional_format_rule_ranges(xml, &container)?;
+    let Some(rule_range) = rule_ranges.get(rule.rule_index.saturating_sub(1)) else {
+        return Err(CliError::unexpected(
+            "conditional format rule disappeared during lookup",
+        ));
+    };
+
+    let fragment = &xml[rule_range.start..rule_range.end];
+    let updated_fragment = set_conditional_format_rule_priority(fragment, priority)?;
+    let updated_xml = replace_xml_span(xml, rule_range.start, rule_range.end, &updated_fragment);
+    let updated_blocks = read_conditional_formats(&updated_xml)?;
+    let updated_rule = updated_blocks
+        .iter()
+        .flat_map(|block| block.rules.iter())
+        .find(|candidate| {
+            candidate.block_index == rule.block_index && candidate.rule_index == rule.rule_index
+        })
+        .cloned()
+        .ok_or_else(|| {
+            CliError::unexpected("conditional format rule disappeared after priority update")
+        })?;
+
+    Ok(ConditionalFormatMutation {
+        updated_xml,
+        sqref: updated_rule.sqref.clone(),
+        cells_affected: sqref_cell_count(&updated_rule.sqref),
+        rule: updated_rule,
+    })
+}
+
+fn set_conditional_format_rule_priority(fragment: &str, priority: i64) -> CliResult<String> {
+    let (tag_name, mut attrs, self_closing, open_end) = first_element(fragment)?;
+    attrs.insert("priority".to_string(), priority.to_string());
+    let suffix = if self_closing { "/>" } else { ">" };
+    let tag = format!("<{}{}{}", tag_name, render_xml_attrs(&attrs), suffix);
+    Ok(replace_xml_span(fragment, 0, open_end, &tag))
 }
 
 fn read_conditional_formats(xml: &str) -> CliResult<Vec<ConditionalFormatBlock>> {

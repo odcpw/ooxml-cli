@@ -269,6 +269,248 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
 }
 
 #[test]
+fn xlsx_conditional_formats_reorder_saved_outputs_match_go_oracle() {
+    if !go_oracle_supports_command("ooxml xlsx conditional-formats reorder") {
+        eprintln!(
+            "Go oracle does not advertise xlsx conditional-formats reorder yet; differential coverage activates when codex/ooxml-go-reference is updated"
+        );
+        return;
+    }
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-cf-reorder-go-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let go_input = temp_dir.join("go-input.xlsx");
+    let rust_input = temp_dir.join("rust-input.xlsx");
+    let go_out = temp_dir.join("go-reorder.xlsx").to_string_lossy().to_string();
+    let rust_out = temp_dir
+        .join("rust-reorder.xlsx")
+        .to_string_lossy()
+        .to_string();
+    let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData><row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c></row></sheetData>
+  <conditionalFormatting sqref="A1:A5">
+    <cfRule type="expression" priority="3"><formula>A1&gt;0</formula></cfRule>
+  </conditionalFormatting>
+  <conditionalFormatting sqref="B1:B5">
+    <cfRule type="expression" priority="4" stopIfTrue="1"><formula>B1&gt;0</formula></cfRule>
+  </conditionalFormatting>
+</worksheet>"#;
+    write_simple_xlsx_with_sheet_xml(&go_input, sheet_xml);
+    write_simple_xlsx_with_sheet_xml(&rust_input, sheet_xml);
+    let go_input = go_input.to_string_lossy().to_string();
+    let rust_input = rust_input.to_string_lossy().to_string();
+
+    let go_args = [
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "reorder",
+        &go_input,
+        "--sheet",
+        "1",
+        "--rule",
+        "cfRule:2",
+        "--priority",
+        "1",
+        "--out",
+        &go_out,
+    ];
+    let rust_args = [
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "reorder",
+        &rust_input,
+        "--sheet",
+        "1",
+        "--rule",
+        "cfRule:2",
+        "--priority",
+        "1",
+        "--out",
+        &rust_out,
+    ];
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "conditional format reorder exit");
+    assert_eq!(rust_stderr, go_stderr, "conditional format reorder stderr");
+    let rust_reorder = rust_stdout.expect("rust reorder stdout");
+    assert_eq!(
+        scrub_paths(
+            rust_reorder.clone(),
+            &[(&rust_input, "[IN]"), (&rust_out, "[OUT]")]
+        ),
+        scrub_paths(
+            go_stdout.expect("go reorder stdout"),
+            &[(&go_input, "[IN]"), (&go_out, "[OUT]")]
+        ),
+        "conditional format reorder stdout"
+    );
+    assert_eq!(rust_reorder["action"], "reorder");
+    assert_eq!(rust_reorder["rule"]["priority"], Value::from(1));
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_reorder, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(
+        &rust_reorder,
+        "conditionalFormatsShowCommand",
+    );
+
+    let show_go = [
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "show",
+        &go_out,
+        "--sheet",
+        "1",
+        "--rule",
+        "cfRule:2",
+    ];
+    let show_rust = [
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "show",
+        &rust_out,
+        "--sheet",
+        "1",
+        "--rule",
+        "cfRule:2",
+    ];
+    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
+    assert_eq!(rust_code, go_code, "saved reorder show exit");
+    assert_eq!(rust_stderr, go_stderr, "saved reorder show stderr");
+    assert_eq!(
+        rust_show.expect("rust saved reorder show"),
+        go_show.expect("go saved reorder show"),
+        "saved reorder show"
+    );
+    assert_xlsx_strict_valid(&rust_out);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_conditional_formats_reorder_readback_and_validation() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-cf-reorder-readback-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("output.xlsx").to_string_lossy().to_string();
+    write_simple_xlsx_with_sheet_xml(
+        &input,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData><row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c></row></sheetData>
+  <conditionalFormatting sqref="A1:A5">
+    <cfRule type="expression" priority="3"><formula>A1&gt;0</formula></cfRule>
+  </conditionalFormatting>
+  <conditionalFormatting sqref="B1:B5">
+    <cfRule type="expression" priority="4"><formula>B1&gt;0</formula></cfRule>
+  </conditionalFormatting>
+</worksheet>"#,
+    );
+    let input = input.to_string_lossy().to_string();
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "reorder",
+        &input,
+        "--sheet",
+        "1",
+        "--rule",
+        "block:2/rule:1",
+        "--priority",
+        "9",
+        "--out",
+        &output,
+    ]);
+    assert_eq!(code, 0, "reorder readback exit");
+    assert_eq!(stderr, None, "reorder readback stderr");
+    let reorder = stdout.expect("reorder readback stdout");
+    assert_eq!(reorder["action"], "reorder");
+    assert_eq!(reorder["rule"]["primarySelector"], "cfRule:2");
+    assert_eq!(reorder["rule"]["priority"], Value::from(9));
+    assert_rust_emitted_ooxml_command_succeeds(&reorder, "conditionalFormatsListCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&reorder, "conditionalFormatsShowCommand");
+
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "show",
+        &output,
+        "--sheet",
+        "1",
+        "--rule",
+        "cfRule:2",
+    ]);
+    assert_eq!(show_code, 0, "saved reorder show exit");
+    assert_eq!(show_stderr, None, "saved reorder show stderr");
+    let show = show_stdout.expect("saved reorder show");
+    assert_eq!(show["priority"], Value::from(9));
+    assert_eq!(show["formula"], "B1>0");
+    assert_xlsx_strict_valid(&output);
+
+    let (bad_priority_code, bad_priority_stdout, bad_priority_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "reorder",
+        &input,
+        "--sheet",
+        "1",
+        "--rule",
+        "cfRule:1",
+        "--priority",
+        "0",
+        "--dry-run",
+    ]);
+    assert_eq!(bad_priority_code, 2, "bad priority exit");
+    assert_eq!(bad_priority_stdout, None, "bad priority stdout");
+    assert!(
+        bad_priority_stderr
+            .expect("bad priority stderr")["error"]["message"]
+            .as_str()
+            .expect("bad priority message")
+            .contains("--priority must be greater than zero")
+    );
+
+    let (missing_rule_code, missing_rule_stdout, missing_rule_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "reorder",
+        &input,
+        "--sheet",
+        "1",
+        "--priority",
+        "2",
+        "--dry-run",
+    ]);
+    assert_eq!(missing_rule_code, 2, "missing rule exit");
+    assert_eq!(missing_rule_stdout, None, "missing rule stdout");
+    assert!(
+        missing_rule_stderr
+            .expect("missing rule stderr")["error"]["message"]
+            .as_str()
+            .expect("missing rule message")
+            .contains("--rule is required")
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_conditional_formats_cell_is_saved_outputs_match_go_oracle() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-cf-cellis-{}",

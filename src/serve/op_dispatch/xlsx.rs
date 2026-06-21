@@ -9,8 +9,8 @@ use crate::{
     json_optional_serialized, json_optional_string, json_string, xlsx_cells_set,
     xlsx_charts_set_series_style, xlsx_colwidths_set, xlsx_comments_add, xlsx_comments_remove,
     xlsx_comments_update, xlsx_conditional_formats_add, xlsx_conditional_formats_delete,
-    xlsx_ranges_set, xlsx_ranges_set_format, xlsx_rowheights_set, xlsx_tables_append_records,
-    xlsx_tables_append_rows, xlsx_workbook_metadata_update,
+    xlsx_conditional_formats_reorder, xlsx_ranges_set, xlsx_ranges_set_format, xlsx_rowheights_set,
+    xlsx_tables_append_records, xlsx_tables_append_rows, xlsx_workbook_metadata_update,
 };
 
 use super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
@@ -310,6 +310,51 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
             push_serve_plan_string_flag(&mut plan_flags, "--rule", Some(&rule));
             ServeOp::XlsxConditionalFormatsOp {
                 command: "xlsx conditional-formats delete".to_string(),
+                plan_flags,
+                readback_file: working.to_string(),
+                readback,
+            }
+        }
+        "xlsx conditional-formats reorder"
+        | "xlsx conditional-formatting reorder"
+        | "xlsx conditional-format reorder"
+        | "xlsx cf reorder" => {
+            let sheet = json_optional_string(args, "sheet");
+            let rule = json_string(args, "rule")?;
+            let priority = json_i64(args, "priority")?
+                .ok_or_else(|| CliError::invalid_args("priority is required"))?;
+            let readback = xlsx_conditional_formats_reorder(
+                working,
+                XlsxConditionalFormatMutationOptions {
+                    sheet: sheet.as_deref(),
+                    range: None,
+                    rule: Some(&rule),
+                    formula: None,
+                    rule_type: None,
+                    operator: None,
+                    formula2: None,
+                    has_formula2: false,
+                    cfvo: Vec::new(),
+                    colors: Vec::new(),
+                    icon_set: None,
+                    priority: Some(priority),
+                    stop_if_true: false,
+                    has_stop_if_true: false,
+                    dxf_id: None,
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    no_validate: true,
+                    in_place: true,
+                },
+            )?;
+            let mut plan_flags = Vec::new();
+            push_serve_plan_string_flag(&mut plan_flags, "--sheet", sheet.as_deref());
+            push_serve_plan_string_flag(&mut plan_flags, "--rule", Some(&rule));
+            plan_flags.push(json!("--priority"));
+            plan_flags.push(json!(priority.to_string()));
+            ServeOp::XlsxConditionalFormatsOp {
+                command: "xlsx conditional-formats reorder".to_string(),
                 plan_flags,
                 readback_file: working.to_string(),
                 readback,

@@ -51,6 +51,15 @@ pub(super) fn commands() -> Vec<Value> {
             None,
             mutation_flags(false),
         ),
+        capability_command(
+            "ooxml xlsx conditional-formats reorder",
+            "reorder <file> --sheet <selector> --rule <selector> --priority <n>",
+            "Change a conditional-formatting rule priority; if selection fails, list rules first and retry with cfRule:<n> or priority:<n>.",
+            &["conditional-format", "range", "sheet"],
+            true,
+            None,
+            reorder_flags(),
+        ),
     ]
 }
 
@@ -128,6 +137,42 @@ fn mutation_flags(include_add_flags: bool) -> Vec<Value> {
             "rule selector such as cfRule:1, rule:1, block:1/rule:1, priority:1, or sqref:A1:A5",
         ));
     }
+    flags.extend([
+        flag("--out", "out", "string", "write edited workbook"),
+        flag(
+            "--in-place",
+            "inPlace",
+            "bool",
+            "edit the workbook in place",
+        ),
+        flag(
+            "--backup",
+            "backup",
+            "string",
+            "backup file path for --in-place",
+        ),
+        flag("--dry-run", "dryRun", "bool", "validate without writing"),
+        flag(
+            "--no-validate",
+            "noValidate",
+            "bool",
+            "skip post-write validation",
+        ),
+    ]);
+    flags
+}
+
+fn reorder_flags() -> Vec<Value> {
+    let mut flags = vec![
+        flag("--sheet", "sheet", "string", "sheet selector"),
+        flag(
+            "--rule",
+            "rule",
+            "string",
+            "rule selector such as cfRule:1, rule:1, block:1/rule:1, priority:1, or sqref:A1:A5",
+        ),
+        flag("--priority", "priority", "int", "new cfRule priority"),
+    ];
     flags.extend([
         flag("--out", "out", "string", "write edited workbook"),
         flag(

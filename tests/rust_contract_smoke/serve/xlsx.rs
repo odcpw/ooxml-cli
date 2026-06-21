@@ -706,6 +706,157 @@ fn serve_op_supports_xlsx_conditional_formats_add_delete() {
 }
 
 #[test]
+fn serve_op_supports_xlsx_conditional_format_reorder() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-cf-reorder-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("serve-cf-reorder-out.xlsx");
+    std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open = rpc_request(
+        1,
+        "open",
+        serde_json::json!({"file": input_str, "out": output_str}),
+    );
+    let open_response = serve_roundtrip(&mut stdin, &mut reader, &open);
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let add_first = rpc_request(
+        2,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx conditional-formats add",
+            "args": {
+                "sheet": "1",
+                "range": "A1:A5",
+                "formula": "A1>0",
+                "priority": 4
+            },
+        }),
+    );
+    let add_first_response = serve_roundtrip(&mut stdin, &mut reader, &add_first);
+    assert!(
+        add_first_response.get("error").is_none(),
+        "conditional-format first add op failed: {add_first_response:?}"
+    );
+
+    let add_second = rpc_request(
+        3,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx conditional-formats add",
+            "args": {
+                "sheet": "1",
+                "range": "B1:B5",
+                "formula": "B1>0",
+                "priority": 5
+            },
+        }),
+    );
+    let add_second_response = serve_roundtrip(&mut stdin, &mut reader, &add_second);
+    assert!(
+        add_second_response.get("error").is_none(),
+        "conditional-format second add op failed: {add_second_response:?}"
+    );
+
+    let reorder_second = rpc_request(
+        4,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx conditional-formats reorder",
+            "args": {
+                "sheet": "1",
+                "rule": "cfRule:2",
+                "priority": 2
+            },
+        }),
+    );
+    let reorder_response = serve_roundtrip(&mut stdin, &mut reader, &reorder_second);
+    assert!(
+        reorder_response.get("error").is_none(),
+        "conditional-format reorder op failed: {reorder_response:?}"
+    );
+    let reorder_readback = &reorder_response["result"]["readback"];
+    assert_eq!(reorder_readback["action"], "reorder");
+    assert_eq!(reorder_readback["rule"]["primarySelector"], "cfRule:2");
+    assert_eq!(reorder_readback["rule"]["priority"], Value::from(2));
+
+    let plan = rpc_request(5, "plan", serde_json::json!({"session": session}));
+    let plan_response = serve_roundtrip(&mut stdin, &mut reader, &plan);
+    let plan_items = plan_response["result"]["plan"]
+        .as_array()
+        .expect("planned operations");
+    assert_eq!(plan_items.len(), 3);
+    let reorder_plan = plan_items[2]["argv"].as_array().expect("reorder plan argv");
+    assert_eq!(reorder_plan[1], "conditional-formats");
+    assert_eq!(reorder_plan[2], "reorder");
+    assert!(
+        reorder_plan.iter().any(|arg| arg == "--rule")
+            && reorder_plan.iter().any(|arg| arg == "cfRule:2")
+            && reorder_plan.iter().any(|arg| arg == "--priority")
+            && reorder_plan.iter().any(|arg| arg == "2"),
+        "reorder plan should include rule and priority flags: {reorder_plan:?}"
+    );
+
+    let commit = rpc_request(6, "commit", serde_json::json!({"session": session}));
+    let commit_response = serve_roundtrip(&mut stdin, &mut reader, &commit);
+    assert!(
+        commit_response.get("error").is_none(),
+        "conditional-format reorder commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "reorder serve validate exit");
+    assert_eq!(validate_stderr, None, "reorder serve validate stderr");
+
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "show",
+        &output_str,
+        "--sheet",
+        "1",
+        "--rule",
+        "cfRule:2",
+    ]);
+    assert_eq!(show_code, 0, "reorder serve show exit");
+    assert_eq!(show_stderr, None, "reorder serve show stderr");
+    let show = show_stdout.expect("reorder serve show");
+    assert_eq!(show["priority"], Value::from(2));
+    assert_eq!(show["formula"], "B1>0");
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_op_supports_xlsx_conditional_format_data_bars() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-cf-databar-{}",
