@@ -5,16 +5,17 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+mod target;
 mod xml_edit;
 
 use crate::{
-    CliError, CliResult, InspectPackageKind, attr, copy_zip_with_part_overrides,
-    detect_inspect_package_type, has_flag, local_name, package_mutation_temp_path, package_type,
-    parse_string_flag, pptx_charts_list, pptx_masters_list, pptx_masters_show,
-    reject_unknown_flags, validate, validate_xlsx_mutation_output_flags,
+    CliError, CliResult, attr, copy_zip_with_part_overrides, has_flag, local_name,
+    package_mutation_temp_path, parse_string_flag, pptx_charts_list, pptx_masters_list,
+    pptx_masters_show, reject_unknown_flags, validate, validate_xlsx_mutation_output_flags,
     xlsx_charts::apply_template_chart_series_style_xml, xlsx_charts_list, xml_attr_escape,
     xml_direct_child_ranges, xml_fragment_bounds, zip_entry_names, zip_text,
 };
+use target::{parse_string_flag_local, resolve_template_kind};
 use xml_edit::{
     first_element_span, insert_at_index, namespace_prefix, qualified_name, replace_span,
     root_prefix, set_attr_on_element, tag_prefix, xml_open_tag,
@@ -378,45 +379,6 @@ fn template_tokens_for_kind(file: &str, kind: &str) -> CliResult<Value> {
         other => Err(CliError::unsupported_type(format!(
             "template tokens supports PPTX/POTX and XLSX/XLTX files (detected: {other}); pass --for to override"
         ))),
-    }
-}
-
-fn resolve_template_kind(
-    file: &str,
-    requested: Option<&str>,
-    unsupported_prefix: &str,
-) -> CliResult<&'static str> {
-    if let Some(requested) = requested.map(str::trim).filter(|value| !value.is_empty()) {
-        match requested.to_ascii_lowercase().as_str() {
-            "pptx" | "potx" => return Ok("pptx"),
-            "xlsx" | "xltx" => return Ok("xlsx"),
-            "auto" => {}
-            other => {
-                return Err(CliError::invalid_args(format!(
-                    "invalid --for {other:?}; expected pptx, xlsx, or auto"
-                )));
-            }
-        }
-    }
-    match package_type(file)? {
-        "pptx" => Ok("pptx"),
-        "xlsx" => Ok("xlsx"),
-        "docx" => Err(CliError::unsupported_type(format!(
-            "{unsupported_prefix} (detected: docx); pass --for to override"
-        ))),
-        _ => {
-            let entries = zip_entry_names(file)?;
-            match detect_inspect_package_type(file, &entries) {
-                InspectPackageKind::Pptx => Ok("pptx"),
-                InspectPackageKind::Xlsx => Ok("xlsx"),
-                InspectPackageKind::Docx => Err(CliError::unsupported_type(format!(
-                    "{unsupported_prefix} (detected: docx); pass --for to override"
-                ))),
-                InspectPackageKind::Unknown => Err(CliError::unsupported_type(format!(
-                    "{unsupported_prefix} (detected: unknown); pass --for to override"
-                ))),
-            }
-        }
     }
 }
 
@@ -1915,23 +1877,6 @@ fn insert_theme_color(color_scheme: &mut Map<String, Value>, key: &str, value: S
         other => other,
     };
     color_scheme.insert(json_key.to_string(), json!(value));
-}
-
-fn parse_string_flag_local(args: &[String], flag: &str) -> CliResult<Option<String>> {
-    let mut out = None;
-    let mut i = 0;
-    while i < args.len() {
-        if args[i] == flag {
-            let Some(value) = args.get(i + 1) else {
-                return Err(CliError::invalid_args(format!("{flag} requires a value")));
-            };
-            out = Some(value.clone());
-            i += 2;
-        } else {
-            i += 1;
-        }
-    }
-    Ok(out)
 }
 
 fn file_name(file: &str) -> String {
