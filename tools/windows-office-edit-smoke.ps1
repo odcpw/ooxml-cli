@@ -2,7 +2,7 @@
 param(
     [string]$RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path,
 
-    [string]$OutputDir = (Join-Path $env:TEMP "ooxml-office-edit-smoke"),
+    [string]$OutputDir = "",
 
     [string]$BinaryPath = "",
 
@@ -628,6 +628,11 @@ function New-PptxSlideExtLstFixture {
 }
 
 $root = (Resolve-Path -LiteralPath $RepoRoot).Path
+if ($OutputDir -eq "") {
+    # Keep Office-open proof artifacts under the repo tree. Excel COM can
+    # treat byte-identical minimal workbooks differently from %TEMP%.
+    $OutputDir = Join-Path $root "target\ooxml-office-edit-smoke"
+}
 $outRoot = [System.IO.Path]::GetFullPath($OutputDir)
 $caseDir = Join-Path $outRoot "outputs"
 $binDir = Join-Path $outRoot "bin"
