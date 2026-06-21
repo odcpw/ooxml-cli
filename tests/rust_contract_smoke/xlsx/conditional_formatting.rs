@@ -269,6 +269,149 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
 }
 
 #[test]
+fn xlsx_conditional_formats_cell_is_saved_outputs_match_go_oracle() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-cf-cellis-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let go_single_out = temp_dir
+        .join("go-cellis-single.xlsx")
+        .to_string_lossy()
+        .to_string();
+    let rust_single_out = temp_dir
+        .join("rust-cellis-single.xlsx")
+        .to_string_lossy()
+        .to_string();
+    let single_common = [
+        "--json",
+        "xlsx",
+        "conditional-formats",
+        "add",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "1",
+        "--range",
+        "B1:B5",
+        "--type",
+        "cell-is",
+        "--operator",
+        "greaterThanOrEqual",
+        "--formula",
+        "5",
+        "--priority",
+        "8",
+        "--out",
+    ];
+    let mut go_args = single_common.to_vec();
+    go_args.push(&go_single_out);
+    let mut rust_args = single_common.to_vec();
+    rust_args.push(&rust_single_out);
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "single cellIs add exit");
+    assert_eq!(rust_stderr, go_stderr, "single cellIs add stderr");
+    let rust_single = rust_stdout.expect("rust single cellIs stdout");
+    assert_eq!(
+        scrub_path(
+            rust_single.clone(),
+            &rust_single_out,
+            "[CELLIS_SINGLE_OUT]"
+        ),
+        scrub_path(
+            go_stdout.expect("go single cellIs stdout"),
+            &go_single_out,
+            "[CELLIS_SINGLE_OUT]"
+        ),
+        "single cellIs add stdout"
+    );
+    assert_eq!(rust_single["rule"]["type"], Value::String("cellIs".to_string()));
+    assert_eq!(
+        rust_single["rule"]["operator"],
+        Value::String("greaterThanOrEqual".to_string())
+    );
+    assert_eq!(rust_single["rule"]["formula"], Value::String("5".to_string()));
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_single, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(
+        &rust_single,
+        "conditionalFormatsShowCommand",
+    );
+
+    let go_between_out = temp_dir
+        .join("go-cellis-between.xlsx")
+        .to_string_lossy()
+        .to_string();
+    let rust_between_out = temp_dir
+        .join("rust-cellis-between.xlsx")
+        .to_string_lossy()
+        .to_string();
+    let between_common = [
+        "--json",
+        "xlsx",
+        "cf",
+        "add",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "1",
+        "--range",
+        "C1:C5",
+        "--type",
+        "cellIs",
+        "--operator",
+        "between",
+        "--formula",
+        "1",
+        "--formula2",
+        "10",
+        "--out",
+    ];
+    let mut go_args = between_common.to_vec();
+    go_args.push(&go_between_out);
+    let mut rust_args = between_common.to_vec();
+    rust_args.push(&rust_between_out);
+    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
+    assert_eq!(rust_code, go_code, "between cellIs add exit");
+    assert_eq!(rust_stderr, go_stderr, "between cellIs add stderr");
+    let rust_between = rust_stdout.expect("rust between cellIs stdout");
+    assert_eq!(
+        scrub_path(
+            rust_between.clone(),
+            &rust_between_out,
+            "[CELLIS_BETWEEN_OUT]"
+        ),
+        scrub_path(
+            go_stdout.expect("go between cellIs stdout"),
+            &go_between_out,
+            "[CELLIS_BETWEEN_OUT]"
+        ),
+        "between cellIs add stdout"
+    );
+    assert_eq!(rust_between["rule"]["type"], Value::String("cellIs".to_string()));
+    assert_eq!(
+        rust_between["rule"]["operator"],
+        Value::String("between".to_string())
+    );
+    assert_eq!(
+        rust_between["rule"]["formulas"],
+        serde_json::json!(["1", "10"])
+    );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_between, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(
+        &rust_between,
+        "conditionalFormatsShowCommand",
+    );
+
+    for output in [&rust_single_out, &rust_between_out] {
+        assert_xlsx_strict_valid(output);
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_conditional_formats_preserve_unsupported_rules_on_add_and_delete() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-cf-preserve-{}",

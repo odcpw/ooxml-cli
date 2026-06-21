@@ -35,7 +35,9 @@ pub(super) fn dispatch_xlsx_conditional_formatting(args: &[String]) -> CliResult
                     "--sheet",
                     "--range",
                     "--type",
+                    "--operator",
                     "--formula",
+                    "--formula2",
                     "--priority",
                     "--dxf-id",
                     "--out",
@@ -46,7 +48,9 @@ pub(super) fn dispatch_xlsx_conditional_formatting(args: &[String]) -> CliResult
             let sheet = parse_string_flag(rest, "--sheet")?;
             let range = parse_string_flag(rest, "--range")?;
             let rule_type = parse_string_flag(rest, "--type")?;
+            let operator = parse_string_flag(rest, "--operator")?;
             let formula = parse_string_flag(rest, "--formula")?;
+            let formula2 = parse_string_flag(rest, "--formula2")?;
             let priority = parse_i64_flag(rest, "--priority")?;
             let dxf_id = parse_i64_flag(rest, "--dxf-id")?;
             let out = parse_string_flag(rest, "--out")?;
@@ -59,6 +63,9 @@ pub(super) fn dispatch_xlsx_conditional_formatting(args: &[String]) -> CliResult
                     rule: None,
                     formula: formula.as_deref(),
                     rule_type: rule_type.as_deref(),
+                    operator: operator.as_deref(),
+                    formula2: formula2.as_deref(),
+                    has_formula2: value_flag_present(rest, "--formula2"),
                     priority,
                     stop_if_true: has_flag(rest, "--stop-if-true"),
                     has_stop_if_true: value_flag_present(rest, "--stop-if-true"),
@@ -91,6 +98,9 @@ pub(super) fn dispatch_xlsx_conditional_formatting(args: &[String]) -> CliResult
                     rule: rule.as_deref(),
                     formula: None,
                     rule_type: None,
+                    operator: None,
+                    formula2: None,
+                    has_formula2: false,
                     priority: None,
                     stop_if_true: false,
                     has_stop_if_true: false,

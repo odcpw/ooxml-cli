@@ -39,6 +39,7 @@ struct ConditionalFormatRule {
     selectors: Vec<String>,
     sqref: String,
     rule_type: String,
+    operator: String,
     priority: Option<i64>,
     formulas: Vec<String>,
     dxf_id: Option<i64>,
@@ -60,6 +61,9 @@ pub(crate) struct XlsxConditionalFormatMutationOptions<'a> {
     pub(crate) rule: Option<&'a str>,
     pub(crate) formula: Option<&'a str>,
     pub(crate) rule_type: Option<&'a str>,
+    pub(crate) operator: Option<&'a str>,
+    pub(crate) formula2: Option<&'a str>,
+    pub(crate) has_formula2: bool,
     pub(crate) priority: Option<i64>,
     pub(crate) stop_if_true: bool,
     pub(crate) has_stop_if_true: bool,
@@ -126,17 +130,32 @@ pub(crate) fn xlsx_conditional_formats_add(
     file: &str,
     options: XlsxConditionalFormatMutationOptions<'_>,
 ) -> CliResult<Value> {
-    let rule_type = options.rule_type.unwrap_or("expression").trim();
-    if !rule_type.is_empty() && rule_type != "expression" {
-        return Err(CliError::invalid_args(
-            "--type currently supports only expression",
-        ));
-    }
+    let rule_type = normalize_conditional_format_add_type(options.rule_type);
     if options.range.is_none_or(|value| value.trim().is_empty()) {
         return Err(CliError::invalid_args("--range is required"));
     }
     if options.formula.is_none_or(|value| value.trim().is_empty()) {
         return Err(CliError::invalid_args("--formula is required"));
+    }
+    match rule_type.as_str() {
+        "expression" => {
+            if options.operator.is_some() {
+                return Err(CliError::invalid_args(
+                    "--operator is only valid with --type cell-is",
+                ));
+            }
+            if options.has_formula2 {
+                return Err(CliError::invalid_args(
+                    "--formula2 is only valid with --type cell-is",
+                ));
+            }
+        }
+        "cellIs" => {}
+        _ => {
+            return Err(CliError::invalid_args(
+                "--type must be expression, cell-is, or cellIs",
+            ));
+        }
     }
     run_conditional_format_mutation(file, "add", options, |xml, prefix, options| {
         add_conditional_format_xml(xml, prefix, options)
@@ -324,6 +343,9 @@ fn conditional_format_rule_json(rule: &ConditionalFormatRule) -> Value {
     if !rule.rule_type.is_empty() {
         object.insert("type".to_string(), json!(rule.rule_type));
     }
+    if !rule.operator.is_empty() {
+        object.insert("operator".to_string(), json!(rule.operator));
+    }
     if let Some(priority) = rule.priority {
         object.insert("priority".to_string(), json!(priority));
     }
@@ -348,9 +370,50 @@ fn add_conditional_format_xml(
     options: &XlsxConditionalFormatMutationOptions<'_>,
 ) -> CliResult<ConditionalFormatMutation> {
     let norm_sqref = normalize_sqref(options.range.unwrap_or_default())?;
+    let rule_type = normalize_conditional_format_add_type(options.rule_type);
     let formula = options.formula.unwrap_or_default().trim();
     if formula.is_empty() {
         return Err(CliError::invalid_args("--formula is required"));
+    }
+    let mut operator = String::new();
+    let mut formulas = vec![formula.to_string()];
+    match rule_type.as_str() {
+        "expression" => {
+            if options.operator.is_some() {
+                return Err(CliError::invalid_args(
+                    "--operator is only valid with --type cell-is",
+                ));
+            }
+            if options.has_formula2 {
+                return Err(CliError::invalid_args(
+                    "--formula2 is only valid with --type cell-is",
+                ));
+            }
+        }
+        "cellIs" => {
+            operator = options.operator.unwrap_or_default().trim().to_string();
+            validate_conditional_format_cell_is_operator(&operator)?;
+            let formula2 = options.formula2.unwrap_or_default().trim();
+            let needs_formula2 = matches!(operator.as_str(), "between" | "notBetween");
+            if needs_formula2 && (!options.has_formula2 || formula2.is_empty()) {
+                return Err(CliError::invalid_args(format!(
+                    "operator {operator:?} requires --formula2"
+                )));
+            }
+            if !needs_formula2 && options.has_formula2 {
+                return Err(CliError::invalid_args(
+                    "--formula2 is only valid with between or notBetween",
+                ));
+            }
+            if needs_formula2 {
+                formulas.push(formula2.to_string());
+            }
+        }
+        _ => {
+            return Err(CliError::invalid_args(
+                "--type must be expression, cell-is, or cellIs",
+            ));
+        }
     }
     if let Some(priority) = options.priority
         && priority < 1
@@ -370,7 +433,9 @@ fn add_conditional_format_xml(
         .unwrap_or_else(|| next_conditional_format_priority(xml));
     let rule_xml = render_conditional_format_rule(
         prefix,
-        formula,
+        &rule_type,
+        &operator,
+        &formulas,
         priority,
         options.has_stop_if_true.then_some(options.stop_if_true),
         options.dxf_id,
@@ -388,9 +453,10 @@ fn add_conditional_format_xml(
         .filter(|block| normalize_sqref(&block.sqref).ok().as_deref() == Some(norm_sqref.as_str()))
         .flat_map(|block| block.rules.into_iter().rev())
         .find(|rule| {
-            rule.priority == Some(priority)
-                && rule.formulas.len() == 1
-                && rule.formulas[0] == formula
+            rule.rule_type == rule_type
+                && rule.operator == operator
+                && rule.priority == Some(priority)
+                && rule.formulas == formulas
         })
         .unwrap_or_else(|| ConditionalFormatRule {
             index: 0,
@@ -399,9 +465,10 @@ fn add_conditional_format_xml(
             primary_selector: String::new(),
             selectors: Vec::new(),
             sqref: norm_sqref.clone(),
-            rule_type: "expression".to_string(),
+            rule_type: rule_type.clone(),
+            operator: operator.clone(),
             priority: Some(priority),
-            formulas: vec![formula.to_string()],
+            formulas: formulas.clone(),
             dxf_id: options.dxf_id,
             stop_if_true: options.has_stop_if_true && options.stop_if_true,
         });
@@ -498,6 +565,7 @@ fn parse_conditional_format_rule(
         selectors: Vec::new(),
         sqref: sqref.to_string(),
         rule_type: attr_local(&attrs, "type").unwrap_or_default(),
+        operator: attr_local(&attrs, "operator").unwrap_or_default(),
         priority,
         formulas: Vec::new(),
         dxf_id,
@@ -707,9 +775,43 @@ fn container_inner_bounds(
     ))
 }
 
+fn normalize_conditional_format_add_type(rule_type: Option<&str>) -> String {
+    match rule_type.unwrap_or_default().trim() {
+        "" | "expression" => "expression".to_string(),
+        "cell-is" | "cellIs" => "cellIs".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn validate_conditional_format_cell_is_operator(operator: &str) -> CliResult<()> {
+    if operator.is_empty() {
+        return Err(CliError::invalid_args(
+            "--operator is required for cellIs conditional formats",
+        ));
+    }
+    if !matches!(
+        operator,
+        "between"
+            | "notBetween"
+            | "equal"
+            | "notEqual"
+            | "greaterThan"
+            | "lessThan"
+            | "greaterThanOrEqual"
+            | "lessThanOrEqual"
+    ) {
+        return Err(CliError::invalid_args(format!(
+            "invalid operator {operator:?} (use one of between, notBetween, equal, notEqual, greaterThan, lessThan, greaterThanOrEqual, lessThanOrEqual)"
+        )));
+    }
+    Ok(())
+}
+
 fn render_conditional_format_rule(
     prefix: &str,
-    formula: &str,
+    rule_type: &str,
+    operator: &str,
+    formulas: &[String],
     priority: i64,
     stop_if_true: Option<bool>,
     dxf_id: Option<i64>,
@@ -717,7 +819,10 @@ fn render_conditional_format_rule(
     let tag = element_name(prefix, "cfRule");
     let mut attrs = BTreeMap::new();
     attrs.insert("priority".to_string(), priority.to_string());
-    attrs.insert("type".to_string(), "expression".to_string());
+    attrs.insert("type".to_string(), rule_type.to_string());
+    if !operator.is_empty() {
+        attrs.insert("operator".to_string(), operator.to_string());
+    }
     if let Some(stop_if_true) = stop_if_true
         && stop_if_true
     {
@@ -726,13 +831,16 @@ fn render_conditional_format_rule(
     if let Some(dxf_id) = dxf_id {
         attrs.insert("dxfId".to_string(), dxf_id.to_string());
     }
+    let formula_tag = element_name(prefix, "formula");
+    let formula_xml = formulas
+        .iter()
+        .map(|formula| format!("<{}>{}</{}>", formula_tag, xml_escape(formula), formula_tag))
+        .collect::<String>();
     format!(
-        "<{}{}><{}>{}</{}></{}>",
+        "<{}{}>{}</{}>",
         tag,
         render_xml_attrs(&attrs),
-        element_name(prefix, "formula"),
-        xml_escape(formula),
-        element_name(prefix, "formula"),
+        formula_xml,
         tag
     )
 }
