@@ -13,19 +13,19 @@ implemented. It is retained as design history, not as current status.
 Current status on 2026-06-21:
 
 - Go and Rust both expose `ooxml xlsx conditional-formats` with
-  `list`, `show`, `add`, and `delete`.
+  `list`, `show`, `add`, `delete`, and `reorder`.
 - The promoted add surface covers expression, `cellIs`, `colorScale`,
   `dataBar`, and `iconSet`
   rules, with stable JSON readback, readback commands, strict validation, and
   Go-vs-Rust contract coverage.
 - Serve/MCP supports read-only `list`/`show` through `inspect` and mutating
-  `add`/`delete` through `op`.
+  `add`/`delete`/`reorder` through `op`.
 - XLSM package-artifact preservation is covered for conditional-formatting
   worksheet mutations. Rust-generated XLSX outputs for the promoted rules have
   passed strict validation, Open XML SDK validation, and desktop Excel open
   proof.
-- Richer x14 extension authoring and style/dxf creation remain intentionally
-  deferred feature slices.
+- Richer x14 extension authoring, style/dxf creation, and source-level style
+  editing remain intentionally deferred feature slices.
 
 ## Historical Surface At Recon Time
 
@@ -77,13 +77,13 @@ These helpers are preservation/order infrastructure, not creation, editing, dele
 
 ## Likely Go Oracle Requirement
 
-At the time of this reconnaissance, Go had no user-facing conditional-formatting command, so the first operational slice needed to add the smallest Go oracle behavior worth porting and proving. That recommendation has since been implemented for list/show/add/delete plus expression, `cellIs`, `colorScale`, `dataBar`, and `iconSet` rules.
+At the time of this reconnaissance, Go had no user-facing conditional-formatting command, so the first operational slice needed to add the smallest Go oracle behavior worth porting and proving. That recommendation has since been implemented for list/show/add/delete/reorder plus expression, `cellIs`, `colorScale`, `dataBar`, and `iconSet` rules.
 
 Recommended Go-first order:
 
 1. Read-only inventory: list/show conditional formatting rules from worksheet XML.
 2. Minimal mutation: add/delete expression and cell-is rules using existing worksheet child ordering.
-3. Priority operations: set priority, reorder, and preserve `stopIfTrue`.
+3. Priority operations: reorder and preserve `stopIfTrue`.
 4. Visual rules: color scales, data bars, and icon sets once the simple rule path is proved.
 5. XLSM macro-preservation proof for every mutating command before declaring parity.
 
@@ -101,7 +101,7 @@ Initial commands:
 - `add <file> --sheet <selector> --range <sqref> --type cell-is --operator <op> --formula <formula> [--formula2 <formula>] [--priority <n>] [--stop-if-true] [--dxf-id <id>] --out <file>`: adds a cell comparison rule.
 - `delete <file> --sheet <selector> --rule <id-or-priority> --out <file>`: removes a rule and removes an empty `conditionalFormatting` block.
 - `reorder <file> --sheet <selector> --rule <id-or-priority> --priority <n> --out <file>`: changes priorities with deterministic renumbering.
-- Later visual commands or subtypes: `--type color-scale`, `--type data-bar`, and `--type icon-set`, with a conservative normalized model and raw XML preservation for extensions.
+- Promoted visual subtypes: `--type color-scale`, `--type data-bar`, and `--type icon-set`, with a conservative normalized model and raw XML preservation for extensions.
 
 The command should avoid promising style authoring beyond `dxfId` until the project has a clear style mutation oracle. If inline style creation is required, that should be a separate, proved style/dxf helper.
 
@@ -171,4 +171,8 @@ Operational implementation:
 
 ## Suggested First Slice
 
-Start with Go read-only `list`/`show` plus fixture creation. Then add Go mutation for expression and cell-is rules only, with existing `dxfId` references rather than new style authoring. Once that oracle is stable, port the same normalized JSON and mutation behavior to Rust and add Go-vs-Rust contract tests. Defer color scales, data bars, icon sets, x14 extension authoring, and style/dxf creation until the simple path survives Excel, SDK, strict validation, and XLSM macro-preservation gates.
+The suggested first slice has now been implemented through read-only inventory,
+expression and cell-is mutation, visual rules (`colorScale`, `dataBar`,
+`iconSet`), priority reorder, serve/MCP routing, and validation/open-proof
+gates. Keep x14 extension authoring, style/dxf creation, and source-level style
+editing as separate future slices with their own oracle and Office proof.

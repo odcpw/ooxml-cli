@@ -9,6 +9,23 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-21:
 
+- XLSX conditional-formatting now has Go-oracle and Rust parity for priority
+  reorder. The Go oracle commit `1228417` adds
+  `xlsx conditional-formats reorder <file> --sheet <selector> --rule
+  <selector> --priority <n> --out <file>`, with target priorities constrained
+  to the worksheet rule count, deterministic `1..N` priority renumbering, and
+  JSON readback of `oldPriority` / `newPriority`. The Rust port wires the same
+  core behavior through CLI dispatch, capability metadata, serve-op
+  plan/readback support, and Go-vs-Rust contract coverage. Proof: `go test
+  ./pkg/xlsx/mutate ./internal/cli ./pkg/capabilities`, `cargo fmt --check`,
+  `cargo check --all-targets`, clippy with warnings denied, focused
+  `xlsx_conditional_formats_reorder`,
+  `serve_op_supports_xlsx_conditional_format_reorder`, `xlsx_conditional`,
+  `capabilities`, and conditional-formatting unit tests. A Rust-generated
+  `rust-cf-reorder-current.xlsx` passed strict repo validation, Rust
+  `conformance check`, Microsoft Open XML SDK validation with 0 errors, and
+  desktop Excel COM open proof on Office 16.0 build 20026. `cargo
+  test --all-targets` passed with 19 unit tests plus 254 Rust contract tests.
 - XLSX conditional-formatting now has Go-oracle and Rust parity for icon-set
   rules. The Go oracle commit `41e2f2e` adds `--type icon-set` / `iconSet`
   with an `--icon-set` name starting with `3`, `4`, or `5` and exactly that
