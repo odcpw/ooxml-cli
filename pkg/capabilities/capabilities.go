@@ -982,6 +982,20 @@ var commandMetadata = map[string]CommandMetadata{
 		},
 		TargetObjectKinds: []string{"conditional-format", "range", "sheet"},
 	},
+	"ooxml xlsx conditional-formats reorder": {
+		Examples: []Example{
+			{
+				Command:        "ooxml --json xlsx conditional-formats reorder workbook.xlsx --sheet Sheet1 --rule cfRule:3 --priority 1 --out edited.xlsx",
+				Description:    "Move one conditional-formatting rule to a target priority/order position and normalize cfRule priorities.",
+				ExpectedOutput: "JSON mutation result with reordered rule priority readback, list/show commands, and validate command.",
+			},
+		},
+		CommonErrors: []CommonError{
+			{Pattern: "conditional format rule", Solution: "Run 'ooxml --json xlsx conditional-formats list <file> --sheet <sheet>' and retry with a listed cfRule selector."},
+			{Pattern: "--priority", Solution: "Pass a target priority between 1 and the worksheet's conditional-format rule count."},
+		},
+		TargetObjectKinds: []string{"conditional-format", "range", "sheet"},
+	},
 	"ooxml xlsx hyperlinks list": {
 		Examples: []Example{
 			{

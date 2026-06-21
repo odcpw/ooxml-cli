@@ -15,7 +15,7 @@ var xlsxConditionalFormatsCmd = &cobra.Command{
 	Use:     "conditional-formats",
 	Aliases: []string{"conditional-formatting", "conditional-format", "cf"},
 	Short:   "Inspect and mutate worksheet conditional formatting",
-	Long:    "Commands for listing, showing, adding, and deleting worksheet conditional-formatting expression, cellIs, color-scale, data-bar, and icon-set rules.",
+	Long:    "Commands for listing, showing, adding, deleting, and reordering worksheet conditional-formatting expression, cellIs, color-scale, data-bar, and icon-set rules.",
 	Args:    cobra.NoArgs,
 	RunE:    showHelp,
 }
@@ -113,6 +113,8 @@ type XLSXConditionalFormatMutationResult struct {
 	Range                         string                         `json:"range"`
 	Rule                          *XLSXConditionalFormatRuleJSON `json:"rule,omitempty"`
 	CellsAffected                 int                            `json:"cellsAffected"`
+	OldPriority                   *int                           `json:"oldPriority,omitempty"`
+	NewPriority                   *int                           `json:"newPriority,omitempty"`
 	Output                        string                         `json:"output,omitempty"`
 	DryRun                        bool                           `json:"dryRun"`
 	ValidateCommand               string                         `json:"validateCommand,omitempty"`
@@ -406,6 +408,14 @@ func runConditionalFormatMutation(cmd *cobra.Command, filePath, sheetSel, action
 		}
 		j := conditionalFormatRuleToJSON(mutResult.Rule)
 		result.Rule = &j
+		if mutResult.OldPriority > 0 {
+			oldPriority := mutResult.OldPriority
+			result.OldPriority = &oldPriority
+		}
+		if mutResult.NewPriority > 0 {
+			newPriority := mutResult.NewPriority
+			result.NewPriority = &newPriority
+		}
 		if destinationFile != "" {
 			result.ValidateCommand = xlsxValidateCommand(destinationFile)
 			result.ConditionalFormatsListCommand = fmt.Sprintf("ooxml --json xlsx conditional-formats list %s --sheet %s", pptxXLSXCommandArg(destinationFile), pptxXLSXCommandArg(selector))
@@ -420,7 +430,11 @@ func runConditionalFormatMutation(cmd *cobra.Command, filePath, sheetSel, action
 	if GetGlobalConfig(cmd).Format == "json" {
 		return writeJSONResult(cmd, result, "conditional-formats "+action)
 	}
-	return writeXLSXOutput(cmd, []byte(fmt.Sprintf("%sd conditional format on %s!%s", action, result.Sheet, result.Range)))
+	pastAction := action + "d"
+	if action == "reorder" {
+		pastAction = "reordered"
+	}
+	return writeXLSXOutput(cmd, []byte(fmt.Sprintf("%s conditional format on %s!%s", pastAction, result.Sheet, result.Range)))
 }
 
 func normalizeConditionalFormatAddType(ruleType string) string {
@@ -660,6 +674,32 @@ var xlsxConditionalFormatsDeleteCmd = &cobra.Command{
 	},
 }
 
+var xlsxConditionalFormatsReorderCmd = &cobra.Command{
+	Use:   "reorder <file>",
+	Short: "Reorder a conditional-formatting rule by priority",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		filePath := args[0]
+		if strings.TrimSpace(xlsxCFRule) == "" {
+			return InvalidArgsError("--rule is required")
+		}
+		if !cmd.Flags().Changed("priority") {
+			return InvalidArgsError("--priority is required")
+		}
+		if xlsxCFPriority < 1 {
+			return InvalidArgsError("--priority must be greater than zero")
+		}
+		return runConditionalFormatMutation(cmd, filePath, xlsxCFSheet, "reorder", func(pkg opc.PackageSession, sheet model.SheetRef) (*mutate.ConditionalFormatMutationResult, error) {
+			return mutate.ReorderConditionalFormatRule(&mutate.ReorderConditionalFormatRuleRequest{
+				Package:      pkg,
+				SheetRef:     sheet,
+				RuleSelector: xlsxCFRule,
+				Priority:     xlsxCFPriority,
+			})
+		})
+	},
+}
+
 func conditionalFormatRuleNotFoundError(blocks []mutate.ConditionalFormatBlock, selector string, sheetRef model.SheetRef) error {
 	var candidates []SelectorCandidate
 	for _, block := range blocks {
@@ -683,7 +723,7 @@ func init() {
 	xlsxConditionalFormatsShowCmd.Flags().StringVar(&xlsxCFShowRule, "rule", "", "rule selector such as cfRule:1, rule:1, or priority:1")
 	xlsxConditionalFormatsCmd.AddCommand(xlsxConditionalFormatsShowCmd)
 
-	for _, c := range []*cobra.Command{xlsxConditionalFormatsAddCmd, xlsxConditionalFormatsDeleteCmd} {
+	for _, c := range []*cobra.Command{xlsxConditionalFormatsAddCmd, xlsxConditionalFormatsDeleteCmd, xlsxConditionalFormatsReorderCmd} {
 		c.Flags().StringVar(&xlsxCFSheet, "sheet", "", "sheet number (1-based) or exact sheet name")
 		AddMutationFlags(c)
 	}
@@ -701,8 +741,11 @@ func init() {
 	xlsxConditionalFormatsAddCmd.Flags().IntVar(&xlsxCFDxfID, "dxf-id", 0, "optional differential style id to reference")
 
 	xlsxConditionalFormatsDeleteCmd.Flags().StringVar(&xlsxCFRule, "rule", "", "rule selector such as cfRule:1, rule:1, or priority:1")
+	xlsxConditionalFormatsReorderCmd.Flags().StringVar(&xlsxCFRule, "rule", "", "rule selector such as cfRule:1, rule:1, block:1/rule:1, or priority:1")
+	xlsxConditionalFormatsReorderCmd.Flags().IntVar(&xlsxCFPriority, "priority", 0, "target cfRule priority/order position (1-based)")
 
 	xlsxConditionalFormatsCmd.AddCommand(xlsxConditionalFormatsAddCmd)
 	xlsxConditionalFormatsCmd.AddCommand(xlsxConditionalFormatsDeleteCmd)
+	xlsxConditionalFormatsCmd.AddCommand(xlsxConditionalFormatsReorderCmd)
 	xlsxCmd.AddCommand(xlsxConditionalFormatsCmd)
 }

@@ -16,7 +16,7 @@ func TestXLSXConditionalFormatsCommandRegistration(t *testing.T) {
 	if cf == nil {
 		t.Fatal("xlsx conditional-formats command is not registered")
 	}
-	for _, name := range []string{"list", "show", "add", "delete"} {
+	for _, name := range []string{"list", "show", "add", "delete", "reorder"} {
 		if sub := findSubcommand(cf, name); sub == nil {
 			t.Fatalf("xlsx conditional-formats %s command is not registered", name)
 		}
@@ -116,6 +116,159 @@ func TestXLSXConditionalFormatsAddListShowDelete(t *testing.T) {
 	}
 	if _, err := executeRootForXLSXTest(t, "validate", "--strict", deletedPath); err != nil {
 		t.Fatalf("validate --strict after delete failed: %v", err)
+	}
+}
+
+func TestXLSXConditionalFormatsReorder(t *testing.T) {
+	workbookPath := getXLSXTestFilePath("minimal-workbook")
+	dir := t.TempDir()
+	step1 := filepath.Join(dir, "cf-1.xlsx")
+	step2 := filepath.Join(dir, "cf-2.xlsx")
+	step3 := filepath.Join(dir, "cf-3.xlsx")
+
+	if _, err := executeRootForXLSXTest(t,
+		"--json",
+		"xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1",
+		"--range", "A1:A5",
+		"--type", "expression",
+		"--formula", "A1>0",
+		"--priority", "3",
+		"--out", step1,
+	); err != nil {
+		t.Fatalf("conditional-formats add step1 failed: %v", err)
+	}
+	if _, err := executeRootForXLSXTest(t,
+		"--json",
+		"xlsx", "conditional-formats", "add", step1,
+		"--sheet", "1",
+		"--range", "B1:B5",
+		"--type", "expression",
+		"--formula", "B1>0",
+		"--priority", "1",
+		"--out", step2,
+	); err != nil {
+		t.Fatalf("conditional-formats add step2 failed: %v", err)
+	}
+	if _, err := executeRootForXLSXTest(t,
+		"--json",
+		"xlsx", "conditional-formats", "add", step2,
+		"--sheet", "1",
+		"--range", "C1:C5",
+		"--type", "expression",
+		"--formula", "C1>0",
+		"--priority", "2",
+		"--out", step3,
+	); err != nil {
+		t.Fatalf("conditional-formats add step3 failed: %v", err)
+	}
+
+	reorderedPath := filepath.Join(dir, "cf-reordered.xlsx")
+	reorderOut, err := executeRootForXLSXTest(t,
+		"--json",
+		"xlsx", "conditional-formats", "reorder", step3,
+		"--sheet", "1",
+		"--rule", "priority:2",
+		"--priority", "1",
+		"--out", reorderedPath,
+	)
+	if err != nil {
+		t.Fatalf("conditional-formats reorder failed: %v", err)
+	}
+	var reorderResult XLSXConditionalFormatMutationResult
+	if err := json.Unmarshal([]byte(reorderOut), &reorderResult); err != nil {
+		t.Fatalf("failed to unmarshal reorder JSON: %v\n%s", err, reorderOut)
+	}
+	if reorderResult.Action != "reorder" || reorderResult.Rule == nil {
+		t.Fatalf("unexpected reorder result: %+v", reorderResult)
+	}
+	if reorderResult.OldPriority == nil || *reorderResult.OldPriority != 2 || reorderResult.NewPriority == nil || *reorderResult.NewPriority != 1 {
+		t.Fatalf("unexpected old/new priority readback: %+v", reorderResult)
+	}
+	if reorderResult.Rule.Formula != "C1>0" || reorderResult.Rule.Priority == nil || *reorderResult.Rule.Priority != 1 {
+		t.Fatalf("unexpected reordered rule: %+v", reorderResult.Rule)
+	}
+	if reorderResult.ConditionalFormatsListCommand == "" || reorderResult.ConditionalFormatsShowCommand == "" || reorderResult.ValidateCommand == "" {
+		t.Fatalf("missing readback commands: %+v", reorderResult)
+	}
+
+	listOut := executeGeneratedOOXMLCommandForXLSXTest(t, reorderResult.ConditionalFormatsListCommand)
+	var listResult XLSXConditionalFormatsListResult
+	if err := json.Unmarshal([]byte(listOut), &listResult); err != nil {
+		t.Fatalf("failed to unmarshal list JSON: %v\n%s", err, listOut)
+	}
+	if listResult.Count != 3 {
+		t.Fatalf("unexpected list result: %+v", listResult)
+	}
+	prioritiesByFormula := map[string]int{}
+	for _, rule := range listResult.Rules {
+		if rule.Priority == nil {
+			t.Fatalf("rule missing priority after reorder: %+v", rule)
+		}
+		prioritiesByFormula[rule.Formula] = *rule.Priority
+	}
+	if prioritiesByFormula["C1>0"] != 1 || prioritiesByFormula["B1>0"] != 2 || prioritiesByFormula["A1>0"] != 3 {
+		t.Fatalf("unexpected priorities by formula: %+v", prioritiesByFormula)
+	}
+
+	showOut := executeGeneratedOOXMLCommandForXLSXTest(t, reorderResult.ConditionalFormatsShowCommand)
+	var showResult XLSXConditionalFormatRuleJSON
+	if err := json.Unmarshal([]byte(showOut), &showResult); err != nil {
+		t.Fatalf("failed to unmarshal show JSON: %v\n%s", err, showOut)
+	}
+	if showResult.Formula != "C1>0" || showResult.Priority == nil || *showResult.Priority != 1 {
+		t.Fatalf("unexpected show result after reorder: %+v", showResult)
+	}
+	executeGeneratedOOXMLCommandForXLSXTest(t, reorderResult.ValidateCommand)
+}
+
+func TestXLSXConditionalFormatsReorderPriorityValidation(t *testing.T) {
+	workbookPath := getXLSXTestFilePath("minimal-workbook")
+	dir := t.TempDir()
+	seededPath := filepath.Join(dir, "cf-seeded.xlsx")
+	if _, err := executeRootForXLSXTest(t,
+		"--json",
+		"xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1",
+		"--range", "A1:A5",
+		"--type", "expression",
+		"--formula", "A1>0",
+		"--priority", "1",
+		"--out", seededPath,
+	); err != nil {
+		t.Fatalf("conditional-formats add seed failed: %v", err)
+	}
+
+	_, err := executeRootForXLSXTest(t,
+		"xlsx", "conditional-formats", "reorder", seededPath,
+		"--sheet", "1",
+		"--rule", "cfRule:1",
+		"--out", filepath.Join(dir, "missing-priority.xlsx"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "--priority is required") {
+		t.Fatalf("expected missing priority error, got: %v", err)
+	}
+
+	_, err = executeRootForXLSXTest(t,
+		"xlsx", "conditional-formats", "reorder", seededPath,
+		"--sheet", "1",
+		"--rule", "cfRule:1",
+		"--priority", "0",
+		"--out", filepath.Join(dir, "zero-priority.xlsx"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "--priority must be greater than zero") {
+		t.Fatalf("expected zero priority error, got: %v", err)
+	}
+
+	_, err = executeRootForXLSXTest(t,
+		"xlsx", "conditional-formats", "reorder", seededPath,
+		"--sheet", "1",
+		"--rule", "cfRule:1",
+		"--priority", "2",
+		"--out", filepath.Join(dir, "too-large-priority.xlsx"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "--priority must be between 1 and 1") {
+		t.Fatalf("expected too-large priority error, got: %v", err)
 	}
 }
 

@@ -200,6 +200,28 @@ func TestConditionalFormatsAddMetadataIncludesColorScaleExample(t *testing.T) {
 	}
 }
 
+func TestConditionalFormatsReorderMetadataIncludesPriorityExample(t *testing.T) {
+	meta, ok := MetadataFor("ooxml xlsx conditional-formats reorder")
+	if !ok {
+		t.Fatal("missing metadata for conditional-format reorder")
+	}
+	foundReorder := false
+	for _, ex := range meta.Examples {
+		if strings.Contains(ex.Command, "conditional-formats reorder") &&
+			strings.Contains(ex.Command, "--rule cfRule:3") &&
+			strings.Contains(ex.Command, "--priority 1") &&
+			strings.Contains(ex.Command, "--out edited.xlsx") {
+			foundReorder = true
+		}
+	}
+	if !foundReorder {
+		t.Fatalf("conditional-format reorder metadata missing priority example: %+v", meta.Examples)
+	}
+	if !contains(meta.TargetObjectKinds, "conditional-format") || !contains(meta.TargetObjectKinds, "sheet") {
+		t.Fatalf("conditional-format reorder metadata targets wrong object kinds: %+v", meta.TargetObjectKinds)
+	}
+}
+
 func contains(s []string, want string) bool {
 	for _, v := range s {
 		if v == want {
