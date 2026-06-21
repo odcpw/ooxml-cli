@@ -565,6 +565,15 @@ func TestCapabilitiesForCommentAndImageReverseLookup(t *testing.T) {
 			},
 		},
 		{
+			kind: "conditional-format",
+			want: []string{
+				"ooxml xlsx conditional-formats list",
+				"ooxml xlsx conditional-formats show",
+				"ooxml xlsx conditional-formats add",
+				"ooxml xlsx conditional-formats delete",
+			},
+		},
+		{
 			kind: "header",
 			want: []string{
 				"ooxml docx headers list",

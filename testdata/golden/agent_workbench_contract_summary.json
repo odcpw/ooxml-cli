@@ -9,8 +9,8 @@
       "docx",
       "vbaProject.bin macro project payload"
     ],
-    "commandCount": 290,
-    "objectKindCount": 22,
+    "commandCount": 295,
+    "objectKindCount": 23,
     "workflowNames": [
       "pptx inspect then edit",
       "pptx animations author",

@@ -47,6 +47,7 @@ var ObjectKinds = []string{
 	"cell",
 	"chart",
 	"comment",
+	"conditional-format",
 	"data-validation",
 	"footer",
 	"header",
@@ -911,6 +912,55 @@ var commandMetadata = map[string]CommandMetadata{
 			{Pattern: "no data validation", Solution: "Run 'ooxml --json xlsx data-validations list <file> --sheet <sheet>' and retry with a listed range."},
 		},
 		TargetObjectKinds: []string{"data-validation", "range", "sheet"},
+	},
+	"ooxml xlsx conditional-formats list": {
+		Examples: []Example{
+			{
+				Command:        "ooxml --json xlsx conditional-formats list workbook.xlsx --sheet Sheet1",
+				Description:    "List worksheet conditional-formatting blocks and cfRule selectors.",
+				ExpectedOutput: "JSON conditional-formatting records with sqref, rule selectors, type, priority, formulas, dxfId, and stopIfTrue.",
+			},
+		},
+		TargetObjectKinds: []string{"conditional-format", "range", "sheet"},
+	},
+	"ooxml xlsx conditional-formats show": {
+		Examples: []Example{
+			{
+				Command:        "ooxml --json xlsx conditional-formats show workbook.xlsx --sheet Sheet1 --rule cfRule:1",
+				Description:    "Show one conditional-formatting rule by a selector returned from list.",
+				ExpectedOutput: "JSON conditional-formatting rule with sqref, type, priority, formulas, dxfId, and stopIfTrue.",
+			},
+		},
+		CommonErrors: []CommonError{
+			{Pattern: "conditional format rule", Solution: "Run 'ooxml --json xlsx conditional-formats list <file> --sheet <sheet>' and retry with a listed cfRule selector."},
+		},
+		TargetObjectKinds: []string{"conditional-format", "range", "sheet"},
+	},
+	"ooxml xlsx conditional-formats add": {
+		Examples: []Example{
+			{
+				Command:        "ooxml --json xlsx conditional-formats add workbook.xlsx --sheet Sheet1 --range A2:A20 --type expression --formula A2>100 --dxf-id 0 --out edited.xlsx",
+				Description:    "Add an expression conditional-formatting rule that references an existing differential style.",
+				ExpectedOutput: "JSON mutation result with rule readback and validate command.",
+			},
+		},
+		CommonErrors: []CommonError{
+			{Pattern: "invalid_args", Solution: "Use ordinary A1 sqref ranges, --type expression, and an existing --dxf-id if styling is needed."},
+		},
+		TargetObjectKinds: []string{"conditional-format", "range", "sheet", "style"},
+	},
+	"ooxml xlsx conditional-formats delete": {
+		Examples: []Example{
+			{
+				Command:        "ooxml --json xlsx conditional-formats delete workbook.xlsx --sheet Sheet1 --rule cfRule:1 --out edited.xlsx",
+				Description:    "Delete one conditional-formatting rule by selector.",
+				ExpectedOutput: "JSON mutation result with deleted rule summary and validate command.",
+			},
+		},
+		CommonErrors: []CommonError{
+			{Pattern: "conditional format rule", Solution: "Run 'ooxml --json xlsx conditional-formats list <file> --sheet <sheet>' and retry with a listed cfRule selector."},
+		},
+		TargetObjectKinds: []string{"conditional-format", "range", "sheet"},
 	},
 	"ooxml xlsx hyperlinks list": {
 		Examples: []Example{

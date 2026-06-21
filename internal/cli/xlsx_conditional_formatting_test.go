@@ -1,0 +1,136 @@
+package cli
+
+import (
+	"encoding/json"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestXLSXConditionalFormatsCommandRegistration(t *testing.T) {
+	xlsx := findSubcommand(GetRootCmd(), "xlsx")
+	if xlsx == nil {
+		t.Fatal("xlsx command is not registered")
+	}
+	cf := findSubcommand(xlsx, "conditional-formats")
+	if cf == nil {
+		t.Fatal("xlsx conditional-formats command is not registered")
+	}
+	for _, name := range []string{"list", "show", "add", "delete"} {
+		if sub := findSubcommand(cf, name); sub == nil {
+			t.Fatalf("xlsx conditional-formats %s command is not registered", name)
+		}
+	}
+}
+
+func TestXLSXConditionalFormatsAddListShowDelete(t *testing.T) {
+	workbookPath := getXLSXTestFilePath("minimal-workbook")
+	outPath := filepath.Join(t.TempDir(), "cf.xlsx")
+
+	addOut, err := executeRootForXLSXTest(t,
+		"--format", "json",
+		"xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1",
+		"--range", "A1:A5",
+		"--type", "expression",
+		"--formula", "A1>0",
+		"--priority", "7",
+		"--stop-if-true",
+		"--out", outPath,
+	)
+	if err != nil {
+		t.Fatalf("conditional-formats add failed: %v", err)
+	}
+	var addResult XLSXConditionalFormatMutationResult
+	if err := json.Unmarshal([]byte(addOut), &addResult); err != nil {
+		t.Fatalf("failed to unmarshal add JSON: %v\n%s", err, addOut)
+	}
+	if addResult.Action != "add" || addResult.Range != "A1:A5" || addResult.Rule == nil {
+		t.Fatalf("unexpected add result: %+v", addResult)
+	}
+	if addResult.Rule.Type != "expression" || addResult.Rule.Formula != "A1>0" || addResult.Rule.Priority == nil || *addResult.Rule.Priority != 7 || !addResult.Rule.StopIfTrue {
+		t.Fatalf("unexpected added rule: %+v", addResult.Rule)
+	}
+	if addResult.CellsAffected != 5 {
+		t.Fatalf("cellsAffected = %d, want 5", addResult.CellsAffected)
+	}
+	if addResult.ConditionalFormatsListCommand == "" || !strings.Contains(addResult.ConditionalFormatsListCommand, "--json") {
+		t.Fatalf("missing list readback command: %+v", addResult)
+	}
+	if addResult.ConditionalFormatsShowCommand == "" {
+		t.Fatalf("missing show readback command: %+v", addResult)
+	}
+
+	listOut := executeGeneratedOOXMLCommandForXLSXTest(t, addResult.ConditionalFormatsListCommand)
+	var listResult XLSXConditionalFormatsListResult
+	if err := json.Unmarshal([]byte(listOut), &listResult); err != nil {
+		t.Fatalf("failed to unmarshal list JSON: %v\n%s", err, listOut)
+	}
+	if listResult.Count != 1 || len(listResult.ConditionalFormats) != 1 || listResult.Rules[0].PrimarySelector != "cfRule:1" {
+		t.Fatalf("unexpected list result: %+v", listResult)
+	}
+	if !containsString(listResult.Rules[0].Selectors, "priority:7") {
+		t.Fatalf("missing priority selector: %+v", listResult.Rules[0])
+	}
+
+	showOut := executeGeneratedOOXMLCommandForXLSXTest(t, addResult.ConditionalFormatsShowCommand)
+	var showResult XLSXConditionalFormatRuleJSON
+	if err := json.Unmarshal([]byte(showOut), &showResult); err != nil {
+		t.Fatalf("failed to unmarshal show JSON: %v\n%s", err, showOut)
+	}
+	if showResult.Sqref != "A1:A5" || showResult.Formula != "A1>0" {
+		t.Fatalf("unexpected show result: %+v", showResult)
+	}
+
+	if _, err := executeRootForXLSXTest(t, "validate", "--strict", outPath); err != nil {
+		t.Fatalf("validate --strict failed: %v", err)
+	}
+
+	deletedPath := filepath.Join(t.TempDir(), "cf-deleted.xlsx")
+	deleteOut, err := executeRootForXLSXTest(t,
+		"--format", "json",
+		"xlsx", "conditional-formats", "delete", outPath,
+		"--sheet", "1",
+		"--rule", "priority:7",
+		"--out", deletedPath,
+	)
+	if err != nil {
+		t.Fatalf("conditional-formats delete failed: %v", err)
+	}
+	var deleteResult XLSXConditionalFormatMutationResult
+	if err := json.Unmarshal([]byte(deleteOut), &deleteResult); err != nil {
+		t.Fatalf("failed to unmarshal delete JSON: %v\n%s", err, deleteOut)
+	}
+	if deleteResult.Action != "delete" || deleteResult.Rule == nil || deleteResult.Rule.Formula != "A1>0" {
+		t.Fatalf("unexpected delete result: %+v", deleteResult)
+	}
+	listOut, err = executeRootForXLSXTest(t, "--format", "json", "xlsx", "conditional-formats", "list", deletedPath, "--sheet", "1")
+	if err != nil {
+		t.Fatalf("conditional-formats list after delete failed: %v", err)
+	}
+	if err := json.Unmarshal([]byte(listOut), &listResult); err != nil {
+		t.Fatalf("failed to unmarshal post-delete list JSON: %v\n%s", err, listOut)
+	}
+	if listResult.Count != 0 || len(listResult.ConditionalFormats) != 0 {
+		t.Fatalf("expected no conditional formats after delete: %+v", listResult)
+	}
+	if _, err := executeRootForXLSXTest(t, "validate", "--strict", deletedPath); err != nil {
+		t.Fatalf("validate --strict after delete failed: %v", err)
+	}
+}
+
+func TestXLSXConditionalFormatsShowNotFound(t *testing.T) {
+	workbookPath := getXLSXTestFilePath("minimal-workbook")
+	outPath := filepath.Join(t.TempDir(), "cf.xlsx")
+	if _, err := executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "A1:A5", "--formula", "A1>0", "--out", outPath); err != nil {
+		t.Fatalf("conditional-formats add failed: %v", err)
+	}
+	_, err := executeRootForXLSXTest(t, "xlsx", "conditional-formats", "show", outPath, "--sheet", "1", "--rule", "cfRule:99")
+	if err == nil {
+		t.Fatalf("expected not-found error")
+	}
+	if !strings.Contains(err.Error(), "did you mean: cfRule:1") || !strings.Contains(err.Error(), "ooxml --json xlsx conditional-formats list <file> --sheet sheetId:1") {
+		t.Fatalf("expected selector candidates and discovery command, got: %v", err)
+	}
+}
