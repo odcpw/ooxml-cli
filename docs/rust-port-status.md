@@ -9,6 +9,12 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-20:
 
+- The PPTX capability catalog was split from one 3.8k-line accumulation file
+  into focused command-family modules under `src/capabilities/commands/pptx/`,
+  leaving `src/capabilities/commands/pptx.rs` as a small facade that preserves
+  the existing command order. Proof: `cargo fmt --check`, `cargo check
+  --all-targets`, `cargo clippy --all-targets -- -D warnings`, and the full
+  `capabilities` Rust contract shard with 8 passed tests.
 - Rust agent-facing composition and proof ergonomics moved forward after
   command-path parity: `find --to-ops`, `find --replace --to-ops`, and
   `find --replace --apply` now emit/apply structured XLSX/DOCX/PPTX ops;

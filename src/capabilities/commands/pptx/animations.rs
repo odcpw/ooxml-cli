@@ -1,0 +1,218 @@
+use serde_json::Value;
+
+use super::super::{capability_command, flag};
+
+pub(super) fn commands() -> Vec<Value> {
+    vec![
+        capability_command(
+            "ooxml pptx animations list",
+            "list <file>",
+            "List PPTX slide animation timing, builds, embedded media, and stale targets.",
+            &["slide", "shape", "animation"],
+            false,
+            Some("read-only command; generated selectors feed animation mutation commands"),
+            vec![],
+        ),
+        capability_command(
+            "ooxml pptx animations add",
+            "add <file> --slide <n> --shape <selector> --effect <kind>",
+            "Add an entrance animation to a PowerPoint shape.",
+            &["slide", "shape", "animation"],
+            false,
+            Some("direct CLI mutation; serve/MCP op support is not wired yet"),
+            vec![
+                flag("--slide", "slide", "int", "1-based slide number"),
+                flag(
+                    "--shape",
+                    "shape",
+                    "string",
+                    "target shape selector such as shape:2, ~Title 1, or stable shape handle",
+                ),
+                flag(
+                    "--effect",
+                    "effect",
+                    "string",
+                    "entrance effect: appear, fade, wipe, or fly-in",
+                ),
+                flag(
+                    "--direction",
+                    "direction",
+                    "string",
+                    "direction for wipe/fly-in: up, down, left, or right",
+                ),
+                flag(
+                    "--duration-ms",
+                    "durationMs",
+                    "int",
+                    "effect duration in milliseconds",
+                ),
+                flag(
+                    "--start",
+                    "start",
+                    "string",
+                    "start trigger: onClick, withPrevious, or afterPrevious",
+                ),
+                flag(
+                    "--by-paragraph",
+                    "byParagraph",
+                    "bool",
+                    "fan out one effect per paragraph and add a by-paragraph build",
+                ),
+                flag(
+                    "--paragraph-range",
+                    "paragraphRange",
+                    "string",
+                    "single 0-based inclusive paragraph range A:B",
+                ),
+                flag(
+                    "--expect-shape-name",
+                    "expectShapeName",
+                    "string",
+                    "stale guard for the resolved shape name",
+                ),
+                flag(
+                    "--expect-paragraph-count",
+                    "expectParagraphCount",
+                    "int",
+                    "stale guard for by-paragraph paragraph count",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "plan and validate without writing",
+                ),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write back to the input file",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict validation of the mutated package",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml pptx animations remove",
+            "remove <file> --slide <n> --effect-id <id>",
+            "Remove a supported entrance animation by effect id.",
+            &["slide", "shape", "animation"],
+            false,
+            Some("direct CLI mutation; serve/MCP op support is not wired yet"),
+            vec![
+                flag("--slide", "slide", "int", "1-based slide number"),
+                flag(
+                    "--effect-id",
+                    "effectId",
+                    "int",
+                    "effect cTn id from animations list",
+                ),
+                flag(
+                    "--expect-shape-name",
+                    "expectShapeName",
+                    "string",
+                    "stale guard for the effect target shape name",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "plan and validate without writing",
+                ),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write back to the input file",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict validation of the mutated package",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml pptx animations reorder",
+            "reorder <file> --slide <n> --order <ids>",
+            "Reorder the top-level click animation steps on a slide.",
+            &["slide", "animation"],
+            false,
+            Some("direct CLI mutation; serve/MCP op support is not wired yet"),
+            vec![
+                flag("--slide", "slide", "int", "1-based slide number"),
+                flag(
+                    "--order",
+                    "order",
+                    "string",
+                    "comma-separated permutation of clickStep ids from animations list",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "plan and validate without writing",
+                ),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write back to the input file",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict validation of the mutated package",
+                ),
+            ],
+        ),
+        capability_command(
+            "ooxml pptx animations prune-stale",
+            "prune-stale <file> [--slide <n>]",
+            "Remove supported animation effects/builds whose targets are stale.",
+            &["slide", "shape", "animation"],
+            false,
+            Some("direct CLI mutation; serve/MCP op support is not wired yet"),
+            vec![
+                flag(
+                    "--slide",
+                    "slide",
+                    "int",
+                    "optional 1-based slide number; default all slides",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "plan and validate without writing",
+                ),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write back to the input file",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict validation of the mutated package",
+                ),
+            ],
+        ),
+    ]
+}
