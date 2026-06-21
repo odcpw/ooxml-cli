@@ -14,7 +14,8 @@ Current status on 2026-06-21:
 
 - Go and Rust both expose `ooxml xlsx conditional-formats` with
   `list`, `show`, `add`, and `delete`.
-- The promoted add surface covers expression, `cellIs`, and `colorScale`
+- The promoted add surface covers expression, `cellIs`, `colorScale`, and
+  `dataBar`
   rules, with stable JSON readback, readback commands, strict validation, and
   Go-vs-Rust contract coverage.
 - Serve/MCP supports read-only `list`/`show` through `inspect` and mutating
@@ -23,8 +24,8 @@ Current status on 2026-06-21:
   worksheet mutations. Rust-generated XLSX outputs for the promoted rules have
   passed strict validation, Open XML SDK validation, and desktop Excel open
   proof.
-- Data bars, icon sets, richer x14 extension authoring, and style/dxf creation
-  remain intentionally deferred feature slices.
+- Icon sets, richer x14 extension authoring, and style/dxf creation remain
+  intentionally deferred feature slices.
 
 ## Historical Surface At Recon Time
 

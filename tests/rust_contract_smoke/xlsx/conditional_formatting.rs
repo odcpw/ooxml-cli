@@ -532,12 +532,7 @@ fn xlsx_conditional_formats_color_scale_saved_outputs_match_go_oracle() {
 }
 
 #[test]
-fn xlsx_conditional_formats_data_bar_saved_outputs_match_go_oracle_when_available() {
-    if !go_oracle_supports_conditional_format_data_bar() {
-        eprintln!("default Go oracle does not yet expose xlsx conditional-format data-bar");
-        return;
-    }
-
+fn xlsx_conditional_formats_data_bar_saved_outputs_match_go_oracle() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-cf-databar-{}",
         std::process::id()
@@ -967,34 +962,6 @@ fn assert_vba_package_entries_present(content_types: &str, workbook_rels: &str) 
             && workbook_rels.contains(r#"Target="vbaProject.bin""#),
         "workbook rels missing vbaProject relationship:\n{workbook_rels}"
     );
-}
-
-fn go_oracle_supports_conditional_format_data_bar() -> bool {
-    let (code, stdout, stderr) = run_go_ooxml(&[
-        "--json",
-        "xlsx",
-        "conditional-formats",
-        "add",
-        "testdata/xlsx/minimal-workbook/workbook.xlsx",
-        "--sheet",
-        "1",
-        "--range",
-        "D1:D5",
-        "--type",
-        "data-bar",
-        "--cfvo",
-        "min",
-        "--cfvo",
-        "max",
-        "--color",
-        "638EC6",
-        "--dry-run",
-    ]);
-    code == 0
-        && stderr.is_none()
-        && stdout
-            .as_ref()
-            .is_some_and(|value| value["rule"]["dataBar"].is_object())
 }
 
 fn read_zip_bytes(path: &Path, name: &str) -> Vec<u8> {

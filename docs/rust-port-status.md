@@ -9,6 +9,20 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-21:
 
+- XLSX conditional-formatting now has Go-oracle and Rust parity for data-bar
+  rules. The Go oracle commit `3a2ce63` adds `--type data-bar` / `dataBar`
+  with exactly two `--cfvo` values and exactly one `--color`, plus JSON
+  readback under `rule.dataBar.cfvo` and `rule.dataBar.color.rgb`. The Rust
+  port implements the same surface through a focused
+  `xlsx_conditional_formatting::data_bar` helper module, CLI dispatch,
+  capability metadata, serve-op plan/readback support, and hard Go-vs-Rust
+  contract coverage. Proof: `go test ./pkg/xlsx/mutate ./internal/cli
+  ./pkg/capabilities`, `cargo fmt --check`, `cargo check --all-targets`,
+  clippy with warnings denied, focused `xlsx_conditional`, `capabilities`,
+  `serve_op_supports_xlsx_conditional_format_data_bars`, and data-bar unit
+  tests. A Rust-generated `rust-cf-data-bar-current.xlsx` passed strict repo
+  validation, Rust `conformance check`, Microsoft Open XML SDK validation with
+  0 errors, and desktop Excel COM open proof on Office 16.0 build 20026.
 - The XLSX conditional-formatting agent surface is now complete for the
   promoted command family: serve/MCP `inspect` supports
   `xlsx conditional-formats list/show` and the same CLI aliases used by direct

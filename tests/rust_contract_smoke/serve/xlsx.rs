@@ -706,12 +706,7 @@ fn serve_op_supports_xlsx_conditional_formats_add_delete() {
 }
 
 #[test]
-fn serve_op_supports_xlsx_conditional_format_data_bars_when_available() {
-    if !go_oracle_supports_conditional_format_data_bar() {
-        eprintln!("default Go oracle does not yet expose xlsx conditional-format data-bar");
-        return;
-    }
-
+fn serve_op_supports_xlsx_conditional_format_data_bars() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-serve-cf-databar-{}",
         std::process::id()
@@ -996,33 +991,6 @@ fn serve_op_supports_xlsx_ranges_set() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
-fn go_oracle_supports_conditional_format_data_bar() -> bool {
-    let (code, stdout, stderr) = run_go_ooxml(&[
-        "--json",
-        "xlsx",
-        "conditional-formats",
-        "add",
-        "testdata/xlsx/minimal-workbook/workbook.xlsx",
-        "--sheet",
-        "1",
-        "--range",
-        "D1:D5",
-        "--type",
-        "data-bar",
-        "--cfvo",
-        "min",
-        "--cfvo",
-        "max",
-        "--color",
-        "638EC6",
-        "--dry-run",
-    ]);
-    code == 0
-        && stderr.is_none()
-        && stdout
-            .as_ref()
-            .is_some_and(|value| value["rule"]["dataBar"].is_object())
-}
 
 #[test]
 fn serve_op_supports_xlsx_dimension_setters() {
