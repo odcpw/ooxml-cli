@@ -9,6 +9,13 @@ The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.jso
 
 Latest milestone, 2026-06-21:
 
+- A third split wave landed and kept the proof loop green: XLSX names, XLSX
+  sheets, DOCX fields, and PPTX chart contract tests now live in child shards;
+  PPTX placement, PPTX comment, and XLSX comment document/output helpers moved
+  into private child modules. Proof: `cargo fmt --check`, `cargo check
+  --all-targets`, `cargo clippy --all-targets --` with `-D warnings`, focused
+  Rust/Go contract filters for every touched slice, and `cargo
+  test --all-targets` with 5 unit tests plus 235 Rust contract tests.
 - A second parallel de-monolithization wave landed without behavior changes:
   the capability web-surface contract, XLSX hyperlink contracts, PPTX comment
   contracts, DOCX paragraph contracts, and serve XLSX contracts now live in
