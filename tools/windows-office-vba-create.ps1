@@ -186,7 +186,25 @@ function Copy-VBAProjectBin {
 
 function Get-SHA256 {
     param([string]$Path)
-    return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+    if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) {
+        return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+    }
+
+    $resolved = Resolve-AbsolutePath -Path $Path
+    $stream = [System.IO.File]::OpenRead($resolved)
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $hash = $sha256.ComputeHash($stream)
+            return -join ($hash | ForEach-Object { $_.ToString("x2") })
+        }
+        finally {
+            $sha256.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
 }
 
 $familyName = switch ($Family.ToLowerInvariant()) {
