@@ -10,13 +10,17 @@ use std::sync::OnceLock;
 
 use crate::{
     CliError, CliResult, RelationshipEntry, allocate_relationship_id, attr, attr_exact,
-    chrono_like_counter, command_arg, content_type_for_part,
-    copy_zip_with_binary_part_overrides_and_removals, ensure_content_type_override, has_flag,
-    local_name, package_mutation_temp_path, package_type, parse_i64_flag, parse_string_flag,
-    relationship_entries_from_xml, relationship_target_from_source_to_target,
-    relationships_part_for, replace_xml_span, resolve_relationship_target, validate,
-    validate_xlsx_mutation_output_flags, xml_attr_escape, zip_bytes, zip_entry_names, zip_text,
+    chrono_like_counter, content_type_for_part, copy_zip_with_binary_part_overrides_and_removals,
+    ensure_content_type_override, has_flag, local_name, package_mutation_temp_path, package_type,
+    parse_i64_flag, parse_string_flag, relationship_entries_from_xml,
+    relationship_target_from_source_to_target, relationships_part_for, replace_xml_span,
+    resolve_relationship_target, validate, validate_xlsx_mutation_output_flags, xml_attr_escape,
+    zip_bytes, zip_entry_names, zip_text,
 };
+
+mod output;
+
+use self::output::{add_layout_readback_commands, add_master_readback_commands, output_basename};
 
 const SLIDE_REL_TYPE: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide";
@@ -2090,90 +2094,6 @@ fn minted_guid(scope: &str, index: u64) -> String {
         bytes[14],
         bytes[15]
     )
-}
-
-fn add_layout_readback_commands(
-    result: &mut Map<String, Value>,
-    output_path: Option<&str>,
-    layout_selector: &str,
-) {
-    let target = output_path.unwrap_or("<out.pptx>");
-    let suffix = if output_path.is_some() {
-        ""
-    } else {
-        "Template"
-    };
-    result.insert(
-        format!("readbackCommand{suffix}"),
-        json!(format!(
-            "ooxml --json pptx layouts show {} --layout {}",
-            command_arg(target),
-            command_arg(layout_selector)
-        )),
-    );
-    result.insert(
-        format!("layoutsListCommand{suffix}"),
-        json!(format!(
-            "ooxml --json pptx layouts list {}",
-            command_arg(target)
-        )),
-    );
-    result.insert(
-        format!("validateCommand{suffix}"),
-        json!(format!("ooxml validate --strict {}", command_arg(target))),
-    );
-    result.insert(
-        format!("renderCommand{suffix}"),
-        json!(format!(
-            "ooxml pptx render {} --out render-check",
-            command_arg(target)
-        )),
-    );
-}
-
-fn add_master_readback_commands(
-    result: &mut Map<String, Value>,
-    output_path: Option<&str>,
-    master: usize,
-) {
-    let target = output_path.unwrap_or("<out.pptx>");
-    let suffix = if output_path.is_some() {
-        ""
-    } else {
-        "Template"
-    };
-    result.insert(
-        format!("readbackCommand{suffix}"),
-        json!(format!(
-            "ooxml --json pptx masters show {} --master {master}",
-            command_arg(target)
-        )),
-    );
-    result.insert(
-        format!("mastersListCommand{suffix}"),
-        json!(format!(
-            "ooxml --json pptx masters list {}",
-            command_arg(target)
-        )),
-    );
-    result.insert(
-        format!("validateCommand{suffix}"),
-        json!(format!("ooxml validate --strict {}", command_arg(target))),
-    );
-    result.insert(
-        format!("renderCommand{suffix}"),
-        json!(format!(
-            "ooxml pptx render {} --out render-check",
-            command_arg(target)
-        )),
-    );
-}
-
-fn output_basename(path: &str) -> String {
-    Path::new(path)
-        .file_name()
-        .map(|value| value.to_string_lossy().to_string())
-        .unwrap_or_else(|| path.to_string())
 }
 
 fn insert_xml_at(xml: &str, index: usize, insert: &str) -> String {
