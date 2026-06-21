@@ -63,6 +63,7 @@ pub(super) struct VbaModuleModel {
 }
 
 impl VbaModuleModel {
+    #[cfg(test)]
     pub(super) fn excel_workbook_document() -> Self {
         Self::new(
             "ThisWorkbook",
@@ -72,6 +73,7 @@ impl VbaModuleModel {
         )
     }
 
+    #[cfg(test)]
     pub(super) fn excel_sheet_document(name: impl Into<String>) -> Self {
         let name = name.into();
         let source = format!(
@@ -149,14 +151,6 @@ impl VbaProjectModel {
             code_page: DEFAULT_CODE_PAGE,
             modules,
         }
-    }
-
-    pub(super) fn xlsx_with_default_host_modules(user_modules: Vec<VbaModuleModel>) -> Self {
-        let mut modules = Vec::with_capacity(user_modules.len() + 2);
-        modules.push(VbaModuleModel::excel_workbook_document());
-        modules.push(VbaModuleModel::excel_sheet_document("Sheet1"));
-        modules.extend(user_modules);
-        Self::xlsx(modules)
     }
 
     pub(super) fn validate(&self) -> VbaAuthoringResult<()> {

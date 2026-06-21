@@ -199,7 +199,8 @@ fn vba_pure_create_builds_and_reads_back_xlsm_without_office_com() {
     assert_eq!(create["result"]["action"], "attach");
     assert_eq!(create["vba"]["hasVbaProject"], true);
     assert_eq!(create["authoring"]["codePage"], 1252);
-    assert_eq!(create["authoring"]["modules"][2]["name"], "Hello");
+    assert_eq!(create["authoring"]["modules"][0]["name"], "Hello");
+    assert_eq!(create["authoring"]["modules"][0]["hostSynthesized"], false);
     assert!(output_path.exists(), "pure create should write output");
 
     let (code, _stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &output]);
@@ -210,10 +211,10 @@ fn vba_pure_create_builds_and_reads_back_xlsm_without_office_com() {
     assert_eq!(code, 0, "list output");
     assert_eq!(stderr, None, "list stderr");
     let list = stdout.expect("list stdout");
-    assert_eq!(list["project"]["moduleCount"], 3);
+    assert_eq!(list["project"]["moduleCount"], 1);
     assert_eq!(list["project"]["warnings"], Value::Null);
-    assert_eq!(list["project"]["modules"][2]["name"], "Hello");
-    assert_eq!(list["project"]["modules"][2]["sourceOffset"], 0);
+    assert_eq!(list["project"]["modules"][0]["name"], "Hello");
+    assert_eq!(list["project"]["modules"][0]["sourceOffset"], 0);
 
     let (code, stdout, stderr) = run_ooxml(&[
         "--json",
@@ -244,7 +245,7 @@ fn vba_pure_create_builds_and_reads_back_xlsm_without_office_com() {
     assert_eq!(code, 0, "inspect-bin");
     assert_eq!(stderr, None, "inspect-bin stderr");
     let inspect = stdout.expect("inspect-bin stdout");
-    assert_eq!(inspect["project"]["moduleCount"], 3);
+    assert_eq!(inspect["project"]["moduleCount"], 1);
     assert_eq!(inspect["project"]["warnings"], Value::Null);
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -319,8 +320,8 @@ fn vba_rebuild_replaces_module_set_from_source_dir_without_office_com() {
     assert_eq!(rebuild["backend"], "pure-rust");
     assert_eq!(rebuild["rebuildMode"], "pure");
     assert_eq!(rebuild["authoring"]["family"], "xlsx");
-    assert_eq!(rebuild["authoring"]["modules"].as_array().unwrap().len(), 3);
-    assert_eq!(rebuild["authoring"]["modules"][2]["name"], "Replacement");
+    assert_eq!(rebuild["authoring"]["modules"].as_array().unwrap().len(), 1);
+    assert_eq!(rebuild["authoring"]["modules"][0]["name"], "Replacement");
     assert_eq!(rebuild["result"]["action"], "attach");
     assert_eq!(
         rebuild["sourcesDiscovered"].as_array().unwrap().len(),
@@ -336,8 +337,8 @@ fn vba_rebuild_replaces_module_set_from_source_dir_without_office_com() {
     assert_eq!(code, 0, "list rebuilt output");
     assert_eq!(stderr, None, "list rebuilt stderr");
     let list = stdout.expect("list rebuilt stdout");
-    assert_eq!(list["project"]["moduleCount"], 3);
-    assert_eq!(list["project"]["modules"][2]["name"], "Replacement");
+    assert_eq!(list["project"]["moduleCount"], 1);
+    assert_eq!(list["project"]["modules"][0]["name"], "Replacement");
     let modules = list["project"]["modules"].as_array().unwrap();
     assert!(
         !modules.iter().any(|module| module["name"] == "Original"),

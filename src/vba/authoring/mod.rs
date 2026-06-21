@@ -368,7 +368,7 @@ fn build_bin_from_sources(family: Option<&str>, sources: &[String]) -> CliResult
         .map(|input| input.module.clone())
         .collect::<Vec<_>>();
     let project = match family.as_str() {
-        "xlsx" => VbaProjectModel::xlsx_with_default_host_modules(user_modules),
+        "xlsx" => VbaProjectModel::xlsx(user_modules),
         "pptx" => VbaProjectModel::pptx(user_modules),
         _ => {
             return Err(CliError::unsupported_type(
