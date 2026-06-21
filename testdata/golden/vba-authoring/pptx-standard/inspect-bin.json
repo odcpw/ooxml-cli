@@ -1,0 +1,70 @@
+{
+  "attachCommandTemplate": "ooxml --json vba attach deck.pptx --bin testdata/golden/vba-authoring/pptx-standard/vbaProject.bin --out deck.pptm",
+  "family": "pptx",
+  "file": "testdata/golden/vba-authoring/pptx-standard/vbaProject.bin",
+  "project": {
+    "codePage": 1252,
+    "family": "pptx",
+    "moduleCount": 1,
+    "modules": [
+      {
+        "codePage": 1252,
+        "extension": ".bas",
+        "kind": "standard",
+        "lineCount": 4,
+        "lineEnding": "crlf",
+        "name": "AgentSlide",
+        "number": 1,
+        "primarySelector": "module:AgentSlide",
+        "selectors": [
+          "module:AgentSlide",
+          "module:1",
+          "#1",
+          "name:AgentSlide",
+          "~AgentSlide",
+          "AgentSlide",
+          "stream:AgentSlide"
+        ],
+        "sha256": "2b88ddbc49a635fc2518ad88a68714f3d7985d91bf62b7a0ec1b07c0b864d21d",
+        "sha256Basis": "decoded-source-utf8",
+        "sourceBytes": 113,
+        "sourceOffset": 0,
+        "streamName": "AgentSlide",
+        "trailingNewline": true
+      }
+    ],
+    "officeCompatibility": {
+      "notes": [
+        "Package validation and source readback do not prove that Microsoft Office will load this VBA project without repair."
+      ],
+      "officeLoadVerified": false,
+      "status": "unverified"
+    },
+    "projectMetadata": {
+      "hasProjectWm": true,
+      "id": "{917DED54-440B-4FD1-A5C1-74ACF261E600}",
+      "lineCount": 14,
+      "modules": [
+        {
+          "kind": "module",
+          "line": 2,
+          "name": "AgentSlide",
+          "value": "AgentSlide"
+        }
+      ],
+      "name": "VBAProject",
+      "present": true,
+      "projectWmStream": "PROJECTwm",
+      "streamName": "PROJECT",
+      "workspaceEntries": [
+        {
+          "line": 14,
+          "name": "AgentSlide",
+          "value": "0, 0, 0, 0, C"
+        }
+      ]
+    }
+  },
+  "sha256": "8752348bae9b3fd624c476431d706ddf03a95ddbdb24e47465ebf98a8a389d0f",
+  "sizeBytes": 4096
+}
