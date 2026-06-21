@@ -24,6 +24,12 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
         &["package"],
     ),
     (
+        &["repair"],
+        "Normalize recoverable OOXML package issues.",
+        "Narrow package repair commands; validate normalized outputs before using them.",
+        &["package"],
+    ),
+    (
         &["template"],
         "Extract and apply design tokens across PPTX/XLSX templates.",
         "Cross-family design-token commands.",

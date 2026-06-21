@@ -18,7 +18,8 @@ use crate::{
     pptx_diff_dispatch, pptx_media_add, pptx_media_list, pptx_media_replace, pptx_scaffold,
     pptx_template_capture, pptx_template_compile, pptx_template_inspect, pptx_translate_apply,
     pptx_translate_export, pptx_validate_layout, pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan,
-    template_apply, template_profile_inspect, template_profile_save, template_tokens,
+    repair_normalize, template_apply, template_profile_inspect, template_profile_save,
+    template_tokens,
 };
 
 pub(crate) enum DispatchBody {
@@ -109,6 +110,9 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [cmd, file, rest @ ..] if cmd == "apply" => apply(file, rest),
         [cmd, conversion, file, rest @ ..] if cmd == "convert" && conversion == "xlsm-to-xlsx" => {
             convert_xlsm_to_xlsx(file, rest)
+        }
+        [cmd, verb, file, rest @ ..] if cmd == "repair" && verb == "normalize" => {
+            repair_normalize(file, rest)
         }
         [cmd, verb, file, rest @ ..] if cmd == "template" && verb == "apply" => {
             template_apply(file, rest)

@@ -38,6 +38,7 @@ fn commands() -> &'static [&'static str] {
         "inspect",
         "mcp",
         "pptx",
+        "repair",
         "robot-docs",
         "serve",
         "validate",

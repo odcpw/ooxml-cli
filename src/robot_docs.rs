@@ -81,7 +81,8 @@ fn guide_json() -> Value {
                     "ooxml --json doctor",
                     "ooxml --json doctor capabilities",
                     "ooxml --json conformance coverage",
-                    "ooxml --json conformance check <file>"
+                    "ooxml --json conformance check <file>",
+                    "ooxml --json repair normalize <file> --out <normalized-file>"
                 ]
             },
             {

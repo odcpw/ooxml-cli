@@ -1130,6 +1130,9 @@ mod docx;
 #[path = "rust_contract_smoke/diff.rs"]
 mod diff;
 
+#[path = "rust_contract_smoke/repair.rs"]
+mod repair;
+
 #[path = "rust_contract_smoke/pptx.rs"]
 mod pptx;
 

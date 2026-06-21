@@ -18,6 +18,7 @@ const RUST_ONLY_CAPABILITY_PATHS: &[&str] = &[
     "ooxml convert xlsm-to-xlsx",
     "ooxml docx scaffold",
     "ooxml pptx scaffold",
+    "ooxml repair normalize",
     "ooxml xlsx scaffold",
     "ooxml xlsx tables create",
 ];

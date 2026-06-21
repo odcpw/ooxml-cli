@@ -350,6 +350,43 @@ pub(super) fn commands() -> Vec<Value> {
             ],
         ),
         capability_command(
+            "ooxml repair normalize",
+            "repair normalize <file> (--out <file>|--in-place|--dry-run)",
+            "Normalize recoverable OOXML package issues, currently XLSX workbook child-element ordering.",
+            &["package"],
+            true,
+            Some(
+                "narrow repair command; run validate/conformance after normalization before handing the file to a user",
+            ),
+            vec![
+                flag("--out", "out", "string", "output package path"),
+                flag(
+                    "--backup",
+                    "backup",
+                    "string",
+                    "backup path when used with --in-place",
+                ),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "report recoverable repairs without writing output",
+                ),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the normalized package back to the input file",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict validation after writing the normalized package",
+                ),
+            ],
+        ),
+        capability_command(
             "ooxml template",
             "template",
             "Extract and apply design tokens across PPTX/XLSX templates.",
