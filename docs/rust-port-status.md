@@ -27,6 +27,11 @@ Latest milestone, 2026-06-20:
   Proof: focused nested-group delete test, existing PPTX shape mutation parity
   test, strict validation, Rust/Go `conformance check` parity, and worker-side
   Open XML SDK validation.
+- DOCX field read/update now ignores foreign XML text when collecting
+  WordprocessingML simple-field cached results, matching the Go oracle for
+  table-nested and mixed-content field cases. Proof: focused `docx_fields`
+  Rust contract shard, strict validation, and Rust `conformance check` on the
+  mutated DOCX output.
 - Rust agent-facing composition and proof ergonomics moved forward after
   command-path parity: `find --to-ops`, `find --replace --to-ops`, and
   `find --replace --apply` now emit/apply structured XLSX/DOCX/PPTX ops;

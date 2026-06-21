@@ -1,6 +1,6 @@
 use quick_xml::NsReader;
 use quick_xml::events::{BytesStart, Event};
-use quick_xml::name::NamespaceResolver;
+use quick_xml::name::{Namespace, NamespaceResolver, ResolveResult};
 
 use super::DOCX_W_NS;
 use crate::{attr, attr_prefixed_ns, decode_xml_text, local_name, xml_general_ref};
@@ -22,27 +22,46 @@ pub(crate) fn docx_first_word_attr(fragment: &str, name: &[u8]) -> Option<String
 pub(crate) fn docx_word_text_descendants(fragment: &str, wanted: &str) -> String {
     let mut reader = NsReader::from_str(fragment);
     let mut text = String::new();
-    let mut in_wanted = false;
+    let mut wanted_depth = 0usize;
     loop {
         match reader.read_event() {
             Ok(Event::Start(e)) => {
-                if local_name(e.name().as_ref()) == wanted {
-                    in_wanted = true;
+                if wanted_depth > 0 {
+                    wanted_depth += 1;
+                } else if local_name(e.name().as_ref()) == wanted
+                    && docx_fragment_word_element(&e, reader.resolver())
+                {
+                    wanted_depth = 1;
                 }
             }
-            Ok(Event::Text(e)) if in_wanted => text.push_str(&decode_xml_text(e.as_ref())),
-            Ok(Event::GeneralRef(e)) if in_wanted => text.push_str(&xml_general_ref(e.as_ref())),
-            Ok(Event::CData(e)) if in_wanted => text.push_str(&String::from_utf8_lossy(e.as_ref())),
-            Ok(Event::End(e)) => {
-                if local_name(e.name().as_ref()) == wanted {
-                    in_wanted = false;
-                }
+            Ok(Event::Text(e)) if wanted_depth > 0 => text.push_str(&decode_xml_text(e.as_ref())),
+            Ok(Event::GeneralRef(e)) if wanted_depth > 0 => {
+                text.push_str(&xml_general_ref(e.as_ref()));
+            }
+            Ok(Event::CData(e)) if wanted_depth > 0 => {
+                text.push_str(&String::from_utf8_lossy(e.as_ref()));
+            }
+            Ok(Event::End(_)) if wanted_depth > 0 => {
+                wanted_depth -= 1;
             }
             Ok(Event::Eof) | Err(_) => break,
             _ => {}
         }
     }
     text
+}
+
+fn docx_fragment_word_element(element: &BytesStart<'_>, resolver: &NamespaceResolver) -> bool {
+    match resolver.resolve_element(element.name()).0 {
+        ResolveResult::Bound(Namespace(uri)) => return uri == DOCX_W_NS,
+        ResolveResult::Unbound | ResolveResult::Unknown(_) => {}
+    }
+    let name = element.name();
+    let bytes = name.as_ref();
+    if let Some(colon) = bytes.iter().position(|byte| *byte == b':') {
+        return &bytes[..colon] == b"w";
+    }
+    true
 }
 
 pub(crate) fn xml_fragment_text(fragment: &str) -> String {

@@ -4191,6 +4191,25 @@ fn docx_fields_list_matches_go_oracle() {
     let table_docx = table_docx.to_string_lossy().to_string();
     assert_go_rust_match(&["--json", "docx", "fields", "list", &table_docx]);
 
+    let mixed_table_docx = temp_dir.join("table-field-foreign-text.docx");
+    write_docx_with_body(
+        &mixed_table_docx,
+        r#"    <w:tbl>
+      <w:tr>
+        <w:tc>
+          <w:p>
+            <w:fldSimple w:instr=" PAGE " xmlns:a="urn:foreign">
+              <a:t>ignored foreign text</a:t>
+              <w:r><w:t>7</w:t></w:r>
+            </w:fldSimple>
+          </w:p>
+        </w:tc>
+      </w:tr>
+    </w:tbl>"#,
+    );
+    let mixed_table_docx = mixed_table_docx.to_string_lossy().to_string();
+    assert_go_rust_match(&["--json", "docx", "fields", "list", &mixed_table_docx]);
+
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
@@ -4347,6 +4366,72 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
         run_ooxml(&["--json", "--strict", "validate", &rust_set_out]);
     assert_eq!(validate_code, 0, "set-result docx validates");
     assert_eq!(validate_stderr, None, "set-result validation stderr");
+
+    let mixed_content_input = temp_dir.join("mixed-content-field.docx");
+    write_docx_with_body(
+        &mixed_content_input,
+        r#"    <w:p>
+      <w:fldSimple w:instr=" PAGE " xmlns:a="urn:foreign">
+        <a:t>ignored foreign text</a:t>
+        <w:r><w:t>7</w:t></w:r>
+      </w:fldSimple>
+    </w:p>"#,
+    );
+    let mixed_content_input = mixed_content_input.to_string_lossy().to_string();
+    let go_mixed_out = temp_dir.join("go-mixed-content-set.docx");
+    let rust_mixed_out = temp_dir.join("rust-mixed-content-set.docx");
+    let go_mixed_out = go_mixed_out.to_string_lossy().to_string();
+    let rust_mixed_out = rust_mixed_out.to_string_lossy().to_string();
+    let go_mixed_args = [
+        "--json",
+        "docx",
+        "fields",
+        "set-result",
+        &mixed_content_input,
+        "--selector",
+        "body:1:0",
+        "--result",
+        "8",
+        "--out",
+        &go_mixed_out,
+    ];
+    let rust_mixed_args = [
+        "--json",
+        "docx",
+        "fields",
+        "set-result",
+        &mixed_content_input,
+        "--selector",
+        "body:1:0",
+        "--result",
+        "8",
+        "--out",
+        &rust_mixed_out,
+    ];
+    let (go_mixed_code, go_mixed_stdout, go_mixed_stderr) = run_go_ooxml(&go_mixed_args);
+    let (rust_mixed_code, rust_mixed_stdout, rust_mixed_stderr) = run_ooxml(&rust_mixed_args);
+    assert_eq!(rust_mixed_code, go_mixed_code, "mixed field set exit");
+    assert_eq!(rust_mixed_stderr, go_mixed_stderr, "mixed field set stderr");
+    assert_eq!(
+        scrub_path(
+            rust_mixed_stdout.expect("rust mixed field set stdout"),
+            &rust_mixed_out,
+            "[OUT]"
+        ),
+        scrub_path(
+            go_mixed_stdout.expect("go mixed field set stdout"),
+            &go_mixed_out,
+            "[OUT]"
+        ),
+        "mixed field set stdout"
+    );
+    let (mixed_validate_code, _, mixed_validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &rust_mixed_out]);
+    assert_eq!(mixed_validate_code, 0, "mixed set-result docx validates");
+    assert_eq!(
+        mixed_validate_stderr, None,
+        "mixed set-result validation stderr"
+    );
 
     let go_header_out = temp_dir.join("go-header.docx");
     let rust_header_out = temp_dir.join("rust-header.docx");

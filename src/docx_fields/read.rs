@@ -310,11 +310,8 @@ fn docx_field_note_start(
 ) {
     let qualified_name = element.name();
     let name = local_name(qualified_name.as_ref());
-    if !is_word {
-        return;
-    }
 
-    if paragraph.simple.is_none() && parent == Some("p") && name == "fldSimple" {
+    if paragraph.simple.is_none() && is_word && parent == Some("p") && name == "fldSimple" {
         paragraph.simple = Some(DocxSimpleFieldState {
             instruction: docx_word_attr_ns(element, resolver, b"instr").unwrap_or_default(),
             depth: 1,
@@ -325,9 +322,13 @@ fn docx_field_note_start(
 
     if let Some(simple) = paragraph.simple.as_mut() {
         simple.depth += 1;
-        if name == "t" && element_in_ns(resolver, element, DOCX_W_NS) {
+        if is_word && name == "t" && element_in_ns(resolver, element, DOCX_W_NS) {
             simple.in_t = true;
         }
+        return;
+    }
+
+    if !is_word {
         return;
     }
 
@@ -450,7 +451,7 @@ fn docx_field_note_end(
         if simple.depth > 0 {
             simple.depth -= 1;
         }
-        if simple.depth == 0 || name == "fldSimple" {
+        if simple.depth == 0 {
             docx_emit_simple_field(paragraph, fields);
         }
         return;
