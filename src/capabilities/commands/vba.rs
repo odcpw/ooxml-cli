@@ -15,8 +15,8 @@ pub(super) fn commands() -> Vec<Value> {
         ),
         capability_command(
             "ooxml vba build-bin",
-            "build-bin --family xlsx|pptx --source Module1.bas --out vbaProject.bin",
-            "Build a source-only vbaProject.bin from .bas/.cls source files using pure Rust.",
+            "build-bin --family xlsx|pptx|docx --source Module1.bas --out vbaProject.bin",
+            "Build a source-only vbaProject.bin from source files using pure Rust.",
             &["module"],
             true,
             Some(
@@ -27,7 +27,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--family",
                     "family",
                     "string",
-                    "target host family; currently xlsx or pptx",
+                    "target host family; xlsx/pptx support .bas and .cls, docx supports standard .bas with synthesized ThisDocument",
                 ),
                 flag(
                     "--force",
@@ -40,18 +40,18 @@ pub(super) fn commands() -> Vec<Value> {
                     "--source",
                     "source",
                     "stringArray",
-                    "repeatable .bas or .cls source file",
+                    "repeatable .bas or .cls source file; docx pure authoring currently accepts user .bas modules only",
                 ),
             ],
         ),
         capability_command(
             "ooxml vba create",
-            "create <workbook.xlsx|deck.pptx> --pure --source Module1.bas --out <workbook.xlsm|deck.pptm>",
-            "Create an XLSM/PPTM from an existing package and .bas/.cls source files using pure Rust.",
+            "create <workbook.xlsx|deck.pptx|document.docx> --pure --source Module1.bas --out <workbook.xlsm|deck.pptm|document.docm>",
+            "Create an XLSM/PPTM/DOCM from an existing package and VBA source files using pure Rust.",
             &["package", "module"],
             true,
             Some(
-                "preferred cross-platform macro authoring path for XLSM/PPTM; legacy Office-COM create remains available without --pure",
+                "preferred cross-platform macro authoring path; legacy Office-COM create remains available without --pure for XLSM/PPTM seeds",
             ),
             vec![
                 flag("--backup", "backup", "string", "backup path for --in-place"),
@@ -71,7 +71,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--family",
                     "family",
                     "string",
-                    "target Office family; pure mode supports xlsx or pptx and can infer from input extension",
+                    "target Office family; pure mode supports xlsx, pptx, or docx and can infer from input extension",
                 ),
                 flag(
                     "--force",
@@ -113,7 +113,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--source",
                     "source",
                     "stringArray",
-                    "repeatable .bas or .cls source file to import",
+                    "repeatable .bas or .cls source file to import; docx pure mode currently accepts user .bas modules only",
                 ),
                 flag(
                     "--visible",
@@ -125,7 +125,7 @@ pub(super) fn commands() -> Vec<Value> {
         ),
         capability_command(
             "ooxml vba rebuild",
-            "rebuild <workbook.xlsm|deck.pptm> --source-dir macros --out <edited.xlsm|edited.pptm>",
+            "rebuild <workbook.xlsm|deck.pptm|document.docm> --source-dir macros --out <edited.xlsm|edited.pptm|edited.docm>",
             "Rebuild a macro-enabled package from a directory of .bas/.cls sources using pure Rust.",
             &["package", "module"],
             true,
@@ -138,7 +138,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--family",
                     "family",
                     "string",
-                    "target Office family; supports xlsx or pptx and can infer from input extension",
+                    "target Office family; supports xlsx, pptx, or docx and can infer from input extension",
                 ),
                 flag(
                     "--in-place",
@@ -169,7 +169,7 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml vba inspect",
             "inspect <file>",
-            "Inspect opaque VBA package state for XLSM/PPTM package wiring.",
+            "Inspect opaque VBA package state for XLSM/PPTM/DOCM package wiring.",
             &["package", "module"],
             false,
             Some("read-only command; use vba attach/remove for package mutation"),
@@ -195,7 +195,7 @@ pub(super) fn commands() -> Vec<Value> {
                 "--family",
                 "family",
                 "string",
-                "target host family for compatibility checks: pptx or xlsx",
+                "target host family for compatibility checks: pptx, docx, or xlsx",
             )],
         ),
         capability_command(
@@ -236,7 +236,7 @@ pub(super) fn commands() -> Vec<Value> {
             &["package", "module"],
             false,
             Some(
-                "not a first-class macro authoring path; use vba create --pure for XLSM or vba attach for opaque seeds",
+                "not a first-class macro authoring path; use vba create --pure or vba attach for opaque seeds",
             ),
             vec![
                 flag(
@@ -293,7 +293,7 @@ pub(super) fn commands() -> Vec<Value> {
             &["package", "module"],
             false,
             Some(
-                "not a first-class macro authoring path; use vba create --pure for XLSM or vba attach for opaque seeds",
+                "not a first-class macro authoring path; use vba create --pure or vba attach for opaque seeds",
             ),
             vec![
                 flag(
@@ -349,7 +349,7 @@ pub(super) fn commands() -> Vec<Value> {
             &["package", "module"],
             false,
             Some(
-                "not a first-class macro authoring path; use vba create --pure for XLSM, vba attach for opaque seeds, or vba remove for package-level removal",
+                "not a first-class macro authoring path; use vba create --pure, vba attach for opaque seeds, or vba remove for package-level removal",
             ),
             vec![
                 flag(
@@ -400,15 +400,17 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml vba office-check",
             "office-check <file>",
-            "Validate a macro package and run a local LibreOffice/soffice open-check when available.",
+            "Validate a macro package and run a local Office-open check when available.",
             &["module"],
             false,
-            Some("read-only compatibility evidence; macros are not executed or compiled"),
+            Some(
+                "read-only compatibility evidence; on Windows this prefers Microsoft Office COM, but macros are not executed",
+            ),
             vec![flag(
                 "--out-dir",
                 "outDir",
                 "string",
-                "optional directory to keep LibreOffice conversion output for inspection",
+                "optional directory to keep Office-open check output for inspection",
             )],
         ),
         capability_command(

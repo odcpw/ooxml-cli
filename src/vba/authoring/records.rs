@@ -196,6 +196,13 @@ mod tests {
         )])
     }
 
+    fn docx_project() -> VbaProjectModel {
+        VbaProjectModel::docx(vec![VbaModuleModel::standard(
+            "Module1",
+            b"Attribute VB_Name = \"Module1\"\r\nSub Hello()\r\nEnd Sub\r\n".to_vec(),
+        )])
+    }
+
     #[test]
     fn project_stream_declares_modules_and_workspace() {
         let text = String::from_utf8(render_project_stream(&two_module_project())).unwrap();
@@ -215,6 +222,15 @@ mod tests {
         assert!(text.contains("Module=Module1\r\n"));
         assert!(!text.contains("Document=ThisWorkbook"));
         assert!(!text.contains("Document=Sheet1"));
+        assert!(text.contains("Module1=0, 0, 0, 0, C\r\n"));
+    }
+
+    #[test]
+    fn docx_project_stream_declares_only_standard_modules() {
+        let text = String::from_utf8(render_project_stream(&docx_project())).unwrap();
+        assert!(text.contains("Module=Module1\r\n"));
+        assert!(!text.contains("Document=ThisDocument"));
+        assert!(!text.contains("Document=ThisWorkbook"));
         assert!(text.contains("Module1=0, 0, 0, 0, C\r\n"));
     }
 
@@ -269,6 +285,21 @@ mod tests {
     #[test]
     fn pptx_dir_stream_uses_one_standard_module() {
         let dir = render_dir_stream(&pptx_project());
+        assert!(contains_record(&dir, 0x0003, &1252_u16.to_le_bytes()));
+        assert!(contains_record(&dir, 0x000F, &1_u16.to_le_bytes()));
+        assert!(contains_record(&dir, 0x0013, &WRITE_COOKIE.to_le_bytes()));
+        assert!(contains_record(&dir, 0x0019, b"Module1"));
+        assert_eq!(record_count(&dir, 0x002C, &WRITE_COOKIE.to_le_bytes()), 1);
+        assert!(contains_record(
+            &dir,
+            VbaModuleKind::Standard.dir_record_id(),
+            &[]
+        ));
+    }
+
+    #[test]
+    fn docx_dir_stream_uses_one_standard_module() {
+        let dir = render_dir_stream(&docx_project());
         assert!(contains_record(&dir, 0x0003, &1252_u16.to_le_bytes()));
         assert!(contains_record(&dir, 0x000F, &1_u16.to_le_bytes()));
         assert!(contains_record(&dir, 0x0013, &WRITE_COOKIE.to_le_bytes()));

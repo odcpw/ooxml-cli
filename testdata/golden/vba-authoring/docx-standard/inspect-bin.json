@@ -1,0 +1,106 @@
+{
+  "attachCommandTemplate": "ooxml --json vba attach document.docx --bin testdata/golden/vba-authoring/docx-standard/vbaProject.bin --out document.docm",
+  "family": "docx",
+  "file": "testdata/golden/vba-authoring/docx-standard/vbaProject.bin",
+  "project": {
+    "codePage": 1252,
+    "family": "docx",
+    "moduleCount": 2,
+    "modules": [
+      {
+        "codePage": 1252,
+        "extension": ".cls",
+        "kind": "class",
+        "lineCount": 8,
+        "lineEnding": "crlf",
+        "name": "ThisDocument",
+        "number": 1,
+        "primarySelector": "module:ThisDocument",
+        "selectors": [
+          "module:ThisDocument",
+          "module:1",
+          "#1",
+          "name:ThisDocument",
+          "~ThisDocument",
+          "ThisDocument",
+          "stream:ThisDocument"
+        ],
+        "sha256": "76f615001478cc8d4cce6fe76f75b2ca62880736645e205dfce15fc20f92e650",
+        "sha256Basis": "decoded-source-utf8",
+        "sourceBytes": 285,
+        "sourceOffset": 0,
+        "streamName": "ThisDocument",
+        "trailingNewline": true
+      },
+      {
+        "codePage": 1252,
+        "extension": ".bas",
+        "kind": "standard",
+        "lineCount": 4,
+        "lineEnding": "crlf",
+        "name": "AgentDoc",
+        "number": 2,
+        "primarySelector": "module:AgentDoc",
+        "selectors": [
+          "module:AgentDoc",
+          "module:2",
+          "#2",
+          "name:AgentDoc",
+          "~AgentDoc",
+          "AgentDoc",
+          "stream:AgentDoc"
+        ],
+        "sha256": "85637d6493ad14f741652e5cff805b1f04898cf3aa5102425a2c066bd909edf3",
+        "sha256Basis": "decoded-source-utf8",
+        "sourceBytes": 141,
+        "sourceOffset": 0,
+        "streamName": "AgentDoc",
+        "trailingNewline": true
+      }
+    ],
+    "officeCompatibility": {
+      "notes": [
+        "Package validation and source readback do not prove that Microsoft Office will load this VBA project without repair."
+      ],
+      "officeLoadVerified": false,
+      "status": "unverified"
+    },
+    "projectMetadata": {
+      "hasProjectWm": true,
+      "id": "{917DED54-440B-4FD1-A5C1-74ACF261E600}",
+      "lineCount": 16,
+      "modules": [
+        {
+          "kind": "document",
+          "line": 2,
+          "name": "ThisDocument",
+          "value": "ThisDocument/&H00000000"
+        },
+        {
+          "kind": "module",
+          "line": 3,
+          "name": "AgentDoc",
+          "value": "AgentDoc"
+        }
+      ],
+      "name": "Project",
+      "present": true,
+      "projectWmStream": "PROJECTwm",
+      "streamName": "PROJECT",
+      "workspaceEntries": [
+        {
+          "line": 15,
+          "name": "ThisDocument",
+          "value": "0, 0, 0, 0, C"
+        },
+        {
+          "line": 16,
+          "name": "AgentDoc",
+          "value": "0, 0, 0, 0, C"
+        }
+      ]
+    }
+  },
+  "sha256": "d372fcdb4a7e43352242b92c67f348a630a75247087f689357537476f15502a3",
+  "sizeBytes": 5120
+}

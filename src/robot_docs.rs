@@ -149,6 +149,8 @@ fn guide_json() -> Value {
                 "name": "VBA package operations",
                 "commands": [
                     "ooxml --json vba inspect <file>",
+                    "ooxml --json vba build-bin --family xlsx|pptx|docx --source <module.bas> --out <vbaProject.bin>",
+                    "ooxml --json vba create <file.xlsx|file.pptx|file.docx> --pure --source <module.bas> --out <file.xlsm|file.pptm|file.docm>",
                     "ooxml --json vba list <file>",
                     "ooxml --json vba extract <file> --out-dir <dir>",
                     "ooxml --json vba attach <file> --bin <vbaProject.bin> --out <file>",
@@ -160,7 +162,7 @@ fn guide_json() -> Value {
         "warnings": [
             "Do not run mutation commands without an explicit --out, --dry-run, or user-approved --in-place path.",
             "Do not assume Go-only commands exist in the Rust port; use capabilities before invoking a command family.",
-            "Use --office-check only when a local LibreOffice/soffice open engine is appropriate for the current proof."
+            "Use vba office-check for macro package open proof; on Windows it prefers Microsoft Office COM, but it does not execute macros."
         ]
     })
 }

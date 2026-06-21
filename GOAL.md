@@ -47,6 +47,8 @@ proven:
 ```powershell
 ooxml pptx scaffold .\deck.pptx --out .\deck.pptx
 ooxml vba create --pure .\deck.pptx --family pptx --source .\Hello.bas --out .\hello.pptm
+ooxml docx scaffold .\document.docx --text "Macro document"
+ooxml vba create --pure .\document.docx --family docx --source .\Hello.bas --out .\hello.docm
 ```
 
 For slice 1, `vba create --pure` may require an existing host package and may
@@ -144,8 +146,10 @@ Already integrated on `master`:
 - pure Rust PPTM authoring path
 - pure Rust PPTM PowerPoint open proof through `ooxml vba office-check`
 - package-level DOCM attach/extract/remove/inspect/list support
+- pure Rust DOCM standard `.bas` authoring path
+- pure Rust DOCM Word open proof through `ooxml vba office-check`
 - `vba rebuild` from source directories
-- Office-open proof for generated XLSM/PPTM and package-level DOCM
+- Office-open proof for generated XLSM/PPTM/DOCM and package-level DOCM
 
 Known remaining gaps:
 
@@ -153,10 +157,13 @@ Known remaining gaps:
   workflows, because that is the agent-facing contract for adding macros to
   user workbooks.
 - Golden/provenance coverage for generated `vbaProject.bin` outputs is still
-  thin.
+  intentionally small; keep adding focused goldens when authoring behavior
+  widens.
 - PPTM pure authoring has package/open proof, but not executable macro smoke
   depth comparable to the XLSM Excel run harness.
-- DOCM has package-level support, but pure DOCM authoring is not complete.
+- DOCM pure authoring currently supports user standard `.bas` modules with a
+  synthesized `ThisDocument` host module; user-supplied Word `.cls` /
+  document-module authoring remains refused until separately proven.
 
 ## Feature Order
 
@@ -167,7 +174,7 @@ Known remaining gaps:
 5. Add macro to an existing `.xlsx` and to a scaffolded `.xlsx`.
 6. `vba rebuild` from extracted source directories.
 7. PPTM host packaging and pure authoring.
-8. DOCM package support, then pure authoring only after Word-specific proof.
+8. DOCM package support, then pure standard-module authoring after Word-specific proof.
 9. Explicit opt-in macro-run smoke proof.
 
 For add/remove/replace of modules, rebuild a fresh `vbaProject.bin` from the

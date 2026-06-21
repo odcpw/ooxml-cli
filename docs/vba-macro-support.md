@@ -1,6 +1,6 @@
 # VBA Macro Support
 
-`ooxml-cli` supports practical VBA package workflows for PowerPoint and Excel macro-enabled files. The implementation is deliberately conservative: XLSM and PPTM can now be authored from `.bas` / `.cls` source through the pure Rust `vba create --pure` path. Package wiring is mutated safely, and source streams are only rewritten where the supported behavior is proven.
+`ooxml-cli` supports practical VBA package workflows for Excel, PowerPoint, and Word macro-enabled files. The implementation is deliberately conservative: XLSM and PPTM can be authored from `.bas` / `.cls` source through the pure Rust `vba create --pure` path, and DOCM can be authored from standard `.bas` modules with a synthesized Word `ThisDocument` host module. Package wiring is mutated safely, and source streams are only rewritten where the supported behavior is proven.
 
 Authoritative specs:
 
@@ -16,8 +16,7 @@ Authoritative specs:
 | --- | --- | --- | --- |
 | XLSX/XLSM | `/xl/vbaProject.bin` | `/xl/workbook.xml` | `.xlsm` |
 | PPTX/PPTM | `/ppt/vbaProject.bin` | `/ppt/presentation.xml` | `.pptm` |
-
-DOCM package-level attach/extract/remove/inspect/list support exists. Pure DOCM authoring remains deferred until Word-specific authoring proof is implemented.
+| DOCX/DOCM | `/word/vbaProject.bin` | `/word/document.xml` | `.docm` |
 
 Shared constants:
 
@@ -30,26 +29,29 @@ Shared constants:
 
 ```bash
 ooxml --json vba inspect <file>
-ooxml --json vba build-bin --family xlsx|pptx --source Module1.bas --source Worker.cls --out vbaProject.bin
+ooxml --json vba build-bin --family xlsx|pptx|docx --source Module1.bas --source Worker.cls --out vbaProject.bin
 ooxml --json vba create workbook.xlsx --pure --family xlsx --source Module1.bas --source Worker.cls --out workbook.xlsm
 ooxml --json vba create deck.pptx --pure --family pptx --source Module1.bas --out deck.pptm
-ooxml --json vba rebuild workbook.xlsm --source-dir macros --out rebuilt.xlsm
+ooxml --json vba create document.docx --pure --family docx --source Module1.bas --out document.docm
+ooxml --json vba rebuild workbook.xlsm|deck.pptm|document.docm --source-dir macros --out rebuilt.xlsm|rebuilt.pptm|rebuilt.docm
 ooxml --json vba create output.xlsm|output.pptm --family xlsx|pptx --source Module1.bas --source Worker.cls [--extract-bin vbaProject.bin] [--enable-vba-object-model-access] [--force]
 ooxml --json vba extract-bin <file> --out vbaProject.bin
-ooxml --json vba inspect-bin vbaProject.bin --family xlsx|pptx
-ooxml --json vba attach <file.xlsx|file.pptx> --bin vbaProject.bin --out output.xlsm|output.pptm
-ooxml --json vba remove <file.xlsm|file.pptm> --out output.xlsx|output.pptx
-ooxml --json vba list <file.xlsm|file.pptm>
-ooxml --json vba extract <file.xlsm|file.pptm> --out-dir macros/
-ooxml --json vba replace-module <file.xlsm|file.pptm> --module Module1 --source Module1.bas --expect-sha256 <sha256> --allow-experimental-vba-source-rewrite --out output.xlsm|output.pptm
+ooxml --json vba inspect-bin vbaProject.bin --family xlsx|pptx|docx
+ooxml --json vba attach <file.xlsx|file.pptx|file.docx> --bin vbaProject.bin --out output.xlsm|output.pptm|output.docm
+ooxml --json vba remove <file.xlsm|file.pptm|file.docm> --out output.xlsx|output.pptx|output.docx
+ooxml --json vba list <file.xlsm|file.pptm|file.docm>
+ooxml --json vba extract <file.xlsm|file.pptm|file.docm> --out-dir macros/
+ooxml --json vba replace-module <file.xlsm|file.pptm|file.docm> --module Module1 --source Module1.bas --expect-sha256 <sha256> --allow-experimental-vba-source-rewrite --out output.xlsm|output.pptm|output.docm
 ```
 
 Implemented behavior:
 
 - Detect package macro state and VBA consistency.
-- Build source-only/cache-free XLSM/PPTM `vbaProject.bin` files from `.bas` / `.cls` source modules in pure Rust.
-- Attach pure-generated VBA projects to existing or freshly scaffolded `.xlsx` / `.pptx` packages with `vba create --pure`.
-- Rebuild an existing `.xlsm` / `.pptm` package from a directory of `.bas` / `.cls` source files with `vba rebuild --source-dir`.
+- Build source-only/cache-free XLSM/PPTM/DOCM `vbaProject.bin` files in pure Rust.
+- XLSM/PPTM pure authoring accepts `.bas` and `.cls` source modules.
+- DOCM pure authoring accepts user standard `.bas` modules and synthesizes Word's `ThisDocument` host module.
+- Attach pure-generated VBA projects to existing or freshly scaffolded `.xlsx` / `.pptx` / `.docx` packages with `vba create --pure`.
+- Rebuild an existing `.xlsm` / `.pptm` / `.docm` package from a directory of supported source files with `vba rebuild --source-dir`.
 - Run an explicit local Excel macro execution smoke for a generated XLSM with `tools/windows-office-vba-run-smoke.ps1`.
 - Create fresh Office-authored `.xlsm` / `.pptm` files from `.bas` / `.cls` source modules on Windows desktop Office as a legacy/fallback path.
 - Extract `vbaProject.bin` byte-for-byte.
@@ -61,9 +63,9 @@ Implemented behavior:
 - Refuse signed packages for attach/remove/source-changing rewrites.
 - Refuse Office-shaped module-set add/remove before writing output.
 
-## Pure XLSM/PPTM Creation Path
+## Pure XLSM/PPTM/DOCM Creation Path
 
-When you need an `.xlsm` or `.pptm` from `.bas` / `.cls` source files, use `ooxml vba create --pure`. It builds the VBA project binary in Rust, attaches it to the input package, and returns `ooxml` readback/validation commands:
+When you need an `.xlsm`, `.pptm`, or `.docm` from VBA source files, use `ooxml vba create --pure`. It builds the VBA project binary in Rust, attaches it to the input package, and returns `ooxml` readback/validation commands:
 
 ```powershell
 ooxml --json xlsx scaffold .\workbook.xlsx --force
@@ -90,6 +92,19 @@ ooxml validate --strict .\out\deck.pptm
 ooxml --json vba list .\out\deck.pptm
 ```
 
+For Word, use standard `.bas` modules. User-supplied Word `.cls` / document modules are intentionally refused until their Office-open behavior is separately proven:
+
+```powershell
+ooxml --json docx scaffold .\document.docx --text "Macro document"
+ooxml --json vba create .\document.docx `
+  --pure `
+  --family docx `
+  --source .\macros\Module1.bas `
+  --out .\out\document.docm
+ooxml validate --strict .\out\document.docm
+ooxml --json vba office-check .\out\document.docm --out-dir .\proof\pure-docm-office-check
+```
+
 Use `vba build-bin` when you specifically want a standalone `vbaProject.bin` artifact:
 
 ```powershell
@@ -97,6 +112,8 @@ ooxml --json vba build-bin --family xlsx --source .\macros\Module1.bas --out .\o
 ooxml --json vba attach .\workbook.xlsx --bin .\out\vbaProject.bin --out .\out\workbook.xlsm
 ooxml --json vba build-bin --family pptx --source .\macros\Module1.bas --out .\out\ppt-vbaProject.bin
 ooxml --json vba attach .\deck.pptx --bin .\out\ppt-vbaProject.bin --out .\out\deck.pptm
+ooxml --json vba build-bin --family docx --source .\macros\Module1.bas --out .\out\doc-vbaProject.bin
+ooxml --json vba attach .\document.docx --bin .\out\doc-vbaProject.bin --out .\out\document.docm
 ```
 
 Use `vba rebuild` when you have an extracted source directory and want to replace
@@ -133,7 +150,7 @@ ooxml --json vba list .\out\workbook.xlsm
 
 Use `--family pptx` and `.pptm` output for PowerPoint.
 
-This remains available for troubleshooting and comparison, but pure Rust authoring is the preferred XLSM/PPTM path.
+This remains available for troubleshooting and comparison, but pure Rust authoring is the preferred path.
 
 `tools/windows-office-vba-create.ps1` remains the backend/fallback for direct troubleshooting. Agents should prefer `ooxml vba create` because it validates inputs, discovers the helper from the checkout, and emits normalized follow-up commands.
 
@@ -144,8 +161,8 @@ Real Office-shaped projects include version-dependent `VBA/_VBA_PROJECT` metadat
 Therefore:
 
 - `vba add-module` and `vba remove-module` are only safe for synthetic/source-only test projects.
-- On real Office-shaped `.xlsm`/`.pptm` inputs, those commands fail before writing output, even with `--allow-experimental-vba-source-rewrite`.
-- The user-facing path for XLSM/PPTM module-set changes is `vba rebuild --source-dir` or `vba create --pure` with the desired source files.
+- On real Office-shaped `.xlsm`/`.pptm`/`.docm` inputs, those commands fail before writing output, even with `--allow-experimental-vba-source-rewrite`.
+- The user-facing path for macro module-set changes is `vba rebuild --source-dir` or `vba create --pure` with the desired source files.
 
 ## Proof Gates
 
@@ -179,6 +196,14 @@ ooxml --json vba create .\deck.pptx --pure --family pptx --source .\macros\Modul
 ooxml --json vba office-check .\deck.pptm --out-dir .\proof\pure-pptm-office-check
 ```
 
+Pure generated DOCM Word-open proof:
+
+```powershell
+ooxml --json docx scaffold .\document.docx --text "Macro document"
+ooxml --json vba create .\document.docx --pure --family docx --source .\macros\Module1.bas --out .\document.docm
+ooxml --json vba office-check .\document.docm --out-dir .\proof\pure-docm-office-check
+```
+
 Explicit generated-XLSM macro execution proof:
 
 ```powershell
@@ -205,6 +230,7 @@ The VBA smoke gate:
 - validates with Microsoft Open XML SDK when available;
 - asserts real Office-shaped add/remove are refused;
 - opens macro-enabled outputs through Excel and PowerPoint COM in the full lane.
+- pure DOCM authoring is proven separately with `vba office-check` through Word COM.
 - separately executes a harmless generated XLSM macro in the explicit run-smoke lane.
 
 Proof level `microsoft-office-com-open` means desktop Office opened the package without repair/failure. The explicit run-smoke lane also proves one generated XLSM macro can execute under opt-in local Excel automation; it does not prove arbitrary macro security or broad VBE compile coverage.
@@ -229,6 +255,7 @@ Proof level `microsoft-office-com-open` means desktop Office opened the package 
 - General `_VBA_PROJECT` regeneration.
 - General macro execution automation in the CLI.
 - VBE compile proof.
+- User-supplied Word `.cls` / `ThisDocument` authoring beyond the synthesized host module.
 - Procedure/function-level editing helpers.
 - Signatures/resigning.
 - Forms and `.frx` import/export.

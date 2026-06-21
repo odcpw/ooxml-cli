@@ -258,7 +258,7 @@ fn pure_create_family_from_input(file: &str, family: Option<&str>) -> CliResult<
 
     package_family_from_extension(file).ok_or_else(|| {
         CliError::invalid_args(
-            "--family is required when vba create --pure input extension is not .xlsx, .xlsm, .pptx, or .pptm",
+            "--family is required when vba create --pure input extension is not .xlsx, .xlsm, .pptx, .pptm, .docx, or .docm",
         )
     })
 }
@@ -273,6 +273,7 @@ fn package_family_from_extension(file: &str) -> Option<String> {
     {
         "xlsx" | "xlsm" => Some("xlsx".to_string()),
         "pptx" | "pptm" => Some("pptx".to_string()),
+        "docx" | "docm" => Some("docx".to_string()),
         _ => None,
     }
 }
@@ -351,13 +352,17 @@ fn is_vba_source_path(path: &Path) -> bool {
 
 fn build_bin_from_sources(family: Option<&str>, sources: &[String]) -> CliResult<BuildBinOutcome> {
     let family = normalize_build_family(family.unwrap_or_default())?;
-    if family == "docx" {
-        return Err(CliError::unsupported_type(
-            "pure VBA authoring does not support --family docx yet",
-        ));
-    }
     let source_paths = normalize_source_values(sources)?;
     let source_modules = read_source_modules(&source_paths)?;
+    if family == "docx"
+        && source_modules
+            .iter()
+            .any(|input| input.module.kind != VbaModuleKind::Standard)
+    {
+        return Err(CliError::unsupported_type(
+            "pure VBA authoring for --family docx currently supports only standard .bas modules; .cls class/document modules need Word-specific Office proof first",
+        ));
+    }
     let inserted_vb_names = source_modules
         .iter()
         .filter(|input| input.inserted_vb_name)
@@ -370,12 +375,16 @@ fn build_bin_from_sources(family: Option<&str>, sources: &[String]) -> CliResult
     if family == "xlsx" && needs_excel_host_document_modules(&user_modules) {
         user_modules = with_excel_host_document_modules(user_modules);
     }
+    if family == "docx" {
+        user_modules = with_word_host_document_module(user_modules);
+    }
     let project = match family.as_str() {
         "xlsx" => VbaProjectModel::xlsx(user_modules),
         "pptx" => VbaProjectModel::pptx(user_modules),
+        "docx" => VbaProjectModel::docx(user_modules),
         _ => {
             return Err(CliError::unsupported_type(
-                "pure VBA authoring supports only --family xlsx or pptx",
+                "pure VBA authoring supports only --family xlsx, pptx, or docx",
             ));
         }
     };
@@ -425,6 +434,12 @@ fn with_excel_host_document_modules(mut user_modules: Vec<VbaModuleModel>) -> Ve
     modules
 }
 
+fn with_word_host_document_module(mut user_modules: Vec<VbaModuleModel>) -> Vec<VbaModuleModel> {
+    let mut modules = vec![VbaModuleModel::word_document_document()];
+    modules.append(&mut user_modules);
+    modules
+}
+
 fn attach_command_template(family: &str, bin_path: &str) -> String {
     match family {
         "pptx" => format!(
@@ -435,8 +450,12 @@ fn attach_command_template(family: &str, bin_path: &str) -> String {
             "ooxml --json vba attach workbook.xlsx --bin {} --out workbook.xlsm",
             command_arg(bin_path)
         ),
+        "docx" => format!(
+            "ooxml --json vba attach document.docx --bin {} --out document.docm",
+            command_arg(bin_path)
+        ),
         _ => format!(
-            "ooxml --json vba attach <target.pptx|target.xlsx> --bin {} --out <macro-output.pptm|macro-output.xlsm>",
+            "ooxml --json vba attach <target.pptx|target.docx|target.xlsx> --bin {} --out <macro-output.pptm|macro-output.docm|macro-output.xlsm>",
             command_arg(bin_path)
         ),
     }
@@ -799,6 +818,37 @@ mod tests {
         assert_eq!(project.project.modules[1].kind, VbaModuleKind::Document);
         assert_eq!(project.project.modules[2].name, "Worker");
         assert_eq!(project.project.modules[2].kind, VbaModuleKind::Class);
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn docx_authoring_synthesizes_word_host_document() {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ooxml-vba-word-host-doc-{}-{suffix}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let module_path = temp_dir.join("AgentDoc.bas");
+        fs::write(
+            &module_path,
+            "Attribute VB_Name = \"AgentDoc\"\r\nPublic Sub MarkDocument()\r\nEnd Sub\r\n",
+        )
+        .expect("write module source");
+
+        let project =
+            build_bin_from_sources(Some("docx"), &[module_path.to_string_lossy().to_string()])
+                .expect("build docx project");
+
+        assert_eq!(project.project.project_name, "Project");
+        assert_eq!(project.project.modules.len(), 2);
+        assert_eq!(project.project.modules[0].name, "ThisDocument");
+        assert_eq!(project.project.modules[0].kind, VbaModuleKind::Document);
+        assert_eq!(project.project.modules[1].name, "AgentDoc");
+        assert_eq!(project.project.modules[1].kind, VbaModuleKind::Standard);
         let _ = fs::remove_dir_all(&temp_dir);
     }
 }

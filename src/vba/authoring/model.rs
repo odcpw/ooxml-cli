@@ -3,12 +3,14 @@ use std::collections::BTreeSet;
 use super::{VbaAuthoringError, VbaAuthoringResult};
 
 pub(super) const DEFAULT_PROJECT_NAME: &str = "VBAProject";
+pub(super) const DEFAULT_WORD_PROJECT_NAME: &str = "Project";
 pub(super) const DEFAULT_CODE_PAGE: u16 = 1252;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum VbaHostFamily {
     Xlsx,
     Pptx,
+    Docx,
 }
 
 impl VbaHostFamily {
@@ -17,6 +19,7 @@ impl VbaHostFamily {
         match self {
             Self::Xlsx => "xlsx",
             Self::Pptx => "pptx",
+            Self::Docx => "docx",
         }
     }
 }
@@ -85,6 +88,15 @@ impl VbaModuleModel {
         )
     }
 
+    pub(super) fn word_document_document() -> Self {
+        Self::new(
+            "ThisDocument",
+            None::<String>,
+            VbaModuleKind::Document,
+            b"Attribute VB_Name = \"ThisDocument\"\r\nAttribute VB_Base = \"1Normal.ThisDocument\"\r\nAttribute VB_GlobalNameSpace = False\r\nAttribute VB_Creatable = False\r\nAttribute VB_PredeclaredId = True\r\nAttribute VB_Exposed = True\r\nAttribute VB_TemplateDerived = True\r\nAttribute VB_Customizable = True\r\n".to_vec(),
+        )
+    }
+
     #[cfg(test)]
     pub(super) fn standard(name: impl Into<String>, source: Vec<u8>) -> Self {
         Self::new(name, None::<String>, VbaModuleKind::Standard, source)
@@ -146,6 +158,15 @@ impl VbaProjectModel {
         Self {
             host_family: VbaHostFamily::Pptx,
             project_name: DEFAULT_PROJECT_NAME.to_string(),
+            code_page: DEFAULT_CODE_PAGE,
+            modules,
+        }
+    }
+
+    pub(super) fn docx(modules: Vec<VbaModuleModel>) -> Self {
+        Self {
+            host_family: VbaHostFamily::Docx,
+            project_name: DEFAULT_WORD_PROJECT_NAME.to_string(),
             code_page: DEFAULT_CODE_PAGE,
             modules,
         }
@@ -254,6 +275,20 @@ mod tests {
         )]);
         assert_eq!(project.host_family.as_str(), "pptx");
         assert_eq!(project.project_name, "VBAProject");
+        assert_eq!(project.code_page, 1252);
+        assert_eq!(project.modules.len(), 1);
+        assert_eq!(project.modules[0].name, "Module1");
+        assert!(project.validate().is_ok());
+    }
+
+    #[test]
+    fn docx_model_uses_standard_modules_without_host_documents() {
+        let project = VbaProjectModel::docx(vec![VbaModuleModel::standard(
+            "Module1",
+            b"Public Sub Hello()\r\nEnd Sub\r\n".to_vec(),
+        )]);
+        assert_eq!(project.host_family.as_str(), "docx");
+        assert_eq!(project.project_name, "Project");
         assert_eq!(project.code_page, 1252);
         assert_eq!(project.modules.len(), 1);
         assert_eq!(project.modules[0].name, "Module1");
