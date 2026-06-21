@@ -875,7 +875,10 @@ function Import-OfficeEditSmokeEvidence {
                     $tiers.Remove($tierName)
                 }
             }
-            $fixtureType = "office edit smoke fixture"
+            $fixtureType = [string](Get-PropertyValue -Object $scenario -Name "inputFixtureType")
+            if ($fixtureType -eq "") {
+                $fixtureType = "office edit smoke fixture"
+            }
             if ($commandPath -match '^ooxml (docx|xlsx|pptx) scaffold$') {
                 $fixtureType = "scaffold"
             }
@@ -939,6 +942,7 @@ function Write-MarkdownReport {
     [void]$lines.Add(("Commands without Office-open proof: {0}" -f $Matrix.summary.commandsWithoutOfficeOpenProof))
     [void]$lines.Add(("Commands strict-valid/conformant but no Office-open proof: {0}" -f $Matrix.summary.strictValidationConformanceWithoutOfficeOpenProofCommandCount))
     [void]$lines.Add(("Commands lacking strict validation/conformance/Office-open proof: {0}" -f $Matrix.summary.commandsLackingStrictValidationConformanceOrOfficeOpenProof))
+    [void]$lines.Add(("Scaffold-derived commands with complete proof: {0}" -f $Matrix.summary.scaffoldDerivedProvenCommandCount))
     [void]$lines.Add("")
     [void]$lines.Add("| tier | gaps |")
     [void]$lines.Add("| --- | ---: |")
@@ -1122,6 +1126,7 @@ $validateProven = @($sortedRows | Where-Object { $_.tiers.validate.status -eq "p
 $conformanceProven = @($sortedRows | Where-Object { $_.tiers.conformance.status -eq "passed" })
 $officeProven = @($sortedRows | Where-Object { $_.tiers.office.status -eq "passed" })
 $scaffoldProven = @($sortedRows | Where-Object { $_.inputFixtureType -eq "scaffold" -and @($_.requiredGaps).Count -eq 0 })
+$scaffoldDerivedProven = @($sortedRows | Where-Object { $_.inputFixtureType -eq "scaffold-derived" -and @($_.requiredGaps).Count -eq 0 })
 $parserOnly = @($sortedRows | Where-Object { $_.highestEvidenceTier -eq "structural" })
 $rowsWithProofRows = @($sortedRows | Where-Object { $_.proofRowPresent })
 $rowsWithoutProofRows = @($sortedRows | Where-Object { -not $_.proofRowPresent })
@@ -1177,6 +1182,7 @@ $matrix = [pscustomobject][ordered]@{
         conformanceProvenCommandCount = $conformanceProven.Count
         officeProvenCommandCount = $officeProven.Count
         scaffoldProvenCommandCount = $scaffoldProven.Count
+        scaffoldDerivedProvenCommandCount = $scaffoldDerivedProven.Count
         parserOnlyCommandCount = $parserOnly.Count
         proofCoverageByClass = $proofCoverageByClass
         proofRowsPresent = $rowsWithProofRows.Count
@@ -1192,6 +1198,7 @@ $matrix = [pscustomobject][ordered]@{
     questions = [ordered]@{
         createOrMutateCommands = @($sortedRows | ForEach-Object { $_.commandPath })
         scaffoldProvenCommands = @($scaffoldProven | ForEach-Object { $_.commandPath })
+        scaffoldDerivedProvenCommands = @($scaffoldDerivedProven | ForEach-Object { $_.commandPath })
         realisticFixtureCommands = @($sortedRows | Where-Object { $_.inputFixtureType -eq "realistic fixture" } | ForEach-Object { $_.commandPath })
         officeProvenCommands = @($officeProven | ForEach-Object { $_.commandPath })
         strictConformanceProvenCommands = @($strictConformanceProven | ForEach-Object { $_.commandPath })

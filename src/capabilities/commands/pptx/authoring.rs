@@ -229,18 +229,18 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml pptx fields set",
             "set <file>",
-            "Update PowerPoint header/footer field visibility and existing footer/date placeholders.",
+            "Update PowerPoint header/footer field visibility, synthesizing missing footer placeholders when shown.",
             &["field", "footer", "slide", "master"],
             false,
             Some(
-                "direct CLI mutation; follows Go oracle scope and reports missing placeholders instead of creating shapes",
+                "direct CLI mutation; synthesizes missing footer placeholders when --show-footer=true or --footer is requested",
             ),
             vec![
                 flag(
                     "--footer",
                     "footer",
                     "string",
-                    "footer text for existing footer placeholders",
+                    "footer text; updates existing footer placeholders and creates missing visible footer placeholders",
                 ),
                 flag(
                     "--show-footer",

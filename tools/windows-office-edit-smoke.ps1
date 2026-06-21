@@ -255,16 +255,18 @@ function New-Scenario {
         [string]$Family,
         [string]$Input,
         [string]$Output,
-        [string[]]$Arguments
+        [string[]]$Arguments,
+        [string]$InputFixtureType = ""
     )
 
     [pscustomobject]@{
-        index     = -1
-        name      = $Name
-        family    = $Family
-        input     = $Input
-        output    = $Output
-        arguments = $Arguments
+        index            = -1
+        name             = $Name
+        family           = $Family
+        input            = $Input
+        inputFixtureType = $InputFixtureType
+        output           = $Output
+        arguments        = $Arguments
     }
 }
 
@@ -305,6 +307,7 @@ function New-SkippedScenarioResult {
         name            = $Scenario.name
         family          = $Scenario.family
         input           = $Scenario.input
+        inputFixtureType = $Scenario.inputFixtureType
         output          = $Scenario.output
         proofLevel      = "failed"
         mutation        = (New-StageResult -Status "skipped" -Detail $Reason)
@@ -406,6 +409,7 @@ function Invoke-ScenarioWorker {
         name            = $Scenario.name
         family          = $Scenario.family
         input           = $Scenario.input
+        inputFixtureType = $Scenario.inputFixtureType
         output          = $Scenario.output
         proofLevel      = "strict-validation"
         mutation        = (New-WorkerStageResult -Status "pending")
@@ -863,6 +867,18 @@ Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "scaffold", 
 Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "ranges", "set", $xlsxAuthoringSeed, "--sheet", "Sales Ops", "--range", "A1:E5", "--values-file", $authoringValuesFile, "--out", $xlsxAuthoringData) -Label "stage:xlsx-authoring-data"
 Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "validate", $xlsxAuthoringData, "--strict") -Label "validate:stage:xlsx-authoring-data"
 
+$xlsxAuthoringTable = Join-Path $outRoot "xlsx-authoring-table.xlsx"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "tables", "create", $xlsxAuthoringData, "--sheet", "Sales Ops", "--range", "A1:E5", "--table", "SalesOps", "--style", "TableStyleMedium4", "--out", $xlsxAuthoringTable) -Label "stage:xlsx-authoring-table"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "validate", $xlsxAuthoringTable, "--strict") -Label "validate:stage:xlsx-authoring-table"
+
+$xlsxAuthoringConditionalFormat = Join-Path $outRoot "xlsx-authoring-conditional-format.xlsx"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "conditional-formats", "add", $xlsxAuthoringTable, "--sheet", "Sales Ops", "--range", "E2:E5", "--type", "color-scale", "--cfvo", "min", "--cfvo", "percentile:50", "--cfvo", "max", "--color", "F8696B", "--color", "FFEB84", "--color", "63BE7B", "--priority", "1", "--out", $xlsxAuthoringConditionalFormat) -Label "stage:xlsx-authoring-conditional-format"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "validate", $xlsxAuthoringConditionalFormat, "--strict") -Label "validate:stage:xlsx-authoring-conditional-format"
+
+$xlsxAuthoringNamedRange = Join-Path $outRoot "xlsx-authoring-named-range.xlsx"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "names", "add", $xlsxAuthoringConditionalFormat, "--name", "SalesOpsSource", "--sheet", "Sales Ops", "--range", "A1:E5", "--comment", "Scaffold-derived Office smoke source", "--out", $xlsxAuthoringNamedRange) -Label "stage:xlsx-authoring-named-range"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "validate", $xlsxAuthoringNamedRange, "--strict") -Label "validate:stage:xlsx-authoring-named-range"
+
 $docxTableHash = Get-DocxTableHash -BinaryPath $BinaryPath -DocumentPath $docxTable -Table 1
 $docxBlock1Hash = Get-DocxBlockHash -BinaryPath $BinaryPath -DocumentPath $docxMinimal -Block 1
 $docxApplyBlock1Hash = Get-DocxBlockHash -BinaryPath $BinaryPath -DocumentPath $docxApplyStyles -Block 1
@@ -895,21 +911,24 @@ $scenarios = @(
         -Family "xlsx" `
         -Input $xlsxAuthoringSeed `
         -Output (Join-Path $caseDir "xlsx-ranges-set-formulas-from-scaffold.xlsx") `
-        -Arguments @("--json", "xlsx", "ranges", "set", $xlsxAuthoringSeed, "--sheet", "Sales Ops", "--range", "A1:E5", "--values-file", $authoringValuesFile, "--out", (Join-Path $caseDir "xlsx-ranges-set-formulas-from-scaffold.xlsx"))),
+        -Arguments @("--json", "xlsx", "ranges", "set", $xlsxAuthoringSeed, "--sheet", "Sales Ops", "--range", "A1:E5", "--values-file", $authoringValuesFile, "--out", (Join-Path $caseDir "xlsx-ranges-set-formulas-from-scaffold.xlsx")) `
+        -InputFixtureType "scaffold-derived"),
 
     (New-Scenario `
         -Name "xlsx-tables-create-from-scaffold" `
         -Family "xlsx" `
         -Input $xlsxAuthoringData `
         -Output (Join-Path $caseDir "xlsx-tables-create-from-scaffold.xlsx") `
-        -Arguments @("--json", "xlsx", "tables", "create", $xlsxAuthoringData, "--sheet", "Sales Ops", "--range", "A1:E5", "--table", "SalesOps", "--style", "TableStyleMedium4", "--out", (Join-Path $caseDir "xlsx-tables-create-from-scaffold.xlsx"))),
+        -Arguments @("--json", "xlsx", "tables", "create", $xlsxAuthoringData, "--sheet", "Sales Ops", "--range", "A1:E5", "--table", "SalesOps", "--style", "TableStyleMedium4", "--out", (Join-Path $caseDir "xlsx-tables-create-from-scaffold.xlsx")) `
+        -InputFixtureType "scaffold-derived"),
 
     (New-Scenario `
         -Name "xlsx-conditional-formats-add-from-scaffold" `
         -Family "xlsx" `
         -Input $xlsxAuthoringData `
         -Output (Join-Path $caseDir "xlsx-conditional-formats-add-from-scaffold.xlsx") `
-        -Arguments @("--json", "xlsx", "conditional-formats", "add", $xlsxAuthoringData, "--sheet", "Sales Ops", "--range", "E2:E5", "--type", "color-scale", "--cfvo", "min", "--cfvo", "percentile:50", "--cfvo", "max", "--color", "F8696B", "--color", "FFEB84", "--color", "63BE7B", "--priority", "1", "--out", (Join-Path $caseDir "xlsx-conditional-formats-add-from-scaffold.xlsx"))),
+        -Arguments @("--json", "xlsx", "conditional-formats", "add", $xlsxAuthoringData, "--sheet", "Sales Ops", "--range", "E2:E5", "--type", "color-scale", "--cfvo", "min", "--cfvo", "percentile:50", "--cfvo", "max", "--color", "F8696B", "--color", "FFEB84", "--color", "63BE7B", "--priority", "1", "--out", (Join-Path $caseDir "xlsx-conditional-formats-add-from-scaffold.xlsx")) `
+        -InputFixtureType "scaffold-derived"),
 
     (New-Scenario `
         -Name "xlsx-comments-add" `
@@ -1274,6 +1293,14 @@ $scenarios = @(
         -Input $xlsxPivotNamedData `
         -Output (Join-Path $caseDir "xlsx-pivot-create-after-names.xlsx") `
         -Arguments @("--json", "xlsx", "pivots", "create", $xlsxPivotNamedData, "--sheet", "1", "--range", "A1:C5", "--rows", "Region", "--values", "Sales:sum", "--anchor", "F1", "--out", (Join-Path $caseDir "xlsx-pivot-create-after-names.xlsx"))),
+
+    (New-Scenario `
+        -Name "xlsx-realistic-scaffold-pivot-chain" `
+        -Family "xlsx" `
+        -Input $xlsxAuthoringNamedRange `
+        -Output (Join-Path $caseDir "xlsx-realistic-scaffold-pivot-chain.xlsx") `
+        -Arguments @("--json", "xlsx", "pivots", "create", $xlsxAuthoringNamedRange, "--sheet", "Sales Ops", "--range", "A1:E5", "--rows", "Region", "--values", "Units:sum", "--anchor", "G1", "--out", (Join-Path $caseDir "xlsx-realistic-scaffold-pivot-chain.xlsx")) `
+        -InputFixtureType "scaffold-derived"),
 
     (New-Scenario `
         -Name "docx-image-replace" `

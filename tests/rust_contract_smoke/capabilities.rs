@@ -306,6 +306,43 @@ fn xlsx_conditional_format_reorder_capability_metadata() {
 }
 
 #[test]
+fn pptx_fields_set_capability_advertises_footer_synthesis() {
+    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(rust_code, 0);
+    assert_eq!(rust_stderr, None);
+    let rust_caps = rust_stdout.expect("rust capabilities");
+    let fields_set = command_by_path(&rust_caps, "ooxml pptx fields set");
+
+    assert!(
+        fields_set["short"]
+            .as_str()
+            .expect("short")
+            .contains("synthesizing missing footer placeholders"),
+        "fields set capability should advertise footer placeholder synthesis: {fields_set:?}"
+    );
+    assert!(
+        fields_set["opIneligibleReason"]
+            .as_str()
+            .expect("op-ineligible reason")
+            .contains("synthesizes missing footer placeholders"),
+        "fields set op-ineligible reason should advertise footer placeholder synthesis: {fields_set:?}"
+    );
+    assert!(
+        !fields_set
+            .to_string()
+            .contains("reports missing placeholders instead of creating shapes"),
+        "fields set capability must not advertise stale missing-placeholder behavior: {fields_set:?}"
+    );
+    assert_eq!(
+        local_flag_field(fields_set, "description")[0],
+        Value::String(
+            "footer text; updates existing footer placeholders and creates missing visible footer placeholders"
+                .to_string()
+        )
+    );
+}
+
+#[test]
 fn artifact_proof_matrix_classifies_inventory_coverage() {
     let Some(powershell) = powershell_for_artifact_proof_matrix_test() else {
         eprintln!("skipping artifact proof matrix test because PowerShell is not available");
@@ -372,7 +409,10 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
             {
                 "commandPath": "ooxml xlsx cells set",
                 "generatedOutputPath": "proof-artifacts/cells-set.xlsx",
+                "inputFixtureType": "scaffold-derived",
                 "tiers": {
+                    "structural": { "status": "passed" },
+                    "readback": { "status": "passed" },
                     "validate": { "status": "passed" },
                     "conformance": { "status": "passed" },
                     "office": { "status": "passed" }
@@ -462,7 +502,11 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         matrix["summary"]["proofCoverageByClass"]["contract-only"],
         1
     );
+    assert_eq!(matrix["summary"]["scaffoldDerivedProvenCommandCount"], 1);
 
+    let cells_set = proof_matrix_row_by_path(&matrix, "ooxml xlsx cells set");
+    assert_eq!(cells_set["inputFixtureType"], "scaffold-derived");
+    assert_eq!(cells_set["requiredGaps"], serde_json::json!([]));
     let comments = proof_matrix_row_by_path(&matrix, "ooxml xlsx comments add");
     assert_eq!(comments["proofCoverage"], "contract-only");
     assert_eq!(comments["proofRowStatus"], "missing");
@@ -480,6 +524,10 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
         .as_array()
         .expect("office proven commands");
     assert!(office_commands.contains(&Value::String("ooxml xlsx cells set".to_string())));
+    let scaffold_derived_commands = matrix["questions"]["scaffoldDerivedProvenCommands"]
+        .as_array()
+        .expect("scaffold-derived proven commands");
+    assert!(scaffold_derived_commands.contains(&Value::String("ooxml xlsx cells set".to_string())));
     let missing_proof_rows = matrix["questions"]["commandsWithoutProofRows"]
         .as_array()
         .expect("commands without proof rows");
@@ -487,6 +535,7 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
 
     let markdown = fs::read_to_string(&out_markdown).expect("matrix markdown");
     assert!(markdown.contains("Commands with no proof row yet: 1"));
+    assert!(markdown.contains("Scaffold-derived commands with complete proof: 1"));
     assert!(markdown.contains("| contract-only | 1 |"));
 
     let _ = fs::remove_dir_all(&temp_dir);
