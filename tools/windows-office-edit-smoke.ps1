@@ -851,6 +851,10 @@ $xlsxPivotData = Join-Path $outRoot "xlsx-pivot-data.xlsx"
 Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "ranges", "set", $xlsxMinimal, "--sheet", "1", "--anchor", "A1", "--data-format", "csv", "--values-file", $pivotValuesFile, "--out", $xlsxPivotData) -Label "stage:xlsx-pivot-data"
 Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "validate", $xlsxPivotData, "--strict") -Label "validate:stage:xlsx-pivot-data"
 
+$xlsxPivotNamedData = Join-Path $outRoot "xlsx-pivot-named-data.xlsx"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "names", "add", $xlsxPivotData, "--name", "PivotSource", "--sheet", "1", "--range", "A1:C5", "--comment", "Pivot smoke source", "--out", $xlsxPivotNamedData) -Label "stage:xlsx-pivot-named-data"
+Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "validate", $xlsxPivotNamedData, "--strict") -Label "validate:stage:xlsx-pivot-named-data"
+
 $xlsxAuthoringSeed = Join-Path $outRoot "xlsx-authoring-seed.xlsx"
 $xlsxAuthoringData = Join-Path $outRoot "xlsx-authoring-data.xlsx"
 Invoke-Checked -FilePath $BinaryPath -Arguments @("--json", "xlsx", "scaffold", $xlsxAuthoringSeed, "--sheet", "Sales Ops", "--force") -Label "stage:xlsx-authoring-seed"
@@ -1254,6 +1258,13 @@ $scenarios = @(
         -Input $xlsxPivotData `
         -Output (Join-Path $caseDir "xlsx-pivot-create.xlsx") `
         -Arguments @("--json", "xlsx", "pivots", "create", $xlsxPivotData, "--sheet", "1", "--range", "A1:C5", "--rows", "Region", "--values", "Sales:sum", "--anchor", "F1", "--out", (Join-Path $caseDir "xlsx-pivot-create.xlsx"))),
+
+    (New-Scenario `
+        -Name "xlsx-pivot-create-after-names" `
+        -Family "xlsx" `
+        -Input $xlsxPivotNamedData `
+        -Output (Join-Path $caseDir "xlsx-pivot-create-after-names.xlsx") `
+        -Arguments @("--json", "xlsx", "pivots", "create", $xlsxPivotNamedData, "--sheet", "1", "--range", "A1:C5", "--rows", "Region", "--values", "Sales:sum", "--anchor", "F1", "--out", (Join-Path $caseDir "xlsx-pivot-create-after-names.xlsx"))),
 
     (New-Scenario `
         -Name "docx-image-replace" `

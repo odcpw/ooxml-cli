@@ -77,6 +77,7 @@ mod xlsx_table_append;
 mod xlsx_table_create;
 mod xlsx_table_format;
 mod xlsx_tables;
+mod xlsx_workbook_order;
 mod xml_util;
 mod zip_io;
 
@@ -286,6 +287,10 @@ pub(crate) use xlsx_table_format::{
 pub(crate) use xlsx_tables::{
     XlsxTableExportOptions, XlsxTableRef, select_xlsx_table, xlsx_source_command, xlsx_tables,
     xlsx_tables_export, xlsx_tables_list, xlsx_tables_show,
+};
+pub(crate) use xlsx_workbook_order::{
+    insert_xlsx_workbook_child_ordered, xlsx_workbook_child_order,
+    xlsx_workbook_ordered_insert_position,
 };
 pub(crate) use xml_util::{
     attr, attr_bound_ns, attr_exact, attr_prefixed_ns, decode_local_xml_attrs as xml_attrs,

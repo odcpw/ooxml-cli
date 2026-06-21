@@ -3,8 +3,8 @@ use quick_xml::events::Event;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    CliResult, local_name, relationships_part_for, render_xml_attrs, replace_xml_span,
-    resolve_relationship_target, xml_attrs_map, zip_text,
+    CliResult, insert_xlsx_workbook_child_ordered, local_name, relationships_part_for,
+    render_xml_attrs, replace_xml_span, resolve_relationship_target, xml_attrs_map, zip_text,
 };
 pub(crate) fn add_xlsx_formula_recalc_package_updates(
     file: &str,
@@ -90,15 +90,7 @@ fn ensure_xlsx_full_calc_on_load(xml: String) -> String {
     }
 
     let calc_pr = r#"<calcPr fullCalcOnLoad="1" forceFullCalc="1"/>"#;
-    if let Some(pos) = xml.rfind("</workbook>") {
-        let mut out = String::with_capacity(xml.len() + calc_pr.len());
-        out.push_str(&xml[..pos]);
-        out.push_str(calc_pr);
-        out.push_str(&xml[pos..]);
-        out
-    } else {
-        xml
-    }
+    insert_xlsx_workbook_child_ordered(&xml, "calcPr", calc_pr).unwrap_or(xml)
 }
 
 fn xlsx_calc_chain_parts_from_content_types(xml: &str) -> Vec<String> {

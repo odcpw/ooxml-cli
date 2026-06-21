@@ -18,8 +18,8 @@ use output::{select_xlsx_pivot, xlsx_pivot_item_json};
 use crate::{
     CliError, CliResult, RelationshipEntry, WorkbookSheet, XlsxRangeExportOptions,
     add_relationship_to_xml, allocate_relationship_id, attr, col_name, command_arg,
-    copy_zip_with_part_overrides, ensure_content_type_override, local_name, parse_cell_ref,
-    parse_range, relationship_entries, relationship_entries_from_xml,
+    copy_zip_with_part_overrides, ensure_content_type_override, insert_xlsx_workbook_child_ordered,
+    local_name, parse_cell_ref, parse_range, relationship_entries, relationship_entries_from_xml,
     relationship_target_from_source_to_target, relationships_part_for, resolve_relationship_target,
     resolve_sheet, select_xlsx_table, validate, validate_xlsx_mutation_output_flags,
     workbook_sheets, xlsx_range_export_with_options, xlsx_ranges_set_temp_path, xlsx_tables,
@@ -1139,22 +1139,8 @@ fn add_workbook_pivot_cache(workbook_xml: &str, cache_id: i32, rid: &str) -> Str
         return out;
     }
     let wrapper = format!("<pivotCaches>{entry}</pivotCaches>");
-    if let Some(pos) = workbook_xml.find("</sheets>") {
-        let pos = pos + "</sheets>".len();
-        let mut out = String::with_capacity(workbook_xml.len() + wrapper.len());
-        out.push_str(&workbook_xml[..pos]);
-        out.push_str(&wrapper);
-        out.push_str(&workbook_xml[pos..]);
-        return out;
-    }
-    if let Some(pos) = workbook_xml.find("</workbook>") {
-        let mut out = String::with_capacity(workbook_xml.len() + wrapper.len());
-        out.push_str(&workbook_xml[..pos]);
-        out.push_str(&wrapper);
-        out.push_str(&workbook_xml[pos..]);
-        return out;
-    }
-    workbook_xml.to_string()
+    insert_xlsx_workbook_child_ordered(workbook_xml, "pivotCaches", &wrapper)
+        .unwrap_or_else(|| workbook_xml.to_string())
 }
 
 fn ensure_workbook_r_namespace(mut workbook_xml: String) -> String {

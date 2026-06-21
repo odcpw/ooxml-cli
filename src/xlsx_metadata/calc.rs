@@ -2,7 +2,8 @@ use quick_xml::events::Event;
 use quick_xml::{NsReader, Reader};
 use std::collections::BTreeMap;
 
-use super::{XLSX_MAIN_NS, XlsxWorkbookCalcSettings, metadata_ordered_insert_position};
+use super::{XLSX_MAIN_NS, XlsxWorkbookCalcSettings};
+use crate::xlsx_workbook_ordered_insert_position;
 use crate::{attr, element_in_ns, local_name, render_xml_attrs, replace_xml_span, xml_attrs_map};
 
 pub(super) fn xlsx_workbook_calc_settings_from_xml(xml: &str) -> XlsxWorkbookCalcSettings {
@@ -114,9 +115,7 @@ pub(super) fn update_xlsx_workbook_calc_xml(
         attrs.insert("forceFullCalc".to_string(), "1".to_string());
     }
     let calc_pr = format!("<calcPr{}/>", render_xml_attrs(&attrs));
-    if let Some(pos) =
-        metadata_ordered_insert_position(&xml, workbook_child_order("calcPr"), workbook_child_order)
-    {
+    if let Some(pos) = xlsx_workbook_ordered_insert_position(&xml, "calcPr") {
         let mut out = String::with_capacity(xml.len() + calc_pr.len());
         out.push_str(&xml[..pos]);
         out.push_str(&calc_pr);
@@ -124,30 +123,5 @@ pub(super) fn update_xlsx_workbook_calc_xml(
         out
     } else {
         xml
-    }
-}
-
-fn workbook_child_order(local_name: &str) -> i32 {
-    match local_name {
-        "fileVersion" => 10,
-        "fileSharing" => 20,
-        "workbookPr" => 30,
-        "workbookProtection" => 40,
-        "bookViews" => 50,
-        "sheets" => 60,
-        "functionGroups" => 70,
-        "externalReferences" => 80,
-        "definedNames" => 90,
-        "calcPr" => 100,
-        "oleSize" => 110,
-        "customWorkbookViews" => 120,
-        "pivotCaches" => 130,
-        "smartTagPr" => 140,
-        "smartTagTypes" => 150,
-        "webPublishing" => 160,
-        "fileRecoveryPr" => 170,
-        "webPublishObjects" => 180,
-        "extLst" => 190,
-        _ => 10000,
     }
 }

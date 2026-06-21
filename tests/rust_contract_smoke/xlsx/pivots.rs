@@ -273,6 +273,167 @@ fn xlsx_pivots_create_matches_go_oracle_saved_readback_dry_run_and_errors() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+#[test]
+fn xlsx_pivots_create_keeps_defined_names_calc_pr_before_pivot_caches() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-pivots-workbook-order-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let base_path = temp_dir.join("table.xlsx");
+    let input_path = temp_dir.join("with-defined-names-calc-pr.xlsx");
+    let output_path = temp_dir.join("pivoted.xlsx");
+    write_table_xlsx(&base_path);
+    let base = base_path.to_string_lossy().to_string();
+    rewrite_zip_fixture(&base, &input_path, |name, data| {
+        let data = if name == "xl/workbook.xml" {
+            let xml = String::from_utf8(data).expect("workbook XML utf8");
+            xml.replace(
+                "  </sheets>\n</workbook>",
+                r#"  </sheets>
+  <definedNames>
+    <definedName name="SalesData">Data!$A$1:$B$3</definedName>
+  </definedNames>
+  <calcPr calcId="191029"/>
+</workbook>"#,
+            )
+            .into_bytes()
+        } else {
+            data
+        };
+        Some((name.to_string(), data))
+    });
+
+    let input = input_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "pivots",
+        "create",
+        &input,
+        "--table",
+        "Sales",
+        "--name",
+        "SalesPivot",
+        "--rows",
+        "Region",
+        "--values",
+        "Amount:sum",
+        "--anchor",
+        "D1",
+        "--out",
+        &output,
+    ]);
+    assert_eq!(code, 0, "pivots create exit");
+    assert_eq!(stderr, None, "pivots create stderr");
+    assert!(stdout.is_some(), "pivots create stdout");
+
+    let workbook_xml = read_zip_string(&output_path, "xl/workbook.xml");
+    assert_xml_tag_order(
+        &workbook_xml,
+        &[
+            "<sheets",
+            "</sheets>",
+            "<definedNames",
+            "</definedNames>",
+            "<calcPr",
+            "<pivotCaches",
+        ],
+    );
+    assert_xlsx_strict_valid(&output);
+    assert_conformance_check_passed("pivots workbook child order conformance", &output);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_pivots_validate_and_conformance_reject_pivot_caches_before_names_or_calc_pr() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-pivots-bad-workbook-order-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    for (label, workbook_xml) in [
+        (
+            "before-defined-names",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Data" sheetId="1" r:id="rId1"/>
+  </sheets>
+  <pivotCaches>
+    <pivotCache cacheId="1" r:id="rIdCache1"/>
+  </pivotCaches>
+  <definedNames>
+    <definedName name="SalesData">Data!$A$1:$D$3</definedName>
+  </definedNames>
+  <calcPr calcId="191029"/>
+</workbook>"#,
+        ),
+        (
+            "before-calc-pr",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Data" sheetId="1" r:id="rId1"/>
+  </sheets>
+  <definedNames>
+    <definedName name="SalesData">Data!$A$1:$D$3</definedName>
+  </definedNames>
+  <pivotCaches>
+    <pivotCache cacheId="1" r:id="rIdCache1"/>
+  </pivotCaches>
+  <calcPr calcId="191029"/>
+</workbook>"#,
+        ),
+    ] {
+        let base_path = temp_dir.join(format!("{label}-base.xlsx"));
+        let bad_path = temp_dir.join(format!("{label}.xlsx"));
+        write_pivot_xlsx(&base_path, false);
+        let base = base_path.to_string_lossy().to_string();
+        rewrite_zip_fixture(&base, &bad_path, |name, data| {
+            let data = if name == "xl/workbook.xml" {
+                workbook_xml.as_bytes().to_vec()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        });
+
+        let bad = bad_path.to_string_lossy().to_string();
+        assert_pivot_workbook_child_order_rejected(label, &bad);
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn assert_pivot_workbook_child_order_rejected(label: &str, file: &str) {
+    for (command, args) in [
+        (
+            "strict validate",
+            vec!["--json", "validate", "--strict", file],
+        ),
+        (
+            "conformance check",
+            vec!["--json", "conformance", "check", file],
+        ),
+    ] {
+        let (code, report, stderr) = run_ooxml(&args);
+        assert_ne!(code, 0, "{label} {command} should reject bad order");
+        assert_eq!(stderr, None, "{label} {command} stderr");
+        let report = report.unwrap_or_else(|| panic!("{label} {command} should emit JSON"));
+        assert!(
+            json_contains_diagnostic_code(&report, "XLSX_WORKBOOK_CHILD_ORDER"),
+            "{label} {command} did not report workbook child order:\n{report:#}"
+        );
+    }
+}
+
 fn write_pivot_xlsx(dest: &Path, two_pivots: bool) {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).expect("fixture parent");

@@ -7,7 +7,8 @@ use crate::{
     CliResult, EXIT_PARTIAL_SUCCESS, EXIT_SUCCESS, EXIT_VALIDATION_FAILED, InspectPackageKind,
     detect_inspect_package_type, find_docx_document_part, find_xlsx_workbook_part, local_name,
     relationship_entries, relationship_source_uri, relationships, relationships_part_for,
-    resolve_relationship_target, workbook_sheets, zip_entry_names, zip_entry_set, zip_text,
+    resolve_relationship_target, workbook_sheets, xlsx_workbook_child_order, zip_entry_names,
+    zip_entry_set, zip_text,
 };
 
 pub(crate) fn validate(file: &str, strict: bool) -> CliResult<Value> {
@@ -271,7 +272,7 @@ fn validate_xlsx_workbook_child_order(workbook_uri: &str, workbook_xml: &str) ->
     reader.config_mut().trim_text(false);
     let mut diagnostics = Vec::new();
     let mut depth = 0_u32;
-    let mut last_order = 0usize;
+    let mut last_order = 0i32;
     let mut last_name = String::new();
 
     loop {
@@ -326,11 +327,11 @@ fn push_xlsx_workbook_child_order_diagnostic(
     workbook_uri: &str,
     name: &str,
     last_name: &str,
-    last_order: &mut usize,
+    last_order: &mut i32,
     diagnostics: &mut Vec<Value>,
 ) {
     let current = xlsx_workbook_child_order(name);
-    if current == 0 {
+    if current >= 10000 {
         return;
     }
     if *last_order > current {
@@ -342,32 +343,4 @@ fn push_xlsx_workbook_child_order_diagnostic(
         return;
     }
     *last_order = current;
-}
-
-fn xlsx_workbook_child_order(name: &str) -> usize {
-    [
-        "fileVersion",
-        "fileSharing",
-        "workbookPr",
-        "workbookProtection",
-        "bookViews",
-        "sheets",
-        "functionGroups",
-        "externalReferences",
-        "definedNames",
-        "calcPr",
-        "oleSize",
-        "customWorkbookViews",
-        "pivotCaches",
-        "smartTagPr",
-        "smartTagTypes",
-        "webPublishing",
-        "fileRecoveryPr",
-        "webPublishObjects",
-        "extLst",
-    ]
-    .iter()
-    .position(|candidate| *candidate == name)
-    .map(|idx| idx + 1)
-    .unwrap_or(0)
 }

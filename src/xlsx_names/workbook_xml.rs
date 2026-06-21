@@ -1,7 +1,10 @@
 use quick_xml::Reader;
 use quick_xml::events::Event;
 
-use crate::{CliError, CliResult, local_name, xml_attr_escape, xml_escape};
+use crate::{
+    CliError, CliResult, local_name, xlsx_workbook_ordered_insert_position, xml_attr_escape,
+    xml_escape,
+};
 
 use super::model::XlsxDefinedName;
 use super::package::parse_xlsx_defined_name_block;
@@ -94,60 +97,5 @@ fn xml_qualified_name(prefix: Option<&str>, local: &str) -> String {
 }
 
 fn workbook_defined_names_insert_position(workbook_xml: &str) -> Option<usize> {
-    let mut reader = Reader::from_str(workbook_xml);
-    reader.config_mut().trim_text(false);
-    let mut depth = 0_u32;
-    loop {
-        let before = reader.buffer_position() as usize;
-        match reader.read_event() {
-            Ok(Event::Start(e)) => {
-                let name = local_name(e.name().as_ref()).to_string();
-                if depth == 1 && workbook_child_order(&name) > workbook_child_order("definedNames")
-                {
-                    return Some(before);
-                }
-                depth += 1;
-            }
-            Ok(Event::Empty(e)) => {
-                let name = local_name(e.name().as_ref()).to_string();
-                if depth == 1 && workbook_child_order(&name) > workbook_child_order("definedNames")
-                {
-                    return Some(before);
-                }
-            }
-            Ok(Event::End(e)) => {
-                if depth == 1 && local_name(e.name().as_ref()) == "workbook" {
-                    return Some(before);
-                }
-                depth = depth.saturating_sub(1);
-            }
-            Ok(Event::Eof) | Err(_) => return None,
-            _ => {}
-        }
-    }
-}
-
-fn workbook_child_order(local_name: &str) -> i32 {
-    match local_name {
-        "fileVersion" => 10,
-        "fileSharing" => 20,
-        "workbookPr" => 30,
-        "workbookProtection" => 40,
-        "bookViews" => 50,
-        "sheets" => 60,
-        "functionGroups" => 70,
-        "externalReferences" => 80,
-        "definedNames" => 90,
-        "calcPr" => 100,
-        "oleSize" => 110,
-        "customWorkbookViews" => 120,
-        "pivotCaches" => 130,
-        "smartTagPr" => 140,
-        "smartTagTypes" => 150,
-        "webPublishing" => 160,
-        "fileRecoveryPr" => 170,
-        "webPublishObjects" => 180,
-        "extLst" => 190,
-        _ => 1000,
-    }
+    xlsx_workbook_ordered_insert_position(workbook_xml, "definedNames")
 }

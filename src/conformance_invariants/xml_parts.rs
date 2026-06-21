@@ -2,7 +2,7 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::Value;
 
-use crate::{CliResult, zip_text};
+use crate::{CliResult, xlsx_workbook_child_order, zip_text};
 
 use super::spec::{
     CHART_NAMESPACE, CONTENT_TYPE_CHART, CONTENT_TYPE_DOCX_DOCUMENT, CONTENT_TYPE_DOCX_FOOTER,
@@ -487,30 +487,8 @@ fn worksheet_child_order(name: &str) -> usize {
 }
 
 fn workbook_child_order(name: &str) -> usize {
-    order_index(
-        name,
-        &[
-            "fileVersion",
-            "fileSharing",
-            "workbookPr",
-            "workbookProtection",
-            "bookViews",
-            "sheets",
-            "functionGroups",
-            "externalReferences",
-            "definedNames",
-            "calcPr",
-            "oleSize",
-            "customWorkbookViews",
-            "pivotCaches",
-            "smartTagPr",
-            "smartTagTypes",
-            "webPublishing",
-            "fileRecoveryPr",
-            "webPublishObjects",
-            "extLst",
-        ],
-    )
+    let order = xlsx_workbook_child_order(name);
+    if order >= 10000 { 0 } else { order as usize }
 }
 
 fn slide_child_order(name: &str) -> usize {
