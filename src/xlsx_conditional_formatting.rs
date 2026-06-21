@@ -9,8 +9,8 @@ use crate::{
     CliError, CliResult, WorkbookSheet, command_arg, copy_zip_with_part_override, decode_xml_text,
     local_name, normalize_xl_target, relationships, render_xml_attrs, replace_xml_span,
     resolve_sheet, selector_candidates, validate, validate_xlsx_mutation_output_flags,
-    workbook_sheets, xlsx_ranges_set_temp_path, xml_direct_child_ranges, xml_escape,
-    xml_fragment_bounds, xml_general_ref, xml_tag_prefix, zip_text,
+    workbook_sheets, xlsx_ranges_set_temp_path, xml_attr_escape, xml_direct_child_ranges,
+    xml_escape, xml_fragment_bounds, xml_general_ref, xml_tag_prefix, zip_text,
 };
 
 mod color_scale;
@@ -294,6 +294,27 @@ pub(crate) fn xlsx_conditional_formats_delete(
     }
     run_conditional_format_mutation(file, "delete", options, |xml, _prefix, options| {
         delete_conditional_format_xml(xml, options)
+    })
+}
+
+#[allow(dead_code)]
+pub(crate) fn xlsx_conditional_formats_reorder(
+    file: &str,
+    options: XlsxConditionalFormatMutationOptions<'_>,
+) -> CliResult<Value> {
+    if options.rule.is_none_or(|value| value.trim().is_empty()) {
+        return Err(CliError::invalid_args("--rule is required"));
+    }
+    let priority = options
+        .priority
+        .ok_or_else(|| CliError::invalid_args("--priority is required"))?;
+    if priority < 1 {
+        return Err(CliError::invalid_args(
+            "--priority must be greater than zero",
+        ));
+    }
+    run_conditional_format_mutation(file, "reorder", options, |xml, _prefix, options| {
+        reorder_conditional_format_xml(xml, options)
     })
 }
 
@@ -787,6 +808,83 @@ fn delete_conditional_format_xml(
     })
 }
 
+fn reorder_conditional_format_xml(
+    xml: &str,
+    options: &XlsxConditionalFormatMutationOptions<'_>,
+) -> CliResult<ConditionalFormatMutation> {
+    let selector = options.rule.unwrap_or_default().trim();
+    if selector.is_empty() {
+        return Err(CliError::invalid_args("--rule is required"));
+    }
+    let target_priority = options
+        .priority
+        .ok_or_else(|| CliError::invalid_args("--priority is required"))?;
+    if target_priority < 1 {
+        return Err(CliError::invalid_args(
+            "--priority must be greater than zero",
+        ));
+    }
+
+    let root = worksheet_root_bounds(xml)?;
+    let blocks = read_conditional_formats(xml)?;
+    let selected = select_conditional_format_rule(&blocks, selector)?;
+    let rules = blocks
+        .iter()
+        .flat_map(|block| block.rules.iter().cloned())
+        .collect::<Vec<_>>();
+    if target_priority > rules.len() as i64 {
+        return Err(CliError::invalid_args(format!(
+            "--priority must be between 1 and {}",
+            rules.len()
+        )));
+    }
+
+    let rule_ranges = conditional_format_rule_ranges_by_document_order(xml, &root)?;
+    if rule_ranges.len() != rules.len() {
+        return Err(CliError::unexpected(
+            "conditional format rule count changed during lookup",
+        ));
+    }
+
+    let selected_doc_index = selected.index.checked_sub(1).ok_or_else(|| {
+        CliError::unexpected("conditional format rule has invalid document-order index")
+    })?;
+    let mut priority_order = (0..rules.len()).collect::<Vec<_>>();
+    priority_order.sort_by(|left, right| {
+        conditional_format_priority_sort_key(&rules[*left])
+            .cmp(&conditional_format_priority_sort_key(&rules[*right]))
+    });
+    let selected_order_index = priority_order
+        .iter()
+        .position(|index| *index == selected_doc_index)
+        .ok_or_else(|| {
+            CliError::unexpected("selected conditional format rule disappeared during ordering")
+        })?;
+    let selected_entry = priority_order.remove(selected_order_index);
+    priority_order.insert(target_priority as usize - 1, selected_entry);
+
+    let mut new_priorities = vec![0i64; rules.len()];
+    for (position, doc_index) in priority_order.into_iter().enumerate() {
+        new_priorities[doc_index] = position as i64 + 1;
+    }
+    let updated_xml =
+        rewrite_conditional_format_rule_priorities(xml, &rule_ranges, &new_priorities)?;
+    let updated_rule = read_conditional_formats(&updated_xml)?
+        .into_iter()
+        .flat_map(|block| block.rules.into_iter())
+        .find(|rule| rule.index == selected.index)
+        .ok_or_else(|| {
+            CliError::unexpected("selected conditional format rule disappeared after reorder")
+        })?;
+
+    Ok(ConditionalFormatMutation {
+        updated_xml,
+        sqref: updated_rule.sqref.clone(),
+        cells_affected: sqref_cell_count(&updated_rule.sqref),
+        rule: updated_rule,
+    })
+}
+
 fn read_conditional_formats(xml: &str) -> CliResult<Vec<ConditionalFormatBlock>> {
     let root = worksheet_root_bounds(xml)?;
     let mut blocks = Vec::new();
@@ -936,6 +1034,13 @@ fn conditional_format_rule_matches(rule: &ConditionalFormatRule, selector: &str)
     rule.selectors.iter().any(|candidate| candidate == selector)
 }
 
+fn conditional_format_priority_sort_key(rule: &ConditionalFormatRule) -> (u8, i64, usize) {
+    match rule.priority {
+        Some(priority) if priority > 0 => (0, priority, rule.index),
+        _ => (1, 0, rule.index),
+    }
+}
+
 fn conditional_format_rule_not_found(
     blocks: &[ConditionalFormatBlock],
     selector: &str,
@@ -1002,6 +1107,143 @@ fn conditional_format_rule_ranges(
         .into_iter()
         .filter(|child| child.kind == "cfRule")
         .collect())
+}
+
+fn conditional_format_rule_ranges_by_document_order(
+    xml: &str,
+    root: &WorksheetRootBounds,
+) -> CliResult<Vec<crate::XmlNamedRange>> {
+    let mut ranges = Vec::new();
+    for container in conditional_format_container_ranges(xml, root)? {
+        ranges.extend(conditional_format_rule_ranges(xml, &container)?);
+    }
+    Ok(ranges)
+}
+
+fn rewrite_conditional_format_rule_priorities(
+    xml: &str,
+    rule_ranges: &[crate::XmlNamedRange],
+    priorities: &[i64],
+) -> CliResult<String> {
+    if rule_ranges.len() != priorities.len() {
+        return Err(CliError::unexpected(
+            "conditional format priority rewrite count mismatch",
+        ));
+    }
+    let mut updated = xml.to_string();
+    for (rule_range, priority) in rule_ranges.iter().zip(priorities.iter()).rev() {
+        let rewritten = set_conditional_format_rule_priority(
+            &updated[rule_range.start..rule_range.end],
+            *priority,
+        )?;
+        updated = replace_xml_span(&updated, rule_range.start, rule_range.end, &rewritten);
+    }
+    Ok(updated)
+}
+
+fn set_conditional_format_rule_priority(fragment: &str, priority: i64) -> CliResult<String> {
+    let open_end = fragment
+        .find('>')
+        .ok_or_else(|| CliError::unexpected("invalid conditional format rule XML"))?;
+    let updated_open_tag = replace_or_insert_start_tag_attr(
+        &fragment[..=open_end],
+        "priority",
+        &priority.to_string(),
+    )?;
+    Ok(replace_xml_span(
+        fragment,
+        0,
+        open_end + 1,
+        &updated_open_tag,
+    ))
+}
+
+fn replace_or_insert_start_tag_attr(
+    tag: &str,
+    attr_local_name: &str,
+    value: &str,
+) -> CliResult<String> {
+    let tag_end = tag
+        .rfind('>')
+        .ok_or_else(|| CliError::unexpected("invalid conditional format rule XML"))?;
+    if !tag.starts_with('<') {
+        return Err(CliError::unexpected("invalid conditional format rule XML"));
+    }
+
+    let bytes = tag.as_bytes();
+    let mut cursor = 1usize;
+    while cursor < tag_end && !bytes[cursor].is_ascii_whitespace() && bytes[cursor] != b'/' {
+        cursor += 1;
+    }
+    while cursor < tag_end {
+        while cursor < tag_end && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= tag_end || bytes[cursor] == b'/' {
+            break;
+        }
+        let name_start = cursor;
+        while cursor < tag_end
+            && !bytes[cursor].is_ascii_whitespace()
+            && bytes[cursor] != b'='
+            && bytes[cursor] != b'/'
+        {
+            cursor += 1;
+        }
+        let name_end = cursor;
+        while cursor < tag_end && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= tag_end || bytes[cursor] != b'=' {
+            return Err(CliError::unexpected(
+                "invalid conditional format rule attribute",
+            ));
+        }
+        cursor += 1;
+        while cursor < tag_end && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= tag_end || !matches!(bytes[cursor], b'"' | b'\'') {
+            return Err(CliError::unexpected(
+                "invalid conditional format rule attribute",
+            ));
+        }
+        let quote = bytes[cursor];
+        let value_start = cursor + 1;
+        cursor = value_start;
+        while cursor < tag_end && bytes[cursor] != quote {
+            cursor += 1;
+        }
+        if cursor >= tag_end {
+            return Err(CliError::unexpected(
+                "invalid conditional format rule attribute",
+            ));
+        }
+        let value_end = cursor;
+        if local_name(tag[name_start..name_end].as_bytes()) == attr_local_name {
+            let mut out = String::with_capacity(tag.len() + value.len());
+            out.push_str(&tag[..value_start]);
+            out.push_str(&xml_attr_escape(value));
+            out.push_str(&tag[value_end..]);
+            return Ok(out);
+        }
+        cursor += 1;
+    }
+
+    let insert_at = if tag[..=tag_end].trim_end().ends_with("/>") {
+        tag[..tag_end].rfind('/').unwrap_or(tag_end)
+    } else {
+        tag_end
+    };
+    let mut out = String::with_capacity(tag.len() + attr_local_name.len() + value.len() + 4);
+    out.push_str(&tag[..insert_at]);
+    out.push(' ');
+    out.push_str(attr_local_name);
+    out.push_str("=\"");
+    out.push_str(&xml_attr_escape(value));
+    out.push('"');
+    out.push_str(&tag[insert_at..]);
+    Ok(out)
 }
 
 fn insert_rule_into_container(
@@ -1308,6 +1550,142 @@ fn conditional_format_sheet_selector(sheet: &WorkbookSheet) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn reorder_options<'a>(
+        rule: &'a str,
+        priority: Option<i64>,
+    ) -> XlsxConditionalFormatMutationOptions<'a> {
+        XlsxConditionalFormatMutationOptions {
+            sheet: None,
+            range: None,
+            rule: Some(rule),
+            formula: None,
+            rule_type: None,
+            operator: None,
+            formula2: None,
+            has_formula2: false,
+            cfvo: Vec::new(),
+            colors: Vec::new(),
+            icon_set: None,
+            priority,
+            stop_if_true: false,
+            has_stop_if_true: false,
+            dxf_id: None,
+            out: None,
+            backup: None,
+            dry_run: true,
+            no_validate: true,
+            in_place: false,
+        }
+    }
+
+    #[test]
+    fn reorders_priorities_and_preserves_rule_payloads() {
+        let xml = r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"><sheetData/><conditionalFormatting sqref="A1:A5"><cfRule type="expression" priority="3" dxfId="2"><formula>A1&gt;10</formula><extLst><ext uri="{ABC}"><x14:id>keep-me</x14:id></ext></extLst></cfRule><cfRule type="dataBar" priority="1"><dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="FF638EC6"/></dataBar></cfRule></conditionalFormatting><conditionalFormatting sqref="B1:B5"><cfRule type="iconSet" priority="2"><iconSet iconSet="3TrafficLights1"><cfvo type="percent" val="0"/><cfvo type="percent" val="33"/><cfvo type="percent" val="67"/></iconSet></cfRule></conditionalFormatting></worksheet>"#;
+
+        let mutation = reorder_conditional_format_xml(xml, &reorder_options("cfRule:1", Some(1)))
+            .expect("reorder conditional format priorities");
+        let blocks = read_conditional_formats(&mutation.updated_xml).expect("read updated rules");
+        let priorities = blocks
+            .iter()
+            .flat_map(|block| block.rules.iter().map(|rule| rule.priority))
+            .collect::<Vec<_>>();
+
+        assert_eq!(mutation.rule.rule_type, "expression");
+        assert_eq!(mutation.rule.priority, Some(1));
+        assert_eq!(mutation.rule.formulas, vec!["A1>10".to_string()]);
+        assert!(mutation.rule.selectors.contains(&"priority:1".to_string()));
+        assert_eq!(priorities, vec![Some(1), Some(2), Some(3)]);
+        assert!(mutation.updated_xml.contains(
+            r#"<formula>A1&gt;10</formula><extLst><ext uri="{ABC}"><x14:id>keep-me</x14:id></ext></extLst>"#
+        ));
+        assert!(mutation.updated_xml.contains(
+            r#"<dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="FF638EC6"/></dataBar>"#
+        ));
+        assert!(mutation.updated_xml.contains(
+            r#"<iconSet iconSet="3TrafficLights1"><cfvo type="percent" val="0"/><cfvo type="percent" val="33"/><cfvo type="percent" val="67"/></iconSet>"#
+        ));
+        let expression_pos = mutation
+            .updated_xml
+            .find(r#"<cfRule type="expression" priority="1""#)
+            .expect("expression rule position");
+        let data_bar_pos = mutation
+            .updated_xml
+            .find(r#"<cfRule type="dataBar" priority="2""#)
+            .expect("data bar rule position");
+        let icon_set_pos = mutation
+            .updated_xml
+            .find(r#"<cfRule type="iconSet" priority="3""#)
+            .expect("icon set rule position");
+        assert!(expression_pos < data_bar_pos);
+        assert!(data_bar_pos < icon_set_pos);
+    }
+
+    #[test]
+    fn reorder_uses_priority_order_with_document_order_ties() {
+        let xml = r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/><conditionalFormatting sqref="A1:A3"><cfRule type="expression" priority="20"><formula>A1</formula></cfRule><cfRule type="expression" priority="10"><formula>A2</formula></cfRule><cfRule type="expression" priority="10"><formula>A3</formula></cfRule></conditionalFormatting></worksheet>"#;
+
+        let mutation = reorder_conditional_format_xml(xml, &reorder_options("cfRule:1", Some(2)))
+            .expect("reorder conditional format priorities");
+        let priorities = read_conditional_formats(&mutation.updated_xml)
+            .expect("read updated rules")
+            .into_iter()
+            .flat_map(|block| block.rules.into_iter().map(|rule| rule.priority))
+            .collect::<Vec<_>>();
+
+        assert_eq!(mutation.rule.priority, Some(2));
+        assert_eq!(priorities, vec![Some(2), Some(1), Some(3)]);
+    }
+
+    #[test]
+    fn reorder_adds_missing_priority_attributes() {
+        let xml = r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/><conditionalFormatting sqref="A1:A2"><cfRule type="expression"><formula>TRUE</formula></cfRule><cfRule type="expression" priority="1"><formula>FALSE</formula></cfRule></conditionalFormatting></worksheet>"#;
+
+        let mutation = reorder_conditional_format_xml(xml, &reorder_options("cfRule:1", Some(1)))
+            .expect("reorder conditional format priorities");
+        let priorities = read_conditional_formats(&mutation.updated_xml)
+            .expect("read updated rules")
+            .into_iter()
+            .flat_map(|block| block.rules.into_iter().map(|rule| rule.priority))
+            .collect::<Vec<_>>();
+
+        assert_eq!(mutation.rule.priority, Some(1));
+        assert_eq!(priorities, vec![Some(1), Some(2)]);
+        assert!(mutation.updated_xml.contains(
+            r#"<cfRule type="expression" priority="1"><formula>TRUE</formula></cfRule>"#
+        ));
+    }
+
+    #[test]
+    fn reorder_rejects_missing_zero_and_out_of_range_priority() {
+        let xml = r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/><conditionalFormatting sqref="A1:A2"><cfRule type="expression" priority="1"><formula>TRUE</formula></cfRule><cfRule type="expression" priority="2"><formula>FALSE</formula></cfRule></conditionalFormatting></worksheet>"#;
+
+        let missing = reorder_conditional_format_xml(xml, &reorder_options("cfRule:1", None))
+            .err()
+            .expect("missing priority should fail");
+        assert_eq!(missing.code, "invalid_args");
+        assert!(missing.message.contains("--priority is required"));
+
+        let zero = reorder_conditional_format_xml(xml, &reorder_options("cfRule:1", Some(0)))
+            .err()
+            .expect("zero priority should fail");
+        assert_eq!(zero.code, "invalid_args");
+        assert!(
+            zero.message
+                .contains("--priority must be greater than zero")
+        );
+
+        let out_of_range =
+            reorder_conditional_format_xml(xml, &reorder_options("cfRule:1", Some(3)))
+                .err()
+                .expect("out-of-range priority should fail");
+        assert_eq!(out_of_range.code, "invalid_args");
+        assert!(
+            out_of_range
+                .message
+                .contains("--priority must be between 1 and 2")
+        );
+    }
 
     #[test]
     fn parses_data_bar_rule_json() {
