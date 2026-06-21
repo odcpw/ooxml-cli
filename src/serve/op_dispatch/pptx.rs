@@ -4,9 +4,9 @@ use super::super::op::ServeOp;
 use crate::{
     CliError, CliResult, json_bool, json_i64,
     pptx_mutation::{
-        pptx_notes_clear, pptx_notes_set, pptx_replace_text_occurrences, pptx_tables_delete_col,
-        pptx_tables_delete_row, pptx_tables_insert_col, pptx_tables_insert_row,
-        pptx_tables_set_cell, pptx_tables_update_from_xlsx,
+        pptx_notes_clear, pptx_notes_set, pptx_replace_text_occurrences, pptx_shapes_delete,
+        pptx_tables_delete_col, pptx_tables_delete_row, pptx_tables_insert_col,
+        pptx_tables_insert_row, pptx_tables_set_cell, pptx_tables_update_from_xlsx,
     },
 };
 
@@ -135,6 +135,15 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
 
             finish_pptx_notes_op(working, command, plan_args, pptx_notes_clear)?
         }
+        "pptx shapes delete" => {
+            let slide = required_i64(args, "slide")?;
+            let target = required_string(args, "target")?;
+            let mut plan_args = Vec::new();
+            push_cli_flag(&mut plan_args, "--slide", &slide.to_string());
+            push_cli_flag(&mut plan_args, "--target", &target);
+
+            finish_pptx_shapes_op(working, command, plan_args, pptx_shapes_delete)?
+        }
         "pptx replace text-occurrences" => {
             let match_text = required_string_alias(args, "match-text", "matchText")?;
             let new_text = required_string_alias(args, "new-text", "newText")?;
@@ -217,6 +226,24 @@ fn finish_pptx_notes_op(
     mutation_args.push("--no-validate".to_string());
     let readback = run(working, &mutation_args)?;
     Ok(ServeOp::PptxNotesOp {
+        command: command.to_string(),
+        plan_flags: plan_args.into_iter().map(|arg| json!(arg)).collect(),
+        readback_file: working.to_string(),
+        readback,
+    })
+}
+
+fn finish_pptx_shapes_op(
+    working: &str,
+    command: &str,
+    plan_args: Vec<String>,
+    run: fn(&str, &[String]) -> CliResult<Value>,
+) -> CliResult<ServeOp> {
+    let mut mutation_args = plan_args.clone();
+    mutation_args.push("--in-place".to_string());
+    mutation_args.push("--no-validate".to_string());
+    let readback = run(working, &mutation_args)?;
+    Ok(ServeOp::PptxShapesOp {
         command: command.to_string(),
         plan_flags: plan_args.into_iter().map(|arg| json!(arg)).collect(),
         readback_file: working.to_string(),

@@ -128,7 +128,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx place table", false);
     assert_command(&all_caps, "ooxml pptx place table-from-xlsx", false);
     assert_command(&all_caps, "ooxml pptx shapes set-bounds", false);
-    assert_command(&all_caps, "ooxml pptx shapes delete", false);
+    assert_command(&all_caps, "ooxml pptx shapes delete", true);
     assert_command(&all_caps, "ooxml pptx animations list", false);
     assert_command(&all_caps, "ooxml pptx animations add", false);
     assert_command(&all_caps, "ooxml pptx animations remove", false);
@@ -775,7 +775,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx place table", false);
     assert_command(&pptx_caps, "ooxml pptx place table-from-xlsx", false);
     assert_command(&pptx_caps, "ooxml pptx shapes set-bounds", false);
-    assert_command(&pptx_caps, "ooxml pptx shapes delete", false);
+    assert_command(&pptx_caps, "ooxml pptx shapes delete", true);
     assert_command(&pptx_caps, "ooxml pptx translate export", false);
     assert_command(&pptx_caps, "ooxml pptx translate apply", false);
     assert_command(&pptx_caps, "ooxml pptx animations list", false);

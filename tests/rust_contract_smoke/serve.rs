@@ -4120,6 +4120,214 @@ fn serve_op_supports_pptx_notes_mutations() {
 }
 
 #[test]
+fn serve_op_supports_pptx_shapes_delete() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-pptx-shapes-delete-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = "testdata/pptx/title-content/presentation.pptx";
+    let output = temp_dir.join("serve-pptx-shapes-delete-out.pptx");
+    let output_str = output.to_str().expect("output path").to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "open",
+            serde_json::json!({"file": input, "out": output_str}),
+        ),
+    );
+    assert!(
+        open_response.get("error").is_none(),
+        "pptx shapes delete open failed: {open_response:?}"
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let before_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            2,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx shapes show",
+                "args": {"slide": 2, "include-text": true, "include-bounds": true},
+            }),
+        ),
+    );
+    assert!(
+        before_response.get("error").is_none(),
+        "pptx shapes before inspect failed: {before_response:?}"
+    );
+    let before_shapes = before_response["result"]["shapes"]
+        .as_array()
+        .expect("before shapes");
+    assert!(
+        before_shapes
+            .iter()
+            .any(|shape| shape["primarySelector"] == Value::String("title".to_string())),
+        "source slide should expose title selector: {before_shapes:?}"
+    );
+
+    let delete_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            3,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx shapes delete",
+                "args": {"slide": 2, "target": "title"},
+            }),
+        ),
+    );
+    assert!(
+        delete_response.get("error").is_none(),
+        "pptx shapes delete op failed: {delete_response:?}"
+    );
+    assert_eq!(
+        delete_response["result"]["readback"]["slide"],
+        Value::from(2)
+    );
+    assert_eq!(
+        delete_response["result"]["readback"]["target"],
+        Value::String("title".to_string())
+    );
+    assert_eq!(
+        delete_response["result"]["readback"]["deleted"]["target"],
+        Value::String("title".to_string())
+    );
+
+    let changed_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            4,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx shapes show",
+                "args": {"slide": 2, "include-text": true, "include-bounds": true},
+            }),
+        ),
+    );
+    assert!(
+        changed_response.get("error").is_none(),
+        "pptx shapes changed inspect failed: {changed_response:?}"
+    );
+    let changed_shapes = changed_response["result"]["shapes"]
+        .as_array()
+        .expect("changed shapes");
+    assert!(
+        !changed_shapes
+            .iter()
+            .any(|shape| shape["primarySelector"] == Value::String("title".to_string())),
+        "deleted title selector should be absent: {changed_shapes:?}"
+    );
+    assert!(
+        changed_shapes
+            .iter()
+            .any(|shape| shape["primarySelector"] == Value::String("body".to_string())),
+        "body selector should remain after title deletion: {changed_shapes:?}"
+    );
+
+    let plan_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(5, "plan", serde_json::json!({"session": session})),
+    );
+    let argv = plan_response["result"]["plan"][0]["argv"]
+        .as_array()
+        .expect("delete plan argv");
+    assert_eq!(argv[0], Value::String("pptx".to_string()));
+    assert_eq!(argv[1], Value::String("shapes".to_string()));
+    assert_eq!(argv[2], Value::String("delete".to_string()));
+    assert_eq!(argv[4], Value::String("--slide".to_string()));
+    assert_eq!(argv[5], Value::String("2".to_string()));
+    assert_eq!(argv[6], Value::String("--target".to_string()));
+    assert_eq!(argv[7], Value::String("title".to_string()));
+
+    let validate_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(6, "validate", serde_json::json!({"session": session})),
+    );
+    assert!(
+        validate_response.get("error").is_none(),
+        "pptx shapes delete validate failed: {validate_response:?}"
+    );
+
+    let commit_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(7, "commit", serde_json::json!({"session": session})),
+    );
+    assert!(
+        commit_response.get("error").is_none(),
+        "pptx shapes delete commit failed: {commit_response:?}"
+    );
+    assert!(output.exists(), "serve commit output missing");
+
+    let (validate_code, _validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "--strict", "validate", &output_str]);
+    assert_eq!(validate_code, 0, "pptx shapes delete validate exit");
+    assert_eq!(validate_stderr, None, "pptx shapes delete validate stderr");
+
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "show",
+        &output_str,
+        "--slide",
+        "2",
+        "--include-text",
+        "--include-bounds",
+    ]);
+    assert_eq!(show_code, 0, "pptx shapes delete output show exit");
+    assert_eq!(show_stderr, None, "pptx shapes delete output show stderr");
+    let output_shapes = show_stdout.expect("pptx shapes delete output show")["shapes"]
+        .as_array()
+        .expect("output shapes")
+        .clone();
+    assert!(
+        !output_shapes
+            .iter()
+            .any(|shape| shape["primarySelector"] == Value::String("title".to_string())),
+        "committed output should not contain deleted title selector: {output_shapes:?}"
+    );
+    assert!(
+        output_shapes
+            .iter()
+            .any(|shape| shape["primarySelector"] == Value::String("body".to_string())),
+        "committed output should retain body selector: {output_shapes:?}"
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn serve_pptx_generic_web_agent_edit_path_works() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-pptx-{}", std::process::id()));

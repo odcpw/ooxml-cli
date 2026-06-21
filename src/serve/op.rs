@@ -34,6 +34,12 @@ pub(super) enum ServeOp {
         readback_file: String,
         readback: Value,
     },
+    PptxShapesOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
     XlsxRangeSet {
         command: String,
         sheet: String,
@@ -152,6 +158,7 @@ impl ServeOp {
             | ServeOp::PptxReplaceOp { command, .. }
             | ServeOp::PptxTablesOp { command, .. }
             | ServeOp::PptxNotesOp { command, .. }
+            | ServeOp::PptxShapesOp { command, .. }
             | ServeOp::XlsxRangeSet { command, .. }
             | ServeOp::XlsxRangeSetFormat { command, .. }
             | ServeOp::XlsxWorkbookMetadataUpdate { command, .. }
@@ -442,6 +449,27 @@ impl ServeOp {
                 ]);
                 Value::Array(argv)
             }
+            ServeOp::PptxShapesOp {
+                command,
+                plan_flags,
+                ..
+            } => {
+                let verb = command.split_whitespace().nth(2).unwrap_or("delete");
+                let mut argv = vec![
+                    json!("pptx"),
+                    json!("shapes"),
+                    json!(verb),
+                    json!(source_file),
+                ];
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
             ServeOp::DocxHeaderFooterSetText {
                 command,
                 plan_flags,
@@ -648,6 +676,11 @@ impl ServeOp {
                 ..
             }
             | ServeOp::PptxNotesOp {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::PptxShapesOp {
                 readback_file,
                 readback,
                 ..

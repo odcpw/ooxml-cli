@@ -647,8 +647,8 @@ pub(super) fn commands() -> Vec<Value> {
             "delete <file> --slide <n> --target <selector>",
             "Delete one targetable PowerPoint shape from a slide.",
             &["slide", "shape"],
-            false,
-            Some("direct CLI mutation; serve/MCP op support is not wired yet"),
+            true,
+            None,
             vec![
                 flag("--slide", "slide", "int", "1-based slide number"),
                 flag(
