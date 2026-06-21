@@ -291,6 +291,76 @@ func TestXLSXConditionalFormatsAddDataBar(t *testing.T) {
 	}
 }
 
+func TestXLSXConditionalFormatsAddIconSet(t *testing.T) {
+	workbookPath := getXLSXTestFilePath("minimal-workbook")
+	outPath := filepath.Join(t.TempDir(), "cf-icon-set.xlsx")
+
+	addOut, err := executeRootForXLSXTest(t,
+		"--json",
+		"xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1",
+		"--range", "E1:E5",
+		"--type", "icon-set",
+		"--icon-set", "3TrafficLights1",
+		"--cfvo", "percent:0",
+		"--cfvo", "percent:33",
+		"--cfvo", "percent:67",
+		"--priority", "8",
+		"--out", outPath,
+	)
+	if err != nil {
+		t.Fatalf("conditional-formats add icon-set failed: %v", err)
+	}
+	if strings.Contains(addOut, `"showValue"`) || strings.Contains(addOut, `"percent":`) || strings.Contains(addOut, `"reverse"`) {
+		t.Fatalf("new icon-set JSON should omit optional booleans:\n%s", addOut)
+	}
+	var addResult XLSXConditionalFormatMutationResult
+	if err := json.Unmarshal([]byte(addOut), &addResult); err != nil {
+		t.Fatalf("failed to unmarshal add JSON: %v\n%s", err, addOut)
+	}
+	if addResult.Rule == nil || addResult.Rule.Type != "iconSet" || addResult.Rule.IconSet == nil {
+		t.Fatalf("unexpected added rule: %+v", addResult.Rule)
+	}
+	icons := addResult.Rule.IconSet
+	if icons.IconSet != "3TrafficLights1" {
+		t.Fatalf("iconSet = %q, want 3TrafficLights1", icons.IconSet)
+	}
+	if len(icons.CFVO) != 3 || icons.CFVO[0].Type != "percent" || icons.CFVO[0].Value != "0" || icons.CFVO[2].Value != "67" {
+		t.Fatalf("unexpected icon-set cfvo readback: %+v", icons.CFVO)
+	}
+	if addResult.Rule.Priority == nil || *addResult.Rule.Priority != 8 {
+		t.Fatalf("unexpected icon-set priority: %+v", addResult.Rule)
+	}
+	if addResult.CellsAffected != 5 || addResult.ConditionalFormatsShowCommand == "" {
+		t.Fatalf("unexpected mutation result: %+v", addResult)
+	}
+
+	listOut := executeGeneratedOOXMLCommandForXLSXTest(t, addResult.ConditionalFormatsListCommand)
+	var listResult XLSXConditionalFormatsListResult
+	if err := json.Unmarshal([]byte(listOut), &listResult); err != nil {
+		t.Fatalf("failed to unmarshal list JSON: %v\n%s", err, listOut)
+	}
+	if listResult.Count != 1 || listResult.Rules[0].Type != "iconSet" || listResult.Rules[0].IconSet == nil {
+		t.Fatalf("unexpected list result: %+v", listResult)
+	}
+	if listResult.Rules[0].IconSet.IconSet != "3TrafficLights1" || len(listResult.Rules[0].IconSet.CFVO) != 3 {
+		t.Fatalf("unexpected list iconSet readback: %+v", listResult.Rules[0].IconSet)
+	}
+
+	showOut := executeGeneratedOOXMLCommandForXLSXTest(t, addResult.ConditionalFormatsShowCommand)
+	var showResult XLSXConditionalFormatRuleJSON
+	if err := json.Unmarshal([]byte(showOut), &showResult); err != nil {
+		t.Fatalf("failed to unmarshal show JSON: %v\n%s", err, showOut)
+	}
+	if showResult.IconSet == nil || showResult.IconSet.IconSet != "3TrafficLights1" || showResult.IconSet.CFVO[1].Value != "33" {
+		t.Fatalf("unexpected show result: %+v", showResult)
+	}
+
+	if _, err := executeRootForXLSXTest(t, "validate", "--strict", outPath); err != nil {
+		t.Fatalf("validate --strict failed: %v", err)
+	}
+}
+
 func TestXLSXConditionalFormatsAddCellIsValidation(t *testing.T) {
 	workbookPath := getXLSXTestFilePath("minimal-workbook")
 	outPath := filepath.Join(t.TempDir(), "cf-cell-is.xlsx")
@@ -380,6 +450,60 @@ func TestXLSXConditionalFormatsAddDataBarValidation(t *testing.T) {
 		"--sheet", "1", "--range", "D1:D5", "--type", "data-bar",
 		"--cfvo", "min", "--cfvo", "max", "--color", "638EC6", "--dxf-id", "0", "--out", outPath)
 	if err == nil || !strings.Contains(err.Error(), "--dxf-id is not valid with --type data-bar") {
+		t.Fatalf("expected dxf-id rejected error, got: %v", err)
+	}
+}
+
+func TestXLSXConditionalFormatsAddIconSetValidation(t *testing.T) {
+	workbookPath := getXLSXTestFilePath("minimal-workbook")
+	outPath := filepath.Join(t.TempDir(), "cf-icon-set.xlsx")
+
+	_, err := executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "E1:E5", "--type", "icon-set",
+		"--cfvo", "percent:0", "--cfvo", "percent:33", "--cfvo", "percent:67", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--icon-set is required") {
+		t.Fatalf("expected missing icon-set error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "E1:E5", "--type", "icon-set", "--icon-set", "4Arrows",
+		"--cfvo", "percent:0", "--cfvo", "percent:33", "--cfvo", "percent:67", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "exactly 4 --cfvo") {
+		t.Fatalf("expected wrong cfvo count error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "E1:E5", "--type", "icon-set", "--icon-set", "2TrafficLights",
+		"--cfvo", "percent:0", "--cfvo", "percent:50", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "must start with 3, 4, or 5") {
+		t.Fatalf("expected icon-set name error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "E1:E5", "--type", "icon-set", "--icon-set", "3TrafficLights1",
+		"--cfvo", "percent:0", "--cfvo", "percent:33", "--cfvo", "percent:67", "--color", "FF0000", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--color is not valid with --type icon-set") {
+		t.Fatalf("expected color rejected error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "E1:E5", "--type", "icon-set", "--icon-set", "3TrafficLights1",
+		"--cfvo", "percent:0", "--cfvo", "percent:33", "--cfvo", "percent:67", "--formula", "E1>0", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--formula and --formula2 are not valid with --type icon-set") {
+		t.Fatalf("expected formula rejected error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "E1:E5", "--type", "icon-set", "--icon-set", "3TrafficLights1",
+		"--cfvo", "percent:0", "--cfvo", "percent:33", "--cfvo", "percent:67", "--operator", "greaterThan", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--operator is only valid with --type cell-is") {
+		t.Fatalf("expected operator rejected error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "E1:E5", "--type", "icon-set", "--icon-set", "3TrafficLights1",
+		"--cfvo", "percent:0", "--cfvo", "percent:33", "--cfvo", "percent:67", "--stop-if-true", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--stop-if-true is not valid with --type icon-set") {
+		t.Fatalf("expected stop-if-true rejected error, got: %v", err)
+	}
+	_, err = executeRootForXLSXTest(t, "xlsx", "conditional-formats", "add", workbookPath,
+		"--sheet", "1", "--range", "E1:E5", "--type", "icon-set", "--icon-set", "3TrafficLights1",
+		"--cfvo", "percent:0", "--cfvo", "percent:33", "--cfvo", "percent:67", "--dxf-id", "0", "--out", outPath)
+	if err == nil || !strings.Contains(err.Error(), "--dxf-id is not valid with --type icon-set") {
 		t.Fatalf("expected dxf-id rejected error, got: %v", err)
 	}
 }

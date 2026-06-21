@@ -213,6 +213,60 @@ func TestConditionalFormatsAddDataBar(t *testing.T) {
 	}
 }
 
+func TestConditionalFormatsAddIconSet(t *testing.T) {
+	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData/>
+  <dataValidations count="1"><dataValidation sqref="E1:E3" type="whole"><formula1>1</formula1></dataValidation></dataValidations>
+</worksheet>`)
+	defer pkg.Close()
+	sheet := workbook.Sheets[0]
+
+	result, err := AddConditionalFormatIconSet(&AddConditionalFormatIconSetRequest{
+		Package:  pkg,
+		SheetRef: sheet,
+		Range:    "E1:E5",
+		IconSet:  "3TrafficLights1",
+		CFVO: []ConditionalFormatCFVO{
+			{Type: "percent", Value: "0"},
+			{Type: "percent", Value: "33"},
+			{Type: "percent", Value: "67"},
+		},
+		Priority:    8,
+		HasPriority: true,
+	})
+	if err != nil {
+		t.Fatalf("AddConditionalFormatIconSet failed: %v", err)
+	}
+	if result.Sqref != "E1:E5" || result.CellsAffected != 5 {
+		t.Fatalf("unexpected mutation result: %+v", result)
+	}
+	if result.Rule.Type != "iconSet" || result.Rule.Priority != 8 || result.Rule.IconSet == nil {
+		t.Fatalf("unexpected added rule: %+v", result.Rule)
+	}
+	icons := result.Rule.IconSet
+	if icons.IconSet != "3TrafficLights1" {
+		t.Fatalf("iconSet = %q, want 3TrafficLights1", icons.IconSet)
+	}
+	if len(icons.CFVO) != 3 || icons.CFVO[0].Type != "percent" || icons.CFVO[0].Value != "0" || icons.CFVO[2].Value != "67" {
+		t.Fatalf("unexpected icon-set cfvo readback: %+v", icons.CFVO)
+	}
+	if icons.ShowValue != nil || icons.Percent != nil || icons.Reverse != nil {
+		t.Fatalf("newly authored iconSet should not write optional booleans: %+v", icons)
+	}
+
+	root := readTestWorksheetRoot(t, pkg, workbook)
+	var order []string
+	for _, child := range root.ChildElements() {
+		if namespaces.IsElement(child, namespaces.NsSpreadsheetML, child.Tag) {
+			order = append(order, child.Tag)
+		}
+	}
+	if got := strings.Join(order, ","); got != "sheetData,conditionalFormatting,dataValidations" {
+		t.Fatalf("worksheet child order = %s", got)
+	}
+}
+
 func TestConditionalFormatsListExistingDataBar(t *testing.T) {
 	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -246,6 +300,50 @@ func TestConditionalFormatsListExistingDataBar(t *testing.T) {
 	}
 	if rule.DataBar.Color.RGB != "FF638EC6" {
 		t.Fatalf("unexpected dataBar color readback: %+v", rule.DataBar.Color)
+	}
+}
+
+func TestConditionalFormatsListExistingIconSet(t *testing.T) {
+	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData/>
+  <conditionalFormatting sqref="E1:E5">
+    <cfRule type="iconSet" priority="8">
+      <iconSet iconSet="4Arrows" showValue="0" percent="0" reverse="1">
+        <cfvo type="percent" val="0"/>
+        <cfvo type="percent" val="25"/>
+        <cfvo type="percent" val="50"/>
+        <cfvo type="percent" val="75"/>
+      </iconSet>
+    </cfRule>
+  </conditionalFormatting>
+</worksheet>`)
+	defer pkg.Close()
+	sheet := workbook.Sheets[0]
+
+	blocks, err := ListConditionalFormats(pkg, sheet)
+	if err != nil {
+		t.Fatalf("ListConditionalFormats failed: %v", err)
+	}
+	if len(blocks) != 1 || len(blocks[0].Rules) != 1 {
+		t.Fatalf("unexpected conditional-format list: %+v", blocks)
+	}
+	rule := blocks[0].Rules[0]
+	if rule.Type != "iconSet" || rule.IconSet == nil {
+		t.Fatalf("expected iconSet readback, got %+v", rule)
+	}
+	icons := rule.IconSet
+	if icons.IconSet != "4Arrows" || len(icons.CFVO) != 4 || icons.CFVO[3].Value != "75" {
+		t.Fatalf("unexpected iconSet readback: %+v", icons)
+	}
+	if icons.ShowValue == nil || *icons.ShowValue {
+		t.Fatalf("expected showValue=false pointer readback, got %+v", icons.ShowValue)
+	}
+	if icons.Percent == nil || *icons.Percent {
+		t.Fatalf("expected percent=false pointer readback, got %+v", icons.Percent)
+	}
+	if icons.Reverse == nil || !*icons.Reverse {
+		t.Fatalf("expected reverse=true pointer readback, got %+v", icons.Reverse)
 	}
 }
 
@@ -357,6 +455,75 @@ func TestConditionalFormatsDataBarValidation(t *testing.T) {
 				Range:    "D1:D5",
 				CFVO:     tc.cfvo,
 				Colors:   tc.colors,
+			})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q error, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestConditionalFormatsIconSetValidation(t *testing.T) {
+	pkg, workbook := openTestWorkbook(t, `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData/>
+</worksheet>`)
+	defer pkg.Close()
+	sheet := workbook.Sheets[0]
+
+	cases := []struct {
+		name    string
+		iconSet string
+		cfvo    []ConditionalFormatCFVO
+		want    string
+	}{
+		{
+			name: "missing icon set",
+			cfvo: []ConditionalFormatCFVO{
+				{Type: "percent", Value: "0"},
+				{Type: "percent", Value: "33"},
+				{Type: "percent", Value: "67"},
+			},
+			want: "--icon-set is required",
+		},
+		{
+			name:    "bad leading digit",
+			iconSet: "2TrafficLights",
+			cfvo: []ConditionalFormatCFVO{
+				{Type: "percent", Value: "0"},
+				{Type: "percent", Value: "50"},
+			},
+			want: "must start with 3, 4, or 5",
+		},
+		{
+			name:    "wrong cfvo count",
+			iconSet: "4Arrows",
+			cfvo: []ConditionalFormatCFVO{
+				{Type: "percent", Value: "0"},
+				{Type: "percent", Value: "33"},
+				{Type: "percent", Value: "67"},
+			},
+			want: "exactly 4 --cfvo",
+		},
+		{
+			name:    "invalid cfvo value",
+			iconSet: "3TrafficLights1",
+			cfvo: []ConditionalFormatCFVO{
+				{Type: "percent", Value: "0"},
+				{Type: "percent", Value: "33"},
+				{Type: "percent", Value: "101"},
+			},
+			want: "between 0 and 100",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := AddConditionalFormatIconSet(&AddConditionalFormatIconSetRequest{
+				Package:  pkg,
+				SheetRef: sheet,
+				Range:    "E1:E5",
+				IconSet:  tc.iconSet,
+				CFVO:     tc.cfvo,
 			})
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("expected %q error, got %v", tc.want, err)

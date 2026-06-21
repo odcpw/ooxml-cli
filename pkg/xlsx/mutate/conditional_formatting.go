@@ -36,6 +36,7 @@ type ConditionalFormatRule struct {
 	StopIfTrue      bool                         `json:"stopIfTrue,omitempty"`
 	ColorScale      *ConditionalFormatColorScale `json:"colorScale,omitempty"`
 	DataBar         *ConditionalFormatDataBar    `json:"dataBar,omitempty"`
+	IconSet         *ConditionalFormatIconSet    `json:"iconSet,omitempty"`
 }
 
 // ConditionalFormatCFVO describes one threshold value.
@@ -59,6 +60,15 @@ type ConditionalFormatColorScale struct {
 type ConditionalFormatDataBar struct {
 	CFVO  []ConditionalFormatCFVO `json:"cfvo"`
 	Color ConditionalFormatColor  `json:"color"`
+}
+
+// ConditionalFormatIconSet describes an iconSet cfRule payload.
+type ConditionalFormatIconSet struct {
+	IconSet   string                  `json:"iconSet"`
+	CFVO      []ConditionalFormatCFVO `json:"cfvo"`
+	ShowValue *bool                   `json:"showValue,omitempty"`
+	Percent   *bool                   `json:"percent,omitempty"`
+	Reverse   *bool                   `json:"reverse,omitempty"`
 }
 
 // AddConditionalFormatExpressionRequest creates an expression cfRule.
@@ -110,6 +120,17 @@ type AddConditionalFormatDataBarRequest struct {
 	Range       string
 	CFVO        []ConditionalFormatCFVO
 	Colors      []ConditionalFormatColor
+	Priority    int
+	HasPriority bool
+}
+
+// AddConditionalFormatIconSetRequest creates an iconSet cfRule.
+type AddConditionalFormatIconSetRequest struct {
+	Package     opc.PackageSession
+	SheetRef    model.SheetRef
+	Range       string
+	IconSet     string
+	CFVO        []ConditionalFormatCFVO
 	Priority    int
 	HasPriority bool
 }
@@ -210,8 +231,33 @@ func conditionalFormatRuleFromElem(rule *etree.Element, blockIndex, ruleIndex, g
 		}
 		entry.DataBar = bar
 	}
+	if iconSet := namespaces.FindChild(rule, namespaces.NsSpreadsheetML, "iconSet"); iconSet != nil {
+		icons := &ConditionalFormatIconSet{
+			IconSet: iconSet.SelectAttrValue("iconSet", "3TrafficLights1"),
+		}
+		for _, cfvo := range namespaces.FindChildren(iconSet, namespaces.NsSpreadsheetML, "cfvo") {
+			icons.CFVO = append(icons.CFVO, ConditionalFormatCFVO{
+				Type:  cfvo.SelectAttrValue("type", ""),
+				Value: cfvo.SelectAttrValue("val", ""),
+			})
+		}
+		icons.ShowValue = optionalBoolAttr(iconSet, "showValue")
+		icons.Percent = optionalBoolAttr(iconSet, "percent")
+		icons.Reverse = optionalBoolAttr(iconSet, "reverse")
+		entry.IconSet = icons
+	}
 	entry.Selectors = conditionalFormatRuleSelectors(entry)
 	return entry
+}
+
+func optionalBoolAttr(elem *etree.Element, key string) *bool {
+	attr := elem.SelectAttr(key)
+	if attr == nil {
+		return nil
+	}
+	value := strings.TrimSpace(attr.Value)
+	parsed := value == "1" || strings.EqualFold(value, "true")
+	return &parsed
 }
 
 func conditionalFormatRuleSelectors(rule ConditionalFormatRule) []string {
@@ -285,7 +331,7 @@ var validConditionalFormatCFVOTypes = map[string]bool{
 	"percentile": true,
 }
 
-// ParseConditionalFormatCFVO parses a color-scale cfvo flag value.
+// ParseConditionalFormatCFVO parses a conditional-format cfvo flag value.
 func ParseConditionalFormatCFVO(spec string) (ConditionalFormatCFVO, error) {
 	spec = strings.TrimSpace(spec)
 	if spec == "" {
@@ -387,6 +433,41 @@ func validateConditionalFormatDataBar(cfvos []ConditionalFormatCFVO, colors []Co
 		return nil, ConditionalFormatColor{}, err
 	}
 	return normCFVOs, ConditionalFormatColor{RGB: rgb}, nil
+}
+
+func validateConditionalFormatIconSet(iconSet string, cfvos []ConditionalFormatCFVO) (string, []ConditionalFormatCFVO, error) {
+	iconSet = strings.TrimSpace(iconSet)
+	if iconSet == "" {
+		return "", nil, fmt.Errorf("--icon-set is required for icon-set conditional formats")
+	}
+	requiredCFVOs, err := conditionalFormatIconSetCFVOCount(iconSet)
+	if err != nil {
+		return "", nil, err
+	}
+	if len(cfvos) != requiredCFVOs {
+		return "", nil, fmt.Errorf("icon-set %s conditional formats require exactly %d --cfvo values", iconSet, requiredCFVOs)
+	}
+	normCFVOs := make([]ConditionalFormatCFVO, 0, len(cfvos))
+	for _, cfvo := range cfvos {
+		norm, err := normalizeConditionalFormatCFVO(cfvo)
+		if err != nil {
+			return "", nil, err
+		}
+		normCFVOs = append(normCFVOs, norm)
+	}
+	return iconSet, normCFVOs, nil
+}
+
+func conditionalFormatIconSetCFVOCount(iconSet string) (int, error) {
+	if iconSet == "" {
+		return 0, fmt.Errorf("--icon-set is required for icon-set conditional formats")
+	}
+	switch iconSet[0] {
+	case '3', '4', '5':
+		return int(iconSet[0] - '0'), nil
+	default:
+		return 0, fmt.Errorf("--icon-set %q must start with 3, 4, or 5", iconSet)
+	}
 }
 
 // AddConditionalFormatExpression adds an expression conditional-formatting rule.
@@ -635,6 +716,62 @@ func AddConditionalFormatDataBar(req *AddConditionalFormatDataBarRequest) (*Cond
 
 	blocks := conditionalFormatsFromRoot(root)
 	added := findAddedConditionalFormatRule(blocks, normSqref, "dataBar", priority, "", nil)
+	if err := req.Package.ReplaceXMLPart(req.SheetRef.PartURI, doc); err != nil {
+		return nil, fmt.Errorf("failed to replace worksheet %s: %w", req.SheetRef.PartURI, err)
+	}
+	return &ConditionalFormatMutationResult{Sqref: normSqref, Rule: added, CellsAffected: sqrefCellCount(normSqref)}, nil
+}
+
+// AddConditionalFormatIconSet adds an iconSet conditional-formatting rule.
+func AddConditionalFormatIconSet(req *AddConditionalFormatIconSetRequest) (*ConditionalFormatMutationResult, error) {
+	if req == nil {
+		return nil, fmt.Errorf("add conditional format request is nil")
+	}
+	normSqref, err := NormalizeSqref(req.Range)
+	if err != nil {
+		return nil, err
+	}
+	if req.HasPriority && req.Priority < 1 {
+		return nil, fmt.Errorf("--priority must be greater than zero")
+	}
+	iconSetName, cfvos, err := validateConditionalFormatIconSet(req.IconSet, req.CFVO)
+	if err != nil {
+		return nil, err
+	}
+	doc, root, err := readWorksheetRoot(req.Package, req.SheetRef)
+	if err != nil {
+		return nil, err
+	}
+	prefix := root.Space
+	container := findConditionalFormattingBlock(root, normSqref)
+	if container == nil {
+		container = newElement(prefix, "conditionalFormatting")
+		container.CreateAttr("sqref", normSqref)
+		insertWorksheetChild(root, container, "conditionalFormatting")
+	}
+
+	rule := newElement(prefix, "cfRule")
+	rule.CreateAttr("type", "iconSet")
+	priority := req.Priority
+	if !req.HasPriority {
+		priority = nextConditionalFormatPriority(root)
+	}
+	rule.CreateAttr("priority", strconv.Itoa(priority))
+	iconSet := newElement(prefix, "iconSet")
+	iconSet.CreateAttr("iconSet", iconSetName)
+	for _, cfvo := range cfvos {
+		elem := newElement(prefix, "cfvo")
+		elem.CreateAttr("type", cfvo.Type)
+		if cfvo.Value != "" {
+			elem.CreateAttr("val", cfvo.Value)
+		}
+		iconSet.AddChild(elem)
+	}
+	rule.AddChild(iconSet)
+	container.AddChild(rule)
+
+	blocks := conditionalFormatsFromRoot(root)
+	added := findAddedConditionalFormatRule(blocks, normSqref, "iconSet", priority, "", nil)
 	if err := req.Package.ReplaceXMLPart(req.SheetRef.PartURI, doc); err != nil {
 		return nil, fmt.Errorf("failed to replace worksheet %s: %w", req.SheetRef.PartURI, err)
 	}

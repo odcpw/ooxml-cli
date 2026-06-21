@@ -918,7 +918,7 @@ var commandMetadata = map[string]CommandMetadata{
 			{
 				Command:        "ooxml --json xlsx conditional-formats list workbook.xlsx --sheet Sheet1",
 				Description:    "List worksheet conditional-formatting blocks and cfRule selectors.",
-				ExpectedOutput: "JSON conditional-formatting records with sqref, rule selectors, type, operator, priority, formulas, dxfId, stopIfTrue, colorScale, and dataBar payloads.",
+				ExpectedOutput: "JSON conditional-formatting records with sqref, rule selectors, type, operator, priority, formulas, dxfId, stopIfTrue, colorScale, dataBar, and iconSet payloads.",
 			},
 		},
 		TargetObjectKinds: []string{"conditional-format", "range", "sheet"},
@@ -928,7 +928,7 @@ var commandMetadata = map[string]CommandMetadata{
 			{
 				Command:        "ooxml --json xlsx conditional-formats show workbook.xlsx --sheet Sheet1 --rule cfRule:1",
 				Description:    "Show one conditional-formatting rule by a selector returned from list.",
-				ExpectedOutput: "JSON conditional-formatting rule with sqref, type, operator, priority, formulas, dxfId, stopIfTrue, colorScale, and dataBar payloads.",
+				ExpectedOutput: "JSON conditional-formatting rule with sqref, type, operator, priority, formulas, dxfId, stopIfTrue, colorScale, dataBar, and iconSet payloads.",
 			},
 		},
 		CommonErrors: []CommonError{
@@ -958,9 +958,14 @@ var commandMetadata = map[string]CommandMetadata{
 				Description:    "Add a data bar with min/max cfvo thresholds and one RGB color.",
 				ExpectedOutput: "JSON mutation result with dataBar cfvo/color readback and validate command.",
 			},
+			{
+				Command:        "ooxml --json xlsx conditional-formats add workbook.xlsx --sheet 1 --range E1:E5 --type icon-set --icon-set 3TrafficLights1 --cfvo percent:0 --cfvo percent:33 --cfvo percent:67 --priority 8 --out out.xlsx",
+				Description:    "Add a 3-icon set with explicit percent cfvo thresholds.",
+				ExpectedOutput: "JSON mutation result with iconSet iconSet/cfvo readback and validate command.",
+			},
 		},
 		CommonErrors: []CommonError{
-			{Pattern: "invalid_args", Solution: "Use ordinary A1 sqref ranges, --type expression, cell-is, color-scale, or data-bar; color-scale requires 2 or 3 matching --cfvo/--color values, while data-bar requires exactly 2 --cfvo values and exactly 1 --color."},
+			{Pattern: "invalid_args", Solution: "Use ordinary A1 sqref ranges, --type expression, cell-is, color-scale, data-bar, or icon-set; color-scale requires 2 or 3 matching --cfvo/--color values, data-bar requires exactly 2 --cfvo values and exactly 1 --color, and icon-set requires an --icon-set name starting with 3, 4, or 5 plus that many --cfvo values."},
 		},
 		TargetObjectKinds: []string{"conditional-format", "range", "sheet", "style"},
 	},
