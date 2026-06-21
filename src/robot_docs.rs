@@ -140,6 +140,7 @@ fn guide_json() -> Value {
                 "commands": [
                     "ooxml --json docx paragraphs append <file> --text <text> --out <file>",
                     "ooxml --json docx paragraphs set <file> --index <n> --text <text> --out <file>",
+                    "ooxml --json docx tables create <file> --values <json-matrix> --out <file>",
                     "ooxml --json docx tables set-cell <file> --table <n> --row <n> --col <n> --expect-hash <hash> --text <text> --out <file>",
                     "ooxml --json docx comments add <file> --anchor-block <n> --author <name> --text <text> --out <file>"
                 ]

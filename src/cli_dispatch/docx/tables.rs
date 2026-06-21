@@ -8,8 +8,8 @@ use crate::cli_args::{
 use crate::cli_core::{CliError, CliResult};
 use crate::docx_mutation_core::{DocxParagraphMutationOptions, resolve_required_docx_table_text};
 use crate::docx_tables::{
-    docx_tables_clear_cell, docx_tables_delete_row, docx_tables_insert_row, docx_tables_set_cell,
-    docx_tables_show,
+    docx_tables_clear_cell, docx_tables_create, docx_tables_delete_row, docx_tables_insert_row,
+    docx_tables_set_cell, docx_tables_show,
 };
 
 pub(super) fn dispatch_docx_tables(args: &[String]) -> CliResult<Value> {
@@ -24,6 +24,41 @@ pub(super) fn dispatch_docx_tables(args: &[String]) -> CliResult<Value> {
             }
             let include_details = has_flag(rest, "--details");
             docx_tables_show(file, table as usize, include_details)
+        }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "tables" && verb == "create" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--values", "--values-file", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let values_changed = flag_present(rest, "--values");
+            let values_file_changed = flag_present(rest, "--values-file");
+            let values = parse_string_flag(rest, "--values")?;
+            let values_file = parse_string_flag(rest, "--values-file")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            let dry_run = has_flag(rest, "--dry-run");
+            let in_place = has_flag(rest, "--in-place");
+            let no_validate = has_flag(rest, "--no-validate");
+            docx_tables_create(
+                file,
+                values.as_deref(),
+                values_file.as_deref(),
+                values_changed,
+                values_file_changed,
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run,
+                    in_place,
+                    no_validate,
+                },
+            )
         }
         [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && group == "tables" && verb == "set-cell" =>

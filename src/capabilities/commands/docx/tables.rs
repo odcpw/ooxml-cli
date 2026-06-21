@@ -29,6 +29,43 @@ pub(super) fn commands() -> Vec<Value> {
             ],
         ),
         capability_command(
+            "ooxml docx tables create",
+            "create <file>",
+            "Append one rectangular main-document DOCX table before section properties.",
+            &["table"],
+            true,
+            Some("append-only first-class authoring; values must be a rectangular JSON matrix"),
+            vec![
+                flag(
+                    "--values",
+                    "values",
+                    "json",
+                    "rectangular JSON matrix of strings, numbers, booleans, or nulls",
+                ),
+                flag(
+                    "--values-file",
+                    "valuesFile",
+                    "string",
+                    "path to a rectangular JSON matrix",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "write the input file in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
+        ),
+        capability_command(
             "ooxml docx tables set-cell",
             "set-cell <file>",
             "Set one main-document DOCX table cell's plain text.",

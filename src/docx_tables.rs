@@ -1,14 +1,15 @@
 use serde_json::{Map, Value, json};
+use std::fs;
 
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, DocxRichBlockReport, InspectPackageKind,
     XmlNamedRange, append_docx_text_children, command_arg, detect_inspect_package_type,
-    docx_body_block_ranges, docx_body_tag, docx_mutation_output_path_for_result,
-    docx_rich_block_reports, ensure_docx_package_kind, ensure_docx_table_scaffold_fragment,
-    find_docx_document_part, first_direct_xml_child_by_kind, package_type,
-    validate_xlsx_mutation_output_flags, word_xml_tag, write_docx_mutation_output,
-    xml_direct_child_ranges, xml_fragment_bounds, xml_open_tag_from_start, xml_tag_prefix,
-    zip_entry_names, zip_text,
+    docx_body_block_ranges, docx_body_content_bounds, docx_body_tag,
+    docx_mutation_output_path_for_result, docx_rich_block_reports, ensure_docx_package_kind,
+    ensure_docx_table_scaffold_fragment, ensure_docx_word_prefix, find_docx_document_part,
+    first_direct_xml_child_by_kind, package_type, validate_xlsx_mutation_output_flags,
+    word_xml_tag, write_docx_mutation_output, xml_direct_child_ranges, xml_fragment_bounds,
+    xml_open_tag_from_start, xml_tag_prefix, zip_entry_names, zip_text,
 };
 
 pub(crate) fn docx_tables_show(
@@ -80,6 +81,32 @@ pub(crate) fn docx_tables_show(
         },
     );
     Ok(Value::Object(result))
+}
+
+pub(crate) fn docx_tables_create(
+    file: &str,
+    values: Option<&str>,
+    values_file: Option<&str>,
+    values_changed: bool,
+    values_file_changed: bool,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let matrix = parse_docx_table_values(values, values_file, values_changed, values_file_changed)?;
+    let mutation = docx_table_create_mutation(file, &matrix)?;
+    let output_path = docx_mutation_output_path_for_result(file, &options);
+    write_docx_mutation_output(file, &mutation.document_part, &mutation.xml, options)?;
+
+    Ok(Value::Object(docx_table_create_result(
+        file,
+        &mutation,
+        output_path,
+    )))
 }
 
 pub(crate) fn docx_tables_set_cell(
@@ -204,6 +231,218 @@ struct DocxTableRowMutation {
     cols: usize,
     content_hash: String,
     previous_hash: String,
+}
+
+struct DocxTableCreateMutation {
+    document_part: String,
+    xml: String,
+    table: usize,
+    block: usize,
+    rows: usize,
+    cols: usize,
+    content_hash: String,
+}
+
+fn parse_docx_table_values(
+    values: Option<&str>,
+    values_file: Option<&str>,
+    values_changed: bool,
+    values_file_changed: bool,
+) -> CliResult<Vec<Vec<String>>> {
+    if values_changed == values_file_changed {
+        return Err(CliError::invalid_args(
+            "must specify exactly one of --values or --values-file",
+        ));
+    }
+    let raw = if values_changed {
+        values.unwrap_or_default().to_string()
+    } else {
+        let path = values_file.unwrap_or_default();
+        fs::read(path)
+            .map(|data| String::from_utf8_lossy(&data).to_string())
+            .map_err(|_| CliError::file_not_found(format!("file not found: {path}")))?
+    };
+    let parsed: Value = serde_json::from_str(&raw)
+        .map_err(|err| CliError::invalid_args(format!("invalid --values JSON: {err}")))?;
+    let rows = parsed
+        .as_array()
+        .ok_or_else(|| CliError::invalid_args("--values must be a JSON array of rows"))?;
+    if rows.is_empty() {
+        return Err(CliError::invalid_args("--values matrix cannot be empty"));
+    }
+    let mut matrix = Vec::with_capacity(rows.len());
+    let mut width = None;
+    for (row_idx, row) in rows.iter().enumerate() {
+        let cells = row
+            .as_array()
+            .ok_or_else(|| CliError::invalid_args("--values rows must be JSON arrays"))?;
+        if cells.is_empty() {
+            return Err(CliError::invalid_args(format!(
+                "--values row {} cannot be empty",
+                row_idx + 1
+            )));
+        }
+        if let Some(expected) = width {
+            if cells.len() != expected {
+                return Err(CliError::invalid_args(format!(
+                    "--values must be rectangular: row {} has {} cells, expected {expected}",
+                    row_idx + 1,
+                    cells.len()
+                )));
+            }
+        } else {
+            width = Some(cells.len());
+        }
+        matrix.push(
+            cells
+                .iter()
+                .map(docx_table_cell_value_to_text)
+                .collect::<CliResult<Vec<_>>>()?,
+        );
+    }
+    Ok(matrix)
+}
+
+fn docx_table_cell_value_to_text(value: &Value) -> CliResult<String> {
+    match value {
+        Value::Null => Ok(String::new()),
+        Value::String(text) => Ok(text.clone()),
+        Value::Number(number) => Ok(number.to_string()),
+        Value::Bool(value) => Ok(value.to_string()),
+        _ => Err(CliError::invalid_args(
+            "--values cells must be strings, numbers, booleans, or null",
+        )),
+    }
+}
+
+fn docx_table_create_mutation(
+    file: &str,
+    matrix: &[Vec<String>],
+) -> CliResult<DocxTableCreateMutation> {
+    let entries = zip_entry_names(file)?;
+    ensure_docx_package_kind(file, &entries)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let original_xml = zip_text(file, &document_part)?;
+    let mut working = ensure_docx_word_prefix(&original_xml)?;
+    let body_tag = docx_body_tag(&working)?;
+    let (content_start, content_end) = docx_body_content_bounds(&working, &body_tag)?;
+    let body_children = xml_direct_child_ranges(&working, content_start, content_end)?;
+    let insert_at = body_children
+        .iter()
+        .rev()
+        .find(|child| child.kind == "sectPr")
+        .map(|child| child.start)
+        .unwrap_or(content_end);
+    let table_xml = render_docx_table("w", matrix);
+    working.insert_str(insert_at, &table_xml);
+
+    let reports = docx_rich_block_reports(&working, false).map_err(|err| {
+        CliError::unexpected(format!("failed to read updated document: {}", err.message))
+    })?;
+    let table_reports = reports
+        .iter()
+        .filter(|report| report.kind == "table")
+        .collect::<Vec<_>>();
+    let created = table_reports
+        .last()
+        .ok_or_else(|| CliError::unexpected("created table readback missing"))?;
+
+    Ok(DocxTableCreateMutation {
+        document_part,
+        xml: working,
+        table: table_reports.len(),
+        block: created.index,
+        rows: matrix.len(),
+        cols: matrix.first().map(Vec::len).unwrap_or_default(),
+        content_hash: created.content_hash.clone(),
+    })
+}
+
+fn render_docx_table(prefix: &str, matrix: &[Vec<String>]) -> String {
+    let tbl = word_xml_tag(prefix, "tbl");
+    let tbl_pr = word_xml_tag(prefix, "tblPr");
+    let tbl_w = word_xml_tag(prefix, "tblW");
+    let tbl_grid = word_xml_tag(prefix, "tblGrid");
+    let grid_col = word_xml_tag(prefix, "gridCol");
+    let tr = word_xml_tag(prefix, "tr");
+    let tc = word_xml_tag(prefix, "tc");
+    let tc_pr = word_xml_tag(prefix, "tcPr");
+    let tc_w = word_xml_tag(prefix, "tcW");
+    let p = word_xml_tag(prefix, "p");
+    let r = word_xml_tag(prefix, "r");
+    let cols = matrix.first().map(Vec::len).unwrap_or_default();
+    let col_width = if cols == 0 {
+        2400
+    } else {
+        (8640 / cols.max(1)).max(720)
+    };
+
+    let mut out = String::new();
+    out.push('<');
+    out.push_str(&tbl);
+    out.push('>');
+    out.push('<');
+    out.push_str(&tbl_pr);
+    out.push('>');
+    out.push('<');
+    out.push_str(&tbl_w);
+    out.push_str(r#" w:w="0" w:type="auto"/>"#);
+    out.push_str("</");
+    out.push_str(&tbl_pr);
+    out.push('>');
+    out.push('<');
+    out.push_str(&tbl_grid);
+    out.push('>');
+    for _ in 0..cols {
+        out.push('<');
+        out.push_str(&grid_col);
+        out.push_str(&format!(r#" w:w="{col_width}"/>"#));
+    }
+    out.push_str("</");
+    out.push_str(&tbl_grid);
+    out.push('>');
+    for row in matrix {
+        out.push('<');
+        out.push_str(&tr);
+        out.push('>');
+        for cell in row {
+            out.push('<');
+            out.push_str(&tc);
+            out.push('>');
+            out.push('<');
+            out.push_str(&tc_pr);
+            out.push('>');
+            out.push('<');
+            out.push_str(&tc_w);
+            out.push_str(&format!(r#" w:w="{col_width}" w:type="dxa"/>"#));
+            out.push_str("</");
+            out.push_str(&tc_pr);
+            out.push('>');
+            out.push('<');
+            out.push_str(&p);
+            out.push('>');
+            out.push('<');
+            out.push_str(&r);
+            out.push('>');
+            append_docx_text_children(&mut out, prefix, cell);
+            out.push_str("</");
+            out.push_str(&r);
+            out.push('>');
+            out.push_str("</");
+            out.push_str(&p);
+            out.push('>');
+            out.push_str("</");
+            out.push_str(&tc);
+            out.push('>');
+        }
+        out.push_str("</");
+        out.push_str(&tr);
+        out.push('>');
+    }
+    out.push_str("</");
+    out.push_str(&tbl);
+    out.push('>');
+    out
 }
 
 fn docx_table_cell_text_mutation(
@@ -517,13 +756,33 @@ fn docx_table_row_mutation_result(
     result
 }
 
+fn docx_table_create_result(
+    file: &str,
+    mutation: &DocxTableCreateMutation,
+    output_path: Option<String>,
+) -> Map<String, Value> {
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("table".to_string(), json!(mutation.table));
+    result.insert("block".to_string(), json!(mutation.block));
+    result.insert("rows".to_string(), json!(mutation.rows));
+    result.insert("cols".to_string(), json!(mutation.cols));
+    result.insert("contentHash".to_string(), json!(mutation.content_hash));
+    if let Some(output) = output_path.as_deref() {
+        result.insert("output".to_string(), json!(output));
+    }
+    result.insert("dryRun".to_string(), json!(output_path.is_none()));
+    add_docx_table_readback_commands(&mut result, output_path.as_deref(), mutation.table);
+    result
+}
+
 fn add_docx_table_readback_commands(
     result: &mut Map<String, Value>,
     output_path: Option<&str>,
     table: usize,
 ) {
-    let target = output_path.unwrap_or("<out.pptx>");
-    let validate = format!("ooxml validate --strict {target}");
+    let target = output_path.unwrap_or("<out.docx>");
+    let validate = format!("ooxml validate --strict {}", command_arg(target));
     let show = format!(
         "ooxml --json docx tables show {} --table {}",
         command_arg(target),
