@@ -54,6 +54,13 @@ fn docm_opaque_vba_attach_inspect_extract_remove_without_office() {
     )
     .expect("write macro source");
     let source = source_path.to_string_lossy().to_string();
+    let worker_path = temp_dir.join("Worker.cls");
+    fs::write(
+        &worker_path,
+        "Attribute VB_Name = \"Worker\"\r\nPublic Function Message() As String\r\n    Message = \"Hello from docm host-risk fixture\"\r\nEnd Function\r\n",
+    )
+    .expect("write class source");
+    let worker = worker_path.to_string_lossy().to_string();
 
     let vba_bin_path = temp_dir.join("vbaProject.bin");
     let vba_bin = vba_bin_path.to_string_lossy().to_string();
@@ -67,6 +74,8 @@ fn docm_opaque_vba_attach_inspect_extract_remove_without_office() {
             "xlsx",
             "--source",
             &source,
+            "--source",
+            &worker,
             "--out",
             &vba_bin,
         ]),
