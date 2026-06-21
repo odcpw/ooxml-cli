@@ -467,8 +467,44 @@ fn serve_op_supports_xlsx_conditional_formats_add_delete() {
         "B1>0"
     );
 
-    let delete_expression = rpc_request(
+    let add_color_scale = rpc_request(
         4,
+        "op",
+        serde_json::json!({
+            "session": session,
+            "command": "xlsx conditional-formats add",
+            "args": {
+                "sheet": "1",
+                "range": "C1:C5",
+                "type": "color-scale",
+                "cfvo": ["min", "percentile:50", "max"],
+                "color": ["F8696B", "FFEB84", "63BE7B"],
+                "priority": 6
+            },
+        }),
+    );
+    let add_color_scale_response = serve_roundtrip(&mut stdin, &mut reader, &add_color_scale);
+    assert!(
+        add_color_scale_response.get("error").is_none(),
+        "conditional-format color-scale add op failed: {add_color_scale_response:?}"
+    );
+    let color_scale_readback = &add_color_scale_response["result"]["readback"]["rule"];
+    assert_eq!(color_scale_readback["type"], "colorScale");
+    assert_eq!(
+        color_scale_readback["colorScale"]["cfvo"],
+        serde_json::json!([
+            {"type": "min"},
+            {"type": "percentile", "value": "50"},
+            {"type": "max"}
+        ])
+    );
+    assert_eq!(
+        color_scale_readback["colorScale"]["colors"][2]["rgb"],
+        "FF63BE7B"
+    );
+
+    let delete_expression = rpc_request(
+        5,
         "op",
         serde_json::json!({
             "session": session,
@@ -484,16 +520,17 @@ fn serve_op_supports_xlsx_conditional_formats_add_delete() {
     assert_eq!(delete_response["result"]["readback"]["action"], "delete");
     assert_eq!(delete_response["result"]["readback"]["rule"]["priority"], 5);
 
-    let plan = rpc_request(5, "plan", serde_json::json!({"session": session}));
+    let plan = rpc_request(6, "plan", serde_json::json!({"session": session}));
     let plan_response = serve_roundtrip(&mut stdin, &mut reader, &plan);
     let plan_items = plan_response["result"]["plan"]
         .as_array()
         .expect("planned operations");
-    assert_eq!(plan_items.len(), 3);
+    assert_eq!(plan_items.len(), 4);
     assert_eq!(plan_items[0]["argv"][1], "conditional-formats");
     assert_eq!(plan_items[0]["argv"][2], "add");
     assert_eq!(plan_items[1]["argv"][2], "add");
-    assert_eq!(plan_items[2]["argv"][2], "delete");
+    assert_eq!(plan_items[2]["argv"][2], "add");
+    assert_eq!(plan_items[3]["argv"][2], "delete");
     assert!(
         plan_items[0]["argv"]
             .as_array()
@@ -501,8 +538,14 @@ fn serve_op_supports_xlsx_conditional_formats_add_delete() {
             .iter()
             .any(|arg| arg == "--formula2")
     );
+    let color_scale_plan = plan_items[2]["argv"].as_array().expect("color-scale plan argv");
+    assert!(
+        color_scale_plan.iter().any(|arg| arg == "--cfvo")
+            && color_scale_plan.iter().any(|arg| arg == "--color"),
+        "color-scale plan should include repeated threshold/color flags: {color_scale_plan:?}"
+    );
 
-    let commit = rpc_request(6, "commit", serde_json::json!({"session": session}));
+    let commit = rpc_request(7, "commit", serde_json::json!({"session": session}));
     let commit_response = serve_roundtrip(&mut stdin, &mut reader, &commit);
     assert!(
         commit_response.get("error").is_none(),
@@ -534,10 +577,15 @@ fn serve_op_supports_xlsx_conditional_formats_add_delete() {
     assert_eq!(list_code, 0, "conditional formats serve list exit");
     assert_eq!(list_stderr, None, "conditional formats serve list stderr");
     let list = list_stdout.expect("conditional formats serve output list");
-    assert_eq!(list["count"], Value::from(1));
+    assert_eq!(list["count"], Value::from(2));
     assert_eq!(list["rules"][0]["type"], "cellIs");
     assert_eq!(list["rules"][0]["operator"], "between");
     assert_eq!(list["rules"][0]["formulas"], serde_json::json!(["1", "10"]));
+    assert_eq!(list["rules"][1]["type"], "colorScale");
+    assert_eq!(
+        list["rules"][1]["colorScale"]["colors"][2]["rgb"],
+        "FF63BE7B"
+    );
 
     drop(stdin);
     let status = child.wait().expect("serve exit");

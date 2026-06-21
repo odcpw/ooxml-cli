@@ -35,9 +35,9 @@ pub(super) fn commands() -> Vec<Value> {
         ),
         capability_command(
             "ooxml xlsx conditional-formats add",
-            "add <file> --range <sqref> --formula <formula> [--type expression|cell-is]",
-            "Add an expression or cellIs conditional-formatting rule.",
-            &["conditional-format", "range", "sheet"],
+            "add <file> --range <sqref> [--type expression|cell-is|color-scale]",
+            "Add an expression, cellIs, or color-scale conditional-formatting rule.",
+            &["conditional-format", "range", "sheet", "style"],
             true,
             None,
             mutation_flags(true),
@@ -68,7 +68,7 @@ fn mutation_flags(include_add_flags: bool) -> Vec<Value> {
                 "--type",
                 "type",
                 "string",
-                "conditional-formatting rule type: expression or cell-is",
+                "conditional-formatting rule type: expression, cell-is, or color-scale",
             ),
             flag(
                 "--operator",
@@ -87,6 +87,18 @@ fn mutation_flags(include_add_flags: bool) -> Vec<Value> {
                 "formula2",
                 "string",
                 "second cellIs formula/bound for between/notBetween",
+            ),
+            flag(
+                "--cfvo",
+                "cfvo",
+                "string",
+                "color-scale threshold, repeat 2 or 3 times: min, max, num:0, percent:10, or percentile:50",
+            ),
+            flag(
+                "--color",
+                "color",
+                "string",
+                "color-scale color hex, repeat 2 or 3 times: #F8696B, FFEB84, or FF63BE7B",
             ),
             flag("--priority", "priority", "int", "optional cfRule priority"),
             flag(
