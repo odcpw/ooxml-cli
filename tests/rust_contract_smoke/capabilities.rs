@@ -100,6 +100,204 @@ fn object_kinds_index_matches_command_target_object_kinds() {
 }
 
 #[test]
+fn capabilities_schema_shape_is_stable_for_typed_builder() {
+    let (all_code, all_stdout, all_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(all_code, 0);
+    assert_eq!(all_stderr, None);
+    let all_caps = all_stdout.expect("all capabilities");
+    assert!(
+        all_caps.get("filter").is_none(),
+        "unfiltered capabilities should omit filter, not emit null"
+    );
+
+    for flag in all_caps["globalFlags"]
+        .as_array()
+        .expect("globalFlags array")
+    {
+        assert!(
+            flag["default"].is_string(),
+            "global flag default stays string-typed for {}",
+            flag["name"]
+        );
+    }
+
+    for alias in all_caps["filterAliases"]
+        .as_array()
+        .expect("filterAliases array")
+    {
+        assert_eq!(
+            json_object_keys(alias),
+            BTreeSet::from(["alias".to_string(), "canonical".to_string()])
+        );
+        assert!(alias["alias"].is_string(), "alias should be string");
+        assert!(alias["canonical"].is_string(), "canonical should be string");
+    }
+
+    let allowed_command_keys = BTreeSet::from([
+        "flagConstraints".to_string(),
+        "localFlags".to_string(),
+        "opCompatible".to_string(),
+        "opIneligibleReason".to_string(),
+        "path".to_string(),
+        "short".to_string(),
+        "targetObjectKinds".to_string(),
+        "use".to_string(),
+    ]);
+    let required_command_keys = BTreeSet::from([
+        "localFlags".to_string(),
+        "opCompatible".to_string(),
+        "path".to_string(),
+        "short".to_string(),
+        "targetObjectKinds".to_string(),
+        "use".to_string(),
+    ]);
+    let expected_flag_keys = BTreeSet::from([
+        "argName".to_string(),
+        "description".to_string(),
+        "name".to_string(),
+        "type".to_string(),
+    ]);
+
+    for command in all_caps["commands"].as_array().expect("commands array") {
+        let path = command["path"].as_str().expect("command path");
+        let command_keys = json_object_keys(command);
+        assert!(
+            command_keys.is_subset(&allowed_command_keys),
+            "unexpected command keys for {path}: {command_keys:?}"
+        );
+        assert!(
+            required_command_keys.is_subset(&command_keys),
+            "missing required command keys for {path}: {command_keys:?}"
+        );
+        assert!(command["use"].is_string(), "use for {path}");
+        assert!(command["short"].is_string(), "short for {path}");
+        assert!(
+            command["targetObjectKinds"].is_array(),
+            "targetObjectKinds for {path}"
+        );
+        assert!(command["localFlags"].is_array(), "localFlags for {path}");
+        assert!(
+            command["opCompatible"].is_boolean(),
+            "opCompatible for {path}"
+        );
+        if let Some(reason) = command.get("opIneligibleReason") {
+            assert!(
+                reason.is_string(),
+                "opIneligibleReason should be omitted or string for {path}"
+            );
+        }
+        if let Some(flag_constraints) = command.get("flagConstraints") {
+            assert!(
+                flag_constraints.is_object(),
+                "flagConstraints should be omitted or object for {path}"
+            );
+        }
+        for flag in command["localFlags"].as_array().expect("localFlags array") {
+            assert_eq!(
+                json_object_keys(flag),
+                expected_flag_keys,
+                "flag keys for {path}"
+            );
+            for field in ["argName", "description", "name", "type"] {
+                assert!(
+                    flag[field].is_string(),
+                    "{field} should be string for {path}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn capabilities_filtered_empty_schema_keeps_index_and_suggestions() {
+    let (code, stdout, stderr) = run_ooxml(&["--json", "capabilities", "--for", "slidez"]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    let caps = stdout.expect("unknown-filter capabilities");
+    assert_eq!(
+        caps["commands"].as_array().expect("commands array").len(),
+        0
+    );
+    assert_eq!(
+        caps["filter"]["requested"],
+        Value::String("slidez".to_string())
+    );
+    assert_eq!(
+        caps["filter"]["normalized"],
+        Value::String("slidez".to_string())
+    );
+    assert!(
+        !caps["filter"]["suggestions"]
+            .as_array()
+            .expect("filter suggestions")
+            .is_empty(),
+        "empty filters should teach likely alternatives"
+    );
+    let index = caps["objectKindsIndex"]
+        .as_object()
+        .expect("objectKindsIndex object");
+    let object_kinds = caps["objectKinds"].as_array().expect("objectKinds array");
+    assert_eq!(index.len(), object_kinds.len(), "index key count");
+    for kind in object_kinds {
+        let kind = kind.as_str().expect("object kind string");
+        assert!(
+            index[kind].as_array().expect("index array").is_empty(),
+            "filtered-empty index should keep empty array for {kind}"
+        );
+    }
+}
+
+#[test]
+fn capabilities_accepts_command_local_strict_global_flag() {
+    let (all_code, all_stdout, all_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(all_code, 0);
+    assert_eq!(all_stderr, None);
+    let all_caps = all_stdout.expect("all capabilities");
+
+    let (strict_code, strict_stdout, strict_stderr) =
+        run_ooxml(&["--json", "capabilities", "--strict"]);
+    assert_eq!(strict_code, 0);
+    assert_eq!(strict_stderr, None);
+    let strict_caps = strict_stdout.expect("strict capabilities");
+    assert_eq!(
+        strict_caps["commands"]
+            .as_array()
+            .expect("strict commands")
+            .len(),
+        all_caps["commands"].as_array().expect("all commands").len()
+    );
+}
+
+#[test]
+fn discovery_alias_shapes_stay_surface_specific() {
+    let (caps_code, caps_stdout, caps_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(caps_code, 0);
+    assert_eq!(caps_stderr, None);
+    let caps = caps_stdout.expect("capabilities");
+    assert!(
+        caps["filterAliases"]
+            .as_array()
+            .expect("capabilities filterAliases")
+            .iter()
+            .all(|alias| alias["alias"].is_string() && alias["canonical"].is_string()),
+        "capabilities filterAliases should be object records"
+    );
+
+    let (triage_code, triage_stdout, triage_stderr) = run_ooxml(&["--json", "agent-triage"]);
+    assert_eq!(triage_code, 0);
+    assert_eq!(triage_stderr, None);
+    let triage = triage_stdout.expect("agent-triage");
+    assert!(
+        triage["discovery"]["filterAliases"]
+            .as_array()
+            .expect("triage discovery filterAliases")
+            .iter()
+            .all(Value::is_string),
+        "agent-triage filterAliases should stay compact strings"
+    );
+}
+
+#[test]
 fn docx_parent_group_capabilities_match_go_oracle() {
     let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
     assert_eq!(go_code, 0);
@@ -1118,6 +1316,15 @@ fn optional_array_is_empty(value: &Value, field: &str) -> bool {
         .and_then(Value::as_array)
         .map(|items| items.is_empty())
         .unwrap_or(true)
+}
+
+fn json_object_keys(value: &Value) -> BTreeSet<String> {
+    value
+        .as_object()
+        .expect("JSON object")
+        .keys()
+        .cloned()
+        .collect()
 }
 
 fn assert_object_kinds_index_matches_commands(capabilities: &Value) {

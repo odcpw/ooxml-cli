@@ -1,9 +1,9 @@
 use serde_json::{Value, json};
 
-use super::super::{capability_command, flag};
+use super::super::{capability_command, capability_command_with_flag_constraints, flag};
 
 pub(super) fn commands() -> Vec<Value> {
-    let mut add = capability_command(
+    let add = capability_command_with_flag_constraints(
         "ooxml xlsx conditional-formats add",
         "add <file> --range <sqref> [--type expression|cell-is|color-scale|data-bar|icon-set]",
         "Add an expression, cellIs, color-scale, data-bar, or icon-set conditional-formatting rule.",
@@ -11,46 +11,46 @@ pub(super) fn commands() -> Vec<Value> {
         true,
         None,
         mutation_flags(true),
+        Some(json!({
+            "modeFlag": "--type",
+            "defaultMode": "expression",
+            "modes": [
+                {
+                    "value": "expression",
+                    "required": ["--range", "--formula"],
+                    "forbidden": ["--operator", "--formula2", "--cfvo", "--color", "--icon-set"]
+                },
+                {
+                    "value": "cell-is",
+                    "required": ["--range", "--formula"],
+                    "optional": ["--operator", "--formula2", "--dxf-id", "--stop-if-true"],
+                    "notes": ["--formula2 is only used for between/notBetween operators."]
+                },
+                {
+                    "value": "color-scale",
+                    "required": ["--range", "--cfvo", "--color"],
+                    "repeat": {"--cfvo": "2 or 3", "--color": "2 or 3"},
+                    "forbidden": ["--formula", "--formula2", "--operator", "--icon-set", "--dxf-id", "--stop-if-true"]
+                },
+                {
+                    "value": "data-bar",
+                    "required": ["--range", "--cfvo", "--color"],
+                    "repeat": {"--cfvo": "exactly 2", "--color": "exactly 1"},
+                    "forbidden": ["--formula", "--formula2", "--operator", "--icon-set", "--dxf-id", "--stop-if-true"]
+                },
+                {
+                    "value": "icon-set",
+                    "required": ["--range", "--icon-set", "--cfvo"],
+                    "repeat": {"--cfvo": "3, 4, or 5 based on --icon-set"},
+                    "forbidden": ["--formula", "--formula2", "--operator", "--color", "--dxf-id", "--stop-if-true"]
+                }
+            ],
+            "rules": [
+                "Use --dry-run first when composing a conditional-format rule.",
+                "For existing rules, discover selectors with ooxml --json xlsx conditional-formats list <file> --sheet <sheet>."
+            ]
+        })),
     );
-    add["flagConstraints"] = json!({
-        "modeFlag": "--type",
-        "defaultMode": "expression",
-        "modes": [
-            {
-                "value": "expression",
-                "required": ["--range", "--formula"],
-                "forbidden": ["--operator", "--formula2", "--cfvo", "--color", "--icon-set"]
-            },
-            {
-                "value": "cell-is",
-                "required": ["--range", "--formula"],
-                "optional": ["--operator", "--formula2", "--dxf-id", "--stop-if-true"],
-                "notes": ["--formula2 is only used for between/notBetween operators."]
-            },
-            {
-                "value": "color-scale",
-                "required": ["--range", "--cfvo", "--color"],
-                "repeat": {"--cfvo": "2 or 3", "--color": "2 or 3"},
-                "forbidden": ["--formula", "--formula2", "--operator", "--icon-set", "--dxf-id", "--stop-if-true"]
-            },
-            {
-                "value": "data-bar",
-                "required": ["--range", "--cfvo", "--color"],
-                "repeat": {"--cfvo": "exactly 2", "--color": "exactly 1"},
-                "forbidden": ["--formula", "--formula2", "--operator", "--icon-set", "--dxf-id", "--stop-if-true"]
-            },
-            {
-                "value": "icon-set",
-                "required": ["--range", "--icon-set", "--cfvo"],
-                "repeat": {"--cfvo": "3, 4, or 5 based on --icon-set"},
-                "forbidden": ["--formula", "--formula2", "--operator", "--color", "--dxf-id", "--stop-if-true"]
-            }
-        ],
-        "rules": [
-            "Use --dry-run first when composing a conditional-format rule.",
-            "For existing rules, discover selectors with ooxml --json xlsx conditional-formats list <file> --sheet <sheet>."
-        ]
-    });
     vec![
         capability_command(
             "ooxml xlsx conditional-formats list",

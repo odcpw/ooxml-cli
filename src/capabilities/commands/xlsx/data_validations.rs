@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use super::super::{capability_command, flag};
+use super::super::{capability_command, capability_command_with_flag_constraints, flag};
 use super::xlsx_data_validation_mutation_flags;
 
 pub(super) fn commands() -> Vec<Value> {
@@ -27,7 +27,7 @@ pub(super) fn commands() -> Vec<Value> {
             ],
         ),
         {
-            let mut create = capability_command(
+            capability_command_with_flag_constraints(
                 "ooxml xlsx data-validations create",
                 "create <file> --range <sqref> --type <type>",
                 "Create a worksheet data-validation rule such as a dropdown list or numeric constraint.",
@@ -35,66 +35,65 @@ pub(super) fn commands() -> Vec<Value> {
                 true,
                 None,
                 xlsx_data_validation_mutation_flags(false),
-            );
-            create["flagConstraints"] = json!({
-                "modeFlag": "--type",
-                "modes": [
-                    {
-                        "value": "list",
-                        "required": ["--range", "--type"],
-                        "oneOf": ["--list-values", "--list-range"],
-                        "forbidden": ["--operator", "--formula1", "--formula2"],
-                        "notes": ["Inline list values are comma-separated; --list-range uses a worksheet range formula source."]
-                    },
-                    {
-                        "value": "whole",
-                        "required": ["--range", "--type", "--formula1"],
-                        "optional": ["--operator", "--formula2"],
-                        "notes": ["--formula2 is required when --operator is between or notBetween."]
-                    },
-                    {
-                        "value": "decimal",
-                        "required": ["--range", "--type", "--formula1"],
-                        "optional": ["--operator", "--formula2"],
-                        "notes": ["--formula2 is required when --operator is between or notBetween."]
-                    },
-                    {
-                        "value": "date",
-                        "required": ["--range", "--type", "--formula1"],
-                        "optional": ["--operator", "--formula2"],
-                        "notes": ["--formula2 is required when --operator is between or notBetween."]
-                    },
-                    {
-                        "value": "time",
-                        "required": ["--range", "--type", "--formula1"],
-                        "optional": ["--operator", "--formula2"],
-                        "notes": ["--formula2 is required when --operator is between or notBetween."]
-                    },
-                    {
-                        "value": "textLength",
-                        "aliases": ["text-length", "textlength"],
-                        "required": ["--range", "--type", "--formula1"],
-                        "optional": ["--operator", "--formula2"],
-                        "notes": ["--formula2 is required when --operator is between or notBetween."]
-                    },
-                    {
-                        "value": "custom",
-                        "required": ["--range", "--type", "--formula1"],
-                        "forbidden": ["--operator", "--formula2", "--list-values", "--list-range"]
-                    }
-                ],
-                "operatorValues": ["between", "notBetween", "equal", "notEqual", "greaterThan", "lessThan", "greaterThanOrEqual", "lessThanOrEqual"],
-                "errorStyleValues": ["stop", "warning", "information"],
-                "outputRequiredOneOf": ["--out", "--in-place", "--dry-run"],
-                "rules": [
-                    "--type is required for create.",
-                    "list requires exactly one list source: --list-values or --list-range.",
-                    "non-list validation types require --formula1.",
-                    "between and notBetween require --formula2.",
-                    "operator is not valid for list or custom validations."
-                ]
-            });
-            create
+                Some(json!({
+                    "modeFlag": "--type",
+                    "modes": [
+                        {
+                            "value": "list",
+                            "required": ["--range", "--type"],
+                            "oneOf": ["--list-values", "--list-range"],
+                            "forbidden": ["--operator", "--formula1", "--formula2"],
+                            "notes": ["Inline list values are comma-separated; --list-range uses a worksheet range formula source."]
+                        },
+                        {
+                            "value": "whole",
+                            "required": ["--range", "--type", "--formula1"],
+                            "optional": ["--operator", "--formula2"],
+                            "notes": ["--formula2 is required when --operator is between or notBetween."]
+                        },
+                        {
+                            "value": "decimal",
+                            "required": ["--range", "--type", "--formula1"],
+                            "optional": ["--operator", "--formula2"],
+                            "notes": ["--formula2 is required when --operator is between or notBetween."]
+                        },
+                        {
+                            "value": "date",
+                            "required": ["--range", "--type", "--formula1"],
+                            "optional": ["--operator", "--formula2"],
+                            "notes": ["--formula2 is required when --operator is between or notBetween."]
+                        },
+                        {
+                            "value": "time",
+                            "required": ["--range", "--type", "--formula1"],
+                            "optional": ["--operator", "--formula2"],
+                            "notes": ["--formula2 is required when --operator is between or notBetween."]
+                        },
+                        {
+                            "value": "textLength",
+                            "aliases": ["text-length", "textlength"],
+                            "required": ["--range", "--type", "--formula1"],
+                            "optional": ["--operator", "--formula2"],
+                            "notes": ["--formula2 is required when --operator is between or notBetween."]
+                        },
+                        {
+                            "value": "custom",
+                            "required": ["--range", "--type", "--formula1"],
+                            "forbidden": ["--operator", "--formula2", "--list-values", "--list-range"]
+                        }
+                    ],
+                    "operatorValues": ["between", "notBetween", "equal", "notEqual", "greaterThan", "lessThan", "greaterThanOrEqual", "lessThanOrEqual"],
+                    "errorStyleValues": ["stop", "warning", "information"],
+                    "outputRequiredOneOf": ["--out", "--in-place", "--dry-run"],
+                    "rules": [
+                        "--type is required for create.",
+                        "list requires exactly one list source: --list-values or --list-range.",
+                        "non-list validation types require --formula1.",
+                        "between and notBetween require --formula2.",
+                        "operator is not valid for list or custom validations."
+                    ]
+                })),
+            )
         },
         capability_command(
             "ooxml xlsx data-validations update",

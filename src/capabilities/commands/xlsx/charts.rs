@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use super::super::{capability_command, flag};
+use super::super::{capability_command, capability_command_with_flag_constraints, flag};
 use super::xlsx_chart_fill_flags;
 
 pub(super) fn commands() -> Vec<Value> {
@@ -27,7 +27,7 @@ pub(super) fn commands() -> Vec<Value> {
             ],
         ),
         {
-            let mut create = capability_command(
+            capability_command_with_flag_constraints(
                 "ooxml xlsx charts create",
                 "create <file> --type <bar|line|area|pie|scatter> --range <A1:C5>",
                 "Create an embedded worksheet chart from a range or table source.",
@@ -69,38 +69,37 @@ pub(super) fn commands() -> Vec<Value> {
                         "skip strict validation",
                     ),
                 ],
-            );
-            create["flagConstraints"] = json!({
-                "modeFlag": "--type",
-                "modes": [
-                    {"value": "bar", "required": ["--type"]},
-                    {"value": "line", "required": ["--type"]},
-                    {"value": "area", "required": ["--type"]},
-                    {"value": "pie", "required": ["--type"], "notes": ["Pie charts use only the first series when the source has multiple series."]},
-                    {"value": "scatter", "required": ["--type"]}
-                ],
-                "sourceModes": [
-                    {
-                        "name": "range",
-                        "required": ["--sheet", "--range"],
-                        "conflictsWith": ["--table"]
-                    },
-                    {
-                        "name": "table",
-                        "required": ["--table"],
-                        "optional": ["--sheet"],
-                        "conflictsWith": ["--range"]
-                    }
-                ],
-                "outputRequiredOneOf": ["--out", "--in-place", "--dry-run"],
-                "rules": [
-                    "--type is required and must be bar, line, area, pie, or scatter.",
-                    "Specify exactly one source: --range or --table.",
-                    "--sheet is required when using --range.",
-                    "--expect-source-range guards the resolved source range after table/range resolution."
-                ]
-            });
-            create
+                Some(json!({
+                    "modeFlag": "--type",
+                    "modes": [
+                        {"value": "bar", "required": ["--type"]},
+                        {"value": "line", "required": ["--type"]},
+                        {"value": "area", "required": ["--type"]},
+                        {"value": "pie", "required": ["--type"], "notes": ["Pie charts use only the first series when the source has multiple series."]},
+                        {"value": "scatter", "required": ["--type"]}
+                    ],
+                    "sourceModes": [
+                        {
+                            "name": "range",
+                            "required": ["--sheet", "--range"],
+                            "conflictsWith": ["--table"]
+                        },
+                        {
+                            "name": "table",
+                            "required": ["--table"],
+                            "optional": ["--sheet"],
+                            "conflictsWith": ["--range"]
+                        }
+                    ],
+                    "outputRequiredOneOf": ["--out", "--in-place", "--dry-run"],
+                    "rules": [
+                        "--type is required and must be bar, line, area, pie, or scatter.",
+                        "Specify exactly one source: --range or --table.",
+                        "--sheet is required when using --range.",
+                        "--expect-source-range guards the resolved source range after table/range resolution."
+                    ]
+                })),
+            )
         },
         capability_command(
             "ooxml xlsx charts update-source",

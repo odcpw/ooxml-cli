@@ -1,9 +1,9 @@
 use serde_json::{Value, json};
 
-use super::{capability_command, flag};
+use super::{capability_command, capability_command_with_flag_constraints, flag};
 
 pub(super) fn commands() -> Vec<Value> {
-    let mut create = capability_command(
+    let create = capability_command_with_flag_constraints(
         "ooxml vba create",
         "create <workbook.xlsx|deck.pptx|document.docx> --pure --source Module1.bas --out <workbook.xlsm|deck.pptm|document.docm>",
         "Create an XLSM/PPTM/DOCM from an existing package and VBA source files using pure Rust.",
@@ -87,29 +87,29 @@ pub(super) fn commands() -> Vec<Value> {
                 "show the Office application window during creation",
             ),
         ],
+        Some(json!({
+            "modes": [
+                {
+                    "name": "pure",
+                    "when": ["--pure"],
+                    "allowedFlags": ["--pure", "--source", "--family", "--out", "--in-place", "--backup", "--dry-run", "--no-validate"],
+                    "conflictsWith": ["--extract-bin", "--office-create-script", "--enable-vba-object-model-access", "--visible", "--force"],
+                    "recommendedCommand": "ooxml --json vba create <input.xlsx|input.pptx|input.docx> --pure --source Module1.bas --out <output.xlsm|output.pptm|output.docm>"
+                },
+                {
+                    "name": "legacy-office-com",
+                    "when": ["not --pure"],
+                    "allowedFlags": ["--family", "--source", "--extract-bin", "--office-create-script", "--enable-vba-object-model-access", "--visible", "--force"],
+                    "conflictsWith": ["--out", "--backup", "--dry-run", "--no-validate", "--in-place"],
+                    "recommendedCommand": "ooxml --json vba create <input.xlsx|input.pptx> <output.xlsm|output.pptm> --office-create-script <windows-office-vba-create.ps1>"
+                }
+            ],
+            "rules": [
+                "--pure cannot be combined with legacy Office-COM create flags.",
+                "Pure mode writes with --out, --in-place, or --dry-run; legacy Office-COM mode uses the positional output path."
+            ]
+        })),
     );
-    create["flagConstraints"] = json!({
-        "modes": [
-            {
-                "name": "pure",
-                "when": ["--pure"],
-                "allowedFlags": ["--pure", "--source", "--family", "--out", "--in-place", "--backup", "--dry-run", "--no-validate"],
-                "conflictsWith": ["--extract-bin", "--office-create-script", "--enable-vba-object-model-access", "--visible", "--force"],
-                "recommendedCommand": "ooxml --json vba create <input.xlsx|input.pptx|input.docx> --pure --source Module1.bas --out <output.xlsm|output.pptm|output.docm>"
-            },
-            {
-                "name": "legacy-office-com",
-                "when": ["not --pure"],
-                "allowedFlags": ["--family", "--source", "--extract-bin", "--office-create-script", "--enable-vba-object-model-access", "--visible", "--force"],
-                "conflictsWith": ["--out", "--backup", "--dry-run", "--no-validate", "--in-place"],
-                "recommendedCommand": "ooxml --json vba create <input.xlsx|input.pptx> <output.xlsm|output.pptm> --office-create-script <windows-office-vba-create.ps1>"
-            }
-        ],
-        "rules": [
-            "--pure cannot be combined with legacy Office-COM create flags.",
-            "Pure mode writes with --out, --in-place, or --dry-run; legacy Office-COM mode uses the positional output path."
-        ]
-    });
     vec![
         capability_command(
             "ooxml vba",

@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use super::super::{capability_command, flag};
+use super::super::{capability_command, capability_command_with_flag_constraints, flag};
 
 pub(super) fn commands() -> Vec<Value> {
     vec![
@@ -41,7 +41,7 @@ pub(super) fn commands() -> Vec<Value> {
             ],
         ),
         {
-            let mut create = capability_command(
+            capability_command_with_flag_constraints(
                 "ooxml pptx charts create",
                 "create <file> --slide <n> --type <type> (--values-json <json>|--values-file <path>|--source-file <xlsx> --source-range <range>)",
                 "Create a new PPTX slide chart from an inline matrix or an XLSX range.",
@@ -137,43 +137,42 @@ pub(super) fn commands() -> Vec<Value> {
                         "skip strict validation of the mutated package",
                     ),
                 ],
-            );
-            create["flagConstraints"] = json!({
-                "modeFlag": "--type",
-                "modes": [
-                    {"value": "bar", "required": ["--slide", "--type"]},
-                    {"value": "line", "required": ["--slide", "--type"]},
-                    {"value": "area", "required": ["--slide", "--type"]},
-                    {"value": "pie", "required": ["--slide", "--type"], "notes": ["Pie charts use only the first series when the source has multiple series."]},
-                    {"value": "scatter", "required": ["--slide", "--type"]}
-                ],
-                "sourceModes": [
-                    {
-                        "name": "inline-json",
-                        "required": ["--values-json"],
-                        "conflictsWith": ["--values-file", "--source-file", "--source-sheet", "--source-range", "--expect-source-range", "--embed-workbook"]
-                    },
-                    {
-                        "name": "inline-file",
-                        "required": ["--values-file"],
-                        "conflictsWith": ["--values-json", "--source-file", "--source-sheet", "--source-range", "--expect-source-range", "--embed-workbook"]
-                    },
-                    {
-                        "name": "external-xlsx",
-                        "required": ["--source-file", "--source-range"],
-                        "optional": ["--source-sheet", "--expect-source-range", "--embed-workbook"],
-                        "conflictsWith": ["--values-json", "--values-file"]
-                    }
-                ],
-                "outputRequiredOneOf": ["--out", "--in-place", "--dry-run"],
-                "rules": [
-                    "--slide must be a 1-based slide number.",
-                    "--type is required and must be bar, line, area, pie, or scatter.",
-                    "Specify exactly one source family: --values-json, --values-file, or --source-file.",
-                    "--source-file requires --source-range; --source-sheet defaults to 1 when omitted."
-                ]
-            });
-            create
+                Some(json!({
+                    "modeFlag": "--type",
+                    "modes": [
+                        {"value": "bar", "required": ["--slide", "--type"]},
+                        {"value": "line", "required": ["--slide", "--type"]},
+                        {"value": "area", "required": ["--slide", "--type"]},
+                        {"value": "pie", "required": ["--slide", "--type"], "notes": ["Pie charts use only the first series when the source has multiple series."]},
+                        {"value": "scatter", "required": ["--slide", "--type"]}
+                    ],
+                    "sourceModes": [
+                        {
+                            "name": "inline-json",
+                            "required": ["--values-json"],
+                            "conflictsWith": ["--values-file", "--source-file", "--source-sheet", "--source-range", "--expect-source-range", "--embed-workbook"]
+                        },
+                        {
+                            "name": "inline-file",
+                            "required": ["--values-file"],
+                            "conflictsWith": ["--values-json", "--source-file", "--source-sheet", "--source-range", "--expect-source-range", "--embed-workbook"]
+                        },
+                        {
+                            "name": "external-xlsx",
+                            "required": ["--source-file", "--source-range"],
+                            "optional": ["--source-sheet", "--expect-source-range", "--embed-workbook"],
+                            "conflictsWith": ["--values-json", "--values-file"]
+                        }
+                    ],
+                    "outputRequiredOneOf": ["--out", "--in-place", "--dry-run"],
+                    "rules": [
+                        "--slide must be a 1-based slide number.",
+                        "--type is required and must be bar, line, area, pie, or scatter.",
+                        "Specify exactly one source family: --values-json, --values-file, or --source-file.",
+                        "--source-file requires --source-range; --source-sheet defaults to 1 when omitted."
+                    ]
+                })),
+            )
         },
         capability_command(
             "ooxml pptx charts update-data",

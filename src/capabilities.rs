@@ -205,7 +205,7 @@ fn reject_capabilities_unknown_flags(args: &[String]) -> CliResult<()> {
         }
         let flag = arg.split_once('=').map(|(flag, _)| flag).unwrap_or(arg);
         match flag {
-            "--json" => i += 1,
+            "--json" | "--strict" => i += 1,
             "--for" => {
                 if arg.contains('=') {
                     i += 1;
@@ -237,7 +237,7 @@ fn reject_capabilities_unknown_flags(args: &[String]) -> CliResult<()> {
                 let hint = if matches!(flag, "--fr" | "--fro" | "--filter") {
                     "; did you mean --for? Try: ooxml --json capabilities --for <filter>"
                 } else {
-                    "; valid flags are --for <filter>, --json, and --format json"
+                    "; valid flags are --for <filter>, --json, --strict, and --format json"
                 };
                 return Err(CliError::invalid_args(format!(
                     "unknown flag: {flag}{hint}"

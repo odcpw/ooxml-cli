@@ -22,6 +22,7 @@ incremental = true
 [dependencies]
 quick-xml = "0.38"
 regex = "1"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
