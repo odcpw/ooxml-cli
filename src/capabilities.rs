@@ -2,6 +2,7 @@ mod commands;
 pub(crate) use commands::capability_commands;
 
 use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::agent_aliases::{
     CAPABILITY_OBJECT_KINDS, capability_filter_aliases_json, capability_filter_suggestions,
@@ -61,6 +62,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             );
         }
     }
+    let object_kinds_index = build_object_kinds_index(&commands);
     let mut document = json!({
         "tool": "ooxml",
         "version": "0.0.1",
@@ -75,37 +77,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
         "commands": commands,
         "objectKinds": CAPABILITY_OBJECT_KINDS,
         "filterAliases": capability_filter_aliases_json(),
-        "objectKindsIndex": {
-            "package": ["ooxml inspect", "ooxml validate", "ooxml verify", "ooxml apply", "ooxml convert xlsm-to-xlsx", "ooxml repair normalize", "ooxml docx scaffold", "ooxml docx text", "ooxml pptx scaffold", "ooxml xlsx scaffold", "ooxml xlsx workbook metadata inspect", "ooxml xlsx workbook metadata update", "ooxml vba build-bin", "ooxml vba create", "ooxml vba rebuild", "ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba inspect-bin", "ooxml vba list", "ooxml vba extract", "ooxml vba add-module", "ooxml vba replace-module", "ooxml vba remove-module", "ooxml vba attach", "ooxml vba remove"],
-            "template": ["ooxml template", "ooxml template apply", "ooxml template tokens", "ooxml template profile", "ooxml template profile save", "ooxml template profile inspect", "ooxml pptx template", "ooxml pptx template inspect", "ooxml pptx template capture", "ooxml pptx template compile", "ooxml pptx xlsx-bindings plan", "ooxml pptx xlsx-bindings apply"],
-            "slide": ["ooxml pptx scaffold", "ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx slides delete", "ooxml pptx slides move", "ooxml pptx slides reorder", "ooxml pptx slides import-slide", "ooxml pptx slides merge", "ooxml pptx clone-slide", "ooxml pptx new-slide-from-layout", "ooxml pptx shapes show", "ooxml pptx shapes get", "ooxml pptx add-textbox", "ooxml pptx place image", "ooxml pptx place table", "ooxml pptx place table-from-xlsx", "ooxml pptx shapes set-bounds", "ooxml pptx shapes delete", "ooxml pptx text set", "ooxml pptx translate export", "ooxml pptx translate apply", "ooxml pptx fields inspect", "ooxml pptx fields set", "ooxml pptx theme update", "ooxml pptx animations list", "ooxml pptx animations add", "ooxml pptx animations remove", "ooxml pptx animations reorder", "ooxml pptx animations prune-stale", "ooxml pptx layouts list", "ooxml pptx layouts show", "ooxml pptx tables show", "ooxml pptx tables set-cell", "ooxml pptx tables delete-row", "ooxml pptx tables insert-row", "ooxml pptx tables delete-col", "ooxml pptx tables insert-col", "ooxml pptx tables update-from-xlsx", "ooxml pptx charts list", "ooxml pptx charts show", "ooxml pptx charts create", "ooxml pptx charts update-data", "ooxml pptx charts set-title", "ooxml pptx charts set-legend", "ooxml pptx charts set-chart-area-fill", "ooxml pptx charts set-plot-area-fill", "ooxml pptx charts set-series-style", "ooxml pptx charts set-axis", "ooxml pptx charts convert-type", "ooxml pptx charts copy-style", "ooxml pptx extract text", "ooxml pptx extract notes", "ooxml pptx extract images", "ooxml pptx extract xml", "ooxml pptx media list", "ooxml pptx media add", "ooxml pptx media replace", "ooxml pptx notes show", "ooxml pptx notes set", "ooxml pptx notes clear", "ooxml pptx comments list", "ooxml pptx replace text", "ooxml pptx replace text-occurrences", "ooxml pptx replace text-from-xlsx", "ooxml pptx replace text-map-from-xlsx", "ooxml pptx replace images", "ooxml pptx xlsx-bindings apply", "ooxml pptx render"],
-            "shape": ["ooxml pptx scaffold", "ooxml pptx slides list", "ooxml pptx slides selectors", "ooxml pptx slides show", "ooxml pptx shapes show", "ooxml pptx shapes get", "ooxml pptx add-textbox", "ooxml pptx place image", "ooxml pptx place table", "ooxml pptx place table-from-xlsx", "ooxml pptx shapes set-bounds", "ooxml pptx shapes delete", "ooxml pptx text set", "ooxml pptx translate export", "ooxml pptx translate apply", "ooxml pptx animations list", "ooxml pptx animations add", "ooxml pptx animations remove", "ooxml pptx animations prune-stale", "ooxml pptx layouts set-bounds", "ooxml pptx layouts delete-shape", "ooxml pptx extract text", "ooxml pptx replace text", "ooxml pptx replace text-occurrences", "ooxml pptx replace text-from-xlsx", "ooxml pptx replace text-map-from-xlsx", "ooxml pptx replace images", "ooxml pptx media replace", "ooxml pptx xlsx-bindings apply"],
-            "animation": ["ooxml pptx animations list", "ooxml pptx animations add", "ooxml pptx animations remove", "ooxml pptx animations reorder", "ooxml pptx animations prune-stale"],
-            "master": ["ooxml pptx slides import-slide", "ooxml pptx slides merge", "ooxml pptx masters list", "ooxml pptx masters show", "ooxml pptx masters import", "ooxml pptx masters add-placeholder", "ooxml pptx layouts import", "ooxml pptx fields inspect", "ooxml pptx fields set", "ooxml pptx extract xml"],
-            "layout": ["ooxml pptx slides import-slide", "ooxml pptx slides merge", "ooxml pptx new-slide-from-layout", "ooxml pptx layouts list", "ooxml pptx layouts show", "ooxml pptx layouts import", "ooxml pptx layouts clone", "ooxml pptx layouts rename", "ooxml pptx layouts set-bounds", "ooxml pptx layouts delete-shape", "ooxml pptx layouts add-placeholder", "ooxml pptx masters import", "ooxml pptx extract xml"],
-            "placeholder": ["ooxml pptx new-slide-from-layout", "ooxml pptx masters show", "ooxml pptx masters add-placeholder", "ooxml pptx layouts list", "ooxml pptx layouts show", "ooxml pptx layouts set-bounds", "ooxml pptx layouts delete-shape", "ooxml pptx layouts add-placeholder"],
-            "sheet": ["ooxml pptx tables update-from-xlsx", "ooxml pptx place table-from-xlsx", "ooxml pptx replace text-from-xlsx", "ooxml pptx replace text-map-from-xlsx", "ooxml pptx xlsx-bindings apply", "ooxml xlsx scaffold", "ooxml xlsx sheets list", "ooxml xlsx sheets show", "ooxml xlsx sheets add", "ooxml xlsx sheets rename", "ooxml xlsx sheets move", "ooxml xlsx sheets delete", "ooxml xlsx colwidths show", "ooxml xlsx colwidths set", "ooxml xlsx rowheights show", "ooxml xlsx rowheights set", "ooxml xlsx rows insert", "ooxml xlsx rows delete", "ooxml xlsx cols insert", "ooxml xlsx cols delete", "ooxml xlsx filters-sorts show", "ooxml xlsx filters-sorts set-autofilter", "ooxml xlsx filters-sorts clear-autofilter", "ooxml xlsx filters-sorts add-column-filter", "ooxml xlsx filters-sorts clear-column-filter", "ooxml xlsx filters-sorts set-sort", "ooxml xlsx filters-sorts clear-sort", "ooxml xlsx comments list", "ooxml xlsx comments add", "ooxml xlsx comments update", "ooxml xlsx comments remove", "ooxml xlsx conditional-formats list", "ooxml xlsx conditional-formats show", "ooxml xlsx conditional-formats add", "ooxml xlsx conditional-formats delete", "ooxml xlsx conditional-formats reorder", "ooxml xlsx data-validations list", "ooxml xlsx data-validations show", "ooxml xlsx data-validations create", "ooxml xlsx data-validations update", "ooxml xlsx data-validations delete", "ooxml xlsx hyperlinks list", "ooxml xlsx hyperlinks show", "ooxml xlsx hyperlinks add", "ooxml xlsx hyperlinks update", "ooxml xlsx hyperlinks delete", "ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx ranges set-style", "ooxml xlsx cells extract", "ooxml xlsx cells set", "ooxml xlsx cells clear", "ooxml xlsx cells set-batch", "ooxml xlsx freeze show", "ooxml xlsx freeze set", "ooxml xlsx freeze clear", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export", "ooxml xlsx tables create", "ooxml xlsx tables append-rows", "ooxml xlsx tables append-records", "ooxml xlsx tables set-column-format", "ooxml xlsx pivots list", "ooxml xlsx pivots show", "ooxml xlsx pivots create", "ooxml xlsx names list", "ooxml xlsx names show", "ooxml xlsx names add", "ooxml xlsx names update", "ooxml xlsx names rename", "ooxml xlsx names delete"],
-            "range": ["ooxml pptx tables update-from-xlsx", "ooxml pptx place table-from-xlsx", "ooxml pptx replace text-from-xlsx", "ooxml pptx replace text-map-from-xlsx", "ooxml pptx xlsx-bindings apply", "ooxml pptx charts create", "ooxml xlsx colwidths show", "ooxml xlsx colwidths set", "ooxml xlsx rowheights show", "ooxml xlsx rowheights set", "ooxml xlsx rows insert", "ooxml xlsx rows delete", "ooxml xlsx cols insert", "ooxml xlsx cols delete", "ooxml xlsx filters-sorts show", "ooxml xlsx filters-sorts set-autofilter", "ooxml xlsx filters-sorts clear-autofilter", "ooxml xlsx filters-sorts add-column-filter", "ooxml xlsx filters-sorts clear-column-filter", "ooxml xlsx filters-sorts set-sort", "ooxml xlsx filters-sorts clear-sort", "ooxml xlsx conditional-formats list", "ooxml xlsx conditional-formats show", "ooxml xlsx conditional-formats add", "ooxml xlsx conditional-formats delete", "ooxml xlsx conditional-formats reorder", "ooxml xlsx data-validations list", "ooxml xlsx data-validations show", "ooxml xlsx data-validations create", "ooxml xlsx data-validations update", "ooxml xlsx data-validations delete", "ooxml xlsx hyperlinks list", "ooxml xlsx hyperlinks show", "ooxml xlsx hyperlinks add", "ooxml xlsx hyperlinks update", "ooxml xlsx hyperlinks delete", "ooxml xlsx ranges export", "ooxml xlsx ranges set", "ooxml xlsx ranges set-format", "ooxml xlsx ranges set-style", "ooxml xlsx cells extract", "ooxml xlsx cells clear", "ooxml xlsx cells set-batch", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export", "ooxml xlsx tables create", "ooxml xlsx tables append-rows", "ooxml xlsx tables append-records", "ooxml xlsx tables set-column-format", "ooxml xlsx pivots list", "ooxml xlsx pivots show", "ooxml xlsx pivots create", "ooxml xlsx names list", "ooxml xlsx names show", "ooxml xlsx names add", "ooxml xlsx names update", "ooxml xlsx names rename", "ooxml xlsx names delete"],
-            "conditional-format": ["ooxml xlsx conditional-formats list", "ooxml xlsx conditional-formats show", "ooxml xlsx conditional-formats add", "ooxml xlsx conditional-formats delete", "ooxml xlsx conditional-formats reorder"],
-            "data-validation": ["ooxml xlsx data-validations list", "ooxml xlsx data-validations show", "ooxml xlsx data-validations create", "ooxml xlsx data-validations update", "ooxml xlsx data-validations delete"],
-            "cell": ["ooxml xlsx comments list", "ooxml xlsx comments add", "ooxml xlsx comments update", "ooxml xlsx comments remove", "ooxml xlsx hyperlinks list", "ooxml xlsx hyperlinks show", "ooxml xlsx hyperlinks add", "ooxml xlsx hyperlinks update", "ooxml xlsx hyperlinks delete", "ooxml xlsx ranges set", "ooxml xlsx cells set", "ooxml xlsx cells clear", "ooxml xlsx cells set-batch"],
-            "hyperlink": ["ooxml pptx text set", "ooxml xlsx hyperlinks list", "ooxml xlsx hyperlinks show", "ooxml xlsx hyperlinks add", "ooxml xlsx hyperlinks update", "ooxml xlsx hyperlinks delete"],
-            "chart": ["ooxml pptx charts list", "ooxml pptx charts show", "ooxml pptx charts create", "ooxml pptx charts update-data", "ooxml pptx charts set-title", "ooxml pptx charts set-legend", "ooxml pptx charts set-chart-area-fill", "ooxml pptx charts set-plot-area-fill", "ooxml pptx charts set-series-style", "ooxml pptx charts set-axis", "ooxml pptx charts convert-type", "ooxml pptx charts copy-style", "ooxml xlsx charts list", "ooxml xlsx charts show", "ooxml xlsx charts create", "ooxml xlsx charts update-source", "ooxml xlsx charts set-title", "ooxml xlsx charts set-legend", "ooxml xlsx charts set-chart-area-fill", "ooxml xlsx charts set-plot-area-fill", "ooxml xlsx charts set-series-style", "ooxml xlsx charts convert-type", "ooxml xlsx charts copy-style", "ooxml xlsx charts set-axis"],
-            "table": ["ooxml pptx place table", "ooxml pptx place table-from-xlsx", "ooxml pptx tables show", "ooxml pptx tables set-cell", "ooxml pptx tables delete-row", "ooxml pptx tables insert-row", "ooxml pptx tables delete-col", "ooxml pptx tables insert-col", "ooxml pptx tables update-from-xlsx", "ooxml pptx xlsx-bindings apply", "ooxml xlsx filters-sorts show", "ooxml xlsx filters-sorts set-autofilter", "ooxml xlsx filters-sorts clear-autofilter", "ooxml xlsx tables list", "ooxml xlsx tables show", "ooxml xlsx tables export", "ooxml xlsx tables create", "ooxml xlsx tables append-rows", "ooxml xlsx tables append-records", "ooxml xlsx tables set-column-format", "ooxml xlsx pivots list", "ooxml xlsx pivots show", "ooxml xlsx pivots create", "ooxml docx tables show", "ooxml docx tables create", "ooxml docx tables set-cell", "ooxml docx tables clear-cell", "ooxml docx tables insert-row", "ooxml docx tables delete-row", "ooxml docx replace", "ooxml docx styles apply"],
-            "pivot": ["ooxml xlsx pivots list", "ooxml xlsx pivots show", "ooxml xlsx pivots create"],
-            "name": ["ooxml xlsx names list", "ooxml xlsx names show", "ooxml xlsx names add", "ooxml xlsx names update", "ooxml xlsx names rename", "ooxml xlsx names delete"],
-            "block": ["ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx tables show"],
-            "paragraph": ["ooxml docx text", "ooxml docx blocks", "ooxml docx blocks replace", "ooxml docx blocks delete", "ooxml docx blocks insert-after", "ooxml docx paragraphs append", "ooxml docx paragraphs insert", "ooxml docx paragraphs set", "ooxml docx paragraphs clear", "ooxml docx replace", "ooxml docx styles apply", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx images list", "ooxml docx images insert"],
-            "style": ["ooxml pptx text set", "ooxml pptx theme update", "ooxml pptx charts set-title", "ooxml pptx charts set-legend", "ooxml pptx charts set-chart-area-fill", "ooxml pptx charts set-plot-area-fill", "ooxml pptx charts set-series-style", "ooxml pptx charts set-axis", "ooxml pptx charts convert-type", "ooxml pptx charts copy-style", "ooxml xlsx charts set-title", "ooxml xlsx charts set-legend", "ooxml xlsx charts set-chart-area-fill", "ooxml xlsx charts set-plot-area-fill", "ooxml xlsx charts set-series-style", "ooxml xlsx charts copy-style", "ooxml xlsx charts set-axis", "ooxml xlsx ranges set-format", "ooxml xlsx ranges set-style", "ooxml xlsx tables set-column-format", "ooxml docx styles list", "ooxml docx styles show", "ooxml docx styles apply"],
-            "theme": ["ooxml pptx slides import-slide", "ooxml pptx slides merge", "ooxml pptx masters import", "ooxml pptx layouts import"],
-            "comment": ["ooxml pptx comments list", "ooxml pptx comments add", "ooxml pptx comments edit", "ooxml pptx comments remove", "ooxml xlsx comments list", "ooxml xlsx comments add", "ooxml xlsx comments update", "ooxml xlsx comments remove", "ooxml docx comments list", "ooxml docx comments add", "ooxml docx comments edit", "ooxml docx comments remove"],
-            "field": ["ooxml pptx fields inspect", "ooxml pptx fields set", "ooxml docx fields list", "ooxml docx fields insert", "ooxml docx fields set-result"],
-            "header": ["ooxml docx headers list", "ooxml docx headers show", "ooxml docx headers set-text", "ooxml docx footers list"],
-            "footer": ["ooxml pptx fields inspect", "ooxml pptx fields set", "ooxml docx footers list", "ooxml docx footers show", "ooxml docx footers set-text", "ooxml docx headers list"],
-            "image": ["ooxml pptx extract images", "ooxml pptx place image", "ooxml pptx replace images", "ooxml pptx xlsx-bindings apply", "ooxml docx images list", "ooxml docx images replace", "ooxml docx images insert"],
-            "media": ["ooxml pptx media list", "ooxml pptx media add", "ooxml pptx media replace"],
-            "module": ["ooxml vba build-bin", "ooxml vba create", "ooxml vba rebuild", "ooxml vba inspect", "ooxml vba extract-bin", "ooxml vba inspect-bin", "ooxml vba list", "ooxml vba extract", "ooxml vba add-module", "ooxml vba replace-module", "ooxml vba remove-module", "ooxml vba office-check", "ooxml vba run-smoke", "ooxml vba attach", "ooxml vba remove"]
-        },
+        "objectKindsIndex": object_kinds_index,
         "exitCodes": [
             {"code": EXIT_SUCCESS, "name": "success", "description": "command completed successfully"},
             {"code": EXIT_UNEXPECTED, "name": "unexpected", "description": "unexpected tool or package processing error"},
@@ -157,6 +129,40 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
         document["filter"] = filter_info;
     }
     Ok(document)
+}
+
+fn build_object_kinds_index(commands: &[Value]) -> Value {
+    let mut index = CAPABILITY_OBJECT_KINDS
+        .iter()
+        .map(|kind| ((*kind).to_string(), BTreeSet::new()))
+        .collect::<BTreeMap<String, BTreeSet<String>>>();
+
+    for command in commands {
+        let Some(path) = command.get("path").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(kinds) = command.get("targetObjectKinds").and_then(Value::as_array) else {
+            continue;
+        };
+        for kind in kinds.iter().filter_map(Value::as_str) {
+            index
+                .entry(kind.to_string())
+                .or_default()
+                .insert(path.to_string());
+        }
+    }
+
+    Value::Object(
+        index
+            .into_iter()
+            .map(|(kind, paths)| {
+                (
+                    kind,
+                    Value::Array(paths.into_iter().map(Value::String).collect()),
+                )
+            })
+            .collect(),
+    )
 }
 
 fn capability_matches_filter(command: &Value, filter: &str) -> bool {

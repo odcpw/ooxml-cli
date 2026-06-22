@@ -84,6 +84,22 @@ const PPTX_PARENT_GROUP_CAPABILITY_PATHS: &[&str] = &[
 include!("capabilities/web_surface.rs");
 
 #[test]
+fn object_kinds_index_matches_command_target_object_kinds() {
+    let (all_code, all_stdout, all_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(all_code, 0);
+    assert_eq!(all_stderr, None);
+    let all_caps = all_stdout.expect("all capabilities");
+    assert_object_kinds_index_matches_commands(&all_caps);
+
+    let (package_code, package_stdout, package_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "package"]);
+    assert_eq!(package_code, 0);
+    assert_eq!(package_stderr, None);
+    let package_caps = package_stdout.expect("package capabilities");
+    assert_object_kinds_index_matches_commands(&package_caps);
+}
+
+#[test]
 fn docx_parent_group_capabilities_match_go_oracle() {
     let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
     assert_eq!(go_code, 0);
@@ -1102,6 +1118,58 @@ fn optional_array_is_empty(value: &Value, field: &str) -> bool {
         .and_then(Value::as_array)
         .map(|items| items.is_empty())
         .unwrap_or(true)
+}
+
+fn assert_object_kinds_index_matches_commands(capabilities: &Value) {
+    let mut expected = capabilities["objectKinds"]
+        .as_array()
+        .expect("objectKinds array")
+        .iter()
+        .map(|kind| {
+            (
+                kind.as_str().expect("object kind string").to_string(),
+                std::collections::BTreeSet::<String>::new(),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+
+    for command in capabilities["commands"].as_array().expect("commands array") {
+        let path = command["path"].as_str().expect("command path");
+        for kind in command["targetObjectKinds"]
+            .as_array()
+            .unwrap_or_else(|| panic!("targetObjectKinds for {path} is not an array"))
+        {
+            let kind = kind.as_str().expect("target object kind string");
+            expected
+                .get_mut(kind)
+                .unwrap_or_else(|| panic!("{path} advertises unknown object kind {kind}"))
+                .insert(path.to_string());
+        }
+    }
+
+    let actual = capabilities["objectKindsIndex"]
+        .as_object()
+        .expect("objectKindsIndex object");
+    let expected_keys = expected.keys().cloned().collect::<BTreeSet<_>>();
+    let actual_keys = actual.keys().cloned().collect::<BTreeSet<_>>();
+    assert_eq!(actual_keys, expected_keys, "objectKindsIndex keys");
+
+    for (kind, expected_paths) in expected {
+        let actual_paths = actual[&kind]
+            .as_array()
+            .unwrap_or_else(|| panic!("objectKindsIndex[{kind}] is not an array"))
+            .iter()
+            .map(|path| {
+                path.as_str()
+                    .unwrap_or_else(|| panic!("objectKindsIndex[{kind}] path is not a string"))
+                    .to_string()
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            actual_paths, expected_paths,
+            "objectKindsIndex[{kind}] should be derived from command targetObjectKinds"
+        );
+    }
 }
 
 fn powershell_function_block(script: &str, start_marker: &str, end_marker: &str) -> String {
