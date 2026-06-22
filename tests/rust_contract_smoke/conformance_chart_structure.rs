@@ -81,6 +81,24 @@ fn conformance_check_matches_go_for_pptx_chart_structure() {
     assert_chart_repair_invariants_match(&broken);
 }
 
+#[test]
+fn conformance_accepts_office_chart_style_and_color_style_parts() {
+    for file in [
+        "testdata/xlsx/libreoffice-chart-workbook/workbook.xlsx",
+        "testdata/pptx/libreoffice-chart-simple/presentation.pptx",
+    ] {
+        let (code, report, stderr) = run_ooxml(&["--json", "conformance", "check", file]);
+        assert_eq!(code, 0, "conformance exit for {file}");
+        assert_eq!(stderr, None, "conformance stderr for {file}");
+        let report = report.expect("conformance report");
+        assert_eq!(report["status"], "passed", "conformance status for {file}");
+        assert_eq!(
+            report["summary"]["failed"], 0,
+            "conformance failures for {file}"
+        );
+    }
+}
+
 fn assert_chart_repair_invariants_match(file: &Path) {
     let file = file.to_string_lossy().to_string();
     let args = ["--json", "conformance", "check", file.as_str()];

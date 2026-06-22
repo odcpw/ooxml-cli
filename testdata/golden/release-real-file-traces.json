@@ -1,0 +1,416 @@
+{
+  "pptxCharts": {
+    "chart": {
+      "firstSeries": {
+        "fillColor": "FF8800",
+        "lineColor": "114477",
+        "lineWidthPt": 2,
+        "name": "Revenue"
+      },
+      "partUri": "/ppt/charts/chart1.xml",
+      "primarySelector": "chart:1",
+      "seriesCount": 1,
+      "shapeName": "Revenue Chart",
+      "slide": 1,
+      "title": "Revenue by Region",
+      "types": [
+        "barChart"
+      ]
+    },
+    "command": "pptx charts set-series-style",
+    "conformanceStatus": "passed",
+    "followUps": [
+      {
+        "field": "validateCommand",
+        "present": true
+      },
+      {
+        "field": "chartShowCommand",
+        "present": true
+      },
+      {
+        "field": "renderCommand",
+        "present": true
+      }
+    ],
+    "inputFixture": "testdata/pptx/libreoffice-chart-simple/presentation.pptx",
+    "outputExtension": ".pptx",
+    "producer": "LibreOffice headless re-export",
+    "renderSmoke": {
+      "imageFormat": "png",
+      "mode": "OOXML_RUST_MOCK_RENDER",
+      "slides": 1
+    },
+    "validationStatus": "valid",
+    "zipPartNeedles": [
+      "FF8800",
+      "114477",
+      "w=\"25400\""
+    ]
+  },
+  "proofLevel": {
+    "linux": [
+      "real input fixtures",
+      "real saved outputs",
+      "strict validation",
+      "conformance check",
+      "readback commands",
+      "semantic zip-part checks",
+      "macro-preservation checks for XLSM mutation inputs"
+    ],
+    "officeCom": "not run by this Linux contract test"
+  },
+  "scope": [
+    "xlsx charts",
+    "xlsx data-validations",
+    "xlsx conditional-formats",
+    "vba pure package/source",
+    "pptx charts"
+  ],
+  "vba": {
+    "families": [
+      {
+        "backend": "pure-rust",
+        "conformanceStatus": "passed",
+        "createMode": "pure",
+        "extractModuleCount": 4,
+        "family": "xlsx",
+        "followUps": [
+          {
+            "field": "validateCommand",
+            "present": true
+          },
+          {
+            "field": "conformanceCommand",
+            "present": true
+          },
+          {
+            "field": "inspectCommand",
+            "present": true
+          },
+          {
+            "field": "packageReadbackCommand",
+            "present": true
+          },
+          {
+            "field": "extractBinCommand",
+            "present": true
+          },
+          {
+            "field": "officeCheckCommand",
+            "present": true
+          }
+        ],
+        "inputFixture": "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "mainContentType": "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
+        "mainPartUri": "/xl/workbook.xml",
+        "moduleCount": 4,
+        "modules": [
+          {
+            "extension": ".cls",
+            "kind": "class",
+            "lineCount": 8,
+            "name": "ThisWorkbook",
+            "primarySelector": "module:ThisWorkbook"
+          },
+          {
+            "extension": ".cls",
+            "kind": "class",
+            "lineCount": 8,
+            "name": "Sheet1",
+            "primarySelector": "module:Sheet1"
+          },
+          {
+            "extension": ".bas",
+            "kind": "standard",
+            "lineCount": 6,
+            "name": "AgentSmoke",
+            "primarySelector": "module:AgentSmoke"
+          },
+          {
+            "extension": ".cls",
+            "kind": "class",
+            "lineCount": 11,
+            "name": "Worker",
+            "primarySelector": "module:Worker"
+          }
+        ],
+        "outputExtension": ".xlsm",
+        "projectSha256": "6afab85a97be6608d0bfdf011be599a2c4f1f018447788def5a289d9814f6172",
+        "sources": [
+          "testdata/golden/vba-authoring/xlsx-class/AgentSmoke.bas",
+          "testdata/golden/vba-authoring/xlsx-class/Worker.cls"
+        ],
+        "validationStatus": "valid",
+        "vbaPartUri": "/xl/vbaProject.bin"
+      },
+      {
+        "backend": "pure-rust",
+        "conformanceStatus": "passed",
+        "createMode": "pure",
+        "extractModuleCount": 2,
+        "family": "pptx",
+        "followUps": [
+          {
+            "field": "validateCommand",
+            "present": true
+          },
+          {
+            "field": "conformanceCommand",
+            "present": true
+          },
+          {
+            "field": "inspectCommand",
+            "present": true
+          },
+          {
+            "field": "packageReadbackCommand",
+            "present": true
+          },
+          {
+            "field": "extractBinCommand",
+            "present": true
+          },
+          {
+            "field": "officeCheckCommand",
+            "present": true
+          }
+        ],
+        "inputFixture": "testdata/pptx/minimal-title/presentation.pptx",
+        "mainContentType": "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml",
+        "mainPartUri": "/ppt/presentation.xml",
+        "moduleCount": 2,
+        "modules": [
+          {
+            "extension": ".bas",
+            "kind": "standard",
+            "lineCount": 6,
+            "name": "AgentSlide",
+            "primarySelector": "module:AgentSlide"
+          },
+          {
+            "extension": ".cls",
+            "kind": "class",
+            "lineCount": 11,
+            "name": "Worker",
+            "primarySelector": "module:Worker"
+          }
+        ],
+        "outputExtension": ".pptm",
+        "projectSha256": "417f50943286b0a7e4d01afbc7a659970bc42c586ecd9843122b4bff33ea03ea",
+        "sources": [
+          "testdata/golden/vba-authoring/pptx-class/AgentSlide.bas",
+          "testdata/golden/vba-authoring/pptx-class/Worker.cls"
+        ],
+        "validationStatus": "valid",
+        "vbaPartUri": "/ppt/vbaProject.bin"
+      },
+      {
+        "backend": "pure-rust",
+        "conformanceStatus": "passed",
+        "createMode": "pure",
+        "extractModuleCount": 3,
+        "family": "docx",
+        "followUps": [
+          {
+            "field": "validateCommand",
+            "present": true
+          },
+          {
+            "field": "conformanceCommand",
+            "present": true
+          },
+          {
+            "field": "inspectCommand",
+            "present": true
+          },
+          {
+            "field": "packageReadbackCommand",
+            "present": true
+          },
+          {
+            "field": "extractBinCommand",
+            "present": true
+          },
+          {
+            "field": "officeCheckCommand",
+            "present": true
+          }
+        ],
+        "inputFixture": "testdata/docx/minimal/document.docx",
+        "mainContentType": "application/vnd.ms-word.document.macroEnabled.main+xml",
+        "mainPartUri": "/word/document.xml",
+        "moduleCount": 3,
+        "modules": [
+          {
+            "extension": ".cls",
+            "kind": "class",
+            "lineCount": 8,
+            "name": "ThisDocument",
+            "primarySelector": "module:ThisDocument"
+          },
+          {
+            "extension": ".bas",
+            "kind": "standard",
+            "lineCount": 6,
+            "name": "AgentDoc",
+            "primarySelector": "module:AgentDoc"
+          },
+          {
+            "extension": ".cls",
+            "kind": "class",
+            "lineCount": 11,
+            "name": "Worker",
+            "primarySelector": "module:Worker"
+          }
+        ],
+        "outputExtension": ".docm",
+        "projectSha256": "9a0d1e425908a52909d472e794640dec13fd27d56f8b6588a3609d0420070aec",
+        "sources": [
+          "testdata/golden/vba-authoring/docx-class/AgentDoc.bas",
+          "testdata/golden/vba-authoring/docx-class/Worker.cls"
+        ],
+        "validationStatus": "valid",
+        "vbaPartUri": "/word/vbaProject.bin"
+      }
+    ],
+    "workflow": "vba create --pure -> validate -> conformance -> list -> extract"
+  },
+  "workflow": "release-real-file-traces",
+  "xlsxCharts": {
+    "chart": {
+      "firstSeries": {
+        "fillColor": "FF8800",
+        "lineColor": "114477",
+        "lineWidthPt": 2,
+        "name": "Revenue"
+      },
+      "partUri": "/xl/charts/chart1.xml",
+      "primarySelector": "chart:1",
+      "seriesCount": 1,
+      "title": "Revenue by Region",
+      "types": [
+        "barChart"
+      ]
+    },
+    "command": "xlsx charts set-series-style",
+    "conformanceStatus": "passed",
+    "followUps": [
+      {
+        "field": "validateCommand",
+        "present": true
+      },
+      {
+        "field": "chartShowCommand",
+        "present": true
+      }
+    ],
+    "inputFixture": "testdata/xlsx/libreoffice-chart-workbook/workbook.xlsx",
+    "macroPreservation": {
+      "chartStyleNeedle": "55AA33",
+      "command": "xlsx charts set-series-style",
+      "conformanceStatus": "passed",
+      "hasVbaProject": true,
+      "macroEnabled": true,
+      "mainContentType": "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
+      "outputExtension": ".xlsm",
+      "validationStatus": "valid",
+      "vbaPartUri": "/xl/vbaProject.bin"
+    },
+    "outputExtension": ".xlsx",
+    "producer": "LibreOffice headless re-export",
+    "validationStatus": "valid",
+    "zipPartNeedles": [
+      "FF8800",
+      "114477",
+      "w=\"25400\""
+    ]
+  },
+  "xlsxConditionalFormats": {
+    "command": "xlsx conditional-formats add",
+    "conformanceStatus": "passed",
+    "followUps": [
+      {
+        "field": "validateCommand",
+        "present": true
+      },
+      {
+        "field": "conditionalFormatsListCommand",
+        "present": true
+      },
+      {
+        "field": "conditionalFormatsShowCommand",
+        "present": true
+      }
+    ],
+    "inputFixture": "testdata/xlsx/minimal-workbook/workbook.xlsx",
+    "outputExtension": ".xlsx",
+    "rule": {
+      "formula": "40",
+      "operator": "greaterThan",
+      "primarySelector": "cfRule:1",
+      "priority": 1,
+      "sqref": "B1:B10",
+      "type": "cellIs"
+    },
+    "validationStatus": "valid",
+    "zipPartNeedles": [
+      "sqref=\"B1:B10\"",
+      "type=\"cellIs\"",
+      "operator=\"greaterThan\"",
+      "<formula>40</formula>"
+    ]
+  },
+  "xlsxDataValidations": {
+    "commands": [
+      "xlsx data-validations create",
+      "xlsx data-validations update",
+      "xlsx data-validations show"
+    ],
+    "conformanceStatus": "passed",
+    "followUps": [
+      {
+        "field": "validateCommand",
+        "present": true
+      },
+      {
+        "field": "dataValidationsListCommand",
+        "present": true
+      },
+      {
+        "field": "dataValidationsShowCommand",
+        "present": true
+      }
+    ],
+    "inputFixture": "testdata/xlsx/minimal-workbook/workbook.xlsx",
+    "macroPreservation": {
+      "command": "xlsx data-validations create",
+      "conformanceStatus": "passed",
+      "hasVbaProject": true,
+      "macroEnabled": true,
+      "mainContentType": "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
+      "outputExtension": ".xlsm",
+      "rule": {
+        "formula1": "0",
+        "sqref": "C1:C5",
+        "type": "whole"
+      },
+      "validationStatus": "valid",
+      "vbaPartUri": "/xl/vbaProject.bin"
+    },
+    "outputExtension": ".xlsx",
+    "rule": {
+      "allowBlank": true,
+      "formula1": "\"Red,Green,Blue,Amber\"",
+      "primarySelector": "A1:A10",
+      "showInputMessage": true,
+      "sqref": "A1:A10",
+      "type": "list"
+    },
+    "validationStatus": "valid",
+    "zipPartNeedles": [
+      "type=\"list\"",
+      "Red,Green,Blue,Amber"
+    ]
+  }
+}

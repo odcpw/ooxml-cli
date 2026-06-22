@@ -52,6 +52,9 @@ pub(super) const CONTENT_TYPE_DRAWING: &str =
     "application/vnd.openxmlformats-officedocument.drawing+xml";
 pub(super) const CONTENT_TYPE_CHART: &str =
     "application/vnd.openxmlformats-officedocument.drawingml.chart+xml";
+pub(super) const CONTENT_TYPE_CHART_STYLE: &str = "application/vnd.ms-office.chartstyle+xml";
+pub(super) const CONTENT_TYPE_CHART_COLOR_STYLE: &str =
+    "application/vnd.ms-office.chartcolorstyle+xml";
 
 pub(super) const CONTENT_TYPE_PPTX_PRESENTATION: &str =
     "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml";
@@ -210,9 +213,19 @@ fn expected_content_types_for_part(part_uri: &str) -> Vec<&'static str> {
         _ if uri.starts_with("/xl/tables/") && uri.ends_with(".xml") => {
             vec![CONTENT_TYPE_XLSX_TABLE]
         }
-        _ if uri.starts_with("/xl/charts/") && uri.ends_with(".xml") => {
-            vec![CONTENT_TYPE_CHART]
+        _ if uri.starts_with("/xl/charts/")
+            && base.starts_with("style")
+            && uri.ends_with(".xml") =>
+        {
+            vec![CONTENT_TYPE_CHART_STYLE]
         }
+        _ if uri.starts_with("/xl/charts/")
+            && base.starts_with("colors")
+            && uri.ends_with(".xml") =>
+        {
+            vec![CONTENT_TYPE_CHART_COLOR_STYLE]
+        }
+        _ if uri.starts_with("/xl/charts/") && uri.ends_with(".xml") => vec![CONTENT_TYPE_CHART],
         _ if uri.starts_with("/xl/drawings/") && uri.ends_with(".xml") => {
             vec![CONTENT_TYPE_DRAWING]
         }
@@ -261,9 +274,19 @@ fn expected_content_types_for_part(part_uri: &str) -> Vec<&'static str> {
         _ if uri.starts_with("/ppt/theme/") && uri.ends_with(".xml") => {
             vec![CONTENT_TYPE_PPTX_THEME]
         }
-        _ if uri.starts_with("/ppt/charts/") && uri.ends_with(".xml") => {
-            vec![CONTENT_TYPE_CHART]
+        _ if uri.starts_with("/ppt/charts/")
+            && base.starts_with("style")
+            && uri.ends_with(".xml") =>
+        {
+            vec![CONTENT_TYPE_CHART_STYLE]
         }
+        _ if uri.starts_with("/ppt/charts/")
+            && base.starts_with("colors")
+            && uri.ends_with(".xml") =>
+        {
+            vec![CONTENT_TYPE_CHART_COLOR_STYLE]
+        }
+        _ if uri.starts_with("/ppt/charts/") && uri.ends_with(".xml") => vec![CONTENT_TYPE_CHART],
         _ if uri.starts_with("/ppt/comments/") && uri.ends_with(".xml") => {
             vec![CONTENT_TYPE_PPTX_COMMENTS]
         }

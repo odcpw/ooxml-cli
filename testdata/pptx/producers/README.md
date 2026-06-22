@@ -52,12 +52,12 @@ Created: 2026-03-11T08:19:30.264010
 Test all M2 commands against these fixtures:
 
 ```bash
-./ooxml pptx masters list --file testdata/pptx/producers/<producer>/presentation.pptx
-./ooxml pptx masters show --file testdata/pptx/producers/<producer>/presentation.pptx --id <id>
-./ooxml pptx layouts list --file testdata/pptx/producers/<producer>/presentation.pptx
-./ooxml pptx layouts show --file testdata/pptx/producers/<producer>/presentation.pptx --id <id>
-./ooxml pptx slides list --file testdata/pptx/producers/<producer>/presentation.pptx
-./ooxml pptx slides show --file testdata/pptx/producers/<producer>/presentation.pptx --id <id>
+ooxml --json pptx masters list testdata/pptx/producers/<producer>/presentation.pptx
+ooxml --json pptx masters show testdata/pptx/producers/<producer>/presentation.pptx --master <selector>
+ooxml --json pptx layouts list testdata/pptx/producers/<producer>/presentation.pptx
+ooxml --json pptx layouts show testdata/pptx/producers/<producer>/presentation.pptx --layout <selector>
+ooxml --json pptx slides list testdata/pptx/producers/<producer>/presentation.pptx
+ooxml --json pptx slides show testdata/pptx/producers/<producer>/presentation.pptx --slide <n>
 ```
 
 Each fixture has a corresponding golden JSON file for regression testing.
@@ -73,5 +73,5 @@ Each fixture has a corresponding golden JSON file for regression testing.
 ## Running Tests
 
 ```bash
-go test ./... -run TestProducerFixtures
+cargo test --test rust_contract_smoke pptx_
 ```

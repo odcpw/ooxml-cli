@@ -1178,6 +1178,9 @@ mod conformance_wrapper_reports;
 #[path = "rust_contract_smoke/vba.rs"]
 mod vba;
 
+#[path = "rust_contract_smoke/release_traces.rs"]
+mod release_traces;
+
 fn rpc_request(id: i64, method: &str, params: Value) -> Value {
     serde_json::json!({
         "id": id,
