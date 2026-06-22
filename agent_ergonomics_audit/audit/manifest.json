@@ -71,9 +71,39 @@
         "handoff": "audit/HANDOFF.md",
         "regression_tests": "audit/regression_tests/"
       }
+    },
+    {
+      "pass": 3,
+      "started_at": "2026-06-22T05:27:27Z",
+      "completed_at": "2026-06-22T05:28:14Z",
+      "mode": "focused-codebase-tightening",
+      "target_sha": "19144d1e1e876301da085ae7676a225f84db26dc",
+      "target_branch": "master",
+      "feature_branch": null,
+      "summary": {
+        "surfaces_inventoried": 2086,
+        "surfaces_scored": 1,
+        "recommendations_total": 1,
+        "recommendations_applied": 1,
+        "substantive_commits": 1,
+        "dimensions_touched": 3,
+        "ambition_bar_met": true,
+        "ambition_bar_self_prompt_run": true,
+        "median_uplift_pts": 260,
+        "regressions_count": 0,
+        "fresh_eyes_rounds": 1
+      },
+      "artifacts": {
+        "recommendations": "audit/recommendations.jsonl",
+        "applied_changes": "audit/applied_changes.jsonl",
+        "ambition_bar_check": "audit/ambition_bar_check.md",
+        "scorecard": "audit/scorecard_pass_3.md",
+        "handoff": "audit/HANDOFF.md",
+        "regression_tests": "audit/regression_tests/"
+      }
     }
   ],
-  "current_pass": 2,
+  "current_pass": 3,
   "pass_N+1_ready": true,
-  "next_pass_focus": "broader release gates and any real-file chart/data-validation UX traces before release"
+  "next_pass_focus": "typed capability command structs or stricter capability schema builders before another broad ergonomics pass"
 }
