@@ -1,4 +1,4 @@
-# Pass 3 Ambition Bar Check
+# Pass 4 Ambition Bar Check
 
 ## Self-Prompt
 
@@ -13,12 +13,12 @@ You're allowed to be ambitious. Default to acting, not deliberating.
 ## Result
 
 - Substantive applied recommendations this pass: 1
-- Dimensions touched: regression resistance, self-documentation, determinism and reproducibility
-- Regression tests added: 1 audit replay script plus 1 Rust emitted-contract invariant
+- Dimensions touched: regression resistance, self-documentation, error pedagogy, composability
+- Regression tests added: 1 audit replay script plus 4 Rust emitted-contract invariants
 - New branch created: no
 - Sibling workspace created: no
-- Source commit: `19144d1e1e876301da085ae7676a225f84db26dc`
+- Source commit: `65b63093f2a02c32c7b410bbfb3cb65e491e387b`
 
 ## Bar Status
 
-Met for this focused follow-up. The generated object-kind index removes a real parallel source of truth and pins the emitted capabilities contract. A broader full pass should not keep adding discovery features before moving the command metadata into typed capability structs or a stricter schema builder.
+Met for this focused follow-up. The command metadata builder is now typed, direct `flagConstraints` mutations are gone, and the emitted JSON is pinned against schema-shape drift. A broader pass should now focus on release gates or real-file UX traces instead of more discovery-contract cleanup.

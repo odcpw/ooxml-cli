@@ -1,30 +1,32 @@
-# Pass 3 Handoff
+# Pass 4 Handoff
 
 ## What We Did
 
-- mode: focused codebase-tightening follow-up
+- mode: focused typed-builder follow-up
 - recommendations applied this pass: 1 / 1
 - branch: `master`
 - audit workspace: in-tree at `agent_ergonomics_audit/`
-- source commit: `19144d1e1e876301da085ae7676a225f84db26dc`
+- source commit: `65b63093f2a02c32c7b410bbfb3cb65e491e387b`
 
 ## Uplift Summary
 
-- `objectKindsIndex` is generated from `commands[].targetObjectKinds`; the large manual parallel map is gone.
-- The generated index now exposes commands that were missing from the manual table and drops stale entries that no longer match command metadata.
-- A Rust contract test and R-011 shell regression reconstruct the index from the emitted command rows and compare it exactly.
+- `CapabilityCommand` and `CapabilityFlag` typed serializers now build command metadata instead of hand-inserting JSON map fields.
+- The five `flagConstraints` commands use `capability_command_with_flag_constraints` instead of direct `command["flagConstraints"]` mutation.
+- `ooxml --json capabilities --strict` is accepted and pinned, matching the advertised global-flag contract.
+- Schema-shape tests now guard absence-vs-null behavior, local flag keys, alias shapes, global default types, and empty filtered indexes.
 
 ## Verification
 
 - `cargo fmt`
 - `cargo test --test rust_contract_smoke capabilities`
-- `target/debug/ooxml --json capabilities` derived-index runtime diff check
-- `bash agent_ergonomics_audit/audit/regression_tests/R-011__object_kinds_index_generated.test.sh`
+- `cargo test --test rust_contract_smoke utility`
+- sorted decoded capabilities diff against pre-refactor payload
+- `bash agent_ergonomics_audit/audit/regression_tests/R-001...R-012`
 
 ## Remaining Work
 
 - Run broader release gates before a release tag.
-- Next codebase-wise cleanup should be typed capability command structs or a stricter capability schema builder, so mistakes move from runtime JSON assertions into compile-time shape.
+- Keep `flagConstraints` as flexible JSON until the shapes settle; only then consider typed per-constraint enums.
 
 ## Land-The-Plane Status
 
@@ -32,5 +34,5 @@
 - [x] no new branch was created
 - [x] workspace folder will be committed alongside code
 - [ ] beads created for queued work
-- [x] manifest updated with `current_pass=3`
-- [x] pass-3 regression checks present
+- [x] manifest updated with `current_pass=4`
+- [x] pass-4 regression checks present

@@ -101,9 +101,39 @@
         "handoff": "audit/HANDOFF.md",
         "regression_tests": "audit/regression_tests/"
       }
+    },
+    {
+      "pass": 4,
+      "started_at": "2026-06-22T13:09:17Z",
+      "completed_at": "2026-06-22T13:09:17Z",
+      "mode": "focused-typed-builder",
+      "target_sha": "65b63093f2a02c32c7b410bbfb3cb65e491e387b",
+      "target_branch": "master",
+      "feature_branch": null,
+      "summary": {
+        "surfaces_inventoried": 2086,
+        "surfaces_scored": 2,
+        "recommendations_total": 1,
+        "recommendations_applied": 1,
+        "substantive_commits": 1,
+        "dimensions_touched": 4,
+        "ambition_bar_met": true,
+        "ambition_bar_self_prompt_run": true,
+        "median_uplift_pts": 220,
+        "regressions_count": 0,
+        "fresh_eyes_rounds": 2
+      },
+      "artifacts": {
+        "recommendations": "audit/recommendations.jsonl",
+        "applied_changes": "audit/applied_changes.jsonl",
+        "ambition_bar_check": "audit/ambition_bar_check.md",
+        "scorecard": "audit/scorecard_pass_4.md",
+        "handoff": "audit/HANDOFF.md",
+        "regression_tests": "audit/regression_tests/"
+      }
     }
   ],
-  "current_pass": 3,
+  "current_pass": 4,
   "pass_N+1_ready": true,
-  "next_pass_focus": "typed capability command structs or stricter capability schema builders before another broad ergonomics pass"
+  "next_pass_focus": "broader release gates or real-file chart/data-validation UX traces before more discovery-contract cleanup"
 }
