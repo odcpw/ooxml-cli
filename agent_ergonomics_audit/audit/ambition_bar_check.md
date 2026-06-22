@@ -1,4 +1,4 @@
-# Pass 4 Ambition Bar Check
+# Pass 5 Ambition Bar Check
 
 ## Self-Prompt
 
@@ -13,12 +13,12 @@ You're allowed to be ambitious. Default to acting, not deliberating.
 ## Result
 
 - Substantive applied recommendations this pass: 1
-- Dimensions touched: regression resistance, self-documentation, error pedagogy, composability
-- Regression tests added: 1 audit replay script plus 4 Rust emitted-contract invariants
+- Dimensions touched: regression resistance, determinism, validation quality, release readiness, workflow proof, macro preservation
+- Regression tests added: 1 release trace golden plus 1 conformance regression
 - New branch created: no
 - Sibling workspace created: no
-- Source commit: `65b63093f2a02c32c7b410bbfb3cb65e491e387b`
+- Source commit: `dd420c9d5bcf190deb21b72648e408c31b321836`
 
 ## Bar Status
 
-Met for this focused follow-up. The command metadata builder is now typed, direct `flagConstraints` mutations are gone, and the emitted JSON is pinned against schema-shape drift. A broader pass should now focus on release gates or real-file UX traces instead of more discovery-contract cleanup.
+Met for this focused follow-up. The pass moved beyond discovery cleanup into release proof: producer-exported chart fixtures, semantic saved-output traces, strict validation, conformance, VBA package/source readback, and XLSM preservation are now pinned together. The remaining ceiling is external compatibility proof, not another local discovery pass.

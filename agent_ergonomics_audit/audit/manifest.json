@@ -131,9 +131,39 @@
         "handoff": "audit/HANDOFF.md",
         "regression_tests": "audit/regression_tests/"
       }
+    },
+    {
+      "pass": 5,
+      "started_at": "2026-06-22T16:31:52Z",
+      "completed_at": "2026-06-22T16:31:52Z",
+      "mode": "focused-release-traces",
+      "target_sha": "dd420c9d5bcf190deb21b72648e408c31b321836",
+      "target_branch": "master",
+      "feature_branch": null,
+      "summary": {
+        "surfaces_inventoried": 2086,
+        "surfaces_scored": 4,
+        "recommendations_total": 1,
+        "recommendations_applied": 1,
+        "substantive_commits": 1,
+        "dimensions_touched": 6,
+        "ambition_bar_met": true,
+        "ambition_bar_self_prompt_run": true,
+        "median_uplift_pts": 280,
+        "regressions_count": 0,
+        "fresh_eyes_rounds": 2
+      },
+      "artifacts": {
+        "recommendations": "audit/recommendations.jsonl",
+        "applied_changes": "audit/applied_changes.jsonl",
+        "ambition_bar_check": "audit/ambition_bar_check.md",
+        "scorecard": "audit/scorecard_pass_5.md",
+        "handoff": "audit/HANDOFF.md",
+        "release_trace_golden": "../testdata/golden/release-real-file-traces.json"
+      }
     }
   ],
-  "current_pass": 4,
+  "current_pass": 5,
   "pass_N+1_ready": true,
-  "next_pass_focus": "broader release gates or real-file chart/data-validation UX traces before more discovery-contract cleanup"
+  "next_pass_focus": "retire stale Go-oracle comparisons for Rust-only surfaces, then run Windows Office/Open XML SDK release proof"
 }
