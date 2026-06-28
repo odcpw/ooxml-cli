@@ -42,6 +42,7 @@ ooxml --json vba remove <file.xlsm|file.pptm|file.docm> --out output.xlsx|output
 ooxml --json vba list <file.xlsm|file.pptm|file.docm>
 ooxml --json vba extract <file.xlsm|file.pptm|file.docm> --out-dir macros/
 ooxml --json vba replace-module <file.xlsm|file.pptm|file.docm> --module Module1 --source Module1.bas --expect-sha256 <sha256> --allow-experimental-vba-source-rewrite --out output.xlsm|output.pptm|output.docm
+ooxml --json xlsx forms entry --out entry-form.xlsm --field Name --field Email --field Notes
 ```
 
 Implemented behavior:
@@ -49,6 +50,7 @@ Implemented behavior:
 - Detect package macro state and VBA consistency.
 - Build source-only/cache-free XLSM/PPTM/DOCM `vbaProject.bin` files in pure Rust.
 - XLSM/PPTM/DOCM pure authoring accepts `.bas` and `.cls` source modules.
+- Create simple Excel entry forms with worksheet input cells, a VML-backed non-ActiveX Form Control button, and a generated VBA submit macro.
 - XLSM pure authoring accepts `.frm` UserForm source for package/list/extract workflows only; Office runtime load is not supported yet.
 - `.frx` sidecars, valid MSForms designer type-info generation, and binary-backed form controls are refused instead of guessed.
 - DOCM pure authoring synthesizes Word's `ThisDocument` host module when needed.
@@ -64,6 +66,28 @@ Implemented behavior:
 - Preserve exact no-op replacement bytes.
 - Refuse signed packages for attach/remove/source-changing rewrites.
 - Refuse Office-shaped module-set add/remove before writing output.
+
+## Worksheet Form Controls
+
+For a simple Excel form that users can fill in directly on a worksheet, use
+`xlsx forms entry` instead of VBA UserForm authoring:
+
+```powershell
+ooxml --json xlsx forms entry `
+  --out .\out\entry-form.xlsm `
+  --field Name `
+  --field Email `
+  --field Notes `
+  --button "Submit Entry"
+ooxml --json validate --strict .\out\entry-form.xlsm
+ooxml --json vba list .\out\entry-form.xlsm
+```
+
+The command creates a fresh `.xlsm` with a form sheet, an entries sheet, a
+non-ActiveX Form Control button stored in VML, and a generated `SubmitEntry`
+macro. Desktop Excel proof on Windows showed the workbook opens without repair,
+the button runs the assigned macro after the file is trusted, input cells are
+cleared, and the submitted row is appended to the entries sheet.
 
 ## Pure XLSM/PPTM/DOCM Creation Path
 

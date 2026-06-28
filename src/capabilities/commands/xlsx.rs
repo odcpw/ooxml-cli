@@ -25,6 +25,7 @@ pub(super) fn commands() -> Vec<Value> {
     commands.extend(conditional_formatting::commands());
     commands.extend(data_validations::commands());
     commands.extend(links_filters::commands());
+    commands.extend(forms_commands());
     commands.extend(names::commands());
     commands.extend(tables::commands());
     commands.extend(pivots_workbook::commands());
@@ -105,6 +106,11 @@ fn group_commands() -> Vec<Value> {
             "Auto-filter and sort for table/range workflows",
         ),
         command_group(
+            "ooxml xlsx forms",
+            "forms",
+            "Create worksheet-based data entry forms with non-ActiveX controls",
+        ),
+        command_group(
             "ooxml xlsx freeze",
             "freeze",
             "Inspect and set worksheet freeze panes",
@@ -160,6 +166,61 @@ fn group_commands() -> Vec<Value> {
             "Inspect and update workbook metadata and calc settings",
         ),
     ]
+}
+
+fn forms_commands() -> Vec<Value> {
+    vec![capability_command(
+        "ooxml xlsx forms entry",
+        "entry --out <workbook.xlsm> [--field <label>...]",
+        "Create a macro-enabled workbook with labeled worksheet input cells and a non-ActiveX Form Control button that appends entries to a data sheet.",
+        &["package", "sheet", "range", "form", "module"],
+        false,
+        Some("it creates a package and is not an apply/serve mutation op"),
+        vec![
+            flag(
+                "--out",
+                "out",
+                "string",
+                "macro-enabled output workbook path; must end in .xlsm",
+            ),
+            flag(
+                "--field",
+                "field",
+                "stringArray",
+                "repeatable field label; defaults to Name, Email, Notes",
+            ),
+            flag(
+                "--sheet",
+                "sheet",
+                "string",
+                "worksheet name for the input form; default Form",
+            ),
+            flag(
+                "--data-sheet",
+                "dataSheet",
+                "string",
+                "worksheet name for appended rows; default Entries",
+            ),
+            flag(
+                "--button",
+                "button",
+                "string",
+                "caption for the Form Control button; default Submit",
+            ),
+            flag(
+                "--force",
+                "force",
+                "bool",
+                "replace an existing output file",
+            ),
+            flag(
+                "--no-validate",
+                "noValidate",
+                "bool",
+                "skip post-write strict validation",
+            ),
+        ],
+    )]
 }
 
 fn command_group(path: &str, use_text: &str, short: &str) -> Value {

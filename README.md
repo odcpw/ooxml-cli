@@ -92,6 +92,14 @@ ooxml --json xlsx ranges export .\workbook.xlsx --sheet Sheet1 --range A1:D10 --
 ooxml --json xlsx cells set .\workbook.xlsx --sheet Sheet1 --cell A1 --value "Hello" --out .\edited.xlsx
 ```
 
+Create a simple macro workbook entry form without ActiveX controls:
+
+```powershell
+ooxml --json xlsx forms entry --out .\entry-form.xlsm --field Name --field Email --field Notes
+ooxml --json validate --strict .\entry-form.xlsm
+ooxml --json vba list .\entry-form.xlsm
+```
+
 Edit Word documents:
 
 ```powershell
@@ -199,7 +207,8 @@ cp -R skills/ooxml ~/.codex/skills/
 
 - `ooxml-cli` edits OOXML packages directly; it is not a full desktop Office replacement.
 - Macro execution is never implicit. Use `vba run-smoke` only when local Excel execution is intended.
-- XLSM can package, list, and extract minimal `.frm` UserForm source, but generated forms are not runtime-loadable yet. `.frx` sidecars, binary controls, PPTM/DOCM UserForms, digital signatures, password/protection editing, and arbitrary VBE compile proof are not supported.
+- For simple Excel forms, use `xlsx forms entry`; it creates worksheet input cells and a non-ActiveX Form Control button.
+- XLSM can package, list, and extract minimal `.frm` UserForm source, but generated MSForms/UserForms are not runtime-loadable yet. `.frx` sidecars, binary controls, PPTM/DOCM UserForms, digital signatures, password/protection editing, and arbitrary VBE compile proof are not supported.
 - `vba add-module`, `replace-module`, and `remove-module` are guarded paths. Prefer `vba create --pure`, `vba rebuild`, or opaque `vba attach`.
 - Go code is not the normal development path.
 

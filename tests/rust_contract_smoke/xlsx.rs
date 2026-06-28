@@ -3,6 +3,7 @@
 use super::*;
 
 include!("xlsx/scaffold.rs");
+include!("xlsx/forms.rs");
 include!("xlsx/ranges_cells.rs");
 
 #[test]

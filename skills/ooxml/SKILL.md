@@ -209,11 +209,17 @@ oox --json xlsx ranges export workbook.xlsx --sheet Sheet1 --range A1:D10 --incl
 oox --json xlsx cells set workbook.xlsx --sheet Sheet1 --cell A1 --value "Hello" --out edited.xlsx
 oox --json xlsx tables create edited.xlsx --sheet Sheet1 --range A1:D10 --table Sales --out tabled.xlsx
 oox --json xlsx conditional-formats add tabled.xlsx --sheet Sheet1 --range D2:D10 --type cell-is --operator greaterThan --formula 100 --out formatted.xlsx
+oox --json xlsx forms entry --out entry-form.xlsm --field Name --field Email --field Notes
 oox --json validate --strict formatted.xlsx
 ```
 
 Treat workbooks as structured data, not CSV. Prefer table, range, and cell
 commands with stale-source guards and readback fields.
+
+For simple Excel data-entry forms, prefer `xlsx forms entry`. It generates a
+macro-enabled workbook with worksheet input cells and a non-ActiveX Form Control
+button assigned to VBA. Do not use unfinished MSForms/UserForm authoring for
+this workflow.
 
 ### DOCX / DOCM
 
@@ -275,6 +281,8 @@ VBA limits:
 
 - `vba create --pure`, `vba build-bin`, `vba attach`, `vba rebuild`,
   `vba list`, and `vba extract` are the normal macro workflows.
+- Simple Excel entry forms are supported through `xlsx forms entry`; they use
+  worksheet cells plus a Form Control button, not ActiveX/MSForms controls.
 - `vba add-module`, `replace-module`, and `remove-module` are guarded and are
   not the preferred path for Office-shaped projects.
 - XLSM pure authoring can package, list, and extract minimal `.frm` UserForm

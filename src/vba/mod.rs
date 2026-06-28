@@ -18,7 +18,7 @@ use std::path::Path;
 
 pub(crate) use authoring::{
     VbaBuildBinOptions, VbaPureCreateOptions, VbaRebuildOptions, vba_build_bin, vba_create_pure,
-    vba_rebuild,
+    vba_rebuild, vba_xlsx_standard_module_project_bin,
 };
 pub(crate) use create::{VbaCreateOptions, vba_create};
 pub(crate) use model::VbaMutationOptions;

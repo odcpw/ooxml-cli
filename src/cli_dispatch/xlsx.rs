@@ -5,6 +5,7 @@ mod conditional_formatting;
 mod data_validations;
 mod dimensions;
 mod filters_sorts;
+mod forms;
 mod freeze;
 mod hyperlinks;
 mod names;
@@ -23,6 +24,7 @@ use self::conditional_formatting::dispatch_xlsx_conditional_formatting;
 use self::data_validations::dispatch_xlsx_data_validations;
 use self::dimensions::dispatch_xlsx_dimensions;
 use self::filters_sorts::dispatch_xlsx_filters_sorts;
+use self::forms::dispatch_xlsx_forms;
 use self::freeze::dispatch_xlsx_freeze;
 use self::hyperlinks::dispatch_xlsx_hyperlinks;
 use self::names::dispatch_xlsx_names;
@@ -104,6 +106,7 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
         [family, group, ..] if family == "xlsx" && group == "filters-sorts" => {
             dispatch_xlsx_filters_sorts(args)
         }
+        [family, group, ..] if family == "xlsx" && group == "forms" => dispatch_xlsx_forms(args),
         [family, group, ..] if family == "xlsx" && group == "cells" => dispatch_xlsx_cells(args),
         [family, group, ..] if family == "xlsx" && group == "freeze" => dispatch_xlsx_freeze(args),
         [family, group, ..] if family == "xlsx" && group == "sheets" => dispatch_xlsx_sheets(args),

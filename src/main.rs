@@ -61,6 +61,7 @@ mod xlsx_conditional_formatting;
 mod xlsx_data_validations;
 mod xlsx_dimensions;
 mod xlsx_filters_sorts;
+mod xlsx_forms;
 mod xlsx_formula_recalc;
 mod xlsx_freeze;
 mod xlsx_hyperlinks;
@@ -233,6 +234,7 @@ pub(crate) use xlsx_filters_sorts::{
     xlsx_filters_sorts_clear_column_filter, xlsx_filters_sorts_clear_sort,
     xlsx_filters_sorts_set_autofilter, xlsx_filters_sorts_set_sort, xlsx_filters_sorts_show,
 };
+pub(crate) use xlsx_forms::{XlsxFormsEntryOptions, xlsx_forms_entry};
 pub(crate) use xlsx_formula_recalc::{
     add_xlsx_formula_recalc_package_updates, xlsx_workbook_waiting_for_formula_recalc,
 };

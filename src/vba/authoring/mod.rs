@@ -108,6 +108,26 @@ fn build_vba_project_bin(project: &VbaProjectModel) -> VbaAuthoringResult<Vec<u8
     build_streams_file(&streams).map_err(VbaAuthoringError::build_failed)
 }
 
+pub(crate) fn vba_xlsx_standard_module_project_bin(
+    module_name: &str,
+    source: &str,
+    sheet_code_names: &[&str],
+) -> CliResult<Vec<u8>> {
+    let mut modules = Vec::new();
+    modules.push(VbaModuleModel::excel_workbook_document());
+    for sheet_code_name in sheet_code_names {
+        modules.push(VbaModuleModel::excel_sheet_document(*sheet_code_name));
+    }
+    modules.push(VbaModuleModel::new(
+        module_name,
+        None::<String>,
+        VbaModuleKind::Standard,
+        source.as_bytes().to_vec(),
+    ));
+    let project = VbaProjectModel::xlsx(modules);
+    build_vba_project_bin(&project).map_err(authoring_error_to_cli)
+}
+
 pub(crate) struct VbaBuildBinOptions<'a> {
     pub(crate) family: Option<&'a str>,
     pub(crate) sources: Vec<String>,
