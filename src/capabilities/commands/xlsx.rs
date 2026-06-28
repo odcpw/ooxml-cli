@@ -172,7 +172,7 @@ fn forms_commands() -> Vec<Value> {
     vec![capability_command(
         "ooxml xlsx forms entry",
         "entry --out <workbook.xlsm> [--field <label>...]",
-        "Create a macro-enabled workbook with labeled worksheet input cells and a non-ActiveX Form Control button that appends entries to a data sheet.",
+        "Create a macro-enabled workbook with a non-ActiveX Group Box, Label, worksheet text inputs, and Form Control buttons for submit, clear, and sample-fill macros.",
         &["package", "sheet", "range", "form", "module"],
         false,
         Some("it creates a package and is not an apply/serve mutation op"),
@@ -205,7 +205,7 @@ fn forms_commands() -> Vec<Value> {
                 "--button",
                 "button",
                 "string",
-                "caption for the Form Control button; default Submit",
+                "caption for the submit Form Control button; default Submit",
             ),
             flag(
                 "--force",

@@ -207,7 +207,7 @@ cp -R skills/ooxml ~/.codex/skills/
 
 - `ooxml-cli` edits OOXML packages directly; it is not a full desktop Office replacement.
 - Macro execution is never implicit. Use `vba run-smoke` only when local Excel execution is intended.
-- For simple Excel forms, use `xlsx forms entry`; it creates worksheet input cells and a non-ActiveX Form Control button.
+- For simple Excel forms, use `xlsx forms entry`; it creates a worksheet Group Box, Label, styled text input cells, and non-ActiveX Form Control buttons.
 - XLSM can package, list, and extract minimal `.frm` UserForm source, but generated MSForms/UserForms are not runtime-loadable yet. `.frx` sidecars, binary controls, PPTM/DOCM UserForms, digital signatures, password/protection editing, and arbitrary VBE compile proof are not supported.
 - `vba add-module`, `replace-module`, and `remove-module` are guarded paths. Prefer `vba create --pure`, `vba rebuild`, or opaque `vba attach`.
 - Go code is not the normal development path.

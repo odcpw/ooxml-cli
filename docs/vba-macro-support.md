@@ -50,7 +50,7 @@ Implemented behavior:
 - Detect package macro state and VBA consistency.
 - Build source-only/cache-free XLSM/PPTM/DOCM `vbaProject.bin` files in pure Rust.
 - XLSM/PPTM/DOCM pure authoring accepts `.bas` and `.cls` source modules.
-- Create simple Excel entry forms with worksheet input cells, a VML-backed non-ActiveX Form Control button, and a generated VBA submit macro.
+- Create simple Excel entry forms with a VML-backed non-ActiveX Group Box, Label, worksheet text input cells, and Form Control buttons for submit, clear, and sample-fill macros.
 - XLSM pure authoring accepts `.frm` UserForm source for package/list/extract workflows only; Office runtime load is not supported yet.
 - `.frx` sidecars, valid MSForms designer type-info generation, and binary-backed form controls are refused instead of guessed.
 - DOCM pure authoring synthesizes Word's `ThisDocument` host module when needed.
@@ -84,10 +84,11 @@ ooxml --json vba list .\out\entry-form.xlsm
 ```
 
 The command creates a fresh `.xlsm` with a form sheet, an entries sheet, a
-non-ActiveX Form Control button stored in VML, and a generated `SubmitEntry`
-macro. Desktop Excel proof on Windows showed the workbook opens without repair,
-the button runs the assigned macro after the file is trusted, input cells are
-cleared, and the submitted row is appended to the entries sheet.
+non-ActiveX Group Box, Label, and Form Control buttons stored in VML. Text input
+uses styled worksheet cells because normal worksheet Form Controls do not expose
+a working non-ActiveX edit box. Desktop Excel proof on Windows showed the
+workbook opens without repair, `Fill Sample` populates inputs, `Clear` clears
+them, and `Submit Entry` appends a submitted row to the entries sheet.
 
 ## Pure XLSM/PPTM/DOCM Creation Path
 
