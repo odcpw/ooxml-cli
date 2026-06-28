@@ -20,6 +20,9 @@ const RUST_ONLY_CAPABILITY_PATHS: &[&str] = &[
     "ooxml docx tables create",
     "ooxml pptx scaffold",
     "ooxml repair normalize",
+    "ooxml vba build-bin",
+    "ooxml vba rebuild",
+    "ooxml vba run-smoke",
     "ooxml xlsx scaffold",
     "ooxml xlsx tables create",
 ];

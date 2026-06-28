@@ -27,7 +27,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--family",
                     "family",
                     "string",
-                    "target host family; xlsx, pptx, and docx support .bas/.cls source; xlsx also supports generated blank-designer .frm UserForms",
+                    "target host family; xlsx, pptx, and docx support .bas/.cls source; xlsx also accepts .frm source for package/list/extract workflows only",
                 ),
                 flag(
                     "--force",
@@ -40,7 +40,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--source",
                     "source",
                     "stringArray",
-                    "repeatable .bas, .cls, or .frm source file; .frx sidecars are refused until binary controls are supported",
+                    "repeatable .bas, .cls, or .frm source file; .frm is package/list/extract only, and .frx sidecars are refused until binary controls are supported",
                 ),
             ],
         ),
@@ -113,7 +113,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--source",
                     "source",
                     "stringArray",
-                    "repeatable .bas/.cls source file, plus .frm for pure XLSM mode; legacy Office-COM mode supports .bas/.cls",
+                    "repeatable .bas/.cls source file, plus package/list/extract-only .frm for pure XLSM mode; legacy Office-COM mode supports .bas/.cls",
                 ),
                 flag(
                     "--visible",

@@ -277,10 +277,11 @@ VBA limits:
   `vba list`, and `vba extract` are the normal macro workflows.
 - `vba add-module`, `replace-module`, and `remove-module` are guarded and are
   not the preferred path for Office-shaped projects.
-- XLSM pure authoring supports minimal generated blank-designer `.frm`
-  UserForms. `.frx` sidecars, binary-backed controls, PPTM/DOCM UserForms,
-  macro execution automation, VBE compile proof, signatures, and
-  password/protection editing are not general features.
+- XLSM pure authoring can package, list, and extract minimal `.frm` UserForm
+  source, but generated forms are not runtime-loadable yet. `.frx` sidecars,
+  binary-backed controls, valid MSForms designer stream generation,
+  PPTM/DOCM UserForms, macro execution automation, VBE compile proof,
+  signatures, and password/protection editing are not general features.
 - `run-smoke` is the explicit local proof harness for harmless generated XLSM
   macros. It runs Excel and should only be used when macro execution is wanted.
 

@@ -6,6 +6,7 @@ const PROJECT_VERSION_MAJOR: u32 = 0x6C59D84B;
 const PROJECT_VERSION_MINOR: u16 = 0x0004;
 const WRITE_COOKIE: u16 = 0xFFFF;
 const USERFORM_PACKAGE_GUID: &str = "{AC9F2F90-E877-11CE-9F68-00AA00574A4F}";
+const MSFORMS_LIBID: &str = r#"*\G{0D452EE1-E08F-101A-852E-02608C4D0BB4}#2.0#0#C:\Program Files\Microsoft Office\root\VFS\System\FM20.DLL#Microsoft Forms 2.0 Object Library"#;
 
 pub(super) fn render_project_stream(project: &VbaProjectModel) -> Vec<u8> {
     let mut lines = Vec::new();
@@ -83,7 +84,7 @@ pub(super) fn render_dir_stream(project: &VbaProjectModel) -> Vec<u8> {
     out.extend(fixed_u32_record(0x0008, 0));
     out.extend(project_version_record());
     out.extend(dual_string_record(0x000C, 0x003C, b""));
-    out.extend(render_registered_references());
+    out.extend(render_registered_references(project));
     out.extend(fixed_u16_record(0x000F, project.modules.len() as u16));
     out.extend(fixed_u16_record(0x0013, WRITE_COOKIE));
     for module in &project.modules {
@@ -106,8 +107,8 @@ pub(super) fn render_dir_stream(project: &VbaProjectModel) -> Vec<u8> {
     out
 }
 
-fn render_registered_references() -> Vec<u8> {
-    [
+fn render_registered_references(project: &VbaProjectModel) -> Vec<u8> {
+    let mut references = vec![
         (
             "stdole",
             r#"*\G{00020430-0000-0000-C000-000000000046}#2.0#0#C:\Windows\System32\stdole2.tlb#OLE Automation"#,
@@ -116,10 +117,18 @@ fn render_registered_references() -> Vec<u8> {
             "Office",
             r#"*\G{2DF8D04C-5BFA-101B-BDE5-00AA0044DE52}#2.0#0#C:\Program Files\Common Files\Microsoft Shared\OFFICE16\MSO.DLL#Microsoft Office 16.0 Object Library"#,
         ),
-    ]
-    .into_iter()
-    .flat_map(|(name, libid)| registered_reference_record(name, libid))
-    .collect()
+    ];
+    if project
+        .modules
+        .iter()
+        .any(|module| module.kind == VbaModuleKind::UserForm)
+    {
+        references.push(("MSForms", MSFORMS_LIBID));
+    }
+    references
+        .into_iter()
+        .flat_map(|(name, libid)| registered_reference_record(name, libid))
+        .collect()
 }
 
 fn registered_reference_record(name: &str, libid: &str) -> Vec<u8> {
@@ -429,7 +438,7 @@ mod tests {
 
         let mut expected = vec![
             0x0001, 0x004A, 0x0002, 0x0014, 0x0003, 0x0004, 0x0005, 0x0006, 0x0007, 0x0008, 0x0009,
-            0x000C, 0x0016, 0x000D, 0x0016, 0x000D, 0x000F, 0x0013,
+            0x000C, 0x0016, 0x000D, 0x0016, 0x000D, 0x0016, 0x000D, 0x000F, 0x0013,
         ];
         expected.extend(module_record_ids(VbaModuleKind::Document));
         expected.extend(module_record_ids(VbaModuleKind::Document));
