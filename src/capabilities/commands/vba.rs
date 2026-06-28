@@ -27,7 +27,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--family",
                     "family",
                     "string",
-                    "target host family; xlsx, pptx, and docx support .bas and .cls source, with host modules synthesized where required",
+                    "target host family; xlsx, pptx, and docx support .bas/.cls source; xlsx also supports generated blank-designer .frm UserForms",
                 ),
                 flag(
                     "--force",
@@ -40,7 +40,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--source",
                     "source",
                     "stringArray",
-                    "repeatable .bas or .cls source file",
+                    "repeatable .bas, .cls, or .frm source file; .frx sidecars are refused until binary controls are supported",
                 ),
             ],
         ),
@@ -113,7 +113,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--source",
                     "source",
                     "stringArray",
-                    "repeatable .bas or .cls source file to import",
+                    "repeatable .bas/.cls source file, plus .frm for pure XLSM mode; legacy Office-COM mode supports .bas/.cls",
                 ),
                 flag(
                     "--visible",
@@ -126,7 +126,7 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml vba rebuild",
             "rebuild <workbook.xlsm|deck.pptm|document.docm> --source-dir macros --out <edited.xlsm|edited.pptm|edited.docm>",
-            "Rebuild a macro-enabled package from a directory of .bas/.cls sources using pure Rust.",
+            "Rebuild a macro-enabled package from a directory of .bas/.cls/.frm sources using pure Rust.",
             &["package", "module"],
             true,
             Some(
@@ -162,7 +162,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--source-dir",
                     "sourceDir",
                     "string",
-                    "directory recursively scanned for .bas and .cls source files",
+                    "directory recursively scanned for .bas, .cls, and .frm source files; .frx sidecars are refused",
                 ),
             ],
         ),
@@ -210,10 +210,12 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml vba extract",
             "extract <file>",
-            "Extract parseable VBA source modules to .bas/.cls files.",
+            "Extract parseable VBA source modules to .bas/.cls/.frm files.",
             &["package", "module"],
             false,
-            Some("source extraction writes .bas/.cls files but does not mutate the Office package"),
+            Some(
+                "source extraction writes .bas/.cls/.frm files but does not mutate the Office package",
+            ),
             vec![
                 flag(
                     "--module",
@@ -225,7 +227,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--out-dir",
                     "outDir",
                     "string",
-                    "directory for extracted .bas/.cls modules",
+                    "directory for extracted .bas/.cls/.frm modules",
                 ),
             ],
         ),

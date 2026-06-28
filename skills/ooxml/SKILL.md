@@ -238,6 +238,7 @@ oox --json xlsx scaffold workbook.xlsx --force
 oox --json vba build-bin --family xlsx --source macros/Module1.bas --out vbaProject.bin
 oox --json vba attach workbook.xlsx --bin vbaProject.bin --out workbook.xlsm
 oox --json vba create workbook.xlsx --pure --family xlsx --source macros/Module1.bas --out workbook.xlsm
+oox --json vba create workbook.xlsx --pure --family xlsx --source macros/Module1.bas --source macros/Dialog.frm --out userform.xlsm
 oox --json vba rebuild workbook.xlsm --source-dir macros --out rebuilt.xlsm
 oox --json vba list workbook.xlsm
 oox --json vba extract workbook.xlsm --out-dir macros
@@ -276,7 +277,9 @@ VBA limits:
   `vba list`, and `vba extract` are the normal macro workflows.
 - `vba add-module`, `replace-module`, and `remove-module` are guarded and are
   not the preferred path for Office-shaped projects.
-- Macro execution automation, VBE compile proof, signatures, UserForms, and
+- XLSM pure authoring supports minimal generated blank-designer `.frm`
+  UserForms. `.frx` sidecars, binary-backed controls, PPTM/DOCM UserForms,
+  macro execution automation, VBE compile proof, signatures, and
   password/protection editing are not general features.
 - `run-smoke` is the explicit local proof harness for harmless generated XLSM
   macros. It runs Excel and should only be used when macro execution is wanted.

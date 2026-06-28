@@ -1,6 +1,6 @@
 # VBA Macro Support
 
-`ooxml-cli` supports practical VBA package workflows for Excel, PowerPoint, and Word macro-enabled files. The implementation is deliberately conservative: XLSM, PPTM, and DOCM can be authored from `.bas` / `.cls` source through the pure Rust `vba create --pure` path, with host document modules synthesized where needed. Package wiring is mutated safely, and source streams are only rewritten where the supported behavior is proven.
+`ooxml-cli` supports practical VBA package workflows for Excel, PowerPoint, and Word macro-enabled files. The implementation is deliberately conservative: XLSM, PPTM, and DOCM can be authored from `.bas` / `.cls` source through the pure Rust `vba create --pure` path, with host document modules synthesized where needed. XLSM also supports minimal generated blank-designer `.frm` UserForms. Package wiring is mutated safely, and source streams are only rewritten where the supported behavior is proven.
 
 Authoritative specs:
 
@@ -49,6 +49,8 @@ Implemented behavior:
 - Detect package macro state and VBA consistency.
 - Build source-only/cache-free XLSM/PPTM/DOCM `vbaProject.bin` files in pure Rust.
 - XLSM/PPTM/DOCM pure authoring accepts `.bas` and `.cls` source modules.
+- XLSM pure authoring accepts `.frm` UserForms with generated blank designer storage.
+- `.frx` sidecars and binary-backed form controls are refused instead of guessed.
 - DOCM pure authoring synthesizes Word's `ThisDocument` host module when needed.
 - Attach pure-generated VBA projects to existing or freshly scaffolded `.xlsx` / `.pptx` / `.docx` packages with `vba create --pure`.
 - Rebuild an existing `.xlsm` / `.pptm` / `.docm` package from a directory of supported source files with `vba rebuild --source-dir`.
@@ -78,6 +80,22 @@ ooxml --json vba create .\workbook.xlsx `
 ooxml validate --strict .\out\workbook.xlsm
 ooxml --json vba list .\out\workbook.xlsm
 ```
+
+For a minimal XLSM UserForm, pass a `.frm` source alongside any standard modules:
+
+```powershell
+ooxml --json vba create .\workbook.xlsx `
+  --pure `
+  --family xlsx `
+  --source .\macros\AgentSmoke.bas `
+  --source .\macros\Dialog.frm `
+  --out .\out\userform.xlsm
+ooxml --json validate --strict .\out\userform.xlsm
+ooxml --json vba list .\out\userform.xlsm
+ooxml --json vba extract .\out\userform.xlsm --out-dir .\out\macros
+```
+
+The current `.frm` path writes the required PROJECT `Package`/`BaseClass` entries, `dir` metadata, module source, and root designer storage streams. It is intended for blank-designer forms; `.frx` sidecars, embedded controls, and PPTM/DOCM form packaging are not supported yet.
 
 For PowerPoint:
 
@@ -265,6 +283,8 @@ Proof level `microsoft-office-com-open` means desktop Office opened the package 
 - User-supplied `ThisDocument` document-module replacement beyond the synthesized host module.
 - Procedure/function-level editing helpers.
 - Signatures/resigning.
-- Forms and `.frx` import/export.
+- UserForm features beyond minimal XLSM blank-designer `.frm` generation.
+- `.frx` import/export and binary-backed form controls.
+- PPTM/DOCM UserForm packaging.
 - Password/protection editing.
 - Access/ACCDB VBA.

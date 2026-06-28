@@ -464,15 +464,15 @@ fn docx_pure_create_infers_family_and_rejects_userforms() {
         "--out",
         &rejected_bin,
     ]);
-    assert_eq!(code, 2, "docx userform refusal exit");
+    assert_eq!(code, 4, "docx userform refusal exit");
     assert_eq!(stdout, None, "docx userform refusal stdout");
     let stderr = stderr.expect("docx userform refusal stderr");
-    assert_eq!(stderr["error"]["code"], "invalid_args");
+    assert_eq!(stderr["error"]["code"], "unsupported_type");
     assert!(
         stderr["error"]["message"]
             .as_str()
             .expect("message")
-            .contains("VBA source must be .bas or .cls"),
+            .contains("UserForm authoring is currently supported only for --family xlsx"),
         "unexpected userform refusal: {stderr:?}"
     );
 

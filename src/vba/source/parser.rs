@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use sha2::{Digest, Sha256};
 
 use crate::{CliError, CliResult, zip_bytes};
@@ -102,6 +104,8 @@ pub(super) fn parse_source_project(data: &[u8]) -> Result<SourceProject, String>
         warnings,
     };
 
+    let user_form_names = user_form_names_from_project_metadata(&project);
+
     for (idx, module) in modules.into_iter().enumerate() {
         let mut item = SourceModule {
             number: idx + 1,
@@ -122,7 +126,6 @@ pub(super) fn parse_source_project(data: &[u8]) -> Result<SourceProject, String>
             source: String::new(),
             warnings: Vec::new(),
         };
-        item.extension = extension_for_module_kind(&item.kind).to_string();
         if item.name.is_empty() {
             item.name.clone_from(&item.stream_name);
         }
@@ -131,7 +134,12 @@ pub(super) fn parse_source_project(data: &[u8]) -> Result<SourceProject, String>
             item.extension = ".bas".to_string();
             item.warnings
                 .push("module type was not present in dir stream".to_string());
+        } else if user_form_names.contains(&item.name.to_ascii_lowercase())
+            || user_form_names.contains(&item.stream_name.to_ascii_lowercase())
+        {
+            item.kind = "userform".to_string();
         }
+        item.extension = extension_for_module_kind(&item.kind).to_string();
         let stream_path = format!("VBA/{}", item.stream_name);
         match cfb_file.stream(&stream_path) {
             Err(err) => item.warnings.push(err),
@@ -167,4 +175,25 @@ pub(super) fn parse_source_project(data: &[u8]) -> Result<SourceProject, String>
     }
     project.modules.sort_by_key(|module| module.number);
     Ok(project)
+}
+
+fn user_form_names_from_project_metadata(project: &SourceProject) -> BTreeSet<String> {
+    project
+        .project_metadata
+        .as_ref()
+        .map(|metadata| {
+            metadata
+                .modules
+                .iter()
+                .filter(|module| module.kind.eq_ignore_ascii_case("baseclass"))
+                .flat_map(|module| {
+                    [
+                        module.name.trim().to_ascii_lowercase(),
+                        module.value.trim().to_ascii_lowercase(),
+                    ]
+                })
+                .filter(|name| !name.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }
