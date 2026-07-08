@@ -157,3 +157,10 @@ Behavior change: `vba run-smoke` now rejects invalid CLI-only options before the
 - Files touched: `src/vba/source/codec.rs`.
 - Tests added: decompressor regression tests for a bounded output ceiling and per-chunk decompressed output greater than 4096 bytes.
 - Behavior changes: MS-OVBA container decompression now enforces a 256 MiB total decompressed output limit and a 4096-byte decompressed chunk limit. Raw chunks up to 4096 bytes are accepted so the writer can emit a short final raw chunk.
+
+## Additional Full-Suite Gate
+
+- Status: fixed.
+- Files touched: `src/vba/run_smoke.rs`.
+- Tests added: none; existing `tests/vba_run_smoke_cli.rs` covered the contract.
+- Behavior changes: `vba run-smoke` validates local CLI arguments such as `--smoke-mode`, `--timeout-seconds`, and generated-workbook-only options before returning the non-Windows Office COM availability error.

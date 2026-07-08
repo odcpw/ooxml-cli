@@ -24,12 +24,13 @@ pub(crate) fn vba_run_smoke(
     input_file: Option<&str>,
     options: VbaRunSmokeOptions<'_>,
 ) -> CliResult<(Value, i32)> {
-    if input_file.is_some() {
+    let input_path = if let Some(input_file) = input_file {
         if options.smoke_mode.is_some() {
             return Err(CliError::invalid_args(
                 "--smoke-mode is only used when vba run-smoke generates a workbook; omit it when passing an .xlsm file",
             ));
         }
+        Some(resolve_input_xlsm_path(input_file)?)
     } else {
         if options
             .macro_name
@@ -39,7 +40,8 @@ pub(crate) fn vba_run_smoke(
                 "--macro is only supported when passing an existing .xlsm file; generated smoke workbooks always use AgentSmokeRun",
             ));
         }
-    }
+        None
+    };
     if options.timeout_seconds == 0 {
         return Err(CliError::invalid_args(
             "--timeout-seconds must be greater than zero",
@@ -51,7 +53,6 @@ pub(crate) fn vba_run_smoke(
             "vba run-smoke requires Windows desktop Microsoft Excel because it explicitly executes VBA through Office COM",
         ));
     }
-    let input_path = input_file.map(resolve_input_xlsm_path).transpose()?;
     let Some(powershell) = find_program(&["powershell.exe", "powershell"]) else {
         return Err(CliError::unsupported_type(
             "vba run-smoke requires powershell.exe on Windows",
