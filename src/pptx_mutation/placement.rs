@@ -869,7 +869,7 @@ fn build_image_mutation(file: &str, request: &ImageRequest) -> CliResult<ImageMu
         add_relationship_to_xml(rels_xml, &relationship_id, REL_TYPE_IMAGE, &rel_target);
     let content_types = zip_text(file, "[Content_Types].xml")?;
     let updated_content_types_xml =
-        ensure_content_type_override(content_types, &target_uri, &content_type);
+        ensure_content_type_override(content_types, &target_uri, &content_type)?;
     let shape_name = if request.name.is_empty() {
         Path::new(&target_uri)
             .file_stem()

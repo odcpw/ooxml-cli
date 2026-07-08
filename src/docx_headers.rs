@@ -368,7 +368,7 @@ fn ensure_docx_header_footer(
             zip_text(ctx.file, "[Content_Types].xml")?,
             &part_uri,
             docx_header_footer_content_type(kind),
-        );
+        )?;
         created_part = true;
         rels_xml = Some(rel_xml);
         content_types_xml = Some(content_xml);

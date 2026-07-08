@@ -390,32 +390,34 @@ impl PptxPackageEditor {
         content_type_from_xml(&self.content_types_xml, uri)
     }
 
-    fn add_binary_part(&mut self, uri: &str, data: Vec<u8>, content_type: &str) {
+    fn add_binary_part(&mut self, uri: &str, data: Vec<u8>, content_type: &str) -> CliResult<()> {
         let part = part_name(uri);
         self.entries.insert(part.clone());
         self.binary_overrides.insert(part.clone(), data);
         if !content_type.is_empty() && !part.ends_with(".rels") {
             self.content_types_xml =
-                ensure_content_type_override(self.content_types_xml.clone(), &part, content_type);
+                ensure_content_type_override(self.content_types_xml.clone(), &part, content_type)?;
             self.text_overrides.insert(
                 "[Content_Types].xml".to_string(),
                 self.content_types_xml.clone(),
             );
         }
+        Ok(())
     }
 
-    fn add_text_part(&mut self, uri: &str, text: String, content_type: &str) {
+    fn add_text_part(&mut self, uri: &str, text: String, content_type: &str) -> CliResult<()> {
         let part = part_name(uri);
         self.entries.insert(part.clone());
         self.text_overrides.insert(part.clone(), text);
         if !content_type.is_empty() && !part.ends_with(".rels") {
             self.content_types_xml =
-                ensure_content_type_override(self.content_types_xml.clone(), &part, content_type);
+                ensure_content_type_override(self.content_types_xml.clone(), &part, content_type)?;
             self.text_overrides.insert(
                 "[Content_Types].xml".to_string(),
                 self.content_types_xml.clone(),
             );
         }
+        Ok(())
     }
 
     fn add_relationships(&mut self, source_uri: &str, rels: &[RelationshipEntry]) {
@@ -458,7 +460,7 @@ impl<'a> PartImportContext<'a> {
         }
 
         let target_uri = allocate_imported_part_uri(editor, &source_uri, &content_type);
-        editor.add_binary_part(&target_uri, bytes, &content_type);
+        editor.add_binary_part(&target_uri, bytes, &content_type)?;
         self.imported.insert(source_uri.clone(), target_uri.clone());
 
         let rels = source_relationship_entries(self.source_file, &source_uri);
@@ -527,7 +529,7 @@ fn stage_import_slide(
         &new_slide_uri,
         remint_pptx_creation_ids(&slide_xml, &new_slide_uri),
         SLIDE_CONTENT_TYPE,
-    );
+    )?;
 
     let source_slide_rels = source_relationship_entries(source_file, &source_slide.part_uri);
     let mut new_slide_rels = Vec::new();
@@ -687,7 +689,7 @@ fn import_notes(
         &new_notes_uri,
         remint_pptx_creation_ids(&notes_xml, &new_notes_uri),
         NOTES_CONTENT_TYPE,
-    );
+    )?;
 
     let source_rels = source_relationship_entries(source_file, &source_slide.notes_uri);
     let mut new_notes_rels = Vec::new();
@@ -817,7 +819,7 @@ fn import_layout_into_editor(
         &new_layout_uri,
         remint_pptx_creation_ids(&layout_xml, &new_layout_uri),
         LAYOUT_CONTENT_TYPE,
-    );
+    )?;
     let layout_rels = source_relationship_entries(source_file, &source_layout.part_uri);
     let mut new_layout_rels = Vec::new();
     for rel in layout_rels {
@@ -860,7 +862,7 @@ fn import_layout_into_editor(
         ),
         &new_master_uri,
     );
-    editor.add_text_part(&new_master_uri, master_xml, MASTER_CONTENT_TYPE);
+    editor.add_text_part(&new_master_uri, master_xml, MASTER_CONTENT_TYPE)?;
     let mut new_master_rels = Vec::new();
     for rel in source_master_rels {
         if rel.target_mode == "External" {
@@ -952,7 +954,7 @@ fn import_master_into_editor(
             &new_layout_uri,
             remint_pptx_creation_ids(&layout_xml, &new_layout_uri),
             LAYOUT_CONTENT_TYPE,
-        );
+        )?;
         let layout_rels = source_relationship_entries(source_file, &source_layout_uri);
         let mut new_layout_rels = Vec::new();
         for layout_rel in layout_rels {
@@ -986,7 +988,7 @@ fn import_master_into_editor(
             &new_master_uri,
         ),
         MASTER_CONTENT_TYPE,
-    );
+    )?;
     let mut new_master_rels = Vec::new();
     for rel in source_master_rels {
         if rel.target_mode == "External" {

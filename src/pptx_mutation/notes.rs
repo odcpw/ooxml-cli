@@ -133,7 +133,8 @@ fn build_notes_mutation(file: &str, slide: u32, text: &str) -> CliResult<PptxNot
             ".xml",
             "ppt/notesSlides/notesSlide",
         );
-        content_types = ensure_content_type_override(content_types, &notes_uri, NOTES_CONTENT_TYPE);
+        content_types =
+            ensure_content_type_override(content_types, &notes_uri, NOTES_CONTENT_TYPE)?;
 
         let mut notes_master_uri = find_presentation_related_part(file, NOTES_MASTER_REL_TYPE)?;
         if notes_master_uri.is_none() {
@@ -143,8 +144,11 @@ fn build_notes_mutation(file: &str, slide: u32, text: &str) -> CliResult<PptxNot
                 ".xml",
                 "ppt/notesMasters/notesMaster",
             );
-            content_types =
-                ensure_content_type_override(content_types, &master_uri, NOTES_MASTER_CONTENT_TYPE);
+            content_types = ensure_content_type_override(
+                content_types,
+                &master_uri,
+                NOTES_MASTER_CONTENT_TYPE,
+            )?;
             overrides.insert(master_uri.clone(), create_notes_master_document());
             if let Some(theme_uri) = find_presentation_related_part(file, THEME_REL_TYPE)? {
                 let target = relationship_target_from_source_to_target(&master_uri, &theme_uri);

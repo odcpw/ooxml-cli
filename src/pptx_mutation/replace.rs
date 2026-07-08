@@ -733,7 +733,7 @@ fn replace_image(
     text_overrides.insert(plan.rels_part.clone(), plan.rels_xml.clone());
     let mut content_types = zip_text(file, "[Content_Types].xml")?;
     content_types =
-        ensure_content_type_override(content_types, &plan.new_target_uri, &plan.new_content_type);
+        ensure_content_type_override(content_types, &plan.new_target_uri, &plan.new_content_type)?;
     text_overrides.insert("[Content_Types].xml".to_string(), content_types);
     let mut binary_overrides = BTreeMap::new();
     binary_overrides.insert(
@@ -856,7 +856,7 @@ fn replace_images_for_slides(
         image_data,
         new_content_type,
         fit_mode,
-    );
+    )?;
     write_replace_mutation(file, &plan.text_overrides, &plan.binary_overrides, &options)?;
     Ok(image_batch_replace_result_json(&selector.normalized, &plan))
 }
@@ -869,7 +869,7 @@ fn plan_image_batch_replace(
     image_data: &[u8],
     new_content_type: &str,
     fit_mode: &str,
-) -> ImageBatchReplacePlan {
+) -> CliResult<ImageBatchReplacePlan> {
     let mut plan = ImageBatchReplacePlan {
         slides: Vec::with_capacity(selected_slides.len()),
         text_overrides: BTreeMap::new(),
@@ -968,18 +968,18 @@ fn plan_image_batch_replace(
             .slides
             .iter()
             .filter_map(|item| item.plan.as_ref())
-            .fold(content_types, |content_types, item| {
+            .try_fold(content_types, |content_types, item| {
                 ensure_content_type_override(
                     content_types,
                     &item.new_target_uri,
                     &item.new_content_type,
                 )
-            });
+            })?;
         plan.text_overrides
             .insert("[Content_Types].xml".to_string(), content_types);
     }
 
-    plan
+    Ok(plan)
 }
 
 fn image_target_not_found(target_selector: &str, slide: u32, file: &str) -> CliError {

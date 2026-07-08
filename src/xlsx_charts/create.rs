@@ -220,7 +220,7 @@ pub(super) fn build_chart_create_artifacts(
     let chart_uri = allocate_numbered_package_part(&mut entries, "/xl/charts/chart", ".xml");
     let mut overrides = BTreeMap::new();
     let mut content_types = zip_text(file, "[Content_Types].xml")?;
-    content_types = ensure_content_type_override(content_types, &chart_uri, CONTENT_TYPE_CHART);
+    content_types = ensure_content_type_override(content_types, &chart_uri, CONTENT_TYPE_CHART)?;
 
     let (drawing_uri, drawing_overrides) = build_or_update_chart_drawing(
         file,
@@ -235,7 +235,7 @@ pub(super) fn build_chart_create_artifacts(
         .any(|entry| format!("/{}", entry.trim_start_matches('/')) == drawing_uri)
     {
         content_types =
-            ensure_content_type_override(content_types, &drawing_uri, CONTENT_TYPE_DRAWING);
+            ensure_content_type_override(content_types, &drawing_uri, CONTENT_TYPE_DRAWING)?;
     }
 
     overrides.insert("[Content_Types].xml".to_string(), content_types);

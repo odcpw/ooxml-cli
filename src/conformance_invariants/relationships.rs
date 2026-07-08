@@ -4,8 +4,9 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    CliResult, attr_exact, local_name, relationship_source_uri, relationships_part_for,
-    resolve_relationship_target, zip_text,
+    CliResult, attr_exact, local_name, opc_part_lookup_key, opc_part_lookup_set,
+    relationship_source_uri, relationships_part_for, resolve_relationship_target_part_uri,
+    zip_text,
 };
 
 use super::spec::expected_relationship_target_content_types;
@@ -21,21 +22,32 @@ pub(super) enum RelationshipPartError {
 pub(super) fn check_package_relationship_closure(
     file: &str,
     entries: &[String],
-    entry_set: &BTreeSet<String>,
+    _entry_set: &BTreeSet<String>,
     parts: &[PartInfo],
 ) -> CliResult<Vec<Value>> {
     let mut diagnostics = Vec::new();
     let mut relationship_sources = BTreeSet::from(["/".to_string()]);
+    let entry_lookup_set = opc_part_lookup_set(entries);
     let content_types: BTreeMap<String, String> = parts
         .iter()
-        .map(|part| (part.uri.clone(), part.content_type.clone()))
+        .map(|part| {
+            (
+                opc_part_lookup_key(&part.uri).unwrap_or_else(|_| part.uri.to_ascii_lowercase()),
+                part.content_type.clone(),
+            )
+        })
         .collect();
 
     for part in parts {
         if is_rels_uri(&part.uri) {
             let source_uri = relationship_source_uri(&part.entry_name);
             relationship_sources.insert(source_uri.clone());
-            if source_uri != "/" && !entry_set.contains(&source_uri) {
+            if source_uri != "/"
+                && !entry_lookup_set.contains(
+                    &opc_part_lookup_key(&source_uri)
+                        .unwrap_or_else(|_| source_uri.to_ascii_lowercase()),
+                )
+            {
                 diagnostics.push(diag(
                     "OOXML_RELS_ORPHANED",
                     format!(
@@ -88,7 +100,7 @@ pub(super) fn check_package_relationship_closure(
                 ));
                 continue;
             }
-            if !rel.target_mode.is_empty() && rel.target_mode != "External" {
+            if !matches!(rel.target_mode.as_str(), "" | "Internal" | "External") {
                 diagnostics.push(diag(
                     "OOXML_RELATIONSHIP_TARGET_MODE",
                     format!("{label} has unsupported TargetMode {:?}", rel.target_mode),
@@ -107,8 +119,21 @@ pub(super) fn check_package_relationship_closure(
                 ));
                 continue;
             }
-            let target_uri = normalize_uri(&resolve_relationship_target(&source_uri, &rel.target));
-            if !entry_set.contains(&target_uri) {
+            let target_uri = match resolve_relationship_target_part_uri(&source_uri, &rel.target) {
+                Ok(target_uri) => normalize_uri(&target_uri),
+                Err(err) => {
+                    diagnostics.push(diag(
+                        "OOXML_RELATIONSHIP_TARGET_MALFORMED",
+                        format!(
+                            "{label} has malformed Target {:?}: {}",
+                            rel.target, err.message
+                        ),
+                    ));
+                    continue;
+                }
+            };
+            let target_key = opc_part_lookup_key(&target_uri)?;
+            if !entry_lookup_set.contains(&target_key) {
                 diagnostics.push(diag(
                     "OOXML_RELATIONSHIP_TARGET_MISSING",
                     format!("{label} points to missing part {target_uri}"),
@@ -118,7 +143,7 @@ pub(super) fn check_package_relationship_closure(
             let expected =
                 expected_relationship_target_content_types(&source_uri, &target_uri, &rel.rel_type);
             if !expected.is_empty() {
-                let actual = content_types.get(&target_uri).cloned().unwrap_or_default();
+                let actual = content_types.get(&target_key).cloned().unwrap_or_default();
                 if !expected.contains(&actual.as_str()) {
                     diagnostics.push(diag(
                         "OOXML_RELATIONSHIP_TARGET_CONTENT_TYPE",

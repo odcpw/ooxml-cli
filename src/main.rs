@@ -160,10 +160,10 @@ pub(crate) use mcp_support::{
 };
 pub(crate) use opc::{
     RelationshipEntry, add_relationship_to_xml, allocate_relationship_id, content_type_for_part,
-    ensure_content_type_override, ensure_package_root_relationship_xml, relationship_entries,
-    relationship_entries_from_xml, relationship_source_uri,
-    relationship_target_from_source_to_target, relationships, relationships_part_for,
-    resolve_relationship_target,
+    ensure_content_type_override, ensure_package_root_relationship_xml, opc_part_lookup_key,
+    opc_part_lookup_set, relationship_entries, relationship_entries_from_xml,
+    relationship_source_uri, relationship_target_from_source_to_target, relationships,
+    relationships_part_for, resolve_relationship_target, resolve_relationship_target_part_uri,
 };
 pub(crate) use package_discovery::{
     InspectPackageKind, detect_inspect_package_type, find_docx_document_part,

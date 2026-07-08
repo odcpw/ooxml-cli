@@ -149,7 +149,7 @@ pub(crate) fn xlsx_sheets_add(file: &str, options: XlsxSheetsAddOptions<'_>) -> 
         ctx.content_types_xml.clone(),
         &part_uri,
         CONTENT_TYPE_WORKSHEET,
-    );
+    )?;
 
     let mut overrides = BTreeMap::new();
     overrides.insert("xl/workbook.xml".to_string(), updated_workbook);

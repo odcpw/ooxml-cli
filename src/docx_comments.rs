@@ -102,7 +102,7 @@ pub(crate) fn docx_comments_add(
         zip_text(file, "[Content_Types].xml")?,
         &comments_part,
         "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
-    );
+    )?;
 
     let mut overrides = BTreeMap::new();
     overrides.insert(document_part.clone(), updated_document_xml);

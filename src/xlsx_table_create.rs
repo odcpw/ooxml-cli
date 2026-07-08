@@ -94,7 +94,7 @@ pub(crate) fn xlsx_tables_create(
         zip_text(file, "[Content_Types].xml")?,
         &target.table_part,
         CONTENT_TYPE_TABLE,
-    );
+    )?;
 
     let output_path = options.out.filter(|value| !value.trim().is_empty());
     let commit_path = if options.in_place {

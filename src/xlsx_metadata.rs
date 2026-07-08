@@ -313,7 +313,7 @@ pub(crate) fn xlsx_workbook_metadata_update(
                 content_types_xml,
                 &core_uri,
                 XLSX_CORE_PROPS_CONTENT_TYPE,
-            );
+            )?;
             root_rels_xml =
                 ensure_package_root_relationship_xml(root_rels_xml, XLSX_CORE_PROPS_REL, &core_uri);
         }
@@ -322,7 +322,7 @@ pub(crate) fn xlsx_workbook_metadata_update(
                 content_types_xml,
                 &app_uri,
                 XLSX_EXTENDED_PROPS_CONTENT_TYPE,
-            );
+            )?;
             root_rels_xml = ensure_package_root_relationship_xml(
                 root_rels_xml,
                 XLSX_EXTENDED_PROPS_REL,

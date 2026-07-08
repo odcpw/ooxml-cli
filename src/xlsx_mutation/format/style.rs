@@ -132,7 +132,7 @@ pub(crate) fn xlsx_ranges_set_style(
         zip_text(file, "[Content_Types].xml")?,
         &format!("/{styles_part}"),
         "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml",
-    );
+    )?;
 
     let output_path = options.out.filter(|value| !value.is_empty());
     let commit_path = if options.in_place {

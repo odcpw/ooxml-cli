@@ -728,7 +728,7 @@ fn build_pivot_create_artifacts(
         &cache_definition_uri,
         &cache_records_uri,
         &pivot_table_uri,
-    );
+    )?;
 
     let mut overrides = BTreeMap::new();
     overrides.insert("[Content_Types].xml".to_string(), content_types_xml);
@@ -1203,9 +1203,9 @@ fn add_pivot_content_type_overrides(
     cache_definition_uri: &str,
     cache_records_uri: &str,
     pivot_table_uri: &str,
-) -> String {
-    let xml = ensure_content_type_override(xml, cache_definition_uri, CONTENT_TYPE_PIVOT_CACHE);
-    let xml = ensure_content_type_override(xml, cache_records_uri, CONTENT_TYPE_PIVOT_RECORDS);
+) -> CliResult<String> {
+    let xml = ensure_content_type_override(xml, cache_definition_uri, CONTENT_TYPE_PIVOT_CACHE)?;
+    let xml = ensure_content_type_override(xml, cache_records_uri, CONTENT_TYPE_PIVOT_RECORDS)?;
     ensure_content_type_override(xml, pivot_table_uri, CONTENT_TYPE_PIVOT_TABLE)
 }
 

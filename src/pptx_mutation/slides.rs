@@ -481,7 +481,7 @@ fn build_clone_slide_mutation(
         zip_text(file, "[Content_Types].xml")?,
         &new_slide_part,
         SLIDE_CONTENT_TYPE,
-    );
+    )?;
     let mut overrides = BTreeMap::new();
     let mut cloned_rels = Vec::new();
     let mut cloned_notes_uri = String::new();
@@ -681,7 +681,7 @@ fn build_new_slide_from_layout_mutation(
         zip_text(file, "[Content_Types].xml")?,
         &new_slide_part,
         SLIDE_CONTENT_TYPE,
-    );
+    )?;
     let mut binary_overrides = BTreeMap::new();
     apply_image_slot_assignments(
         ImageSlotPackage {
@@ -976,7 +976,7 @@ fn clone_notes_for_cloned_slide(
         ctx.content_types.clone(),
         &new_notes_part,
         NOTES_CONTENT_TYPE,
-    );
+    )?;
 
     let source_notes_rels_part = relationships_part_for(&source_notes_part);
     if let Ok(source_notes_rels_xml) = zip_text(ctx.file, &source_notes_rels_part) {
@@ -1364,7 +1364,7 @@ fn apply_image_slot_assignments(
             std::mem::take(content_types_xml),
             &payload.image_part,
             &payload.content_type,
-        );
+        )?;
         let picture_xml = image_slot_picture_xml(&target, &relationship_id, image_fit)?;
         *slide_xml = replace_xml_span(slide_xml, target.span.start, target.span.end, &picture_xml);
         binary_overrides.insert(

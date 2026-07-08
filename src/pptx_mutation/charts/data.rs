@@ -333,7 +333,7 @@ pub(super) fn create_slide_chart_package_updates(
         content_types,
         chart_part.trim_start_matches('/'),
         CONTENT_TYPE_CHART,
-    );
+    )?;
     let mut chart_xml = chart.xml;
     let mut embedded_part = String::new();
     if !source.embedded_workbook.is_empty() {
@@ -343,7 +343,7 @@ pub(super) fn create_slide_chart_package_updates(
             content_types,
             embedded_part.trim_start_matches('/'),
             CONTENT_TYPE_EMBEDDED_XLSX,
-        );
+        )?;
         binary_overrides.insert(
             embedded_part.trim_start_matches('/').to_string(),
             source.embedded_workbook.clone(),

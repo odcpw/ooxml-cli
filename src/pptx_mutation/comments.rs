@@ -361,7 +361,7 @@ fn build_add_comment_mutation(
         (part, false, false)
     } else {
         let part = allocate_numbered_part_name(&entries, "ppt/comments/comment", ".xml");
-        content_types = ensure_content_type_override(content_types, &part, COMMENTS_CONTENT_TYPE);
+        content_types = ensure_content_type_override(content_types, &part, COMMENTS_CONTENT_TYPE)?;
         let target = relationship_target_from_source_to_target(&slide_ref.part, &part);
         let rels_xml = add_relationship_to_xml(
             slide_rels_xml,
@@ -624,7 +624,7 @@ fn ensure_comment_author(
             content_types.clone(),
             &authors_part,
             COMMENT_AUTHORS_CONTENT_TYPE,
-        );
+        )?;
         ensure_presentation_comment_authors_rel(file, overrides, &authors_part)?;
         overrides.insert(authors_part.clone(), comment_authors_template());
         created_part = true;

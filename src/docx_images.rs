@@ -200,7 +200,7 @@ pub(crate) fn docx_images_replace(
     })?;
     text_overrides.insert(
         "[Content_Types].xml".to_string(),
-        ensure_content_type_override(content_types_xml, &new_uri, &new_content_type),
+        ensure_content_type_override(content_types_xml, &new_uri, &new_content_type)?,
     );
     let mut binary_overrides = BTreeMap::new();
     binary_overrides.insert(package_part_name(&new_uri), image_bytes);
@@ -314,7 +314,7 @@ pub(crate) fn docx_images_insert(
     text_overrides.insert(rels_part, updated_rels_xml);
     text_overrides.insert(
         "[Content_Types].xml".to_string(),
-        ensure_content_type_override(content_types_xml, &media_uri, &new_content_type),
+        ensure_content_type_override(content_types_xml, &media_uri, &new_content_type)?,
     );
     let mut binary_overrides = BTreeMap::new();
     binary_overrides.insert(package_part_name(&media_uri), image_bytes);

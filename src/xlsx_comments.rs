@@ -245,9 +245,9 @@ pub(crate) fn xlsx_comments_add(
         &mut removals,
     )?;
     let mut content_types = zip_text(file, "[Content_Types].xml")?;
-    content_types = ensure_content_type_override(content_types, &part.uri, CONTENT_TYPE_COMMENTS);
+    content_types = ensure_content_type_override(content_types, &part.uri, CONTENT_TYPE_COMMENTS)?;
     if let Some(vml_uri) = vml_uri.as_deref().filter(|value| !value.is_empty()) {
-        content_types = ensure_content_type_override(content_types, vml_uri, CONTENT_TYPE_VML);
+        content_types = ensure_content_type_override(content_types, vml_uri, CONTENT_TYPE_VML)?;
     }
     text_overrides.insert("[Content_Types].xml".to_string(), content_types);
     let created_ref =
@@ -459,7 +459,7 @@ pub(crate) fn xlsx_comments_remove(
             content_types = remove_content_type_override(&content_types, vml_uri);
         }
     } else if let Some(vml_uri) = vml_uri.as_deref().filter(|value| !value.is_empty()) {
-        content_types = ensure_content_type_override(content_types, vml_uri, CONTENT_TYPE_VML);
+        content_types = ensure_content_type_override(content_types, vml_uri, CONTENT_TYPE_VML)?;
     }
     text_overrides.insert("[Content_Types].xml".to_string(), content_types);
 

@@ -428,9 +428,9 @@ fn build_add_mutation(input: AddMutationInput<'_>) -> CliResult<AddMutation> {
     text_overrides.insert(rels_part, render_relationships_xml(&rels));
     let content_types = zip_text(input.file, "[Content_Types].xml")?;
     let content_types =
-        ensure_content_type_override(content_types, &media_uri, &input.media_content_type);
+        ensure_content_type_override(content_types, &media_uri, &input.media_content_type)?;
     let content_types =
-        ensure_content_type_override(content_types, &poster_uri, &input.poster_content_type);
+        ensure_content_type_override(content_types, &poster_uri, &input.poster_content_type)?;
     text_overrides.insert("[Content_Types].xml".to_string(), content_types);
 
     let mut binary_overrides = BTreeMap::new();
@@ -585,7 +585,7 @@ fn build_replace_mutation(input: ReplaceMutationInput<'_>) -> CliResult<ReplaceM
     text_overrides.insert(rels_part, render_relationships_xml(&rels));
     let mut content_types = zip_text(input.file, "[Content_Types].xml")?;
     content_types =
-        ensure_content_type_override(content_types, &new_media_uri, &input.new_content_type);
+        ensure_content_type_override(content_types, &new_media_uri, &input.new_content_type)?;
     if let Some((_, poster_content_type)) = input.poster.as_ref() {
         let poster_target = rels
             .iter()
@@ -594,7 +594,7 @@ fn build_replace_mutation(input: ReplaceMutationInput<'_>) -> CliResult<ReplaceM
             .unwrap_or_default();
         if !poster_target.is_empty() {
             content_types =
-                ensure_content_type_override(content_types, &poster_target, poster_content_type);
+                ensure_content_type_override(content_types, &poster_target, poster_content_type)?;
         }
     }
     text_overrides.insert("[Content_Types].xml".to_string(), content_types);

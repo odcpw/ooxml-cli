@@ -444,7 +444,7 @@ fn build_clone_layout_mutation(
         &new_layout_part,
         &content_type_for_part(file, &layout.part_uri)
             .unwrap_or_else(|_| LAYOUT_CONTENT_TYPE.to_string()),
-    );
+    )?;
 
     let mut overrides = BTreeMap::new();
     overrides.insert(new_layout_part.clone(), updated_layout_xml);

@@ -32,7 +32,7 @@ impl ContentTypesInfo {
         }
         let extension = file_extension(&normalized);
         self.default_types
-            .get(extension)
+            .get(&extension.to_ascii_lowercase())
             .cloned()
             .unwrap_or_default()
     }
@@ -88,7 +88,7 @@ pub(super) fn parse_content_types(
                     "Default" => {
                         let extension = attr(&e, "Extension").unwrap_or_default();
                         let content_type = attr(&e, "ContentType").unwrap_or_default();
-                        let extension = extension.trim().to_string();
+                        let extension = extension.trim().to_ascii_lowercase();
                         let content_type = content_type.trim().to_string();
                         if extension.is_empty() || content_type.is_empty() {
                             info.diagnostics.push(diag(
@@ -186,7 +186,11 @@ pub(super) fn check_content_types_coverage(
             continue;
         }
         let extension = file_extension(part_uri);
-        if !extension.is_empty() && content_types.defaults.contains(extension) {
+        if !extension.is_empty()
+            && content_types
+                .defaults
+                .contains(&extension.to_ascii_lowercase())
+        {
             continue;
         }
         diagnostics.push(diag(

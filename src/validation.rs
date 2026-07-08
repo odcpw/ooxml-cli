@@ -6,9 +6,10 @@ use std::collections::BTreeSet;
 use crate::{
     CliResult, EXIT_PARTIAL_SUCCESS, EXIT_SUCCESS, EXIT_VALIDATION_FAILED, InspectPackageKind,
     detect_inspect_package_type, find_docx_document_part, find_xlsx_workbook_part, local_name,
-    relationship_entries, relationship_source_uri, relationships, relationships_part_for,
-    resolve_relationship_target, workbook_sheets, xlsx_workbook_child_order, zip_entry_names,
-    zip_entry_set, zip_text,
+    opc_part_lookup_key, opc_part_lookup_set, relationship_entries, relationship_source_uri,
+    relationships, relationships_part_for, resolve_relationship_target,
+    resolve_relationship_target_part_uri, workbook_sheets, xlsx_workbook_child_order,
+    zip_entry_names, zip_entry_set, zip_text,
 };
 
 pub(crate) fn validate(file: &str, strict: bool) -> CliResult<Value> {
@@ -83,6 +84,7 @@ fn validate_report(file: &str, diagnostics: Vec<Value>, strict: bool) -> Value {
 fn validate_diagnostics(file: &str) -> CliResult<Vec<Value>> {
     let entries = zip_entry_names(file)?;
     let entry_set = zip_entry_set(&entries);
+    let entry_lookup_set = opc_part_lookup_set(&entries);
     let mut diagnostics = Vec::new();
     if !entries.iter().any(|name| name == "[Content_Types].xml") {
         diagnostics.push(validation_diagnostic(
@@ -99,7 +101,11 @@ fn validate_diagnostics(file: &str) -> CliResult<Vec<Value>> {
         ));
     }
 
-    diagnostics.extend(validate_relationship_integrity(file, &entries, &entry_set)?);
+    diagnostics.extend(validate_relationship_integrity(
+        file,
+        &entries,
+        &entry_lookup_set,
+    )?);
 
     let package_kind = detect_inspect_package_type(file, &entries);
     match package_kind {
@@ -137,17 +143,45 @@ fn validation_diagnostic(code: &str, severity: &str, message: impl Into<String>)
 fn validate_relationship_integrity(
     file: &str,
     entries: &[String],
-    entry_set: &BTreeSet<String>,
+    entry_lookup_set: &BTreeSet<String>,
 ) -> CliResult<Vec<Value>> {
     let mut diagnostics = Vec::new();
     for rels_part in entries.iter().filter(|entry| entry.ends_with(".rels")) {
         let source_uri = relationship_source_uri(rels_part);
-        for rel in relationship_entries(file, rels_part)? {
+        let rels = match relationship_entries(file, rels_part) {
+            Ok(rels) => rels,
+            Err(err) => {
+                diagnostics.push(validation_diagnostic(
+                    "REL_MALFORMED",
+                    "error",
+                    format!(
+                        "failed to parse relationship part {rels_part}: {}",
+                        err.message
+                    ),
+                ));
+                continue;
+            }
+        };
+        for rel in rels {
             if rel.target_mode == "External" {
                 continue;
             }
-            let target_uri = resolve_relationship_target(&source_uri, &rel.target);
-            if !entry_set.contains(&target_uri) {
+            let target_uri = match resolve_relationship_target_part_uri(&source_uri, &rel.target) {
+                Ok(target_uri) => target_uri,
+                Err(err) => {
+                    diagnostics.push(validation_diagnostic(
+                        "REL_MALFORMED_TARGET",
+                        "error",
+                        format!(
+                            "relationship from {} (id={}) has malformed Target {:?}: {}",
+                            source_uri, rel.id, rel.target, err.message
+                        ),
+                    ));
+                    continue;
+                }
+            };
+            let target_key = opc_part_lookup_key(&target_uri)?;
+            if !entry_lookup_set.contains(&target_key) {
                 let message = if source_uri == "/" {
                     format!(
                         "package-level relationship (id={}) points to missing part: {}",

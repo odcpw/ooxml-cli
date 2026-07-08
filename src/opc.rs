@@ -1,6 +1,6 @@
 use quick_xml::Reader;
 use quick_xml::events::Event;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use crate::{CliError, CliResult, attr, attr_exact, local_name, xml_attr_escape, zip_text};
@@ -92,7 +92,7 @@ pub(crate) fn content_type_for_part(file: &str, part_uri: &str) -> CliResult<Str
                 if let (Some(extension), Some(content_type)) =
                     (attr(&e, "Extension"), attr(&e, "ContentType"))
                 {
-                    defaults.insert(extension, content_type);
+                    defaults.insert(extension.to_ascii_lowercase(), content_type);
                 }
             }
             Ok(Event::Start(e)) | Ok(Event::Empty(e))
@@ -101,7 +101,7 @@ pub(crate) fn content_type_for_part(file: &str, part_uri: &str) -> CliResult<Str
                 if let (Some(part_name), Some(content_type)) =
                     (attr(&e, "PartName"), attr(&e, "ContentType"))
                 {
-                    overrides.insert(part_name.trim_start_matches('/').to_string(), content_type);
+                    overrides.insert(opc_part_lookup_key(&part_name)?, content_type);
                 }
             }
             Ok(Event::Eof) => break,
@@ -109,14 +109,18 @@ pub(crate) fn content_type_for_part(file: &str, part_uri: &str) -> CliResult<Str
             _ => {}
         }
     }
-    if let Some(content_type) = overrides.get(normalized) {
+    let normalized_lookup_key = opc_part_lookup_key(normalized)?;
+    if let Some(content_type) = overrides.get(&normalized_lookup_key) {
         return Ok(content_type.clone());
     }
     let extension = Path::new(normalized)
         .extension()
         .and_then(|extension| extension.to_str())
         .unwrap_or_default();
-    Ok(defaults.get(extension).cloned().unwrap_or_default())
+    Ok(defaults
+        .get(&extension.to_ascii_lowercase())
+        .cloned()
+        .unwrap_or_default())
 }
 
 pub(crate) fn allocate_relationship_id(rels: &[RelationshipEntry]) -> String {
@@ -164,24 +168,21 @@ pub(crate) fn ensure_content_type_override(
     xml: String,
     part_name: &str,
     content_type: &str,
-) -> String {
+) -> CliResult<String> {
     let normalized = format!("/{}", part_name.trim_start_matches('/'));
-    if xml.contains(&format!(r#"PartName="{normalized}""#)) {
-        return xml;
+    if content_type_override_exists(&xml, &normalized)? {
+        return Ok(xml);
     }
     let override_xml = format!(
         r#"<Override PartName="{normalized}" ContentType="{}"/>"#,
         xml_attr_escape(content_type)
     );
-    if let Some(pos) = xml.rfind("</Types>") {
-        let mut out = String::with_capacity(xml.len() + override_xml.len());
-        out.push_str(&xml[..pos]);
-        out.push_str(&override_xml);
-        out.push_str(&xml[pos..]);
-        out
-    } else {
-        xml
-    }
+    let pos = content_types_root_close_start(&xml)?;
+    let mut out = String::with_capacity(xml.len() + override_xml.len());
+    out.push_str(&xml[..pos]);
+    out.push_str(&override_xml);
+    out.push_str(&xml[pos..]);
+    Ok(out)
 }
 
 pub(crate) fn add_relationship_to_xml(
@@ -226,6 +227,29 @@ pub(crate) fn resolve_relationship_target(source_uri: &str, target: &str) -> Str
     normalize_package_uri(&format!("{base}{target}"))
 }
 
+pub(crate) fn resolve_relationship_target_part_uri(
+    source_uri: &str,
+    target: &str,
+) -> CliResult<String> {
+    percent_decode_package_uri(&resolve_relationship_target(source_uri, target))
+}
+
+pub(crate) fn opc_part_lookup_key(uri: &str) -> CliResult<String> {
+    percent_decode_package_uri(&normalize_package_uri(&uri.replace('\\', "/")))
+        .map(|uri| uri.to_ascii_lowercase())
+}
+
+pub(crate) fn opc_part_lookup_set(entries: &[String]) -> BTreeSet<String> {
+    entries
+        .iter()
+        .map(|entry| {
+            opc_part_lookup_key(entry).unwrap_or_else(|_| {
+                normalize_package_uri(&entry.replace('\\', "/")).to_ascii_lowercase()
+            })
+        })
+        .collect()
+}
+
 pub(crate) fn relationship_target_from_source_to_target(
     source_uri: &str,
     target_uri: &str,
@@ -268,4 +292,163 @@ fn normalize_package_uri(uri: &str) -> String {
         }
     }
     format!("/{}", parts.join("/"))
+}
+
+fn content_type_override_exists(xml: &str, normalized_part_name: &str) -> CliResult<bool> {
+    let wanted = opc_part_lookup_key(normalized_part_name)?;
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "Override" =>
+            {
+                if let Some(part_name) = attr(&e, "PartName")
+                    && opc_part_lookup_key(&part_name)? == wanted
+                {
+                    return Ok(true);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Ok(false)
+}
+
+fn content_types_root_close_start(xml: &str) -> CliResult<usize> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut depth = 0usize;
+    let mut in_root = false;
+    loop {
+        let before = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) if !in_root && local_name(e.name().as_ref()) == "Types" => {
+                in_root = true;
+                depth = 1;
+            }
+            Ok(Event::Start(_)) if in_root => {
+                depth += 1;
+            }
+            Ok(Event::Empty(e)) if !in_root && local_name(e.name().as_ref()) == "Types" => {
+                return Err(CliError::unexpected(
+                    "[Content_Types].xml Types root is self-closing; cannot insert Override",
+                ));
+            }
+            Ok(Event::End(e)) if in_root && local_name(e.name().as_ref()) == "Types" => {
+                if depth == 1 {
+                    return Ok(before);
+                }
+                depth = depth.saturating_sub(1);
+            }
+            Ok(Event::End(_)) if in_root => {
+                depth = depth.saturating_sub(1);
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Err(CliError::unexpected(
+        "[Content_Types].xml Types root closing tag not found",
+    ))
+}
+
+fn percent_decode_package_uri(uri: &str) -> CliResult<String> {
+    let bytes = uri.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let Some(&hi) = bytes.get(index + 1) else {
+                return Err(invalid_percent_escape(uri));
+            };
+            let Some(&lo) = bytes.get(index + 2) else {
+                return Err(invalid_percent_escape(uri));
+            };
+            let Some(hi) = hex_value(hi) else {
+                return Err(invalid_percent_escape(uri));
+            };
+            let Some(lo) = hex_value(lo) else {
+                return Err(invalid_percent_escape(uri));
+            };
+            decoded.push((hi << 4) | lo);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).map_err(|_| {
+        CliError::unexpected(format!(
+            "invalid UTF-8 percent-encoded OPC part URI {uri:?}"
+        ))
+    })
+}
+
+fn invalid_percent_escape(uri: &str) -> CliError {
+    CliError::unexpected(format!("invalid percent escape in OPC part URI {uri:?}"))
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ensure_content_type_override_detects_legal_existing_override_serializations() {
+        let xml = r#"<?xml version='1.0' encoding='UTF-8'?>
+<Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'>
+  <Override ContentType='application/xml' PartName='/word/styles.xml'/>
+</Types>"#;
+
+        let updated = ensure_content_type_override(
+            xml.to_string(),
+            "/WORD/STYLES.XML",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
+        )
+        .expect("existing override detection");
+
+        assert_eq!(
+            updated.matches("<Override").count(),
+            1,
+            "existing single-quoted, reordered override should not be duplicated: {updated}"
+        );
+        assert!(!updated.contains("wordprocessingml.styles+xml"));
+    }
+
+    #[test]
+    fn ensure_content_type_override_refuses_self_closing_types_root() {
+        let err = ensure_content_type_override(
+            r#"<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>"#
+                .to_string(),
+            "/word/styles.xml",
+            "application/xml",
+        )
+        .expect_err("self-closing Types root cannot be spliced safely");
+
+        assert!(
+            err.message.contains("self-closing"),
+            "error should explain unsafe content-types XML shape: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn opc_part_lookup_key_percent_decodes_and_ascii_folds() {
+        assert_eq!(
+            opc_part_lookup_key("/PPT/media/caf%C3%A9.PNG").expect("lookup key"),
+            "/ppt/media/café.png"
+        );
+    }
 }
