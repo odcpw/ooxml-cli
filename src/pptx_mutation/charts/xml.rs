@@ -32,19 +32,9 @@ pub(super) fn parse_xml_tree(xml: &str) -> CliResult<XmlNode> {
                     root = Some(node);
                 }
             }
-            Ok(Event::Text(e)) => {
+            Ok(event) if is_xml_text_event(&event) => {
                 if let Some(current) = stack.last_mut() {
-                    current.text.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) => {
-                if let Some(current) = stack.last_mut() {
-                    current.text.push_str(&String::from_utf8_lossy(e.as_ref()));
-                }
-            }
-            Ok(Event::GeneralRef(e)) => {
-                if let Some(current) = stack.last_mut() {
-                    current.text.push_str(&xml_general_ref(e.as_ref()));
+                    append_xml_text_event(&mut current.text, &event);
                 }
             }
             Ok(Event::End(_)) => {

@@ -5,8 +5,8 @@ use serde_json::{Value, json};
 
 use super::selectors::DocxHeaderFooterRefInfo;
 use crate::{
-    CliError, CliResult, DOCX_W_NS, decode_xml_text, docx_word_attr_ns, element_in_ns, local_name,
-    xml_general_ref, zip_text,
+    CliError, CliResult, DOCX_W_NS, append_xml_text_event, docx_word_attr_ns, element_in_ns,
+    is_xml_text_event, local_name, zip_text,
 };
 
 pub(super) fn docx_header_footer_paragraphs(
@@ -71,21 +71,9 @@ pub(super) fn docx_header_footer_paragraphs(
                     );
                 }
             }
-            Ok(Event::Text(e)) if in_t && skip_text_depth == 0 => {
+            Ok(event) if in_t && skip_text_depth == 0 && is_xml_text_event(&event) => {
                 if let Some(paragraph) = current.as_mut() {
-                    paragraph.text.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::GeneralRef(e)) if in_t && skip_text_depth == 0 => {
-                if let Some(paragraph) = current.as_mut() {
-                    paragraph.text.push_str(&xml_general_ref(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) if in_t && skip_text_depth == 0 => {
-                if let Some(paragraph) = current.as_mut() {
-                    paragraph
-                        .text
-                        .push_str(&String::from_utf8_lossy(e.as_ref()));
+                    append_xml_text_event(&mut paragraph.text, &event);
                 }
             }
             Ok(Event::End(e)) => {

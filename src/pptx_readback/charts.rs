@@ -4,9 +4,9 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
 use crate::{
-    CliError, CliResult, RelationshipEntry, command_arg, decode_xml_text, local_name,
-    relationship_entries, relationships_part_for, resolve_relationship_target, selector_candidates,
-    xml_attrs_map, zip_text,
+    CliError, CliResult, RelationshipEntry, append_xml_text_event, command_arg, is_xml_text_event,
+    local_name, relationship_entries, relationships_part_for, resolve_relationship_target,
+    selector_candidates, xml_attrs_map, zip_text,
 };
 
 use super::{normalize_ppt_target, pptx_slide_refs};
@@ -1112,14 +1112,9 @@ fn parse_xml_tree(xml: &str) -> CliResult<XmlNode> {
                     root = Some(node);
                 }
             }
-            Ok(Event::Text(e)) => {
+            Ok(event) if is_xml_text_event(&event) => {
                 if let Some(current) = stack.last_mut() {
-                    current.text.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) => {
-                if let Some(current) = stack.last_mut() {
-                    current.text.push_str(&String::from_utf8_lossy(e.as_ref()));
+                    append_xml_text_event(&mut current.text, &event);
                 }
             }
             Ok(Event::End(_)) => {

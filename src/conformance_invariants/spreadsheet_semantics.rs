@@ -3,7 +3,7 @@ use quick_xml::events::{BytesStart, Event};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::xml_util::{attr_bound_ns, attr_exact, decode_xml_text, xml_general_ref};
+use crate::xml_util::{append_xml_text_event, attr_bound_ns, attr_exact, is_xml_text_event};
 use crate::{
     col_name, element_in_ns, local_name, relationships_part_for, resolve_relationship_target,
     zip_text,
@@ -181,21 +181,9 @@ fn read_workbook_info(file: &str, part: &PartInfo) -> Option<WorkbookInfo> {
                     }
                 }
             }
-            Ok(Event::Text(e)) => {
+            Ok(event) if is_xml_text_event(&event) => {
                 if let Some(defined_name) = active_defined_name.as_mut() {
-                    defined_name.formula.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::GeneralRef(e)) => {
-                if let Some(defined_name) = active_defined_name.as_mut() {
-                    defined_name.formula.push_str(&xml_general_ref(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) => {
-                if let Some(defined_name) = active_defined_name.as_mut() {
-                    defined_name
-                        .formula
-                        .push_str(&String::from_utf8_lossy(e.as_ref()));
+                    append_xml_text_event(&mut defined_name.formula, &event);
                 }
             }
             Ok(Event::End(e)) => {

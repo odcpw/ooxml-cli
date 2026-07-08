@@ -3,8 +3,8 @@ use quick_xml::events::Event;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    CliError, CliResult, attr, decode_xml_text, local_name, needs_xml_space_preserve,
-    normalize_xlsx_cell_ref, parse_cell_ref, xml_attr_escape, xml_escape, xml_general_ref,
+    CliError, CliResult, append_xml_text_event, attr, is_xml_text_event, local_name,
+    needs_xml_space_preserve, normalize_xlsx_cell_ref, parse_cell_ref, xml_attr_escape, xml_escape,
     zip_text,
 };
 
@@ -44,11 +44,8 @@ fn parse_comment_authors(xml: &str) -> CliResult<Vec<String>> {
                     authors.push(String::new());
                 }
             }
-            Ok(Event::Text(e)) if in_author => {
-                current.push_str(&decode_xml_text(e.as_ref()));
-            }
-            Ok(Event::GeneralRef(e)) if in_author => {
-                current.push_str(&xml_general_ref(e.as_ref()));
+            Ok(event) if in_author && is_xml_text_event(&event) => {
+                append_xml_text_event(&mut current, &event);
             }
             Ok(Event::End(e)) => {
                 let name = local_name(e.name().as_ref()).to_string();
@@ -111,14 +108,9 @@ fn parse_comment_entries(xml: &str, authors: &[String]) -> CliResult<Vec<XlsxCom
                     ));
                 }
             }
-            Ok(Event::Text(e)) if in_comment_text => {
+            Ok(event) if in_comment_text && is_xml_text_event(&event) => {
                 if let Some(comment) = current.as_mut() {
-                    comment.text.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::GeneralRef(e)) if in_comment_text => {
-                if let Some(comment) = current.as_mut() {
-                    comment.text.push_str(&xml_general_ref(e.as_ref()));
+                    append_xml_text_event(&mut comment.text, &event);
                 }
             }
             Ok(Event::End(e)) => {

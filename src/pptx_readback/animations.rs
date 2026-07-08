@@ -3,7 +3,7 @@ use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::xml_util::decode_xml_text;
+use crate::xml_util::{TextAccumulator, is_xml_text_event};
 use crate::{
     CliError, CliResult, RelationshipEntry, attr, attr_exact, local_name, relationship_entries,
     relationships, relationships_part_for, resolve_relationship_target, xml_direct_child_ranges,
@@ -915,21 +915,28 @@ pub(crate) fn element_attr_i64(fragment: &str, wanted_local: &str) -> Option<i64
 fn first_descendant_text(fragment: &str, wanted_local: &str) -> Option<String> {
     let mut reader = Reader::from_str(fragment);
     let mut depth: Option<usize> = None;
+    let mut text = TextAccumulator::default();
     loop {
         match reader.read_event() {
             Ok(Event::Start(e)) if local_name(e.name().as_ref()) == wanted_local => {
                 depth = Some(1);
+                text = TextAccumulator::default();
+            }
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == wanted_local => {
+                return Some(String::new());
             }
             Ok(Event::Start(_)) => {
                 if let Some(value) = depth.as_mut() {
                     *value += 1;
                 }
             }
-            Ok(Event::Text(e)) if depth.is_some() => return Some(decode_xml_text(e.as_ref())),
+            Ok(event) if depth.is_some() && is_xml_text_event(&event) => {
+                text.push_event(&event);
+            }
             Ok(Event::End(e)) => {
                 if let Some(value) = depth.as_mut() {
                     if *value == 1 && local_name(e.name().as_ref()) == wanted_local {
-                        depth = None;
+                        return Some(text.into_string());
                     } else {
                         *value = value.saturating_sub(1);
                     }

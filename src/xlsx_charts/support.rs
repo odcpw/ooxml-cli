@@ -321,19 +321,9 @@ pub(super) fn parse_xml_node(xml: &str) -> CliResult<XmlNode> {
         match reader.read_event() {
             Ok(Event::Start(e)) => stack.push(XmlNode::from_start(&e)),
             Ok(Event::Empty(e)) => attach_xml_node(XmlNode::from_start(&e), &mut stack, &mut root)?,
-            Ok(Event::Text(e)) => {
+            Ok(event) if is_xml_text_event(&event) => {
                 if let Some(node) = stack.last_mut() {
-                    node.text.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) => {
-                if let Some(node) = stack.last_mut() {
-                    node.text.push_str(&String::from_utf8_lossy(e.as_ref()));
-                }
-            }
-            Ok(Event::GeneralRef(e)) => {
-                if let Some(node) = stack.last_mut() {
-                    node.text.push_str(&crate::xml_general_ref(e.as_ref()));
+                    append_xml_text_event(&mut node.text, &event);
                 }
             }
             Ok(Event::End(_)) => {

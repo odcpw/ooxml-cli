@@ -3,7 +3,7 @@ use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
-use crate::{add_selector, attr, decode_xml_text, local_name, xml_general_ref};
+use crate::{add_selector, append_xml_text_event, attr, is_xml_text_event, local_name};
 #[derive(Default)]
 pub(super) struct Shape {
     pub(super) id: u32,
@@ -490,18 +490,9 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
             Ok(Event::Start(_)) if current.is_some() && start_name.as_deref() == Some("t") => {
                 in_text = true;
             }
-            Ok(Event::Text(e)) if in_text => {
-                let text = decode_xml_text(e.as_ref());
-                push_pptx_text(
-                    &mut current,
-                    &mut current_cell,
-                    &mut current_paragraph,
-                    in_shape_text_body,
-                    text,
-                );
-            }
-            Ok(Event::GeneralRef(e)) if in_text => {
-                let text = xml_general_ref(e.as_ref());
+            Ok(event) if in_text && is_xml_text_event(&event) => {
+                let mut text = String::new();
+                append_xml_text_event(&mut text, &event);
                 push_pptx_text(
                     &mut current,
                     &mut current_cell,

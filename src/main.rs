@@ -301,10 +301,10 @@ pub(crate) use xlsx_workbook_order::{
     xlsx_workbook_ordered_insert_position,
 };
 pub(crate) use xml_util::{
-    attr, attr_bound_ns, attr_exact, attr_prefixed_ns, decode_local_xml_attrs as xml_attrs,
-    decode_xml_attrs as xml_attrs_map, decode_xml_text, local_name, needs_xml_space_preserve,
-    remove_xml_span, render_xml_attrs, replace_xml_span, xml_attr_escape, xml_escape,
-    xml_general_ref,
+    append_xml_text_event, attr, attr_bound_ns, attr_exact, attr_prefixed_ns,
+    decode_local_xml_attrs as xml_attrs, decode_xml_attrs as xml_attrs_map, decode_xml_text,
+    is_xml_text_event, local_name, needs_xml_space_preserve, remove_xml_span, render_xml_attrs,
+    replace_xml_span, xml_attr_escape, xml_escape,
 };
 pub(crate) use zip_io::{
     copy_zip_with_binary_part_overrides_and_removals, copy_zip_with_part_override,

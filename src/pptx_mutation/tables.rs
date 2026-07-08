@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use std::fs;
 
 use crate::{
-    CliError, CliResult, XlsxRangeExportOptions, XmlNamedRange, attr, attr_exact,
-    check_range_max_cells, copy_zip_with_part_override, decode_xml_text, local_name,
+    CliError, CliResult, XlsxRangeExportOptions, XmlNamedRange, append_xml_text_event, attr,
+    attr_exact, check_range_max_cells, copy_zip_with_part_override, is_xml_text_event, local_name,
     needs_xml_space_preserve, package_mutation_temp_path, package_type, parse_cli_range,
     parse_range, pptx_tables_show, range_bounds_ref, relationship_entries_from_xml,
     resolve_relationship_target, select_xlsx_table, validate, validate_xlsx_mutation_output_flags,
@@ -1985,8 +1985,8 @@ fn collect_drawing_text(fragment: &str, out: &mut String) -> CliResult<()> {
             Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "br" => {
                 out.push('\n');
             }
-            Ok(Event::Text(e)) if in_text => {
-                out.push_str(&decode_xml_text(e.as_ref()));
+            Ok(event) if in_text && is_xml_text_event(&event) => {
+                append_xml_text_event(out, &event);
             }
             Ok(Event::Eof) => break,
             Err(err) => return Err(CliError::unexpected(err.to_string())),

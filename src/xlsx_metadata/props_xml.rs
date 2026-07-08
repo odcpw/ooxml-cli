@@ -7,8 +7,8 @@ use super::{
     XlsxWorkbookMetadataUpdateOptions, metadata_ordered_insert_position,
 };
 use crate::{
-    decode_xml_text, element_in_ns, local_name, remove_xml_span, render_xml_attrs,
-    replace_xml_span, xml_attrs_map, xml_escape, xml_general_ref,
+    append_xml_text_event, element_in_ns, is_xml_text_event, local_name, remove_xml_span,
+    render_xml_attrs, replace_xml_span, xml_attrs_map, xml_escape,
 };
 struct MetadataXmlElementSpan {
     start: usize,
@@ -43,14 +43,8 @@ pub(super) fn xml_direct_child_text_by_ns(xml: &str, ns: &[u8], local: &str) -> 
                     return String::new();
                 }
             }
-            Ok(Event::Text(e)) if active_depth.is_some() => {
-                text.push_str(&decode_xml_text(e.as_ref()));
-            }
-            Ok(Event::CData(e)) if active_depth.is_some() => {
-                text.push_str(&String::from_utf8_lossy(e.as_ref()));
-            }
-            Ok(Event::GeneralRef(e)) if active_depth.is_some() => {
-                text.push_str(&xml_general_ref(e.as_ref()));
+            Ok(event) if active_depth.is_some() && is_xml_text_event(&event) => {
+                append_xml_text_event(&mut text, &event);
             }
             Ok(Event::End(_)) => {
                 if active_depth == Some(depth) {

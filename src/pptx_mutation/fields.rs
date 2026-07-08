@@ -6,11 +6,11 @@ use std::fs;
 
 use crate::cli_args::{parse_bool_flag, value_flag_present};
 use crate::{
-    CliError, CliResult, attr, attr_exact, command_arg, copy_zip_with_part_overrides,
-    decode_xml_text, local_name, package_mutation_temp_path, package_type, parse_string_flag,
-    relationship_entries_from_xml, resolve_relationship_target, validate,
-    validate_xlsx_mutation_output_flags, xml_attr_escape, xml_direct_child_ranges, xml_escape,
-    xml_fragment_bounds, xml_token_name, zip_text,
+    CliError, CliResult, append_xml_text_event, attr, attr_exact, command_arg,
+    copy_zip_with_part_overrides, is_xml_text_event, local_name, package_mutation_temp_path,
+    package_type, parse_string_flag, relationship_entries_from_xml, resolve_relationship_target,
+    validate, validate_xlsx_mutation_output_flags, xml_attr_escape, xml_direct_child_ranges,
+    xml_escape, xml_fragment_bounds, xml_token_name, zip_text,
 };
 
 const SLIDE_REL_TYPE: &str =
@@ -697,7 +697,9 @@ fn text_descendants(fragment: &str) -> String {
         match reader.read_event() {
             Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "t" => in_text = true,
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "t" => in_text = false,
-            Ok(Event::Text(e)) if in_text => text.push_str(&decode_xml_text(e.as_ref())),
+            Ok(event) if in_text && is_xml_text_event(&event) => {
+                append_xml_text_event(&mut text, &event);
+            }
             Ok(Event::Eof) => break,
             Err(_) => break,
             _ => {}

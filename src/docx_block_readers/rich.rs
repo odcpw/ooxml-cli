@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 use super::{docx_para_id_ns, docx_word_val_ns, element_in_ns};
-use crate::{CliError, CliResult, DOCX_W_NS, decode_xml_text, local_name, xml_general_ref};
+use crate::{CliError, CliResult, DOCX_W_NS, append_xml_text_event, is_xml_text_event, local_name};
 #[derive(Default)]
 struct DocxRichParagraphState {
     text: String,
@@ -222,26 +222,10 @@ pub(crate) fn docx_rich_block_reports(
                     skip_text_depth,
                 );
             }
-            Ok(Event::Text(e)) if in_t && skip_text_depth == 0 => {
-                docx_rich_append_text(
-                    &mut current_paragraph,
-                    &mut current_run,
-                    &decode_xml_text(e.as_ref()),
-                );
-            }
-            Ok(Event::GeneralRef(e)) if in_t && skip_text_depth == 0 => {
-                docx_rich_append_text(
-                    &mut current_paragraph,
-                    &mut current_run,
-                    &xml_general_ref(e.as_ref()),
-                );
-            }
-            Ok(Event::CData(e)) if in_t && skip_text_depth == 0 => {
-                docx_rich_append_text(
-                    &mut current_paragraph,
-                    &mut current_run,
-                    &String::from_utf8_lossy(e.as_ref()),
-                );
+            Ok(event) if in_t && skip_text_depth == 0 && is_xml_text_event(&event) => {
+                let mut text = String::new();
+                append_xml_text_event(&mut text, &event);
+                docx_rich_append_text(&mut current_paragraph, &mut current_run, &text);
             }
             Ok(Event::End(e)) => {
                 let name = local_name(e.name().as_ref()).to_string();

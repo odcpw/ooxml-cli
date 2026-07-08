@@ -6,11 +6,12 @@ use std::fs;
 use std::path::Path;
 
 use crate::{
-    CliError, CliResult, WorkbookSheet, command_arg, copy_zip_with_part_override, decode_xml_text,
-    local_name, normalize_xl_target, relationships, render_xml_attrs, replace_xml_span,
-    resolve_sheet, selector_candidates, validate, validate_xlsx_mutation_output_flags,
-    workbook_sheets, xlsx_ranges_set_temp_path, xml_attrs_map, xml_direct_child_ranges, xml_escape,
-    xml_fragment_bounds, xml_open_tag_from_start, xml_tag_prefix, zip_text,
+    CliError, CliResult, WorkbookSheet, append_xml_text_event, command_arg,
+    copy_zip_with_part_override, is_xml_text_event, local_name, normalize_xl_target, relationships,
+    render_xml_attrs, replace_xml_span, resolve_sheet, selector_candidates, validate,
+    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_ranges_set_temp_path, xml_attrs_map,
+    xml_direct_child_ranges, xml_escape, xml_fragment_bounds, xml_open_tag_from_start,
+    xml_tag_prefix, zip_text,
 };
 
 #[derive(Clone)]
@@ -608,18 +609,11 @@ fn parse_data_validation(fragment: &str) -> CliResult<XlsxDataValidation> {
                 stack.push(local_name(e.name().as_ref()).to_string());
             }
             Ok(Event::Empty(_)) => {}
-            Ok(Event::Text(e)) => {
+            Ok(event) if is_xml_text_event(&event) => {
                 if stack.last().map(String::as_str) == Some("formula1") {
-                    validation.formula1.push_str(&decode_xml_text(e.as_ref()));
+                    append_xml_text_event(&mut validation.formula1, &event);
                 } else if stack.last().map(String::as_str) == Some("formula2") {
-                    validation.formula2.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) => {
-                if stack.last().map(String::as_str) == Some("formula1") {
-                    validation.formula1.push_str(&decode_xml_text(e.as_ref()));
-                } else if stack.last().map(String::as_str) == Some("formula2") {
-                    validation.formula2.push_str(&decode_xml_text(e.as_ref()));
+                    append_xml_text_event(&mut validation.formula2, &event);
                 }
             }
             Ok(Event::End(_)) => {

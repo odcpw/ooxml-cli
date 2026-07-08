@@ -4,7 +4,8 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 use crate::{
-    CliError, CliResult, attr, attr_exact, decode_xml_text, local_name, xml_general_ref, zip_text,
+    CliError, CliResult, append_xml_text_event, attr, attr_exact, is_xml_text_event, local_name,
+    zip_text,
 };
 
 mod range;
@@ -289,7 +290,9 @@ pub(crate) fn shared_strings(file: &str) -> CliResult<Vec<String>> {
                 current.clear();
             }
             Ok(Event::Start(e)) if in_si && local_name(e.name().as_ref()) == "t" => in_t = true,
-            Ok(Event::Text(e)) if in_t => current.push_str(&decode_xml_text(e.as_ref())),
+            Ok(event) if in_t && is_xml_text_event(&event) => {
+                append_xml_text_event(&mut current, &event);
+            }
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "t" => in_t = false,
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "si" => {
                 strings.push(current.clone());
@@ -380,21 +383,14 @@ pub(crate) fn sheet_cells(
             Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "f" => {
                 in_formula = true;
             }
-            Ok(Event::Text(e)) if in_v => current_value.push_str(&decode_xml_text(e.as_ref())),
-            Ok(Event::Text(e)) if in_t => {
-                current_inline_text.push_str(&decode_xml_text(e.as_ref()))
-            }
-            Ok(Event::Text(e)) if in_formula => {
-                current_formula.push_str(&decode_xml_text(e.as_ref()))
-            }
-            Ok(Event::GeneralRef(e)) if in_v => {
-                current_value.push_str(&xml_general_ref(e.as_ref()))
-            }
-            Ok(Event::GeneralRef(e)) if in_t => {
-                current_inline_text.push_str(&xml_general_ref(e.as_ref()))
-            }
-            Ok(Event::GeneralRef(e)) if in_formula => {
-                current_formula.push_str(&xml_general_ref(e.as_ref()))
+            Ok(event) if is_xml_text_event(&event) => {
+                if in_v {
+                    append_xml_text_event(&mut current_value, &event);
+                } else if in_t {
+                    append_xml_text_event(&mut current_inline_text, &event);
+                } else if in_formula {
+                    append_xml_text_event(&mut current_formula, &event);
+                }
             }
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "v" => in_v = false,
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "t" => in_t = false,

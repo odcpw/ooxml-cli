@@ -6,11 +6,12 @@ use std::fs;
 use std::path::Path;
 
 use crate::{
-    CliError, CliResult, WorkbookSheet, command_arg, copy_zip_with_part_override, decode_xml_text,
-    local_name, normalize_xl_target, relationships, render_xml_attrs, replace_xml_span,
-    resolve_sheet, selector_candidates, validate, validate_xlsx_mutation_output_flags,
-    workbook_sheets, xlsx_ranges_set_temp_path, xml_attr_escape, xml_direct_child_ranges,
-    xml_escape, xml_fragment_bounds, xml_general_ref, xml_tag_prefix, zip_text,
+    CliError, CliResult, WorkbookSheet, append_xml_text_event, command_arg,
+    copy_zip_with_part_override, is_xml_text_event, local_name, normalize_xl_target, relationships,
+    render_xml_attrs, replace_xml_span, resolve_sheet, selector_candidates, validate,
+    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_ranges_set_temp_path,
+    xml_attr_escape, xml_direct_child_ranges, xml_escape, xml_fragment_bounds, xml_tag_prefix,
+    zip_text,
 };
 
 mod color_scale;
@@ -970,25 +971,11 @@ fn parse_conditional_format_rule(
                 }
                 stack.push(name);
             }
-            Ok(Event::Text(e)) => {
+            Ok(event) if is_xml_text_event(&event) => {
                 if stack.last().map(String::as_str) == Some("formula")
                     && let Some(formula) = rule.formulas.last_mut()
                 {
-                    formula.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) => {
-                if stack.last().map(String::as_str) == Some("formula")
-                    && let Some(formula) = rule.formulas.last_mut()
-                {
-                    formula.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::GeneralRef(e)) => {
-                if stack.last().map(String::as_str) == Some("formula")
-                    && let Some(formula) = rule.formulas.last_mut()
-                {
-                    formula.push_str(&xml_general_ref(e.as_ref()));
+                    append_xml_text_event(formula, &event);
                 }
             }
             Ok(Event::End(_)) => {

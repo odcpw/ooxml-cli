@@ -8,7 +8,10 @@ use quick_xml::name::{Namespace, NamespaceResolver, ResolveResult};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
-use crate::{DOCX_W_NS, DOCX_W14_NS, attr, attr_prefixed_ns, decode_xml_text, local_name};
+use crate::{
+    DOCX_W_NS, DOCX_W14_NS, append_xml_text_event, attr, attr_prefixed_ns, is_xml_text_event,
+    local_name,
+};
 #[derive(Default)]
 struct DocxParagraphState {
     text: String,
@@ -79,16 +82,9 @@ pub(crate) fn docx_blocks(xml: &str) -> Vec<Value> {
                 let name = local_name(e.name().as_ref()).to_string();
                 docx_note_empty_or_start(&e, &name, &mut current_paragraph);
             }
-            Ok(Event::Text(e)) if in_t && skip_text_depth == 0 => {
+            Ok(event) if in_t && skip_text_depth == 0 && is_xml_text_event(&event) => {
                 if let Some(paragraph) = current_paragraph.as_mut() {
-                    paragraph.text.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) if in_t && skip_text_depth == 0 => {
-                if let Some(paragraph) = current_paragraph.as_mut() {
-                    paragraph
-                        .text
-                        .push_str(&String::from_utf8_lossy(e.as_ref()));
+                    append_xml_text_event(&mut paragraph.text, &event);
                 }
             }
             Ok(Event::End(e)) => {

@@ -7,13 +7,14 @@ use std::path::Path;
 
 use crate::{
     CliError, CliResult, RangeBounds, RelationshipEntry, WorkbookSheet, XlsxRangeExportOptions,
-    add_relationship_to_xml, add_selector, allocate_relationship_id, check_range_max_cells,
-    col_name, command_arg, copy_zip_with_part_override, copy_zip_with_part_overrides,
-    decode_xml_text, ensure_content_type_override, local_name, parse_cell_ref, parse_range,
-    relationship_entries, relationship_entries_from_xml, relationship_target_from_source_to_target,
-    relationships_part_for, resolve_relationship_target, resolve_sheet, select_xlsx_table,
-    selector_candidates, validate, validate_xlsx_mutation_output_flags, workbook_sheets,
-    xlsx_range_export_with_options, xlsx_ranges_set_temp_path, xlsx_sheet_selectors, xlsx_tables,
+    add_relationship_to_xml, add_selector, allocate_relationship_id, append_xml_text_event,
+    check_range_max_cells, col_name, command_arg, copy_zip_with_part_override,
+    copy_zip_with_part_overrides, decode_xml_text, ensure_content_type_override, is_xml_text_event,
+    local_name, parse_cell_ref, parse_range, relationship_entries, relationship_entries_from_xml,
+    relationship_target_from_source_to_target, relationships_part_for, resolve_relationship_target,
+    resolve_sheet, select_xlsx_table, selector_candidates, validate,
+    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_range_export_with_options,
+    xlsx_ranges_set_temp_path, xlsx_sheet_selectors, xlsx_tables,
     xlsx_workbook_waiting_for_formula_recalc, xml_attr_escape, xml_escape, zip_entry_names,
     zip_text,
 };

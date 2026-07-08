@@ -11,9 +11,9 @@ use crate::pptx_render::pptx_render;
 use crate::{
     CliError, CliResult, DocxRichBlockReport, EXIT_DIFF_THRESHOLD, EXIT_PARTIAL_SUCCESS,
     EXIT_RENDER_FAILED, EXIT_SUCCESS, EXIT_UNEXPECTED, GlobalFlags, InspectPackageKind,
-    WorkbookSheet, XlsxTableRef, attr, decode_xml_text, detect_inspect_package_type,
-    docx_rich_block_reports, find_docx_document_part, find_xlsx_workbook_part, local_name,
-    normalize_xl_target, package_type, parse_cell_ref, pptx_diff, relationship_entries,
+    WorkbookSheet, XlsxTableRef, append_xml_text_event, attr, detect_inspect_package_type,
+    docx_rich_block_reports, find_docx_document_part, find_xlsx_workbook_part, is_xml_text_event,
+    local_name, normalize_xl_target, package_type, parse_cell_ref, pptx_diff, relationship_entries,
     relationships_part_for, shared_strings, sheet_cells, workbook_sheets, xlsx_styles, xlsx_tables,
     zip_entry_names, zip_text,
 };
@@ -892,17 +892,8 @@ fn parse_xlsx_defined_names(
                     names.push(item);
                 }
             }
-            Ok(Event::Text(e)) => {
-                if current.is_some() {
-                    text.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::GeneralRef(e)) => {
-                if current.is_some() {
-                    text.push('&');
-                    text.push_str(&String::from_utf8_lossy(e.as_ref()));
-                    text.push(';');
-                }
+            Ok(event) if current.is_some() && is_xml_text_event(&event) => {
+                append_xml_text_event(&mut text, &event);
             }
             Ok(Event::End(e)) => {
                 let name = local_name(e.name().as_ref()).to_string();

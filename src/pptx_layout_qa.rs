@@ -3,8 +3,8 @@ use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Number, Value, json};
 
 use crate::{
-    CliError, CliResult, attr, attr_exact, local_name, package_type, relationships,
-    resolve_relationship_target, zip_text,
+    CliError, CliResult, append_xml_text_event, attr, attr_exact, is_xml_text_event, local_name,
+    package_type, relationships, resolve_relationship_target, zip_text,
 };
 
 const DEFAULT_SLIDE_WIDTH: i64 = 9_144_000;
@@ -382,11 +382,9 @@ fn parse_layout_shapes(xml: &str) -> Vec<LayoutShape> {
                     parse_shape_empty(&e, &name, shape, &mut in_tx_body, &mut current_paragraph);
                 }
             }
-            Ok(Event::Text(e)) if in_text => {
+            Ok(event) if in_text && is_xml_text_event(&event) => {
                 if let Some(paragraph) = current_paragraph.as_mut() {
-                    paragraph
-                        .text
-                        .push_str(&String::from_utf8_lossy(e.as_ref()));
+                    append_xml_text_event(&mut paragraph.text, &event);
                 }
             }
             Ok(Event::End(e)) => {

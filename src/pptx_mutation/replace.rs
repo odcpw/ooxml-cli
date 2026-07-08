@@ -30,8 +30,8 @@ use self::text_xlsx::{
 };
 use crate::cli_args::value_flag_present;
 use crate::{
-    CliError, CliResult, attr, attr_exact, content_type_for_part, decode_xml_text,
-    ensure_content_type_override, local_name, needs_xml_space_preserve,
+    CliError, CliResult, append_xml_text_event, attr, attr_exact, content_type_for_part,
+    ensure_content_type_override, is_xml_text_event, local_name, needs_xml_space_preserve,
     relationship_entries_from_xml, relationship_target_from_source_to_target,
     relationships_part_for, replace_xml_span, resolve_relationship_target,
     validate_xlsx_mutation_output_flags, xml_direct_child_ranges, xml_escape, zip_text,
@@ -1420,14 +1420,9 @@ fn text_nodes_in_span(xml: &str, span: XmlSpan) -> CliResult<Vec<TextNodeSpan>> 
                     });
                 }
             }
-            Ok(Event::Text(e)) => {
+            Ok(event) if is_xml_text_event(&event) => {
                 if let Some(scan) = current.as_mut() {
-                    scan.text.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) => {
-                if let Some(scan) = current.as_mut() {
-                    scan.text.push_str(&String::from_utf8_lossy(e.as_ref()));
+                    append_xml_text_event(&mut scan.text, &event);
                 }
             }
             Ok(Event::End(e)) => {

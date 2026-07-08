@@ -4,7 +4,9 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
-use crate::{CliError, CliResult, attr, decode_xml_text, local_name, zip_text};
+use crate::{
+    CliError, CliResult, append_xml_text_event, attr, is_xml_text_event, local_name, zip_text,
+};
 
 use super::docx_document_and_comments_parts;
 
@@ -106,22 +108,13 @@ fn docx_comments(
                     docx_note_comment_empty(&e, &name, &stack, comment);
                 }
             }
-            Ok(Event::Text(e)) => {
+            Ok(event) if is_xml_text_event(&event) => {
                 if let Some(comment) = current.as_mut()
                     && comment.in_t
                     && comment.skip_text_depth == 0
                     && let Some(paragraph) = comment.current_paragraph.as_mut()
                 {
-                    paragraph.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) => {
-                if let Some(comment) = current.as_mut()
-                    && comment.in_t
-                    && comment.skip_text_depth == 0
-                    && let Some(paragraph) = comment.current_paragraph.as_mut()
-                {
-                    paragraph.push_str(&String::from_utf8_lossy(e.as_ref()));
+                    append_xml_text_event(paragraph, &event);
                 }
             }
             Ok(Event::End(e)) => {
@@ -444,20 +437,12 @@ pub(super) fn docx_comment_info_from_fragment(
                     paragraph.push('\t');
                 }
             }
-            Ok(Event::Text(e)) => {
+            Ok(event) if is_xml_text_event(&event) => {
                 if in_t
                     && skip_text_depth == 0
                     && let Some(paragraph) = current_paragraph.as_mut()
                 {
-                    paragraph.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) => {
-                if in_t
-                    && skip_text_depth == 0
-                    && let Some(paragraph) = current_paragraph.as_mut()
-                {
-                    paragraph.push_str(&String::from_utf8_lossy(e.as_ref()));
+                    append_xml_text_event(paragraph, &event);
                 }
             }
             Ok(Event::End(e)) => {

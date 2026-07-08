@@ -8,12 +8,13 @@ use std::fs;
 use crate::cli_args::value_flag_present;
 use crate::{
     CliError, CliResult, RelationshipEntry, add_relationship_to_xml, allocate_relationship_id,
-    attr, attr_exact, copy_zip_with_part_overrides_and_removals, current_utc_rfc3339,
-    decode_xml_text, ensure_content_type_override, local_name, package_mutation_temp_path,
-    package_type, relationship_entries_from_xml, relationship_target_from_source_to_target,
-    relationships_part_for, remove_xml_span, replace_xml_span, resolve_relationship_target,
-    validate, validate_xlsx_mutation_output_flags, xml_attr_escape, xml_direct_child_ranges,
-    xml_escape, zip_entry_exists, zip_entry_names, zip_text,
+    append_xml_text_event, attr, attr_exact, copy_zip_with_part_overrides_and_removals,
+    current_utc_rfc3339, ensure_content_type_override, is_xml_text_event, local_name,
+    package_mutation_temp_path, package_type, relationship_entries_from_xml,
+    relationship_target_from_source_to_target, relationships_part_for, remove_xml_span,
+    replace_xml_span, resolve_relationship_target, validate, validate_xlsx_mutation_output_flags,
+    xml_attr_escape, xml_direct_child_ranges, xml_escape, zip_entry_exists, zip_entry_names,
+    zip_text,
 };
 
 mod output;
@@ -877,14 +878,9 @@ fn parse_comment_elements(xml: &str) -> Vec<CommentElement> {
                     comment.pos_y = attr(&e, "y").unwrap_or_else(|| "0".to_string());
                 }
             }
-            Ok(Event::Text(e)) if in_text => {
+            Ok(event) if in_text && is_xml_text_event(&event) => {
                 if let Some(comment) = current.as_mut() {
-                    comment.text.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) if in_text => {
-                if let Some(comment) = current.as_mut() {
-                    comment.text.push_str(&decode_xml_text(e.as_ref()));
+                    append_xml_text_event(&mut comment.text, &event);
                 }
             }
             Ok(Event::End(e)) if current.is_some() => {

@@ -2,9 +2,9 @@ use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 
 use crate::{
-    CliError, CliResult, InspectPackageKind, WorkbookSheet, attr, decode_xml_text,
-    detect_inspect_package_type, find_xlsx_workbook_part, is_xlsx_handle, local_name,
-    resolve_sheet, selector_candidates, workbook_sheets, zip_entry_names, zip_text,
+    CliError, CliResult, InspectPackageKind, WorkbookSheet, append_xml_text_event, attr,
+    detect_inspect_package_type, find_xlsx_workbook_part, is_xlsx_handle, is_xml_text_event,
+    local_name, resolve_sheet, selector_candidates, workbook_sheets, zip_entry_names, zip_text,
 };
 
 use super::model::{XlsxDefinedName, XlsxDefinedNameSpan, XlsxDefinedNamesBlock};
@@ -101,10 +101,8 @@ pub(super) fn parse_xlsx_defined_name_block(
                     names.push(XlsxDefinedNameSpan { name: item });
                 }
             }
-            Ok(Event::Text(e)) => {
-                if current.is_some() {
-                    current_ref.push_str(&decode_xml_text(e.as_ref()));
-                }
+            Ok(event) if current.is_some() && is_xml_text_event(&event) => {
+                append_xml_text_event(&mut current_ref, &event);
             }
             Ok(Event::End(e)) => {
                 let name = local_name(e.name().as_ref()).to_string();

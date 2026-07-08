@@ -7,11 +7,11 @@ use std::fs;
 use crate::cli_args::{parse_bool_flag, value_flag_present};
 use crate::pptx_readback::{pptx_shape_entry_matches, pptx_shapes_get, pptx_shapes_show};
 use crate::{
-    CliError, CliResult, RelationshipEntry, allocate_relationship_id, attr, command_arg,
-    copy_zip_with_part_overrides, local_name, package_mutation_temp_path, package_type,
-    parse_i64_flag, parse_string_flag, relationship_entries_from_xml, relationships_part_for,
-    selector_candidates, validate, validate_xlsx_mutation_output_flags, xml_attr_escape,
-    xml_direct_child_ranges, zip_text,
+    CliError, CliResult, RelationshipEntry, allocate_relationship_id, append_xml_text_event, attr,
+    command_arg, copy_zip_with_part_overrides, is_xml_text_event, local_name,
+    package_mutation_temp_path, package_type, parse_i64_flag, parse_string_flag,
+    relationship_entries_from_xml, relationships_part_for, selector_candidates, validate,
+    validate_xlsx_mutation_output_flags, xml_attr_escape, xml_direct_child_ranges, zip_text,
 };
 
 const HYPERLINK_REL_TYPE: &str =
@@ -802,7 +802,9 @@ fn direct_child_text(fragment: &str, wanted: &str) -> CliResult<Option<String>> 
     let mut text = String::new();
     loop {
         match reader.read_event() {
-            Ok(Event::Text(e)) => text.push_str(&String::from_utf8_lossy(e.as_ref())),
+            Ok(event) if is_xml_text_event(&event) => {
+                append_xml_text_event(&mut text, &event);
+            }
             Ok(Event::Eof) => break,
             Err(err) => return Err(CliError::unexpected(err.to_string())),
             _ => {}

@@ -11,14 +11,14 @@ use crate::pptx_readback::pptx_charts_show;
 use crate::xml_util::attr_exact;
 use crate::{
     CliError, CliResult, RangeBounds, XlsxRangeExportOptions, XlsxRangesSetOptions,
-    chrono_like_counter, col_name, command_arg, copy_zip_with_binary_part_overrides_and_removals,
-    decode_xml_text, ensure_content_type_override, local_name, package_mutation_temp_path,
+    append_xml_text_event, chrono_like_counter, col_name, command_arg,
+    copy_zip_with_binary_part_overrides_and_removals, decode_xml_text,
+    ensure_content_type_override, is_xml_text_event, local_name, package_mutation_temp_path,
     package_type, parse_cli_range, parse_i64_flag, parse_range, parse_string_flag,
     range_bounds_ref, relationship_entries, relationship_entries_from_xml,
     relationship_target_from_source_to_target, relationships, relationships_part_for, validate,
     validate_xlsx_mutation_output_flags, xlsx_range_export_with_options, xlsx_ranges_set,
-    xml_attr_escape, xml_attrs_map, xml_escape, xml_general_ref, zip_bytes, zip_entry_names,
-    zip_text,
+    xml_attr_escape, xml_attrs_map, xml_escape, zip_bytes, zip_entry_names, zip_text,
 };
 
 const CHART_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/chart";

@@ -3,7 +3,7 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::name::{Namespace, NamespaceResolver, ResolveResult};
 
 use super::DOCX_W_NS;
-use crate::{attr, attr_prefixed_ns, decode_xml_text, local_name, xml_general_ref};
+use crate::{append_xml_text_event, attr, attr_prefixed_ns, is_xml_text_event, local_name};
 
 pub(crate) fn docx_first_word_attr(fragment: &str, name: &[u8]) -> Option<String> {
     let mut reader = NsReader::from_str(fragment);
@@ -34,12 +34,8 @@ pub(crate) fn docx_word_text_descendants(fragment: &str, wanted: &str) -> String
                     wanted_depth = 1;
                 }
             }
-            Ok(Event::Text(e)) if wanted_depth > 0 => text.push_str(&decode_xml_text(e.as_ref())),
-            Ok(Event::GeneralRef(e)) if wanted_depth > 0 => {
-                text.push_str(&xml_general_ref(e.as_ref()));
-            }
-            Ok(Event::CData(e)) if wanted_depth > 0 => {
-                text.push_str(&String::from_utf8_lossy(e.as_ref()));
+            Ok(event) if wanted_depth > 0 && is_xml_text_event(&event) => {
+                append_xml_text_event(&mut text, &event);
             }
             Ok(Event::End(_)) if wanted_depth > 0 => {
                 wanted_depth -= 1;
@@ -69,9 +65,9 @@ pub(crate) fn xml_fragment_text(fragment: &str) -> String {
     let mut text = String::new();
     loop {
         match reader.read_event() {
-            Ok(Event::Text(e)) => text.push_str(&decode_xml_text(e.as_ref())),
-            Ok(Event::GeneralRef(e)) => text.push_str(&xml_general_ref(e.as_ref())),
-            Ok(Event::CData(e)) => text.push_str(&String::from_utf8_lossy(e.as_ref())),
+            Ok(event) if is_xml_text_event(&event) => {
+                append_xml_text_event(&mut text, &event);
+            }
             Ok(Event::Eof) | Err(_) => break,
             _ => {}
         }
@@ -114,14 +110,8 @@ pub(crate) fn docx_paragraph_fragment_text(fragment: &str) -> String {
                     }
                 }
             }
-            Ok(Event::Text(e)) if in_t && skip_text_depth == 0 => {
-                text.push_str(&decode_xml_text(e.as_ref()));
-            }
-            Ok(Event::GeneralRef(e)) if in_t && skip_text_depth == 0 => {
-                text.push_str(&xml_general_ref(e.as_ref()));
-            }
-            Ok(Event::CData(e)) if in_t && skip_text_depth == 0 => {
-                text.push_str(&String::from_utf8_lossy(e.as_ref()));
+            Ok(event) if in_t && skip_text_depth == 0 && is_xml_text_event(&event) => {
+                append_xml_text_event(&mut text, &event);
             }
             Ok(Event::End(e)) => {
                 let name = local_name(e.name().as_ref()).to_string();

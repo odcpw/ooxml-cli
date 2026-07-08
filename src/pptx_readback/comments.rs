@@ -6,9 +6,9 @@ use std::collections::BTreeMap;
 
 use super::slide_parts::{PptxSlidePartRef, pptx_slide_part_refs};
 use crate::{
-    CliError, CliResult, attr, decode_xml_text, local_name, package_type, relationship_entries,
-    relationships_part_for, resolve_relationship_target, selector_candidates, zip_entry_exists,
-    zip_entry_names, zip_text,
+    CliError, CliResult, append_xml_text_event, attr, is_xml_text_event, local_name, package_type,
+    relationship_entries, relationships_part_for, resolve_relationship_target, selector_candidates,
+    zip_entry_exists, zip_entry_names, zip_text,
 };
 
 #[derive(Clone, Default)]
@@ -251,14 +251,9 @@ fn pptx_comments_from_xml(
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "text" => {
                 in_text = false;
             }
-            Ok(Event::Text(e)) if in_text => {
+            Ok(event) if in_text && is_xml_text_event(&event) => {
                 if let Some(comment) = current.as_mut() {
-                    comment.text.push_str(&decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) if in_text => {
-                if let Some(comment) = current.as_mut() {
-                    comment.text.push_str(&decode_xml_text(e.as_ref()));
+                    append_xml_text_event(&mut comment.text, &event);
                 }
             }
             Ok(Event::End(e)) if local_name(e.name().as_ref()) == "cm" => {

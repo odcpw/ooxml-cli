@@ -5,9 +5,10 @@ use serde_json::{Map, Value, json};
 
 use super::{docx_field_code_base, docx_field_location};
 use crate::{
-    CliError, CliResult, DOCX_W_NS, InspectPackageKind, decode_xml_text,
+    CliError, CliResult, DOCX_W_NS, InspectPackageKind, append_xml_text_event,
     detect_inspect_package_type, docx_header_footer_part_uris, docx_word_attr_ns, element_in_ns,
-    find_docx_document_part, local_name, package_type, xml_general_ref, zip_entry_names, zip_text,
+    find_docx_document_part, is_xml_text_event, local_name, package_type, zip_entry_names,
+    zip_text,
 };
 pub(crate) fn docx_fields_list(file: &str, type_filter: Option<&str>) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
@@ -170,19 +171,11 @@ fn docx_fields_in_document_xml(xml: &str, document_uri: &str) -> CliResult<Vec<D
                     );
                 }
             }
-            Ok(Event::Text(e)) => {
+            Ok(event) if is_xml_text_event(&event) => {
                 if let Some(paragraph) = current.as_mut() {
-                    docx_field_note_text(paragraph, &decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::GeneralRef(e)) => {
-                if let Some(paragraph) = current.as_mut() {
-                    docx_field_note_text(paragraph, &xml_general_ref(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) => {
-                if let Some(paragraph) = current.as_mut() {
-                    docx_field_note_text(paragraph, &String::from_utf8_lossy(e.as_ref()));
+                    let mut text = String::new();
+                    append_xml_text_event(&mut text, &event);
+                    docx_field_note_text(paragraph, &text);
                 }
             }
             Ok(Event::End(e)) => {
@@ -252,19 +245,11 @@ fn docx_fields_in_header_footer_xml(xml: &str, part_uri: &str) -> CliResult<Vec<
                     );
                 }
             }
-            Ok(Event::Text(e)) => {
+            Ok(event) if is_xml_text_event(&event) => {
                 if let Some(paragraph) = current.as_mut() {
-                    docx_field_note_text(paragraph, &decode_xml_text(e.as_ref()));
-                }
-            }
-            Ok(Event::GeneralRef(e)) => {
-                if let Some(paragraph) = current.as_mut() {
-                    docx_field_note_text(paragraph, &xml_general_ref(e.as_ref()));
-                }
-            }
-            Ok(Event::CData(e)) => {
-                if let Some(paragraph) = current.as_mut() {
-                    docx_field_note_text(paragraph, &String::from_utf8_lossy(e.as_ref()));
+                    let mut text = String::new();
+                    append_xml_text_event(&mut text, &event);
+                    docx_field_note_text(paragraph, &text);
                 }
             }
             Ok(Event::End(e)) => {
