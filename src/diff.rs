@@ -1,6 +1,7 @@
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,11 +12,14 @@ use crate::pptx_render::pptx_render;
 use crate::{
     CliError, CliResult, DocxRichBlockReport, EXIT_DIFF_THRESHOLD, EXIT_PARTIAL_SUCCESS,
     EXIT_RENDER_FAILED, EXIT_SUCCESS, EXIT_UNEXPECTED, GlobalFlags, InspectPackageKind,
-    WorkbookSheet, XlsxTableRef, append_xml_text_event, attr, detect_inspect_package_type,
-    docx_rich_block_reports, find_docx_document_part, find_xlsx_workbook_part, is_xml_text_event,
+    WorkbookSheet, XlsxTableRef, append_xml_text_event, attr, content_type_for_part,
+    decode_xml_text, detect_inspect_package_type, docx_rich_block_reports,
+    find_docx_document_part, find_xlsx_workbook_part, is_docx_comments_part,
+    is_docx_endnotes_part, is_docx_footer_part, is_docx_footnotes_part, is_docx_header_part,
+    is_docx_media_part, is_docx_numbering_part, is_docx_styles_part, is_xml_text_event,
     local_name, normalize_xl_target, package_type, parse_cell_ref, pptx_diff, relationship_entries,
     relationships_part_for, shared_strings, sheet_cells, workbook_sheets, xlsx_styles, xlsx_tables,
-    zip_entry_names, zip_text,
+    zip_bytes, zip_entry_names, zip_text,
 };
 
 pub(crate) struct DiffCommandOutput {
@@ -1102,9 +1106,9 @@ fn xlsx_table_columns(table: &XlsxTableRef) -> String {
 }
 
 fn docx_diff(baseline: &str, candidate: &str) -> CliResult<Value> {
-    let before = read_docx_blocks(baseline)?;
-    let after = read_docx_blocks(candidate)?;
-    let mut diffs = align_docx_blocks(&before, &after);
+    let before = read_docx_snapshot(baseline)?;
+    let after = read_docx_snapshot(candidate)?;
+    let mut diffs = align_docx_blocks(&before.blocks, &after.blocks);
     diffs.sort_by(|left, right| {
         left.index
             .cmp(&right.index)
@@ -1121,19 +1125,35 @@ fn docx_diff(baseline: &str, candidate: &str) -> CliResult<Value> {
         .into_iter()
         .map(DocxBlockDiff::into_json)
         .collect::<Vec<_>>();
+    let part_diffs = compare_docx_parts(&before.parts, &after.parts);
+    let changed_parts = part_diffs
+        .iter()
+        .filter_map(|diff| diff.get("part").and_then(Value::as_str))
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
 
     Ok(json!({
         "schemaVersion": "1.0",
         "type": "docx",
         "semantic": {
             "schemaVersion": "1.0",
-            "blockCountA": before.len(),
-            "blockCountB": after.len(),
-            "blockCountEqual": before.len() == after.len(),
+            "blockCountA": before.blocks.len(),
+            "blockCountB": after.blocks.len(),
+            "blockCountEqual": before.blocks.len() == after.blocks.len(),
             "changedBlocks": changed_blocks,
             "blocks": blocks,
+            "secondaryPartCountA": before.parts.len(),
+            "secondaryPartCountB": after.parts.len(),
+            "secondaryPartCountEqual": before.parts.len() == after.parts.len(),
+            "changedParts": changed_parts,
+            "partDiffs": part_diffs,
         },
     }))
+}
+
+struct DocxSnapshot {
+    blocks: Vec<DocxBlockSnapshot>,
+    parts: Vec<DocxPartSnapshot>,
 }
 
 #[derive(Clone)]
@@ -1143,6 +1163,14 @@ struct DocxBlockSnapshot {
     text: String,
     style: String,
     table_shape: String,
+}
+
+#[derive(Clone)]
+struct DocxPartSnapshot {
+    part: String,
+    kind: String,
+    content_type: String,
+    sha256: String,
 }
 
 struct DocxBlockDiff {
@@ -1171,7 +1199,7 @@ impl DocxBlockDiff {
     }
 }
 
-fn read_docx_blocks(file: &str) -> CliResult<Vec<DocxBlockSnapshot>> {
+fn read_docx_snapshot(file: &str) -> CliResult<DocxSnapshot> {
     let entries = zip_entry_names(file)?;
     let kind = detect_inspect_package_type(file, &entries);
     if kind != InspectPackageKind::Docx {
@@ -1182,8 +1210,12 @@ fn read_docx_blocks(file: &str) -> CliResult<Vec<DocxBlockSnapshot>> {
     }
     let document_part = find_docx_document_part(file, &entries)?;
     let document_xml = zip_text(file, &document_part)?;
-    docx_rich_block_reports(&document_xml, false)
-        .map(|blocks| blocks.iter().map(docx_block_snapshot).collect::<Vec<_>>())
+    let blocks = docx_rich_block_reports(&document_xml, false)?
+        .iter()
+        .map(docx_block_snapshot)
+        .collect::<Vec<_>>();
+    let parts = read_docx_secondary_parts(file, &entries)?;
+    Ok(DocxSnapshot { blocks, parts })
 }
 
 fn docx_block_snapshot(block: &DocxRichBlockReport) -> DocxBlockSnapshot {
@@ -1208,6 +1240,100 @@ fn docx_table_shape(rows: &[Vec<String>]) -> String {
             .collect::<Vec<_>>()
             .join(",")
     )
+}
+
+fn read_docx_secondary_parts(file: &str, entries: &[String]) -> CliResult<Vec<DocxPartSnapshot>> {
+    let mut parts = Vec::new();
+    for entry in entries.iter().filter(|entry| !entry.ends_with('/')) {
+        let uri = format!("/{}", entry.trim_start_matches('/'));
+        let content_type = content_type_for_part(file, &uri).unwrap_or_default();
+        let Some(kind) = docx_secondary_part_kind(&uri, &content_type) else {
+            continue;
+        };
+        let bytes = zip_bytes(file, entry)?;
+        parts.push(DocxPartSnapshot {
+            part: entry.clone(),
+            kind: kind.to_string(),
+            content_type,
+            sha256: sha256_digest(&bytes),
+        });
+    }
+    parts.sort_by(|left, right| left.part.cmp(&right.part));
+    Ok(parts)
+}
+
+fn docx_secondary_part_kind(uri: &str, content_type: &str) -> Option<&'static str> {
+    if is_docx_header_part(uri, content_type) {
+        Some("header")
+    } else if is_docx_footer_part(uri, content_type) {
+        Some("footer")
+    } else if is_docx_footnotes_part(uri, content_type) {
+        Some("footnotes")
+    } else if is_docx_endnotes_part(uri, content_type) {
+        Some("endnotes")
+    } else if is_docx_comments_part(uri, content_type) {
+        Some("comments")
+    } else if is_docx_styles_part(uri, content_type) {
+        Some("styles")
+    } else if is_docx_numbering_part(uri, content_type) {
+        Some("numbering")
+    } else if is_docx_media_part(uri) {
+        Some("media")
+    } else {
+        None
+    }
+}
+
+fn sha256_digest(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("sha256:{:x}", hasher.finalize())
+}
+
+fn compare_docx_parts(before: &[DocxPartSnapshot], after: &[DocxPartSnapshot]) -> Vec<Value> {
+    let before_by_part = before
+        .iter()
+        .map(|part| (part.part.as_str(), part))
+        .collect::<BTreeMap<_, _>>();
+    let after_by_part = after
+        .iter()
+        .map(|part| (part.part.as_str(), part))
+        .collect::<BTreeMap<_, _>>();
+    let part_names = before_by_part
+        .keys()
+        .chain(after_by_part.keys())
+        .copied()
+        .collect::<BTreeSet<_>>();
+    part_names
+        .iter()
+        .filter_map(
+            |part| match (before_by_part.get(part), after_by_part.get(part)) {
+                (Some(left), Some(right)) if left.sha256 != right.sha256 => Some(json!({
+                    "part": part,
+                    "kind": right.kind,
+                    "change": "modified",
+                    "contentType": right.content_type,
+                    "beforeHash": left.sha256,
+                    "afterHash": right.sha256,
+                })),
+                (Some(left), None) => Some(json!({
+                    "part": part,
+                    "kind": left.kind,
+                    "change": "removed",
+                    "contentType": left.content_type,
+                    "beforeHash": left.sha256,
+                })),
+                (None, Some(right)) => Some(json!({
+                    "part": part,
+                    "kind": right.kind,
+                    "change": "added",
+                    "contentType": right.content_type,
+                    "afterHash": right.sha256,
+                })),
+                _ => None,
+            },
+        )
+        .collect()
 }
 
 fn align_docx_blocks(

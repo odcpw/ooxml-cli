@@ -151,6 +151,101 @@ fn top_level_diff_docx_matches_rust_baseline_for_paragraph_text_change() {
 }
 
 #[test]
+fn top_level_diff_docx_reports_header_part_changes() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-diff-docx-header-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let candidate = temp_dir.join("candidate.docx");
+    rewrite_zip_fixture(
+        "testdata/docx/headers/document.docx",
+        &candidate,
+        |name, data| {
+            let data = if name == "word/header1.xml" {
+                replace_ascii(data, "Page Header", "Edited Header")
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let candidate = candidate.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "diff",
+        "testdata/docx/headers/document.docx",
+        &candidate,
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    let output = stdout.expect("diff stdout");
+    assert!(
+        output["semantic"]["changedParts"]
+            .as_array()
+            .expect("changed parts")
+            .iter()
+            .any(|part| part.as_str() == Some("word/header1.xml")),
+        "header change should be represented in changedParts: {output}"
+    );
+    let part_diff = output["semantic"]["partDiffs"]
+        .as_array()
+        .expect("part diffs")
+        .iter()
+        .find(|diff| diff["part"].as_str() == Some("word/header1.xml"))
+        .expect("header part diff");
+    assert_eq!(part_diff["kind"], "header");
+    assert_eq!(part_diff["change"], "modified");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn top_level_diff_docx_reports_media_part_changes() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-diff-docx-media-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let candidate = temp_dir.join("candidate.docx");
+    rewrite_zip_fixture(
+        "testdata/docx/with-image/document.docx",
+        &candidate,
+        |name, data| {
+            let data = if name == "word/media/image1.png" {
+                b"changed image bytes".to_vec()
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let candidate = candidate.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "diff",
+        "testdata/docx/with-image/document.docx",
+        &candidate,
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    let output = stdout.expect("diff stdout");
+    let part_diff = output["semantic"]["partDiffs"]
+        .as_array()
+        .expect("part diffs")
+        .iter()
+        .find(|diff| diff["part"].as_str() == Some("word/media/image1.png"))
+        .expect("media part diff");
+    assert_eq!(part_diff["kind"], "media");
+    assert_eq!(part_diff["change"], "modified");
+    assert_ne!(part_diff["beforeHash"], part_diff["afterHash"]);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn top_level_diff_pptx_matches_rust_baseline_for_title_text_change() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-diff-pptx-{}", std::process::id()));
