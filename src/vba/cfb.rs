@@ -374,11 +374,15 @@ impl<'a> CfbFile<'a> {
         }
         let mut chunks = Vec::new();
         let mut current = first_sector;
+        let mut visited = BTreeSet::new();
         while current != SECTOR_END {
             if current == SECTOR_FREE || current == SECTOR_FAT || current == SECTOR_DIFAT {
                 return Err(format!(
                     "invalid sector marker 0x{current:08x} in stream chain"
                 ));
+            }
+            if !visited.insert(current) {
+                return Err(format!("CFB FAT sector chain cycle at sector {current}"));
             }
             let current_index =
                 usize::try_from(current).map_err(|_| format!("sector {current} outside FAT"))?;
@@ -406,7 +410,13 @@ impl<'a> CfbFile<'a> {
         }
         let mut out = Vec::new();
         let mut current = first_mini_sector;
+        let mut visited = BTreeSet::new();
         while current != SECTOR_END {
+            if !visited.insert(current) {
+                return Err(format!(
+                    "CFB mini FAT sector chain cycle at mini sector {current}"
+                ));
+            }
             let current_index = usize::try_from(current)
                 .map_err(|_| format!("mini sector {current} outside mini FAT"))?;
             if current_index >= self.mini_fat.len() {
@@ -1417,6 +1427,18 @@ mod tests {
             .expect("stream directory entry should exist")
     }
 
+    fn write_u32_at(data: &mut [u8], offset: usize, value: u32) {
+        data[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn fat_entry_offset(sector: u32) -> usize {
+        512 + usize::try_from(sector).expect("sector should fit") * 4
+    }
+
+    fn sector_offset(sector: u32) -> usize {
+        512 + usize::try_from(sector).expect("sector should fit") * WRITER_SECTOR_SIZE
+    }
+
     #[test]
     fn build_streams_file_rejects_empty_maps() {
         let error = build_streams_file(&BTreeMap::new()).expect_err("empty CFB should fail");
@@ -1507,6 +1529,61 @@ mod tests {
                 .len(),
             sectors_needed(large.len(), WRITER_SECTOR_SIZE)
         );
+    }
+
+    #[test]
+    fn open_rejects_cyclic_directory_fat_chain_without_large_allocation() {
+        let streams = minimal_vba_streams();
+        let mut cfb = build_streams_file(&streams).expect("fresh CFB should build");
+        let first_directory_sector = read_u32(&cfb, 48).expect("directory sector");
+        write_u32_at(
+            &mut cfb,
+            fat_entry_offset(first_directory_sector),
+            first_directory_sector,
+        );
+
+        let error = match CfbFile::open(&cfb) {
+            Ok(_) => panic!("cyclic directory FAT should fail"),
+            Err(error) => error,
+        };
+        assert!(error.contains("CFB FAT sector chain cycle"), "{error}");
+    }
+
+    #[test]
+    fn stream_rejects_cyclic_regular_fat_chain_without_trusting_declared_size() {
+        let large = vec![b'R'; WRITER_MINI_STREAM_CUTOFF + 1];
+        let streams = BTreeMap::from([("VBA/LargeModule".to_string(), large)]);
+        let mut cfb = build_streams_file(&streams).expect("fresh CFB should build");
+        let opened = CfbFile::open(&cfb).expect("fresh CFB should reopen");
+        let large_entry = stream_entry(&opened, "VBA/LargeModule");
+        let start_sector = large_entry.start_sector;
+        write_u32_at(&mut cfb, fat_entry_offset(start_sector), start_sector);
+
+        let opened = CfbFile::open(&cfb).expect("directory should still open");
+        let error = opened
+            .stream("VBA/LargeModule")
+            .expect_err("cyclic stream FAT should fail");
+        assert!(error.contains("CFB FAT sector chain cycle"), "{error}");
+    }
+
+    #[test]
+    fn stream_rejects_cyclic_mini_fat_chain_before_repeating_sector_data() {
+        let project = vec![b'P'; WRITER_MINI_SECTOR_SIZE + 1];
+        let streams = BTreeMap::from([("PROJECT".to_string(), project)]);
+        let mut cfb = build_streams_file(&streams).expect("fresh CFB should build");
+        let opened = CfbFile::open(&cfb).expect("fresh CFB should reopen");
+        let project_entry = stream_entry(&opened, "PROJECT");
+        let start_mini_sector = project_entry.start_sector;
+        let first_mini_fat_sector = read_u32(&cfb, 60).expect("mini FAT sector");
+        let mini_fat_offset =
+            sector_offset(first_mini_fat_sector) + usize::try_from(start_mini_sector).unwrap() * 4;
+        write_u32_at(&mut cfb, mini_fat_offset, start_mini_sector);
+
+        let opened = CfbFile::open(&cfb).expect("cyclic mini stream package should open");
+        let error = opened
+            .stream("PROJECT")
+            .expect_err("cyclic mini FAT stream should fail");
+        assert!(error.contains("CFB mini FAT sector chain cycle"), "{error}");
     }
 
     #[test]

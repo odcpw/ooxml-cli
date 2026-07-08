@@ -4,49 +4,49 @@ This document consolidates the independently audited fix waves that were integra
 
 ## Entity Batch
 
-## ENTITY-1
+### ENTITY-1
 - Status: fixed.
 - Files touched: `src/xml_util.rs`, `src/docx_replace.rs` behavior via `decode_xml_text`, DOCX readers under `src/docx_*`.
 - Tests added: `tests/entity_conformance.rs::docx_entity_text_and_untouched_runs_survive_replace`.
 - Behavior changes: numeric character references in raw `w:t` fragments now decode before rewrite, so untouched runs no longer become visible `&amp;#...;` text.
 
-## ENTITY-2
+### ENTITY-2
 - Status: fixed.
 - Files touched: `src/xml_util.rs`, `src/xlsx_names/package.rs`, `src/conformance_invariants/spreadsheet_semantics.rs`, `src/diff.rs`.
 - Tests added: `tests/entity_conformance.rs::xlsx_entity_formulas_survive_list_and_unrelated_update`.
 - Behavior changes: defined-name formulas now preserve decoded `&`, `<`, `>`, quote, apostrophe, decimal numeric refs, and hex numeric refs when listed or re-rendered.
 
-## ENTITY-3
+### ENTITY-3
 - Status: fixed.
 - Files touched: `src/xml_util.rs`, `src/xlsx_data_validations.rs`.
 - Tests added: `tests/entity_conformance.rs::xlsx_entity_formulas_survive_list_and_unrelated_update`.
 - Behavior changes: data-validation formulas and attributes now decode entity references correctly; unrelated updates no longer strip comparison operators or double-escape numeric refs.
 
-## ENTITY-4
+### ENTITY-4
 - Status: fixed.
 - Files touched: `src/xml_util.rs`, `src/pptx_mutation/replace.rs`.
 - Tests added: `tests/entity_conformance.rs::pptx_entity_text_survives_readback_and_matched_node_rewrite`; empirical PPTX repro verified with `target/debug/ooxml`.
 - Behavior changes: `pptx replace text-occurrences` now matches and rewrites text nodes using decoded entity-aware text, preserving `&`, `<`, `>`, quotes, apostrophes, and numeric refs.
 
-## ENTITY-5
+### ENTITY-5
 - Status: fixed.
 - Files touched: `src/xml_util.rs` and every migrated text reader that now uses its helper.
 - Tests added: all tests in `tests/entity_conformance.rs`.
 - Behavior changes: `xml_unescape`, `decode_xml_text`, and `xml_general_ref` now resolve decimal and hex numeric character references. Unknown or malformed entities are still preserved lossily instead of panicking.
 
-## ENTITY-6
+### ENTITY-6
 - Status: fixed.
 - Files touched: `src/docx_block_readers.rs`, `src/docx_block_readers/rich.rs`, `src/docx_xml/text_read.rs`, `src/docx_headers/paragraphs.rs`, `src/docx_comments/read.rs`, `src/docx_fields/read.rs`.
 - Tests added: `tests/entity_conformance.rs::docx_entity_text_and_untouched_runs_survive_replace`.
 - Behavior changes: `docx text` and related DOCX readers now include `GeneralRef` text in extracted paragraph text.
 
-## ENTITY-7
+### ENTITY-7
 - Status: fixed.
 - Files touched: `src/pptx_readback/comments.rs`, `src/pptx_readback/fields.rs`, `src/pptx_readback/charts.rs`, `src/pptx_readback/animations.rs`, `src/pptx_readback/shape_model.rs`, `src/pptx_mutation/tables.rs`, `src/pptx_mutation/text.rs`, `src/pptx_mutation/fields.rs`, `src/pptx_mutation/comments.rs`, `src/pptx_layout_qa.rs`, `src/pptx_mutation/charts/xml.rs`, plus related XLSX/DOCX/conformance/diff readers found by the full `Event::Text` sweep.
 - Tests added: `tests/entity_conformance.rs::pptx_entity_text_survives_readback_and_matched_node_rewrite`.
 - Behavior changes: PPTX notes/comments/tables/charts/fields/animations/layout and guard readbacks now collect text through `append_xml_text_event`.
 
-## Shared Notes
+### Shared Notes
 - Shared helper: `src/xml_util.rs` now owns `append_xml_text_event`, `is_xml_text_event`, and `TextAccumulator`.
 - Sweep evidence: `rg 'Event::Text|Event::GeneralRef' src` now reports only `src/xml_util.rs`.
 - Golden updates: none. The behavior change corrects decoded text semantics and is covered by new command-path tests rather than pinned golden output updates.
@@ -121,3 +121,39 @@ Files touched: `src/vba/run_smoke.rs`.
 Tests used: `vba_run_smoke_rejects_bad_cli_contract_before_office`.
 
 Behavior change: `vba run-smoke` now rejects invalid CLI-only options before the Windows/Office availability guard, preserving the existing test contract on non-Windows machines. This was outside the OPC findings but required for the mandated full `cargo test` gate.
+## VBA Batch
+
+### VBA-1
+
+- Status: fixed.
+- Files touched: `src/vba/codepage.rs`, `src/vba/mod.rs`, `src/vba/source/codec.rs`, `src/vba/authoring/codec.rs`.
+- Tests added: Windows-1252 mapping unit tests in `src/vba/codepage.rs`; source and authoring encode/decode regressions for euro, dashes, quotes, and undefined C1 controls.
+- Behavior changes: code page 1252 now decodes bytes `0x80..=0x9F` through the Windows-1252 extension table, replaces the five undefined byte values with U+FFFD on decode, and encodes defined Windows-1252 characters such as U+20AC/U+2013/U+2014 instead of rejecting them.
+
+### VBA-2
+
+- Status: fixed.
+- Files touched: `src/vba/source/codec.rs`, `src/vba/authoring/codec.rs`.
+- Tests added: source and authoring chunk-boundary regressions assert that every non-terminal emitted MS-OVBA chunk decompresses to exactly 4096 bytes.
+- Behavior changes: final chunks whose literal representation would exceed the compressed chunk size limit are now emitted as short raw final chunks. Deterministic bytes change for affected inputs with a final remainder in the literal-overhead overflow range, currently 3641 through 4095 bytes. The committed VBA authoring golden fixtures did not cross this boundary; `vba_authoring_golden`, `vba_pptm_authoring_golden`, and `vba_docm_authoring_golden` passed without regeneration.
+
+### VBA-3
+
+- Status: fixed.
+- Files touched: `src/vba/cfb.rs`.
+- Tests added: cyclic directory FAT and regular stream FAT fixtures assert immediate cycle errors.
+- Behavior changes: CFB regular FAT chain walking now rejects repeated sectors with `CFB FAT sector chain cycle at sector ...` before appending duplicate sector data.
+
+### VBA-4
+
+- Status: fixed.
+- Files touched: `src/vba/cfb.rs`.
+- Tests added: cyclic mini-FAT fixture asserts a clean cycle error before repeating mini-sector data.
+- Behavior changes: CFB mini-FAT chain walking now rejects repeated mini sectors with `CFB mini FAT sector chain cycle at mini sector ...`.
+
+### VBA-5
+
+- Status: fixed.
+- Files touched: `src/vba/source/codec.rs`.
+- Tests added: decompressor regression tests for a bounded output ceiling and per-chunk decompressed output greater than 4096 bytes.
+- Behavior changes: MS-OVBA container decompression now enforces a 256 MiB total decompressed output limit and a 4096-byte decompressed chunk limit. Raw chunks up to 4096 bytes are accepted so the writer can emit a short final raw chunk.

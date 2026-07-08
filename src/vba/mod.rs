@@ -1,5 +1,6 @@
 mod authoring;
 mod cfb;
+mod codepage;
 mod create;
 mod inspect;
 mod model;
