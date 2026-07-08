@@ -5,7 +5,7 @@ mod text_xlsx;
 
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -19,19 +19,22 @@ use self::image_payload::{
 };
 use self::output::{
     ensure_pptx, image_batch_replace_result_json, image_replace_result_json,
-    render_relationships_xml, sha256_string, text_occurrences_result_json, write_replace_mutation,
+    plain_text_result_json, render_relationships_xml, sha256_string, text_occurrences_result_json,
+    write_replace_mutation,
 };
 use self::text_xlsx::{
     ReplaceTextFromXlsxRequest, ReplaceTextMapFromXlsxRequest, TextMapApplied,
-    TextTargetReplacePlan, check_expected_xlsx_source_range, decode_text_separator_flag,
-    join_xlsx_text_matrix, load_xlsx_text_range_or_table_source, load_xlsx_text_range_source,
-    normalize_replace_text_from_xlsx_mode, normalize_xlsx_formula_mode, replace_text_from_xlsx,
-    replace_text_map_from_xlsx, text_map_records_from_values,
+    TextTargetReplacePlan, build_text_target_replace_plan, check_expected_xlsx_source_range,
+    decode_text_separator_flag, join_xlsx_text_matrix, load_xlsx_text_range_or_table_source,
+    load_xlsx_text_range_source, map_text_target_error, normalize_replace_text_from_xlsx_mode,
+    normalize_xlsx_formula_mode, replace_text_from_xlsx, replace_text_map_from_xlsx,
+    text_map_records_from_values,
 };
 use crate::cli_args::value_flag_present;
 use crate::{
     CliError, CliResult, append_xml_text_event, attr, attr_exact, content_type_for_part,
     ensure_content_type_override, is_xml_text_event, local_name, needs_xml_space_preserve,
+    pptx_shapes_get,
     relationship_entries_from_xml, relationship_target_from_source_to_target,
     relationships_part_for, replace_xml_span, resolve_relationship_target,
     validate_xlsx_mutation_output_flags, xml_direct_child_ranges, xml_escape, zip_text,
@@ -150,6 +153,132 @@ pub(crate) fn pptx_replace_images(file: &str, args: &[String]) -> CliResult<Valu
         &fit_mode,
         options,
     )
+}
+
+pub(crate) fn pptx_replace_text(file: &str, args: &[String]) -> CliResult<Value> {
+    let slide = crate::parse_i64_flag(args, "--slide")?.unwrap_or(1);
+    if slide < 1 {
+        return Err(CliError::invalid_args("--slide must be >= 1"));
+    }
+    let target = crate::parse_string_flag(args, "--target")?
+        .ok_or_else(|| CliError::invalid_args("--target is required"))?;
+    if target.trim().is_empty() {
+        return Err(CliError::invalid_args("--target is required"));
+    }
+    let text = crate::parse_string_flag(args, "--text")?
+        .ok_or_else(|| CliError::invalid_args("--text is required"))?;
+    let out = crate::parse_string_flag(args, "--out")?
+        .ok_or_else(|| CliError::invalid_args("--out is required"))?;
+    replace_plain_text(
+        file,
+        slide as u32,
+        &target,
+        &text,
+        PptxReplaceMutationOptions {
+            out: Some(out),
+            backup: None,
+            dry_run: false,
+            in_place: false,
+            no_validate: false,
+        },
+    )
+}
+
+pub(crate) fn pptx_replace_text_in_place(
+    file: &str,
+    slide: u32,
+    target: &str,
+    text: &str,
+) -> CliResult<Value> {
+    replace_plain_text(
+        file,
+        slide,
+        target,
+        text,
+        PptxReplaceMutationOptions {
+            out: None,
+            backup: None,
+            dry_run: false,
+            in_place: true,
+            no_validate: true,
+        },
+    )
+}
+
+fn replace_plain_text(
+    file: &str,
+    slide: u32,
+    target: &str,
+    text: &str,
+    options: PptxReplaceMutationOptions,
+) -> CliResult<Value> {
+    ensure_pptx(file)?;
+    let slides = pptx_slide_refs_for_replace(file)?;
+    let plan = build_text_target_replace_plan(file, &slides, slide, target, text)
+        .map_err(|err| map_text_target_error(err, target))?;
+    let mut text_overrides = BTreeMap::new();
+    text_overrides.insert(plan.slide_part.clone(), plan.slide_xml.clone());
+    write_replace_mutation(file, &text_overrides, &BTreeMap::new(), &options)?;
+    let mut result = plain_text_result_json(file, target, &plan, &options);
+    if let Some(readback_file) = plain_text_output_path(file, &options) {
+        let destination = plain_text_readback_destination(
+            &readback_file,
+            plan.slide,
+            target,
+            &plan.target.primary_selector,
+        )?;
+        if let Some(object) = result.as_object_mut() {
+            object.insert("destination".to_string(), destination);
+        }
+    }
+    Ok(result)
+}
+
+fn plain_text_output_path(file: &str, options: &PptxReplaceMutationOptions) -> Option<String> {
+    if options.dry_run {
+        None
+    } else if options.in_place {
+        Some(file.to_string())
+    } else {
+        options
+            .out
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .map(ToString::to_string)
+    }
+}
+
+fn plain_text_readback_destination(
+    readback_file: &str,
+    slide: u32,
+    requested_target: &str,
+    readback_target: &str,
+) -> CliResult<Value> {
+    let get = pptx_shapes_get(readback_file, slide, readback_target, true, true)?;
+    let entry = get
+        .get("shapes")
+        .and_then(Value::as_array)
+        .and_then(|shapes| shapes.first())
+        .ok_or_else(|| CliError::unexpected("shape readback missing destination"))?;
+    let mut out = Map::new();
+    out.insert("file".to_string(), json!(readback_file));
+    out.insert("slide".to_string(), json!(slide));
+    out.insert("target".to_string(), json!(requested_target));
+    for key in [
+        "shapeId",
+        "shapeName",
+        "targetKind",
+        "primarySelector",
+        "handle",
+        "selectors",
+        "textPreview",
+        "bounds",
+    ] {
+        if let Some(value) = entry.get(key) {
+            out.insert(key.to_string(), value.clone());
+        }
+    }
+    Ok(Value::Object(out))
 }
 
 pub(crate) fn pptx_replace_text_from_xlsx(file: &str, args: &[String]) -> CliResult<Value> {

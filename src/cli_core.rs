@@ -71,5 +71,6 @@ pub(crate) type CliResult<T> = Result<T, CliError>;
 #[derive(Default)]
 pub(crate) struct GlobalFlags {
     pub(crate) json: bool,
+    pub(crate) format_text: bool,
     pub(crate) strict: bool,
 }

@@ -198,6 +198,129 @@ fn doctor_contract_commands_are_machine_readable() {
 }
 
 #[test]
+fn doctor_rejects_unknown_only_check_ids_and_proof_levels_are_local() {
+    let (bad_code, bad_stdout, bad_stderr) =
+        run_ooxml(&["--json", "doctor", "health", "--only", "bogus-check"]);
+    assert_eq!(bad_code, 2);
+    assert_eq!(bad_stdout, None);
+    let bad = bad_stderr.expect("unknown doctor check stderr");
+    assert_eq!(bad["error"]["code"], "invalid_args");
+    let message = bad["error"]["message"].as_str().expect("error message");
+    assert!(message.contains("unknown doctor check id(s): bogus-check"));
+    assert!(message.contains("binary"));
+    assert!(message.contains("render-engine"));
+
+    let (cap_code, cap_stdout, cap_stderr) = run_ooxml(&["--json", "doctor", "capabilities"]);
+    assert_eq!(cap_code, 0);
+    assert_eq!(cap_stderr, None);
+    let caps = cap_stdout.expect("doctor capabilities");
+    let repair = caps["proofLevels"]
+        .as_array()
+        .expect("proof levels")
+        .iter()
+        .find(|level| level["id"] == "repair-conformance")
+        .expect("repair-conformance proof level");
+    assert_eq!(repair["requiredChecks"], serde_json::json!(["binary"]));
+}
+
+#[test]
+fn global_json_flags_normalize_before_and_after_command() {
+    let fixture = "testdata/pptx/minimal-title/presentation.pptx";
+    let (leading_code, leading_stdout, leading_stderr) =
+        run_ooxml(&["--format=json", "inspect", fixture]);
+    assert_eq!(leading_code, 0);
+    assert_eq!(leading_stderr, None);
+
+    let (json_code, json_stdout, json_stderr) = run_ooxml(&["--json", "inspect", fixture]);
+    assert_eq!(json_code, 0);
+    assert_eq!(json_stderr, None);
+    assert_eq!(leading_stdout, json_stdout);
+
+    let slides = ["pptx", "slides", "list", fixture, "--json"];
+    let (trailing_code, trailing_stdout, trailing_stderr) = run_ooxml(&slides);
+    assert_eq!(trailing_code, 0);
+    assert_eq!(trailing_stderr, None);
+    let (canonical_code, canonical_stdout, canonical_stderr) =
+        run_ooxml(&["--json", "pptx", "slides", "list", fixture]);
+    assert_eq!(canonical_code, 0);
+    assert_eq!(canonical_stderr, None);
+    assert_eq!(trailing_stdout, canonical_stdout);
+
+    let (text_code, text_stdout, text_stderr) =
+        run_ooxml(&["--format", "text", "inspect", fixture]);
+    assert_eq!(text_code, 2);
+    assert_eq!(text_stdout, None);
+    assert!(
+        text_stderr.expect("format text stderr")["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("text output is not supported")
+    );
+
+    let (guide_code, guide_stdout, guide_stderr) =
+        run_ooxml_raw(&["robot-docs", "guide", "--format", "text"]);
+    assert_eq!(guide_code, 0);
+    assert!(guide_stdout.contains("ooxml"));
+    assert_eq!(guide_stderr, "");
+}
+
+#[test]
+fn pptx_slides_show_and_selectors_reject_unknown_flags() {
+    let fixture = "testdata/pptx/title-content/presentation.pptx";
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "slides",
+        "show",
+        fixture,
+        "--slid",
+        "2",
+        "--bogus-flag",
+    ]);
+    assert_eq!(show_code, 2);
+    assert_eq!(show_stdout, None);
+    assert_eq!(
+        show_stderr.expect("slides show stderr")["error"]["message"],
+        "unknown flag: --slid"
+    );
+
+    let (selectors_code, selectors_stdout, selectors_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "slides",
+        "selectors",
+        fixture,
+        "--slide",
+        "1",
+        "--include-text",
+    ]);
+    assert_eq!(selectors_code, 2);
+    assert_eq!(selectors_stdout, None);
+    assert_eq!(
+        selectors_stderr.expect("slides selectors stderr")["error"]["message"],
+        "unknown flag: --include-text"
+    );
+
+    let (ok_code, ok_stdout, ok_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "slides",
+        "show",
+        fixture,
+        "--slide",
+        "2",
+        "--include-text",
+        "--include-bounds",
+    ]);
+    assert_eq!(ok_code, 0);
+    assert_eq!(ok_stderr, None);
+    assert_eq!(
+        ok_stdout.expect("slides show stdout")["slides"][0]["slide"],
+        2
+    );
+}
+
+#[test]
 fn agent_triage_returns_one_call_agent_contract() {
     let (code, stdout, stderr) = run_ooxml(&["agent-triage"]);
     assert_eq!(code, 0);
@@ -334,6 +457,22 @@ fn completion_shells_emit_text_scripts() {
             "completion {shell} stdout"
         );
         assert!(output.stderr.is_empty(), "completion {shell} stderr");
+    }
+}
+
+#[test]
+fn completion_includes_dispatched_top_level_commands() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args(["completion", "bash"])
+        .output()
+        .expect("run bash completion");
+    assert!(output.status.success(), "completion bash exit");
+    let text = String::from_utf8_lossy(&output.stdout);
+    for command in ["agent", "agent-triage", "diff", "template"] {
+        assert!(
+            text.contains(command),
+            "bash completion missing dispatched top-level command {command}: {text}"
+        );
     }
 }
 

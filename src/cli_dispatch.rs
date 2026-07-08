@@ -10,16 +10,14 @@ use crate::inspect::inspect;
 use crate::pptx_mutation::*;
 use crate::pptx_readback::*;
 use crate::pptx_render::pptx_render;
-use crate::validation::validate;
 use crate::vba::*;
 use crate::verify::verify;
 use crate::{
-    PptxScaffoldOptions, apply, command_arg, diff, diff_command, pptx_diff_command,
-    pptx_diff_dispatch, pptx_media_add, pptx_media_list, pptx_media_replace, pptx_scaffold,
-    pptx_template_capture, pptx_template_compile, pptx_template_inspect, pptx_translate_apply,
-    pptx_translate_export, pptx_validate_layout, pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan,
-    repair_normalize, template_apply, template_profile_inspect, template_profile_save,
-    template_tokens,
+    PptxScaffoldOptions, apply, command_arg, diff_command, pptx_diff_command, pptx_diff_dispatch,
+    pptx_media_add, pptx_media_list, pptx_media_replace, pptx_scaffold, pptx_template_capture,
+    pptx_template_compile, pptx_template_inspect, pptx_translate_apply, pptx_translate_export,
+    pptx_validate_layout, pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan, repair_normalize,
+    template_apply, template_profile_inspect, template_profile_save, template_tokens,
 };
 
 pub(crate) enum DispatchBody {
@@ -140,13 +138,13 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
             exit_code,
         });
     }
-    dispatch_value(flags, args).map(|value| DispatchOutput {
+    dispatch_value(args).map(|value| DispatchOutput {
         body: DispatchBody::Json(value),
         exit_code: EXIT_SUCCESS,
     })
 }
 
-fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
+fn dispatch_value(args: &[String]) -> CliResult<Value> {
     match args {
         [cmd] if cmd == "version" => Ok(json!({"tool": "ooxml", "version": "0.0.1"})),
         [cmd, rest @ ..] if cmd == "agent-triage" => crate::agent_triage::agent_triage(rest),
@@ -176,11 +174,6 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
             template_profile_inspect(file)
         }
         [cmd, file] if cmd == "inspect" => inspect(file),
-        [cmd, baseline, candidate, rest @ ..] if cmd == "diff" => diff(baseline, candidate, rest),
-        [cmd, rest @ ..] if cmd == "validate" => {
-            let (file, strict) = parse_validate_args(rest, flags.strict)?;
-            validate(file, strict)
-        }
         [cmd, file, rest @ ..] if cmd == "verify" => verify(file, rest),
         [family, verb, file] if family == "vba" && verb == "inspect" => vba_inspect(file),
         [family, verb, rest @ ..] if family == "vba" && verb == "build-bin" => {
@@ -796,12 +789,14 @@ fn dispatch_value(flags: &GlobalFlags, args: &[String]) -> CliResult<Value> {
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "slides" && verb == "show" =>
         {
+            reject_unknown_flags(rest, &["--slide"], &["--include-text", "--include-bounds"])?;
             let slide = parse_u32_flag(rest, "--slide")?.unwrap_or(1);
             pptx_slide_show(file, slide)
         }
         [family, group, verb, file, rest @ ..]
             if family == "pptx" && group == "slides" && verb == "selectors" =>
         {
+            reject_unknown_flags(rest, &["--slide"], &[])?;
             let slide = parse_u32_flag(rest, "--slide")?
                 .ok_or_else(|| CliError::invalid_args("--slide is required"))?;
             pptx_slide_selectors(file, slide)

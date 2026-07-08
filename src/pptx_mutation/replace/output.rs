@@ -61,6 +61,43 @@ pub(super) fn text_from_xlsx_result_json(
     Value::Object(result)
 }
 
+pub(super) fn plain_text_result_json(
+    file: &str,
+    requested_target: &str,
+    plan: &TextTargetReplacePlan,
+    options: &PptxReplaceMutationOptions,
+) -> Value {
+    let output = mutation_output_path(file, options);
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    if let Some(output) = output.as_deref() {
+        result.insert("output".to_string(), json!(output));
+    }
+    result.insert("dryRun".to_string(), json!(options.dry_run));
+    result.insert("mode".to_string(), json!("plain-text"));
+    result.insert("newText".to_string(), json!(plan.text));
+    result.insert("slideNumber".to_string(), json!(plan.slide));
+    result.insert("target".to_string(), json!(requested_target));
+    result.insert(
+        "destination".to_string(),
+        text_shape_destination_json(
+            &plan.target,
+            plan.slide,
+            requested_target,
+            &plan.text,
+            output.as_deref(),
+        ),
+    );
+    add_shape_text_readback_commands(
+        &mut result,
+        output.as_deref(),
+        options.dry_run,
+        plan.slide,
+        &plan.target.primary_selector,
+    );
+    Value::Object(result)
+}
+
 pub(super) fn text_map_from_xlsx_result_json(
     file: &str,
     request: &ReplaceTextMapFromXlsxRequest,
@@ -187,7 +224,7 @@ fn add_shape_text_readback_commands(
     result.insert(
         format!("readbackCommand{suffix}"),
         json!(format!(
-            "ooxml --json pptx shapes get {} --slide {} --target {} --include-text",
+            "ooxml --json pptx shapes get {} --slide {} --target {} --include-text --include-bounds",
             command_arg(command_target),
             slide,
             command_arg(target)

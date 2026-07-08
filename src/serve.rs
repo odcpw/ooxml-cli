@@ -5,8 +5,8 @@ use std::io::{BufRead, Write};
 use std::path::Path;
 
 use crate::{
-    CliError, CliResult, EXIT_INVALID_ARGS, EXIT_SUCCESS, EXIT_UNEXPECTED, json_bool,
-    json_optional_string, json_string, package_type, validate, validate_exit_code,
+    CliError, CliResult, EXIT_SUCCESS, EXIT_UNEXPECTED, json_bool, json_optional_string,
+    json_string, package_mutation_temp_path, package_type, validate, validate_exit_code,
 };
 mod inspect;
 mod op;
@@ -33,8 +33,20 @@ pub(crate) fn run_serve_stdio() -> i32 {
         let request: Value = match serde_json::from_str(&line) {
             Ok(value) => value,
             Err(err) => {
-                let _ = writeln!(std::io::stderr(), "serve JSON parse error: {err}");
-                return EXIT_INVALID_ARGS;
+                let response = json_rpc_parse_error(err.to_string());
+                if writeln!(
+                    stdout,
+                    "{}",
+                    serde_json::to_string(&response).expect("serialize parse error")
+                )
+                .is_err()
+                {
+                    return EXIT_UNEXPECTED;
+                }
+                if stdout.flush().is_err() {
+                    return EXIT_UNEXPECTED;
+                }
+                continue;
             }
         };
         let response = state.handle_rpc(request);
@@ -249,8 +261,7 @@ impl ServeState {
             if let Some(parent) = Path::new(&output).parent() {
                 fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
             }
-            fs::copy(&session.working, &output)
-                .map_err(|err| CliError::unexpected(err.to_string()))?;
+            atomic_copy_to_output(&session.working, &output)?;
         }
         let readback_file = if session.dry_run {
             &session.working
@@ -325,4 +336,29 @@ fn make_working_copy(file: &str, session_number: usize) -> CliResult<String> {
     let working = dir.join(format!("working.{extension}"));
     fs::copy(file, &working).map_err(|err| CliError::unexpected(err.to_string()))?;
     Ok(working.to_string_lossy().to_string())
+}
+
+fn atomic_copy_to_output(source: &str, output: &str) -> CliResult<()> {
+    let temp = package_mutation_temp_path(output, "commit");
+    fs::copy(source, &temp)
+        .map_err(|err| CliError::unexpected(format!("failed to stage commit output: {err}")))?;
+    fs::rename(&temp, output)
+        .or_else(|_| {
+            fs::copy(&temp, output)?;
+            fs::remove_file(&temp)
+        })
+        .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    Ok(())
+}
+
+fn json_rpc_parse_error(message: String) -> Value {
+    json!({
+        "id": Value::Null,
+        "jsonrpc": "2.0",
+        "error": {
+            "code": -32700,
+            "message": "Parse error",
+            "data": {"message": message},
+        },
+    })
 }

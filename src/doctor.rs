@@ -6,7 +6,7 @@ use std::process::Command;
 
 use crate::cli_dispatch::{DispatchBody, DispatchOutput};
 use crate::{
-    CliResult, EXIT_SUCCESS, EXIT_UNEXPECTED, GlobalFlags, has_flag, parse_string_flag,
+    CliError, CliResult, EXIT_SUCCESS, EXIT_UNEXPECTED, GlobalFlags, has_flag, parse_string_flag,
     reject_unknown_flags,
 };
 
@@ -38,7 +38,9 @@ fn doctor_report(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutp
         &["--only", "--format"],
         &["--json", "--online", "--pretty"],
     )?;
-    let report = run_report(parse_only(args)?);
+    let only = parse_only(args)?;
+    validate_only_ids(only.as_ref())?;
+    let report = run_report(only);
     let exit_code = if report["healthy"].as_bool().unwrap_or(false) {
         EXIT_SUCCESS
     } else {
@@ -63,7 +65,9 @@ fn doctor_health(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutp
         &["--only", "--format"],
         &["--json", "--online", "--pretty"],
     )?;
-    let value = doctor_health_snapshot(parse_only(args)?);
+    let only = parse_only(args)?;
+    validate_only_ids(only.as_ref())?;
+    let value = doctor_health_snapshot(only);
     let exit_code = value["exitCode"]
         .as_i64()
         .unwrap_or(i64::from(EXIT_UNEXPECTED)) as i32;
@@ -127,7 +131,7 @@ fn doctor_capabilities(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
             {
                 "id": "repair-conformance",
                 "description": "Run the package conformance wrapper.",
-                "requiredChecks": ["office-edit-smoke"],
+                "requiredChecks": ["binary"],
                 "command": "ooxml --json conformance check <file>"
             },
             {
@@ -594,6 +598,29 @@ fn parse_only(args: &[String]) -> CliResult<Option<Vec<String>>> {
             .map(ToOwned::to_owned)
             .collect()
     }))
+}
+
+fn validate_only_ids(only: Option<&Vec<String>>) -> CliResult<()> {
+    let Some(only) = only.filter(|items| !items.is_empty()) else {
+        return Ok(());
+    };
+    let valid = all_checks()
+        .into_iter()
+        .map(|check| check.id)
+        .collect::<Vec<_>>();
+    let unknown = only
+        .iter()
+        .filter(|id| !valid.contains(&id.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    Err(CliError::invalid_args(format!(
+        "unknown doctor check id(s): {}; valid ids: {}",
+        unknown.join(", "),
+        valid.join(", ")
+    )))
 }
 
 fn wants_json(flags: &GlobalFlags, args: &[String]) -> bool {

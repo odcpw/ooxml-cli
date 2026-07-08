@@ -27,10 +27,6 @@ pub(crate) struct DiffCommandOutput {
     pub(crate) exit_code: i32,
 }
 
-pub(crate) fn diff(baseline: &str, candidate: &str, args: &[String]) -> CliResult<Value> {
-    diff_command(&GlobalFlags::default(), baseline, candidate, args).map(|output| output.value)
-}
-
 pub(crate) fn diff_command(
     flags: &GlobalFlags,
     baseline: &str,

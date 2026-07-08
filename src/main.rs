@@ -87,8 +87,8 @@ mod zip_io;
 
 pub(crate) use apply::apply;
 pub(crate) use cli_args::{
-    has_flag, parse_i64_flag, parse_string_flag, parse_string_flags, parse_u32_flag,
-    parse_u32_flags, parse_validate_args, reject_unknown_flags, validate_positive_i64,
+    has_flag, parse_i64_flag, parse_string_flag, parse_string_flags, parse_u32_flags,
+    parse_validate_args, reject_unknown_flags, validate_positive_i64,
 };
 pub(crate) use cli_core::{
     CliError, CliResult, EXIT_DIFF_THRESHOLD, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS,
@@ -97,7 +97,7 @@ pub(crate) use cli_core::{
 };
 pub(crate) use cli_dispatch::{DispatchBody, dispatch, require_docx_block_hash};
 pub(crate) use command_text::command_arg;
-pub(crate) use diff::{diff, diff_command, pptx_diff_command, pptx_diff_dispatch};
+pub(crate) use diff::{diff_command, pptx_diff_command, pptx_diff_dispatch};
 pub(crate) use docx_block_commands::{
     docx_blocks_delete, docx_blocks_insert_after, docx_blocks_replace, docx_blocks_show, docx_text,
 };
@@ -177,12 +177,12 @@ pub(crate) use package_discovery::{
 pub(crate) use pptx_authoring::{PptxScaffoldOptions, pptx_scaffold};
 pub(crate) use pptx_layout_qa::pptx_validate_layout;
 pub(crate) use pptx_media::{pptx_media_add, pptx_media_list, pptx_media_replace};
-pub(crate) use pptx_mutation::{pptx_replace_text_in_place, pptx_replace_text_readback};
+pub(crate) use pptx_mutation::pptx_replace_text_in_place;
 pub(crate) use pptx_readback::{
     pptx_all_slides, pptx_charts_list, pptx_comments_list, pptx_diff, pptx_extract_notes,
     pptx_extract_text, pptx_extract_text_json_args, pptx_layouts_list, pptx_layouts_show,
-    pptx_masters_list, pptx_masters_show, pptx_notes_show, pptx_shapes_show, pptx_slide_selectors,
-    pptx_slide_show, pptx_slides_list, pptx_tables_show,
+    pptx_masters_list, pptx_masters_show, pptx_notes_show, pptx_shapes_get, pptx_shapes_show,
+    pptx_slide_selectors, pptx_slide_show, pptx_slides_list, pptx_tables_show,
 };
 pub(crate) use pptx_template::{
     pptx_template_capture, pptx_template_compile, pptx_template_inspect,
@@ -308,9 +308,8 @@ pub(crate) use xml_util::{
 };
 pub(crate) use zip_io::{
     copy_zip_with_binary_part_overrides_and_removals, copy_zip_with_part_override,
-    copy_zip_with_part_overrides, copy_zip_with_part_overrides_and_removals,
-    copy_zip_with_replacement, zip_bytes, zip_entry_exists, zip_entry_names, zip_entry_set,
-    zip_text,
+    copy_zip_with_part_overrides, copy_zip_with_part_overrides_and_removals, zip_bytes,
+    zip_entry_exists, zip_entry_names, zip_entry_set, zip_text,
 };
 
 fn main() {
@@ -362,12 +361,16 @@ fn run(raw_args: &[String]) -> CliResult<RunOutput> {
     let (flags, args) = parse_global_flags(raw_args)?;
     if !flags.json
         && !has_local_json_request(&args)
+        && !has_command_json_format_request(&args)
         && !is_validate_command(&args)
         && !is_text_utility_command(&args)
     {
-        return Err(CliError::invalid_args(
-            "the Rust port currently supports the frozen --json contract slice only",
-        ));
+        let message = if flags.format_text {
+            "text output is not supported for this command; use --json or --format json"
+        } else {
+            "the Rust port currently supports the frozen --json contract slice only"
+        };
+        return Err(CliError::invalid_args(message));
     }
     if let [cmd, rest @ ..] = args.as_slice()
         && cmd == "validate"
@@ -390,25 +393,55 @@ fn parse_global_flags(raw_args: &[String]) -> CliResult<(GlobalFlags, Vec<String
     let mut flags = GlobalFlags::default();
     let mut args = Vec::new();
     let mut i = 0;
+    let mut seen_command = false;
     while i < raw_args.len() {
         match raw_args[i].as_str() {
             "--json" => {
                 flags.json = true;
                 i += 1;
             }
-            "--format" | "-f" => {
+            "--format" | "-f" if !seen_command => {
                 let Some(value) = raw_args.get(i + 1) else {
                     return Err(CliError::invalid_args("--format requires a value"));
                 };
-                if value != "json" {
-                    return Err(CliError::invalid_args(format!(
-                        "invalid format: {value} (expected 'text' or 'json')"
-                    )));
+                match value.as_str() {
+                    "json" => flags.json = true,
+                    "text" => flags.format_text = true,
+                    _ => {
+                        return Err(CliError::invalid_args(format!(
+                            "invalid format: {value} (expected 'json' or 'text')"
+                        )));
+                    }
                 }
-                flags.json = true;
                 i += 2;
             }
-            "--strict" => {
+            "--format" | "-f" => {
+                args.push(raw_args[i].clone());
+                i += 1;
+            }
+            value
+                if !seen_command
+                    && (value.starts_with("--format=") || value.starts_with("-f=")) =>
+            {
+                let (_, format) = value
+                    .split_once('=')
+                    .expect("format prefix matched but split failed");
+                match format {
+                    "json" => flags.json = true,
+                    "text" => flags.format_text = true,
+                    _ => {
+                        return Err(CliError::invalid_args(format!(
+                            "invalid format: {format} (expected 'json' or 'text')"
+                        )));
+                    }
+                }
+                i += 1;
+            }
+            value if value.starts_with("--format=") || value.starts_with("-f=") => {
+                args.push(raw_args[i].clone());
+                i += 1;
+            }
+            "--strict" if !seen_command => {
                 flags.strict = true;
                 i += 1;
             }
@@ -419,8 +452,11 @@ fn parse_global_flags(raw_args: &[String]) -> CliResult<(GlobalFlags, Vec<String
                 )));
             }
             _ => {
-                args.extend_from_slice(&raw_args[i..]);
-                break;
+                if !raw_args[i].starts_with('-') {
+                    seen_command = true;
+                }
+                args.push(raw_args[i].clone());
+                i += 1;
             }
         }
     }
@@ -429,9 +465,21 @@ fn parse_global_flags(raw_args: &[String]) -> CliResult<(GlobalFlags, Vec<String
 
 fn has_local_json_request(args: &[String]) -> bool {
     args.iter().any(|arg| arg == "--json")
-        || args
-            .windows(2)
-            .any(|pair| (pair[0] == "--format" || pair[0] == "-f") && pair[1] == "json")
+}
+
+fn has_command_json_format_request(args: &[String]) -> bool {
+    match args {
+        [cmd, _, _, rest @ ..] if cmd == "diff" => has_json_format_flag(rest),
+        [family, verb, _, rest @ ..] if family == "pptx" && verb == "render" => {
+            has_json_format_flag(rest)
+        }
+        _ => false,
+    }
+}
+
+fn has_json_format_flag(args: &[String]) -> bool {
+    args.windows(2)
+        .any(|pair| (pair[0] == "--format" || pair[0] == "-f") && pair[1] == "json")
         || args
             .iter()
             .any(|arg| arg == "--format=json" || arg == "-f=json")

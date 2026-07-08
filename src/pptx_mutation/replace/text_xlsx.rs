@@ -569,7 +569,7 @@ fn resolve_text_map_column(
     Ok((matched, header[matched].trim().to_string()))
 }
 
-fn build_text_target_replace_plan(
+pub(super) fn build_text_target_replace_plan(
     file: &str,
     slides: &[PptxSlideRef],
     slide: u32,
@@ -651,7 +651,7 @@ fn apply_shape_text_replacement(
     Ok(apply_text_node_replacements(slide_xml, &mut replacements))
 }
 
-fn map_text_target_error(err: CliError, target: &str) -> CliError {
+pub(super) fn map_text_target_error(err: CliError, target: &str) -> CliError {
     match err.exit_code {
         crate::EXIT_TARGET_NOT_FOUND => {
             CliError::target_not_found(format!("target not found: {target}"))

@@ -70,7 +70,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
         "packageTypes": ["pptx", "xlsx", "docx"],
         "outputModes": ["json via --json or --format json"],
         "globalFlags": [
-            {"name": "--format", "argName": "format", "shorthand": "f", "type": "string", "default": "text", "description": "output format: \"text\" or \"json\""},
+            {"name": "--format", "argName": "format", "shorthand": "f", "type": "string", "default": "json", "description": "output format: \"json\"; \"text\" is accepted only for text utility commands"},
             {"name": "--json", "argName": "json", "type": "bool", "default": "false", "description": "emit JSON output"},
             {"name": "--strict", "argName": "strict", "type": "bool", "default": "false", "description": "enable strict validation mode"}
         ],

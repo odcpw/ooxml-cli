@@ -1,4 +1,118 @@
 #[test]
+fn pptx_replace_text_uses_real_shape_selectors_and_readback() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-replace-text-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("replace text temp dir");
+    let fixture = "testdata/pptx/title-content/presentation.pptx";
+
+    for (target, text, out_name) in [
+        ("title", "Updated selector title", "title-out.pptx"),
+        ("body", "Updated selector body", "body-out.pptx"),
+    ] {
+        let out = temp_dir.join(out_name);
+        let out_str = out.to_str().expect("out path");
+        let (code, stdout, stderr) = run_ooxml(&[
+            "--json", "pptx", "replace", "text", fixture, "--slide", "2", "--target", target,
+            "--text", text, "--out", out_str,
+        ]);
+        assert_eq!(code, 0, "replace text {target} exit");
+        assert_eq!(stderr, None, "replace text {target} stderr");
+        assert!(out.exists(), "replace text {target} output exists");
+        let result = stdout.expect("replace text stdout");
+        assert_eq!(result["slideNumber"], 2);
+        assert_eq!(result["target"], target);
+        assert_eq!(result["newText"], text);
+        assert_eq!(result["destination"]["slide"], 2);
+        assert_eq!(result["destination"]["target"], target);
+        assert_eq!(result["destination"]["textPreview"], text);
+        assert_ne!(
+            result["destination"]["handle"],
+            "H:pptx/s:256/shape:n:2",
+            "destination handle must come from the actual fixture"
+        );
+        assert_rust_emitted_ooxml_command_succeeds(&result, "readbackCommand");
+        assert_rust_emitted_ooxml_command_exits_zero(&result, "validateCommand");
+
+        let (read_code, read_stdout, read_stderr) = run_ooxml(&[
+            "--json",
+            "pptx",
+            "shapes",
+            "get",
+            out_str,
+            "--slide",
+            "2",
+            "--target",
+            target,
+            "--include-text",
+        ]);
+        assert_eq!(read_code, 0, "shape readback {target} exit");
+        assert_eq!(read_stderr, None, "shape readback {target} stderr");
+        let readback = read_stdout.expect("shape readback stdout");
+        assert_eq!(readback["shapes"][0]["textPreview"], text);
+    }
+
+    let unknown_out = temp_dir.join("unknown.pptx");
+    let unknown_out_str = unknown_out.to_str().expect("unknown out path");
+    let (unknown_code, unknown_stdout, unknown_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "replace",
+        "text",
+        fixture,
+        "--slide",
+        "2",
+        "--target",
+        "shape:9999",
+        "--text",
+        "Nope",
+        "--out",
+        unknown_out_str,
+    ]);
+    assert_eq!(unknown_code, 6);
+    assert_eq!(unknown_stdout, None);
+    assert!(
+        unknown_stderr
+            .expect("unknown target stderr")["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("target not found: shape:9999")
+    );
+
+    let table_out = temp_dir.join("table.pptx");
+    let table_out_str = table_out.to_str().expect("table out path");
+    let (table_code, table_stdout, table_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "replace",
+        "text",
+        "testdata/pptx/table-slide/presentation.pptx",
+        "--slide",
+        "1",
+        "--target",
+        "table:1",
+        "--text",
+        "Nope",
+        "--out",
+        table_out_str,
+    ]);
+    assert_eq!(table_code, 6);
+    assert_eq!(table_stdout, None);
+    assert!(
+        table_stderr
+            .expect("non-text target stderr")["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("target not found: table:1")
+    );
+}
+
+#[test]
 fn pptx_replace_text_occurrences_saved_readback_dry_run_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -919,4 +1033,3 @@ fn pptx_replace_text_map_from_xlsx_matches_rust_baseline_saved_dry_run_and_error
         assert_eq!(rust_stderr, baseline_stderr, "text-map error stderr for {args:?}");
     }
 }
-

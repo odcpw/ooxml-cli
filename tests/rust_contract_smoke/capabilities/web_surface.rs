@@ -141,7 +141,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx comments remove", true);
     assert_command(&all_caps, "ooxml vba", false);
     assert_command(&all_caps, "ooxml vba inspect", false);
-    assert_command(&all_caps, "ooxml vba build-bin", true);
+    assert_command(&all_caps, "ooxml vba build-bin", false);
     assert_command(&all_caps, "ooxml vba create", true);
     assert_command(&all_caps, "ooxml vba extract-bin", false);
     assert_command(&all_caps, "ooxml vba inspect-bin", false);
@@ -1406,7 +1406,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(vba_stderr, None);
     let vba_caps = vba_stdout.expect("vba capabilities");
     assert_command(&vba_caps, "ooxml vba", false);
-    assert_command(&vba_caps, "ooxml vba build-bin", true);
+    assert_command(&vba_caps, "ooxml vba build-bin", false);
     assert_command(&vba_caps, "ooxml vba create", true);
     assert_command(&vba_caps, "ooxml vba inspect", false);
     assert_command(&vba_caps, "ooxml vba extract-bin", false);

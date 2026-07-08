@@ -1092,3 +1092,127 @@ fn serve_pptx_generic_web_agent_edit_path_works() {
         Value::String(marker)
     );
 }
+
+#[test]
+fn serve_pptx_replace_text_uses_real_slide_two_selector_readback() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-pptx-replace-text-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = "testdata/pptx/title-content/presentation.pptx";
+    let output = temp_dir.join("serve-pptx-slide2-out.pptx");
+    let output_str = output.to_str().expect("output path").to_string();
+    let marker = format!("Rust serve slide 2 {}", std::process::id());
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(1, "open", serde_json::json!({"file": input, "out": output_str})),
+    );
+    assert!(
+        open_response.get("error").is_none(),
+        "open failed: {open_response:?}"
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let inspect_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            2,
+            "inspect",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx shapes show",
+                "args": {"slide": 2, "include-text": true, "include-bounds": true},
+            }),
+        ),
+    );
+    assert!(
+        inspect_response["result"]["shapes"]
+            .as_array()
+            .expect("shapes")
+            .iter()
+            .any(|shape| shape["primarySelector"] == "title"),
+        "slide 2 title target should be discoverable: {inspect_response:?}"
+    );
+
+    let op_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            3,
+            "op",
+            serde_json::json!({
+                "session": session,
+                "command": "pptx replace text",
+                "args": {"slide": 2, "target": "title", "text": marker},
+            }),
+        ),
+    );
+    assert!(
+        op_response.get("error").is_none(),
+        "replace text op failed: {op_response:?}"
+    );
+    assert_eq!(op_response["result"]["readback"]["slideNumber"], 2);
+    assert_eq!(op_response["result"]["readback"]["destination"]["slide"], 2);
+    assert_eq!(
+        op_response["result"]["readback"]["destination"]["textPreview"],
+        marker
+    );
+    assert!(
+        op_response["result"]["readback"]["readbackCommand"]
+            .as_str()
+            .expect("readback command")
+            .contains("--slide 2 --target title")
+    );
+
+    let commit_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(4, "commit", serde_json::json!({"session": session})),
+    );
+    assert!(
+        commit_response.get("error").is_none(),
+        "commit failed: {commit_response:?}"
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "get",
+        &output_str,
+        "--slide",
+        "2",
+        "--target",
+        "title",
+        "--include-text",
+    ]);
+    assert_eq!(show_code, 0);
+    assert_eq!(show_stderr, None);
+    assert_eq!(
+        show_stdout.expect("show stdout")["shapes"][0]["textPreview"],
+        marker
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}

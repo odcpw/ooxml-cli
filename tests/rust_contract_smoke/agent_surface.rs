@@ -728,6 +728,63 @@ fn mcp_command_resources_cover_advertised_rust_capabilities() {
 }
 
 #[test]
+fn mcp_stdio_parse_errors_notifications_and_error_codes_are_json_rpc_compliant() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn mcp");
+    let mut stdin = child.stdin.take().expect("mcp stdin");
+    let stdout = child.stdout.take().expect("mcp stdout");
+    let mut reader = BufReader::new(stdout);
+
+    writeln!(stdin, "not json").expect("write malformed mcp line");
+    stdin.flush().expect("flush malformed mcp line");
+    let mut parse_line = String::new();
+    reader
+        .read_line(&mut parse_line)
+        .expect("read parse error response");
+    let parse_error: Value = serde_json::from_str(&parse_line).expect("parse error JSON");
+    assert_eq!(parse_error["error"]["code"], -32700);
+    assert_eq!(parse_error["id"], Value::Null);
+
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::to_string(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {},
+        }))
+        .expect("serialize notification")
+    )
+    .expect("write initialized notification");
+    let tools = rpc_request(1, "tools/list", serde_json::json!({}));
+    let tools_response = serve_roundtrip(&mut stdin, &mut reader, &tools);
+    assert!(
+        tools_response.get("error").is_none(),
+        "notification should not produce an intervening response: {tools_response:?}"
+    );
+    assert!(tools_response["result"]["tools"].is_array());
+
+    let unknown_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(2, "not/a-method", serde_json::json!({})),
+    );
+    assert_eq!(unknown_response["error"]["code"], -32601);
+    assert_eq!(
+        unknown_response["error"]["data"]["exitCode"],
+        Value::from(2)
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("mcp exit");
+    assert!(status.success());
+}
+
+#[test]
 fn web_smoke_binary_readback_checks_are_supported() {
     let baseline = baseline();
     let web_smoke = &baseline["webSmoke"];

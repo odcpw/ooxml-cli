@@ -197,63 +197,6 @@ fn copy_zip_entry_limited<R: Read, W: Write>(
     }
 }
 
-pub(crate) fn copy_zip_with_replacement(
-    input: &str,
-    output: &str,
-    part: &str,
-    old: &str,
-    new: &str,
-) -> CliResult<()> {
-    if let Some(parent) = Path::new(output).parent() {
-        fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
-    }
-    let mut archive = open_zip(input)?;
-    let out_file = File::create(output).map_err(|err| CliError::unexpected(err.to_string()))?;
-    let mut writer = ZipWriter::new(out_file);
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-    for i in 0..archive.len() {
-        let mut entry = archive
-            .by_index(i)
-            .map_err(|err| CliError::unexpected(err.to_string()))?;
-        if entry.is_dir() {
-            writer
-                .add_directory(entry.name(), options)
-                .map_err(|err| CliError::unexpected(err.to_string()))?;
-            continue;
-        }
-        writer
-            .start_file(entry.name(), options)
-            .map_err(|err| CliError::unexpected(err.to_string()))?;
-        if entry.name() == part {
-            let name = entry.name().to_string();
-            let declared_size = entry.size();
-            let text = read_zip_text_entry_limited(
-                &mut entry,
-                &name,
-                declared_size,
-                MAX_ZIP_PART_UNCOMPRESSED_BYTES,
-            )?;
-            writer
-                .write_all(text.replace(old, new).as_bytes())
-                .map_err(|err| CliError::unexpected(err.to_string()))?;
-        } else {
-            let name = entry.name().to_string();
-            let declared_size = entry.size();
-            copy_zip_entry_limited(
-                &mut entry,
-                &mut writer,
-                &name,
-                declared_size,
-                MAX_ZIP_PART_UNCOMPRESSED_BYTES,
-            )?;
-        }
-    }
-    writer
-        .finish()
-        .map_err(|err| CliError::unexpected(err.to_string()))?;
-    Ok(())
-}
-
 pub(crate) fn copy_zip_with_part_override(
     input: &str,
     output: &str,

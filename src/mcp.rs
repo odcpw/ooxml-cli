@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 
 use crate::{
-    CliError, CliResult, EXIT_INVALID_ARGS, EXIT_SUCCESS, EXIT_UNEXPECTED, ServeState, json_string,
+    CliError, CliResult, EXIT_SUCCESS, EXIT_UNEXPECTED, ServeState, json_string,
     mcp_capabilities_resource, mcp_command_resource_for_uri, mcp_command_resource_template,
     mcp_resources, mcp_tool_success, mcp_tools,
 };
@@ -25,22 +25,35 @@ pub(crate) fn run_mcp_stdio() -> i32 {
         let request: Value = match serde_json::from_str(&line) {
             Ok(value) => value,
             Err(err) => {
-                let _ = writeln!(std::io::stderr(), "mcp JSON parse error: {err}");
-                return EXIT_INVALID_ARGS;
+                let response = json_rpc_parse_error(err.to_string());
+                if writeln!(
+                    stdout,
+                    "{}",
+                    serde_json::to_string(&response).expect("serialize parse error")
+                )
+                .is_err()
+                {
+                    return EXIT_UNEXPECTED;
+                }
+                if stdout.flush().is_err() {
+                    return EXIT_UNEXPECTED;
+                }
+                continue;
             }
         };
-        let response = state.handle_rpc(request);
-        if writeln!(
-            stdout,
-            "{}",
-            serde_json::to_string(&response).expect("serialize rpc response")
-        )
-        .is_err()
-        {
-            return EXIT_UNEXPECTED;
-        }
-        if stdout.flush().is_err() {
-            return EXIT_UNEXPECTED;
+        if let Some(response) = state.handle_rpc(request) {
+            if writeln!(
+                stdout,
+                "{}",
+                serde_json::to_string(&response).expect("serialize rpc response")
+            )
+            .is_err()
+            {
+                return EXIT_UNEXPECTED;
+            }
+            if stdout.flush().is_err() {
+                return EXIT_UNEXPECTED;
+            }
         }
     }
     EXIT_SUCCESS
@@ -52,25 +65,29 @@ struct McpState {
 }
 
 impl McpState {
-    fn handle_rpc(&mut self, request: Value) -> Value {
-        let id = request.get("id").cloned().unwrap_or(Value::Null);
+    fn handle_rpc(&mut self, request: Value) -> Option<Value> {
+        let id = request.get("id").cloned();
         let method = request
             .get("method")
             .and_then(Value::as_str)
             .unwrap_or_default();
+        if id.is_none() || method.starts_with("notifications/") {
+            return None;
+        }
+        let id = id.unwrap_or(Value::Null);
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
-        match self.handle_method(method, &params) {
+        Some(match self.handle_method(method, &params) {
             Ok(result) => json!({"id": id, "jsonrpc": "2.0", "result": result}),
             Err(err) => json!({
                 "id": id,
                 "jsonrpc": "2.0",
                 "error": {
-                    "code": err.exit_code,
+                    "code": mcp_json_rpc_error_code(&err),
                     "message": err.message,
                     "data": {"type": err.code, "exitCode": err.exit_code},
                 },
             }),
-        }
+        })
     }
 
     fn handle_method(&mut self, method: &str, params: &Value) -> CliResult<Value> {
@@ -186,5 +203,30 @@ impl McpState {
                 "uri": uri,
             }]
         }))
+    }
+}
+
+fn json_rpc_parse_error(message: String) -> Value {
+    json!({
+        "id": Value::Null,
+        "jsonrpc": "2.0",
+        "error": {
+            "code": -32700,
+            "message": "Parse error",
+            "data": {"message": message},
+        },
+    })
+}
+
+fn mcp_json_rpc_error_code(err: &CliError) -> i64 {
+    if err.code == "invalid_args" && err.message.starts_with("unsupported MCP method:") {
+        -32601
+    } else if matches!(
+        err.code,
+        "invalid_args" | "file_not_found" | "unsupported_type" | "target_not_found"
+    ) {
+        -32602
+    } else {
+        -32603
     }
 }

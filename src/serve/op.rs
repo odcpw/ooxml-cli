@@ -1,7 +1,5 @@
 use serde_json::{Value, json};
 
-use crate::pptx_replace_text_readback;
-
 #[derive(Clone)]
 pub(super) enum ServeOp {
     XlsxCellSet {
@@ -9,12 +7,6 @@ pub(super) enum ServeOp {
         plan_flags: Vec<Value>,
         readback_file: String,
         readback: Value,
-    },
-    PptxReplaceText {
-        command: String,
-        slide: u32,
-        target: String,
-        text: String,
     },
     PptxReplaceOp {
         command: String,
@@ -35,6 +27,12 @@ pub(super) enum ServeOp {
         readback: Value,
     },
     PptxShapesOp {
+        command: String,
+        plan_flags: Vec<Value>,
+        readback_file: String,
+        readback: Value,
+    },
+    GenericMutationOp {
         command: String,
         plan_flags: Vec<Value>,
         readback_file: String,
@@ -166,11 +164,11 @@ impl ServeOp {
     pub(super) fn command(&self) -> &str {
         match self {
             ServeOp::XlsxCellSet { command, .. }
-            | ServeOp::PptxReplaceText { command, .. }
             | ServeOp::PptxReplaceOp { command, .. }
             | ServeOp::PptxTablesOp { command, .. }
             | ServeOp::PptxNotesOp { command, .. }
             | ServeOp::PptxShapesOp { command, .. }
+            | ServeOp::GenericMutationOp { command, .. }
             | ServeOp::XlsxRangeSet { command, .. }
             | ServeOp::XlsxRangeSetFormat { command, .. }
             | ServeOp::XlsxWorkbookMetadataUpdate { command, .. }
@@ -672,38 +670,30 @@ impl ServeOp {
                 ]);
                 Value::Array(argv)
             }
-            ServeOp::PptxReplaceText {
-                slide,
-                target,
-                text,
+            ServeOp::GenericMutationOp {
+                command,
+                plan_flags,
                 ..
-            } => json!([
-                "pptx",
-                "replace",
-                "text",
-                source_file,
-                "--slide",
-                slide.to_string(),
-                "--target",
-                target,
-                "--text",
-                text,
-                "--out",
-                "<temp.0>",
-                "--json",
-                "--no-validate",
-            ]),
+            } => {
+                let mut argv = command
+                    .split_whitespace()
+                    .map(|part| json!(part))
+                    .collect::<Vec<_>>();
+                argv.push(json!(source_file));
+                argv.extend(plan_flags.iter().cloned());
+                argv.extend([
+                    json!("--out"),
+                    json!("<temp.0>"),
+                    json!("--json"),
+                    json!("--no-validate"),
+                ]);
+                Value::Array(argv)
+            }
         }
     }
 
     pub(super) fn readback(&self, file: &str) -> Value {
         match self {
-            ServeOp::PptxReplaceText {
-                slide,
-                target,
-                text,
-                ..
-            } => pptx_replace_text_readback(file, file, *slide, target, text),
             ServeOp::XlsxCellSet {
                 readback_file,
                 readback,
@@ -740,6 +730,11 @@ impl ServeOp {
                 ..
             }
             | ServeOp::PptxShapesOp {
+                readback_file,
+                readback,
+                ..
+            }
+            | ServeOp::GenericMutationOp {
                 readback_file,
                 readback,
                 ..

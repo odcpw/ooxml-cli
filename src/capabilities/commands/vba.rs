@@ -125,9 +125,9 @@ pub(super) fn commands() -> Vec<Value> {
             "build-bin --family xlsx|pptx|docx --source Module1.bas --out vbaProject.bin",
             "Build a source-only vbaProject.bin from source files using pure Rust.",
             &["module"],
-            true,
+            false,
             Some(
-                "pure Rust authoring path; attach the output with vba attach, then prove with Office before claiming compatibility",
+                "creates a standalone vbaProject.bin rather than mutating the open package session; use vba attach as the serve/apply op",
             ),
             vec![
                 flag(

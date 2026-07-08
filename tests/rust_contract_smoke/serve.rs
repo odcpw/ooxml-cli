@@ -376,4 +376,162 @@ fn serve_op_rejects_unknown_family_commands_in_dispatchers() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+#[test]
+fn serve_dispatches_every_op_compatible_capability_to_validation() {
+    let (cap_code, cap_stdout, cap_stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(cap_code, 0);
+    assert_eq!(cap_stderr, None);
+    let caps = cap_stdout.expect("capabilities");
+    let commands = caps["commands"]
+        .as_array()
+        .expect("commands array")
+        .iter()
+        .filter(|command| command["opCompatible"].as_bool().unwrap_or(false))
+        .map(|command| {
+            command["path"]
+                .as_str()
+                .expect("command path")
+                .strip_prefix("ooxml ")
+                .expect("ooxml prefix")
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !commands.is_empty(),
+        "op-compatible command inventory empty"
+    );
+
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-op-compatible-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+    let mut id = 1_i64;
+
+    for command in commands {
+        let input = temp_dir.join(format!(
+            "input-{id}.{}",
+            fixture_extension_for_command(&command)
+        ));
+        fs::copy(fixture_for_command(&command), &input).expect("stage fixture");
+        let input_str = input.to_str().expect("input path").to_string();
+        let open_response = serve_roundtrip(
+            &mut stdin,
+            &mut reader,
+            &rpc_request(id, "open", serde_json::json!({"file": input_str})),
+        );
+        id += 1;
+        assert!(
+            open_response.get("error").is_none(),
+            "open failed for {command}: {open_response:?}"
+        );
+        let session = open_response["result"]["sessionId"]
+            .as_str()
+            .expect("session id")
+            .to_string();
+        let response = serve_roundtrip(
+            &mut stdin,
+            &mut reader,
+            &rpc_request(
+                id,
+                "op",
+                serde_json::json!({
+                    "session": session,
+                    "command": command,
+                    "args": {},
+                }),
+            ),
+        );
+        id += 1;
+        if let Some(error) = response.get("error") {
+            let message = error["message"].as_str().unwrap_or_default();
+            assert!(
+                !message.starts_with("unsupported serve op command:"),
+                "opCompatible command did not reach argument validation: {command}: {response:?}"
+            );
+        }
+    }
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn serve_stdio_parse_errors_are_json_rpc_errors_and_loop_continues() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    writeln!(stdin, "not json").expect("write malformed serve line");
+    stdin.flush().expect("flush malformed serve line");
+    let mut parse_line = String::new();
+    reader
+        .read_line(&mut parse_line)
+        .expect("read parse error response");
+    let parse_error: Value = serde_json::from_str(&parse_line).expect("parse error JSON");
+    assert_eq!(parse_error["error"]["code"], -32700);
+    assert_eq!(parse_error["id"], Value::Null);
+
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-serve-parse-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage xlsx");
+    let input_str = input.to_str().expect("input path").to_string();
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(1, "open", serde_json::json!({"file": input_str})),
+    );
+    assert!(
+        open_response.get("error").is_none(),
+        "serve did not continue after parse error: {open_response:?}"
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn fixture_for_command(command: &str) -> &'static str {
+    if command.starts_with("pptx ") {
+        "testdata/pptx/title-content/presentation.pptx"
+    } else if command.starts_with("docx ") {
+        "testdata/docx/minimal/document.docx"
+    } else {
+        "testdata/xlsx/minimal-workbook/workbook.xlsx"
+    }
+}
+
+fn fixture_extension_for_command(command: &str) -> &'static str {
+    if command.starts_with("pptx ") {
+        "pptx"
+    } else if command.starts_with("docx ") {
+        "docx"
+    } else {
+        "xlsx"
+    }
+}
+
 include!("serve/pptx.rs");

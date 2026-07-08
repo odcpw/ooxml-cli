@@ -27,10 +27,13 @@ pub(crate) fn completion(args: &[String]) -> CliResult<DispatchOutput> {
 fn commands() -> &'static [&'static str] {
     &[
         "apply",
+        "agent",
+        "agent-triage",
         "capabilities",
         "completion",
         "conformance",
         "convert",
+        "diff",
         "doctor",
         "docx",
         "find",
@@ -41,6 +44,7 @@ fn commands() -> &'static [&'static str] {
         "repair",
         "robot-docs",
         "serve",
+        "template",
         "validate",
         "vba",
         "verify",

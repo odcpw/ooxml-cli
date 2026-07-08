@@ -24,6 +24,12 @@ pub(crate) fn vba_run_smoke(
     input_file: Option<&str>,
     options: VbaRunSmokeOptions<'_>,
 ) -> CliResult<(Value, i32)> {
+    if options.timeout_seconds == 0 {
+        return Err(CliError::invalid_args(
+            "--timeout-seconds must be greater than zero",
+        ));
+    }
+    let smoke_mode = normalize_smoke_mode(options.smoke_mode)?;
     let input_path = if let Some(input_file) = input_file {
         if options.smoke_mode.is_some() {
             return Err(CliError::invalid_args(
@@ -42,12 +48,6 @@ pub(crate) fn vba_run_smoke(
         }
         None
     };
-    if options.timeout_seconds == 0 {
-        return Err(CliError::invalid_args(
-            "--timeout-seconds must be greater than zero",
-        ));
-    }
-    let smoke_mode = normalize_smoke_mode(options.smoke_mode)?;
     if !cfg!(windows) {
         return Err(CliError::unsupported_type(
             "vba run-smoke requires Windows desktop Microsoft Excel because it explicitly executes VBA through Office COM",
