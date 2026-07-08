@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn conformance_check_matches_go_for_xlsx_drawing_and_chart_structure() {
+fn conformance_check_matches_rust_baseline_for_xlsx_drawing_and_chart_structure() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-conformance-chart-structure-xlsx-{}",
         std::process::id()
@@ -55,7 +55,7 @@ fn conformance_check_matches_go_for_xlsx_drawing_and_chart_structure() {
 }
 
 #[test]
-fn conformance_check_matches_go_for_pptx_chart_structure() {
+fn conformance_check_matches_rust_baseline_for_pptx_chart_structure() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-conformance-chart-structure-pptx-{}",
         std::process::id()
@@ -102,14 +102,14 @@ fn conformance_accepts_office_chart_style_and_color_style_parts() {
 fn assert_chart_repair_invariants_match(file: &Path) {
     let file = file.to_string_lossy().to_string();
     let args = ["--json", "conformance", "check", file.as_str()];
-    let (_, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (_, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
     let (_, rust_stdout, rust_stderr) = run_ooxml(&args);
-    assert_eq!(rust_stderr, go_stderr, "stderr for {file}");
+    assert_eq!(rust_stderr, baseline_stderr, "stderr for {file}");
     let rust_report = rust_stdout.expect("rust conformance stdout");
-    let go_report = go_stdout.expect("go conformance stdout");
+    let baseline_report = baseline_stdout.expect("baseline conformance stdout");
     assert_eq!(
         check_by_name(&rust_report, "repair-invariants"),
-        check_by_name(&go_report, "repair-invariants"),
+        check_by_name(&baseline_report, "repair-invariants"),
         "repair-invariants check for {file}"
     );
 }

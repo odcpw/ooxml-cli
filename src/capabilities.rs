@@ -36,7 +36,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
     let mut notes = vec![
         "Rust implementation surface: commands listed here are implemented in the current ooxml CLI."
             .to_string(),
-        "The deprecated Go implementation is retained on codex/ooxml-go-reference as a frozen oracle/reference."
+        "The deprecated legacy implementation is historical reference material only; current proof is Rust-native."
             .to_string(),
     ];
     if let (Some(requested), Some(normalized)) =

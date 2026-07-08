@@ -50,7 +50,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--strict-shapes",
                     "strictShapes",
                     "bool",
-                    "accepted for Go compatibility",
+                    "accepted for legacy CLI compatibility",
                 ),
                 flag(
                     "--version",

@@ -1,5 +1,5 @@
 #[test]
-fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_oracle() {
+fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -11,12 +11,12 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
     std::fs::create_dir_all(&temp_dir).expect("pptx comments temp dir");
 
     let fixture = "testdata/pptx/title-content/presentation.pptx";
-    let go_added = temp_dir.join("go-added.pptx");
+    let baseline_added = temp_dir.join("baseline-added.pptx");
     let rust_added = temp_dir.join("rust-added.pptx");
-    let go_added_str = go_added.to_str().expect("go added path");
+    let baseline_added_str = baseline_added.to_str().expect("baseline added path");
     let rust_added_str = rust_added.to_str().expect("rust added path");
 
-    let go_add_args = [
+    let baseline_add_args = [
         "--json",
         "pptx",
         "comments",
@@ -33,7 +33,7 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
         "--date",
         "2026-06-06T10:30:00Z",
         "--out",
-        go_added_str,
+        baseline_added_str,
     ];
     let rust_add_args = [
         "--json",
@@ -54,28 +54,28 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
         "--out",
         rust_added_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_add_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_add_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_add_args);
-    assert_eq!(rust_code, go_code, "comments add exit");
-    assert_eq!(rust_stderr, go_stderr, "comments add stderr");
-    let go_add_json = go_stdout.expect("go comments add stdout");
+    assert_eq!(rust_code, baseline_code, "comments add exit");
+    assert_eq!(rust_stderr, baseline_stderr, "comments add stderr");
+    let baseline_add_json = baseline_stdout.expect("baseline comments add stdout");
     let rust_add_json = rust_stdout.expect("rust comments add stdout");
     assert_eq!(
         scrub_path(rust_add_json.clone(), rust_added_str, "[ADDED]"),
-        scrub_path(go_add_json.clone(), go_added_str, "[ADDED]"),
+        scrub_path(baseline_add_json.clone(), baseline_added_str, "[ADDED]"),
         "comments add stdout"
     );
-    assert!(go_added.exists(), "Go comments add output missing");
+    assert!(baseline_added.exists(), "Rust baseline comments add output missing");
     assert!(rust_added.exists(), "Rust comments add output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_add_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_add_json, "validateCommand");
 
-    let (go_list_code, go_list_stdout, go_list_stderr) = run_go_ooxml(&[
+    let (baseline_list_code, baseline_list_stdout, baseline_list_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "comments",
         "list",
-        go_added_str,
+        baseline_added_str,
         "--slide",
         "1",
     ]);
@@ -88,9 +88,9 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
         "--slide",
         "1",
     ]);
-    assert_eq!(rust_list_code, go_list_code, "comments add readback exit");
+    assert_eq!(rust_list_code, baseline_list_code, "comments add readback exit");
     assert_eq!(
-        rust_list_stderr, go_list_stderr,
+        rust_list_stderr, baseline_list_stderr,
         "comments add readback stderr"
     );
     assert_eq!(
@@ -100,30 +100,30 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
             "[ADDED]"
         ),
         scrub_path(
-            go_list_stdout.expect("go add readback"),
-            go_added_str,
+            baseline_list_stdout.expect("baseline add readback"),
+            baseline_added_str,
             "[ADDED]"
         ),
         "comments add readback stdout"
     );
 
     let handle = rust_add_json["handle"].as_str().expect("comment handle");
-    let go_edited = temp_dir.join("go-edited.pptx");
+    let baseline_edited = temp_dir.join("baseline-edited.pptx");
     let rust_edited = temp_dir.join("rust-edited.pptx");
-    let go_edited_str = go_edited.to_str().expect("go edited path");
+    let baseline_edited_str = baseline_edited.to_str().expect("baseline edited path");
     let rust_edited_str = rust_edited.to_str().expect("rust edited path");
-    let go_edit_args = [
+    let baseline_edit_args = [
         "--json",
         "pptx",
         "comments",
         "edit",
-        go_added_str,
+        baseline_added_str,
         "--handle",
         handle,
         "--text",
         "Updated note",
         "--out",
-        go_edited_str,
+        baseline_edited_str,
     ];
     let rust_edit_args = [
         "--json",
@@ -138,10 +138,10 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
         "--out",
         rust_edited_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_edit_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_edit_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_edit_args);
-    assert_eq!(rust_code, go_code, "comments edit exit");
-    assert_eq!(rust_stderr, go_stderr, "comments edit stderr");
+    assert_eq!(rust_code, baseline_code, "comments edit exit");
+    assert_eq!(rust_stderr, baseline_stderr, "comments edit stderr");
     let rust_edit_json = rust_stdout.expect("rust comments edit stdout");
     assert_eq!(
         scrub_paths(
@@ -149,28 +149,28 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
             &[(rust_added_str, "[ADDED]"), (rust_edited_str, "[EDITED]")]
         ),
         scrub_paths(
-            go_stdout.expect("go comments edit stdout"),
-            &[(go_added_str, "[ADDED]"), (go_edited_str, "[EDITED]")]
+            baseline_stdout.expect("baseline comments edit stdout"),
+            &[(baseline_added_str, "[ADDED]"), (baseline_edited_str, "[EDITED]")]
         ),
         "comments edit stdout"
     );
     assert_rust_emitted_ooxml_command_succeeds(&rust_edit_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_edit_json, "validateCommand");
 
-    let go_removed = temp_dir.join("go-removed.pptx");
+    let baseline_removed = temp_dir.join("baseline-removed.pptx");
     let rust_removed = temp_dir.join("rust-removed.pptx");
-    let go_removed_str = go_removed.to_str().expect("go removed path");
+    let baseline_removed_str = baseline_removed.to_str().expect("baseline removed path");
     let rust_removed_str = rust_removed.to_str().expect("rust removed path");
-    let go_remove_args = [
+    let baseline_remove_args = [
         "--json",
         "pptx",
         "comments",
         "remove",
-        go_edited_str,
+        baseline_edited_str,
         "--handle",
         handle,
         "--out",
-        go_removed_str,
+        baseline_removed_str,
     ];
     let rust_remove_args = [
         "--json",
@@ -183,10 +183,10 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
         "--out",
         rust_removed_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_remove_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_remove_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_remove_args);
-    assert_eq!(rust_code, go_code, "comments remove exit");
-    assert_eq!(rust_stderr, go_stderr, "comments remove stderr");
+    assert_eq!(rust_code, baseline_code, "comments remove exit");
+    assert_eq!(rust_stderr, baseline_stderr, "comments remove stderr");
     let rust_remove_json = rust_stdout.expect("rust comments remove stdout");
     assert_eq!(
         scrub_paths(
@@ -197,20 +197,20 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
             ]
         ),
         scrub_paths(
-            go_stdout.expect("go comments remove stdout"),
-            &[(go_edited_str, "[EDITED]"), (go_removed_str, "[REMOVED]")]
+            baseline_stdout.expect("baseline comments remove stdout"),
+            &[(baseline_edited_str, "[EDITED]"), (baseline_removed_str, "[REMOVED]")]
         ),
         "comments remove stdout"
     );
     assert_rust_emitted_ooxml_command_succeeds(&rust_remove_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_remove_json, "validateCommand");
 
-    let (go_empty_code, go_empty_stdout, go_empty_stderr) = run_go_ooxml(&[
+    let (baseline_empty_code, baseline_empty_stdout, baseline_empty_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "comments",
         "list",
-        go_removed_str,
+        baseline_removed_str,
         "--slide",
         "1",
     ]);
@@ -224,11 +224,11 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
         "1",
     ]);
     assert_eq!(
-        rust_empty_code, go_empty_code,
+        rust_empty_code, baseline_empty_code,
         "comments remove readback exit"
     );
     assert_eq!(
-        rust_empty_stderr, go_empty_stderr,
+        rust_empty_stderr, baseline_empty_stderr,
         "comments remove readback stderr"
     );
     assert_eq!(
@@ -238,8 +238,8 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
             "[REMOVED]"
         ),
         scrub_path(
-            go_empty_stdout.expect("go remove readback"),
-            go_removed_str,
+            baseline_empty_stdout.expect("baseline remove readback"),
+            baseline_removed_str,
             "[REMOVED]"
         ),
         "comments remove readback stdout"
@@ -261,13 +261,13 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
         "2026-06-06T10:30:00Z",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "comments add dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "comments add dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "comments add dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "comments add dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust comments add dry-run"),
-        go_stdout.expect("go comments add dry-run"),
+        baseline_stdout.expect("baseline comments add dry-run"),
         "comments add dry-run stdout"
     );
 
@@ -328,20 +328,20 @@ fn pptx_comments_add_edit_remove_saved_readback_dry_run_and_errors_match_go_orac
         ],
     ];
     for args in error_cases {
-        let go_args = args
+        let baseline_args = args
             .iter()
             .map(|arg| {
                 if *arg == rust_added_str {
-                    go_added_str
+                    baseline_added_str
                 } else {
                     *arg
                 }
             })
             .collect::<Vec<_>>();
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-        assert_eq!(rust_code, go_code, "comments error exit for {args:?}");
-        assert_eq!(rust_stdout, go_stdout, "comments error stdout for {args:?}");
-        assert_eq!(rust_stderr, go_stderr, "comments error stderr for {args:?}");
+        assert_eq!(rust_code, baseline_code, "comments error exit for {args:?}");
+        assert_eq!(rust_stdout, baseline_stdout, "comments error stdout for {args:?}");
+        assert_eq!(rust_stderr, baseline_stderr, "comments error stderr for {args:?}");
     }
 }

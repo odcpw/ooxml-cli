@@ -1,5 +1,5 @@
 #[test]
-fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
+fn pptx_notes_set_clear_dry_run_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -12,13 +12,13 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
 
     let set_fixture = "testdata/pptx/title-content/presentation.pptx";
     let notes_fixture = "testdata/pptx/notes-slide/presentation.pptx";
-    let go_set = temp_dir.join("go-set.pptx");
+    let baseline_set = temp_dir.join("baseline-set.pptx");
     let rust_set = temp_dir.join("rust-set.pptx");
-    let go_set_str = go_set.to_str().expect("go set path");
+    let baseline_set_str = baseline_set.to_str().expect("baseline set path");
     let rust_set_str = rust_set.to_str().expect("rust set path");
     let set_text = "First line\nSecond line";
 
-    let go_set_args = [
+    let baseline_set_args = [
         "--json",
         "pptx",
         "notes",
@@ -29,7 +29,7 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
         "--text",
         set_text,
         "--out",
-        go_set_str,
+        baseline_set_str,
     ];
     let rust_set_args = [
         "--json",
@@ -44,23 +44,23 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_set_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_set_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_set_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_set_args);
-    assert_eq!(rust_code, go_code, "notes set exit");
-    assert_eq!(rust_stderr, go_stderr, "notes set stderr");
+    assert_eq!(rust_code, baseline_code, "notes set exit");
+    assert_eq!(rust_stderr, baseline_stderr, "notes set stderr");
     let rust_set_json = rust_stdout.expect("rust notes set stdout");
     assert_eq!(
         scrub_path(rust_set_json.clone(), rust_set_str, "[OUT]"),
-        scrub_path(go_stdout.expect("go notes set stdout"), go_set_str, "[OUT]"),
+        scrub_path(baseline_stdout.expect("baseline notes set stdout"), baseline_set_str, "[OUT]"),
         "notes set stdout"
     );
-    assert!(go_set.exists(), "Go notes set output missing");
+    assert!(baseline_set.exists(), "Rust baseline notes set output missing");
     assert!(rust_set.exists(), "Rust notes set output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_set_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_set_json, "validateCommand");
 
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
-        "--json", "pptx", "notes", "show", go_set_str, "--slide", "1",
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
+        "--json", "pptx", "notes", "show", baseline_set_str, "--slide", "1",
     ]);
     let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
         "--json",
@@ -71,22 +71,22 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
         "--slide",
         "1",
     ]);
-    assert_eq!(rust_show_code, go_show_code, "notes set readback exit");
+    assert_eq!(rust_show_code, baseline_show_code, "notes set readback exit");
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_stderr, baseline_show_stderr,
         "notes set readback stderr"
     );
     assert_eq!(
         rust_show_stdout.expect("rust set readback"),
-        go_show_stdout.expect("go set readback"),
+        baseline_show_stdout.expect("baseline set readback"),
         "notes set readback stdout"
     );
 
-    let go_clear = temp_dir.join("go-clear.pptx");
+    let baseline_clear = temp_dir.join("baseline-clear.pptx");
     let rust_clear = temp_dir.join("rust-clear.pptx");
-    let go_clear_str = go_clear.to_str().expect("go clear path");
+    let baseline_clear_str = baseline_clear.to_str().expect("baseline clear path");
     let rust_clear_str = rust_clear.to_str().expect("rust clear path");
-    let go_clear_args = [
+    let baseline_clear_args = [
         "--json",
         "pptx",
         "notes",
@@ -95,7 +95,7 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
         "--slide",
         "2",
         "--out",
-        go_clear_str,
+        baseline_clear_str,
     ];
     let rust_clear_args = [
         "--json",
@@ -108,10 +108,10 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_clear_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_clear_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_clear_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_clear_args);
-    assert_eq!(rust_code, go_code, "notes clear exit");
-    assert_eq!(rust_stderr, go_stderr, "notes clear stderr");
+    assert_eq!(rust_code, baseline_code, "notes clear exit");
+    assert_eq!(rust_stderr, baseline_stderr, "notes clear stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust notes clear stdout"),
@@ -119,19 +119,19 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_stdout.expect("go notes clear stdout"),
-            go_clear_str,
+            baseline_stdout.expect("baseline notes clear stdout"),
+            baseline_clear_str,
             "[OUT]"
         ),
         "notes clear stdout"
     );
 
-    let (go_clear_show_code, go_clear_show_stdout, go_clear_show_stderr) = run_go_ooxml(&[
+    let (baseline_clear_show_code, baseline_clear_show_stdout, baseline_clear_show_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "notes",
         "show",
-        go_clear_str,
+        baseline_clear_str,
         "--slide",
         "2",
     ]);
@@ -145,16 +145,16 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
         "2",
     ]);
     assert_eq!(
-        rust_clear_show_code, go_clear_show_code,
+        rust_clear_show_code, baseline_clear_show_code,
         "notes clear readback exit"
     );
     assert_eq!(
-        rust_clear_show_stderr, go_clear_show_stderr,
+        rust_clear_show_stderr, baseline_clear_show_stderr,
         "notes clear readback stderr"
     );
     assert_eq!(
         rust_clear_show_stdout.expect("rust clear readback"),
-        go_clear_show_stdout.expect("go clear readback"),
+        baseline_clear_show_stdout.expect("baseline clear readback"),
         "notes clear readback stdout"
     );
 
@@ -170,13 +170,13 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
         "draft notes",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "notes set dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "notes set dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "notes set dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "notes set dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust notes set dry-run"),
-        go_stdout.expect("go notes set dry-run"),
+        baseline_stdout.expect("baseline notes set dry-run"),
         "notes set dry-run stdout"
     );
 
@@ -192,9 +192,9 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_go_oracle() {
         "x",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&out_of_range);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&out_of_range);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&out_of_range);
-    assert_eq!(rust_code, go_code, "notes set out-of-range exit");
-    assert_eq!(rust_stdout, go_stdout, "notes set out-of-range stdout");
-    assert_eq!(rust_stderr, go_stderr, "notes set out-of-range stderr");
+    assert_eq!(rust_code, baseline_code, "notes set out-of-range exit");
+    assert_eq!(rust_stdout, baseline_stdout, "notes set out-of-range stdout");
+    assert_eq!(rust_stderr, baseline_stderr, "notes set out-of-range stderr");
 }

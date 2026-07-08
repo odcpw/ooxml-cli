@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn conformance_check_matches_go_for_docx_image_payload_and_relationship_failures() {
+fn conformance_check_matches_rust_baseline_for_docx_image_payload_and_relationship_failures() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-conformance-image-payloads-{}",
         std::process::id()
@@ -11,11 +11,11 @@ fn conformance_check_matches_go_for_docx_image_payload_and_relationship_failures
 
     let clean = temp_dir.join("docx-image-payload-clean.docx");
     write_docx_image_payload_package(&clean, false);
-    assert_go_rust_conformance_check_match(&clean);
+    assert_baseline_rust_conformance_check_match(&clean);
 
     let broken = temp_dir.join("docx-image-payload-broken.docx");
     write_docx_image_payload_package(&broken, true);
-    assert_go_rust_repair_invariants_match(&broken);
+    assert_baseline_rust_repair_invariants_match(&broken);
 
     let report = rust_conformance_report(&broken);
     let repair = check_by_name(&report, "repair-invariants");
@@ -34,32 +34,32 @@ fn conformance_check_matches_go_for_docx_image_payload_and_relationship_failures
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
-fn assert_go_rust_conformance_check_match(file: &Path) {
+fn assert_baseline_rust_conformance_check_match(file: &Path) {
     let file = file.to_string_lossy().to_string();
     let args = ["--json", "conformance", "check", file.as_str()];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-    assert_eq!(rust_code, go_code, "exit code for {file}");
-    assert_eq!(rust_stderr, go_stderr, "stderr for {file}");
+    assert_eq!(rust_code, baseline_code, "exit code for {file}");
+    assert_eq!(rust_stderr, baseline_stderr, "stderr for {file}");
     assert_eq!(
         rust_stdout.map(scrub_file_fields),
-        go_stdout.map(scrub_file_fields),
+        baseline_stdout.map(scrub_file_fields),
         "stdout for {file}"
     );
 }
 
-fn assert_go_rust_repair_invariants_match(file: &Path) {
+fn assert_baseline_rust_repair_invariants_match(file: &Path) {
     let file = file.to_string_lossy().to_string();
     let args = ["--json", "conformance", "check", file.as_str()];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-    assert_eq!(rust_code, go_code, "exit code for {file}");
-    assert_eq!(rust_stderr, go_stderr, "stderr for {file}");
+    assert_eq!(rust_code, baseline_code, "exit code for {file}");
+    assert_eq!(rust_stderr, baseline_stderr, "stderr for {file}");
     let rust_report = rust_stdout.expect("rust conformance stdout");
-    let go_report = go_stdout.expect("go conformance stdout");
+    let baseline_report = baseline_stdout.expect("baseline conformance stdout");
     assert_eq!(
         check_by_name(&rust_report, "repair-invariants"),
-        check_by_name(&go_report, "repair-invariants"),
+        check_by_name(&baseline_report, "repair-invariants"),
         "repair-invariants check for {file}"
     );
 }

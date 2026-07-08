@@ -1267,7 +1267,7 @@ fn serve_op_supports_xlsx_ranges_set() {
         "ranges set serve output validate stderr"
     );
 
-    let (export_code, export_stdout, export_stderr) = run_go_ooxml(&[
+    let (export_code, export_stdout, export_stderr) = run_ooxml_baseline(&[
         "--json",
         "xlsx",
         "ranges",
@@ -1280,9 +1280,9 @@ fn serve_op_supports_xlsx_ranges_set() {
         "--include-types",
         "--include-formulas",
     ]);
-    assert_eq!(export_code, 0, "Go export readback exit");
-    assert_eq!(export_stderr, None, "Go export readback stderr");
-    let export = export_stdout.expect("Go export readback");
+    assert_eq!(export_code, 0, "Rust baseline export readback exit");
+    assert_eq!(export_stderr, None, "Rust baseline export readback stderr");
+    let export = export_stdout.expect("Rust baseline export readback");
     assert_eq!(export["values"][0][0], Value::String("Agent".to_string()));
     assert_eq!(export["values"][0][1], serde_json::json!(12.5));
     assert_eq!(export["values"][0][2], Value::Null);
@@ -1418,7 +1418,7 @@ fn serve_op_supports_xlsx_dimension_setters() {
         "dimension serve output validate stderr"
     );
 
-    let (col_code, col_stdout, col_stderr) = run_go_ooxml(&[
+    let (col_code, col_stdout, col_stderr) = run_ooxml_baseline(&[
         "--json",
         "xlsx",
         "colwidths",
@@ -1429,14 +1429,14 @@ fn serve_op_supports_xlsx_dimension_setters() {
         "--range",
         "B:C",
     ]);
-    assert_eq!(col_code, 0, "Go colwidths readback exit");
-    assert_eq!(col_stderr, None, "Go colwidths readback stderr");
-    let col_show = col_stdout.expect("Go colwidths readback");
+    assert_eq!(col_code, 0, "Rust baseline colwidths readback exit");
+    assert_eq!(col_stderr, None, "Rust baseline colwidths readback stderr");
+    let col_show = col_stdout.expect("Rust baseline colwidths readback");
     assert_eq!(col_show["columns"]["B"]["width"], serde_json::json!(19.5));
     assert_eq!(col_show["columns"]["C"]["width"], serde_json::json!(19.5));
     assert_eq!(col_show["columns"]["B"]["custom"], Value::Bool(true));
 
-    let (row_code, row_stdout, row_stderr) = run_go_ooxml(&[
+    let (row_code, row_stdout, row_stderr) = run_ooxml_baseline(&[
         "--json",
         "xlsx",
         "rowheights",
@@ -1447,9 +1447,9 @@ fn serve_op_supports_xlsx_dimension_setters() {
         "--range",
         "2:3",
     ]);
-    assert_eq!(row_code, 0, "Go rowheights readback exit");
-    assert_eq!(row_stderr, None, "Go rowheights readback stderr");
-    let row_show = row_stdout.expect("Go rowheights readback");
+    assert_eq!(row_code, 0, "Rust baseline rowheights readback exit");
+    assert_eq!(row_stderr, None, "Rust baseline rowheights readback stderr");
+    let row_show = row_stdout.expect("Rust baseline rowheights readback");
     assert_eq!(row_show["rows"]["2"]["height"], serde_json::json!(23.75));
     assert_eq!(row_show["rows"]["3"]["height"], serde_json::json!(23.75));
     assert_eq!(row_show["rows"]["2"]["custom"], Value::Bool(true));
@@ -1551,7 +1551,7 @@ fn serve_op_supports_xlsx_ranges_set_format() {
         "set-format serve output validate stderr"
     );
 
-    let (export_code, export_stdout, export_stderr) = run_go_ooxml(&[
+    let (export_code, export_stdout, export_stderr) = run_ooxml_baseline(&[
         "--json",
         "xlsx",
         "ranges",
@@ -1565,10 +1565,10 @@ fn serve_op_supports_xlsx_ranges_set_format() {
         "--include-formulas",
         "--include-formats",
     ]);
-    assert_eq!(export_code, 0, "Go export readback exit");
-    assert_eq!(export_stderr, None, "Go export readback stderr");
+    assert_eq!(export_code, 0, "Rust baseline export readback exit");
+    assert_eq!(export_stderr, None, "Rust baseline export readback stderr");
     assert_eq!(
-        export_stdout.expect("Go export readback")["numberFormatCodes"][0][0],
+        export_stdout.expect("Rust baseline export readback")["numberFormatCodes"][0][0],
         Value::String("\"$\"#,##0.00".to_string())
     );
 
@@ -1873,7 +1873,7 @@ fn serve_op_supports_xlsx_tables_append_rows() {
         "append-rows serve output validate stderr"
     );
 
-    let (export_code, export_stdout, export_stderr) = run_go_ooxml(&[
+    let (export_code, export_stdout, export_stderr) = run_ooxml_baseline(&[
         "--json",
         "xlsx",
         "ranges",
@@ -1886,9 +1886,9 @@ fn serve_op_supports_xlsx_tables_append_rows() {
         "--include-types",
         "--include-formulas",
     ]);
-    assert_eq!(export_code, 0, "Go export readback exit");
-    assert_eq!(export_stderr, None, "Go export readback stderr");
-    let export = export_stdout.expect("Go export readback");
+    assert_eq!(export_code, 0, "Rust baseline export readback exit");
+    assert_eq!(export_stderr, None, "Rust baseline export readback stderr");
+    let export = export_stdout.expect("Rust baseline export readback");
     assert_eq!(export["values"][0][0], Value::String("North".to_string()));
     assert_eq!(export["values"][0][1], serde_json::json!(30));
     assert_eq!(export["values"][1][0], Value::String("South".to_string()));
@@ -2007,7 +2007,7 @@ fn serve_op_supports_xlsx_tables_append_records() {
         "append-records serve output validate stderr"
     );
 
-    let (export_code, export_stdout, export_stderr) = run_go_ooxml(&[
+    let (export_code, export_stdout, export_stderr) = run_ooxml_baseline(&[
         "--json",
         "xlsx",
         "ranges",
@@ -2020,9 +2020,9 @@ fn serve_op_supports_xlsx_tables_append_records() {
         "--include-types",
         "--include-formulas",
     ]);
-    assert_eq!(export_code, 0, "Go export readback exit");
-    assert_eq!(export_stderr, None, "Go export readback stderr");
-    let export = export_stdout.expect("Go export readback");
+    assert_eq!(export_code, 0, "Rust baseline export readback exit");
+    assert_eq!(export_stderr, None, "Rust baseline export readback stderr");
+    let export = export_stdout.expect("Rust baseline export readback");
     assert_eq!(export["values"][0][0], Value::String("North".to_string()));
     assert_eq!(export["values"][0][1], serde_json::json!(30));
     assert_eq!(export["values"][1][0], Value::String("South".to_string()));

@@ -508,7 +508,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--allow-host-family-risk",
                     "allowHostFamilyRisk",
                     "bool",
-                    "accepted for Go CLI compatibility; opaque Rust attach does not parse source-project host risk yet",
+                    "accepted for legacy CLI compatibility; opaque Rust attach does not parse source-project host risk yet",
                 ),
                 flag(
                     "--backup",

@@ -186,7 +186,7 @@ fn doctor_capabilities(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
             {"name": "--json", "type": "bool", "description": "emit machine-readable JSON"},
             {"name": "--only", "type": "string", "description": "comma-separated check ids to run"},
             {"name": "--online", "type": "bool", "description": "reserved; no network checks are performed"},
-            {"name": "--pretty", "type": "bool", "description": "accepted for Go CLI compatibility"}
+            {"name": "--pretty", "type": "bool", "description": "accepted for legacy CLI compatibility"}
         ],
         "notes": [
             "doctor is advisory and read-only; it should not mutate OOXML packages.",

@@ -1,5 +1,5 @@
 #[test]
-fn xlsx_sheets_show_matches_go_oracle() {
+fn xlsx_sheets_show_matches_rust_baseline() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -27,43 +27,43 @@ fn xlsx_sheets_show_matches_go_oracle() {
     ];
 
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 }
 
 #[test]
-fn xlsx_sheets_add_matches_go_oracle_shape_and_saved_output() {
+fn xlsx_sheets_add_matches_rust_baseline_shape_and_saved_output() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-xlsx-sheets-add-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    let go_out_path = temp_dir.join("go-add.xlsx");
+    let baseline_out_path = temp_dir.join("baseline-add.xlsx");
     let rust_out_path = temp_dir.join("rust-add.xlsx");
     write_simple_xlsx_with_sheet_xml(
-        &go_in_path,
+        &baseline_in_path,
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData>
 </worksheet>"#,
     );
-    fs::copy(&go_in_path, &rust_in_path).expect("copy rust add input");
-    let go_in = go_in_path.to_string_lossy().to_string();
+    fs::copy(&baseline_in_path, &rust_in_path).expect("copy rust add input");
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_out = go_out_path.to_string_lossy().to_string();
+    let baseline_out = baseline_out_path.to_string_lossy().to_string();
     let rust_out = rust_out_path.to_string_lossy().to_string();
 
-    let go_args = [
-        "--json", "xlsx", "sheets", "add", &go_in, "--name", "Added", "--out", &go_out,
+    let baseline_args = [
+        "--json", "xlsx", "sheets", "add", &baseline_in, "--name", "Added", "--out", &baseline_out,
     ];
     let rust_args = [
         "--json", "xlsx", "sheets", "add", &rust_in, "--name", "Added", "--out", &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "sheets add exit");
-    assert_eq!(rust_stderr, go_stderr, "sheets add stderr");
+    assert_eq!(rust_code, baseline_code, "sheets add exit");
+    assert_eq!(rust_stderr, baseline_stderr, "sheets add stderr");
     let rust_result = rust_stdout.expect("rust sheets add stdout");
     assert_eq!(
         normalize_xlsx_dynamic_sheet_id(
@@ -75,8 +75,8 @@ fn xlsx_sheets_add_matches_go_oracle_shape_and_saved_output() {
         ),
         normalize_xlsx_dynamic_sheet_id(
             scrub_paths(
-                go_stdout.expect("go sheets add stdout"),
-                &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+                baseline_stdout.expect("baseline sheets add stdout"),
+                &[(&baseline_in, "[IN]"), (&baseline_out, "[OUT]")]
             ),
             "Added",
         ),
@@ -101,7 +101,7 @@ fn xlsx_sheets_add_matches_go_oracle_shape_and_saved_output() {
         "xlsx",
         "sheets",
         "add",
-        &go_in,
+        &baseline_in,
         "--name",
         "Dry",
         "--dry-run",
@@ -116,10 +116,10 @@ fn xlsx_sheets_add_matches_go_oracle_shape_and_saved_output() {
         "Dry",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
-    assert_eq!(rust_code, go_code, "sheets add dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "sheets add dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "sheets add dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "sheets add dry-run stderr");
     assert_eq!(
         normalize_xlsx_dynamic_sheet_id(
             scrub_path(
@@ -131,8 +131,8 @@ fn xlsx_sheets_add_matches_go_oracle_shape_and_saved_output() {
         ),
         normalize_xlsx_dynamic_sheet_id(
             scrub_path(
-                go_stdout.expect("go sheets add dry-run stdout"),
-                &go_in,
+                baseline_stdout.expect("baseline sheets add dry-run stdout"),
+                &baseline_in,
                 "[IN]"
             ),
             "Dry",
@@ -149,42 +149,42 @@ fn xlsx_sheets_add_matches_go_oracle_shape_and_saved_output() {
         ("duplicate name", vec!["--name", "Sheet1", "--dry-run"]),
         ("invalid name", vec!["--name", "Bad/Name", "--dry-run"]),
     ] {
-        let mut go_bad = vec!["--json", "xlsx", "sheets", "add", &go_in];
-        go_bad.extend(extra.iter().copied());
+        let mut baseline_bad = vec!["--json", "xlsx", "sheets", "add", &baseline_in];
+        baseline_bad.extend(extra.iter().copied());
         let mut rust_bad = vec!["--json", "xlsx", "sheets", "add", &rust_in];
         rust_bad.extend(extra.iter().copied());
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_bad);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_bad);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_bad);
-        assert_eq!(rust_code, go_code, "sheets add {label} exit");
-        assert_eq!(rust_stdout, go_stdout, "sheets add {label} stdout");
-        assert_eq!(rust_stderr, go_stderr, "sheets add {label} stderr");
+        assert_eq!(rust_code, baseline_code, "sheets add {label} exit");
+        assert_eq!(rust_stdout, baseline_stdout, "sheets add {label} stdout");
+        assert_eq!(rust_stderr, baseline_stderr, "sheets add {label} stderr");
     }
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn xlsx_sheets_rename_move_delete_match_go_oracle_and_saved_outputs() {
+fn xlsx_sheets_rename_move_delete_match_rust_baseline_and_saved_outputs() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-sheets-life-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    write_sheet_lifecycle_xlsx(&go_in_path);
-    fs::copy(&go_in_path, &rust_in_path).expect("copy rust lifecycle input");
-    let go_in = go_in_path.to_string_lossy().to_string();
+    write_sheet_lifecycle_xlsx(&baseline_in_path);
+    fs::copy(&baseline_in_path, &rust_in_path).expect("copy rust lifecycle input");
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
 
-    let go_rename_path = temp_dir.join("go-rename.xlsx");
+    let baseline_rename_path = temp_dir.join("baseline-rename.xlsx");
     let rust_rename_path = temp_dir.join("rust-rename.xlsx");
-    let go_rename = go_rename_path.to_string_lossy().to_string();
+    let baseline_rename = baseline_rename_path.to_string_lossy().to_string();
     let rust_rename = rust_rename_path.to_string_lossy().to_string();
-    let go_args = [
-        "--json", "xlsx", "sheets", "rename", &go_in, "--sheet", "Data", "--name", "Facts",
-        "--out", &go_rename,
+    let baseline_args = [
+        "--json", "xlsx", "sheets", "rename", &baseline_in, "--sheet", "Data", "--name", "Facts",
+        "--out", &baseline_rename,
     ];
     let rust_args = [
         "--json",
@@ -199,11 +199,11 @@ fn xlsx_sheets_rename_move_delete_match_go_oracle_and_saved_outputs() {
         "--out",
         &rust_rename,
     ];
-    let rust_rename_result = assert_xlsx_sheet_mutation_matches_go(
+    let rust_rename_result = assert_xlsx_sheet_mutation_matches_rust_baseline(
         "sheets rename",
-        &go_args,
+        &baseline_args,
         &rust_args,
-        &[(&go_in, "[IN]"), (&go_rename, "[OUT]")],
+        &[(&baseline_in, "[IN]"), (&baseline_rename, "[OUT]")],
         &[(&rust_in, "[IN]"), (&rust_rename, "[OUT]")],
     );
     assert_rust_emitted_ooxml_command_exits_zero(&rust_rename_result, "validateCommand");
@@ -218,7 +218,7 @@ fn xlsx_sheets_rename_move_delete_match_go_oracle_and_saved_outputs() {
         "xlsx",
         "sheets",
         "rename",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "Data",
         "--name",
@@ -237,11 +237,11 @@ fn xlsx_sheets_rename_move_delete_match_go_oracle_and_saved_outputs() {
         "DryFacts",
         "--dry-run",
     ];
-    assert_xlsx_sheet_mutation_matches_go(
+    assert_xlsx_sheet_mutation_matches_rust_baseline(
         "sheets rename dry-run",
         &dry_go,
         &dry_rust,
-        &[(&go_in, "[IN]")],
+        &[(&baseline_in, "[IN]")],
         &[(&rust_in, "[IN]")],
     );
     assert!(
@@ -249,13 +249,13 @@ fn xlsx_sheets_rename_move_delete_match_go_oracle_and_saved_outputs() {
         "rename dry-run changed source workbook"
     );
 
-    let go_move_path = temp_dir.join("go-move.xlsx");
+    let baseline_move_path = temp_dir.join("baseline-move.xlsx");
     let rust_move_path = temp_dir.join("rust-move.xlsx");
-    let go_move = go_move_path.to_string_lossy().to_string();
+    let baseline_move = baseline_move_path.to_string_lossy().to_string();
     let rust_move = rust_move_path.to_string_lossy().to_string();
-    let go_args = [
-        "--json", "xlsx", "sheets", "move", &go_rename, "--sheet", "Facts", "--before", "Summary",
-        "--out", &go_move,
+    let baseline_args = [
+        "--json", "xlsx", "sheets", "move", &baseline_rename, "--sheet", "Facts", "--before", "Summary",
+        "--out", &baseline_move,
     ];
     let rust_args = [
         "--json",
@@ -270,11 +270,11 @@ fn xlsx_sheets_rename_move_delete_match_go_oracle_and_saved_outputs() {
         "--out",
         &rust_move,
     ];
-    let rust_move_result = assert_xlsx_sheet_mutation_matches_go(
+    let rust_move_result = assert_xlsx_sheet_mutation_matches_rust_baseline(
         "sheets move",
-        &go_args,
+        &baseline_args,
         &rust_args,
-        &[(&go_rename, "[IN]"), (&go_move, "[OUT]")],
+        &[(&baseline_rename, "[IN]"), (&baseline_move, "[OUT]")],
         &[(&rust_rename, "[IN]"), (&rust_move, "[OUT]")],
     );
     assert_rust_emitted_ooxml_command_exits_zero(&rust_move_result, "validateCommand");
@@ -298,7 +298,7 @@ fn xlsx_sheets_rename_move_delete_match_go_oracle_and_saved_outputs() {
         "xlsx",
         "sheets",
         "move",
-        &go_move,
+        &baseline_move,
         "--sheet",
         "Facts",
         "--to",
@@ -321,14 +321,14 @@ fn xlsx_sheets_rename_move_delete_match_go_oracle_and_saved_outputs() {
         "Tail",
         "--dry-run",
     ];
-    assert_xlsx_sheet_error_matches_go("sheets move target guard", &bad_move_go, &bad_move_rust);
+    assert_xlsx_sheet_error_matches_rust_baseline("sheets move target guard", &bad_move_go, &bad_move_rust);
 
-    let go_delete_path = temp_dir.join("go-delete.xlsx");
+    let baseline_delete_path = temp_dir.join("baseline-delete.xlsx");
     let rust_delete_path = temp_dir.join("rust-delete.xlsx");
-    let go_delete = go_delete_path.to_string_lossy().to_string();
+    let baseline_delete = baseline_delete_path.to_string_lossy().to_string();
     let rust_delete = rust_delete_path.to_string_lossy().to_string();
-    let go_args = [
-        "--json", "xlsx", "sheets", "delete", &go_move, "--sheet", "Summary", "--out", &go_delete,
+    let baseline_args = [
+        "--json", "xlsx", "sheets", "delete", &baseline_move, "--sheet", "Summary", "--out", &baseline_delete,
     ];
     let rust_args = [
         "--json",
@@ -341,11 +341,11 @@ fn xlsx_sheets_rename_move_delete_match_go_oracle_and_saved_outputs() {
         "--out",
         &rust_delete,
     ];
-    let rust_delete_result = assert_xlsx_sheet_mutation_matches_go(
+    let rust_delete_result = assert_xlsx_sheet_mutation_matches_rust_baseline(
         "sheets delete",
-        &go_args,
+        &baseline_args,
         &rust_args,
-        &[(&go_move, "[IN]"), (&go_delete, "[OUT]")],
+        &[(&baseline_move, "[IN]"), (&baseline_delete, "[OUT]")],
         &[(&rust_move, "[IN]"), (&rust_delete, "[OUT]")],
     );
     assert_rust_emitted_ooxml_command_exits_zero(&rust_delete_result, "validateCommand");
@@ -370,7 +370,7 @@ fn xlsx_sheets_rename_move_delete_match_go_oracle_and_saved_outputs() {
         "Sheet1",
         "--dry-run",
     ];
-    assert_xlsx_sheet_error_matches_go("sheets delete last sheet", &last_go, &last_go);
+    assert_xlsx_sheet_error_matches_rust_baseline("sheets delete last sheet", &last_go, &last_go);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

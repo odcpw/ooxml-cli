@@ -1,10 +1,10 @@
-// VBA package-level parity tests live in a child module so the opaque macro
+// VBA package-level contract tests live in a child module so the opaque macro
 // wiring surface can grow without bloating the parent harness.
 use super::*;
 use std::collections::BTreeMap;
 
 #[test]
-fn vba_create_source_workflow_matches_go_oracle_without_office_com() {
+fn vba_legacy_create_requires_windows_office_without_pure() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -25,30 +25,13 @@ fn vba_create_source_workflow_matches_go_oracle_without_office_com() {
     .expect("write VBA source");
     fs::write(&helper_path, "Write-Output \"{}\"\r\n").expect("write fake helper");
 
-    let go_out = temp_dir.join("go-created.xlsm");
     let rust_out = temp_dir.join("rust-created.xlsm");
-    let go_bin = temp_dir.join("go-vbaProject.bin");
     let rust_bin = temp_dir.join("rust-vbaProject.bin");
     let source = source_path.to_string_lossy().to_string();
     let helper = helper_path.to_string_lossy().to_string();
-    let go_out = go_out.to_string_lossy().to_string();
     let rust_out = rust_out.to_string_lossy().to_string();
-    let go_bin = go_bin.to_string_lossy().to_string();
     let rust_bin = rust_bin.to_string_lossy().to_string();
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
-        "--json",
-        "vba",
-        "create",
-        &go_out,
-        "--source",
-        &source,
-        "--extract-bin",
-        &go_bin,
-        "--office-create-script",
-        &helper,
-        "--force",
-    ]);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
         "--json",
         "vba",
@@ -62,18 +45,27 @@ fn vba_create_source_workflow_matches_go_oracle_without_office_com() {
         &helper,
         "--force",
     ]);
-    assert_eq!(rust_code, go_code, "create exit");
-    assert_eq!(rust_stderr, go_stderr, "create stderr");
     assert_eq!(
-        scrub_paths(
-            rust_stdout.expect("rust create stdout"),
-            &[(&rust_out, "[OUT]"), (&rust_bin, "[BIN]")]
-        ),
-        scrub_paths(
-            go_stdout.expect("go create stdout"),
-            &[(&go_out, "[OUT]"), (&go_bin, "[BIN]")]
-        ),
-        "create stdout"
+        rust_code, 4,
+        "legacy create should fail without desktop Windows Office"
+    );
+    assert_eq!(rust_stdout, None, "legacy create stdout");
+    let error = rust_stderr.expect("legacy create stderr");
+    assert_eq!(error["error"]["code"], "unsupported_type");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .expect("legacy create message")
+            .contains("requires Windows desktop Microsoft Office"),
+        "legacy create should explain the platform guard: {error}"
+    );
+    assert!(
+        !Path::new(&rust_out).exists(),
+        "legacy create should not leave an output package"
+    );
+    assert!(
+        !Path::new(&rust_bin).exists(),
+        "legacy create should not leave an extracted VBA project"
     );
 
     let bad_xlsx = temp_dir.join("bad.xlsx").to_string_lossy().to_string();
@@ -149,7 +141,7 @@ fn vba_create_source_workflow_matches_go_oracle_without_office_com() {
         ],
     ];
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -1306,8 +1298,8 @@ fn vba_pure_create_builds_and_reads_back_pptm_without_office_com() {
 }
 
 #[test]
-fn vba_office_check_macro_free_package_matches_go_oracle() {
-    assert_go_rust_match(&[
+fn vba_office_check_macro_free_package_matches_rust_baseline() {
+    assert_rust_baseline_match(&[
         "--json",
         "vba",
         "office-check",
@@ -1316,7 +1308,7 @@ fn vba_office_check_macro_free_package_matches_go_oracle() {
 }
 
 #[test]
-fn vba_source_readback_inspect_list_extract_matches_go_oracle() {
+fn vba_source_readback_inspect_list_extract_matches_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -1332,63 +1324,82 @@ fn vba_source_readback_inspect_list_extract_matches_go_oracle() {
     fs::write(&bin_path, synthetic_vba_project_bin()).expect("write synthetic vbaProject.bin");
     let bin = bin_path.to_string_lossy().to_string();
 
-    let (go_code, go_stdout, go_stderr) =
-        run_go_ooxml(&["--json", "vba", "inspect-bin", &bin, "--family", "xlsx"]);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "vba", "inspect-bin", &bin, "--family", "xlsx"]);
     let (rust_code, rust_stdout, rust_stderr) =
         run_ooxml(&["--json", "vba", "inspect-bin", &bin, "--family", "xlsx"]);
-    assert_eq!(rust_code, go_code, "inspect-bin exit");
-    assert_eq!(rust_stderr, go_stderr, "inspect-bin stderr");
-    assert_eq!(rust_stdout, go_stdout, "inspect-bin stdout");
+    assert_eq!(rust_code, baseline_code, "inspect-bin exit");
+    assert_eq!(rust_stderr, baseline_stderr, "inspect-bin stderr");
+    assert_eq!(rust_stdout, baseline_stdout, "inspect-bin stdout");
 
-    let go_in_path = temp_dir.join("go-input.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-input.xlsx");
     let rust_in_path = temp_dir.join("rust-input.xlsx");
-    let go_xlsm_path = temp_dir.join("go-output.xlsm");
+    let baseline_xlsm_path = temp_dir.join("baseline-output.xlsm");
     let rust_xlsm_path = temp_dir.join("rust-output.xlsm");
-    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("go input");
+    fs::copy(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &baseline_in_path,
+    )
+    .expect("baseline input");
     fs::copy(
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
         &rust_in_path,
     )
     .expect("rust input");
 
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_xlsm = go_xlsm_path.to_string_lossy().to_string();
+    let baseline_xlsm = baseline_xlsm_path.to_string_lossy().to_string();
     let rust_xlsm = rust_xlsm_path.to_string_lossy().to_string();
 
-    let (go_code, _, go_stderr) = run_go_ooxml(&[
-        "--json", "vba", "attach", &go_in, "--bin", &bin, "--out", &go_xlsm,
+    let (baseline_code, _, baseline_stderr) = run_ooxml_baseline(&[
+        "--json",
+        "vba",
+        "attach",
+        &baseline_in,
+        "--bin",
+        &bin,
+        "--out",
+        &baseline_xlsm,
     ]);
     let (rust_code, _, rust_stderr) = run_ooxml(&[
         "--json", "vba", "attach", &rust_in, "--bin", &bin, "--out", &rust_xlsm,
     ]);
-    assert_eq!(rust_code, go_code, "attach parseable synthetic bin exit");
     assert_eq!(
-        rust_stderr, go_stderr,
+        rust_code, baseline_code,
+        "attach parseable synthetic bin exit"
+    );
+    assert_eq!(
+        rust_stderr, baseline_stderr,
         "attach parseable synthetic bin stderr"
     );
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "vba", "list", &go_xlsm]);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "vba", "list", &baseline_xlsm]);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "vba", "list", &rust_xlsm]);
-    assert_eq!(rust_code, go_code, "list exit");
-    assert_eq!(rust_stderr, go_stderr, "list stderr");
+    assert_eq!(rust_code, baseline_code, "list exit");
+    assert_eq!(rust_stderr, baseline_stderr, "list stderr");
     assert_eq!(
         scrub_path(rust_stdout.expect("rust list stdout"), &rust_xlsm, "[XLSM]"),
-        scrub_path(go_stdout.expect("go list stdout"), &go_xlsm, "[XLSM]"),
+        scrub_path(
+            baseline_stdout.expect("baseline list stdout"),
+            &baseline_xlsm,
+            "[XLSM]"
+        ),
         "list stdout"
     );
 
-    let go_extract_dir = temp_dir.join("go-modules");
+    let baseline_extract_dir = temp_dir.join("baseline-modules");
     let rust_extract_dir = temp_dir.join("rust-modules");
-    let go_extract = go_extract_dir.to_string_lossy().to_string();
+    let baseline_extract = baseline_extract_dir.to_string_lossy().to_string();
     let rust_extract = rust_extract_dir.to_string_lossy().to_string();
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&[
         "--json",
         "vba",
         "extract",
-        &go_xlsm,
+        &baseline_xlsm,
         "--out-dir",
-        &go_extract,
+        &baseline_extract,
         "--module",
         "module:Module1",
     ]);
@@ -1402,36 +1413,36 @@ fn vba_source_readback_inspect_list_extract_matches_go_oracle() {
         "--module",
         "module:Module1",
     ]);
-    assert_eq!(rust_code, go_code, "extract exit");
-    assert_eq!(rust_stderr, go_stderr, "extract stderr");
+    assert_eq!(rust_code, baseline_code, "extract exit");
+    assert_eq!(rust_stderr, baseline_stderr, "extract stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust extract stdout"),
             &[(&rust_xlsm, "[XLSM]"), (&rust_extract, "[DIR]")]
         ),
         scrub_paths(
-            go_stdout.expect("go extract stdout"),
-            &[(&go_xlsm, "[XLSM]"), (&go_extract, "[DIR]")]
+            baseline_stdout.expect("baseline extract stdout"),
+            &[(&baseline_xlsm, "[XLSM]"), (&baseline_extract, "[DIR]")]
         ),
         "extract stdout"
     );
     assert_eq!(
         fs::read_to_string(rust_extract_dir.join("Module1.bas")).expect("rust Module1"),
-        fs::read_to_string(go_extract_dir.join("Module1.bas")).expect("go Module1"),
+        fs::read_to_string(baseline_extract_dir.join("Module1.bas")).expect("baseline Module1"),
         "extracted Module1 source"
     );
 
-    let go_missing_extract_dir = temp_dir.join("go-missing-module");
+    let baseline_missing_extract_dir = temp_dir.join("baseline-missing-module");
     let rust_missing_extract_dir = temp_dir.join("rust-missing-module");
-    let go_missing_extract = go_missing_extract_dir.to_string_lossy().to_string();
+    let baseline_missing_extract = baseline_missing_extract_dir.to_string_lossy().to_string();
     let rust_missing_extract = rust_missing_extract_dir.to_string_lossy().to_string();
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&[
         "--json",
         "vba",
         "extract",
-        &go_xlsm,
+        &baseline_xlsm,
         "--out-dir",
-        &go_missing_extract,
+        &baseline_missing_extract,
         "--module",
         "Modul",
     ]);
@@ -1445,8 +1456,11 @@ fn vba_source_readback_inspect_list_extract_matches_go_oracle() {
         "--module",
         "Modul",
     ]);
-    assert_eq!(rust_code, go_code, "extract missing module exit");
-    assert_eq!(rust_stdout, go_stdout, "extract missing module stdout");
+    assert_eq!(rust_code, baseline_code, "extract missing module exit");
+    assert_eq!(
+        rust_stdout, baseline_stdout,
+        "extract missing module stdout"
+    );
     assert_eq!(
         scrub_path(
             rust_stderr.expect("rust extract missing module stderr"),
@@ -1454,24 +1468,29 @@ fn vba_source_readback_inspect_list_extract_matches_go_oracle() {
             "[XLSM]"
         ),
         scrub_path(
-            go_stderr.expect("go extract missing module stderr"),
-            &go_xlsm,
+            baseline_stderr.expect("baseline extract missing module stderr"),
+            &baseline_xlsm,
             "[XLSM]"
         ),
         "extract missing module stderr"
     );
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "vba", "list", &go_in]);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "vba", "list", &baseline_in]);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "vba", "list", &rust_in]);
-    assert_eq!(rust_code, go_code, "missing macro list exit");
-    assert_eq!(rust_stdout, go_stdout, "missing macro list stdout");
+    assert_eq!(rust_code, baseline_code, "missing macro list exit");
+    assert_eq!(rust_stdout, baseline_stdout, "missing macro list stdout");
     assert_eq!(
         scrub_path(
             rust_stderr.expect("rust missing macro stderr"),
             &rust_in,
             "[IN]"
         ),
-        scrub_path(go_stderr.expect("go missing macro stderr"), &go_in, "[IN]"),
+        scrub_path(
+            baseline_stderr.expect("baseline missing macro stderr"),
+            &baseline_in,
+            "[IN]"
+        ),
         "missing macro list stderr"
     );
 
@@ -1479,7 +1498,7 @@ fn vba_source_readback_inspect_list_extract_matches_go_oracle() {
 }
 
 #[test]
-fn vba_source_module_mutations_match_go_oracle() {
+fn vba_source_module_mutations_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -1493,11 +1512,15 @@ fn vba_source_module_mutations_match_go_oracle() {
 
     let bin_path = temp_dir.join("vbaProject.bin");
     fs::write(&bin_path, synthetic_vba_project_bin()).expect("write synthetic vbaProject.bin");
-    let go_in_path = temp_dir.join("go-input.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-input.xlsx");
     let rust_in_path = temp_dir.join("rust-input.xlsx");
-    let go_xlsm_path = temp_dir.join("go-seed.xlsm");
+    let baseline_xlsm_path = temp_dir.join("baseline-seed.xlsm");
     let rust_xlsm_path = temp_dir.join("rust-seed.xlsm");
-    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("go input");
+    fs::copy(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &baseline_in_path,
+    )
+    .expect("baseline input");
     fs::copy(
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
         &rust_in_path,
@@ -1505,18 +1528,25 @@ fn vba_source_module_mutations_match_go_oracle() {
     .expect("rust input");
 
     let bin = bin_path.to_string_lossy().to_string();
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_xlsm = go_xlsm_path.to_string_lossy().to_string();
+    let baseline_xlsm = baseline_xlsm_path.to_string_lossy().to_string();
     let rust_xlsm = rust_xlsm_path.to_string_lossy().to_string();
-    let (go_code, _, go_stderr) = run_go_ooxml(&[
-        "--json", "vba", "attach", &go_in, "--bin", &bin, "--out", &go_xlsm,
+    let (baseline_code, _, baseline_stderr) = run_ooxml_baseline(&[
+        "--json",
+        "vba",
+        "attach",
+        &baseline_in,
+        "--bin",
+        &bin,
+        "--out",
+        &baseline_xlsm,
     ]);
     let (rust_code, _, rust_stderr) = run_ooxml(&[
         "--json", "vba", "attach", &rust_in, "--bin", &bin, "--out", &rust_xlsm,
     ]);
-    assert_eq!(rust_code, go_code, "attach seed exit");
-    assert_eq!(rust_stderr, go_stderr, "attach seed stderr");
+    assert_eq!(rust_code, baseline_code, "attach seed exit");
+    assert_eq!(rust_stderr, baseline_stderr, "attach seed stderr");
 
     let add_source_path = temp_dir.join("NewModule.bas");
     fs::write(
@@ -1525,22 +1555,22 @@ fn vba_source_module_mutations_match_go_oracle() {
     )
     .expect("write add source");
     let add_source = add_source_path.to_string_lossy().to_string();
-    let go_added_path = temp_dir.join("go-added.xlsm");
+    let baseline_added_path = temp_dir.join("baseline-added.xlsm");
     let rust_added_path = temp_dir.join("rust-added.xlsm");
-    let go_added = go_added_path.to_string_lossy().to_string();
+    let baseline_added = baseline_added_path.to_string_lossy().to_string();
     let rust_added = rust_added_path.to_string_lossy().to_string();
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&[
         "--json",
         "vba",
         "add-module",
-        &go_xlsm,
+        &baseline_xlsm,
         "--source",
         &add_source,
         "--expect-module-count",
         "2",
         "--allow-experimental-vba-source-rewrite",
         "--out",
-        &go_added,
+        &baseline_added,
     ]);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
         "--json",
@@ -1555,29 +1585,30 @@ fn vba_source_module_mutations_match_go_oracle() {
         "--out",
         &rust_added,
     ]);
-    assert_eq!(rust_code, go_code, "add-module exit");
-    assert_eq!(rust_stderr, go_stderr, "add-module stderr");
+    assert_eq!(rust_code, baseline_code, "add-module exit");
+    assert_eq!(rust_stderr, baseline_stderr, "add-module stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust add-module stdout"),
             &[(&rust_xlsm, "[IN]"), (&rust_added, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go add-module stdout"),
-            &[(&go_xlsm, "[IN]"), (&go_added, "[OUT]")]
+            baseline_stdout.expect("baseline add-module stdout"),
+            &[(&baseline_xlsm, "[IN]"), (&baseline_added, "[OUT]")]
         ),
         "add-module stdout"
     );
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "vba", "list", &go_added]);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "vba", "list", &baseline_added]);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "vba", "list", &rust_added]);
-    assert_eq!(rust_code, go_code, "list after add exit");
-    assert_eq!(rust_stderr, go_stderr, "list after add stderr");
-    let go_list_after_add = go_stdout.expect("go list after add");
+    assert_eq!(rust_code, baseline_code, "list after add exit");
+    assert_eq!(rust_stderr, baseline_stderr, "list after add stderr");
+    let baseline_list_after_add = baseline_stdout.expect("baseline list after add");
     let rust_list_after_add = rust_stdout.expect("rust list after add");
     assert_eq!(
         scrub_path(rust_list_after_add.clone(), &rust_added, "[OUT]"),
-        scrub_path(go_list_after_add.clone(), &go_added, "[OUT]"),
+        scrub_path(baseline_list_after_add.clone(), &baseline_added, "[OUT]"),
         "list after add stdout"
     );
     let module1_hash = module_sha256(&rust_list_after_add, "Module1");
@@ -1589,15 +1620,15 @@ fn vba_source_module_mutations_match_go_oracle() {
     )
     .expect("write replacement source");
     let replace_source = replace_source_path.to_string_lossy().to_string();
-    let go_replaced_path = temp_dir.join("go-replaced.xlsm");
+    let baseline_replaced_path = temp_dir.join("baseline-replaced.xlsm");
     let rust_replaced_path = temp_dir.join("rust-replaced.xlsm");
-    let go_replaced = go_replaced_path.to_string_lossy().to_string();
+    let baseline_replaced = baseline_replaced_path.to_string_lossy().to_string();
     let rust_replaced = rust_replaced_path.to_string_lossy().to_string();
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&[
         "--json",
         "vba",
         "replace-module",
-        &go_added,
+        &baseline_added,
         "--module",
         "module:Module1",
         "--source",
@@ -1606,7 +1637,7 @@ fn vba_source_module_mutations_match_go_oracle() {
         &module1_hash,
         "--allow-experimental-vba-source-rewrite",
         "--out",
-        &go_replaced,
+        &baseline_replaced,
     ]);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
         "--json",
@@ -1623,50 +1654,55 @@ fn vba_source_module_mutations_match_go_oracle() {
         "--out",
         &rust_replaced,
     ]);
-    assert_eq!(rust_code, go_code, "replace-module exit");
-    assert_eq!(rust_stderr, go_stderr, "replace-module stderr");
+    assert_eq!(rust_code, baseline_code, "replace-module exit");
+    assert_eq!(rust_stderr, baseline_stderr, "replace-module stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust replace-module stdout"),
             &[(&rust_added, "[IN]"), (&rust_replaced, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go replace-module stdout"),
-            &[(&go_added, "[IN]"), (&go_replaced, "[OUT]")]
+            baseline_stdout.expect("baseline replace-module stdout"),
+            &[(&baseline_added, "[IN]"), (&baseline_replaced, "[OUT]")]
         ),
         "replace-module stdout"
     );
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "vba", "list", &go_replaced]);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "vba", "list", &baseline_replaced]);
     let (rust_code, rust_stdout, rust_stderr) =
         run_ooxml(&["--json", "vba", "list", &rust_replaced]);
-    assert_eq!(rust_code, go_code, "list after replace exit");
-    assert_eq!(rust_stderr, go_stderr, "list after replace stderr");
-    let go_list_after_replace = go_stdout.expect("go list after replace");
+    assert_eq!(rust_code, baseline_code, "list after replace exit");
+    assert_eq!(rust_stderr, baseline_stderr, "list after replace stderr");
+    let baseline_list_after_replace = baseline_stdout.expect("baseline list after replace");
     let rust_list_after_replace = rust_stdout.expect("rust list after replace");
     assert_eq!(
         scrub_path(rust_list_after_replace.clone(), &rust_replaced, "[OUT]"),
-        scrub_path(go_list_after_replace.clone(), &go_replaced, "[OUT]"),
+        scrub_path(
+            baseline_list_after_replace.clone(),
+            &baseline_replaced,
+            "[OUT]"
+        ),
         "list after replace stdout"
     );
     let class_hash = module_sha256(&rust_list_after_replace, "Class1");
 
-    let go_removed_module_path = temp_dir.join("go-removed-module.xlsm");
+    let baseline_removed_module_path = temp_dir.join("baseline-removed-module.xlsm");
     let rust_removed_module_path = temp_dir.join("rust-removed-module.xlsm");
-    let go_removed_module = go_removed_module_path.to_string_lossy().to_string();
+    let baseline_removed_module = baseline_removed_module_path.to_string_lossy().to_string();
     let rust_removed_module = rust_removed_module_path.to_string_lossy().to_string();
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&[
         "--json",
         "vba",
         "remove-module",
-        &go_replaced,
+        &baseline_replaced,
         "--module",
         "module:Class1",
         "--expect-sha256",
         &class_hash,
         "--allow-experimental-vba-source-rewrite",
         "--out",
-        &go_removed_module,
+        &baseline_removed_module,
     ]);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
         "--json",
@@ -1681,16 +1717,19 @@ fn vba_source_module_mutations_match_go_oracle() {
         "--out",
         &rust_removed_module,
     ]);
-    assert_eq!(rust_code, go_code, "remove-module exit");
-    assert_eq!(rust_stderr, go_stderr, "remove-module stderr");
+    assert_eq!(rust_code, baseline_code, "remove-module exit");
+    assert_eq!(rust_stderr, baseline_stderr, "remove-module stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust remove-module stdout"),
             &[(&rust_replaced, "[IN]"), (&rust_removed_module, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go remove-module stdout"),
-            &[(&go_replaced, "[IN]"), (&go_removed_module, "[OUT]")]
+            baseline_stdout.expect("baseline remove-module stdout"),
+            &[
+                (&baseline_replaced, "[IN]"),
+                (&baseline_removed_module, "[OUT]")
+            ]
         ),
         "remove-module stdout"
     );
@@ -1702,11 +1741,11 @@ fn vba_source_module_mutations_match_go_oracle() {
     )
     .expect("write dry-run source");
     let dry_source = dry_source_path.to_string_lossy().to_string();
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&[
         "--json",
         "vba",
         "add-module",
-        &go_removed_module,
+        &baseline_removed_module,
         "--source",
         &dry_source,
         "--allow-experimental-vba-source-rewrite",
@@ -1722,8 +1761,8 @@ fn vba_source_module_mutations_match_go_oracle() {
         "--allow-experimental-vba-source-rewrite",
         "--dry-run",
     ]);
-    assert_eq!(rust_code, go_code, "add-module dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "add-module dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "add-module dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "add-module dry-run stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust add-module dry-run"),
@@ -1731,21 +1770,21 @@ fn vba_source_module_mutations_match_go_oracle() {
             "[IN]"
         ),
         scrub_path(
-            go_stdout.expect("go add-module dry-run"),
-            &go_removed_module,
+            baseline_stdout.expect("baseline add-module dry-run"),
+            &baseline_removed_module,
             "[IN]"
         ),
         "add-module dry-run stdout"
     );
 
-    for (label, go_args, rust_args, scrub_go, scrub_rust) in [
+    for (label, baseline_args, rust_args, scrub_go, scrub_rust) in [
         (
             "add-module count mismatch",
             vec![
                 "--json",
                 "vba",
                 "add-module",
-                &go_removed_module,
+                &baseline_removed_module,
                 "--source",
                 &dry_source,
                 "--expect-module-count",
@@ -1763,7 +1802,7 @@ fn vba_source_module_mutations_match_go_oracle() {
                 "99",
                 "--dry-run",
             ],
-            go_removed_module.as_str(),
+            baseline_removed_module.as_str(),
             rust_removed_module.as_str(),
         ),
         (
@@ -1772,7 +1811,7 @@ fn vba_source_module_mutations_match_go_oracle() {
                 "--json",
                 "vba",
                 "replace-module",
-                &go_removed_module,
+                &baseline_removed_module,
                 "--module",
                 "module:Module1",
                 "--source",
@@ -1794,7 +1833,7 @@ fn vba_source_module_mutations_match_go_oracle() {
                 "0000",
                 "--dry-run",
             ],
-            go_removed_module.as_str(),
+            baseline_removed_module.as_str(),
             rust_removed_module.as_str(),
         ),
         (
@@ -1803,7 +1842,7 @@ fn vba_source_module_mutations_match_go_oracle() {
                 "--json",
                 "vba",
                 "replace-module",
-                &go_in,
+                &baseline_in,
                 "--module",
                 "module:Module1",
                 "--source",
@@ -1821,35 +1860,39 @@ fn vba_source_module_mutations_match_go_oracle() {
                 &replace_source,
                 "--dry-run",
             ],
-            go_in.as_str(),
+            baseline_in.as_str(),
             rust_in.as_str(),
         ),
     ] {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-        assert_eq!(rust_code, go_code, "{label} exit");
-        assert_eq!(rust_stdout, go_stdout, "{label} stdout");
+        assert_eq!(rust_code, baseline_code, "{label} exit");
+        assert_eq!(rust_stdout, baseline_stdout, "{label} stdout");
         assert_eq!(
             scrub_path(
                 rust_stderr.expect("rust error stderr"),
                 scrub_rust,
                 "[FILE]"
             ),
-            scrub_path(go_stderr.expect("go error stderr"), scrub_go, "[FILE]"),
+            scrub_path(
+                baseline_stderr.expect("baseline error stderr"),
+                scrub_go,
+                "[FILE]"
+            ),
             "{label} stderr"
         );
     }
 
     let missing_source = temp_dir.join("Missing.bas").to_string_lossy().to_string();
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&[
         "--json",
         "vba",
         "add-module",
-        &go_removed_module,
+        &baseline_removed_module,
         "--source",
         &missing_source,
         "--out",
-        &go_removed_module,
+        &baseline_removed_module,
     ]);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
         "--json",
@@ -1861,9 +1904,9 @@ fn vba_source_module_mutations_match_go_oracle() {
         "--out",
         &rust_removed_module,
     ]);
-    assert_eq!(rust_code, go_code, "missing source exit");
-    assert_eq!(rust_stdout, go_stdout, "missing source stdout");
-    assert_eq!(rust_stderr, go_stderr, "missing source stderr");
+    assert_eq!(rust_code, baseline_code, "missing source exit");
+    assert_eq!(rust_stdout, baseline_stdout, "missing source stdout");
+    assert_eq!(rust_stderr, baseline_stderr, "missing source stderr");
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -1951,7 +1994,7 @@ fn vba_replace_module_refuses_office_shaped_project_metadata() {
 }
 
 #[test]
-fn vba_opaque_attach_extract_remove_matches_go_oracle() {
+fn vba_opaque_attach_extract_remove_matches_rust_baseline() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-vba-opaque-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
@@ -1959,15 +2002,19 @@ fn vba_opaque_attach_extract_remove_matches_go_oracle() {
     let bin_path = temp_dir.join("vbaProject.bin");
     let payload = b"not-real-vba-but-nonempty";
     fs::write(&bin_path, payload).expect("write vbaProject.bin");
-    let go_in_path = temp_dir.join("go-input.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-input.xlsx");
     let rust_in_path = temp_dir.join("rust-input.xlsx");
-    let go_xlsm_path = temp_dir.join("go-output.xlsm");
+    let baseline_xlsm_path = temp_dir.join("baseline-output.xlsm");
     let rust_xlsm_path = temp_dir.join("rust-output.xlsm");
-    let go_extract_path = temp_dir.join("go-extract.bin");
+    let baseline_extract_path = temp_dir.join("baseline-extract.bin");
     let rust_extract_path = temp_dir.join("rust-extract.bin");
-    let go_removed_path = temp_dir.join("go-removed.xlsx");
+    let baseline_removed_path = temp_dir.join("baseline-removed.xlsx");
     let rust_removed_path = temp_dir.join("rust-removed.xlsx");
-    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("go input");
+    fs::copy(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &baseline_in_path,
+    )
+    .expect("baseline input");
     fs::copy(
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
         &rust_in_path,
@@ -1975,69 +2022,87 @@ fn vba_opaque_attach_extract_remove_matches_go_oracle() {
     .expect("rust input");
 
     let bin = bin_path.to_string_lossy().to_string();
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_xlsm = go_xlsm_path.to_string_lossy().to_string();
+    let baseline_xlsm = baseline_xlsm_path.to_string_lossy().to_string();
     let rust_xlsm = rust_xlsm_path.to_string_lossy().to_string();
-    let go_extract = go_extract_path.to_string_lossy().to_string();
+    let baseline_extract = baseline_extract_path.to_string_lossy().to_string();
     let rust_extract = rust_extract_path.to_string_lossy().to_string();
-    let go_removed = go_removed_path.to_string_lossy().to_string();
+    let baseline_removed = baseline_removed_path.to_string_lossy().to_string();
     let rust_removed = rust_removed_path.to_string_lossy().to_string();
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "vba", "inspect", &go_in]);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "vba", "inspect", &baseline_in]);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "vba", "inspect", &rust_in]);
-    assert_eq!(rust_code, go_code, "initial inspect exit");
-    assert_eq!(rust_stderr, go_stderr, "initial inspect stderr");
+    assert_eq!(rust_code, baseline_code, "initial inspect exit");
+    assert_eq!(rust_stderr, baseline_stderr, "initial inspect stderr");
     assert_eq!(
         scrub_path(rust_stdout.expect("rust initial inspect"), &rust_in, "[IN]"),
-        scrub_path(go_stdout.expect("go initial inspect"), &go_in, "[IN]"),
+        scrub_path(
+            baseline_stdout.expect("baseline initial inspect"),
+            &baseline_in,
+            "[IN]"
+        ),
         "initial inspect stdout"
     );
 
-    let go_attach_args = [
-        "--json", "vba", "attach", &go_in, "--bin", &bin, "--out", &go_xlsm,
+    let baseline_attach_args = [
+        "--json",
+        "vba",
+        "attach",
+        &baseline_in,
+        "--bin",
+        &bin,
+        "--out",
+        &baseline_xlsm,
     ];
     let rust_attach_args = [
         "--json", "vba", "attach", &rust_in, "--bin", &bin, "--out", &rust_xlsm,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_attach_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&baseline_attach_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_attach_args);
-    assert_eq!(rust_code, go_code, "attach exit");
-    assert_eq!(rust_stderr, go_stderr, "attach stderr");
+    assert_eq!(rust_code, baseline_code, "attach exit");
+    assert_eq!(rust_stderr, baseline_stderr, "attach stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust attach stdout"),
             &[(&rust_in, "[IN]"), (&rust_xlsm, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go attach stdout"),
-            &[(&go_in, "[IN]"), (&go_xlsm, "[OUT]")]
+            baseline_stdout.expect("baseline attach stdout"),
+            &[(&baseline_in, "[IN]"), (&baseline_xlsm, "[OUT]")]
         ),
         "attach stdout"
     );
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "vba", "inspect", &go_xlsm]);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "vba", "inspect", &baseline_xlsm]);
     let (rust_code, rust_stdout, rust_stderr) =
         run_ooxml(&["--json", "vba", "inspect", &rust_xlsm]);
-    assert_eq!(rust_code, go_code, "attached inspect exit");
-    assert_eq!(rust_stderr, go_stderr, "attached inspect stderr");
+    assert_eq!(rust_code, baseline_code, "attached inspect exit");
+    assert_eq!(rust_stderr, baseline_stderr, "attached inspect stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust attached inspect"),
             &rust_xlsm,
             "[OUT]"
         ),
-        scrub_path(go_stdout.expect("go attached inspect"), &go_xlsm, "[OUT]"),
+        scrub_path(
+            baseline_stdout.expect("baseline attached inspect"),
+            &baseline_xlsm,
+            "[OUT]"
+        ),
         "attached inspect stdout"
     );
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&[
         "--json",
         "vba",
         "extract-bin",
-        &go_xlsm,
+        &baseline_xlsm,
         "--out",
-        &go_extract,
+        &baseline_extract,
     ]);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
         "--json",
@@ -2047,27 +2112,33 @@ fn vba_opaque_attach_extract_remove_matches_go_oracle() {
         "--out",
         &rust_extract,
     ]);
-    assert_eq!(rust_code, go_code, "extract-bin exit");
-    assert_eq!(rust_stderr, go_stderr, "extract-bin stderr");
+    assert_eq!(rust_code, baseline_code, "extract-bin exit");
+    assert_eq!(rust_stderr, baseline_stderr, "extract-bin stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust extract-bin stdout"),
             &[(&rust_xlsm, "[OUT]"), (&rust_extract, "[BIN]")]
         ),
         scrub_paths(
-            go_stdout.expect("go extract-bin stdout"),
-            &[(&go_xlsm, "[OUT]"), (&go_extract, "[BIN]")]
+            baseline_stdout.expect("baseline extract-bin stdout"),
+            &[(&baseline_xlsm, "[OUT]"), (&baseline_extract, "[BIN]")]
         ),
         "extract-bin stdout"
     );
     assert_eq!(
         fs::read(&rust_extract_path).expect("rust extracted bytes"),
-        fs::read(&go_extract_path).expect("go extracted bytes"),
+        fs::read(&baseline_extract_path).expect("baseline extracted bytes"),
         "extracted vbaProject.bin bytes"
     );
 
-    let (go_code, go_stdout, go_stderr) =
-        run_go_ooxml(&["--json", "vba", "remove", &go_xlsm, "--out", &go_removed]);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&[
+        "--json",
+        "vba",
+        "remove",
+        &baseline_xlsm,
+        "--out",
+        &baseline_removed,
+    ]);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
         "--json",
         "vba",
@@ -2076,25 +2147,26 @@ fn vba_opaque_attach_extract_remove_matches_go_oracle() {
         "--out",
         &rust_removed,
     ]);
-    assert_eq!(rust_code, go_code, "remove exit");
-    assert_eq!(rust_stderr, go_stderr, "remove stderr");
+    assert_eq!(rust_code, baseline_code, "remove exit");
+    assert_eq!(rust_stderr, baseline_stderr, "remove stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust remove stdout"),
             &[(&rust_xlsm, "[XLSM]"), (&rust_removed, "[REMOVED]")]
         ),
         scrub_paths(
-            go_stdout.expect("go remove stdout"),
-            &[(&go_xlsm, "[XLSM]"), (&go_removed, "[REMOVED]")]
+            baseline_stdout.expect("baseline remove stdout"),
+            &[(&baseline_xlsm, "[XLSM]"), (&baseline_removed, "[REMOVED]")]
         ),
         "remove stdout"
     );
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "vba", "inspect", &go_removed]);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "vba", "inspect", &baseline_removed]);
     let (rust_code, rust_stdout, rust_stderr) =
         run_ooxml(&["--json", "vba", "inspect", &rust_removed]);
-    assert_eq!(rust_code, go_code, "removed inspect exit");
-    assert_eq!(rust_stderr, go_stderr, "removed inspect stderr");
+    assert_eq!(rust_code, baseline_code, "removed inspect exit");
+    assert_eq!(rust_stderr, baseline_stderr, "removed inspect stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust removed inspect"),
@@ -2102,18 +2174,18 @@ fn vba_opaque_attach_extract_remove_matches_go_oracle() {
             "[REMOVED]"
         ),
         scrub_path(
-            go_stdout.expect("go removed inspect"),
-            &go_removed,
+            baseline_stdout.expect("baseline removed inspect"),
+            &baseline_removed,
             "[REMOVED]"
         ),
         "removed inspect stdout"
     );
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&[
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&[
         "--json",
         "vba",
         "attach",
-        &go_in,
+        &baseline_in,
         "--bin",
         &bin,
         "--dry-run",
@@ -2127,27 +2199,35 @@ fn vba_opaque_attach_extract_remove_matches_go_oracle() {
         &bin,
         "--dry-run",
     ]);
-    assert_eq!(rust_code, go_code, "attach dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "attach dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "attach dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "attach dry-run stderr");
     assert_eq!(
         scrub_path(rust_stdout.expect("rust attach dry-run"), &rust_in, "[IN]"),
-        scrub_path(go_stdout.expect("go attach dry-run"), &go_in, "[IN]"),
+        scrub_path(
+            baseline_stdout.expect("baseline attach dry-run"),
+            &baseline_in,
+            "[IN]"
+        ),
         "attach dry-run stdout"
     );
 
-    let (go_code, go_stdout, go_stderr) =
-        run_go_ooxml(&["--json", "vba", "remove", &go_xlsm, "--dry-run"]);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "vba", "remove", &baseline_xlsm, "--dry-run"]);
     let (rust_code, rust_stdout, rust_stderr) =
         run_ooxml(&["--json", "vba", "remove", &rust_xlsm, "--dry-run"]);
-    assert_eq!(rust_code, go_code, "remove dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "remove dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "remove dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "remove dry-run stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust remove dry-run"),
             &rust_xlsm,
             "[XLSM]"
         ),
-        scrub_path(go_stdout.expect("go remove dry-run"), &go_xlsm, "[XLSM]"),
+        scrub_path(
+            baseline_stdout.expect("baseline remove dry-run"),
+            &baseline_xlsm,
+            "[XLSM]"
+        ),
         "remove dry-run stdout"
     );
 

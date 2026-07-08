@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-smoke fixtures install clean help web-smoke-agent web-smoke-nonpptx artifact-proof-matrix office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check clippy verify verify-strict go-reference-build go-reference-test go-reference-test-short go-reference-contract go-reference-fmt-check go-reference-vet go-reference-render-smoke
+.PHONY: build test test-unit test-smoke fixtures install clean help web-smoke-agent web-smoke-nonpptx artifact-proof-matrix office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check clippy verify verify-strict rust-baseline-contract go-reference-build go-reference-test go-reference-test-short go-reference-contract go-reference-fmt-check go-reference-vet go-reference-render-smoke
 
 # Default target
 .DEFAULT_GOAL := help
@@ -36,16 +36,16 @@ build:
 	@$(CARGO) build --bin $(BINARY_NAME)
 	@echo "Built $(RUST_DEBUG_BIN)"
 
-# test: Run the normal Rust test gate without live Go oracle calls
+# test: Run the normal Rust test gate without legacy oracle calls
 test: test-unit test-smoke
 
 # test-unit: Run Rust unit tests for the CLI binary
 test-unit:
 	@$(CARGO) test --bin $(BINARY_NAME)
 
-# test-smoke: Run the frozen Rust integration smoke that does not invoke Go
+# test-smoke: Run the frozen Rust integration smoke
 test-smoke:
-	@$(CARGO) test --test rust_contract_smoke frozen_cli_slice_matches_go_baseline -- --exact
+	@$(CARGO) test --test rust_contract_smoke frozen_cli_slice_matches_legacy_baseline -- --exact
 
 # fixtures: Generate test fixtures using python-pptx
 fixtures:
@@ -102,7 +102,7 @@ web-smoke-nonpptx: build
 artifact-proof-matrix: build
 	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\artifact-proof-matrix.ps1 -RepoRoot . -BinaryPath "$(abspath $(RUST_DEBUG_BIN))" $(ARTIFACT_PROOF_MATRIX_ARGS)
 
-# check-fast: Compile all Rust targets without running live Go oracle tests
+# check-fast: Compile all Rust targets without running integration tests
 check-fast:
 	@$(CARGO) check --all-targets
 
@@ -192,9 +192,12 @@ go-reference-test:
 go-reference-test-short:
 	@$(GO) -C "$(GO_REFERENCE_DIR)" test -short ./...
 
-# go-reference-contract: Optional live Go-vs-Rust parity contract; not part of normal CI
-go-reference-contract:
+# rust-baseline-contract: Run the Rust smoke contract, optionally against OOXML_RUST_BASELINE_BIN
+rust-baseline-contract:
 	@$(CARGO) test --test rust_contract_smoke
+
+# go-reference-contract: Retired compatibility alias for rust-baseline-contract
+go-reference-contract: rust-baseline-contract
 
 # go-reference-fmt-check: Optional legacy Go formatting check; not part of normal CI
 go-reference-fmt-check:

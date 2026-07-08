@@ -147,12 +147,12 @@ fn build_docx_replace_pattern(
     Regex::new(&expr).map_err(|err| {
         CliError::invalid_args(format!(
             "invalid find pattern: {}",
-            go_like_regex_error(&expr, &err.to_string())
+            legacy_like_regex_error(&expr, &err.to_string())
         ))
     })
 }
 
-fn go_like_regex_error(expr: &str, rust_error: &str) -> String {
+fn legacy_like_regex_error(expr: &str, rust_error: &str) -> String {
     if rust_error.contains("unclosed group") {
         return format!("error parsing regexp: missing closing ): `{expr}`");
     }

@@ -301,7 +301,7 @@ pub(super) fn commands() -> Vec<Value> {
             &["style", "slide"],
             false,
             Some(
-                "direct CLI mutation; deck mode is supported, slide color mode preserves the current Go oracle error behavior",
+                "direct CLI mutation; deck mode is supported, slide color mode preserves the legacy error behavior",
             ),
             vec![
                 flag(

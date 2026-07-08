@@ -3,9 +3,9 @@ use serde_json::Value;
 use std::path::Path;
 
 #[test]
-fn conformance_check_matches_go_for_pptx_animation_targets() {
+fn conformance_check_matches_rust_baseline_for_pptx_animation_targets() {
     // Provenance: deterministic synthetic PPTX packages generated in this test,
-    // compared against the Go CLI oracle's repair-invariants check.
+    // compared against the Rust baseline CLI oracle's repair-invariants check.
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-conformance-pptx-animations-{}",
         std::process::id()
@@ -25,7 +25,7 @@ fn conformance_check_matches_go_for_pptx_animation_targets() {
       <p:set><p:cBhvr><p:tgtEl><p:spTgt/></p:tgtEl></p:cBhvr></p:set>"#,
         ),
     );
-    let repair = assert_go_rust_repair_invariants_match(&broken);
+    let repair = assert_baseline_rust_repair_invariants_match(&broken);
     assert_repair_message_contains(&repair, "missing slide shape id 99");
     assert_repair_message_contains(&repair, r#"invalid spid "bad""#);
     assert_repair_message_contains(&repair, r#"invalid spid "-1""#);
@@ -39,7 +39,7 @@ fn conformance_check_matches_go_for_pptx_animation_targets() {
       <p:set><p:cBhvr><p:tgtEl><p:spTgt spid="2"/></p:tgtEl></p:cBhvr></p:set>"#,
         ),
     );
-    let repair = assert_go_rust_repair_invariants_match(&clean);
+    let repair = assert_baseline_rust_repair_invariants_match(&clean);
     let body = serde_json::to_string(&repair).expect("repair JSON");
     assert!(
         !body.contains("PPTX_ANIMATION_TARGET_REFERENCE"),
@@ -47,18 +47,21 @@ fn conformance_check_matches_go_for_pptx_animation_targets() {
     );
 }
 
-fn assert_go_rust_repair_invariants_match(file: &Path) -> Value {
+fn assert_baseline_rust_repair_invariants_match(file: &Path) -> Value {
     let file = file.to_string_lossy().to_string();
     let args = ["--json", "conformance", "check", file.as_str()];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-    assert_eq!(rust_code, go_code, "exit code for {file}");
-    assert_eq!(rust_stderr, go_stderr, "stderr for {file}");
+    assert_eq!(rust_code, baseline_code, "exit code for {file}");
+    assert_eq!(rust_stderr, baseline_stderr, "stderr for {file}");
     let rust_report = rust_stdout.expect("rust conformance stdout");
-    let go_report = go_stdout.expect("go conformance stdout");
+    let baseline_report = baseline_stdout.expect("baseline conformance stdout");
     let rust_repair = check_by_name(&rust_report, "repair-invariants").clone();
-    let go_repair = check_by_name(&go_report, "repair-invariants").clone();
-    assert_eq!(rust_repair, go_repair, "repair-invariants check for {file}");
+    let baseline_repair = check_by_name(&baseline_report, "repair-invariants").clone();
+    assert_eq!(
+        rust_repair, baseline_repair,
+        "repair-invariants check for {file}"
+    );
     rust_repair
 }
 

@@ -2,7 +2,7 @@ use super::*;
 use std::io::{Cursor, Seek};
 
 #[test]
-fn conformance_check_matches_go_for_chart_embedded_workbook_open_invariants() {
+fn conformance_check_matches_rust_baseline_for_chart_embedded_workbook_open_invariants() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-conformance-embedded-workbook-{}",
         std::process::id()
@@ -15,7 +15,7 @@ fn conformance_check_matches_go_for_chart_embedded_workbook_open_invariants() {
         &corrupt,
         EmbeddedWorkbookFixture::Internal(b"not a zip package".to_vec()),
     );
-    assert_go_rust_repair_invariants_match(&corrupt);
+    assert_baseline_rust_repair_invariants_match(&corrupt);
     assert_rust_repair_invariants_include_code(
         &corrupt,
         "OOXML_CHART_EXTERNAL_DATA_EMBEDDED_WORKBOOK_OPEN",
@@ -26,7 +26,7 @@ fn conformance_check_matches_go_for_chart_embedded_workbook_open_invariants() {
         &wrong_family,
         EmbeddedWorkbookFixture::Internal(minimal_docx_bytes()),
     );
-    assert_go_rust_repair_invariants_match(&wrong_family);
+    assert_baseline_rust_repair_invariants_match(&wrong_family);
     assert_rust_repair_invariants_include_code(
         &wrong_family,
         "OOXML_CHART_EXTERNAL_DATA_EMBEDDED_WORKBOOK_OPEN",
@@ -37,7 +37,7 @@ fn conformance_check_matches_go_for_chart_embedded_workbook_open_invariants() {
         &clean,
         EmbeddedWorkbookFixture::Internal(minimal_xlsx_bytes()),
     );
-    assert_go_rust_repair_invariants_match(&clean);
+    assert_baseline_rust_repair_invariants_match(&clean);
     assert_rust_repair_invariants_exclude_code(
         &clean,
         "OOXML_CHART_EXTERNAL_DATA_EMBEDDED_WORKBOOK_OPEN",
@@ -45,7 +45,7 @@ fn conformance_check_matches_go_for_chart_embedded_workbook_open_invariants() {
 
     let external = temp_dir.join("chart-external-workbook.pptx");
     write_chart_embedded_workbook_pptx(&external, EmbeddedWorkbookFixture::External);
-    assert_go_rust_repair_invariants_match(&external);
+    assert_baseline_rust_repair_invariants_match(&external);
     assert_rust_repair_invariants_exclude_code(
         &external,
         "OOXML_CHART_EXTERNAL_DATA_EMBEDDED_WORKBOOK_OPEN",
@@ -59,18 +59,18 @@ enum EmbeddedWorkbookFixture {
     External,
 }
 
-fn assert_go_rust_repair_invariants_match(file: &Path) {
+fn assert_baseline_rust_repair_invariants_match(file: &Path) {
     let file = file.to_string_lossy().to_string();
     let args = ["--json", "conformance", "check", file.as_str()];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-    assert_eq!(rust_code, go_code, "exit code for {file}");
-    assert_eq!(rust_stderr, go_stderr, "stderr for {file}");
+    assert_eq!(rust_code, baseline_code, "exit code for {file}");
+    assert_eq!(rust_stderr, baseline_stderr, "stderr for {file}");
     let rust_report = rust_stdout.expect("rust conformance stdout");
-    let go_report = go_stdout.expect("go conformance stdout");
+    let baseline_report = baseline_stdout.expect("baseline conformance stdout");
     assert_eq!(
         check_by_name(&rust_report, "repair-invariants"),
-        check_by_name(&go_report, "repair-invariants"),
+        check_by_name(&baseline_report, "repair-invariants"),
         "repair-invariants check for {file}"
     );
 }

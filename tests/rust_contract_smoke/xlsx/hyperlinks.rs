@@ -1,6 +1,6 @@
 #[test]
-fn xlsx_hyperlinks_list_show_match_go_oracle() {
-    assert_go_rust_match(&[
+fn xlsx_hyperlinks_list_show_match_rust_baseline() {
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "hyperlinks",
@@ -65,10 +65,10 @@ fn xlsx_hyperlinks_list_show_match_go_oracle() {
             "--json", "xlsx", "links", "show", &workbook, "--sheet", "1", "--cell", "$C$3",
         ],
     ] {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "hyperlinks",
@@ -84,34 +84,34 @@ fn xlsx_hyperlinks_list_show_match_go_oracle() {
 }
 
 #[test]
-fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
+fn xlsx_hyperlinks_mutations_match_rust_baseline_and_validate_saved_outputs() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-hyperlinks-mut-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    let go_added_path = temp_dir.join("go-added.xlsx");
+    let baseline_added_path = temp_dir.join("baseline-added.xlsx");
     let rust_added_path = temp_dir.join("rust-added.xlsx");
-    let go_updated_path = temp_dir.join("go-updated.xlsx");
+    let baseline_updated_path = temp_dir.join("baseline-updated.xlsx");
     let rust_updated_path = temp_dir.join("rust-updated.xlsx");
-    let go_deleted_path = temp_dir.join("go-deleted.xlsx");
+    let baseline_deleted_path = temp_dir.join("baseline-deleted.xlsx");
     let rust_deleted_path = temp_dir.join("rust-deleted.xlsx");
-    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("go input");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &baseline_in_path).expect("baseline input");
     fs::copy(
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
         &rust_in_path,
     )
     .expect("rust input");
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_added = go_added_path.to_string_lossy().to_string();
+    let baseline_added = baseline_added_path.to_string_lossy().to_string();
     let rust_added = rust_added_path.to_string_lossy().to_string();
-    let go_updated = go_updated_path.to_string_lossy().to_string();
+    let baseline_updated = baseline_updated_path.to_string_lossy().to_string();
     let rust_updated = rust_updated_path.to_string_lossy().to_string();
-    let go_deleted = go_deleted_path.to_string_lossy().to_string();
+    let baseline_deleted = baseline_deleted_path.to_string_lossy().to_string();
     let rust_deleted = rust_deleted_path.to_string_lossy().to_string();
 
     let add_go = [
@@ -119,7 +119,7 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
         "xlsx",
         "hyperlinks",
         "add",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "Sheet1",
         "--cell",
@@ -131,7 +131,7 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
         "--tooltip",
         "Open report",
         "--out",
-        &go_added,
+        &baseline_added,
     ];
     let add_rust = [
         "--json",
@@ -152,14 +152,14 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
         "--out",
         &rust_added,
     ];
-    let rust_add = assert_go_rust_match_scrubbed(
+    let rust_add = assert_rust_baseline_match_scrubbed(
         "hyperlinks add",
         &add_go,
         &add_rust,
         &[
-            (&go_in, "[IN]"),
+            (&baseline_in, "[IN]"),
             (&rust_in, "[IN]"),
-            (&go_added, "[OUT]"),
+            (&baseline_added, "[OUT]"),
             (&rust_added, "[OUT]"),
         ],
     )
@@ -179,14 +179,14 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
             && added_rels.contains("https://example.com/report"),
         "saved worksheet rels missing external hyperlink:\n{added_rels}"
     );
-    assert_go_rust_match_scrubbed(
+    assert_rust_baseline_match_scrubbed(
         "hyperlinks added readback list",
         &[
             "--json",
             "xlsx",
             "hyperlinks",
             "list",
-            &go_added,
+            &baseline_added,
             "--sheet",
             "1",
         ],
@@ -199,16 +199,16 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
             "--sheet",
             "1",
         ],
-        &[(&go_added, "[OUT]"), (&rust_added, "[OUT]")],
+        &[(&baseline_added, "[OUT]"), (&rust_added, "[OUT]")],
     );
-    assert_go_rust_match_scrubbed(
+    assert_rust_baseline_match_scrubbed(
         "hyperlinks added readback show",
         &[
             "--json",
             "xlsx",
             "hyperlinks",
             "show",
-            &go_added,
+            &baseline_added,
             "--sheet",
             "Sheet1",
             "--cell",
@@ -225,7 +225,7 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
             "--cell",
             "A1",
         ],
-        &[(&go_added, "[OUT]"), (&rust_added, "[OUT]")],
+        &[(&baseline_added, "[OUT]"), (&rust_added, "[OUT]")],
     );
 
     let update_go = [
@@ -233,7 +233,7 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
         "xlsx",
         "hyperlinks",
         "update",
-        &go_added,
+        &baseline_added,
         "--sheet",
         "Sheet1",
         "--cell",
@@ -245,7 +245,7 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
         "--expect-url",
         "https://example.com/report",
         "--out",
-        &go_updated,
+        &baseline_updated,
     ];
     let update_rust = [
         "--json",
@@ -266,14 +266,14 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
         "--out",
         &rust_updated,
     ];
-    let rust_update = assert_go_rust_match_scrubbed(
+    let rust_update = assert_rust_baseline_match_scrubbed(
         "hyperlinks update",
         &update_go,
         &update_rust,
         &[
-            (&go_added, "[IN]"),
+            (&baseline_added, "[IN]"),
             (&rust_added, "[IN]"),
-            (&go_updated, "[OUT]"),
+            (&baseline_updated, "[OUT]"),
             (&rust_updated, "[OUT]"),
         ],
     )
@@ -287,14 +287,14 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
             && !updated_rels.contains("https://example.com/report"),
         "saved worksheet rels did not update target:\n{updated_rels}"
     );
-    assert_go_rust_match_scrubbed(
+    assert_rust_baseline_match_scrubbed(
         "hyperlinks updated readback list",
         &[
             "--json",
             "xlsx",
             "hyperlinks",
             "list",
-            &go_updated,
+            &baseline_updated,
             "--sheet",
             "1",
         ],
@@ -307,7 +307,7 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
             "--sheet",
             "1",
         ],
-        &[(&go_updated, "[OUT]"), (&rust_updated, "[OUT]")],
+        &[(&baseline_updated, "[OUT]"), (&rust_updated, "[OUT]")],
     );
 
     let delete_go = [
@@ -315,7 +315,7 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
         "xlsx",
         "hyperlinks",
         "delete",
-        &go_updated,
+        &baseline_updated,
         "--sheet",
         "Sheet1",
         "--cell",
@@ -323,7 +323,7 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
         "--expect-url",
         "https://example.net/new",
         "--out",
-        &go_deleted,
+        &baseline_deleted,
     ];
     let delete_rust = [
         "--json",
@@ -340,14 +340,14 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
         "--out",
         &rust_deleted,
     ];
-    let rust_delete = assert_go_rust_match_scrubbed(
+    let rust_delete = assert_rust_baseline_match_scrubbed(
         "hyperlinks delete",
         &delete_go,
         &delete_rust,
         &[
-            (&go_updated, "[IN]"),
+            (&baseline_updated, "[IN]"),
             (&rust_updated, "[IN]"),
-            (&go_deleted, "[OUT]"),
+            (&baseline_deleted, "[OUT]"),
             (&rust_deleted, "[OUT]"),
         ],
     )
@@ -355,14 +355,14 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
     assert_rust_emitted_ooxml_command_exits_zero(&rust_delete, "validateCommand");
     assert_rust_emitted_ooxml_command_succeeds(&rust_delete, "hyperlinksListCommand");
     assert_xlsx_strict_valid(&rust_deleted);
-    assert_go_rust_match_scrubbed(
+    assert_rust_baseline_match_scrubbed(
         "hyperlinks deleted readback list",
         &[
             "--json",
             "xlsx",
             "hyperlinks",
             "list",
-            &go_deleted,
+            &baseline_deleted,
             "--sheet",
             "1",
         ],
@@ -375,7 +375,7 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
             "--sheet",
             "1",
         ],
-        &[(&go_deleted, "[OUT]"), (&rust_deleted, "[OUT]")],
+        &[(&baseline_deleted, "[OUT]"), (&rust_deleted, "[OUT]")],
     );
     let deleted_sheet = read_zip_string(&rust_deleted_path, "xl/worksheets/sheet1.xml");
     assert!(
@@ -392,26 +392,26 @@ fn xlsx_hyperlinks_mutations_match_go_oracle_and_validate_saved_outputs() {
 }
 
 #[test]
-fn xlsx_hyperlinks_dry_run_and_errors_match_go_oracle() {
+fn xlsx_hyperlinks_dry_run_and_errors_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-hyperlinks-dry-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    let go_added_path = temp_dir.join("go-added.xlsx");
+    let baseline_added_path = temp_dir.join("baseline-added.xlsx");
     let rust_added_path = temp_dir.join("rust-added.xlsx");
-    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("go input");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &baseline_in_path).expect("baseline input");
     fs::copy(
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
         &rust_in_path,
     )
     .expect("rust input");
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_added = go_added_path.to_string_lossy().to_string();
+    let baseline_added = baseline_added_path.to_string_lossy().to_string();
     let rust_added = rust_added_path.to_string_lossy().to_string();
 
     let before_sheet = read_zip_string(&rust_in_path, "xl/worksheets/sheet1.xml");
@@ -420,7 +420,7 @@ fn xlsx_hyperlinks_dry_run_and_errors_match_go_oracle() {
         "xlsx",
         "hyperlinks",
         "add",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "Sheet1",
         "--cell",
@@ -447,11 +447,11 @@ fn xlsx_hyperlinks_dry_run_and_errors_match_go_oracle() {
         "Jump",
         "--dry-run",
     ];
-    let rust_dry = assert_go_rust_match_scrubbed(
+    let rust_dry = assert_rust_baseline_match_scrubbed(
         "hyperlinks add dry-run",
         &dry_go,
         &dry_rust,
-        &[(&go_in, "[IN]"), (&rust_in, "[IN]")],
+        &[(&baseline_in, "[IN]"), (&rust_in, "[IN]")],
     )
     .expect("rust dry-run stdout");
     assert_eq!(rust_dry["dryRun"], Value::Bool(true));
@@ -501,15 +501,15 @@ fn xlsx_hyperlinks_dry_run_and_errors_match_go_oracle() {
             ],
         ),
     ] {
-        let mut go_args = vec!["--json", "xlsx", "hyperlinks", "add", &go_in];
-        go_args.extend(extra.iter().copied());
+        let mut baseline_args = vec!["--json", "xlsx", "hyperlinks", "add", &baseline_in];
+        baseline_args.extend(extra.iter().copied());
         let mut rust_args = vec!["--json", "xlsx", "hyperlinks", "add", &rust_in];
         rust_args.extend(extra.iter().copied());
-        assert_go_rust_match_scrubbed(
+        assert_rust_baseline_match_scrubbed(
             &format!("hyperlinks add error {label}"),
-            &go_args,
+            &baseline_args,
             &rust_args,
-            &[(&go_in, "[IN]"), (&rust_in, "[IN]")],
+            &[(&baseline_in, "[IN]"), (&rust_in, "[IN]")],
         );
     }
 
@@ -518,7 +518,7 @@ fn xlsx_hyperlinks_dry_run_and_errors_match_go_oracle() {
         "xlsx",
         "hyperlinks",
         "add",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "Sheet1",
         "--cell",
@@ -526,7 +526,7 @@ fn xlsx_hyperlinks_dry_run_and_errors_match_go_oracle() {
         "--url",
         "https://example.com/original",
         "--out",
-        &go_added,
+        &baseline_added,
     ];
     let add_rust = [
         "--json",
@@ -543,14 +543,14 @@ fn xlsx_hyperlinks_dry_run_and_errors_match_go_oracle() {
         "--out",
         &rust_added,
     ];
-    assert_go_rust_match_scrubbed(
+    assert_rust_baseline_match_scrubbed(
         "hyperlinks add setup",
         &add_go,
         &add_rust,
         &[
-            (&go_in, "[IN]"),
+            (&baseline_in, "[IN]"),
             (&rust_in, "[IN]"),
-            (&go_added, "[OUT]"),
+            (&baseline_added, "[OUT]"),
             (&rust_added, "[OUT]"),
         ],
     );
@@ -600,15 +600,15 @@ fn xlsx_hyperlinks_dry_run_and_errors_match_go_oracle() {
             ],
         ),
     ] {
-        let mut go_args = vec!["--json", "xlsx", "hyperlinks", command, &go_added];
-        go_args.extend(extra.iter().copied());
+        let mut baseline_args = vec!["--json", "xlsx", "hyperlinks", command, &baseline_added];
+        baseline_args.extend(extra.iter().copied());
         let mut rust_args = vec!["--json", "xlsx", "hyperlinks", command, &rust_added];
         rust_args.extend(extra.iter().copied());
-        assert_go_rust_match_scrubbed(
+        assert_rust_baseline_match_scrubbed(
             &format!("hyperlinks {label}"),
-            &go_args,
+            &baseline_args,
             &rust_args,
-            &[(&go_added, "[IN]"), (&rust_added, "[IN]")],
+            &[(&baseline_added, "[IN]"), (&rust_added, "[IN]")],
         );
     }
 

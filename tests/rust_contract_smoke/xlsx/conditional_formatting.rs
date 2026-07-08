@@ -1,6 +1,6 @@
 #[test]
-fn xlsx_conditional_formats_list_show_match_go_oracle() {
-    assert_go_rust_match(&[
+fn xlsx_conditional_formats_list_show_match_rust_baseline() {
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "conditional-formats",
@@ -39,7 +39,7 @@ fn xlsx_conditional_formats_list_show_match_go_oracle() {
 </worksheet>"#,
     );
     let workbook = workbook.to_string_lossy().to_string();
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "conditional-formatting",
@@ -48,7 +48,7 @@ fn xlsx_conditional_formats_list_show_match_go_oracle() {
         "--sheet",
         "Sheet1",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "conditional-formats",
@@ -59,7 +59,7 @@ fn xlsx_conditional_formats_list_show_match_go_oracle() {
         "--range",
         "A1:A5",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "cf",
@@ -70,7 +70,7 @@ fn xlsx_conditional_formats_list_show_match_go_oracle() {
         "--rule",
         "priority:3",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "conditional-format",
@@ -86,7 +86,7 @@ fn xlsx_conditional_formats_list_show_match_go_oracle() {
 }
 
 #[test]
-fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
+fn xlsx_conditional_formats_add_delete_saved_outputs_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-cf-mutate-{}",
         std::process::id()
@@ -94,13 +94,13 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
 
-    let go_add_out = temp_dir.join("go-add.xlsx").to_string_lossy().to_string();
+    let baseline_add_out = temp_dir.join("baseline-add.xlsx").to_string_lossy().to_string();
     let rust_add_out = temp_dir
         .join("rust-add.xlsx")
         .to_string_lossy()
         .to_string();
-    let go_delete_out = temp_dir
-        .join("go-delete.xlsx")
+    let baseline_delete_out = temp_dir
+        .join("baseline-delete.xlsx")
         .to_string_lossy()
         .to_string();
     let rust_delete_out = temp_dir
@@ -129,18 +129,18 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
         "0",
         "--out",
     ];
-    let mut go_args = add_common.to_vec();
-    go_args.push(&go_add_out);
+    let mut baseline_args = add_common.to_vec();
+    baseline_args.push(&baseline_add_out);
     let mut rust_args = add_common.to_vec();
     rust_args.push(&rust_add_out);
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "conditional format add exit");
-    assert_eq!(rust_stderr, go_stderr, "conditional format add stderr");
+    assert_eq!(rust_code, baseline_code, "conditional format add exit");
+    assert_eq!(rust_stderr, baseline_stderr, "conditional format add stderr");
     let rust_add = rust_stdout.expect("rust add stdout");
     assert_eq!(
         scrub_path(rust_add.clone(), &rust_add_out, "[ADD_OUT]"),
-        scrub_path(go_stdout.expect("go add stdout"), &go_add_out, "[ADD_OUT]"),
+        scrub_path(baseline_stdout.expect("baseline add stdout"), &baseline_add_out, "[ADD_OUT]"),
         "conditional format add stdout"
     );
     assert_eq!(rust_add["rule"]["formula"], Value::String("A1>0".to_string()));
@@ -154,7 +154,7 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
         "xlsx",
         "conditional-formats",
         "show",
-        &go_add_out,
+        &baseline_add_out,
         "--sheet",
         "1",
         "--rule",
@@ -171,13 +171,13 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
         "--rule",
         "cfRule:1",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "saved add show exit");
-    assert_eq!(rust_stderr, go_stderr, "saved add show stderr");
+    assert_eq!(rust_code, baseline_code, "saved add show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "saved add show stderr");
     assert_eq!(
         rust_show.expect("rust saved add show"),
-        go_show.expect("go saved add show"),
+        baseline_show.expect("baseline saved add show"),
         "saved add show"
     );
 
@@ -192,15 +192,15 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
         "priority:7",
         "--out",
     ];
-    let mut go_args = vec![
+    let mut baseline_args = vec![
         "--json",
         "xlsx",
         "conditional-formats",
         "delete",
-        &go_add_out,
+        &baseline_add_out,
     ];
-    go_args.extend_from_slice(&delete_common[4..]);
-    go_args.push(&go_delete_out);
+    baseline_args.extend_from_slice(&delete_common[4..]);
+    baseline_args.push(&baseline_delete_out);
     let mut rust_args = vec![
         "--json",
         "xlsx",
@@ -210,10 +210,10 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
     ];
     rust_args.extend_from_slice(&delete_common[4..]);
     rust_args.push(&rust_delete_out);
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "conditional format delete exit");
-    assert_eq!(rust_stderr, go_stderr, "conditional format delete stderr");
+    assert_eq!(rust_code, baseline_code, "conditional format delete exit");
+    assert_eq!(rust_stderr, baseline_stderr, "conditional format delete stderr");
     let rust_delete = rust_stdout.expect("rust delete stdout");
     assert_eq!(
         scrub_paths(
@@ -221,8 +221,8 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
             &[(&rust_add_out, "[ADD_OUT]"), (&rust_delete_out, "[DELETE_OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go delete stdout"),
-            &[(&go_add_out, "[ADD_OUT]"), (&go_delete_out, "[DELETE_OUT]")]
+            baseline_stdout.expect("baseline delete stdout"),
+            &[(&baseline_add_out, "[ADD_OUT]"), (&baseline_delete_out, "[DELETE_OUT]")]
         ),
         "conditional format delete stdout"
     );
@@ -234,7 +234,7 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
         "xlsx",
         "conditional-formats",
         "list",
-        &go_delete_out,
+        &baseline_delete_out,
         "--sheet",
         "1",
     ];
@@ -247,17 +247,17 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
         "--sheet",
         "1",
     ];
-    let (go_code, go_list, go_stderr) = run_go_ooxml(&list_go);
+    let (baseline_code, baseline_list, baseline_stderr) = run_ooxml_baseline(&list_go);
     let (rust_code, rust_list, rust_stderr) = run_ooxml(&list_rust);
-    assert_eq!(rust_code, go_code, "deleted list exit");
-    assert_eq!(rust_stderr, go_stderr, "deleted list stderr");
+    assert_eq!(rust_code, baseline_code, "deleted list exit");
+    assert_eq!(rust_stderr, baseline_stderr, "deleted list stderr");
     assert_eq!(
         scrub_path(
             rust_list.expect("rust deleted list"),
             &rust_delete_out,
             "[DELETE_OUT]"
         ),
-        scrub_path(go_list.expect("go deleted list"), &go_delete_out, "[DELETE_OUT]"),
+        scrub_path(baseline_list.expect("baseline deleted list"), &baseline_delete_out, "[DELETE_OUT]"),
         "deleted list"
     );
 
@@ -269,16 +269,16 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_go_oracle() {
 }
 
 #[test]
-fn xlsx_conditional_formats_reorder_saved_outputs_match_go_oracle() {
+fn xlsx_conditional_formats_reorder_saved_outputs_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
-        "ooxml-rust-xlsx-cf-reorder-go-{}",
+        "ooxml-rust-xlsx-cf-reorder-baseline-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_input = temp_dir.join("go-input.xlsx");
+    let baseline_input = temp_dir.join("baseline-input.xlsx");
     let rust_input = temp_dir.join("rust-input.xlsx");
-    let go_out = temp_dir.join("go-reorder.xlsx").to_string_lossy().to_string();
+    let baseline_out = temp_dir.join("baseline-reorder.xlsx").to_string_lossy().to_string();
     let rust_out = temp_dir
         .join("rust-reorder.xlsx")
         .to_string_lossy()
@@ -293,17 +293,17 @@ fn xlsx_conditional_formats_reorder_saved_outputs_match_go_oracle() {
     <cfRule type="expression" priority="4" stopIfTrue="1"><formula>B1&gt;0</formula></cfRule>
   </conditionalFormatting>
 </worksheet>"#;
-    write_simple_xlsx_with_sheet_xml(&go_input, sheet_xml);
+    write_simple_xlsx_with_sheet_xml(&baseline_input, sheet_xml);
     write_simple_xlsx_with_sheet_xml(&rust_input, sheet_xml);
-    let go_input = go_input.to_string_lossy().to_string();
+    let baseline_input = baseline_input.to_string_lossy().to_string();
     let rust_input = rust_input.to_string_lossy().to_string();
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "xlsx",
         "conditional-formats",
         "reorder",
-        &go_input,
+        &baseline_input,
         "--sheet",
         "1",
         "--rule",
@@ -311,7 +311,7 @@ fn xlsx_conditional_formats_reorder_saved_outputs_match_go_oracle() {
         "--priority",
         "1",
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -328,10 +328,10 @@ fn xlsx_conditional_formats_reorder_saved_outputs_match_go_oracle() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "conditional format reorder exit");
-    assert_eq!(rust_stderr, go_stderr, "conditional format reorder stderr");
+    assert_eq!(rust_code, baseline_code, "conditional format reorder exit");
+    assert_eq!(rust_stderr, baseline_stderr, "conditional format reorder stderr");
     let rust_reorder = rust_stdout.expect("rust reorder stdout");
     assert_eq!(
         scrub_paths(
@@ -339,8 +339,8 @@ fn xlsx_conditional_formats_reorder_saved_outputs_match_go_oracle() {
             &[(&rust_input, "[IN]"), (&rust_out, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go reorder stdout"),
-            &[(&go_input, "[IN]"), (&go_out, "[OUT]")]
+            baseline_stdout.expect("baseline reorder stdout"),
+            &[(&baseline_input, "[IN]"), (&baseline_out, "[OUT]")]
         ),
         "conditional format reorder stdout"
     );
@@ -359,7 +359,7 @@ fn xlsx_conditional_formats_reorder_saved_outputs_match_go_oracle() {
         "xlsx",
         "conditional-formats",
         "show",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "1",
         "--rule",
@@ -376,13 +376,13 @@ fn xlsx_conditional_formats_reorder_saved_outputs_match_go_oracle() {
         "--rule",
         "cfRule:2",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "saved reorder show exit");
-    assert_eq!(rust_stderr, go_stderr, "saved reorder show stderr");
+    assert_eq!(rust_code, baseline_code, "saved reorder show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "saved reorder show stderr");
     assert_eq!(
         rust_show.expect("rust saved reorder show"),
-        go_show.expect("go saved reorder show"),
+        baseline_show.expect("baseline saved reorder show"),
         "saved reorder show"
     );
     assert_xlsx_strict_valid(&rust_out);
@@ -532,7 +532,7 @@ fn xlsx_conditional_formats_reorder_readback_and_validation() {
 }
 
 #[test]
-fn xlsx_conditional_formats_cell_is_saved_outputs_match_go_oracle() {
+fn xlsx_conditional_formats_cell_is_saved_outputs_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-cf-cellis-{}",
         std::process::id()
@@ -540,8 +540,8 @@ fn xlsx_conditional_formats_cell_is_saved_outputs_match_go_oracle() {
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
 
-    let go_single_out = temp_dir
-        .join("go-cellis-single.xlsx")
+    let baseline_single_out = temp_dir
+        .join("baseline-cellis-single.xlsx")
         .to_string_lossy()
         .to_string();
     let rust_single_out = temp_dir
@@ -568,14 +568,14 @@ fn xlsx_conditional_formats_cell_is_saved_outputs_match_go_oracle() {
         "8",
         "--out",
     ];
-    let mut go_args = single_common.to_vec();
-    go_args.push(&go_single_out);
+    let mut baseline_args = single_common.to_vec();
+    baseline_args.push(&baseline_single_out);
     let mut rust_args = single_common.to_vec();
     rust_args.push(&rust_single_out);
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "single cellIs add exit");
-    assert_eq!(rust_stderr, go_stderr, "single cellIs add stderr");
+    assert_eq!(rust_code, baseline_code, "single cellIs add exit");
+    assert_eq!(rust_stderr, baseline_stderr, "single cellIs add stderr");
     let rust_single = rust_stdout.expect("rust single cellIs stdout");
     assert_eq!(
         scrub_path(
@@ -584,8 +584,8 @@ fn xlsx_conditional_formats_cell_is_saved_outputs_match_go_oracle() {
             "[CELLIS_SINGLE_OUT]"
         ),
         scrub_path(
-            go_stdout.expect("go single cellIs stdout"),
-            &go_single_out,
+            baseline_stdout.expect("baseline single cellIs stdout"),
+            &baseline_single_out,
             "[CELLIS_SINGLE_OUT]"
         ),
         "single cellIs add stdout"
@@ -602,8 +602,8 @@ fn xlsx_conditional_formats_cell_is_saved_outputs_match_go_oracle() {
         "conditionalFormatsShowCommand",
     );
 
-    let go_between_out = temp_dir
-        .join("go-cellis-between.xlsx")
+    let baseline_between_out = temp_dir
+        .join("baseline-cellis-between.xlsx")
         .to_string_lossy()
         .to_string();
     let rust_between_out = temp_dir
@@ -630,14 +630,14 @@ fn xlsx_conditional_formats_cell_is_saved_outputs_match_go_oracle() {
         "10",
         "--out",
     ];
-    let mut go_args = between_common.to_vec();
-    go_args.push(&go_between_out);
+    let mut baseline_args = between_common.to_vec();
+    baseline_args.push(&baseline_between_out);
     let mut rust_args = between_common.to_vec();
     rust_args.push(&rust_between_out);
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "between cellIs add exit");
-    assert_eq!(rust_stderr, go_stderr, "between cellIs add stderr");
+    assert_eq!(rust_code, baseline_code, "between cellIs add exit");
+    assert_eq!(rust_stderr, baseline_stderr, "between cellIs add stderr");
     let rust_between = rust_stdout.expect("rust between cellIs stdout");
     assert_eq!(
         scrub_path(
@@ -646,8 +646,8 @@ fn xlsx_conditional_formats_cell_is_saved_outputs_match_go_oracle() {
             "[CELLIS_BETWEEN_OUT]"
         ),
         scrub_path(
-            go_stdout.expect("go between cellIs stdout"),
-            &go_between_out,
+            baseline_stdout.expect("baseline between cellIs stdout"),
+            &baseline_between_out,
             "[CELLIS_BETWEEN_OUT]"
         ),
         "between cellIs add stdout"
@@ -675,7 +675,7 @@ fn xlsx_conditional_formats_cell_is_saved_outputs_match_go_oracle() {
 }
 
 #[test]
-fn xlsx_conditional_formats_color_scale_saved_outputs_match_go_oracle() {
+fn xlsx_conditional_formats_color_scale_saved_outputs_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-cf-colorscale-{}",
         std::process::id()
@@ -683,8 +683,8 @@ fn xlsx_conditional_formats_color_scale_saved_outputs_match_go_oracle() {
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
 
-    let go_out = temp_dir
-        .join("go-color-scale.xlsx")
+    let baseline_out = temp_dir
+        .join("baseline-color-scale.xlsx")
         .to_string_lossy()
         .to_string();
     let rust_out = temp_dir
@@ -719,20 +719,20 @@ fn xlsx_conditional_formats_color_scale_saved_outputs_match_go_oracle() {
         "4",
         "--out",
     ];
-    let mut go_args = add_common.to_vec();
-    go_args.push(&go_out);
+    let mut baseline_args = add_common.to_vec();
+    baseline_args.push(&baseline_out);
     let mut rust_args = add_common.to_vec();
     rust_args.push(&rust_out);
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "color-scale add exit");
-    assert_eq!(rust_stderr, go_stderr, "color-scale add stderr");
+    assert_eq!(rust_code, baseline_code, "color-scale add exit");
+    assert_eq!(rust_stderr, baseline_stderr, "color-scale add stderr");
     let rust_add = rust_stdout.expect("rust color-scale add stdout");
     assert_eq!(
         scrub_path(rust_add.clone(), &rust_out, "[COLOR_SCALE_OUT]"),
         scrub_path(
-            go_stdout.expect("go color-scale add stdout"),
-            &go_out,
+            baseline_stdout.expect("baseline color-scale add stdout"),
+            &baseline_out,
             "[COLOR_SCALE_OUT]"
         ),
         "color-scale add stdout"
@@ -763,7 +763,7 @@ fn xlsx_conditional_formats_color_scale_saved_outputs_match_go_oracle() {
         "xlsx",
         "conditional-formats",
         "show",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "1",
         "--rule",
@@ -780,13 +780,13 @@ fn xlsx_conditional_formats_color_scale_saved_outputs_match_go_oracle() {
         "--rule",
         "cfRule:1",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "saved color-scale show exit");
-    assert_eq!(rust_stderr, go_stderr, "saved color-scale show stderr");
+    assert_eq!(rust_code, baseline_code, "saved color-scale show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "saved color-scale show stderr");
     assert_eq!(
         rust_show.expect("rust saved color-scale show"),
-        go_show.expect("go saved color-scale show"),
+        baseline_show.expect("baseline saved color-scale show"),
         "saved color-scale show"
     );
 
@@ -795,7 +795,7 @@ fn xlsx_conditional_formats_color_scale_saved_outputs_match_go_oracle() {
 }
 
 #[test]
-fn xlsx_conditional_formats_data_bar_saved_outputs_match_go_oracle() {
+fn xlsx_conditional_formats_data_bar_saved_outputs_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-cf-databar-{}",
         std::process::id()
@@ -803,8 +803,8 @@ fn xlsx_conditional_formats_data_bar_saved_outputs_match_go_oracle() {
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
 
-    let go_out = temp_dir
-        .join("go-data-bar.xlsx")
+    let baseline_out = temp_dir
+        .join("baseline-data-bar.xlsx")
         .to_string_lossy()
         .to_string();
     let rust_out = temp_dir
@@ -833,20 +833,20 @@ fn xlsx_conditional_formats_data_bar_saved_outputs_match_go_oracle() {
         "5",
         "--out",
     ];
-    let mut go_args = add_common.to_vec();
-    go_args.push(&go_out);
+    let mut baseline_args = add_common.to_vec();
+    baseline_args.push(&baseline_out);
     let mut rust_args = add_common.to_vec();
     rust_args.push(&rust_out);
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "data-bar add exit");
-    assert_eq!(rust_stderr, go_stderr, "data-bar add stderr");
+    assert_eq!(rust_code, baseline_code, "data-bar add exit");
+    assert_eq!(rust_stderr, baseline_stderr, "data-bar add stderr");
     let rust_add = rust_stdout.expect("rust data-bar add stdout");
     assert_eq!(
         scrub_path(rust_add.clone(), &rust_out, "[DATA_BAR_OUT]"),
         scrub_path(
-            go_stdout.expect("go data-bar add stdout"),
-            &go_out,
+            baseline_stdout.expect("baseline data-bar add stdout"),
+            &baseline_out,
             "[DATA_BAR_OUT]"
         ),
         "data-bar add stdout"
@@ -866,7 +866,7 @@ fn xlsx_conditional_formats_data_bar_saved_outputs_match_go_oracle() {
         "xlsx",
         "conditional-formats",
         "show",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "1",
         "--rule",
@@ -883,13 +883,13 @@ fn xlsx_conditional_formats_data_bar_saved_outputs_match_go_oracle() {
         "--rule",
         "cfRule:1",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "saved data-bar show exit");
-    assert_eq!(rust_stderr, go_stderr, "saved data-bar show stderr");
+    assert_eq!(rust_code, baseline_code, "saved data-bar show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "saved data-bar show stderr");
     assert_eq!(
         rust_show.expect("rust saved data-bar show"),
-        go_show.expect("go saved data-bar show"),
+        baseline_show.expect("baseline saved data-bar show"),
         "saved data-bar show"
     );
 
@@ -976,7 +976,7 @@ fn xlsx_conditional_formats_icon_set_saved_readback() {
 }
 
 #[test]
-fn xlsx_conditional_formats_icon_set_saved_outputs_match_go_oracle() {
+fn xlsx_conditional_formats_icon_set_saved_outputs_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-cf-iconset-oracle-{}",
         std::process::id()
@@ -984,8 +984,8 @@ fn xlsx_conditional_formats_icon_set_saved_outputs_match_go_oracle() {
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
 
-    let go_out = temp_dir
-        .join("go-icon-set.xlsx")
+    let baseline_out = temp_dir
+        .join("baseline-icon-set.xlsx")
         .to_string_lossy()
         .to_string();
     let rust_out = temp_dir
@@ -1016,20 +1016,20 @@ fn xlsx_conditional_formats_icon_set_saved_outputs_match_go_oracle() {
         "6",
         "--out",
     ];
-    let mut go_args = add_common.to_vec();
-    go_args.push(&go_out);
+    let mut baseline_args = add_common.to_vec();
+    baseline_args.push(&baseline_out);
     let mut rust_args = add_common.to_vec();
     rust_args.push(&rust_out);
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "icon-set add exit");
-    assert_eq!(rust_stderr, go_stderr, "icon-set add stderr");
+    assert_eq!(rust_code, baseline_code, "icon-set add exit");
+    assert_eq!(rust_stderr, baseline_stderr, "icon-set add stderr");
     let rust_add = rust_stdout.expect("rust icon-set add stdout");
     assert_eq!(
         scrub_path(rust_add.clone(), &rust_out, "[ICON_SET_OUT]"),
         scrub_path(
-            go_stdout.expect("go icon-set add stdout"),
-            &go_out,
+            baseline_stdout.expect("baseline icon-set add stdout"),
+            &baseline_out,
             "[ICON_SET_OUT]"
         ),
         "icon-set add stdout"
@@ -1040,7 +1040,7 @@ fn xlsx_conditional_formats_icon_set_saved_outputs_match_go_oracle() {
         "xlsx",
         "conditional-formats",
         "show",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "1",
         "--rule",
@@ -1057,13 +1057,13 @@ fn xlsx_conditional_formats_icon_set_saved_outputs_match_go_oracle() {
         "--rule",
         "cfRule:1",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "saved icon-set show exit");
-    assert_eq!(rust_stderr, go_stderr, "saved icon-set show stderr");
+    assert_eq!(rust_code, baseline_code, "saved icon-set show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "saved icon-set show stderr");
     assert_eq!(
         rust_show.expect("rust saved icon-set show"),
-        go_show.expect("go saved icon-set show"),
+        baseline_show.expect("baseline saved icon-set show"),
         "saved icon-set show"
     );
 

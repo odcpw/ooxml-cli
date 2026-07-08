@@ -1,11 +1,11 @@
 #[test]
-fn xlsx_charts_list_and_show_match_go_oracle() {
+fn xlsx_charts_list_and_show_match_rust_baseline() {
     let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
-    assert_go_rust_match(&["--json", "xlsx", "charts", "list", workbook]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&["--json", "xlsx", "charts", "list", workbook]);
+    assert_rust_baseline_match(&[
         "--json", "xlsx", "charts", "list", workbook, "--sheet", "Data",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "charts",
@@ -14,7 +14,7 @@ fn xlsx_charts_list_and_show_match_go_oracle() {
         "--chart",
         "Revenue Chart 1",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json", "xlsx", "charts", "show", workbook, "--sheet", "Data", "--chart", "chart:1",
     ]);
 
@@ -28,19 +28,19 @@ fn xlsx_charts_list_and_show_match_go_oracle() {
         "rid:rIdChart1",
         "drawingRid:rIdDrawing1",
     ] {
-        assert_go_rust_match(&[
+        assert_rust_baseline_match(&[
             "--json", "xlsx", "charts", "show", workbook, "--chart", selector,
         ]);
     }
 }
 
 #[test]
-fn xlsx_charts_empty_and_errors_match_go_oracle() {
+fn xlsx_charts_empty_and_errors_match_rust_baseline() {
     let chart_workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
     let no_chart_workbook = "testdata/xlsx/minimal-workbook/workbook.xlsx";
-    assert_go_rust_match(&["--json", "xlsx", "charts", "list", no_chart_workbook]);
-    assert_go_rust_match(&["--json", "xlsx", "charts", "show", no_chart_workbook]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&["--json", "xlsx", "charts", "list", no_chart_workbook]);
+    assert_rust_baseline_match(&["--json", "xlsx", "charts", "show", no_chart_workbook]);
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "charts",
@@ -49,7 +49,7 @@ fn xlsx_charts_empty_and_errors_match_go_oracle() {
         "--chart",
         "Missing",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "charts",
@@ -63,7 +63,7 @@ fn xlsx_charts_empty_and_errors_match_go_oracle() {
         "doughnut",
         "--dry-run",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "charts",
@@ -75,7 +75,7 @@ fn xlsx_charts_empty_and_errors_match_go_oracle() {
         "chart:1",
         "--dry-run",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "charts",
@@ -92,7 +92,7 @@ fn xlsx_charts_empty_and_errors_match_go_oracle() {
 }
 
 #[test]
-fn xlsx_charts_style_mutations_match_go_oracle() {
+fn xlsx_charts_style_mutations_match_rust_baseline() {
     let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
     for args in [
         vec![
@@ -196,12 +196,12 @@ fn xlsx_charts_style_mutations_match_go_oracle() {
             "--dry-run",
         ],
     ] {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 }
 
 #[test]
-fn xlsx_charts_remaining_mutations_match_go_oracle() {
+fn xlsx_charts_remaining_mutations_match_rust_baseline() {
     let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
     for args in [
         vec![
@@ -272,12 +272,12 @@ fn xlsx_charts_remaining_mutations_match_go_oracle() {
             "--dry-run",
         ],
     ] {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 }
 
 #[test]
-fn xlsx_charts_create_and_update_source_dry_runs_match_go_oracle() {
+fn xlsx_charts_create_and_update_source_dry_runs_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-chart-create-dry-{}",
         std::process::id()
@@ -298,7 +298,7 @@ fn xlsx_charts_create_and_update_source_dry_runs_match_go_oracle() {
 </worksheet>"#,
     );
     let source = source_path.to_string_lossy().to_string();
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "charts",
@@ -318,7 +318,7 @@ fn xlsx_charts_create_and_update_source_dry_runs_match_go_oracle() {
     ]);
 
     let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "charts",
@@ -338,7 +338,7 @@ fn xlsx_charts_create_and_update_source_dry_runs_match_go_oracle() {
         "$B$2:$B$4",
         "--dry-run",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "charts",
@@ -380,23 +380,23 @@ fn xlsx_charts_create_and_update_source_saved_outputs_validate_and_read_back() {
     <row r="4"><c r="A4" t="str"><v>East</v></c><c r="B4"><v>30</v></c></row>
   </sheetData>
 </worksheet>"#;
-    let go_create_in_path = temp_dir.join("go-create-in.xlsx");
+    let baseline_create_in_path = temp_dir.join("baseline-create-in.xlsx");
     let rust_create_in_path = temp_dir.join("rust-create-in.xlsx");
-    let go_create_out_path = temp_dir.join("go-create-out.xlsx");
+    let baseline_create_out_path = temp_dir.join("baseline-create-out.xlsx");
     let rust_create_out_path = temp_dir.join("rust-create-out.xlsx");
-    write_simple_xlsx_with_sheet_xml(&go_create_in_path, sheet_xml);
+    write_simple_xlsx_with_sheet_xml(&baseline_create_in_path, sheet_xml);
     write_simple_xlsx_with_sheet_xml(&rust_create_in_path, sheet_xml);
 
-    let go_create_in = go_create_in_path.to_string_lossy().to_string();
+    let baseline_create_in = baseline_create_in_path.to_string_lossy().to_string();
     let rust_create_in = rust_create_in_path.to_string_lossy().to_string();
-    let go_create_out = go_create_out_path.to_string_lossy().to_string();
+    let baseline_create_out = baseline_create_out_path.to_string_lossy().to_string();
     let rust_create_out = rust_create_out_path.to_string_lossy().to_string();
-    let create_go_args = [
+    let create_baseline_args = [
         "--json",
         "xlsx",
         "charts",
         "create",
-        &go_create_in,
+        &baseline_create_in,
         "--type",
         "bar",
         "--sheet",
@@ -408,7 +408,7 @@ fn xlsx_charts_create_and_update_source_saved_outputs_validate_and_read_back() {
         "--anchor",
         "D1",
         "--out",
-        &go_create_out,
+        &baseline_create_out,
     ];
     let create_rust_args = [
         "--json",
@@ -430,14 +430,14 @@ fn xlsx_charts_create_and_update_source_saved_outputs_validate_and_read_back() {
         &rust_create_out,
     ];
     let create_replacements = [
-        (go_create_in.as_str(), "[IN]"),
+        (baseline_create_in.as_str(), "[IN]"),
         (rust_create_in.as_str(), "[IN]"),
-        (go_create_out.as_str(), "[OUT]"),
+        (baseline_create_out.as_str(), "[OUT]"),
         (rust_create_out.as_str(), "[OUT]"),
     ];
     let rust_create = assert_xlsx_structure_command_matches(
         "xlsx charts create",
-        &create_go_args,
+        &create_baseline_args,
         &create_rust_args,
         &create_replacements,
     );
@@ -448,22 +448,22 @@ fn xlsx_charts_create_and_update_source_saved_outputs_validate_and_read_back() {
     assert!(created_chart_xml.contains("'Sheet1'!$B$2:$B$4"));
 
     let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
-    let go_update_in_path = temp_dir.join("go-update-in.xlsx");
+    let baseline_update_in_path = temp_dir.join("baseline-update-in.xlsx");
     let rust_update_in_path = temp_dir.join("rust-update-in.xlsx");
-    let go_update_out_path = temp_dir.join("go-update-out.xlsx");
+    let baseline_update_out_path = temp_dir.join("baseline-update-out.xlsx");
     let rust_update_out_path = temp_dir.join("rust-update-out.xlsx");
-    fs::copy(workbook, &go_update_in_path).expect("go update input");
+    fs::copy(workbook, &baseline_update_in_path).expect("baseline update input");
     fs::copy(workbook, &rust_update_in_path).expect("rust update input");
-    let go_update_in = go_update_in_path.to_string_lossy().to_string();
+    let baseline_update_in = baseline_update_in_path.to_string_lossy().to_string();
     let rust_update_in = rust_update_in_path.to_string_lossy().to_string();
-    let go_update_out = go_update_out_path.to_string_lossy().to_string();
+    let baseline_update_out = baseline_update_out_path.to_string_lossy().to_string();
     let rust_update_out = rust_update_out_path.to_string_lossy().to_string();
-    let update_go_args = [
+    let update_baseline_args = [
         "--json",
         "xlsx",
         "charts",
         "update-source",
-        &go_update_in,
+        &baseline_update_in,
         "--chart",
         "chart:1",
         "--series",
@@ -477,7 +477,7 @@ fn xlsx_charts_create_and_update_source_saved_outputs_validate_and_read_back() {
         "--expect-source-range",
         "$B$2:$B$4",
         "--out",
-        &go_update_out,
+        &baseline_update_out,
     ];
     let update_rust_args = [
         "--json",
@@ -501,14 +501,14 @@ fn xlsx_charts_create_and_update_source_saved_outputs_validate_and_read_back() {
         &rust_update_out,
     ];
     let update_replacements = [
-        (go_update_in.as_str(), "[IN]"),
+        (baseline_update_in.as_str(), "[IN]"),
         (rust_update_in.as_str(), "[IN]"),
-        (go_update_out.as_str(), "[OUT]"),
+        (baseline_update_out.as_str(), "[OUT]"),
         (rust_update_out.as_str(), "[OUT]"),
     ];
     let rust_update = assert_xlsx_structure_command_matches(
         "xlsx charts update-source",
-        &update_go_args,
+        &update_baseline_args,
         &update_rust_args,
         &update_replacements,
     );
@@ -533,28 +533,28 @@ fn xlsx_charts_update_source_preserves_series_style() {
     fs::create_dir_all(&temp_dir).expect("temp dir");
 
     let workbook = "testdata/xlsx/chart-workbook/workbook.xlsx";
-    let go_style_in_path = temp_dir.join("go-style-in.xlsx");
+    let baseline_style_in_path = temp_dir.join("baseline-style-in.xlsx");
     let rust_style_in_path = temp_dir.join("rust-style-in.xlsx");
-    let go_styled_path = temp_dir.join("go-styled.xlsx");
+    let baseline_styled_path = temp_dir.join("baseline-styled.xlsx");
     let rust_styled_path = temp_dir.join("rust-styled.xlsx");
-    let go_update_out_path = temp_dir.join("go-updated.xlsx");
+    let baseline_update_out_path = temp_dir.join("baseline-updated.xlsx");
     let rust_update_out_path = temp_dir.join("rust-updated.xlsx");
-    fs::copy(workbook, &go_style_in_path).expect("go style input");
+    fs::copy(workbook, &baseline_style_in_path).expect("baseline style input");
     fs::copy(workbook, &rust_style_in_path).expect("rust style input");
 
-    let go_style_in = go_style_in_path.to_string_lossy().to_string();
+    let baseline_style_in = baseline_style_in_path.to_string_lossy().to_string();
     let rust_style_in = rust_style_in_path.to_string_lossy().to_string();
-    let go_styled = go_styled_path.to_string_lossy().to_string();
+    let baseline_styled = baseline_styled_path.to_string_lossy().to_string();
     let rust_styled = rust_styled_path.to_string_lossy().to_string();
-    let go_update_out = go_update_out_path.to_string_lossy().to_string();
+    let baseline_update_out = baseline_update_out_path.to_string_lossy().to_string();
     let rust_update_out = rust_update_out_path.to_string_lossy().to_string();
 
-    let style_go_args = [
+    let style_baseline_args = [
         "--json",
         "xlsx",
         "charts",
         "set-series-style",
-        &go_style_in,
+        &baseline_style_in,
         "--chart",
         "chart:1",
         "--series",
@@ -566,7 +566,7 @@ fn xlsx_charts_update_source_preserves_series_style() {
         "--line-width-pt",
         "2",
         "--out",
-        &go_styled,
+        &baseline_styled,
     ];
     let style_rust_args = [
         "--json",
@@ -588,26 +588,26 @@ fn xlsx_charts_update_source_preserves_series_style() {
         &rust_styled,
     ];
     let style_replacements = [
-        (go_style_in.as_str(), "[IN]"),
+        (baseline_style_in.as_str(), "[IN]"),
         (rust_style_in.as_str(), "[IN]"),
-        (go_styled.as_str(), "[OUT]"),
+        (baseline_styled.as_str(), "[OUT]"),
         (rust_styled.as_str(), "[OUT]"),
     ];
     let rust_style = assert_xlsx_structure_command_matches(
         "xlsx charts set-series-style before update-source",
-        &style_go_args,
+        &style_baseline_args,
         &style_rust_args,
         &style_replacements,
     );
     assert_rust_emitted_ooxml_command_exits_zero(&rust_style, "validateCommand");
     assert_rust_emitted_ooxml_command_succeeds(&rust_style, "chartShowCommand");
 
-    let update_go_args = [
+    let update_baseline_args = [
         "--json",
         "xlsx",
         "charts",
         "update-source",
-        &go_styled,
+        &baseline_styled,
         "--chart",
         "chart:1",
         "--series",
@@ -621,7 +621,7 @@ fn xlsx_charts_update_source_preserves_series_style() {
         "--expect-source-range",
         "$B$2:$B$4",
         "--out",
-        &go_update_out,
+        &baseline_update_out,
     ];
     let update_rust_args = [
         "--json",
@@ -645,14 +645,14 @@ fn xlsx_charts_update_source_preserves_series_style() {
         &rust_update_out,
     ];
     let update_replacements = [
-        (go_styled.as_str(), "[IN]"),
+        (baseline_styled.as_str(), "[IN]"),
         (rust_styled.as_str(), "[IN]"),
-        (go_update_out.as_str(), "[OUT]"),
+        (baseline_update_out.as_str(), "[OUT]"),
         (rust_update_out.as_str(), "[OUT]"),
     ];
     let rust_update = assert_xlsx_structure_command_matches(
         "xlsx charts update-source preserves series style",
-        &update_go_args,
+        &update_baseline_args,
         &update_rust_args,
         &update_replacements,
     );
@@ -771,27 +771,27 @@ fn xlsx_charts_style_saved_outputs_validate_and_read_back() {
     ];
 
     for (label, flags, xml_needles) in cases {
-        let go_in_path = temp_dir.join(format!("{label}-go-input.xlsx"));
+        let baseline_in_path = temp_dir.join(format!("{label}-baseline-input.xlsx"));
         let rust_in_path = temp_dir.join(format!("{label}-rust-input.xlsx"));
-        let go_out_path = temp_dir.join(format!("{label}-go-out.xlsx"));
+        let baseline_out_path = temp_dir.join(format!("{label}-baseline-out.xlsx"));
         let rust_out_path = temp_dir.join(format!("{label}-rust-out.xlsx"));
-        fs::copy("testdata/xlsx/chart-workbook/workbook.xlsx", &go_in_path).expect("go input");
+        fs::copy("testdata/xlsx/chart-workbook/workbook.xlsx", &baseline_in_path).expect("baseline input");
         fs::copy("testdata/xlsx/chart-workbook/workbook.xlsx", &rust_in_path).expect("rust input");
 
-        let go_in = go_in_path.to_string_lossy().to_string();
+        let baseline_in = baseline_in_path.to_string_lossy().to_string();
         let rust_in = rust_in_path.to_string_lossy().to_string();
-        let go_out = go_out_path.to_string_lossy().to_string();
+        let baseline_out = baseline_out_path.to_string_lossy().to_string();
         let rust_out = rust_out_path.to_string_lossy().to_string();
 
-        let mut go_args = vec![
+        let mut baseline_args = vec![
             "--json".to_string(),
             "xlsx".to_string(),
             "charts".to_string(),
             flags[0].to_string(),
-            go_in.clone(),
+            baseline_in.clone(),
         ];
-        go_args.extend(flags.iter().skip(1).map(|value| value.to_string()));
-        go_args.extend(["--out".to_string(), go_out.clone()]);
+        baseline_args.extend(flags.iter().skip(1).map(|value| value.to_string()));
+        baseline_args.extend(["--out".to_string(), baseline_out.clone()]);
 
         let mut rust_args = vec![
             "--json".to_string(),
@@ -803,23 +803,23 @@ fn xlsx_charts_style_saved_outputs_validate_and_read_back() {
         rust_args.extend(flags.iter().skip(1).map(|value| value.to_string()));
         rust_args.extend(["--out".to_string(), rust_out.clone()]);
 
-        let go_refs = go_args.iter().map(String::as_str).collect::<Vec<_>>();
+        let baseline_refs = baseline_args.iter().map(String::as_str).collect::<Vec<_>>();
         let rust_refs = rust_args.iter().map(String::as_str).collect::<Vec<_>>();
         let replacements = [
-            (go_in.as_str(), "[IN]"),
+            (baseline_in.as_str(), "[IN]"),
             (rust_in.as_str(), "[IN]"),
-            (go_out.as_str(), "[OUT]"),
+            (baseline_out.as_str(), "[OUT]"),
             (rust_out.as_str(), "[OUT]"),
         ];
-        assert_xlsx_structure_command_matches(label, &go_refs, &rust_refs, &replacements);
+        assert_xlsx_structure_command_matches(label, &baseline_refs, &rust_refs, &replacements);
         assert_xlsx_chart_style_valid_strict(&rust_out);
 
-        let show_go_args = [
+        let show_baseline_args = [
             "--json",
             "xlsx",
             "charts",
             "show",
-            go_out.as_str(),
+            baseline_out.as_str(),
             "--sheet",
             "Data",
             "--chart",
@@ -838,9 +838,9 @@ fn xlsx_charts_style_saved_outputs_validate_and_read_back() {
         ];
         assert_xlsx_structure_command_matches(
             &format!("{label} readback"),
-            &show_go_args,
+            &show_baseline_args,
             &show_rust_args,
-            &[(go_out.as_str(), "[OUT]"), (rust_out.as_str(), "[OUT]")],
+            &[(baseline_out.as_str(), "[OUT]"), (rust_out.as_str(), "[OUT]")],
         );
 
         let chart_xml = read_zip_string(&rust_out_path, "xl/charts/chart1.xml");
@@ -856,7 +856,7 @@ fn xlsx_charts_style_saved_outputs_validate_and_read_back() {
 }
 
 #[test]
-fn template_apply_xlsx_chart_target_matches_go_oracle() {
+fn template_apply_xlsx_chart_target_matches_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-template-xlsx-chart-{}",
         std::process::id()
@@ -869,11 +869,11 @@ fn template_apply_xlsx_chart_target_matches_go_oracle() {
         .expect("write xlsx chart template tokens");
     let tokens_str = tokens_path.to_string_lossy().to_string();
     let target = "testdata/xlsx/chart-workbook/workbook.xlsx";
-    let go_out = temp_dir.join("go-chart.xlsx");
+    let baseline_out = temp_dir.join("baseline-chart.xlsx");
     let rust_out = temp_dir.join("rust-chart.xlsx");
-    let go_out_str = go_out.to_string_lossy().to_string();
+    let baseline_out_str = baseline_out.to_string_lossy().to_string();
     let rust_out_str = rust_out.to_string_lossy().to_string();
-    let go_args = [
+    let baseline_args = [
         "--json",
         "template",
         "apply",
@@ -882,7 +882,7 @@ fn template_apply_xlsx_chart_target_matches_go_oracle() {
         &tokens_str,
         "--target-charts",
         "--out",
-        &go_out_str,
+        &baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -895,18 +895,18 @@ fn template_apply_xlsx_chart_target_matches_go_oracle() {
         "--out",
         &rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "template apply XLSX charts exit");
-    assert_eq!(rust_stderr, go_stderr, "template apply XLSX charts stderr");
+    assert_eq!(rust_code, baseline_code, "template apply XLSX charts exit");
+    assert_eq!(rust_stderr, baseline_stderr, "template apply XLSX charts stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust XLSX chart apply stdout"),
             &[(&tokens_str, "[TOKENS]"), (&rust_out_str, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go XLSX chart apply stdout"),
-            &[(&tokens_str, "[TOKENS]"), (&go_out_str, "[OUT]")]
+            baseline_stdout.expect("baseline XLSX chart apply stdout"),
+            &[(&tokens_str, "[TOKENS]"), (&baseline_out_str, "[OUT]")]
         ),
         "template apply XLSX charts stdout"
     );
@@ -1072,27 +1072,27 @@ fn xlsx_charts_remaining_saved_outputs_validate_and_read_back() {
     ];
 
     for (label, flags, xml_needles) in cases {
-        let go_in_path = temp_dir.join(format!("{label}-go-input.xlsx"));
+        let baseline_in_path = temp_dir.join(format!("{label}-baseline-input.xlsx"));
         let rust_in_path = temp_dir.join(format!("{label}-rust-input.xlsx"));
-        let go_out_path = temp_dir.join(format!("{label}-go-out.xlsx"));
+        let baseline_out_path = temp_dir.join(format!("{label}-baseline-out.xlsx"));
         let rust_out_path = temp_dir.join(format!("{label}-rust-out.xlsx"));
-        fs::copy(workbook, &go_in_path).expect("go input");
+        fs::copy(workbook, &baseline_in_path).expect("baseline input");
         fs::copy(workbook, &rust_in_path).expect("rust input");
 
-        let go_in = go_in_path.to_string_lossy().to_string();
+        let baseline_in = baseline_in_path.to_string_lossy().to_string();
         let rust_in = rust_in_path.to_string_lossy().to_string();
-        let go_out = go_out_path.to_string_lossy().to_string();
+        let baseline_out = baseline_out_path.to_string_lossy().to_string();
         let rust_out = rust_out_path.to_string_lossy().to_string();
 
-        let mut go_args = vec![
+        let mut baseline_args = vec![
             "--json".to_string(),
             "xlsx".to_string(),
             "charts".to_string(),
             flags[0].to_string(),
-            go_in.clone(),
+            baseline_in.clone(),
         ];
-        go_args.extend(flags.iter().skip(1).map(|value| value.to_string()));
-        go_args.extend(["--out".to_string(), go_out.clone()]);
+        baseline_args.extend(flags.iter().skip(1).map(|value| value.to_string()));
+        baseline_args.extend(["--out".to_string(), baseline_out.clone()]);
 
         let mut rust_args = vec![
             "--json".to_string(),
@@ -1104,23 +1104,23 @@ fn xlsx_charts_remaining_saved_outputs_validate_and_read_back() {
         rust_args.extend(flags.iter().skip(1).map(|value| value.to_string()));
         rust_args.extend(["--out".to_string(), rust_out.clone()]);
 
-        let go_refs = go_args.iter().map(String::as_str).collect::<Vec<_>>();
+        let baseline_refs = baseline_args.iter().map(String::as_str).collect::<Vec<_>>();
         let rust_refs = rust_args.iter().map(String::as_str).collect::<Vec<_>>();
         let replacements = [
-            (go_in.as_str(), "[IN]"),
+            (baseline_in.as_str(), "[IN]"),
             (rust_in.as_str(), "[IN]"),
-            (go_out.as_str(), "[OUT]"),
+            (baseline_out.as_str(), "[OUT]"),
             (rust_out.as_str(), "[OUT]"),
         ];
-        assert_xlsx_structure_command_matches(label, &go_refs, &rust_refs, &replacements);
+        assert_xlsx_structure_command_matches(label, &baseline_refs, &rust_refs, &replacements);
         assert_xlsx_chart_style_valid_strict(&rust_out);
 
-        let show_go_args = [
+        let show_baseline_args = [
             "--json",
             "xlsx",
             "charts",
             "show",
-            go_out.as_str(),
+            baseline_out.as_str(),
             "--sheet",
             "Data",
             "--chart",
@@ -1139,9 +1139,9 @@ fn xlsx_charts_remaining_saved_outputs_validate_and_read_back() {
         ];
         assert_xlsx_structure_command_matches(
             &format!("{label} readback"),
-            &show_go_args,
+            &show_baseline_args,
             &show_rust_args,
-            &[(go_out.as_str(), "[OUT]"), (rust_out.as_str(), "[OUT]")],
+            &[(baseline_out.as_str(), "[OUT]"), (rust_out.as_str(), "[OUT]")],
         );
 
         let chart_xml = read_zip_string(&rust_out_path, "xl/charts/chart1.xml");

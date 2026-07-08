@@ -4,14 +4,8 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::OnceLock;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
-
-static GO_OOXML_BIN: OnceLock<PathBuf> = OnceLock::new();
-static GO_ORACLE_SOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
-
-const DEFAULT_GO_ORACLE_REF: &str = "codex/ooxml-go-reference";
 
 fn baseline() -> Value {
     serde_json::from_str(include_str!(
@@ -69,24 +63,22 @@ fn run_ooxml_with_env(args: &[&str], envs: &[(&str, &str)]) -> (i32, Option<Valu
     (code, stdout, stderr)
 }
 
-fn run_go_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
-    let output = Command::new(go_ooxml_binary())
+fn run_ooxml_baseline(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
+    let output = Command::new(rust_baseline_ooxml_binary())
         .args(args)
-        .env("GOCACHE", go_cache_dir())
         .output()
-        .expect("run Go ooxml oracle");
+        .expect("run Rust baseline ooxml");
     let code = output.status.code().unwrap_or(-1);
     let stdout = parse_json(&output.stdout);
     let stderr = parse_json(&output.stderr);
     (code, stdout, stderr)
 }
 
-fn run_go_ooxml_raw(args: &[&str]) -> (i32, String, String) {
-    let output = Command::new(go_ooxml_binary())
+fn run_ooxml_baseline_raw(args: &[&str]) -> (i32, String, String) {
+    let output = Command::new(rust_baseline_ooxml_binary())
         .args(args)
-        .env("GOCACHE", go_cache_dir())
         .output()
-        .expect("run Go ooxml oracle");
+        .expect("run Rust baseline ooxml");
     (
         output.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -94,43 +86,46 @@ fn run_go_ooxml_raw(args: &[&str]) -> (i32, String, String) {
     )
 }
 
-fn run_go_ooxml_with_input(args: &[&str], input: &str) -> (i32, Option<Value>, Option<Value>) {
-    let mut child = Command::new(go_ooxml_binary())
+fn run_ooxml_baseline_with_input(
+    args: &[&str],
+    input: &str,
+) -> (i32, Option<Value>, Option<Value>) {
+    let mut child = Command::new(rust_baseline_ooxml_binary())
         .args(args)
-        .env("GOCACHE", go_cache_dir())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("run Go ooxml oracle with stdin");
+        .expect("run Rust baseline ooxml with stdin");
     child
         .stdin
         .take()
-        .expect("Go ooxml stdin")
+        .expect("Rust baseline ooxml stdin")
         .write_all(input.as_bytes())
-        .expect("write Go ooxml stdin");
-    let output = child.wait_with_output().expect("wait Go ooxml oracle");
+        .expect("write Rust baseline ooxml stdin");
+    let output = child.wait_with_output().expect("wait Rust baseline ooxml");
     let code = output.status.code().unwrap_or(-1);
     let stdout = parse_json(&output.stdout);
     let stderr = parse_json(&output.stderr);
     (code, stdout, stderr)
 }
 
-fn go_cache_dir() -> PathBuf {
-    let go_cache = std::env::temp_dir().join("ooxml-go-build");
-    fs::create_dir_all(&go_cache).expect("create Go oracle cache");
-    go_cache
+fn rust_baseline_ooxml_binary() -> PathBuf {
+    std::env::var_os("OOXML_RUST_BASELINE_BIN")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_ooxml")))
 }
 
-fn assert_go_rust_match(args: &[&str]) {
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(args);
+fn assert_rust_baseline_match(args: &[&str]) {
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(args);
-    assert_eq!(rust_code, go_code, "exit code for {args:?}");
-    assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
-    assert_eq!(rust_stdout, go_stdout, "stdout for {args:?}");
+    assert_eq!(rust_code, baseline_code, "exit code for {args:?}");
+    assert_eq!(rust_stderr, baseline_stderr, "stderr for {args:?}");
+    assert_eq!(rust_stdout, baseline_stdout, "stdout for {args:?}");
 }
 
-fn write_go_oracle_pptx_comment_fixture() -> PathBuf {
+fn write_rust_baseline_pptx_comment_fixture() -> PathBuf {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -142,7 +137,7 @@ fn write_go_oracle_pptx_comment_fixture() -> PathBuf {
     fs::create_dir_all(&temp_dir).expect("comment fixture temp dir");
     let out = temp_dir.join("commented.pptx");
     let out_str = out.to_str().expect("comment fixture path");
-    let (code, stdout, stderr) = run_go_ooxml(&[
+    let (code, stdout, stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "comments",
@@ -210,67 +205,6 @@ fn scrub_file_fields(value: Value) -> Value {
         Value::Array(items) => Value::Array(items.into_iter().map(scrub_file_fields).collect()),
         other => other,
     }
-}
-
-fn go_ooxml_binary() -> &'static PathBuf {
-    GO_OOXML_BIN.get_or_init(|| {
-        let binary_name = if cfg!(windows) {
-            format!("ooxml-go-oracle-{}.exe", std::process::id())
-        } else {
-            format!("ooxml-go-oracle-{}", std::process::id())
-        };
-        let binary = std::env::temp_dir().join(binary_name);
-        let go_cache = go_cache_dir();
-        let output = Command::new("go")
-            .args(["build", "-buildvcs=false", "-o"])
-            .arg(&binary)
-            .arg("./cmd/ooxml")
-            .current_dir(go_oracle_source_dir())
-            .env("GOCACHE", &go_cache)
-            .output()
-            .expect("build Go ooxml oracle");
-        assert!(
-            output.status.success(),
-            "build Go ooxml oracle failed\nstdout:\n{}\nstderr:\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        binary
-    })
-}
-
-fn go_oracle_source_dir() -> &'static PathBuf {
-    GO_ORACLE_SOURCE_DIR.get_or_init(|| {
-        if let Ok(path) = std::env::var("OOXML_GO_ORACLE_DIR")
-            && !path.trim().is_empty()
-        {
-            return PathBuf::from(path);
-        }
-
-        let ref_name =
-            std::env::var("OOXML_GO_ORACLE_REF").unwrap_or_else(|_| DEFAULT_GO_ORACLE_REF.into());
-        let unique_suffix = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let source_dir = std::env::temp_dir().join(format!(
-            "ooxml-go-oracle-src-{}-{unique_suffix}",
-            std::process::id()
-        ));
-        let output = Command::new("git")
-            .args(["worktree", "add", "--detach"])
-            .arg(&source_dir)
-            .arg(&ref_name)
-            .output()
-            .expect("create Go oracle worktree");
-        assert!(
-            output.status.success(),
-            "create Go oracle worktree for {ref_name:?} failed\nstdout:\n{}\nstderr:\n{}\nSet OOXML_GO_ORACLE_DIR to a prepared frozen Go reference checkout if needed.",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        source_dir
-    })
 }
 
 fn parse_json(bytes: &[u8]) -> Option<Value> {
@@ -944,7 +878,7 @@ fn replace_ascii(data: Vec<u8>, from: &str, to: &str) -> Vec<u8> {
         .into_bytes()
 }
 
-fn assert_generated_inspect_edge_cases_match_go() {
+fn assert_generated_inspect_edge_cases_match_rust_baseline() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-inspect-parity-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
@@ -953,12 +887,12 @@ fn assert_generated_inspect_edge_cases_match_go() {
     let relocated_xlsx = temp_dir.join("relocated-workbook.xlsx");
     write_relocated_xlsx_main_part(&relocated_xlsx);
     let relocated_xlsx = relocated_xlsx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "inspect", &relocated_xlsx]);
+    assert_rust_baseline_match(&["--json", "inspect", &relocated_xlsx]);
 
     let relocated_docx = temp_dir.join("relocated-document.docx");
     write_relocated_docx_main_part(&relocated_docx);
     let relocated_docx = relocated_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "inspect", &relocated_docx]);
+    assert_rust_baseline_match(&["--json", "inspect", &relocated_docx]);
 
     let relocated_macro_xlsx = temp_dir.join("relocated-macro-workbook.xlsm");
     write_relocated_xlsx_main_part_with_content_type(
@@ -966,7 +900,7 @@ fn assert_generated_inspect_edge_cases_match_go() {
         "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
     );
     let relocated_macro_xlsx = relocated_macro_xlsx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "inspect", &relocated_macro_xlsx]);
+    assert_rust_baseline_match(&["--json", "inspect", &relocated_macro_xlsx]);
 
     let relocated_macro_docx = temp_dir.join("relocated-macro-document.docm");
     write_relocated_docx_main_part_with_content_type(
@@ -974,7 +908,7 @@ fn assert_generated_inspect_edge_cases_match_go() {
         "application/vnd.ms-word.document.macroEnabled.main+xml",
     );
     let relocated_macro_docx = relocated_macro_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "inspect", &relocated_macro_docx]);
+    assert_rust_baseline_match(&["--json", "inspect", &relocated_macro_docx]);
 
     let malformed_xlsx = temp_dir.join("malformed-workbook.xlsx");
     rewrite_zip_fixture(
@@ -990,7 +924,7 @@ fn assert_generated_inspect_edge_cases_match_go() {
         },
     );
     let malformed_xlsx = malformed_xlsx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "inspect", &malformed_xlsx]);
+    assert_rust_baseline_match(&["--json", "inspect", &malformed_xlsx]);
 
     let malformed_docx = temp_dir.join("malformed-document.docx");
     rewrite_zip_fixture(
@@ -1006,18 +940,18 @@ fn assert_generated_inspect_edge_cases_match_go() {
         },
     );
     let malformed_docx = malformed_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "inspect", &malformed_docx]);
+    assert_rust_baseline_match(&["--json", "inspect", &malformed_docx]);
 
     let unknown_package = temp_dir.join("unknown-package.zip");
     write_unknown_package(&unknown_package);
     let unknown_package = unknown_package.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "inspect", &unknown_package]);
+    assert_rust_baseline_match(&["--json", "inspect", &unknown_package]);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn frozen_cli_slice_matches_go_baseline() {
+fn frozen_cli_slice_matches_legacy_baseline() {
     let baseline = baseline();
     for case in baseline["cli"].as_array().expect("cli array") {
         let args: Vec<&str> = case["args"]
@@ -1047,7 +981,7 @@ fn frozen_cli_slice_matches_go_baseline() {
 mod xlsx;
 
 #[test]
-fn inspect_matches_go_oracle_for_supported_families() {
+fn inspect_matches_rust_baseline_for_supported_families() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -1099,13 +1033,13 @@ fn inspect_matches_go_oracle_for_supported_families() {
     ];
 
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
-    assert_generated_inspect_edge_cases_match_go();
+    assert_generated_inspect_edge_cases_match_rust_baseline();
 }
 
 #[test]
-fn validate_rejects_corrupted_docx_and_xlsx_like_go_oracle() {
+fn validate_rejects_corrupted_docx_and_xlsx_like_rust_baseline() {
     for args in [
         vec![
             "--json",
@@ -1120,7 +1054,7 @@ fn validate_rejects_corrupted_docx_and_xlsx_like_go_oracle() {
             "testdata/xlsx/corrupted-missing-worksheet/workbook.xlsx",
         ],
     ] {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 }
 

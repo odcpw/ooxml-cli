@@ -1,22 +1,22 @@
 #[test]
-fn xlsx_pivots_list_show_match_go_oracle_and_generated_commands() {
+fn xlsx_pivots_list_show_match_rust_baseline_and_generated_commands() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-pivots-read-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_path = temp_dir.join("go-pivots.xlsx");
+    let baseline_path = temp_dir.join("baseline-pivots.xlsx");
     let rust_path = temp_dir.join("rust-pivots.xlsx");
-    write_pivot_xlsx(&go_path, false);
+    write_pivot_xlsx(&baseline_path, false);
     write_pivot_xlsx(&rust_path, false);
-    let go_file = go_path.to_string_lossy().to_string();
+    let baseline_file = baseline_path.to_string_lossy().to_string();
     let rust_file = rust_path.to_string_lossy().to_string();
-    let replacements = [(&go_file[..], "[XLSX]"), (&rust_file[..], "[XLSX]")];
+    let replacements = [(&baseline_file[..], "[XLSX]"), (&rust_file[..], "[XLSX]")];
 
-    let list = assert_go_rust_match_scrubbed(
+    let list = assert_rust_baseline_match_scrubbed(
         "pivots list",
-        &["--json", "xlsx", "pivots", "list", &go_file],
+        &["--json", "xlsx", "pivots", "list", &baseline_file],
         &["--json", "xlsx", "pivots", "list", &rust_file],
         &replacements,
     )
@@ -43,10 +43,10 @@ fn xlsx_pivots_list_show_match_go_oracle_and_generated_commands() {
         "rid:rIdPivot1",
         "part:/xl/pivotTables/pivotTable1.xml",
     ] {
-        assert_go_rust_match_scrubbed(
+        assert_rust_baseline_match_scrubbed(
             &format!("pivots show selector {selector}"),
             &[
-                "--json", "xlsx", "pivots", "show", &go_file, "--sheet", "Data", "--pivot",
+                "--json", "xlsx", "pivots", "show", &baseline_file, "--sheet", "Data", "--pivot",
                 selector,
             ],
             &[
@@ -57,13 +57,13 @@ fn xlsx_pivots_list_show_match_go_oracle_and_generated_commands() {
         );
     }
 
-    let two_go = temp_dir.join("two-go.xlsx");
+    let two_go = temp_dir.join("two-baseline.xlsx");
     let two_rust = temp_dir.join("two-rust.xlsx");
     write_pivot_xlsx(&two_go, true);
     write_pivot_xlsx(&two_rust, true);
     let two_go = two_go.to_string_lossy().to_string();
     let two_rust = two_rust.to_string_lossy().to_string();
-    assert_go_rust_match_scrubbed(
+    assert_rust_baseline_match_scrubbed(
         "pivots show requires selector",
         &["--json", "xlsx", "pivots", "show", &two_go],
         &["--json", "xlsx", "pivots", "show", &two_rust],
@@ -74,38 +74,38 @@ fn xlsx_pivots_list_show_match_go_oracle_and_generated_commands() {
 }
 
 #[test]
-fn xlsx_pivots_create_matches_go_oracle_saved_readback_dry_run_and_errors() {
+fn xlsx_pivots_create_matches_rust_baseline_saved_readback_dry_run_and_errors() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-pivots-create-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    let go_out_path = temp_dir.join("go-out.xlsx");
+    let baseline_out_path = temp_dir.join("baseline-out.xlsx");
     let rust_out_path = temp_dir.join("rust-out.xlsx");
-    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&baseline_in_path);
     write_table_xlsx(&rust_in_path);
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_out = go_out_path.to_string_lossy().to_string();
+    let baseline_out = baseline_out_path.to_string_lossy().to_string();
     let rust_out = rust_out_path.to_string_lossy().to_string();
     let replacements = [
-        (&go_in[..], "[IN]"),
+        (&baseline_in[..], "[IN]"),
         (&rust_in[..], "[IN]"),
-        (&go_out[..], "[OUT]"),
+        (&baseline_out[..], "[OUT]"),
         (&rust_out[..], "[OUT]"),
     ];
 
-    let create = assert_go_rust_match_scrubbed(
+    let create = assert_rust_baseline_match_scrubbed(
         "pivots create",
         &[
             "--json",
             "xlsx",
             "pivots",
             "create",
-            &go_in,
+            &baseline_in,
             "--table",
             "Sales",
             "--name",
@@ -117,7 +117,7 @@ fn xlsx_pivots_create_matches_go_oracle_saved_readback_dry_run_and_errors() {
             "--anchor",
             "D1",
             "--out",
-            &go_out,
+            &baseline_out,
         ],
         &[
             "--json",
@@ -157,20 +157,20 @@ fn xlsx_pivots_create_matches_go_oracle_saved_readback_dry_run_and_errors() {
         assert!(zip_entry_exists(&rust_out_path, part), "missing {part}");
     }
 
-    assert_go_rust_match_scrubbed(
+    assert_rust_baseline_match_scrubbed(
         "pivots create saved list",
-        &["--json", "xlsx", "pivots", "list", &go_out],
+        &["--json", "xlsx", "pivots", "list", &baseline_out],
         &["--json", "xlsx", "pivots", "list", &rust_out],
-        &[(&go_out, "[OUT]"), (&rust_out, "[OUT]")],
+        &[(&baseline_out, "[OUT]"), (&rust_out, "[OUT]")],
     );
-    assert_go_rust_match_scrubbed(
+    assert_rust_baseline_match_scrubbed(
         "pivots create saved show",
         &[
             "--json",
             "xlsx",
             "pivots",
             "show",
-            &go_out,
+            &baseline_out,
             "--sheet",
             "Data",
             "--pivot",
@@ -187,17 +187,17 @@ fn xlsx_pivots_create_matches_go_oracle_saved_readback_dry_run_and_errors() {
             "--pivot",
             "SalesPivot",
         ],
-        &[(&go_out, "[OUT]"), (&rust_out, "[OUT]")],
+        &[(&baseline_out, "[OUT]"), (&rust_out, "[OUT]")],
     );
 
-    assert_go_rust_match_scrubbed(
+    assert_rust_baseline_match_scrubbed(
         "pivots create dry-run",
         &[
             "--json",
             "xlsx",
             "pivots",
             "create",
-            &go_in,
+            &baseline_in,
             "--table",
             "Sales",
             "--rows",
@@ -220,7 +220,7 @@ fn xlsx_pivots_create_matches_go_oracle_saved_readback_dry_run_and_errors() {
             "Amount",
             "--dry-run",
         ],
-        &[(&go_in, "[IN]"), (&rust_in, "[IN]")],
+        &[(&baseline_in, "[IN]"), (&rust_in, "[IN]")],
     );
     assert!(
         !zip_entry_exists(&rust_in_path, "xl/pivotTables/pivotTable1.xml"),
@@ -259,15 +259,15 @@ fn xlsx_pivots_create_matches_go_oracle_saved_readback_dry_run_and_errors() {
             ],
         ),
     ] {
-        let mut go_args = vec!["--json", "xlsx", "pivots", "create", &go_in];
-        go_args.extend(extra_args.iter().copied());
+        let mut baseline_args = vec!["--json", "xlsx", "pivots", "create", &baseline_in];
+        baseline_args.extend(extra_args.iter().copied());
         let mut rust_args = vec!["--json", "xlsx", "pivots", "create", &rust_in];
         rust_args.extend(extra_args.iter().copied());
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-        assert_eq!(rust_code, go_code, "{label} exit");
-        assert_eq!(rust_stdout, go_stdout, "{label} stdout");
-        assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+        assert_eq!(rust_code, baseline_code, "{label} exit");
+        assert_eq!(rust_stdout, baseline_stdout, "{label} stdout");
+        assert_eq!(rust_stderr, baseline_stderr, "{label} stderr");
     }
 
     let _ = fs::remove_dir_all(&temp_dir);

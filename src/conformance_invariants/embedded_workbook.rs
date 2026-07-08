@@ -82,7 +82,7 @@ pub(super) fn check_chart_external_data_embedded_workbook_open(
 
 fn embedded_ooxml_package_type(raw: &[u8]) -> Result<&'static str, String> {
     let cursor = Cursor::new(raw);
-    let mut archive = ZipArchive::new(cursor).map_err(go_like_zip_open_error)?;
+    let mut archive = ZipArchive::new(cursor).map_err(legacy_like_zip_open_error)?;
     let entries = embedded_zip_entries(&mut archive)?;
     let content_types = embedded_content_types(&mut archive)?;
     let root_relationships = embedded_root_relationships(&mut archive)?;
@@ -127,7 +127,7 @@ fn embedded_ooxml_package_type(raw: &[u8]) -> Result<&'static str, String> {
     Ok("unknown")
 }
 
-fn go_like_zip_open_error(err: zip::result::ZipError) -> String {
+fn legacy_like_zip_open_error(err: zip::result::ZipError) -> String {
     let message = err.to_string();
     if message.contains("Could not find central directory")
         || message.contains("Invalid archive")
@@ -170,7 +170,7 @@ struct EmbeddedContentTypes {
 }
 
 impl EmbeddedContentTypes {
-    fn go_default() -> Self {
+    fn legacy_default() -> Self {
         Self {
             defaults: BTreeMap::from([
                 (
@@ -199,7 +199,7 @@ fn embedded_content_types<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
 ) -> Result<EmbeddedContentTypes, String> {
     let Some(xml) = embedded_zip_text(archive, "[Content_Types].xml")? else {
-        return Ok(EmbeddedContentTypes::go_default());
+        return Ok(EmbeddedContentTypes::legacy_default());
     };
     embedded_content_types_from_xml(&xml)
 }

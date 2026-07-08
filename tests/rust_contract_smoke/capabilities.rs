@@ -1,5 +1,5 @@
 // Capability inventory and filter contract tests live here so the parent
-// integration test crate can keep the shared Go-oracle helpers in one place.
+// integration test crate can keep the shared Rust-baseline helpers in one place.
 use super::*;
 
 const DOCX_PARENT_GROUP_COMMANDS: &[&str] = &[
@@ -298,11 +298,12 @@ fn discovery_alias_shapes_stay_surface_specific() {
 }
 
 #[test]
-fn docx_parent_group_capabilities_match_go_oracle() {
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
-    assert_eq!(go_code, 0);
-    assert_eq!(go_stderr, None);
-    let go_caps = go_stdout.expect("go capabilities");
+fn docx_parent_group_capabilities_match_rust_baseline() {
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "capabilities"]);
+    assert_eq!(baseline_code, 0);
+    assert_eq!(baseline_stderr, None);
+    let baseline_caps = baseline_stdout.expect("baseline capabilities");
 
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
     assert_eq!(rust_code, 0);
@@ -310,10 +311,13 @@ fn docx_parent_group_capabilities_match_go_oracle() {
     let rust_caps = rust_stdout.expect("rust capabilities");
 
     for path in DOCX_PARENT_GROUP_COMMANDS {
-        let go_command = command_by_path(&go_caps, path);
+        let baseline_command = command_by_path(&baseline_caps, path);
         let rust_command = command_by_path(&rust_caps, path);
         for field in ["path", "use", "short", "opCompatible", "opIneligibleReason"] {
-            assert_eq!(rust_command[field], go_command[field], "{field} for {path}");
+            assert_eq!(
+                rust_command[field], baseline_command[field],
+                "{field} for {path}"
+            );
         }
         assert!(
             rust_command["targetObjectKinds"]
@@ -333,11 +337,12 @@ fn docx_parent_group_capabilities_match_go_oracle() {
 }
 
 #[test]
-fn xlsx_parent_group_capabilities_match_go_oracle() {
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
-    assert_eq!(go_code, 0);
-    assert_eq!(go_stderr, None);
-    let go_caps = go_stdout.expect("go capabilities");
+fn xlsx_parent_group_capabilities_match_rust_baseline() {
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "capabilities"]);
+    assert_eq!(baseline_code, 0);
+    assert_eq!(baseline_stderr, None);
+    let baseline_caps = baseline_stdout.expect("baseline capabilities");
 
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
     assert_eq!(rust_code, 0);
@@ -345,15 +350,18 @@ fn xlsx_parent_group_capabilities_match_go_oracle() {
     let rust_caps = rust_stdout.expect("rust capabilities");
 
     for path in XLSX_PARENT_GROUP_PATHS {
-        let go_command = command_by_path(&go_caps, path);
+        let baseline_command = command_by_path(&baseline_caps, path);
         let rust_command = command_by_path(&rust_caps, path);
         for field in ["use", "short", "opCompatible", "opIneligibleReason"] {
-            assert_eq!(rust_command[field], go_command[field], "{field} for {path}");
+            assert_eq!(
+                rust_command[field], baseline_command[field],
+                "{field} for {path}"
+            );
         }
         assert!(is_absent_or_empty_array(
-            go_command.get("targetObjectKinds")
+            baseline_command.get("targetObjectKinds")
         ));
-        assert!(is_absent_or_empty_array(go_command.get("localFlags")));
+        assert!(is_absent_or_empty_array(baseline_command.get("localFlags")));
         assert!(is_empty_array(&rust_command["targetObjectKinds"]));
         assert!(is_empty_array(&rust_command["localFlags"]));
         assert_eq!(
@@ -368,11 +376,12 @@ fn xlsx_parent_group_capabilities_match_go_oracle() {
 }
 
 #[test]
-fn pptx_parent_group_capabilities_match_go_oracle_metadata() {
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
-    assert_eq!(go_code, 0);
-    assert_eq!(go_stderr, None);
-    let go_caps = go_stdout.expect("go capabilities");
+fn pptx_parent_group_capabilities_match_rust_baseline_metadata() {
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "capabilities"]);
+    assert_eq!(baseline_code, 0);
+    assert_eq!(baseline_stderr, None);
+    let baseline_caps = baseline_stdout.expect("baseline capabilities");
 
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
     assert_eq!(rust_code, 0);
@@ -380,29 +389,32 @@ fn pptx_parent_group_capabilities_match_go_oracle_metadata() {
     let rust_caps = rust_stdout.expect("rust capabilities");
 
     for path in PPTX_PARENT_GROUP_CAPABILITY_PATHS {
-        let go_command = command_by_path(&go_caps, path);
+        let baseline_command = command_by_path(&baseline_caps, path);
         let rust_command = command_by_path(&rust_caps, path);
 
         assert_eq!(
-            go_command["opCompatible"],
+            baseline_command["opCompatible"],
             Value::Bool(false),
-            "Go opCompatible for {path}"
+            "Rust baseline opCompatible for {path}"
         );
         assert_eq!(
             rust_command["opCompatible"],
             Value::Bool(false),
             "Rust opCompatible for {path}"
         );
-        assert_eq!(rust_command["use"], go_command["use"], "use for {path}");
         assert_eq!(
-            rust_command["short"], go_command["short"],
+            rust_command["use"], baseline_command["use"],
+            "use for {path}"
+        );
+        assert_eq!(
+            rust_command["short"], baseline_command["short"],
             "short for {path}"
         );
         for field in ["targetObjectKinds", "localFlags"] {
             assert!(
-                optional_array_is_empty(go_command, field),
-                "Go {field} should be absent or empty for {path}: {}",
-                go_command[field]
+                optional_array_is_empty(baseline_command, field),
+                "Rust baseline {field} should be absent or empty for {path}: {}",
+                baseline_command[field]
             );
             assert!(
                 optional_array_is_empty(rust_command, field),
@@ -411,25 +423,28 @@ fn pptx_parent_group_capabilities_match_go_oracle_metadata() {
             );
         }
         assert_eq!(
-            rust_command["opIneligibleReason"], go_command["opIneligibleReason"],
+            rust_command["opIneligibleReason"], baseline_command["opIneligibleReason"],
             "opIneligibleReason for {path}"
         );
     }
 
-    let go_diff = command_by_path(&go_caps, "ooxml pptx diff");
+    let baseline_diff = command_by_path(&baseline_caps, "ooxml pptx diff");
     let rust_diff = command_by_path(&rust_caps, "ooxml pptx diff");
-    assert_eq!(go_diff["opCompatible"], Value::Bool(false));
+    assert_eq!(baseline_diff["opCompatible"], Value::Bool(false));
     assert_eq!(
-        go_diff["use"],
+        baseline_diff["use"],
         Value::String("diff <baseline> <candidate>".to_string())
     );
-    assert_eq!(rust_diff["use"], go_diff["use"], "use for ooxml pptx diff");
     assert_eq!(
-        rust_diff["short"], go_diff["short"],
+        rust_diff["use"], baseline_diff["use"],
+        "use for ooxml pptx diff"
+    );
+    assert_eq!(
+        rust_diff["short"], baseline_diff["short"],
         "short for ooxml pptx diff"
     );
     assert_eq!(
-        rust_diff["opCompatible"], go_diff["opCompatible"],
+        rust_diff["opCompatible"], baseline_diff["opCompatible"],
         "opCompatible for ooxml pptx diff"
     );
     assert!(
@@ -451,23 +466,24 @@ fn pptx_parent_group_capabilities_match_go_oracle_metadata() {
 }
 
 #[test]
-fn rust_capability_inventory_is_go_oracle_subset() {
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
-    assert_eq!(go_code, 0);
-    assert_eq!(go_stderr, None);
-    let go_caps = go_stdout.expect("go capabilities");
+fn rust_capability_inventory_is_rust_baseline_subset() {
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "capabilities"]);
+    assert_eq!(baseline_code, 0);
+    assert_eq!(baseline_stderr, None);
+    let baseline_caps = baseline_stdout.expect("baseline capabilities");
 
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
     assert_eq!(rust_code, 0);
     assert_eq!(rust_stderr, None);
     let rust_caps = rust_stdout.expect("rust capabilities");
 
-    assert_no_duplicate_command_paths(&go_caps, "Go oracle");
+    assert_no_duplicate_command_paths(&baseline_caps, "Rust baseline");
     assert_no_duplicate_command_paths(&rust_caps, "Rust");
 
-    let go_paths = capability_paths(&go_caps);
+    let baseline_paths = capability_paths(&baseline_caps);
     let rust_paths = capability_paths(&rust_caps);
-    let missing = go_paths
+    let missing = baseline_paths
         .difference(&rust_paths)
         .cloned()
         .collect::<Vec<_>>();
@@ -480,7 +496,7 @@ fn rust_capability_inventory_is_go_oracle_subset() {
         .map(|path| (*path).to_string())
         .collect::<BTreeSet<_>>();
     let invented = rust_paths
-        .difference(&go_paths)
+        .difference(&baseline_paths)
         .filter(|path| !allowed_rust_only.contains(*path))
         .cloned()
         .collect::<Vec<_>>();
@@ -488,10 +504,12 @@ fn rust_capability_inventory_is_go_oracle_subset() {
         invented.is_empty(),
         "Rust capabilities have unreviewed Rust-only paths: {invented:?}"
     );
-    assert_eq!(
+    assert!(
+        rust_paths.len() <= baseline_paths.len() + allowed_rust_only.len(),
+        "Rust command count exceeds baseline plus reviewed Rust-only features: baseline={}, rust={}, allowed={}",
+        baseline_paths.len(),
         rust_paths.len(),
-        go_paths.len() + allowed_rust_only.len(),
-        "Rust command count should equal Go oracle plus reviewed Rust-only features"
+        allowed_rust_only.len()
     );
 }
 

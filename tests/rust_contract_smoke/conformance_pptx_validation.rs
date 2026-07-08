@@ -55,7 +55,7 @@ fn pptx_presentation_child_order_is_strictly_validated() {
 }
 
 #[test]
-fn conformance_check_matches_go_for_pptx_media_validation_failures() {
+fn conformance_check_matches_rust_baseline_for_pptx_media_validation_failures() {
     for (file, expected_codes) in [
         (
             "testdata/pptx/animations-stale-media/presentation.pptx",
@@ -71,7 +71,7 @@ fn conformance_check_matches_go_for_pptx_media_validation_failures() {
             &["REL_DANGLING_TARGET", "PPTX_MISSING_MEDIA"][..],
         ),
     ] {
-        assert_go_rust_match(&["--json", "conformance", "check", file]);
+        assert_rust_baseline_match(&["--json", "conformance", "check", file]);
 
         let (code, stdout, stderr) = run_ooxml(&["--json", "conformance", "check", file]);
         assert_eq!(code, 5, "Rust conformance check exit for {file}");

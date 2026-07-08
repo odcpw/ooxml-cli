@@ -1,10 +1,10 @@
-// DOCX command-family parity tests live here while Go-oracle helpers remain in the parent integration test crate.
+// DOCX command-family parity tests live here while Rust-baseline helpers remain in the parent integration test crate.
 use super::*;
 
 include!("docx/scaffold.rs");
 
 #[test]
-fn docx_text_matches_go_oracle() {
+fn docx_text_matches_rust_baseline() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -123,16 +123,16 @@ fn docx_text_matches_go_oracle() {
     ];
 
     for args in cases {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-        assert_eq!(rust_code, go_code, "exit code for {args:?}");
-        assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
-        assert_eq!(rust_stdout, go_stdout, "stdout for {args:?}");
+        assert_eq!(rust_code, baseline_code, "exit code for {args:?}");
+        assert_eq!(rust_stderr, baseline_stderr, "stderr for {args:?}");
+        assert_eq!(rust_stdout, baseline_stdout, "stdout for {args:?}");
     }
 }
 
 #[test]
-fn docx_blocks_match_go_oracle() {
+fn docx_blocks_match_rust_baseline() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -206,7 +206,7 @@ fn docx_blocks_match_go_oracle() {
     ];
 
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
     let temp_dir =
@@ -228,7 +228,7 @@ fn docx_blocks_match_go_oracle() {
         },
     );
     let malformed_docx = malformed_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "docx", "blocks", &malformed_docx]);
+    assert_rust_baseline_match(&["--json", "docx", "blocks", &malformed_docx]);
 
     let wrong_root_docx = temp_dir.join("wrong-root-document.docx");
     rewrite_zip_fixture(
@@ -244,7 +244,7 @@ fn docx_blocks_match_go_oracle() {
         },
     );
     let wrong_root_docx = wrong_root_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "docx", "blocks", &wrong_root_docx]);
+    assert_rust_baseline_match(&["--json", "docx", "blocks", &wrong_root_docx]);
 
     let missing_body_docx = temp_dir.join("missing-body-document.docx");
     rewrite_zip_fixture(
@@ -260,12 +260,12 @@ fn docx_blocks_match_go_oracle() {
         },
     );
     let missing_body_docx = missing_body_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "docx", "blocks", &missing_body_docx]);
+    assert_rust_baseline_match(&["--json", "docx", "blocks", &missing_body_docx]);
 
     let nested_table_docx = temp_dir.join("nested-table.docx");
     write_nested_table_docx(&nested_table_docx);
     let nested_table_docx = nested_table_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "docx", "blocks", &nested_table_docx]);
+    assert_rust_baseline_match(&["--json", "docx", "blocks", &nested_table_docx]);
 
     let alternate_prefix_paraid_docx = temp_dir.join("alternate-prefix-paraid.docx");
     rewrite_zip_fixture(
@@ -281,7 +281,7 @@ fn docx_blocks_match_go_oracle() {
         },
     );
     let alternate_prefix_paraid_docx = alternate_prefix_paraid_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "docx", "blocks", &alternate_prefix_paraid_docx]);
+    assert_rust_baseline_match(&["--json", "docx", "blocks", &alternate_prefix_paraid_docx]);
 
     let foreign_metadata_docx = temp_dir.join("foreign-metadata.docx");
     rewrite_zip_fixture(
@@ -297,7 +297,7 @@ fn docx_blocks_match_go_oracle() {
         },
     );
     let foreign_metadata_docx = foreign_metadata_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "blocks",
@@ -309,7 +309,7 @@ fn docx_blocks_match_go_oracle() {
 }
 
 #[test]
-fn docx_replace_matches_go_oracle() {
+fn docx_replace_matches_rust_baseline() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -401,23 +401,23 @@ fn docx_replace_matches_go_oracle() {
     ];
 
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 }
 
 #[test]
-fn docx_replace_saved_output_readback_and_validate_match_go_oracle() {
+fn docx_replace_saved_output_readback_and_validate_match_rust_baseline() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-docx-replace-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("docx replace temp dir");
 
-    let go_out = temp_dir.join("go-replace.docx");
+    let baseline_out = temp_dir.join("baseline-replace.docx");
     let rust_out = temp_dir.join("rust-replace.docx");
-    let go_out = go_out.to_string_lossy().to_string();
+    let baseline_out = baseline_out.to_string_lossy().to_string();
     let rust_out = rust_out.to_string_lossy().to_string();
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "docx",
         "replace",
@@ -429,7 +429,7 @@ fn docx_replace_saved_output_readback_and_validate_match_go_oracle() {
         "--expect-count",
         "2",
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -445,29 +445,32 @@ fn docx_replace_saved_output_readback_and_validate_match_go_oracle() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "docx replace saved exit");
-    assert_eq!(rust_stderr, go_stderr, "docx replace saved stderr");
-    assert_eq!(rust_stdout, go_stdout, "docx replace saved stdout");
+    assert_eq!(rust_code, baseline_code, "docx replace saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "docx replace saved stderr");
+    assert_eq!(rust_stdout, baseline_stdout, "docx replace saved stdout");
 
     let (validate_code, _validate_stdout, validate_stderr) =
         run_ooxml(&["--json", "--strict", "validate", &rust_out]);
     assert_eq!(validate_code, 0, "docx replace strict validate exit");
     assert_eq!(validate_stderr, None, "docx replace strict validate stderr");
 
-    let (go_read_code, go_read_stdout, go_read_stderr) =
-        run_go_ooxml(&["--json", "docx", "text", &go_out]);
+    let (baseline_read_code, baseline_read_stdout, baseline_read_stderr) =
+        run_ooxml_baseline(&["--json", "docx", "text", &baseline_out]);
     let (rust_read_code, rust_read_stdout, rust_read_stderr) =
         run_ooxml(&["--json", "docx", "text", &rust_out]);
-    assert_eq!(rust_read_code, go_read_code, "docx replace readback exit");
     assert_eq!(
-        rust_read_stderr, go_read_stderr,
+        rust_read_code, baseline_read_code,
+        "docx replace readback exit"
+    );
+    assert_eq!(
+        rust_read_stderr, baseline_read_stderr,
         "docx replace readback stderr"
     );
     assert_eq!(
         scrub_file_fields(rust_read_stdout.expect("Rust replace readback")),
-        scrub_file_fields(go_read_stdout.expect("Go replace readback")),
+        scrub_file_fields(baseline_read_stdout.expect("Rust baseline replace readback")),
         "docx replace readback stdout"
     );
 
@@ -479,7 +482,7 @@ include!("docx/tables.rs");
 include!("docx/paragraphs.rs");
 
 #[test]
-fn docx_blocks_replace_delete_match_go_oracle() {
+fn docx_blocks_replace_delete_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-docx-blocks-replace-delete-{}",
         std::process::id()
@@ -489,7 +492,7 @@ fn docx_blocks_replace_delete_match_go_oracle() {
 
     let heading_doc = "testdata/docx/styled-headings/document.docx";
     let (heading_code, heading_stdout, heading_stderr) =
-        run_go_ooxml(&["--json", "docx", "blocks", heading_doc, "--block", "1"]);
+        run_ooxml_baseline(&["--json", "docx", "blocks", heading_doc, "--block", "1"]);
     assert_eq!(heading_code, 0, "oracle heading hash lookup exit");
     assert_eq!(heading_stderr, None, "oracle heading hash lookup stderr");
     let heading_hash =
@@ -498,15 +501,15 @@ fn docx_blocks_replace_delete_match_go_oracle() {
             .expect("heading block hash")
             .to_string();
 
-    let go_replace_out = temp_dir
-        .join("blocks-replace-go.docx")
+    let baseline_replace_out = temp_dir
+        .join("blocks-replace-baseline.docx")
         .to_string_lossy()
         .to_string();
     let rust_replace_out = temp_dir
         .join("blocks-replace-rust.docx")
         .to_string_lossy()
         .to_string();
-    let go_replace_args = [
+    let baseline_replace_args = [
         "--json",
         "docx",
         "blocks",
@@ -519,7 +522,7 @@ fn docx_blocks_replace_delete_match_go_oracle() {
         "--text",
         "Hash-guarded heading",
         "--out",
-        &go_replace_out,
+        &baseline_replace_out,
     ];
     let rust_replace_args = [
         "--json",
@@ -536,16 +539,20 @@ fn docx_blocks_replace_delete_match_go_oracle() {
         "--out",
         &rust_replace_out,
     ];
-    let (go_replace_code, go_replace_stdout, go_replace_stderr) = run_go_ooxml(&go_replace_args);
+    let (baseline_replace_code, baseline_replace_stdout, baseline_replace_stderr) =
+        run_ooxml_baseline(&baseline_replace_args);
     let (rust_replace_code, rust_replace_stdout, rust_replace_stderr) =
         run_ooxml(&rust_replace_args);
-    assert_eq!(rust_replace_code, go_replace_code, "blocks replace exit");
     assert_eq!(
-        rust_replace_stderr, go_replace_stderr,
+        rust_replace_code, baseline_replace_code,
+        "blocks replace exit"
+    );
+    assert_eq!(
+        rust_replace_stderr, baseline_replace_stderr,
         "blocks replace stderr"
     );
     assert_eq!(
-        rust_replace_stdout, go_replace_stdout,
+        rust_replace_stdout, baseline_replace_stdout,
         "blocks replace stdout"
     );
 
@@ -557,8 +564,15 @@ fn docx_blocks_replace_delete_match_go_oracle() {
         "blocks replace validate stderr"
     );
 
-    let (go_replace_read_code, go_replace_read_stdout, go_replace_read_stderr) =
-        run_go_ooxml(&["--json", "docx", "blocks", &go_replace_out, "--block", "1"]);
+    let (baseline_replace_read_code, baseline_replace_read_stdout, baseline_replace_read_stderr) =
+        run_ooxml_baseline(&[
+            "--json",
+            "docx",
+            "blocks",
+            &baseline_replace_out,
+            "--block",
+            "1",
+        ]);
     let (rust_replace_read_code, rust_replace_read_stdout, rust_replace_read_stderr) =
         run_ooxml(&[
             "--json",
@@ -569,19 +583,20 @@ fn docx_blocks_replace_delete_match_go_oracle() {
             "1",
         ]);
     assert_eq!(
-        rust_replace_read_code, go_replace_read_code,
+        rust_replace_read_code, baseline_replace_read_code,
         "replace readback exit"
     );
     assert_eq!(
-        rust_replace_read_stderr, go_replace_read_stderr,
+        rust_replace_read_stderr, baseline_replace_read_stderr,
         "replace readback stderr"
     );
-    let go_replace_block =
-        go_replace_read_stdout.expect("Go replace readback JSON")["blocks"][0].clone();
+    let baseline_replace_block = baseline_replace_read_stdout
+        .expect("Rust baseline replace readback JSON")["blocks"][0]
+        .clone();
     let rust_replace_block =
         rust_replace_read_stdout.expect("Rust replace readback JSON")["blocks"][0].clone();
     assert_eq!(
-        rust_replace_block, go_replace_block,
+        rust_replace_block, baseline_replace_block,
         "replace readback block"
     );
     assert_eq!(
@@ -595,7 +610,7 @@ fn docx_blocks_replace_delete_match_go_oracle() {
 
     let mixed_doc = "testdata/docx/mixed-blocks/document.docx";
     let (table_code, table_stdout, table_stderr) =
-        run_go_ooxml(&["--json", "docx", "blocks", mixed_doc, "--block", "1"]);
+        run_ooxml_baseline(&["--json", "docx", "blocks", mixed_doc, "--block", "1"]);
     assert_eq!(table_code, 0, "oracle table hash lookup exit");
     assert_eq!(table_stderr, None, "oracle table hash lookup stderr");
     let table_hash = table_stdout.expect("oracle table block JSON")["blocks"][0]["contentHash"]
@@ -603,15 +618,15 @@ fn docx_blocks_replace_delete_match_go_oracle() {
         .expect("table block hash")
         .to_string();
 
-    let go_delete_out = temp_dir
-        .join("blocks-delete-go.docx")
+    let baseline_delete_out = temp_dir
+        .join("blocks-delete-baseline.docx")
         .to_string_lossy()
         .to_string();
     let rust_delete_out = temp_dir
         .join("blocks-delete-rust.docx")
         .to_string_lossy()
         .to_string();
-    let go_delete_args = [
+    let baseline_delete_args = [
         "--json",
         "docx",
         "blocks",
@@ -622,7 +637,7 @@ fn docx_blocks_replace_delete_match_go_oracle() {
         "--expect-hash",
         &table_hash,
         "--out",
-        &go_delete_out,
+        &baseline_delete_out,
     ];
     let rust_delete_args = [
         "--json",
@@ -637,11 +652,18 @@ fn docx_blocks_replace_delete_match_go_oracle() {
         "--out",
         &rust_delete_out,
     ];
-    let (go_delete_code, go_delete_stdout, go_delete_stderr) = run_go_ooxml(&go_delete_args);
+    let (baseline_delete_code, baseline_delete_stdout, baseline_delete_stderr) =
+        run_ooxml_baseline(&baseline_delete_args);
     let (rust_delete_code, rust_delete_stdout, rust_delete_stderr) = run_ooxml(&rust_delete_args);
-    assert_eq!(rust_delete_code, go_delete_code, "blocks delete exit");
-    assert_eq!(rust_delete_stderr, go_delete_stderr, "blocks delete stderr");
-    assert_eq!(rust_delete_stdout, go_delete_stdout, "blocks delete stdout");
+    assert_eq!(rust_delete_code, baseline_delete_code, "blocks delete exit");
+    assert_eq!(
+        rust_delete_stderr, baseline_delete_stderr,
+        "blocks delete stderr"
+    );
+    assert_eq!(
+        rust_delete_stdout, baseline_delete_stdout,
+        "blocks delete stdout"
+    );
 
     let (delete_validate_code, _delete_validate_stdout, delete_validate_stderr) =
         run_ooxml(&["--json", "--strict", "validate", &rust_delete_out]);
@@ -651,24 +673,24 @@ fn docx_blocks_replace_delete_match_go_oracle() {
         "blocks delete validate stderr"
     );
 
-    let (go_delete_read_code, go_delete_read_stdout, go_delete_read_stderr) =
-        run_go_ooxml(&["--json", "docx", "blocks", &go_delete_out]);
+    let (baseline_delete_read_code, baseline_delete_read_stdout, baseline_delete_read_stderr) =
+        run_ooxml_baseline(&["--json", "docx", "blocks", &baseline_delete_out]);
     let (rust_delete_read_code, rust_delete_read_stdout, rust_delete_read_stderr) =
         run_ooxml(&["--json", "docx", "blocks", &rust_delete_out]);
     assert_eq!(
-        rust_delete_read_code, go_delete_read_code,
+        rust_delete_read_code, baseline_delete_read_code,
         "delete readback exit"
     );
     assert_eq!(
-        rust_delete_read_stderr, go_delete_read_stderr,
+        rust_delete_read_stderr, baseline_delete_read_stderr,
         "delete readback stderr"
     );
-    let go_delete_blocks =
-        go_delete_read_stdout.expect("Go delete readback JSON")["blocks"].clone();
+    let baseline_delete_blocks =
+        baseline_delete_read_stdout.expect("Rust baseline delete readback JSON")["blocks"].clone();
     let rust_delete_blocks =
         rust_delete_read_stdout.expect("Rust delete readback JSON")["blocks"].clone();
     assert_eq!(
-        rust_delete_blocks, go_delete_blocks,
+        rust_delete_blocks, baseline_delete_blocks,
         "delete readback blocks"
     );
     assert_eq!(
@@ -676,7 +698,7 @@ fn docx_blocks_replace_delete_match_go_oracle() {
         3
     );
 
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "blocks",
@@ -690,7 +712,7 @@ fn docx_blocks_replace_delete_match_go_oracle() {
         "Dry run heading",
         "--dry-run",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "blocks",
@@ -870,14 +892,14 @@ fn docx_blocks_replace_delete_match_go_oracle() {
         ],
     ];
     for args in bad_cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn docx_blocks_insert_after_matches_go_oracle() {
+fn docx_blocks_insert_after_matches_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-docx-blocks-insert-after-{}",
         std::process::id()
@@ -887,7 +909,7 @@ fn docx_blocks_insert_after_matches_go_oracle() {
 
     let document = "testdata/docx/mixed-blocks/document.docx";
     let (blocks_code, blocks_stdout, blocks_stderr) =
-        run_go_ooxml(&["--json", "docx", "blocks", document, "--block", "1"]);
+        run_ooxml_baseline(&["--json", "docx", "blocks", document, "--block", "1"]);
     assert_eq!(blocks_code, 0, "oracle hash lookup exit");
     assert_eq!(blocks_stderr, None, "oracle hash lookup stderr");
     let anchor_hash = blocks_stdout.expect("oracle blocks JSON")["blocks"][0]["contentHash"]
@@ -895,15 +917,15 @@ fn docx_blocks_insert_after_matches_go_oracle() {
         .expect("anchor hash")
         .to_string();
 
-    let go_out = temp_dir
-        .join("blocks-insert-after-go.docx")
+    let baseline_out = temp_dir
+        .join("blocks-insert-after-baseline.docx")
         .to_string_lossy()
         .to_string();
     let rust_out = temp_dir
         .join("blocks-insert-after-rust.docx")
         .to_string_lossy()
         .to_string();
-    let go_args = [
+    let baseline_args = [
         "--json",
         "docx",
         "blocks",
@@ -918,7 +940,7 @@ fn docx_blocks_insert_after_matches_go_oracle() {
         "--style",
         "Heading1",
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -937,26 +959,30 @@ fn docx_blocks_insert_after_matches_go_oracle() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "blocks insert-after exit");
-    assert_eq!(rust_stderr, go_stderr, "blocks insert-after stderr");
-    assert_eq!(rust_stdout, go_stdout, "blocks insert-after stdout");
+    assert_eq!(rust_code, baseline_code, "blocks insert-after exit");
+    assert_eq!(rust_stderr, baseline_stderr, "blocks insert-after stderr");
+    assert_eq!(rust_stdout, baseline_stdout, "blocks insert-after stdout");
 
     let (validate_code, _validate_stdout, validate_stderr) =
         run_ooxml(&["--json", "--strict", "validate", &rust_out]);
     assert_eq!(validate_code, 0, "blocks insert-after validate exit");
     assert_eq!(validate_stderr, None, "blocks insert-after validate stderr");
 
-    let (go_read_code, go_read_stdout, go_read_stderr) =
-        run_go_ooxml(&["--json", "docx", "blocks", &go_out, "--block", "2"]);
+    let (baseline_read_code, baseline_read_stdout, baseline_read_stderr) =
+        run_ooxml_baseline(&["--json", "docx", "blocks", &baseline_out, "--block", "2"]);
     let (rust_read_code, rust_read_stdout, rust_read_stderr) =
         run_ooxml(&["--json", "docx", "blocks", &rust_out, "--block", "2"]);
-    assert_eq!(rust_read_code, go_read_code, "insert readback exit");
-    assert_eq!(rust_read_stderr, go_read_stderr, "insert readback stderr");
-    let go_block = go_read_stdout.expect("Go insert readback JSON")["blocks"][0].clone();
+    assert_eq!(rust_read_code, baseline_read_code, "insert readback exit");
+    assert_eq!(
+        rust_read_stderr, baseline_read_stderr,
+        "insert readback stderr"
+    );
+    let baseline_block =
+        baseline_read_stdout.expect("Rust baseline insert readback JSON")["blocks"][0].clone();
     let rust_block = rust_read_stdout.expect("Rust insert readback JSON")["blocks"][0].clone();
-    assert_eq!(rust_block, go_block, "insert readback block");
+    assert_eq!(rust_block, baseline_block, "insert readback block");
     assert_eq!(
         rust_block["text"],
         Value::String("Inserted after table".to_string())
@@ -966,7 +992,7 @@ fn docx_blocks_insert_after_matches_go_oracle() {
         Value::String("Heading1".to_string())
     );
 
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "blocks",
@@ -1068,14 +1094,14 @@ fn docx_blocks_insert_after_matches_go_oracle() {
         ],
     ];
     for args in bad_cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn docx_styles_list_and_show_match_go_oracle() {
+fn docx_styles_list_and_show_match_rust_baseline() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -1155,26 +1181,26 @@ fn docx_styles_list_and_show_match_go_oracle() {
     ];
 
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 }
 
 #[test]
-fn docx_styles_apply_matches_go_oracle() {
+fn docx_styles_apply_matches_rust_baseline() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-docx-styles-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("docx styles temp dir");
 
-    let go_para_out = temp_dir
-        .join("apply-para-go.docx")
+    let baseline_para_out = temp_dir
+        .join("apply-para-baseline.docx")
         .to_string_lossy()
         .to_string();
     let rust_para_out = temp_dir
         .join("apply-para-rust.docx")
         .to_string_lossy()
         .to_string();
-    let go_para_args = [
+    let baseline_para_args = [
         "--json",
         "docx",
         "styles",
@@ -1187,7 +1213,7 @@ fn docx_styles_apply_matches_go_oracle() {
         "--style",
         "Heading2",
         "--out",
-        &go_para_out,
+        &baseline_para_out,
     ];
     let rust_para_args = [
         "--json",
@@ -1204,16 +1230,16 @@ fn docx_styles_apply_matches_go_oracle() {
         "--out",
         &rust_para_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_para_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_para_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_para_args);
-    assert_eq!(rust_code, go_code, "paragraph apply exit");
-    assert_eq!(rust_stderr, go_stderr, "paragraph apply stderr");
+    assert_eq!(rust_code, baseline_code, "paragraph apply exit");
+    assert_eq!(rust_stderr, baseline_stderr, "paragraph apply stderr");
     assert_eq!(
         scrub_file_fields(scrub_docx_dynamic_handles(
             rust_stdout.expect("Rust paragraph style apply stdout")
         )),
         scrub_file_fields(scrub_docx_dynamic_handles(
-            go_stdout.expect("Go paragraph style apply stdout")
+            baseline_stdout.expect("Rust baseline paragraph style apply stdout")
         )),
         "paragraph apply stdout"
     );
@@ -1231,15 +1257,15 @@ fn docx_styles_apply_matches_go_oracle() {
         Value::String("Heading2".to_string())
     );
 
-    let go_run_out = temp_dir
-        .join("apply-run-go.docx")
+    let baseline_run_out = temp_dir
+        .join("apply-run-baseline.docx")
         .to_string_lossy()
         .to_string();
     let rust_run_out = temp_dir
         .join("apply-run-rust.docx")
         .to_string_lossy()
         .to_string();
-    let go_run_args = [
+    let baseline_run_args = [
         "--json",
         "docx",
         "styles",
@@ -1252,7 +1278,7 @@ fn docx_styles_apply_matches_go_oracle() {
         "--style",
         "Emphasis",
         "--out",
-        &go_run_out,
+        &baseline_run_out,
     ];
     let rust_run_args = [
         "--json",
@@ -1269,16 +1295,17 @@ fn docx_styles_apply_matches_go_oracle() {
         "--out",
         &rust_run_out,
     ];
-    let (go_run_code, go_run_stdout, go_run_stderr) = run_go_ooxml(&go_run_args);
+    let (baseline_run_code, baseline_run_stdout, baseline_run_stderr) =
+        run_ooxml_baseline(&baseline_run_args);
     let (rust_run_code, rust_run_stdout, rust_run_stderr) = run_ooxml(&rust_run_args);
-    assert_eq!(rust_run_code, go_run_code, "run apply exit");
-    assert_eq!(rust_run_stderr, go_run_stderr, "run apply stderr");
+    assert_eq!(rust_run_code, baseline_run_code, "run apply exit");
+    assert_eq!(rust_run_stderr, baseline_run_stderr, "run apply stderr");
     assert_eq!(
         scrub_file_fields(scrub_docx_dynamic_handles(
             rust_run_stdout.expect("Rust run style apply stdout")
         )),
         scrub_file_fields(scrub_docx_dynamic_handles(
-            go_run_stdout.expect("Go run style apply stdout")
+            baseline_run_stdout.expect("Rust baseline run style apply stdout")
         )),
         "run apply stdout"
     );
@@ -1288,15 +1315,15 @@ fn docx_styles_apply_matches_go_oracle() {
         "run style was not written to document.xml"
     );
 
-    let go_table_out = temp_dir
-        .join("apply-table-go.docx")
+    let baseline_table_out = temp_dir
+        .join("apply-table-baseline.docx")
         .to_string_lossy()
         .to_string();
     let rust_table_out = temp_dir
         .join("apply-table-rust.docx")
         .to_string_lossy()
         .to_string();
-    let go_table_args = [
+    let baseline_table_args = [
         "--json",
         "docx",
         "styles",
@@ -1309,7 +1336,7 @@ fn docx_styles_apply_matches_go_oracle() {
         "--style",
         "TableGrid",
         "--out",
-        &go_table_out,
+        &baseline_table_out,
     ];
     let rust_table_args = [
         "--json",
@@ -1326,13 +1353,17 @@ fn docx_styles_apply_matches_go_oracle() {
         "--out",
         &rust_table_out,
     ];
-    let (go_table_code, go_table_stdout, go_table_stderr) = run_go_ooxml(&go_table_args);
+    let (baseline_table_code, baseline_table_stdout, baseline_table_stderr) =
+        run_ooxml_baseline(&baseline_table_args);
     let (rust_table_code, rust_table_stdout, rust_table_stderr) = run_ooxml(&rust_table_args);
-    assert_eq!(rust_table_code, go_table_code, "table apply exit");
-    assert_eq!(rust_table_stderr, go_table_stderr, "table apply stderr");
+    assert_eq!(rust_table_code, baseline_table_code, "table apply exit");
+    assert_eq!(
+        rust_table_stderr, baseline_table_stderr,
+        "table apply stderr"
+    );
     assert_eq!(
         scrub_file_fields(rust_table_stdout.expect("Rust table style apply stdout")),
-        scrub_file_fields(go_table_stdout.expect("Go table style apply stdout")),
+        scrub_file_fields(baseline_table_stdout.expect("Rust baseline table style apply stdout")),
         "table apply stdout"
     );
     let table_xml = read_zip_string(Path::new(&rust_table_out), "word/document.xml");
@@ -1341,7 +1372,7 @@ fn docx_styles_apply_matches_go_oracle() {
         "table style was not written to document.xml"
     );
 
-    let (hash_code, hash_stdout, hash_stderr) = run_go_ooxml(&[
+    let (hash_code, hash_stdout, hash_stderr) = run_ooxml_baseline(&[
         "--json",
         "docx",
         "blocks",
@@ -1371,16 +1402,20 @@ fn docx_styles_apply_matches_go_oracle() {
         hash,
         "--dry-run",
     ];
-    let (go_hash_code, go_hash_stdout, go_hash_stderr) = run_go_ooxml(&hash_args);
+    let (baseline_hash_code, baseline_hash_stdout, baseline_hash_stderr) =
+        run_ooxml_baseline(&hash_args);
     let (rust_hash_code, rust_hash_stdout, rust_hash_stderr) = run_ooxml(&hash_args);
-    assert_eq!(rust_hash_code, go_hash_code, "hash guarded apply exit");
     assert_eq!(
-        rust_hash_stderr, go_hash_stderr,
+        rust_hash_code, baseline_hash_code,
+        "hash guarded apply exit"
+    );
+    assert_eq!(
+        rust_hash_stderr, baseline_hash_stderr,
         "hash guarded apply stderr"
     );
     assert_eq!(
         scrub_docx_dynamic_handles(rust_hash_stdout.expect("Rust hash apply stdout")),
-        scrub_docx_dynamic_handles(go_hash_stdout.expect("Go hash apply stdout")),
+        scrub_docx_dynamic_handles(baseline_hash_stdout.expect("Rust baseline hash apply stdout")),
         "hash guarded apply stdout"
     );
 
@@ -1399,16 +1434,22 @@ fn docx_styles_apply_matches_go_oracle() {
         "--no-validate",
         "--dry-run",
     ];
-    let (go_handle_code, go_handle_stdout, go_handle_stderr) = run_go_ooxml(&style_handle_args);
+    let (baseline_handle_code, baseline_handle_stdout, baseline_handle_stderr) =
+        run_ooxml_baseline(&style_handle_args);
     let (rust_handle_code, rust_handle_stdout, rust_handle_stderr) = run_ooxml(&style_handle_args);
-    assert_eq!(rust_handle_code, go_handle_code, "style handle apply exit");
     assert_eq!(
-        rust_handle_stderr, go_handle_stderr,
+        rust_handle_code, baseline_handle_code,
+        "style handle apply exit"
+    );
+    assert_eq!(
+        rust_handle_stderr, baseline_handle_stderr,
         "style handle apply stderr"
     );
     assert_eq!(
         scrub_docx_dynamic_handles(rust_handle_stdout.expect("Rust style handle stdout")),
-        scrub_docx_dynamic_handles(go_handle_stdout.expect("Go style handle stdout")),
+        scrub_docx_dynamic_handles(
+            baseline_handle_stdout.expect("Rust baseline style handle stdout")
+        ),
         "style handle apply stdout"
     );
 
@@ -1416,7 +1457,7 @@ fn docx_styles_apply_matches_go_oracle() {
 }
 
 #[test]
-fn docx_styles_apply_errors_match_go_oracle() {
+fn docx_styles_apply_errors_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-docx-styles-errors-{}",
         std::process::id()
@@ -1586,7 +1627,7 @@ fn docx_styles_apply_errors_match_go_oracle() {
         ],
     ];
     for args in bad_cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -1596,7 +1637,7 @@ include!("docx/comments.rs");
 include!("docx/fields.rs");
 
 #[test]
-fn docx_headers_and_footers_list_match_go_oracle() {
+fn docx_headers_and_footers_list_match_rust_baseline() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -1643,12 +1684,12 @@ fn docx_headers_and_footers_list_match_go_oracle() {
     ];
 
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 }
 
 #[test]
-fn docx_headers_and_footers_show_match_go_oracle() {
+fn docx_headers_and_footers_show_match_rust_baseline() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -1705,12 +1746,12 @@ fn docx_headers_and_footers_show_match_go_oracle() {
     ];
 
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 }
 
 #[test]
-fn docx_headers_and_footers_set_text_match_go_oracle() {
+fn docx_headers_and_footers_set_text_match_rust_baseline() {
     let dry_cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -1740,7 +1781,7 @@ fn docx_headers_and_footers_set_text_match_go_oracle() {
         ],
     ];
     for args in dry_cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
     let temp_dir = std::env::temp_dir().join(format!(
@@ -1749,11 +1790,11 @@ fn docx_headers_and_footers_set_text_match_go_oracle() {
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_out = temp_dir.join("go create header.docx");
+    let baseline_out = temp_dir.join("baseline create header.docx");
     let rust_out = temp_dir.join("rust create header.docx");
-    let go_out_str = go_out.to_string_lossy().to_string();
+    let baseline_out_str = baseline_out.to_string_lossy().to_string();
     let rust_out_str = rust_out.to_string_lossy().to_string();
-    let go_args = [
+    let baseline_args = [
         "--json",
         "docx",
         "headers",
@@ -1766,7 +1807,7 @@ fn docx_headers_and_footers_set_text_match_go_oracle() {
         "--text",
         "Brand New Header",
         "--out",
-        &go_out_str,
+        &baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -1783,10 +1824,10 @@ fn docx_headers_and_footers_set_text_match_go_oracle() {
         "--out",
         &rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "create header exit");
-    assert_eq!(rust_stderr, go_stderr, "create header stderr");
+    assert_eq!(rust_code, baseline_code, "create header exit");
+    assert_eq!(rust_stderr, baseline_stderr, "create header stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust create header stdout"),
@@ -1794,8 +1835,8 @@ fn docx_headers_and_footers_set_text_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_stdout.expect("go create header stdout"),
-            &go_out_str,
+            baseline_stdout.expect("baseline create header stdout"),
+            &baseline_out_str,
             "[OUT]"
         ),
         "create header stdout"
@@ -1820,11 +1861,11 @@ fn docx_headers_and_footers_set_text_match_go_oracle() {
         Value::String("Brand New Header".to_string())
     );
 
-    let go_footer_out = temp_dir.join("go add footer ref.docx");
+    let baseline_footer_out = temp_dir.join("baseline add footer ref.docx");
     let rust_footer_out = temp_dir.join("rust add footer ref.docx");
-    let go_footer_out_str = go_footer_out.to_string_lossy().to_string();
+    let baseline_footer_out_str = baseline_footer_out.to_string_lossy().to_string();
     let rust_footer_out_str = rust_footer_out.to_string_lossy().to_string();
-    let go_args = [
+    let baseline_args = [
         "--json",
         "docx",
         "footers",
@@ -1837,7 +1878,7 @@ fn docx_headers_and_footers_set_text_match_go_oracle() {
         "--text",
         "Footer Wired",
         "--out",
-        &go_footer_out_str,
+        &baseline_footer_out_str,
     ];
     let rust_args = [
         "--json",
@@ -1854,10 +1895,10 @@ fn docx_headers_and_footers_set_text_match_go_oracle() {
         "--out",
         &rust_footer_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "add footer ref exit");
-    assert_eq!(rust_stderr, go_stderr, "add footer ref stderr");
+    assert_eq!(rust_code, baseline_code, "add footer ref exit");
+    assert_eq!(rust_stderr, baseline_stderr, "add footer ref stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust add footer stdout"),
@@ -1865,8 +1906,8 @@ fn docx_headers_and_footers_set_text_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_stdout.expect("go add footer stdout"),
-            &go_footer_out_str,
+            baseline_stdout.expect("baseline add footer stdout"),
+            &baseline_footer_out_str,
             "[OUT]"
         ),
         "add footer ref stdout"
@@ -1876,7 +1917,7 @@ fn docx_headers_and_footers_set_text_match_go_oracle() {
 }
 
 #[test]
-fn docx_images_list_matches_go_oracle() {
+fn docx_images_list_matches_rust_baseline() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -1909,12 +1950,12 @@ fn docx_images_list_matches_go_oracle() {
     ];
 
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 }
 
 #[test]
-fn docx_images_replace_insert_match_go_oracle() {
+fn docx_images_replace_insert_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-docx-images-{}-{}",
         std::process::id(),
@@ -1931,11 +1972,11 @@ fn docx_images_replace_insert_match_go_oracle() {
     let anchor_block_hash =
         "sha256:d1e3bd8afcf28570360528cc36de5036e7ddf87bc0b45a221feec8cf5ed30f53";
 
-    let go_replace = temp_dir.join("go-replace.docx");
+    let baseline_replace = temp_dir.join("baseline-replace.docx");
     let rust_replace = temp_dir.join("rust-replace.docx");
-    let go_replace_str = go_replace.to_string_lossy().to_string();
+    let baseline_replace_str = baseline_replace.to_string_lossy().to_string();
     let rust_replace_str = rust_replace.to_string_lossy().to_string();
-    let go_replace_args = [
+    let baseline_replace_args = [
         "--json",
         "docx",
         "images",
@@ -1952,7 +1993,7 @@ fn docx_images_replace_insert_match_go_oracle() {
         "--height",
         "914400",
         "--out",
-        &go_replace_str,
+        &baseline_replace_str,
     ];
     let rust_replace_args = [
         "--json",
@@ -1973,12 +2014,12 @@ fn docx_images_replace_insert_match_go_oracle() {
         "--out",
         &rust_replace_str,
     ];
-    assert_go_rust_outputs_match("replace image", &go_replace_args, &rust_replace_args);
-    assert_strict_valid(&go_replace_str);
+    assert_baseline_rust_outputs_match("replace image", &baseline_replace_args, &rust_replace_args);
+    assert_strict_valid(&baseline_replace_str);
     assert_strict_valid(&rust_replace_str);
-    assert_go_rust_lists_match(&go_replace_str, &rust_replace_str, "replace readback");
+    assert_baseline_rust_lists_match(&baseline_replace_str, &rust_replace_str, "replace readback");
 
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "images",
@@ -1992,7 +2033,7 @@ fn docx_images_replace_insert_match_go_oracle() {
         "sha256:0000000000000000000000000000000000000000000000000000000000000000",
         "--dry-run",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "images",
@@ -2005,11 +2046,11 @@ fn docx_images_replace_insert_match_go_oracle() {
         "--dry-run",
     ]);
 
-    let go_insert = temp_dir.join("go-insert.docx");
+    let baseline_insert = temp_dir.join("baseline-insert.docx");
     let rust_insert = temp_dir.join("rust-insert.docx");
-    let go_insert_str = go_insert.to_string_lossy().to_string();
+    let baseline_insert_str = baseline_insert.to_string_lossy().to_string();
     let rust_insert_str = rust_insert.to_string_lossy().to_string();
-    let go_insert_args = [
+    let baseline_insert_args = [
         "--json",
         "docx",
         "images",
@@ -2026,7 +2067,7 @@ fn docx_images_replace_insert_match_go_oracle() {
         "--height",
         "914400",
         "--out",
-        &go_insert_str,
+        &baseline_insert_str,
     ];
     let rust_insert_args = [
         "--json",
@@ -2047,12 +2088,12 @@ fn docx_images_replace_insert_match_go_oracle() {
         "--out",
         &rust_insert_str,
     ];
-    assert_go_rust_outputs_match("insert image", &go_insert_args, &rust_insert_args);
-    assert_strict_valid(&go_insert_str);
+    assert_baseline_rust_outputs_match("insert image", &baseline_insert_args, &rust_insert_args);
+    assert_strict_valid(&baseline_insert_str);
     assert_strict_valid(&rust_insert_str);
-    assert_go_rust_lists_match(&go_insert_str, &rust_insert_str, "insert readback");
+    assert_baseline_rust_lists_match(&baseline_insert_str, &rust_insert_str, "insert readback");
 
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "images",
@@ -2070,7 +2111,7 @@ fn docx_images_replace_insert_match_go_oracle() {
         "914400",
         "--dry-run",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "images",
@@ -2088,7 +2129,7 @@ fn docx_images_replace_insert_match_go_oracle() {
         "914400",
         "--dry-run",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "images",
@@ -2110,12 +2151,12 @@ fn docx_images_replace_insert_match_go_oracle() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
-fn assert_go_rust_outputs_match(label: &str, go_args: &[&str], rust_args: &[&str]) {
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(go_args);
+fn assert_baseline_rust_outputs_match(label: &str, baseline_args: &[&str], rust_args: &[&str]) {
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(rust_args);
-    assert_eq!(rust_code, go_code, "{label} exit");
-    assert_eq!(rust_stderr, go_stderr, "{label} stderr");
-    assert_eq!(rust_stdout, go_stdout, "{label} stdout");
+    assert_eq!(rust_code, baseline_code, "{label} exit");
+    assert_eq!(rust_stderr, baseline_stderr, "{label} stderr");
+    assert_eq!(rust_stdout, baseline_stdout, "{label} stdout");
 }
 
 fn assert_strict_valid(path: &str) {
@@ -2126,16 +2167,20 @@ fn assert_strict_valid(path: &str) {
     assert_eq!(stdout["valid"], Value::Bool(true), "strict validate result");
 }
 
-fn assert_go_rust_lists_match(go_path: &str, rust_path: &str, label: &str) {
-    let go_args = ["--json", "docx", "images", "list", go_path];
+fn assert_baseline_rust_lists_match(baseline_path: &str, rust_path: &str, label: &str) {
+    let baseline_args = ["--json", "docx", "images", "list", baseline_path];
     let rust_args = ["--json", "docx", "images", "list", rust_path];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "{label} exit");
-    assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+    assert_eq!(rust_code, baseline_code, "{label} exit");
+    assert_eq!(rust_stderr, baseline_stderr, "{label} stderr");
     assert_eq!(
         scrub_path(rust_stdout.expect("rust list stdout"), rust_path, "[OUT]"),
-        scrub_path(go_stdout.expect("go list stdout"), go_path, "[OUT]"),
+        scrub_path(
+            baseline_stdout.expect("baseline list stdout"),
+            baseline_path,
+            "[OUT]"
+        ),
         "{label} stdout"
     );
 }

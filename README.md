@@ -4,7 +4,7 @@
 
 `ooxml-cli` is a Rust command-line tool for inspecting, editing, validating, and proving Office Open XML files. It works directly on `.pptx`, `.xlsx`, `.docx`, and macro-enabled Office packages, with JSON output designed for agents and scripts.
 
-Rust is the product path. The old Go implementation is kept under `go/` as reference material only.
+Rust is the product and proof path. The legacy implementation is reference material only, not an oracle.
 
 ## What It Handles
 
@@ -201,7 +201,7 @@ cp -R skills/ooxml ~/.codex/skills/
 - Macro execution is never implicit. Use `vba run-smoke` only when local Excel execution is intended.
 - UserForms, digital signatures, password/protection editing, and arbitrary VBE compile proof are not supported.
 - `vba add-module`, `replace-module`, and `remove-module` are guarded paths. Prefer `vba create --pure`, `vba rebuild`, or opaque `vba attach`.
-- Go code is not the normal development path.
+- Legacy code is not the normal development or proof path.
 
 ## Docs
 

@@ -2,7 +2,7 @@
 use super::*;
 
 #[test]
-fn frozen_serve_flow_matches_go_baseline() {
+fn frozen_serve_flow_matches_legacy_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-serve-{}", std::process::id()));
     std::fs::create_dir_all(&temp_dir).expect("temp dir");

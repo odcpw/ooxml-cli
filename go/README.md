@@ -1,10 +1,9 @@
-# Go Reference Implementation
+# Legacy Implementation
 
 The active `ooxml` CLI is the Rust binary at the repository root.
 
-This directory contains the deprecated Go implementation kept as source history
-and an oracle reference. New product work should land in Rust. If a Rust
-contract test needs the Go oracle, it should use the frozen
-`codex/ooxml-go-reference` branch through the existing
-`OOXML_GO_ORACLE_REF` / `OOXML_GO_ORACLE_DIR` mechanism rather than treating
-this directory as the normal development target.
+This directory contains the deprecated implementation kept as source history.
+New product work and proof work should land in Rust. The Rust contract harness
+does not build or run this directory as an oracle; use Rust-native tests,
+goldens, release real-file traces, and optional `OOXML_RUST_BASELINE_BIN`
+cross-version checks instead.

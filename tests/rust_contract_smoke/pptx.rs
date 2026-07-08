@@ -95,16 +95,15 @@ fn run_ooxml_raw(args: &[&str]) -> (i32, String, String) {
     )
 }
 
-fn run_go_ooxml_raw(args: &[&str]) -> (i32, String, String) {
-    let output = std::process::Command::new(go_ooxml_binary())
+fn run_ooxml_baseline_raw(args: &[&str]) -> (i32, String, String) {
+    let output = std::process::Command::new(rust_baseline_ooxml_binary())
         .args(args)
-        .env("GOCACHE", go_cache_dir())
         .output()
-        .expect("run Go ooxml oracle raw");
+        .expect("run Rust baseline ooxml raw");
     (
         output.status.code().unwrap_or(-1),
-        String::from_utf8(output.stdout).expect("Go stdout utf8"),
-        String::from_utf8(output.stderr).expect("Go stderr utf8"),
+        String::from_utf8(output.stdout).expect("Rust baseline stdout utf8"),
+        String::from_utf8(output.stderr).expect("Rust baseline stderr utf8"),
     )
 }
 
@@ -115,7 +114,7 @@ fn parse_raw_json(text: &str) -> Value {
 }
 
 #[test]
-fn pptx_translate_export_matches_go_oracle() {
+fn pptx_translate_export_matches_rust_baseline() {
     for args in [
         vec![
             "--json",
@@ -166,23 +165,26 @@ fn pptx_translate_export_matches_go_oracle() {
             "testdata/xlsx/minimal-workbook/workbook.xlsx",
         ],
     ] {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-        assert_eq!(rust_code, go_code, "translate export exit for {args:?}");
         assert_eq!(
-            rust_stderr, go_stderr,
+            rust_code, baseline_code,
+            "translate export exit for {args:?}"
+        );
+        assert_eq!(
+            rust_stderr, baseline_stderr,
             "translate export stderr for {args:?}"
         );
         assert_eq!(
             rust_stdout.map(scrub_translation_exported_at),
-            go_stdout.map(scrub_translation_exported_at),
+            baseline_stdout.map(scrub_translation_exported_at),
             "translate export stdout for {args:?}"
         );
     }
 }
 
 #[test]
-fn pptx_translate_apply_saved_stale_and_errors_match_go_oracle() {
+fn pptx_translate_apply_saved_stale_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -193,11 +195,14 @@ fn pptx_translate_apply_saved_stale_and_errors_match_go_oracle() {
     ));
     std::fs::create_dir_all(&temp_dir).expect("translate temp dir");
 
-    let go_input = temp_dir.join("go-input.pptx");
+    let baseline_input = temp_dir.join("baseline-input.pptx");
     let rust_input = temp_dir.join("rust-input.pptx");
     let xlsx_input = temp_dir.join("input.xlsx");
-    std::fs::copy("testdata/pptx/minimal-title/presentation.pptx", &go_input)
-        .expect("copy Go translate fixture");
+    std::fs::copy(
+        "testdata/pptx/minimal-title/presentation.pptx",
+        &baseline_input,
+    )
+    .expect("copy Rust baseline translate fixture");
     std::fs::copy("testdata/pptx/minimal-title/presentation.pptx", &rust_input)
         .expect("copy Rust translate fixture");
     std::fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &xlsx_input)
@@ -222,9 +227,9 @@ fn pptx_translate_apply_saved_stale_and_errors_match_go_oracle() {
     )
     .expect("write invalid translate manifest");
 
-    let go_out = temp_dir.join("go-out.pptx");
+    let baseline_out = temp_dir.join("baseline-out.pptx");
     let rust_out = temp_dir.join("rust-out.pptx");
-    let go_input_str = go_input.to_str().expect("go input");
+    let baseline_input_str = baseline_input.to_str().expect("baseline input");
     let rust_input_str = rust_input.to_str().expect("rust input");
     let xlsx_input_str = xlsx_input.to_str().expect("xlsx input");
     let manifest_str = manifest_path.to_str().expect("manifest path");
@@ -232,18 +237,18 @@ fn pptx_translate_apply_saved_stale_and_errors_match_go_oracle() {
     let invalid_manifest_str = invalid_manifest_path
         .to_str()
         .expect("invalid manifest path");
-    let go_out_str = go_out.to_str().expect("go output");
+    let baseline_out_str = baseline_out.to_str().expect("baseline output");
     let rust_out_str = rust_out.to_str().expect("rust output");
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "translate",
         "apply",
-        go_input_str,
+        baseline_input_str,
         manifest_str,
         "--output",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -255,28 +260,34 @@ fn pptx_translate_apply_saved_stale_and_errors_match_go_oracle() {
         "--output",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "translate apply saved exit");
-    assert_eq!(rust_stderr, go_stderr, "translate apply saved stderr");
-    assert_eq!(rust_stdout, go_stdout, "translate apply saved stdout");
-    assert!(go_out.exists(), "Go translate output missing");
+    assert_eq!(rust_code, baseline_code, "translate apply saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "translate apply saved stderr");
+    assert_eq!(rust_stdout, baseline_stdout, "translate apply saved stdout");
+    assert!(
+        baseline_out.exists(),
+        "Rust baseline translate output missing"
+    );
     assert!(rust_out.exists(), "Rust translate output missing");
 
-    let (go_code, go_stdout, go_stderr) =
-        run_go_ooxml(&["--json", "pptx", "extract", "text", go_out_str]);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "pptx", "extract", "text", baseline_out_str]);
     let (rust_code, rust_stdout, rust_stderr) =
         run_ooxml(&["--json", "pptx", "extract", "text", rust_out_str]);
-    assert_eq!(rust_code, go_code, "translate apply readback exit");
-    assert_eq!(rust_stderr, go_stderr, "translate apply readback stderr");
+    assert_eq!(rust_code, baseline_code, "translate apply readback exit");
+    assert_eq!(
+        rust_stderr, baseline_stderr,
+        "translate apply readback stderr"
+    );
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust translate readback"),
             &[(rust_out_str, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go translate readback"),
-            &[(go_out_str, "[OUT]")]
+            baseline_stdout.expect("baseline translate readback"),
+            &[(baseline_out_str, "[OUT]")]
         ),
         "translate apply readback stdout"
     );
@@ -296,15 +307,15 @@ fn pptx_translate_apply_saved_stale_and_errors_match_go_oracle() {
     for stale_mode in [None, Some("warn"), Some("error")] {
         let stale_label = stale_mode.unwrap_or("skip");
         let rust_stale_out = temp_dir.join(format!("rust-stale-{stale_label}.pptx"));
-        let go_stale_out = temp_dir.join(format!("go-stale-{stale_label}.pptx"));
+        let baseline_stale_out = temp_dir.join(format!("baseline-stale-{stale_label}.pptx"));
         let rust_stale_out_str = rust_stale_out.to_str().expect("rust stale output");
-        let go_stale_out_str = go_stale_out.to_str().expect("go stale output");
-        let mut go_args = vec![
+        let baseline_stale_out_str = baseline_stale_out.to_str().expect("baseline stale output");
+        let mut baseline_args = vec![
             "--json",
             "pptx",
             "translate",
             "apply",
-            go_input_str,
+            baseline_input_str,
             stale_manifest_str,
         ];
         let mut rust_args = vec![
@@ -316,28 +327,32 @@ fn pptx_translate_apply_saved_stale_and_errors_match_go_oracle() {
             stale_manifest_str,
         ];
         if let Some(mode) = stale_mode {
-            go_args.extend(["--stale", mode]);
+            baseline_args.extend(["--stale", mode]);
             rust_args.extend(["--stale", mode]);
         }
-        go_args.extend(["--output", go_stale_out_str]);
+        baseline_args.extend(["--output", baseline_stale_out_str]);
         rust_args.extend(["--output", rust_stale_out_str]);
 
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(&go_args);
+        let (baseline_code, baseline_stdout, baseline_stderr) =
+            run_ooxml_baseline_raw(&baseline_args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(&rust_args);
-        assert_eq!(rust_code, go_code, "translate stale {stale_mode:?} exit");
         assert_eq!(
-            rust_stderr, go_stderr,
+            rust_code, baseline_code,
+            "translate stale {stale_mode:?} exit"
+        );
+        assert_eq!(
+            rust_stderr, baseline_stderr,
             "translate stale {stale_mode:?} stderr"
         );
-        if go_stdout.trim().is_empty() || rust_stdout.trim().is_empty() {
+        if baseline_stdout.trim().is_empty() || rust_stdout.trim().is_empty() {
             assert_eq!(
-                rust_stdout, go_stdout,
+                rust_stdout, baseline_stdout,
                 "translate stale {stale_mode:?} stdout"
             );
         } else {
             assert_eq!(
                 parse_raw_json(&rust_stdout),
-                parse_raw_json(&go_stdout),
+                parse_raw_json(&baseline_stdout),
                 "translate stale {stale_mode:?} stdout"
             );
         }
@@ -377,25 +392,25 @@ fn pptx_translate_apply_saved_stale_and_errors_match_go_oracle() {
             rust_out_str,
         ],
     ] {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
         assert_eq!(
-            rust_code, go_code,
+            rust_code, baseline_code,
             "translate apply error exit for {args:?}"
         );
         assert_eq!(
-            rust_stderr, go_stderr,
+            rust_stderr, baseline_stderr,
             "translate apply error stderr for {args:?}"
         );
         assert_eq!(
-            rust_stdout, go_stdout,
+            rust_stdout, baseline_stdout,
             "translate apply error stdout for {args:?}"
         );
     }
 }
 
 #[test]
-fn pptx_add_textbox_saved_readback_dry_run_and_errors_match_go_oracle() {
+fn pptx_add_textbox_saved_readback_dry_run_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -435,21 +450,21 @@ fn pptx_add_textbox_saved_readback_dry_run_and_errors_match_go_oracle() {
         "FF0000",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "add-textbox dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "add-textbox dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "add-textbox dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "add-textbox dry-run stderr");
     assert_eq!(
         scrub_created_at(rust_stdout.expect("rust add-textbox dry-run")),
-        scrub_created_at(go_stdout.expect("go add-textbox dry-run")),
+        scrub_created_at(baseline_stdout.expect("baseline add-textbox dry-run")),
         "add-textbox dry-run stdout"
     );
 
-    let go_out = temp_dir.join("go-add-textbox.pptx");
+    let baseline_out = temp_dir.join("baseline-add-textbox.pptx");
     let rust_out = temp_dir.join("rust-add-textbox.pptx");
-    let go_out_str = go_out.to_str().expect("go add-textbox output");
+    let baseline_out_str = baseline_out.to_str().expect("baseline add-textbox output");
     let rust_out_str = rust_out.to_str().expect("rust add-textbox output");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "add-textbox",
@@ -476,7 +491,7 @@ fn pptx_add_textbox_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--color",
         "FF0000",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -507,21 +522,24 @@ fn pptx_add_textbox_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "add-textbox saved exit");
-    assert_eq!(rust_stderr, go_stderr, "add-textbox saved stderr");
+    assert_eq!(rust_code, baseline_code, "add-textbox saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "add-textbox saved stderr");
     let rust_json = rust_stdout.expect("rust add-textbox saved");
     assert_eq!(
         scrub_created_at(scrub_path(rust_json.clone(), rust_out_str, "[OUT]")),
         scrub_created_at(scrub_path(
-            go_stdout.expect("go add-textbox saved"),
-            go_out_str,
+            baseline_stdout.expect("baseline add-textbox saved"),
+            baseline_out_str,
             "[OUT]"
         )),
         "add-textbox saved stdout"
     );
-    assert!(go_out.exists(), "Go add-textbox output missing");
+    assert!(
+        baseline_out.exists(),
+        "Rust baseline add-textbox output missing"
+    );
     assert!(rust_out.exists(), "Rust add-textbox output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
@@ -556,12 +574,12 @@ fn pptx_add_textbox_saved_readback_dry_run_and_errors_match_go_oracle() {
             "--dry-run",
         ],
     ] {
-        assert_go_rust_json_match(&args, "add-textbox representative error");
+        assert_baseline_rust_json_match(&args, "add-textbox representative error");
     }
 }
 
 #[test]
-fn pptx_place_image_saved_readback_dry_run_and_errors_match_go_oracle() {
+fn pptx_place_image_saved_readback_dry_run_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -596,21 +614,21 @@ fn pptx_place_image_saved_readback_dry_run_and_errors_match_go_oracle() {
         "Agent Image",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "place image dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "place image dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "place image dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "place image dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust place image dry-run"),
-        go_stdout.expect("go place image dry-run"),
+        baseline_stdout.expect("baseline place image dry-run"),
         "place image dry-run stdout"
     );
 
-    let go_out = temp_dir.join("go-place-image.pptx");
+    let baseline_out = temp_dir.join("baseline-place-image.pptx");
     let rust_out = temp_dir.join("rust-place-image.pptx");
-    let go_out_str = go_out.to_str().expect("go place image output");
+    let baseline_out_str = baseline_out.to_str().expect("baseline place image output");
     let rust_out_str = rust_out.to_str().expect("rust place image output");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "place",
@@ -631,7 +649,7 @@ fn pptx_place_image_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--name",
         "Agent Image",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -656,21 +674,24 @@ fn pptx_place_image_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "place image saved exit");
-    assert_eq!(rust_stderr, go_stderr, "place image saved stderr");
+    assert_eq!(rust_code, baseline_code, "place image saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "place image saved stderr");
     let rust_json = rust_stdout.expect("rust place image saved");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go place image saved"),
-            go_out_str,
+            baseline_stdout.expect("baseline place image saved"),
+            baseline_out_str,
             "[OUT]"
         ),
         "place image saved stdout"
     );
-    assert!(go_out.exists(), "Go place image output missing");
+    assert!(
+        baseline_out.exists(),
+        "Rust baseline place image output missing"
+    );
     assert!(rust_out.exists(), "Rust place image output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
@@ -719,12 +740,12 @@ fn pptx_place_image_saved_readback_dry_run_and_errors_match_go_oracle() {
             "--dry-run",
         ],
     ] {
-        assert_go_rust_json_match(&args, "place image representative error");
+        assert_baseline_rust_json_match(&args, "place image representative error");
     }
 }
 
 #[test]
-fn pptx_place_table_saved_dry_run_readback_and_errors_match_go_oracle() {
+fn pptx_place_table_saved_dry_run_readback_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -743,11 +764,11 @@ fn pptx_place_table_saved_dry_run_readback_and_errors_match_go_oracle() {
     fs::write(&json_data, r#"[["Region","Amount"],["South",55]]"#).expect("write json table data");
     let json_data_str = json_data.to_str().expect("json data path");
 
-    let go_out = temp_dir.join("go-place-table.pptx");
+    let baseline_out = temp_dir.join("baseline-place-table.pptx");
     let rust_out = temp_dir.join("rust-place-table.pptx");
-    let go_out_str = go_out.to_str().expect("go place table output");
+    let baseline_out_str = baseline_out.to_str().expect("baseline place table output");
     let rust_out_str = rust_out.to_str().expect("rust place table output");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "place",
@@ -769,7 +790,7 @@ fn pptx_place_table_saved_dry_run_readback_and_errors_match_go_oracle() {
         "--name",
         "Revenue Table",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -795,20 +816,31 @@ fn pptx_place_table_saved_dry_run_readback_and_errors_match_go_oracle() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "place table saved exit");
-    assert_eq!(rust_stderr, go_stderr, "place table saved stderr");
+    assert_eq!(rust_code, baseline_code, "place table saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "place table saved stderr");
     assert_eq!(
         rust_stdout.expect("rust place table stdout"),
-        go_stdout.expect("go place table stdout"),
+        baseline_stdout.expect("baseline place table stdout"),
         "place table saved stdout"
     );
-    assert!(go_out.exists(), "Go place table output missing");
+    assert!(
+        baseline_out.exists(),
+        "Rust baseline place table output missing"
+    );
     assert!(rust_out.exists(), "Rust place table output missing");
 
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
-        "--json", "pptx", "tables", "show", go_out_str, "--slide", "1", "--target", "table:1",
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
+        "--json",
+        "pptx",
+        "tables",
+        "show",
+        baseline_out_str,
+        "--slide",
+        "1",
+        "--target",
+        "table:1",
     ]);
     let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
         "--json",
@@ -821,9 +853,12 @@ fn pptx_place_table_saved_dry_run_readback_and_errors_match_go_oracle() {
         "--target",
         "table:1",
     ]);
-    assert_eq!(rust_show_code, go_show_code, "place table readback exit");
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_code, baseline_show_code,
+        "place table readback exit"
+    );
+    assert_eq!(
+        rust_show_stderr, baseline_show_stderr,
         "place table readback stderr"
     );
     assert_eq!(
@@ -833,8 +868,8 @@ fn pptx_place_table_saved_dry_run_readback_and_errors_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_show_stdout.expect("go place table readback"),
-            go_out_str,
+            baseline_show_stdout.expect("baseline place table readback"),
+            baseline_out_str,
             "[OUT]"
         ),
         "place table readback stdout"
@@ -865,13 +900,13 @@ fn pptx_place_table_saved_dry_run_readback_and_errors_match_go_oracle() {
         "2000000",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "place table dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "place table dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "place table dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "place table dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust place table dry-run"),
-        go_stdout.expect("go place table dry-run"),
+        baseline_stdout.expect("baseline place table dry-run"),
         "place table dry-run stdout"
     );
 
@@ -907,12 +942,12 @@ fn pptx_place_table_saved_dry_run_readback_and_errors_match_go_oracle() {
             "--dry-run",
         ],
     ] {
-        assert_go_rust_json_match(&args, "place table representative error");
+        assert_baseline_rust_json_match(&args, "place table representative error");
     }
 }
 
 #[test]
-fn pptx_place_table_from_xlsx_saved_dry_run_and_errors_match_go_oracle() {
+fn pptx_place_table_from_xlsx_saved_dry_run_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -931,11 +966,13 @@ fn pptx_place_table_from_xlsx_saved_dry_run_and_errors_match_go_oracle() {
     write_pptx_update_table_xlsx(&table_workbook);
     let table_workbook_str = table_workbook.to_str().expect("source table workbook path");
 
-    let go_out = temp_dir.join("go-place-table-from-xlsx.pptx");
+    let baseline_out = temp_dir.join("baseline-place-table-from-xlsx.pptx");
     let rust_out = temp_dir.join("rust-place-table-from-xlsx.pptx");
-    let go_out_str = go_out.to_str().expect("go place table xlsx output");
+    let baseline_out_str = baseline_out
+        .to_str()
+        .expect("baseline place table xlsx output");
     let rust_out_str = rust_out.to_str().expect("rust place table xlsx output");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "place",
@@ -963,7 +1000,7 @@ fn pptx_place_table_from_xlsx_saved_dry_run_and_errors_match_go_oracle() {
         "--name",
         "Revenue Table",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -995,22 +1032,28 @@ fn pptx_place_table_from_xlsx_saved_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "place table-from-xlsx saved exit");
-    assert_eq!(rust_stderr, go_stderr, "place table-from-xlsx saved stderr");
+    assert_eq!(rust_code, baseline_code, "place table-from-xlsx saved exit");
+    assert_eq!(
+        rust_stderr, baseline_stderr,
+        "place table-from-xlsx saved stderr"
+    );
     let rust_json = rust_stdout.expect("rust place table-from-xlsx stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go place table-from-xlsx stdout"),
-            go_out_str,
+            baseline_stdout.expect("baseline place table-from-xlsx stdout"),
+            baseline_out_str,
             "[OUT]"
         ),
         "place table-from-xlsx saved stdout"
     );
     assert_eq!(rust_json["destination"]["cells"][0][0], "=SUM(B1:C1)");
-    assert!(go_out.exists(), "Go place table-from-xlsx output missing");
+    assert!(
+        baseline_out.exists(),
+        "Rust baseline place table-from-xlsx output missing"
+    );
     assert!(
         rust_out.exists(),
         "Rust place table-from-xlsx output missing"
@@ -1040,16 +1083,19 @@ fn pptx_place_table_from_xlsx_saved_dry_run_and_errors_match_go_oracle() {
         "3000000",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "place table-from-xlsx dry-run exit");
     assert_eq!(
-        rust_stderr, go_stderr,
+        rust_code, baseline_code,
+        "place table-from-xlsx dry-run exit"
+    );
+    assert_eq!(
+        rust_stderr, baseline_stderr,
         "place table-from-xlsx dry-run stderr"
     );
     assert_eq!(
         rust_stdout.expect("rust place table-from-xlsx dry-run"),
-        go_stdout.expect("go place table-from-xlsx dry-run"),
+        baseline_stdout.expect("baseline place table-from-xlsx dry-run"),
         "place table-from-xlsx dry-run stdout"
     );
 
@@ -1132,22 +1178,22 @@ fn pptx_place_table_from_xlsx_saved_dry_run_and_errors_match_go_oracle() {
             bad_out_str,
         ],
     ] {
-        assert_go_rust_json_match(&args, "place table-from-xlsx representative error");
+        assert_baseline_rust_json_match(&args, "place table-from-xlsx representative error");
     }
 }
 
 include!("pptx/charts.rs");
 
 #[test]
-fn pptx_animations_list_json_and_missing_path_match_go_oracle() {
-    assert_go_rust_match(&[
+fn pptx_animations_list_json_and_missing_path_match_rust_baseline() {
+    assert_rust_baseline_match(&[
         "--json",
         "pptx",
         "animations",
         "list",
         "testdata/pptx/animations-synthetic/presentation.pptx",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "pptx",
         "animations",
@@ -1164,7 +1210,7 @@ fn pptx_animations_list_json_and_missing_path_match_go_oracle() {
             .as_nanos()
     ));
     let missing_str = missing.to_str().expect("missing path");
-    assert_go_rust_match(&["--json", "pptx", "animations", "list", missing_str]);
+    assert_rust_baseline_match(&["--json", "pptx", "animations", "list", missing_str]);
 }
 
 include!("pptx/template.rs");
@@ -1183,7 +1229,7 @@ fn assert_conformance_check_runs(path: &str, label: &str) {
 }
 
 #[test]
-fn pptx_xlsx_bindings_apply_saved_dry_run_and_errors_match_go_oracle() {
+fn pptx_xlsx_bindings_apply_saved_dry_run_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -1198,12 +1244,12 @@ fn pptx_xlsx_bindings_apply_saved_dry_run_and_errors_match_go_oracle() {
     let workbook = temp_dir.join("bindings.xlsx");
     write_xlsx_bindings_workbook(&workbook, "subtitle");
     let workbook_str = workbook.to_string_lossy().to_string();
-    let go_out = temp_dir.join("go-bindings.pptx");
+    let baseline_out = temp_dir.join("baseline-bindings.pptx");
     let rust_out = temp_dir.join("rust-bindings.pptx");
-    let go_out_str = go_out.to_str().expect("go bindings output");
+    let baseline_out_str = baseline_out.to_str().expect("baseline bindings output");
     let rust_out_str = rust_out.to_str().expect("rust bindings output");
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "xlsx-bindings",
@@ -1216,7 +1262,7 @@ fn pptx_xlsx_bindings_apply_saved_dry_run_and_errors_match_go_oracle() {
         "--range",
         "A1:P3",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -1233,18 +1279,24 @@ fn pptx_xlsx_bindings_apply_saved_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "xlsx-bindings apply saved exit");
-    assert_eq!(rust_stderr, go_stderr, "xlsx-bindings apply saved stderr");
-    let go_json = go_stdout.expect("go xlsx-bindings apply saved");
+    assert_eq!(rust_code, baseline_code, "xlsx-bindings apply saved exit");
+    assert_eq!(
+        rust_stderr, baseline_stderr,
+        "xlsx-bindings apply saved stderr"
+    );
+    let baseline_json = baseline_stdout.expect("baseline xlsx-bindings apply saved");
     let rust_json = rust_stdout.expect("rust xlsx-bindings apply saved");
     assert_eq!(
         scrub_paths(rust_json.clone(), &[(rust_out_str, "[OUT]")]),
-        scrub_paths(go_json, &[(go_out_str, "[OUT]")]),
+        scrub_paths(baseline_json, &[(baseline_out_str, "[OUT]")]),
         "xlsx-bindings apply saved stdout"
     );
-    assert!(go_out.exists(), "Go xlsx-bindings output missing");
+    assert!(
+        baseline_out.exists(),
+        "Rust baseline xlsx-bindings output missing"
+    );
     assert!(rust_out.exists(), "Rust xlsx-bindings output missing");
     let (validate_code, validate_stdout, validate_stderr) =
         run_ooxml(&["--json", "validate", "--strict", rust_out_str]);
@@ -1258,12 +1310,15 @@ fn pptx_xlsx_bindings_apply_saved_dry_run_and_errors_match_go_oracle() {
         Value::Bool(true)
     );
 
-    let (go_read_code, go_read_stdout, go_read_stderr) =
-        run_go_ooxml(&["--json", "pptx", "extract", "text", go_out_str]);
+    let (baseline_read_code, baseline_read_stdout, baseline_read_stderr) =
+        run_ooxml_baseline(&["--json", "pptx", "extract", "text", baseline_out_str]);
     let (rust_read_code, rust_read_stdout, rust_read_stderr) =
         run_ooxml(&["--json", "pptx", "extract", "text", rust_out_str]);
-    assert_eq!(rust_read_code, go_read_code, "bindings readback exit");
-    assert_eq!(rust_read_stderr, go_read_stderr, "bindings readback stderr");
+    assert_eq!(rust_read_code, baseline_read_code, "bindings readback exit");
+    assert_eq!(
+        rust_read_stderr, baseline_read_stderr,
+        "bindings readback stderr"
+    );
     assert_eq!(
         scrub_path(
             rust_read_stdout.expect("rust bindings readback"),
@@ -1271,8 +1326,8 @@ fn pptx_xlsx_bindings_apply_saved_dry_run_and_errors_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_read_stdout.expect("go bindings readback"),
-            go_out_str,
+            baseline_read_stdout.expect("baseline bindings readback"),
+            baseline_out_str,
             "[OUT]"
         ),
         "bindings readback stdout"
@@ -1292,17 +1347,20 @@ fn pptx_xlsx_bindings_apply_saved_dry_run_and_errors_match_go_oracle() {
         "A1:P3",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "xlsx-bindings apply dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "xlsx-bindings apply dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "xlsx-bindings apply dry-run exit");
+    assert_eq!(
+        rust_stderr, baseline_stderr,
+        "xlsx-bindings apply dry-run stderr"
+    );
     assert_eq!(
         rust_stdout.expect("rust xlsx-bindings dry-run"),
-        go_stdout.expect("go xlsx-bindings dry-run"),
+        baseline_stdout.expect("baseline xlsx-bindings dry-run"),
         "xlsx-bindings apply dry-run stdout"
     );
 
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &[
             "--json",
             "pptx",
@@ -1401,7 +1459,7 @@ fn inline_str_cell(cell: &str, value: &str) -> String {
 }
 
 #[test]
-fn pptx_animations_mutations_match_go_oracle_and_validate() {
+fn pptx_animations_mutations_match_rust_baseline_and_validate() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -1427,13 +1485,13 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
         "appear",
         "--dry-run",
     ];
-    assert_go_rust_match(&dry_run_args);
+    assert_rust_baseline_match(&dry_run_args);
 
-    let go_s1 = temp_dir.join("go-s1.pptx");
-    let go_s2 = temp_dir.join("go-s2.pptx");
-    let go_s3 = temp_dir.join("go-s3.pptx");
-    let go_reordered = temp_dir.join("go-reordered.pptx");
-    let go_removed = temp_dir.join("go-removed.pptx");
+    let baseline_s1 = temp_dir.join("baseline-s1.pptx");
+    let baseline_s2 = temp_dir.join("baseline-s2.pptx");
+    let baseline_s3 = temp_dir.join("baseline-s3.pptx");
+    let baseline_reordered = temp_dir.join("baseline-reordered.pptx");
+    let baseline_removed = temp_dir.join("baseline-removed.pptx");
     let rust_s1 = temp_dir.join("rust-s1.pptx");
     let rust_s2 = temp_dir.join("rust-s2.pptx");
     let rust_s3 = temp_dir.join("rust-s3.pptx");
@@ -1442,14 +1500,14 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
 
     let mut input_go = fixture.to_string();
     let mut input_rust = fixture.to_string();
-    for (effect, go_out, rust_out) in [
-        ("appear", &go_s1, &rust_s1),
-        ("wipe", &go_s2, &rust_s2),
-        ("fade", &go_s3, &rust_s3),
+    for (effect, baseline_out, rust_out) in [
+        ("appear", &baseline_s1, &rust_s1),
+        ("wipe", &baseline_s2, &rust_s2),
+        ("fade", &baseline_s3, &rust_s3),
     ] {
-        let go_out_str = go_out.to_str().expect("go animation output");
+        let baseline_out_str = baseline_out.to_str().expect("baseline animation output");
         let rust_out_str = rust_out.to_str().expect("rust animation output");
-        let mut go_args = vec![
+        let mut baseline_args = vec![
             "--json",
             "pptx",
             "animations",
@@ -1462,7 +1520,7 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
             "--effect",
             effect,
             "--out",
-            go_out_str,
+            baseline_out_str,
         ];
         let mut rust_args = vec![
             "--json",
@@ -1480,13 +1538,13 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
             rust_out_str,
         ];
         if effect == "wipe" {
-            go_args.extend(["--direction", "up"]);
+            baseline_args.extend(["--direction", "up"]);
             rust_args.extend(["--direction", "up"]);
         }
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-        assert_eq!(rust_code, go_code, "add {effect} exit");
-        assert_eq!(rust_stderr, go_stderr, "add {effect} stderr");
+        assert_eq!(rust_code, baseline_code, "add {effect} exit");
+        assert_eq!(rust_stderr, baseline_stderr, "add {effect} stderr");
         let rust_json = rust_stdout.expect("rust add stdout");
         assert_eq!(
             scrub_paths(
@@ -1494,22 +1552,22 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
                 &[(rust_out_str, "[OUT]"), (input_rust.as_str(), "[IN]")]
             ),
             scrub_paths(
-                go_stdout.expect("go add stdout"),
-                &[(go_out_str, "[OUT]"), (input_go.as_str(), "[IN]")]
+                baseline_stdout.expect("baseline add stdout"),
+                &[(baseline_out_str, "[OUT]"), (input_go.as_str(), "[IN]")]
             ),
             "add {effect} stdout"
         );
         assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
-        input_go = go_out_str.to_string();
+        input_go = baseline_out_str.to_string();
         input_rust = rust_out_str.to_string();
     }
 
-    let (go_list_code, go_list_stdout, go_list_stderr) = run_go_ooxml(&[
+    let (baseline_list_code, baseline_list_stdout, baseline_list_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "animations",
         "list",
-        go_s3.to_str().expect("go s3"),
+        baseline_s3.to_str().expect("baseline s3"),
     ]);
     let (rust_list_code, rust_list_stdout, rust_list_stderr) = run_ooxml(&[
         "--json",
@@ -1518,11 +1576,14 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
         "list",
         rust_s3.to_str().expect("rust s3"),
     ]);
-    assert_eq!(rust_list_code, go_list_code, "list after add exit");
-    assert_eq!(rust_list_stderr, go_list_stderr, "list after add stderr");
+    assert_eq!(rust_list_code, baseline_list_code, "list after add exit");
+    assert_eq!(
+        rust_list_stderr, baseline_list_stderr,
+        "list after add stderr"
+    );
     assert_eq!(
         rust_list_stdout.clone().expect("rust list after add"),
-        go_list_stdout.expect("go list after add"),
+        baseline_list_stdout.expect("baseline list after add"),
         "list after add stdout"
     );
     let list_json = rust_list_stdout.expect("rust list json");
@@ -1539,20 +1600,22 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
     .collect::<Vec<_>>()
     .join(",");
 
-    let go_reordered_str = go_reordered.to_str().expect("go reorder output");
+    let baseline_reordered_str = baseline_reordered
+        .to_str()
+        .expect("baseline reorder output");
     let rust_reordered_str = rust_reordered.to_str().expect("rust reorder output");
-    let go_reorder_args = [
+    let baseline_reorder_args = [
         "--json",
         "pptx",
         "animations",
         "reorder",
-        go_s3.to_str().expect("go s3 path"),
+        baseline_s3.to_str().expect("baseline s3 path"),
         "--slide",
         "1",
         "--order",
         order.as_str(),
         "--out",
-        go_reordered_str,
+        baseline_reordered_str,
     ];
     let rust_reorder_args = [
         "--json",
@@ -1567,10 +1630,11 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
         "--out",
         rust_reordered_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_reorder_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&baseline_reorder_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_reorder_args);
-    assert_eq!(rust_code, go_code, "reorder exit");
-    assert_eq!(rust_stderr, go_stderr, "reorder stderr");
+    assert_eq!(rust_code, baseline_code, "reorder exit");
+    assert_eq!(rust_stderr, baseline_stderr, "reorder stderr");
     let rust_reorder_json = rust_stdout.expect("rust reorder stdout");
     assert_eq!(
         scrub_paths(
@@ -1581,10 +1645,10 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
             ]
         ),
         scrub_paths(
-            go_stdout.expect("go reorder stdout"),
+            baseline_stdout.expect("baseline reorder stdout"),
             &[
-                (go_reordered_str, "[OUT]"),
-                (go_s3.to_str().expect("go s3 scrub"), "[IN]"),
+                (baseline_reordered_str, "[OUT]"),
+                (baseline_s3.to_str().expect("baseline s3 scrub"), "[IN]"),
             ]
         ),
         "reorder stdout"
@@ -1600,20 +1664,20 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
         .as_i64()
         .expect("middle effect id")
         .to_string();
-    let go_removed_str = go_removed.to_str().expect("go removed output");
+    let baseline_removed_str = baseline_removed.to_str().expect("baseline removed output");
     let rust_removed_str = rust_removed.to_str().expect("rust removed output");
-    let go_remove_args = [
+    let baseline_remove_args = [
         "--json",
         "pptx",
         "animations",
         "remove",
-        go_reordered_str,
+        baseline_reordered_str,
         "--slide",
         "1",
         "--effect-id",
         remove_id.as_str(),
         "--out",
-        go_removed_str,
+        baseline_removed_str,
     ];
     let rust_remove_args = [
         "--json",
@@ -1628,10 +1692,11 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
         "--out",
         rust_removed_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_remove_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&baseline_remove_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_remove_args);
-    assert_eq!(rust_code, go_code, "remove exit");
-    assert_eq!(rust_stderr, go_stderr, "remove stderr");
+    assert_eq!(rust_code, baseline_code, "remove exit");
+    assert_eq!(rust_stderr, baseline_stderr, "remove stderr");
     let rust_remove_json = rust_stdout.expect("rust remove stdout");
     assert_eq!(
         scrub_paths(
@@ -1639,8 +1704,11 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
             &[(rust_removed_str, "[OUT]"), (rust_reordered_str, "[IN]")]
         ),
         scrub_paths(
-            go_stdout.expect("go remove stdout"),
-            &[(go_removed_str, "[OUT]"), (go_reordered_str, "[IN]")]
+            baseline_stdout.expect("baseline remove stdout"),
+            &[
+                (baseline_removed_str, "[OUT]"),
+                (baseline_reordered_str, "[IN]")
+            ]
         ),
         "remove stdout"
     );
@@ -1659,7 +1727,7 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
         "9999",
         "--dry-run",
     ];
-    assert_go_rust_match(&missing_args);
+    assert_rust_baseline_match(&missing_args);
 
     let prune_dry_run = [
         "--json",
@@ -1669,13 +1737,13 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
         "testdata/pptx/animations-synthetic/presentation.pptx",
         "--dry-run",
     ];
-    assert_go_rust_match(&prune_dry_run);
+    assert_rust_baseline_match(&prune_dry_run);
 
-    let go_pruned = temp_dir.join("go-pruned.pptx");
+    let baseline_pruned = temp_dir.join("baseline-pruned.pptx");
     let rust_pruned = temp_dir.join("rust-pruned.pptx");
-    let go_pruned_str = go_pruned.to_str().expect("go pruned output");
+    let baseline_pruned_str = baseline_pruned.to_str().expect("baseline pruned output");
     let rust_pruned_str = rust_pruned.to_str().expect("rust pruned output");
-    let go_prune_args = [
+    let baseline_prune_args = [
         "--json",
         "pptx",
         "animations",
@@ -1684,7 +1752,7 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
         "--slide",
         "4",
         "--out",
-        go_pruned_str,
+        baseline_pruned_str,
     ];
     let rust_prune_args = [
         "--json",
@@ -1697,40 +1765,47 @@ fn pptx_animations_mutations_match_go_oracle_and_validate() {
         "--out",
         rust_pruned_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_prune_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&baseline_prune_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_prune_args);
-    assert_eq!(rust_code, go_code, "prune saved exit");
-    assert_eq!(rust_stderr, go_stderr, "prune saved stderr");
+    assert_eq!(rust_code, baseline_code, "prune saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "prune saved stderr");
     let rust_prune_json = rust_stdout.expect("rust prune stdout");
     assert_eq!(
         scrub_path(rust_prune_json.clone(), rust_pruned_str, "[OUT]"),
-        scrub_path(go_stdout.expect("go prune stdout"), go_pruned_str, "[OUT]"),
+        scrub_path(
+            baseline_stdout.expect("baseline prune stdout"),
+            baseline_pruned_str,
+            "[OUT]"
+        ),
         "prune saved stdout"
     );
     assert_rust_emitted_ooxml_command_succeeds(&rust_prune_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_prune_json, "validateCommand");
 
-    let (go_code, go_stdout, go_stderr) =
-        run_go_ooxml(&["--json", "pptx", "animations", "list", go_pruned_str]);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "pptx", "animations", "list", baseline_pruned_str]);
     let (rust_code, rust_stdout, rust_stderr) =
         run_ooxml(&["--json", "pptx", "animations", "list", rust_pruned_str]);
-    assert_eq!(rust_code, go_code, "prune readback exit");
-    assert_eq!(rust_stderr, go_stderr, "prune readback stderr");
+    assert_eq!(rust_code, baseline_code, "prune readback exit");
+    assert_eq!(rust_stderr, baseline_stderr, "prune readback stderr");
     assert_eq!(
         rust_stdout.expect("rust prune readback"),
-        go_stdout.expect("go prune readback"),
+        baseline_stdout.expect("baseline prune readback"),
         "prune readback stdout"
     );
 }
 
-fn assert_pptx_chart_copy_style_matches_go(temp_dir: &Path) {
+fn assert_pptx_chart_copy_style_matches_rust_baseline(temp_dir: &Path) {
     let fixture = "testdata/pptx/chart-simple/presentation.pptx";
     let command = "copy-style";
-    let go_out = temp_dir.join("go-copy-style.pptx");
+    let baseline_out = temp_dir.join("baseline-copy-style.pptx");
     let rust_out = temp_dir.join("rust-copy-style.pptx");
-    let go_out_str = go_out.to_str().expect("go copy-style output path");
+    let baseline_out_str = baseline_out
+        .to_str()
+        .expect("baseline copy-style output path");
     let rust_out_str = rust_out.to_str().expect("rust copy-style output path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "charts",
@@ -1747,7 +1822,7 @@ fn assert_pptx_chart_copy_style_matches_go(temp_dir: &Path) {
         "--expect-series-count",
         "1",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -1768,31 +1843,34 @@ fn assert_pptx_chart_copy_style_matches_go(temp_dir: &Path) {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "copy-style exit");
-    assert_eq!(rust_stderr, go_stderr, "copy-style stderr");
+    assert_eq!(rust_code, baseline_code, "copy-style exit");
+    assert_eq!(rust_stderr, baseline_stderr, "copy-style stderr");
     let rust_json = rust_stdout.expect("rust copy-style stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go copy-style stdout"),
-            go_out_str,
+            baseline_stdout.expect("baseline copy-style stdout"),
+            baseline_out_str,
             "[OUT]"
         ),
         "copy-style stdout"
     );
-    assert!(go_out.exists(), "Go copy-style output missing");
+    assert!(
+        baseline_out.exists(),
+        "Rust baseline copy-style output missing"
+    );
     assert!(rust_out.exists(), "Rust copy-style output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "chartShowCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let go_show_args = [
+    let baseline_show_args = [
         "--json",
         "pptx",
         "charts",
         "show",
-        go_out_str,
+        baseline_out_str,
         "--slide",
         "2",
         "--chart",
@@ -1809,11 +1887,15 @@ fn assert_pptx_chart_copy_style_matches_go(temp_dir: &Path) {
         "--chart",
         "part:/ppt/charts/chart2.xml",
     ];
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&go_show_args);
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) =
+        run_ooxml_baseline(&baseline_show_args);
     let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&rust_show_args);
-    assert_eq!(rust_show_code, go_show_code, "copy-style readback exit");
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_code, baseline_show_code,
+        "copy-style readback exit"
+    );
+    assert_eq!(
+        rust_show_stderr, baseline_show_stderr,
         "copy-style readback stderr"
     );
     assert_eq!(
@@ -1823,57 +1905,62 @@ fn assert_pptx_chart_copy_style_matches_go(temp_dir: &Path) {
             "[OUT]"
         ),
         scrub_path(
-            go_show_stdout.expect("go copy-style readback"),
-            go_out_str,
+            baseline_show_stdout.expect("baseline copy-style readback"),
+            baseline_out_str,
             "[OUT]"
         ),
         "copy-style readback stdout"
     );
 }
 
-fn assert_pptx_chart_saved_mutation_matches_go(
+fn assert_pptx_chart_saved_mutation_matches_rust_baseline(
     temp_dir: &Path,
     command: &str,
     extra_args: &[&str],
 ) {
     let fixture = "testdata/pptx/chart-simple/presentation.pptx";
-    let go_out = temp_dir.join(format!("go-{command}.pptx"));
+    let baseline_out = temp_dir.join(format!("baseline-{command}.pptx"));
     let rust_out = temp_dir.join(format!("rust-{command}.pptx"));
-    let go_out_str = go_out.to_str().expect("go chart mutation output path");
+    let baseline_out_str = baseline_out
+        .to_str()
+        .expect("baseline chart mutation output path");
     let rust_out_str = rust_out.to_str().expect("rust chart mutation output path");
 
-    let mut go_args = vec!["--json", "pptx", "charts", command, fixture];
-    go_args.extend_from_slice(extra_args);
-    go_args.extend_from_slice(&["--out", go_out_str]);
+    let mut baseline_args = vec!["--json", "pptx", "charts", command, fixture];
+    baseline_args.extend_from_slice(extra_args);
+    baseline_args.extend_from_slice(&["--out", baseline_out_str]);
     let mut rust_args = vec!["--json", "pptx", "charts", command, fixture];
     rust_args.extend_from_slice(extra_args);
     rust_args.extend_from_slice(&["--out", rust_out_str]);
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "{command} exit");
-    assert_eq!(rust_stderr, go_stderr, "{command} stderr");
+    assert_eq!(rust_code, baseline_code, "{command} exit");
+    assert_eq!(rust_stderr, baseline_stderr, "{command} stderr");
     let rust_json = rust_stdout.unwrap_or_else(|| panic!("rust {command} stdout"));
     assert_eq!(
         scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.unwrap_or_else(|| panic!("go {command} stdout")),
-            go_out_str,
+            baseline_stdout.unwrap_or_else(|| panic!("baseline {command} stdout")),
+            baseline_out_str,
             "[OUT]"
         ),
         "{command} stdout"
     );
-    assert!(go_out.exists(), "Go {command} output missing");
+    assert!(
+        baseline_out.exists(),
+        "Rust baseline {command} output missing"
+    );
     assert!(rust_out.exists(), "Rust {command} output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "chartShowCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let go_show_args = [
+    let baseline_show_args = [
         "--json",
         "pptx",
         "charts",
         "show",
-        go_out_str,
+        baseline_out_str,
         "--slide",
         "1",
         "--chart",
@@ -1890,11 +1977,15 @@ fn assert_pptx_chart_saved_mutation_matches_go(
         "--chart",
         "part:/ppt/charts/chart1.xml",
     ];
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&go_show_args);
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) =
+        run_ooxml_baseline(&baseline_show_args);
     let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&rust_show_args);
-    assert_eq!(rust_show_code, go_show_code, "{command} readback exit");
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_code, baseline_show_code,
+        "{command} readback exit"
+    );
+    assert_eq!(
+        rust_show_stderr, baseline_show_stderr,
         "{command} readback stderr"
     );
     assert_eq!(
@@ -1904,8 +1995,8 @@ fn assert_pptx_chart_saved_mutation_matches_go(
             "[OUT]"
         ),
         scrub_path(
-            go_show_stdout.unwrap_or_else(|| panic!("go {command} readback")),
-            go_out_str,
+            baseline_show_stdout.unwrap_or_else(|| panic!("baseline {command} readback")),
+            baseline_out_str,
             "[OUT]"
         ),
         "{command} readback stdout"
@@ -1913,7 +2004,7 @@ fn assert_pptx_chart_saved_mutation_matches_go(
 }
 
 #[test]
-fn frozen_pptx_mutation_and_validate_match_go_baseline() {
+fn frozen_pptx_mutation_and_validate_match_legacy_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-contract-{}", std::process::id()));
     std::fs::create_dir_all(&temp_dir).expect("temp dir");
@@ -2021,7 +2112,7 @@ include!("pptx/replace.rs");
 include!("pptx/notes.rs");
 
 #[test]
-fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_oracle() {
+fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -2046,21 +2137,23 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
         "--include-text",
         "--include-bounds",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&get_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&get_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&get_args);
-    assert_eq!(rust_code, go_code, "shapes get exit");
-    assert_eq!(rust_stderr, go_stderr, "shapes get stderr");
+    assert_eq!(rust_code, baseline_code, "shapes get exit");
+    assert_eq!(rust_stderr, baseline_stderr, "shapes get stderr");
     assert_eq!(
         rust_stdout.expect("rust shapes get stdout"),
-        go_stdout.expect("go shapes get stdout"),
+        baseline_stdout.expect("baseline shapes get stdout"),
         "shapes get stdout"
     );
 
-    let go_bounds_out = temp_dir.join("go-set-bounds.pptx");
+    let baseline_bounds_out = temp_dir.join("baseline-set-bounds.pptx");
     let rust_bounds_out = temp_dir.join("rust-set-bounds.pptx");
-    let go_bounds_out_str = go_bounds_out.to_str().expect("go set-bounds path");
+    let baseline_bounds_out_str = baseline_bounds_out
+        .to_str()
+        .expect("baseline set-bounds path");
     let rust_bounds_out_str = rust_bounds_out.to_str().expect("rust set-bounds path");
-    let go_set_args = [
+    let baseline_set_args = [
         "--json",
         "pptx",
         "shapes",
@@ -2073,7 +2166,7 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
         "--bounds",
         "111111,222222,333333,444444",
         "--out",
-        go_bounds_out_str,
+        baseline_bounds_out_str,
     ];
     let rust_set_args = [
         "--json",
@@ -2090,31 +2183,34 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
         "--out",
         rust_bounds_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_set_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_set_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_set_args);
-    assert_eq!(rust_code, go_code, "set-bounds saved exit");
-    assert_eq!(rust_stderr, go_stderr, "set-bounds saved stderr");
+    assert_eq!(rust_code, baseline_code, "set-bounds saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "set-bounds saved stderr");
     let rust_set_json = rust_stdout.expect("rust set-bounds stdout");
     assert_eq!(
         scrub_path(rust_set_json.clone(), rust_bounds_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go set-bounds stdout"),
-            go_bounds_out_str,
+            baseline_stdout.expect("baseline set-bounds stdout"),
+            baseline_bounds_out_str,
             "[OUT]"
         ),
         "set-bounds saved stdout"
     );
-    assert!(go_bounds_out.exists(), "Go set-bounds output missing");
+    assert!(
+        baseline_bounds_out.exists(),
+        "Rust baseline set-bounds output missing"
+    );
     assert!(rust_bounds_out.exists(), "Rust set-bounds output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_set_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_set_json, "validateCommand");
 
-    let (go_read_code, go_read_stdout, go_read_stderr) = run_go_ooxml(&[
+    let (baseline_read_code, baseline_read_stdout, baseline_read_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "shapes",
         "get",
-        go_bounds_out_str,
+        baseline_bounds_out_str,
         "--slide",
         "2",
         "--target",
@@ -2135,9 +2231,12 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
         "--include-text",
         "--include-bounds",
     ]);
-    assert_eq!(rust_read_code, go_read_code, "set-bounds readback exit");
     assert_eq!(
-        rust_read_stderr, go_read_stderr,
+        rust_read_code, baseline_read_code,
+        "set-bounds readback exit"
+    );
+    assert_eq!(
+        rust_read_stderr, baseline_read_stderr,
         "set-bounds readback stderr"
     );
     assert_eq!(
@@ -2147,8 +2246,8 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
             "[OUT]"
         ),
         scrub_path(
-            go_read_stdout.expect("go set-bounds readback"),
-            go_bounds_out_str,
+            baseline_read_stdout.expect("baseline set-bounds readback"),
+            baseline_bounds_out_str,
             "[OUT]"
         ),
         "set-bounds readback stdout"
@@ -2168,21 +2267,21 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
         "555555,666666,777777,888888",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&set_dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&set_dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&set_dry_run_args);
-    assert_eq!(rust_code, go_code, "set-bounds dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "set-bounds dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "set-bounds dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "set-bounds dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust set-bounds dry-run stdout"),
-        go_stdout.expect("go set-bounds dry-run stdout"),
+        baseline_stdout.expect("baseline set-bounds dry-run stdout"),
         "set-bounds dry-run stdout"
     );
 
-    let go_delete_out = temp_dir.join("go-delete-shape.pptx");
+    let baseline_delete_out = temp_dir.join("baseline-delete-shape.pptx");
     let rust_delete_out = temp_dir.join("rust-delete-shape.pptx");
-    let go_delete_out_str = go_delete_out.to_str().expect("go delete path");
+    let baseline_delete_out_str = baseline_delete_out.to_str().expect("baseline delete path");
     let rust_delete_out_str = rust_delete_out.to_str().expect("rust delete path");
-    let go_delete_args = [
+    let baseline_delete_args = [
         "--json",
         "pptx",
         "shapes",
@@ -2193,7 +2292,7 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
         "--target",
         "title",
         "--out",
-        go_delete_out_str,
+        baseline_delete_out_str,
     ];
     let rust_delete_args = [
         "--json",
@@ -2208,10 +2307,11 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
         "--out",
         rust_delete_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_delete_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&baseline_delete_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_delete_args);
-    assert_eq!(rust_code, go_code, "delete saved exit");
-    assert_eq!(rust_stderr, go_stderr, "delete saved stderr");
+    assert_eq!(rust_code, baseline_code, "delete saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "delete saved stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust delete stdout"),
@@ -2219,13 +2319,16 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
             "[OUT]"
         ),
         scrub_path(
-            go_stdout.expect("go delete stdout"),
-            go_delete_out_str,
+            baseline_stdout.expect("baseline delete stdout"),
+            baseline_delete_out_str,
             "[OUT]"
         ),
         "delete saved stdout"
     );
-    assert!(go_delete_out.exists(), "Go delete output missing");
+    assert!(
+        baseline_delete_out.exists(),
+        "Rust baseline delete output missing"
+    );
     assert!(rust_delete_out.exists(), "Rust delete output missing");
     let (validate_code, validate_stdout, validate_stderr) =
         run_ooxml(&["--json", "validate", "--strict", rust_delete_out_str]);
@@ -2233,12 +2336,12 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
     assert_eq!(validate_stderr, None, "delete strict validate stderr");
     assert!(validate_stdout.is_some(), "delete strict validate stdout");
 
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "shapes",
         "show",
-        go_delete_out_str,
+        baseline_delete_out_str,
         "--slide",
         "2",
         "--include-text",
@@ -2255,9 +2358,12 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
         "--include-text",
         "--include-bounds",
     ]);
-    assert_eq!(rust_show_code, go_show_code, "delete readback show exit");
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_code, baseline_show_code,
+        "delete readback show exit"
+    );
+    assert_eq!(
+        rust_show_stderr, baseline_show_stderr,
         "delete readback show stderr"
     );
     assert_eq!(
@@ -2267,8 +2373,8 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
             "[OUT]"
         ),
         scrub_path(
-            go_show_stdout.expect("go delete readback show"),
-            go_delete_out_str,
+            baseline_show_stdout.expect("baseline delete readback show"),
+            baseline_delete_out_str,
             "[OUT]"
         ),
         "delete readback show stdout"
@@ -2286,13 +2392,14 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
         "title",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&delete_dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&delete_dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&delete_dry_run_args);
-    assert_eq!(rust_code, go_code, "delete dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "delete dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "delete dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "delete dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust delete dry-run stdout"),
-        go_stdout.expect("go delete dry-run stdout"),
+        baseline_stdout.expect("baseline delete dry-run stdout"),
         "delete dry-run stdout"
     );
 
@@ -2342,11 +2449,17 @@ fn pptx_shapes_get_set_bounds_delete_saved_readback_dry_run_and_errors_match_go_
         ],
     ];
     for args in error_cases {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-        assert_eq!(rust_code, go_code, "shape error exit for {args:?}");
-        assert_eq!(rust_stdout, go_stdout, "shape error stdout for {args:?}");
-        assert_eq!(rust_stderr, go_stderr, "shape error stderr for {args:?}");
+        assert_eq!(rust_code, baseline_code, "shape error exit for {args:?}");
+        assert_eq!(
+            rust_stdout, baseline_stdout,
+            "shape error stdout for {args:?}"
+        );
+        assert_eq!(
+            rust_stderr, baseline_stderr,
+            "shape error stderr for {args:?}"
+        );
     }
 }
 
@@ -2450,15 +2563,18 @@ fn pptx_shapes_delete_nested_group_child_preserves_siblings_and_conforms() {
     );
 
     let conformance_args = ["--json", "conformance", "check", rust_delete_out_str];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&conformance_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&conformance_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&conformance_args);
-    assert_eq!(rust_code, go_code, "nested group delete conformance exit");
     assert_eq!(
-        rust_stderr, go_stderr,
+        rust_code, baseline_code,
+        "nested group delete conformance exit"
+    );
+    assert_eq!(
+        rust_stderr, baseline_stderr,
         "nested group delete conformance stderr"
     );
     assert_eq!(
-        rust_stdout, go_stdout,
+        rust_stdout, baseline_stdout,
         "nested group delete conformance stdout"
     );
 }
@@ -2525,7 +2641,7 @@ fn grouped_shapes_slide_xml() -> &'static str {
 }
 
 #[test]
-fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
+fn pptx_layouts_mutations_saved_readback_and_dry_run_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -2538,11 +2654,11 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
 
     let fixture = "testdata/pptx/title-content/presentation.pptx";
 
-    let go_rename = temp_dir.join("go-rename.pptx");
+    let baseline_rename = temp_dir.join("baseline-rename.pptx");
     let rust_rename = temp_dir.join("rust-rename.pptx");
-    let go_rename_str = go_rename.to_str().expect("go rename path");
+    let baseline_rename_str = baseline_rename.to_str().expect("baseline rename path");
     let rust_rename_str = rust_rename.to_str().expect("rust rename path");
-    let go_rename_args = [
+    let baseline_rename_args = [
         "--json",
         "pptx",
         "layouts",
@@ -2553,7 +2669,7 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "--name",
         "RustLayoutRenamed",
         "--out",
-        go_rename_str,
+        baseline_rename_str,
     ];
     let rust_rename_args = [
         "--json",
@@ -2568,31 +2684,35 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "--out",
         rust_rename_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_rename_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&baseline_rename_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_rename_args);
-    assert_eq!(rust_code, go_code, "layout rename exit");
-    assert_eq!(rust_stderr, go_stderr, "layout rename stderr");
+    assert_eq!(rust_code, baseline_code, "layout rename exit");
+    assert_eq!(rust_stderr, baseline_stderr, "layout rename stderr");
     let rust_rename_json = rust_stdout.expect("rust layout rename stdout");
     assert_eq!(
         scrub_path(rust_rename_json.clone(), rust_rename_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go layout rename stdout"),
-            go_rename_str,
+            baseline_stdout.expect("baseline layout rename stdout"),
+            baseline_rename_str,
             "[OUT]"
         ),
         "layout rename stdout"
     );
-    assert!(go_rename.exists(), "Go layout rename output missing");
+    assert!(
+        baseline_rename.exists(),
+        "Rust baseline layout rename output missing"
+    );
     assert!(rust_rename.exists(), "Rust layout rename output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_rename_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_rename_json, "validateCommand");
 
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "layouts",
         "show",
-        go_rename_str,
+        baseline_rename_str,
         "--layout",
         "RustLayoutRenamed",
     ]);
@@ -2605,22 +2725,25 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "--layout",
         "RustLayoutRenamed",
     ]);
-    assert_eq!(rust_show_code, go_show_code, "layout rename readback exit");
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_code, baseline_show_code,
+        "layout rename readback exit"
+    );
+    assert_eq!(
+        rust_show_stderr, baseline_show_stderr,
         "layout rename readback stderr"
     );
     assert_eq!(
         rust_show_stdout.expect("rust layout rename readback"),
-        go_show_stdout.expect("go layout rename readback"),
+        baseline_show_stdout.expect("baseline layout rename readback"),
         "layout rename readback stdout"
     );
 
-    let go_bounds = temp_dir.join("go-bounds.pptx");
+    let baseline_bounds = temp_dir.join("baseline-bounds.pptx");
     let rust_bounds = temp_dir.join("rust-bounds.pptx");
-    let go_bounds_str = go_bounds.to_str().expect("go bounds path");
+    let baseline_bounds_str = baseline_bounds.to_str().expect("baseline bounds path");
     let rust_bounds_str = rust_bounds.to_str().expect("rust bounds path");
-    let go_bounds_args = [
+    let baseline_bounds_args = [
         "--json",
         "pptx",
         "layouts",
@@ -2633,7 +2756,7 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "--bounds",
         "111111,222222,333333,444444",
         "--out",
-        go_bounds_str,
+        baseline_bounds_str,
     ];
     let rust_bounds_args = [
         "--json",
@@ -2650,28 +2773,29 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "--out",
         rust_bounds_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_bounds_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&baseline_bounds_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_bounds_args);
-    assert_eq!(rust_code, go_code, "layout set-bounds exit");
-    assert_eq!(rust_stderr, go_stderr, "layout set-bounds stderr");
+    assert_eq!(rust_code, baseline_code, "layout set-bounds exit");
+    assert_eq!(rust_stderr, baseline_stderr, "layout set-bounds stderr");
     let rust_bounds_json = rust_stdout.expect("rust layout set-bounds stdout");
     assert_eq!(
         scrub_path(rust_bounds_json.clone(), rust_bounds_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go layout set-bounds stdout"),
-            go_bounds_str,
+            baseline_stdout.expect("baseline layout set-bounds stdout"),
+            baseline_bounds_str,
             "[OUT]"
         ),
         "layout set-bounds stdout"
     );
     assert_rust_emitted_ooxml_command_succeeds(&rust_bounds_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_bounds_json, "validateCommand");
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "layouts",
         "show",
-        go_bounds_str,
+        baseline_bounds_str,
         "--layout",
         "2",
     ]);
@@ -2685,24 +2809,24 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "2",
     ]);
     assert_eq!(
-        rust_show_code, go_show_code,
+        rust_show_code, baseline_show_code,
         "layout set-bounds readback exit"
     );
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_stderr, baseline_show_stderr,
         "layout set-bounds readback stderr"
     );
     assert_eq!(
         rust_show_stdout.expect("rust layout set-bounds readback"),
-        go_show_stdout.expect("go layout set-bounds readback"),
+        baseline_show_stdout.expect("baseline layout set-bounds readback"),
         "layout set-bounds readback stdout"
     );
 
-    let go_delete = temp_dir.join("go-delete.pptx");
+    let baseline_delete = temp_dir.join("baseline-delete.pptx");
     let rust_delete = temp_dir.join("rust-delete.pptx");
-    let go_delete_str = go_delete.to_str().expect("go delete path");
+    let baseline_delete_str = baseline_delete.to_str().expect("baseline delete path");
     let rust_delete_str = rust_delete.to_str().expect("rust delete path");
-    let go_delete_args = [
+    let baseline_delete_args = [
         "--json",
         "pptx",
         "layouts",
@@ -2713,7 +2837,7 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "--target",
         "shape:3",
         "--out",
-        go_delete_str,
+        baseline_delete_str,
     ];
     let rust_delete_args = [
         "--json",
@@ -2728,28 +2852,29 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "--out",
         rust_delete_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_delete_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&baseline_delete_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_delete_args);
-    assert_eq!(rust_code, go_code, "layout delete-shape exit");
-    assert_eq!(rust_stderr, go_stderr, "layout delete-shape stderr");
+    assert_eq!(rust_code, baseline_code, "layout delete-shape exit");
+    assert_eq!(rust_stderr, baseline_stderr, "layout delete-shape stderr");
     let rust_delete_json = rust_stdout.expect("rust layout delete-shape stdout");
     assert_eq!(
         scrub_path(rust_delete_json.clone(), rust_delete_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go layout delete-shape stdout"),
-            go_delete_str,
+            baseline_stdout.expect("baseline layout delete-shape stdout"),
+            baseline_delete_str,
             "[OUT]"
         ),
         "layout delete-shape stdout"
     );
     assert_rust_emitted_ooxml_command_succeeds(&rust_delete_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_delete_json, "validateCommand");
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "layouts",
         "show",
-        go_delete_str,
+        baseline_delete_str,
         "--layout",
         "2",
     ]);
@@ -2763,24 +2888,26 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "2",
     ]);
     assert_eq!(
-        rust_show_code, go_show_code,
+        rust_show_code, baseline_show_code,
         "layout delete-shape readback exit"
     );
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_stderr, baseline_show_stderr,
         "layout delete-shape readback stderr"
     );
     assert_eq!(
         rust_show_stdout.expect("rust layout delete-shape readback"),
-        go_show_stdout.expect("go layout delete-shape readback"),
+        baseline_show_stdout.expect("baseline layout delete-shape readback"),
         "layout delete-shape readback stdout"
     );
 
-    let go_add = temp_dir.join("go-add-placeholder.pptx");
+    let baseline_add = temp_dir.join("baseline-add-placeholder.pptx");
     let rust_add = temp_dir.join("rust-add-placeholder.pptx");
-    let go_add_str = go_add.to_str().expect("go add-placeholder path");
+    let baseline_add_str = baseline_add
+        .to_str()
+        .expect("baseline add-placeholder path");
     let rust_add_str = rust_add.to_str().expect("rust add-placeholder path");
-    let go_add_args = [
+    let baseline_add_args = [
         "--json",
         "pptx",
         "layouts",
@@ -2795,7 +2922,7 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "--bounds",
         "1000,2000,3000,4000",
         "--out",
-        go_add_str,
+        baseline_add_str,
     ];
     let rust_add_args = [
         "--json",
@@ -2814,24 +2941,33 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "--out",
         rust_add_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_add_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_add_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_add_args);
-    assert_eq!(rust_code, go_code, "layout add-placeholder exit");
-    assert_eq!(rust_stderr, go_stderr, "layout add-placeholder stderr");
+    assert_eq!(rust_code, baseline_code, "layout add-placeholder exit");
+    assert_eq!(
+        rust_stderr, baseline_stderr,
+        "layout add-placeholder stderr"
+    );
     let rust_add_json = rust_stdout.expect("rust layout add-placeholder stdout");
     assert_eq!(
         scrub_path(rust_add_json.clone(), rust_add_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go layout add-placeholder stdout"),
-            go_add_str,
+            baseline_stdout.expect("baseline layout add-placeholder stdout"),
+            baseline_add_str,
             "[OUT]"
         ),
         "layout add-placeholder stdout"
     );
     assert_rust_emitted_ooxml_command_succeeds(&rust_add_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_add_json, "validateCommand");
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
-        "--json", "pptx", "layouts", "show", go_add_str, "--layout", "7",
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
+        "--json",
+        "pptx",
+        "layouts",
+        "show",
+        baseline_add_str,
+        "--layout",
+        "7",
     ]);
     let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
         "--json",
@@ -2843,16 +2979,16 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "7",
     ]);
     assert_eq!(
-        rust_show_code, go_show_code,
+        rust_show_code, baseline_show_code,
         "layout add-placeholder readback exit"
     );
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_stderr, baseline_show_stderr,
         "layout add-placeholder readback stderr"
     );
     assert_eq!(
         rust_show_stdout.expect("rust layout add-placeholder readback"),
-        go_show_stdout.expect("go layout add-placeholder readback"),
+        baseline_show_stdout.expect("baseline layout add-placeholder readback"),
         "layout add-placeholder readback stdout"
     );
 
@@ -2868,19 +3004,19 @@ fn pptx_layouts_mutations_saved_readback_and_dry_run_match_go_oracle() {
         "DryRunLayout",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "layout rename dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "layout rename dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "layout rename dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "layout rename dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust layout rename dry-run stdout"),
-        go_stdout.expect("go layout rename dry-run stdout"),
+        baseline_stdout.expect("baseline layout rename dry-run stdout"),
         "layout rename dry-run stdout"
     );
 }
 
 #[test]
-fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
+fn pptx_layout_slide_authoring_commands_match_rust_baseline_and_validate() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -2941,14 +3077,16 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
             "--dry-run",
         ],
     ] {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
-    let go_layout = temp_dir.join("go-layout-clone.pptx");
+    let baseline_layout = temp_dir.join("baseline-layout-clone.pptx");
     let rust_layout = temp_dir.join("rust-layout-clone.pptx");
-    let go_layout_str = go_layout.to_str().expect("go layout clone path");
+    let baseline_layout_str = baseline_layout
+        .to_str()
+        .expect("baseline layout clone path");
     let rust_layout_str = rust_layout.to_str().expect("rust layout clone path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "layouts",
@@ -2959,7 +3097,7 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
         "--name",
         "RustClonedLayout",
         "--out",
-        go_layout_str,
+        baseline_layout_str,
     ];
     let rust_args = [
         "--json",
@@ -2974,16 +3112,16 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
         "--out",
         rust_layout_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "layout clone exit");
-    assert_eq!(rust_stderr, go_stderr, "layout clone stderr");
+    assert_eq!(rust_code, baseline_code, "layout clone exit");
+    assert_eq!(rust_stderr, baseline_stderr, "layout clone stderr");
     let rust_json = rust_stdout.expect("rust layout clone stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_layout_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go layout clone stdout"),
-            go_layout_str,
+            baseline_stdout.expect("baseline layout clone stdout"),
+            baseline_layout_str,
             "[OUT]"
         ),
         "layout clone stdout"
@@ -2991,12 +3129,12 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "layouts",
         "show",
-        go_layout_str,
+        baseline_layout_str,
         "--layout",
         "RustClonedLayout",
     ]);
@@ -3009,22 +3147,27 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
         "--layout",
         "RustClonedLayout",
     ]);
-    assert_eq!(rust_show_code, go_show_code, "layout clone readback exit");
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_code, baseline_show_code,
+        "layout clone readback exit"
+    );
+    assert_eq!(
+        rust_show_stderr, baseline_show_stderr,
         "layout clone readback stderr"
     );
     assert_eq!(
         rust_show_stdout.expect("rust layout clone readback"),
-        go_show_stdout.expect("go layout clone readback"),
+        baseline_show_stdout.expect("baseline layout clone readback"),
         "layout clone readback stdout"
     );
 
-    let go_master = temp_dir.join("go-master-placeholder.pptx");
+    let baseline_master = temp_dir.join("baseline-master-placeholder.pptx");
     let rust_master = temp_dir.join("rust-master-placeholder.pptx");
-    let go_master_str = go_master.to_str().expect("go master placeholder path");
+    let baseline_master_str = baseline_master
+        .to_str()
+        .expect("baseline master placeholder path");
     let rust_master_str = rust_master.to_str().expect("rust master placeholder path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "masters",
@@ -3037,7 +3180,7 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
         "--bounds",
         "100000,100000,1000000,500000",
         "--out",
-        go_master_str,
+        baseline_master_str,
     ];
     let rust_args = [
         "--json",
@@ -3054,16 +3197,19 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
         "--out",
         rust_master_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "master add-placeholder exit");
-    assert_eq!(rust_stderr, go_stderr, "master add-placeholder stderr");
+    assert_eq!(rust_code, baseline_code, "master add-placeholder exit");
+    assert_eq!(
+        rust_stderr, baseline_stderr,
+        "master add-placeholder stderr"
+    );
     let rust_json = rust_stdout.expect("rust master add-placeholder stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_master_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go master add-placeholder stdout"),
-            go_master_str,
+            baseline_stdout.expect("baseline master add-placeholder stdout"),
+            baseline_master_str,
             "[OUT]"
         ),
         "master add-placeholder stdout"
@@ -3071,11 +3217,11 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let go_clone = temp_dir.join("go-clone-slide.pptx");
+    let baseline_clone = temp_dir.join("baseline-clone-slide.pptx");
     let rust_clone = temp_dir.join("rust-clone-slide.pptx");
-    let go_clone_str = go_clone.to_str().expect("go clone-slide path");
+    let baseline_clone_str = baseline_clone.to_str().expect("baseline clone-slide path");
     let rust_clone_str = rust_clone.to_str().expect("rust clone-slide path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "clone-slide",
@@ -3083,7 +3229,7 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
         "--slide",
         "1",
         "--out",
-        go_clone_str,
+        baseline_clone_str,
     ];
     let rust_args = [
         "--json",
@@ -3095,16 +3241,16 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
         "--out",
         rust_clone_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "clone-slide exit");
-    assert_eq!(rust_stderr, go_stderr, "clone-slide stderr");
+    assert_eq!(rust_code, baseline_code, "clone-slide exit");
+    assert_eq!(rust_stderr, baseline_stderr, "clone-slide stderr");
     let rust_json = rust_stdout.expect("rust clone-slide stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_clone_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go clone-slide stdout"),
-            go_clone_str,
+            baseline_stdout.expect("baseline clone-slide stdout"),
+            baseline_clone_str,
             "[OUT]"
         ),
         "clone-slide stdout"
@@ -3112,11 +3258,11 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let go_new = temp_dir.join("go-new-slide.pptx");
+    let baseline_new = temp_dir.join("baseline-new-slide.pptx");
     let rust_new = temp_dir.join("rust-new-slide.pptx");
-    let go_new_str = go_new.to_str().expect("go new slide path");
+    let baseline_new_str = baseline_new.to_str().expect("baseline new slide path");
     let rust_new_str = rust_new.to_str().expect("rust new slide path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "new-slide-from-layout",
@@ -3126,7 +3272,7 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
         "--set-text",
         "title=RustTitle",
         "--out",
-        go_new_str,
+        baseline_new_str,
     ];
     let rust_args = [
         "--json",
@@ -3140,16 +3286,16 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
         "--out",
         rust_new_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "new-slide-from-layout exit");
-    assert_eq!(rust_stderr, go_stderr, "new-slide-from-layout stderr");
+    assert_eq!(rust_code, baseline_code, "new-slide-from-layout exit");
+    assert_eq!(rust_stderr, baseline_stderr, "new-slide-from-layout stderr");
     let rust_json = rust_stdout.expect("rust new-slide-from-layout stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_new_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go new-slide-from-layout stdout"),
-            go_new_str,
+            baseline_stdout.expect("baseline new-slide-from-layout stdout"),
+            baseline_new_str,
             "[OUT]"
         ),
         "new-slide-from-layout stdout"
@@ -3181,11 +3327,13 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
     );
 
     let image_slot_fixture = "testdata/pptx/picture-placeholder/presentation.pptx";
-    let go_image_slot = temp_dir.join("go-new-slide-image-slot.pptx");
+    let baseline_image_slot = temp_dir.join("baseline-new-slide-image-slot.pptx");
     let rust_image_slot = temp_dir.join("rust-new-slide-image-slot.pptx");
-    let go_image_slot_str = go_image_slot.to_str().expect("go image slot path");
+    let baseline_image_slot_str = baseline_image_slot
+        .to_str()
+        .expect("baseline image slot path");
     let rust_image_slot_str = rust_image_slot.to_str().expect("rust image slot path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "new-slide-from-layout",
@@ -3197,7 +3345,7 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
         "--image-fit",
         "cover",
         "--out",
-        go_image_slot_str,
+        baseline_image_slot_str,
     ];
     let rust_args = [
         "--json",
@@ -3213,16 +3361,16 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
         "--out",
         rust_image_slot_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "new-slide image-slot exit");
-    assert_eq!(rust_stderr, go_stderr, "new-slide image-slot stderr");
+    assert_eq!(rust_code, baseline_code, "new-slide image-slot exit");
+    assert_eq!(rust_stderr, baseline_stderr, "new-slide image-slot stderr");
     let rust_json = rust_stdout.expect("rust new-slide image-slot stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_image_slot_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go new-slide image-slot stdout"),
-            go_image_slot_str,
+            baseline_stdout.expect("baseline new-slide image-slot stdout"),
+            baseline_image_slot_str,
             "[OUT]"
         ),
         "new-slide image-slot stdout"
@@ -3236,7 +3384,7 @@ fn pptx_layout_slide_authoring_commands_match_go_oracle_and_validate() {
 }
 
 #[test]
-fn pptx_clone_slide_clones_notes_part_and_backlink_like_go() {
+fn pptx_clone_slide_clones_notes_part_and_backlink_like_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -3248,11 +3396,11 @@ fn pptx_clone_slide_clones_notes_part_and_backlink_like_go() {
     std::fs::create_dir_all(&temp_dir).expect("pptx clone notes temp dir");
 
     let fixture = "testdata/pptx/slide-assembly-notes-media/presentation.pptx";
-    let go_out = temp_dir.join("go-clone-notes.pptx");
+    let baseline_out = temp_dir.join("baseline-clone-notes.pptx");
     let rust_out = temp_dir.join("rust-clone-notes.pptx");
-    let go_out_str = go_out.to_str().expect("go clone notes path");
+    let baseline_out_str = baseline_out.to_str().expect("baseline clone notes path");
     let rust_out_str = rust_out.to_str().expect("rust clone notes path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "clone-slide",
@@ -3260,7 +3408,7 @@ fn pptx_clone_slide_clones_notes_part_and_backlink_like_go() {
         "--slide",
         "1",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -3272,16 +3420,16 @@ fn pptx_clone_slide_clones_notes_part_and_backlink_like_go() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "clone notes exit");
-    assert_eq!(rust_stderr, go_stderr, "clone notes stderr");
+    assert_eq!(rust_code, baseline_code, "clone notes exit");
+    assert_eq!(rust_stderr, baseline_stderr, "clone notes stderr");
     let rust_json = rust_stdout.expect("rust clone notes stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go clone notes stdout"),
-            go_out_str,
+            baseline_stdout.expect("baseline clone notes stdout"),
+            baseline_out_str,
             "[OUT]"
         ),
         "clone notes stdout"
@@ -3324,7 +3472,7 @@ fn pptx_clone_slide_clones_notes_part_and_backlink_like_go() {
 }
 
 #[test]
-fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
+fn pptx_import_merge_authoring_commands_match_rust_baseline_and_validate() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -3428,14 +3576,16 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
             ],
         ),
     ] {
-        assert_go_rust_json_match(&args, label);
+        assert_baseline_rust_json_match(&args, label);
     }
 
-    let go_source = temp_dir.join("go-renamed-source.pptx");
+    let baseline_source = temp_dir.join("baseline-renamed-source.pptx");
     let rust_source = temp_dir.join("rust-renamed-source.pptx");
-    let go_source_str = go_source.to_str().expect("go renamed source path");
+    let baseline_source_str = baseline_source
+        .to_str()
+        .expect("baseline renamed source path");
     let rust_source_str = rust_source.to_str().expect("rust renamed source path");
-    let go_rename_args = [
+    let baseline_rename_args = [
         "--json",
         "pptx",
         "layouts",
@@ -3446,7 +3596,7 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
         "--name",
         "WorkerOImportedTitle",
         "--out",
-        go_source_str,
+        baseline_source_str,
     ];
     let rust_rename_args = [
         "--json",
@@ -3461,10 +3611,11 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
         "--out",
         rust_source_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_rename_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&baseline_rename_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_rename_args);
-    assert_eq!(rust_code, go_code, "renamed import source exit");
-    assert_eq!(rust_stderr, go_stderr, "renamed import source stderr");
+    assert_eq!(rust_code, baseline_code, "renamed import source exit");
+    assert_eq!(rust_stderr, baseline_stderr, "renamed import source stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust renamed source stdout"),
@@ -3472,18 +3623,20 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
             "[SOURCE]"
         ),
         scrub_path(
-            go_stdout.expect("go renamed source stdout"),
-            go_source_str,
+            baseline_stdout.expect("baseline renamed source stdout"),
+            baseline_source_str,
             "[SOURCE]"
         ),
         "renamed import source stdout"
     );
 
-    let go_import_slide = temp_dir.join("go-import-slide.pptx");
+    let baseline_import_slide = temp_dir.join("baseline-import-slide.pptx");
     let rust_import_slide = temp_dir.join("rust-import-slide.pptx");
-    let go_import_slide_str = go_import_slide.to_str().expect("go import-slide path");
+    let baseline_import_slide_str = baseline_import_slide
+        .to_str()
+        .expect("baseline import-slide path");
     let rust_import_slide_str = rust_import_slide.to_str().expect("rust import-slide path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "slides",
@@ -3500,7 +3653,7 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
         "--notes-policy",
         "clone",
         "--out",
-        go_import_slide_str,
+        baseline_import_slide_str,
     ];
     let rust_args = [
         "--json",
@@ -3521,22 +3674,25 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
         "--out",
         rust_import_slide_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "slides import-slide saved exit");
-    assert_eq!(rust_stderr, go_stderr, "slides import-slide saved stderr");
+    assert_eq!(rust_code, baseline_code, "slides import-slide saved exit");
+    assert_eq!(
+        rust_stderr, baseline_stderr,
+        "slides import-slide saved stderr"
+    );
     assert_eq!(
         rust_stdout.expect("rust import-slide stdout"),
-        go_stdout.expect("go import-slide stdout"),
+        baseline_stdout.expect("baseline import-slide stdout"),
         "slides import-slide saved stdout"
     );
-    assert_go_rust_match(&["--json", "validate", "--strict", rust_import_slide_str]);
+    assert_rust_baseline_match(&["--json", "validate", "--strict", rust_import_slide_str]);
 
-    let go_merge = temp_dir.join("go-merge.pptx");
+    let baseline_merge = temp_dir.join("baseline-merge.pptx");
     let rust_merge = temp_dir.join("rust-merge.pptx");
-    let go_merge_str = go_merge.to_str().expect("go merge path");
+    let baseline_merge_str = baseline_merge.to_str().expect("baseline merge path");
     let rust_merge_str = rust_merge.to_str().expect("rust merge path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "slides",
@@ -3548,7 +3704,7 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
         "--theme-policy",
         "import",
         "--out",
-        go_merge_str,
+        baseline_merge_str,
     ];
     let rust_args = [
         "--json",
@@ -3564,10 +3720,10 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
         "--out",
         rust_merge_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "slides merge saved exit");
-    assert_eq!(rust_stderr, go_stderr, "slides merge saved stderr");
+    assert_eq!(rust_code, baseline_code, "slides merge saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "slides merge saved stderr");
     let rust_merge_json = rust_stdout.expect("rust merge stdout");
     assert_eq!(
         scrub_paths(
@@ -3575,31 +3731,36 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
             &[("rust-merge.pptx", "[OUT]"), (rust_merge_str, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go merge stdout"),
-            &[("go-merge.pptx", "[OUT]"), (go_merge_str, "[OUT]")]
+            baseline_stdout.expect("baseline merge stdout"),
+            &[
+                ("baseline-merge.pptx", "[OUT]"),
+                (baseline_merge_str, "[OUT]")
+            ]
         ),
         "slides merge saved stdout"
     );
-    assert_go_rust_match(&["--json", "validate", "--strict", rust_merge_str]);
+    assert_rust_baseline_match(&["--json", "validate", "--strict", rust_merge_str]);
 
-    let go_layout = temp_dir.join("go-layout-import.pptx");
+    let baseline_layout = temp_dir.join("baseline-layout-import.pptx");
     let rust_layout = temp_dir.join("rust-layout-import.pptx");
-    let go_layout_str = go_layout.to_str().expect("go layout import path");
+    let baseline_layout_str = baseline_layout
+        .to_str()
+        .expect("baseline layout import path");
     let rust_layout_str = rust_layout.to_str().expect("rust layout import path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "layouts",
         "import",
         target,
         "--source",
-        go_source_str,
+        baseline_source_str,
         "--layout",
         "WorkerOImportedTitle",
         "--theme-policy",
         "import",
         "--out",
-        go_layout_str,
+        baseline_layout_str,
     ];
     let rust_args = [
         "--json",
@@ -3616,16 +3777,16 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
         "--out",
         rust_layout_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "layouts import saved exit");
-    assert_eq!(rust_stderr, go_stderr, "layouts import saved stderr");
+    assert_eq!(rust_code, baseline_code, "layouts import saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "layouts import saved stderr");
     let rust_layout_json = rust_stdout.expect("rust layouts import stdout");
     assert_eq!(
         scrub_path(rust_layout_json.clone(), rust_layout_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go layouts import stdout"),
-            go_layout_str,
+            baseline_stdout.expect("baseline layouts import stdout"),
+            baseline_layout_str,
             "[OUT]"
         ),
         "layouts import saved stdout"
@@ -3633,24 +3794,26 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
     assert_rust_emitted_ooxml_command_succeeds(&rust_layout_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_layout_json, "validateCommand");
 
-    let go_master = temp_dir.join("go-master-import.pptx");
+    let baseline_master = temp_dir.join("baseline-master-import.pptx");
     let rust_master = temp_dir.join("rust-master-import.pptx");
-    let go_master_str = go_master.to_str().expect("go master import path");
+    let baseline_master_str = baseline_master
+        .to_str()
+        .expect("baseline master import path");
     let rust_master_str = rust_master.to_str().expect("rust master import path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "masters",
         "import",
         target,
         "--source",
-        go_source_str,
+        baseline_source_str,
         "--master",
         "1",
         "--theme-policy",
         "import",
         "--out",
-        go_master_str,
+        baseline_master_str,
     ];
     let rust_args = [
         "--json",
@@ -3667,16 +3830,16 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
         "--out",
         rust_master_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "masters import saved exit");
-    assert_eq!(rust_stderr, go_stderr, "masters import saved stderr");
+    assert_eq!(rust_code, baseline_code, "masters import saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "masters import saved stderr");
     let rust_master_json = rust_stdout.expect("rust masters import stdout");
     assert_eq!(
         scrub_path(rust_master_json.clone(), rust_master_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go masters import stdout"),
-            go_master_str,
+            baseline_stdout.expect("baseline masters import stdout"),
+            baseline_master_str,
             "[OUT]"
         ),
         "masters import saved stdout"
@@ -3686,7 +3849,7 @@ fn pptx_import_merge_authoring_commands_match_go_oracle_and_validate() {
 }
 
 #[test]
-fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
+fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -3700,11 +3863,11 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
     let multi_fixture = "testdata/pptx/slide-assembly-multi/presentation.pptx";
     let notes_fixture = "testdata/pptx/notes-slide/presentation.pptx";
 
-    let go_move = temp_dir.join("go-move.pptx");
+    let baseline_move = temp_dir.join("baseline-move.pptx");
     let rust_move = temp_dir.join("rust-move.pptx");
-    let go_move_str = go_move.to_str().expect("go move path");
+    let baseline_move_str = baseline_move.to_str().expect("baseline move path");
     let rust_move_str = rust_move.to_str().expect("rust move path");
-    let go_move_args = [
+    let baseline_move_args = [
         "--json",
         "pptx",
         "slides",
@@ -3713,7 +3876,7 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
         "1",
         "3",
         "--out",
-        go_move_str,
+        baseline_move_str,
     ];
     let rust_move_args = [
         "--json",
@@ -3726,36 +3889,39 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
         "--out",
         rust_move_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_move_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_move_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_move_args);
-    assert_eq!(rust_code, go_code, "slides move exit");
-    assert_eq!(rust_stderr, go_stderr, "slides move stderr");
+    assert_eq!(rust_code, baseline_code, "slides move exit");
+    assert_eq!(rust_stderr, baseline_stderr, "slides move stderr");
     let rust_move_json = rust_stdout.expect("rust slides move stdout");
     assert_eq!(
         scrub_path(rust_move_json.clone(), rust_move_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go slides move stdout"),
-            go_move_str,
+            baseline_stdout.expect("baseline slides move stdout"),
+            baseline_move_str,
             "[OUT]"
         ),
         "slides move stdout"
     );
-    assert!(go_move.exists(), "Go slides move output missing");
+    assert!(
+        baseline_move.exists(),
+        "Rust baseline slides move output missing"
+    );
     assert!(rust_move.exists(), "Rust slides move output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_move_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_succeeds(&rust_move_json, "slidesListCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_move_json, "validateCommand");
-    assert_go_rust_json_match_with_path_scrub(
-        &["--json", "pptx", "slides", "list", go_move_str],
+    assert_baseline_rust_json_match_with_path_scrub(
+        &["--json", "pptx", "slides", "list", baseline_move_str],
         &["--json", "pptx", "slides", "list", rust_move_str],
-        go_move_str,
+        baseline_move_str,
         rust_move_str,
         "slides move readback list",
     );
-    assert_go_rust_json_match_with_path_scrub(
-        &["--json", "validate", "--strict", go_move_str],
+    assert_baseline_rust_json_match_with_path_scrub(
+        &["--json", "validate", "--strict", baseline_move_str],
         &["--json", "validate", "--strict", rust_move_str],
-        go_move_str,
+        baseline_move_str,
         rust_move_str,
         "slides move strict validate",
     );
@@ -3770,7 +3936,7 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
         "3",
         "--dry-run",
     ];
-    assert_go_rust_json_match(&move_dry_run, "slides move dry-run");
+    assert_baseline_rust_json_match(&move_dry_run, "slides move dry-run");
 
     let move_no_op_dry_run = [
         "--json",
@@ -3782,13 +3948,13 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
         "2",
         "--dry-run",
     ];
-    assert_go_rust_json_match(&move_no_op_dry_run, "slides move no-op dry-run");
+    assert_baseline_rust_json_match(&move_no_op_dry_run, "slides move no-op dry-run");
 
-    let go_delete = temp_dir.join("go-delete.pptx");
+    let baseline_delete = temp_dir.join("baseline-delete.pptx");
     let rust_delete = temp_dir.join("rust-delete.pptx");
-    let go_delete_str = go_delete.to_str().expect("go delete path");
+    let baseline_delete_str = baseline_delete.to_str().expect("baseline delete path");
     let rust_delete_str = rust_delete.to_str().expect("rust delete path");
-    let go_delete_args = [
+    let baseline_delete_args = [
         "--json",
         "pptx",
         "slides",
@@ -3796,7 +3962,7 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
         notes_fixture,
         "2",
         "--out",
-        go_delete_str,
+        baseline_delete_str,
     ];
     let rust_delete_args = [
         "--json",
@@ -3808,35 +3974,39 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
         "--out",
         rust_delete_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_delete_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&baseline_delete_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_delete_args);
-    assert_eq!(rust_code, go_code, "slides delete exit");
-    assert_eq!(rust_stderr, go_stderr, "slides delete stderr");
+    assert_eq!(rust_code, baseline_code, "slides delete exit");
+    assert_eq!(rust_stderr, baseline_stderr, "slides delete stderr");
     let rust_delete_json = rust_stdout.expect("rust slides delete stdout");
     assert_eq!(
         scrub_path(rust_delete_json.clone(), rust_delete_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go slides delete stdout"),
-            go_delete_str,
+            baseline_stdout.expect("baseline slides delete stdout"),
+            baseline_delete_str,
             "[OUT]"
         ),
         "slides delete stdout"
     );
-    assert!(go_delete.exists(), "Go slides delete output missing");
+    assert!(
+        baseline_delete.exists(),
+        "Rust baseline slides delete output missing"
+    );
     assert!(rust_delete.exists(), "Rust slides delete output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_delete_json, "slidesListCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_delete_json, "validateCommand");
-    assert_go_rust_json_match_with_path_scrub(
-        &["--json", "pptx", "slides", "list", go_delete_str],
+    assert_baseline_rust_json_match_with_path_scrub(
+        &["--json", "pptx", "slides", "list", baseline_delete_str],
         &["--json", "pptx", "slides", "list", rust_delete_str],
-        go_delete_str,
+        baseline_delete_str,
         rust_delete_str,
         "slides delete readback list",
     );
-    assert_go_rust_json_match_with_path_scrub(
-        &["--json", "validate", "--strict", go_delete_str],
+    assert_baseline_rust_json_match_with_path_scrub(
+        &["--json", "validate", "--strict", baseline_delete_str],
         &["--json", "validate", "--strict", rust_delete_str],
-        go_delete_str,
+        baseline_delete_str,
         rust_delete_str,
         "slides delete strict validate",
     );
@@ -3850,13 +4020,13 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
         "2",
         "--dry-run",
     ];
-    assert_go_rust_json_match(&delete_dry_run, "slides delete dry-run");
+    assert_baseline_rust_json_match(&delete_dry_run, "slides delete dry-run");
 
-    let go_reorder = temp_dir.join("go-reorder.pptx");
+    let baseline_reorder = temp_dir.join("baseline-reorder.pptx");
     let rust_reorder = temp_dir.join("rust-reorder.pptx");
-    let go_reorder_str = go_reorder.to_str().expect("go reorder path");
+    let baseline_reorder_str = baseline_reorder.to_str().expect("baseline reorder path");
     let rust_reorder_str = rust_reorder.to_str().expect("rust reorder path");
-    let go_reorder_args = [
+    let baseline_reorder_args = [
         "--json",
         "pptx",
         "slides",
@@ -3864,7 +4034,7 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
         multi_fixture,
         "3,1,2,4,5",
         "--out",
-        go_reorder_str,
+        baseline_reorder_str,
     ];
     let rust_reorder_args = [
         "--json",
@@ -3876,35 +4046,39 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
         "--out",
         rust_reorder_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_reorder_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&baseline_reorder_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_reorder_args);
-    assert_eq!(rust_code, go_code, "slides reorder exit");
-    assert_eq!(rust_stderr, go_stderr, "slides reorder stderr");
+    assert_eq!(rust_code, baseline_code, "slides reorder exit");
+    assert_eq!(rust_stderr, baseline_stderr, "slides reorder stderr");
     let rust_reorder_json = rust_stdout.expect("rust slides reorder stdout");
     assert_eq!(
         scrub_path(rust_reorder_json.clone(), rust_reorder_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go slides reorder stdout"),
-            go_reorder_str,
+            baseline_stdout.expect("baseline slides reorder stdout"),
+            baseline_reorder_str,
             "[OUT]"
         ),
         "slides reorder stdout"
     );
-    assert!(go_reorder.exists(), "Go slides reorder output missing");
+    assert!(
+        baseline_reorder.exists(),
+        "Rust baseline slides reorder output missing"
+    );
     assert!(rust_reorder.exists(), "Rust slides reorder output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_reorder_json, "slidesListCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_reorder_json, "validateCommand");
-    assert_go_rust_json_match_with_path_scrub(
-        &["--json", "pptx", "slides", "list", go_reorder_str],
+    assert_baseline_rust_json_match_with_path_scrub(
+        &["--json", "pptx", "slides", "list", baseline_reorder_str],
         &["--json", "pptx", "slides", "list", rust_reorder_str],
-        go_reorder_str,
+        baseline_reorder_str,
         rust_reorder_str,
         "slides reorder readback list",
     );
-    assert_go_rust_json_match_with_path_scrub(
-        &["--json", "validate", "--strict", go_reorder_str],
+    assert_baseline_rust_json_match_with_path_scrub(
+        &["--json", "validate", "--strict", baseline_reorder_str],
         &["--json", "validate", "--strict", rust_reorder_str],
-        go_reorder_str,
+        baseline_reorder_str,
         rust_reorder_str,
         "slides reorder strict validate",
     );
@@ -3918,7 +4092,7 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
         "3,1,2,4,5",
         "--dry-run",
     ];
-    assert_go_rust_json_match(&reorder_dry_run, "slides reorder dry-run");
+    assert_baseline_rust_json_match(&reorder_dry_run, "slides reorder dry-run");
 
     for (label, args) in [
         (
@@ -3996,38 +4170,42 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_go_oracle() {
             ],
         ),
     ] {
-        assert_go_rust_json_match(&args, label);
+        assert_baseline_rust_json_match(&args, label);
     }
 }
 
-fn assert_go_rust_json_match(args: &[&str], label: &str) {
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(args);
+fn assert_baseline_rust_json_match(args: &[&str], label: &str) {
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(args);
-    assert_eq!(rust_code, go_code, "{label} exit");
-    assert_eq!(rust_stdout, go_stdout, "{label} stdout");
-    assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+    assert_eq!(rust_code, baseline_code, "{label} exit");
+    assert_eq!(rust_stdout, baseline_stdout, "{label} stdout");
+    assert_eq!(rust_stderr, baseline_stderr, "{label} stderr");
 }
 
-fn assert_go_rust_json_match_with_path_scrub(
-    go_args: &[&str],
+fn assert_baseline_rust_json_match_with_path_scrub(
+    baseline_args: &[&str],
     rust_args: &[&str],
-    go_path: &str,
+    baseline_path: &str,
     rust_path: &str,
     label: &str,
 ) {
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(rust_args);
-    assert_eq!(rust_code, go_code, "{label} exit");
+    assert_eq!(rust_code, baseline_code, "{label} exit");
     assert_eq!(
         scrub_path(rust_stdout.expect("rust stdout"), rust_path, "[OUT]"),
-        scrub_path(go_stdout.expect("go stdout"), go_path, "[OUT]"),
+        scrub_path(
+            baseline_stdout.expect("baseline stdout"),
+            baseline_path,
+            "[OUT]"
+        ),
         "{label} stdout"
     );
-    assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+    assert_eq!(rust_stderr, baseline_stderr, "{label} stderr");
 }
 
 #[test]
-fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_go_oracle() {
+fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -4039,12 +4217,12 @@ fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_go_oracle() {
     std::fs::create_dir_all(&temp_dir).expect("pptx text set temp dir");
 
     let fixture = "testdata/pptx/title-content/presentation.pptx";
-    let go_out = temp_dir.join("go-text-set.pptx");
+    let baseline_out = temp_dir.join("baseline-text-set.pptx");
     let rust_out = temp_dir.join("rust-text-set.pptx");
-    let go_out_str = go_out.to_str().expect("go text set path");
+    let baseline_out_str = baseline_out.to_str().expect("baseline text set path");
     let rust_out_str = rust_out.to_str().expect("rust text set path");
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "text",
@@ -4067,7 +4245,7 @@ fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_go_oracle() {
         "--font-family",
         "Arial",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -4094,27 +4272,34 @@ fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_go_oracle() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "text set saved exit");
-    assert_eq!(rust_stderr, go_stderr, "text set saved stderr");
+    assert_eq!(rust_code, baseline_code, "text set saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "text set saved stderr");
     let rust_json = rust_stdout.expect("rust text set stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
-        scrub_path(go_stdout.expect("go text set stdout"), go_out_str, "[OUT]"),
+        scrub_path(
+            baseline_stdout.expect("baseline text set stdout"),
+            baseline_out_str,
+            "[OUT]"
+        ),
         "text set saved stdout"
     );
-    assert!(go_out.exists(), "Go text set output missing");
+    assert!(
+        baseline_out.exists(),
+        "Rust baseline text set output missing"
+    );
     assert!(rust_out.exists(), "Rust text set output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let (go_read_code, go_read_stdout, go_read_stderr) = run_go_ooxml(&[
+    let (baseline_read_code, baseline_read_stdout, baseline_read_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "shapes",
         "get",
-        go_out_str,
+        baseline_out_str,
         "--slide",
         "2",
         "--target",
@@ -4133,8 +4318,11 @@ fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_go_oracle() {
         "title",
         "--include-text",
     ]);
-    assert_eq!(rust_read_code, go_read_code, "text set readback exit");
-    assert_eq!(rust_read_stderr, go_read_stderr, "text set readback stderr");
+    assert_eq!(rust_read_code, baseline_read_code, "text set readback exit");
+    assert_eq!(
+        rust_read_stderr, baseline_read_stderr,
+        "text set readback stderr"
+    );
     assert_eq!(
         scrub_path(
             rust_read_stdout.expect("rust text set readback"),
@@ -4142,8 +4330,8 @@ fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_read_stdout.expect("go text set readback"),
-            go_out_str,
+            baseline_read_stdout.expect("baseline text set readback"),
+            baseline_out_str,
             "[OUT]"
         ),
         "text set readback stdout"
@@ -4167,21 +4355,21 @@ fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_go_oracle() {
         "single",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "text set dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "text set dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "text set dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "text set dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust text set dry-run"),
-        go_stdout.expect("go text set dry-run"),
+        baseline_stdout.expect("baseline text set dry-run"),
         "text set dry-run stdout"
     );
 
-    let go_hyper = temp_dir.join("go-hyperlink.pptx");
+    let baseline_hyper = temp_dir.join("baseline-hyperlink.pptx");
     let rust_hyper = temp_dir.join("rust-hyperlink.pptx");
-    let go_hyper_str = go_hyper.to_str().expect("go hyperlink path");
+    let baseline_hyper_str = baseline_hyper.to_str().expect("baseline hyperlink path");
     let rust_hyper_str = rust_hyper.to_str().expect("rust hyperlink path");
-    let go_hyper_args = [
+    let baseline_hyper_args = [
         "--json",
         "pptx",
         "text",
@@ -4198,7 +4386,7 @@ fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_go_oracle() {
         "--hyperlink",
         "https://example.com",
         "--out",
-        go_hyper_str,
+        baseline_hyper_str,
     ];
     let rust_hyper_args = [
         "--json",
@@ -4219,16 +4407,17 @@ fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_go_oracle() {
         "--out",
         rust_hyper_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_hyper_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&baseline_hyper_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_hyper_args);
-    assert_eq!(rust_code, go_code, "text set hyperlink exit");
-    assert_eq!(rust_stderr, go_stderr, "text set hyperlink stderr");
+    assert_eq!(rust_code, baseline_code, "text set hyperlink exit");
+    assert_eq!(rust_stderr, baseline_stderr, "text set hyperlink stderr");
     let rust_hyper_json = rust_stdout.expect("rust hyperlink stdout");
     assert_eq!(
         scrub_path(rust_hyper_json.clone(), rust_hyper_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go hyperlink stdout"),
-            go_hyper_str,
+            baseline_stdout.expect("baseline hyperlink stdout"),
+            baseline_hyper_str,
             "[OUT]"
         ),
         "text set hyperlink stdout"
@@ -4348,20 +4537,20 @@ fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_go_oracle() {
             ],
         ),
     ] {
-        assert_go_rust_json_match(&args, label);
+        assert_baseline_rust_json_match(&args, label);
     }
 }
 
 #[test]
-fn pptx_fields_inspect_set_readback_dry_run_and_errors_match_go_oracle() {
+fn pptx_fields_inspect_set_readback_dry_run_and_errors_match_rust_baseline() {
     let header_footer_fixture = "testdata/pptx/header-footer/presentation.pptx";
     let title_content_fixture = "testdata/pptx/title-content/presentation.pptx";
 
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &["--json", "pptx", "fields", "inspect", header_footer_fixture],
         "fields inspect header-footer",
     );
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &["--json", "pptx", "fields", "inspect", title_content_fixture],
         "fields inspect no-header-footer",
     );
@@ -4507,7 +4696,7 @@ fn pptx_fields_inspect_set_readback_dry_run_and_errors_match_go_oracle() {
             ],
         ),
     ] {
-        assert_go_rust_json_match(&args, label);
+        assert_baseline_rust_json_match(&args, label);
     }
 }
 
@@ -4571,7 +4760,7 @@ fn pptx_fields_set_synthesizes_missing_footer_placeholders() {
 }
 
 #[test]
-fn pptx_theme_update_deck_readback_dry_run_and_errors_match_go_oracle() {
+fn pptx_theme_update_deck_readback_dry_run_and_errors_match_rust_baseline() {
     let fixture = "testdata/pptx/multi-layout/presentation.pptx";
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -4583,7 +4772,7 @@ fn pptx_theme_update_deck_readback_dry_run_and_errors_match_go_oracle() {
     ));
     std::fs::create_dir_all(&temp_dir).expect("pptx theme temp dir");
 
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &[
             "--json",
             "pptx",
@@ -4601,11 +4790,11 @@ fn pptx_theme_update_deck_readback_dry_run_and_errors_match_go_oracle() {
         "theme update dry-run",
     );
 
-    let go_out = temp_dir.join("go-theme-update.pptx");
+    let baseline_out = temp_dir.join("baseline-theme-update.pptx");
     let rust_out = temp_dir.join("rust-theme-update.pptx");
-    let go_out_str = go_out.to_str().expect("go theme update path");
+    let baseline_out_str = baseline_out.to_str().expect("baseline theme update path");
     let rust_out_str = rust_out.to_str().expect("rust theme update path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "theme",
@@ -4618,7 +4807,7 @@ fn pptx_theme_update_deck_readback_dry_run_and_errors_match_go_oracle() {
         "--minor-font",
         "Verdana",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -4635,20 +4824,29 @@ fn pptx_theme_update_deck_readback_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "theme update saved exit");
-    assert_eq!(rust_stderr, go_stderr, "theme update saved stderr");
+    assert_eq!(rust_code, baseline_code, "theme update saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "theme update saved stderr");
     assert_eq!(
         rust_stdout.expect("rust theme update stdout"),
-        go_stdout.expect("go theme update stdout"),
+        baseline_stdout.expect("baseline theme update stdout"),
         "theme update saved stdout"
     );
-    assert!(go_out.exists(), "Go theme update output missing");
+    assert!(
+        baseline_out.exists(),
+        "Rust baseline theme update output missing"
+    );
     assert!(rust_out.exists(), "Rust theme update output missing");
 
-    let (go_read_code, go_read_stdout, go_read_stderr) = run_go_ooxml(&[
-        "--json", "pptx", "masters", "show", go_out_str, "--master", "1",
+    let (baseline_read_code, baseline_read_stdout, baseline_read_stderr) = run_ooxml_baseline(&[
+        "--json",
+        "pptx",
+        "masters",
+        "show",
+        baseline_out_str,
+        "--master",
+        "1",
     ]);
     let (rust_read_code, rust_read_stdout, rust_read_stderr) = run_ooxml(&[
         "--json",
@@ -4659,11 +4857,14 @@ fn pptx_theme_update_deck_readback_dry_run_and_errors_match_go_oracle() {
         "--master",
         "1",
     ]);
-    assert_eq!(rust_read_code, go_read_code, "theme readback exit");
-    assert_eq!(rust_read_stderr, go_read_stderr, "theme readback stderr");
+    assert_eq!(rust_read_code, baseline_read_code, "theme readback exit");
+    assert_eq!(
+        rust_read_stderr, baseline_read_stderr,
+        "theme readback stderr"
+    );
     assert_eq!(
         rust_read_stdout.expect("rust theme readback"),
-        go_read_stdout.expect("go theme readback"),
+        baseline_read_stdout.expect("baseline theme readback"),
         "theme readback stdout"
     );
 
@@ -4759,7 +4960,7 @@ fn pptx_theme_update_deck_readback_dry_run_and_errors_match_go_oracle() {
             ],
         ),
     ] {
-        assert_go_rust_json_match(&args, label);
+        assert_baseline_rust_json_match(&args, label);
     }
 }
 

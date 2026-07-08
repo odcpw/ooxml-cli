@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
-  "referenceImplementation": "go-ooxml-cli-current",
-  "generator": "UPDATE_GOLDENS=1 go test ./internal/cli -run TestRustPortContractGolden -count=1",
+  "referenceImplementation": "legacy-frozen-ooxml-cli-contract",
+  "generator": "historical legacy contract fixture; active smoke harness uses Rust baseline/current checks",
   "fixtures": [
     "testdata/pptx/minimal-title/presentation.pptx",
     "testdata/xlsx/minimal-workbook/workbook.xlsx",

@@ -1,15 +1,15 @@
 #[test]
-fn pptx_charts_list_show_json_and_errors_match_go_oracle() {
+fn pptx_charts_list_show_json_and_errors_match_rust_baseline() {
     let fixture = "testdata/pptx/chart-simple/presentation.pptx";
     let list_args = ["--json", "pptx", "charts", "list", fixture];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&list_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&list_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&list_args);
-    assert_eq!(rust_code, go_code, "charts list exit");
-    assert_eq!(rust_stderr, go_stderr, "charts list stderr");
+    assert_eq!(rust_code, baseline_code, "charts list exit");
+    assert_eq!(rust_stderr, baseline_stderr, "charts list stderr");
     let rust_list = rust_stdout.expect("rust charts list stdout");
     assert_eq!(
         rust_list,
-        go_stdout.expect("go charts list stdout"),
+        baseline_stdout.expect("baseline charts list stdout"),
         "charts list stdout"
     );
     assert_eq!(rust_list["charts"].as_array().map(Vec::len), Some(2));
@@ -56,7 +56,7 @@ fn pptx_charts_list_show_json_and_errors_match_go_oracle() {
         ],
     ] {
         let borrowed = args.to_vec();
-        assert_go_rust_match(&borrowed);
+        assert_rust_baseline_match(&borrowed);
     }
 
     for args in [
@@ -73,22 +73,22 @@ fn pptx_charts_list_show_json_and_errors_match_go_oracle() {
         ],
     ] {
         let borrowed = args.to_vec();
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&borrowed);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&borrowed);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&borrowed);
-        assert_eq!(rust_code, go_code, "charts error exit for {borrowed:?}");
+        assert_eq!(rust_code, baseline_code, "charts error exit for {borrowed:?}");
         assert_eq!(
-            rust_stdout, go_stdout,
+            rust_stdout, baseline_stdout,
             "charts error stdout for {borrowed:?}"
         );
         assert_eq!(
-            rust_stderr, go_stderr,
+            rust_stderr, baseline_stderr,
             "charts error stderr for {borrowed:?}"
         );
     }
 }
 
 #[test]
-fn pptx_charts_create_inline_saved_dry_run_and_errors_match_go_oracle() {
+fn pptx_charts_create_inline_saved_dry_run_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -117,13 +117,13 @@ fn pptx_charts_create_inline_saved_dry_run_and_errors_match_go_oracle() {
         values,
         "--dry-run",
     ];
-    assert_go_rust_match(&dry_run_args);
+    assert_rust_baseline_match(&dry_run_args);
 
-    let go_out = temp_dir.join("go-create-inline.pptx");
+    let baseline_out = temp_dir.join("baseline-create-inline.pptx");
     let rust_out = temp_dir.join("rust-create-inline.pptx");
-    let go_out_str = go_out.to_str().expect("go chart create output path");
+    let baseline_out_str = baseline_out.to_str().expect("baseline chart create output path");
     let rust_out_str = rust_out.to_str().expect("rust chart create output path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "charts",
@@ -138,7 +138,7 @@ fn pptx_charts_create_inline_saved_dry_run_and_errors_match_go_oracle() {
         "--values-json",
         values,
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -157,21 +157,21 @@ fn pptx_charts_create_inline_saved_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "chart create exit");
-    assert_eq!(rust_stderr, go_stderr, "chart create stderr");
+    assert_eq!(rust_code, baseline_code, "chart create exit");
+    assert_eq!(rust_stderr, baseline_stderr, "chart create stderr");
     let rust_json = rust_stdout.expect("rust chart create stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go chart create stdout"),
-            go_out_str,
+            baseline_stdout.expect("baseline chart create stdout"),
+            baseline_out_str,
             "[OUT]"
         ),
         "chart create stdout"
     );
-    assert!(go_out.exists(), "Go chart create output missing");
+    assert!(baseline_out.exists(), "Rust baseline chart create output missing");
     assert!(rust_out.exists(), "Rust chart create output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "chartShowCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
@@ -269,12 +269,12 @@ fn pptx_charts_create_inline_saved_dry_run_and_errors_match_go_oracle() {
             "--dry-run",
         ],
     ] {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 }
 
 #[test]
-fn pptx_charts_update_data_saved_dry_run_and_guards_match_go_oracle() {
+fn pptx_charts_update_data_saved_dry_run_and_guards_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -306,13 +306,13 @@ fn pptx_charts_update_data_saved_dry_run_and_guards_match_go_oracle() {
         categories,
         "--dry-run",
     ];
-    assert_go_rust_match(&dry_run_args);
+    assert_rust_baseline_match(&dry_run_args);
 
-    let go_out = temp_dir.join("go-update-data.pptx");
+    let baseline_out = temp_dir.join("baseline-update-data.pptx");
     let rust_out = temp_dir.join("rust-update-data.pptx");
-    let go_out_str = go_out.to_str().expect("go chart update output path");
+    let baseline_out_str = baseline_out.to_str().expect("baseline chart update output path");
     let rust_out_str = rust_out.to_str().expect("rust chart update output path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "charts",
@@ -329,7 +329,7 @@ fn pptx_charts_update_data_saved_dry_run_and_guards_match_go_oracle() {
         "--categories-json",
         categories,
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -350,21 +350,21 @@ fn pptx_charts_update_data_saved_dry_run_and_guards_match_go_oracle() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "chart update-data exit");
-    assert_eq!(rust_stderr, go_stderr, "chart update-data stderr");
+    assert_eq!(rust_code, baseline_code, "chart update-data exit");
+    assert_eq!(rust_stderr, baseline_stderr, "chart update-data stderr");
     let rust_json = rust_stdout.expect("rust chart update-data stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go chart update-data stdout"),
-            go_out_str,
+            baseline_stdout.expect("baseline chart update-data stdout"),
+            baseline_out_str,
             "[OUT]"
         ),
         "chart update-data stdout"
     );
-    assert!(go_out.exists(), "Go chart update-data output missing");
+    assert!(baseline_out.exists(), "Rust baseline chart update-data output missing");
     assert!(rust_out.exists(), "Rust chart update-data output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "chartShowCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
@@ -412,12 +412,12 @@ fn pptx_charts_update_data_saved_dry_run_and_guards_match_go_oracle() {
             "sha256:0000000000000000000000000000000000000000000000000000000000000000",
         ],
     ] {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 }
 
 #[test]
-fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
+fn pptx_chart_style_mutations_match_rust_baseline_and_validate() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -428,7 +428,7 @@ fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
     ));
     std::fs::create_dir_all(&temp_dir).expect("chart style temp dir");
 
-    assert_pptx_chart_saved_mutation_matches_go(
+    assert_pptx_chart_saved_mutation_matches_rust_baseline(
         &temp_dir,
         "set-title",
         &[
@@ -449,7 +449,7 @@ fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
             "--font-bold",
         ],
     );
-    assert_pptx_chart_saved_mutation_matches_go(
+    assert_pptx_chart_saved_mutation_matches_rust_baseline(
         &temp_dir,
         "set-legend",
         &[
@@ -462,7 +462,7 @@ fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
             "--overlay=false",
         ],
     );
-    assert_pptx_chart_saved_mutation_matches_go(
+    assert_pptx_chart_saved_mutation_matches_rust_baseline(
         &temp_dir,
         "set-plot-area-fill",
         &[
@@ -474,12 +474,12 @@ fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
             "#F3F6FA",
         ],
     );
-    assert_pptx_chart_saved_mutation_matches_go(
+    assert_pptx_chart_saved_mutation_matches_rust_baseline(
         &temp_dir,
         "set-chart-area-fill",
         &["--slide", "1", "--chart", "chart:1", "--fill-color", "none"],
     );
-    assert_pptx_chart_saved_mutation_matches_go(
+    assert_pptx_chart_saved_mutation_matches_rust_baseline(
         &temp_dir,
         "set-series-style",
         &[
@@ -499,7 +499,7 @@ fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
             "1",
         ],
     );
-    assert_pptx_chart_saved_mutation_matches_go(
+    assert_pptx_chart_saved_mutation_matches_rust_baseline(
         &temp_dir,
         "set-axis",
         &[
@@ -518,7 +518,7 @@ fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
             "2",
         ],
     );
-    assert_pptx_chart_saved_mutation_matches_go(
+    assert_pptx_chart_saved_mutation_matches_rust_baseline(
         &temp_dir,
         "convert-type",
         &[
@@ -532,7 +532,7 @@ fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
             "column",
         ],
     );
-    assert_pptx_chart_copy_style_matches_go(&temp_dir);
+    assert_pptx_chart_copy_style_matches_rust_baseline(&temp_dir);
 
     let fixture = "testdata/pptx/chart-simple/presentation.pptx";
     let dry_run_args = [
@@ -549,13 +549,13 @@ fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
         "Dry Run Title",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "chart title dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "chart title dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "chart title dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "chart title dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust chart title dry-run stdout"),
-        go_stdout.expect("go chart title dry-run stdout"),
+        baseline_stdout.expect("baseline chart title dry-run stdout"),
         "chart title dry-run stdout"
     );
 
@@ -631,6 +631,6 @@ fn pptx_chart_style_mutations_match_go_oracle_and_validate() {
         ],
     ] {
         let borrowed = args.to_vec();
-        assert_go_rust_match(&borrowed);
+        assert_rust_baseline_match(&borrowed);
     }
 }

@@ -2,7 +2,7 @@
 use super::*;
 
 #[test]
-fn apply_dry_run_plan_matches_go_oracle() {
+fn apply_dry_run_plan_matches_rust_baseline() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-apply-dry-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
@@ -29,21 +29,21 @@ fn apply_dry_run_plan_matches_go_oracle() {
         "--dry-run",
     ];
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-    assert_eq!(rust_code, go_code, "apply dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "apply dry-run stderr");
-    assert_eq!(rust_stdout, go_stdout, "apply dry-run stdout");
+    assert_eq!(rust_code, baseline_code, "apply dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "apply dry-run stderr");
+    assert_eq!(rust_stdout, baseline_stdout, "apply dry-run stdout");
 }
 
 #[test]
-fn apply_batch_matches_go_oracle_and_writes_valid_xlsx() {
+fn apply_batch_matches_rust_baseline_and_writes_valid_xlsx() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-apply-run-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
     let ops = temp_dir.join("ops.json");
-    let go_out = temp_dir.join("go-out.xlsx");
+    let baseline_out = temp_dir.join("baseline-out.xlsx");
     let rust_out = temp_dir.join("rust-out.xlsx");
     fs::write(
         &ops,
@@ -57,16 +57,16 @@ fn apply_batch_matches_go_oracle_and_writes_valid_xlsx() {
     )
     .expect("write ops");
     let ops_str = ops.to_str().expect("ops path");
-    let go_out_str = go_out.to_str().expect("go out path");
+    let baseline_out_str = baseline_out.to_str().expect("baseline out path");
     let rust_out_str = rust_out.to_str().expect("rust out path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "apply",
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
         "--ops",
         ops_str,
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -78,18 +78,18 @@ fn apply_batch_matches_go_oracle_and_writes_valid_xlsx() {
         rust_out_str,
     ];
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
     assert_eq!(
-        rust_code, go_code,
-        "apply run exit; go_stderr={go_stderr:?}; rust_stderr={rust_stderr:?}"
+        rust_code, baseline_code,
+        "apply run exit; baseline_stderr={baseline_stderr:?}; rust_stderr={rust_stderr:?}"
     );
-    assert_eq!(rust_stderr, go_stderr, "apply run stderr");
-    let go_json = go_stdout.expect("go apply stdout");
+    assert_eq!(rust_stderr, baseline_stderr, "apply run stderr");
+    let baseline_json = baseline_stdout.expect("baseline apply stdout");
     let rust_json = rust_stdout.expect("rust apply stdout");
     assert_eq!(
         scrub_paths(rust_json.clone(), &[(rust_out_str, "[OUT_XLSX]")]),
-        scrub_paths(go_json, &[(go_out_str, "[OUT_XLSX]")]),
+        scrub_paths(baseline_json, &[(baseline_out_str, "[OUT_XLSX]")]),
         "apply run stdout"
     );
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
@@ -119,7 +119,7 @@ fn apply_batch_matches_go_oracle_and_writes_valid_xlsx() {
 }
 
 #[test]
-fn apply_rejects_session_owned_nested_args_like_go_oracle() {
+fn apply_rejects_session_owned_nested_args_like_rust_baseline() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-apply-owned-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
@@ -151,11 +151,11 @@ fn apply_rejects_session_owned_nested_args_like_go_oracle() {
         "--dry-run",
     ];
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-    assert_eq!(rust_code, go_code, "apply owned arg exit");
-    assert_eq!(rust_stdout, go_stdout, "apply owned arg stdout");
-    assert_eq!(rust_stderr, go_stderr, "apply owned arg stderr");
+    assert_eq!(rust_code, baseline_code, "apply owned arg exit");
+    assert_eq!(rust_stdout, baseline_stdout, "apply owned arg stdout");
+    assert_eq!(rust_stderr, baseline_stderr, "apply owned arg stderr");
 }
 
 #[test]
@@ -240,7 +240,7 @@ fn find_to_ops_emits_apply_compatible_ops_for_xlsx_docx_pptx() {
 }
 
 #[test]
-fn find_replace_apply_dry_run_matches_go_oracle_for_xlsx() {
+fn find_replace_apply_dry_run_matches_rust_baseline_for_xlsx() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-find-apply-dry-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
@@ -258,13 +258,13 @@ fn find_replace_apply_dry_run_matches_go_oracle_for_xlsx() {
         "--apply",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(&args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline_raw(&args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(&args);
-    assert_eq!(rust_code, go_code, "find apply dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "find apply dry-run stderr");
-    let go_json: Value = serde_json::from_str(go_stdout.trim()).expect("go plan");
+    assert_eq!(rust_code, baseline_code, "find apply dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "find apply dry-run stderr");
+    let baseline_json: Value = serde_json::from_str(baseline_stdout.trim()).expect("baseline plan");
     let rust_json: Value = serde_json::from_str(rust_stdout.trim()).expect("rust plan");
-    assert_eq!(rust_json, go_json, "find apply dry-run stdout");
+    assert_eq!(rust_json, baseline_json, "find apply dry-run stdout");
 }
 
 #[test]
@@ -345,7 +345,7 @@ fn find_replace_apply_saved_outputs_read_back_and_validate() {
 }
 
 #[test]
-fn find_compose_invalid_flag_combinations_match_go_oracle() {
+fn find_compose_invalid_flag_combinations_match_rust_baseline() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -389,22 +389,25 @@ fn find_compose_invalid_flag_combinations_match_go_oracle() {
         ],
     ];
     for args in cases {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-        assert_eq!(rust_code, go_code, "invalid find flags exit for {args:?}");
         assert_eq!(
-            rust_stdout, go_stdout,
+            rust_code, baseline_code,
+            "invalid find flags exit for {args:?}"
+        );
+        assert_eq!(
+            rust_stdout, baseline_stdout,
             "invalid find flags stdout for {args:?}"
         );
         assert_eq!(
-            rust_stderr, go_stderr,
+            rust_stderr, baseline_stderr,
             "invalid find flags stderr for {args:?}"
         );
     }
 }
 
 #[test]
-fn frozen_mcp_discovery_and_flow_match_go_baseline() {
+fn frozen_mcp_discovery_and_flow_match_legacy_baseline() {
     let baseline = baseline();
     let temp_dir = std::env::temp_dir().join(format!("ooxml-rust-mcp-{}", std::process::id()));
     std::fs::create_dir_all(&temp_dir).expect("temp dir");
@@ -779,18 +782,19 @@ fn web_smoke_binary_readback_checks_are_supported() {
         "testdata/pptx/corrupted-dangling-layout/presentation.pptx",
     ] {
         let pptx_list_args = ["--json", "pptx", "slides", "list", fixture];
-        let (go_list_code, go_list_stdout, go_list_stderr) = run_go_ooxml(&pptx_list_args);
+        let (baseline_list_code, baseline_list_stdout, baseline_list_stderr) =
+            run_ooxml_baseline(&pptx_list_args);
         let (rust_list_code, rust_list_stdout, rust_list_stderr) = run_ooxml(&pptx_list_args);
         assert_eq!(
-            rust_list_code, go_list_code,
+            rust_list_code, baseline_list_code,
             "pptx slides list exit for {fixture}"
         );
         assert_eq!(
-            rust_list_stderr, go_list_stderr,
+            rust_list_stderr, baseline_list_stderr,
             "pptx slides list stderr for {fixture}"
         );
         assert_eq!(
-            rust_list_stdout, go_list_stdout,
+            rust_list_stdout, baseline_list_stdout,
             "pptx slides list stdout for {fixture}"
         );
     }
@@ -804,20 +808,20 @@ fn web_smoke_binary_readback_checks_are_supported() {
         "--slide",
         "1",
     ];
-    let (go_selectors_code, go_selectors_stdout, go_selectors_stderr) =
-        run_go_ooxml(&pptx_selectors_args);
+    let (baseline_selectors_code, baseline_selectors_stdout, baseline_selectors_stderr) =
+        run_ooxml_baseline(&pptx_selectors_args);
     let (rust_selectors_code, rust_selectors_stdout, rust_selectors_stderr) =
         run_ooxml(&pptx_selectors_args);
     assert_eq!(
-        rust_selectors_code, go_selectors_code,
+        rust_selectors_code, baseline_selectors_code,
         "pptx slides selectors exit"
     );
     assert_eq!(
-        rust_selectors_stderr, go_selectors_stderr,
+        rust_selectors_stderr, baseline_selectors_stderr,
         "pptx slides selectors stderr"
     );
     assert_eq!(
-        rust_selectors_stdout, go_selectors_stdout,
+        rust_selectors_stdout, baseline_selectors_stdout,
         "pptx slides selectors stdout"
     );
 
@@ -856,10 +860,10 @@ fn web_smoke_binary_readback_checks_are_supported() {
             "testdata/xlsx/minimal-workbook/workbook.xlsx",
         ],
     ] {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
-    let commented_pptx_path = write_go_oracle_pptx_comment_fixture();
+    let commented_pptx_path = write_rust_baseline_pptx_comment_fixture();
     let commented_pptx = commented_pptx_path
         .to_str()
         .expect("commented PPTX fixture path");
@@ -938,7 +942,7 @@ fn web_smoke_binary_readback_checks_are_supported() {
             "testdata/xlsx/minimal-workbook/workbook.xlsx",
         ],
     ] {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
     for args in [
@@ -1012,7 +1016,7 @@ fn web_smoke_binary_readback_checks_are_supported() {
             "1",
         ],
     ] {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
     for args in [
@@ -1223,7 +1227,7 @@ fn web_smoke_binary_readback_checks_are_supported() {
             "1",
         ],
     ] {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
     for args in [
@@ -1261,15 +1265,19 @@ fn web_smoke_binary_readback_checks_are_supported() {
             "--include-bounds",
         ],
     ] {
-        let (go_shapes_code, go_shapes_stdout, go_shapes_stderr) = run_go_ooxml(&args);
+        let (baseline_shapes_code, baseline_shapes_stdout, baseline_shapes_stderr) =
+            run_ooxml_baseline(&args);
         let (rust_shapes_code, rust_shapes_stdout, rust_shapes_stderr) = run_ooxml(&args);
-        assert_eq!(rust_shapes_code, go_shapes_code, "pptx shapes show exit");
         assert_eq!(
-            rust_shapes_stderr, go_shapes_stderr,
+            rust_shapes_code, baseline_shapes_code,
+            "pptx shapes show exit"
+        );
+        assert_eq!(
+            rust_shapes_stderr, baseline_shapes_stderr,
             "pptx shapes show stderr for {args:?}"
         );
         assert_eq!(
-            rust_shapes_stdout, go_shapes_stdout,
+            rust_shapes_stdout, baseline_shapes_stdout,
             "pptx shapes show stdout for {args:?}"
         );
     }
@@ -1283,20 +1291,23 @@ fn web_smoke_binary_readback_checks_are_supported() {
         "--slide",
         "2",
     ];
-    let (go_table_selectors_code, go_table_selectors_stdout, go_table_selectors_stderr) =
-        run_go_ooxml(&table_selectors_args);
+    let (
+        baseline_table_selectors_code,
+        baseline_table_selectors_stdout,
+        baseline_table_selectors_stderr,
+    ) = run_ooxml_baseline(&table_selectors_args);
     let (rust_table_selectors_code, rust_table_selectors_stdout, rust_table_selectors_stderr) =
         run_ooxml(&table_selectors_args);
     assert_eq!(
-        rust_table_selectors_code, go_table_selectors_code,
+        rust_table_selectors_code, baseline_table_selectors_code,
         "pptx table selectors exit"
     );
     assert_eq!(
-        rust_table_selectors_stderr, go_table_selectors_stderr,
+        rust_table_selectors_stderr, baseline_table_selectors_stderr,
         "pptx table selectors stderr"
     );
     assert_eq!(
-        rust_table_selectors_stdout, go_table_selectors_stdout,
+        rust_table_selectors_stdout, baseline_table_selectors_stdout,
         "pptx table selectors stdout"
     );
 
@@ -1315,9 +1326,9 @@ fn web_smoke_binary_readback_checks_are_supported() {
     );
 
     let xlsx_args = ["--json", "xlsx", "sheets", "list", xlsx];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&xlsx_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&xlsx_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&xlsx_args);
-    assert_eq!(rust_code, go_code, "xlsx sheets list exit");
-    assert_eq!(rust_stderr, go_stderr, "xlsx sheets list stderr");
-    assert_eq!(rust_stdout, go_stdout, "xlsx sheets list stdout");
+    assert_eq!(rust_code, baseline_code, "xlsx sheets list exit");
+    assert_eq!(rust_stderr, baseline_stderr, "xlsx sheets list stderr");
+    assert_eq!(rust_stdout, baseline_stdout, "xlsx sheets list stdout");
 }

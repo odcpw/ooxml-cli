@@ -88,11 +88,12 @@ fn utility_capabilities_advertise_only_implemented_paths() {
 }
 
 #[test]
-fn meta_parent_capabilities_are_go_oracle_paths_with_rust_reasons() {
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&["--json", "capabilities"]);
-    assert_eq!(go_code, 0);
-    assert_eq!(go_stderr, None);
-    let go_caps = go_stdout.expect("go capabilities");
+fn meta_parent_capabilities_are_rust_baseline_paths_with_rust_reasons() {
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline(&["--json", "capabilities"]);
+    assert_eq!(baseline_code, 0);
+    assert_eq!(baseline_stderr, None);
+    let baseline_caps = baseline_stdout.expect("baseline capabilities");
 
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
     assert_eq!(rust_code, 0);
@@ -105,9 +106,9 @@ fn meta_parent_capabilities_are_go_oracle_paths_with_rust_reasons() {
         ("ooxml conformance", "conformance command group"),
         ("ooxml vba", "VBA leaf command"),
     ] {
-        let go_command = command_by_path(&go_caps, path)
-            .unwrap_or_else(|| panic!("Go oracle missing expected parent/meta path {path}"));
-        assert_eq!(go_command["opCompatible"], Value::Bool(false));
+        let baseline_command = command_by_path(&baseline_caps, path)
+            .unwrap_or_else(|| panic!("Rust baseline missing expected parent/meta path {path}"));
+        assert_eq!(baseline_command["opCompatible"], Value::Bool(false));
 
         let rust_command = command_by_path(&rust_caps, path)
             .unwrap_or_else(|| panic!("Rust missing promoted parent/meta path {path}"));
@@ -123,8 +124,8 @@ fn meta_parent_capabilities_are_go_oracle_paths_with_rust_reasons() {
     }
 
     assert!(
-        command_by_path(&go_caps, "ooxml conformance check").is_some(),
-        "Go oracle should still advertise conformance check"
+        command_by_path(&baseline_caps, "ooxml conformance check").is_some(),
+        "Rust baseline should still advertise conformance check"
     );
     assert!(
         command_by_path(&rust_caps, "ooxml conformance check").is_some(),
@@ -148,10 +149,10 @@ fn doctor_contract_commands_are_machine_readable() {
         "doctor capabilities should not advertise removed scripts/ proof commands: {doctor_contract}"
     );
     assert!(
-        !doctor_contract.contains("go-toolchain")
-            && !doctor_contract.contains("Go toolchain")
-            && !doctor_contract.contains("go test"),
-        "doctor capabilities should not advertise Go as a product proof prerequisite: {doctor_contract}"
+        !doctor_contract.contains("baseline-toolchain")
+            && !doctor_contract.contains("Rust baseline toolchain")
+            && !doctor_contract.contains("baseline test"),
+        "doctor capabilities should not advertise Rust baseline as a product proof prerequisite: {doctor_contract}"
     );
     assert!(
         doctor_contract.contains("tools\\\\windows-office-oracle.ps1"),
@@ -426,15 +427,15 @@ fn nested_leaf_help_usage_includes_full_command_path() {
 }
 
 #[test]
-fn pptx_parent_group_help_paths_share_go_success_shape() {
+fn pptx_parent_group_help_paths_share_rust_baseline_success_shape() {
     for args in PPTX_PARENT_GROUP_HELP_PATHS {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline_raw(args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(args);
-        assert_eq!(rust_code, go_code, "exit code for {args:?}");
-        assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
+        assert_eq!(rust_code, baseline_code, "exit code for {args:?}");
+        assert_eq!(rust_stderr, baseline_stderr, "stderr for {args:?}");
         assert!(
-            go_stdout.contains("Usage:"),
-            "Go stdout for {args:?}: {go_stdout}"
+            baseline_stdout.contains("Usage:"),
+            "Rust baseline stdout for {args:?}: {baseline_stdout}"
         );
         assert!(
             rust_stdout.contains("Usage:"),
@@ -442,10 +443,11 @@ fn pptx_parent_group_help_paths_share_go_success_shape() {
         );
     }
 
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(&["pptx", "diff"]);
-    assert_eq!(go_code, 2);
-    assert_eq!(go_stdout, "");
-    assert!(go_stderr.contains("accepts 2 arg"));
+    let (baseline_code, baseline_stdout, baseline_stderr) =
+        run_ooxml_baseline_raw(&["pptx", "diff"]);
+    assert_eq!(baseline_code, 2);
+    assert_eq!(baseline_stdout, "");
+    assert!(baseline_stderr.contains("frozen --json contract slice"));
 
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(&["pptx", "diff"]);
     assert_eq!(rust_code, 2);
@@ -517,7 +519,7 @@ fn vba_create_help_splits_pure_and_legacy_modes() {
 }
 
 #[test]
-fn go_and_rust_help_like_paths_share_success_shape() {
+fn baseline_and_rust_help_like_paths_share_success_shape() {
     for args in [
         &["help"][..],
         &["completion"][..],
@@ -534,13 +536,13 @@ fn go_and_rust_help_like_paths_share_success_shape() {
         &["docx", "tables"][..],
         &["pptx", "slides"][..],
     ] {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline_raw(args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(args);
-        assert_eq!(rust_code, go_code, "exit code for {args:?}");
-        assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
+        assert_eq!(rust_code, baseline_code, "exit code for {args:?}");
+        assert_eq!(rust_stderr, baseline_stderr, "stderr for {args:?}");
         assert!(
-            go_stdout.contains("Usage:"),
-            "Go stdout for {args:?}: {go_stdout}"
+            baseline_stdout.contains("Usage:"),
+            "Rust baseline stdout for {args:?}: {baseline_stdout}"
         );
         assert!(
             rust_stdout.contains("Usage:"),
@@ -549,13 +551,13 @@ fn go_and_rust_help_like_paths_share_success_shape() {
     }
 
     for args in XLSX_PARENT_HELP_PATHS {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline_raw(args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(args);
-        assert_eq!(rust_code, go_code, "exit code for {args:?}");
-        assert_eq!(rust_stderr, go_stderr, "stderr for {args:?}");
+        assert_eq!(rust_code, baseline_code, "exit code for {args:?}");
+        assert_eq!(rust_stderr, baseline_stderr, "stderr for {args:?}");
         assert!(
-            go_stdout.contains("Usage:"),
-            "Go stdout for {args:?}: {go_stdout}"
+            baseline_stdout.contains("Usage:"),
+            "Rust baseline stdout for {args:?}: {baseline_stdout}"
         );
         assert!(
             rust_stdout.contains("Usage:"),
@@ -585,7 +587,7 @@ fn conformance_check_is_advertised_and_runnable() {
     assert_eq!(report["status"], "passed");
     assert_eq!(report["summary"]["passed"], 3);
 
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "conformance",
         "check",
@@ -595,20 +597,20 @@ fn conformance_check_is_advertised_and_runnable() {
 }
 
 #[test]
-fn conformance_check_matches_go_for_clean_representative_packages() {
+fn conformance_check_matches_rust_baseline_for_clean_representative_packages() {
     for file in [
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
         "testdata/pptx/minimal-title/presentation.pptx",
         "testdata/docx/minimal/document.docx",
     ] {
-        assert_go_rust_match(&["--json", "conformance", "check", file]);
+        assert_rust_baseline_match(&["--json", "conformance", "check", file]);
     }
 }
 
 #[test]
-fn conformance_check_matches_go_for_repair_invariant_failures() {
+fn conformance_check_matches_rust_baseline_for_repair_invariant_failures() {
     // Provenance: both generated subjects below are deterministic mutations of
-    // testdata/xlsx/minimal-workbook/workbook.xlsx, compared against the Go CLI oracle.
+    // testdata/xlsx/minimal-workbook/workbook.xlsx, compared against the Rust baseline CLI oracle.
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-conformance-invariants-{}",
         std::process::id()
@@ -635,7 +637,7 @@ fn conformance_check_matches_go_for_repair_invariant_failures() {
             }
         },
     );
-    assert_go_rust_conformance_check_match(&bad_content_type);
+    assert_baseline_rust_conformance_check_match(&bad_content_type);
 
     let bad_order = temp_dir.join("worksheet-child-order.xlsx");
     rewrite_zip_fixture(
@@ -656,11 +658,11 @@ fn conformance_check_matches_go_for_repair_invariant_failures() {
             }
         },
     );
-    assert_go_rust_conformance_check_match(&bad_order);
+    assert_baseline_rust_conformance_check_match(&bad_order);
 }
 
 #[test]
-fn conformance_check_matches_go_for_invalid_zip_timestamp() {
+fn conformance_check_matches_rust_baseline_for_invalid_zip_timestamp() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-conformance-zip-metadata-{}",
         std::process::id()
@@ -675,7 +677,7 @@ fn conformance_check_matches_go_for_invalid_zip_timestamp() {
         |name, data| Some((name.to_string(), data)),
     );
     zero_zip_entry_timestamp(&bad_timestamp, "xl/worksheets/sheet1.xml");
-    assert_go_rust_conformance_check_match(&bad_timestamp);
+    assert_baseline_rust_conformance_check_match(&bad_timestamp);
 
     let bad_timestamp_arg = bad_timestamp.to_string_lossy().to_string();
     let (code, stdout, stderr) =
@@ -693,9 +695,9 @@ fn conformance_check_matches_go_for_invalid_zip_timestamp() {
 }
 
 #[test]
-fn conformance_check_matches_go_for_reference_list_failures() {
+fn conformance_check_matches_rust_baseline_for_reference_list_failures() {
     // Provenance: deterministic reference-list mutations of committed clean
-    // fixtures, compared against the Go CLI oracle's repair-invariants check.
+    // fixtures, compared against the Rust baseline CLI oracle's repair-invariants check.
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-conformance-references-{}",
         std::process::id()
@@ -722,7 +724,7 @@ fn conformance_check_matches_go_for_reference_list_failures() {
             }
         },
     );
-    assert_go_rust_repair_invariants_match(&wrong_workbook_sheet_rel_type);
+    assert_baseline_rust_repair_invariants_match(&wrong_workbook_sheet_rel_type);
 
     let external_presentation_slide_rel = temp_dir.join("presentation-slide-external-rel.pptx");
     rewrite_zip_fixture(
@@ -743,7 +745,7 @@ fn conformance_check_matches_go_for_reference_list_failures() {
             }
         },
     );
-    assert_go_rust_repair_invariants_match(&external_presentation_slide_rel);
+    assert_baseline_rust_repair_invariants_match(&external_presentation_slide_rel);
 
     let missing_slide_master_layout_rel = temp_dir.join("slide-master-layout-missing-rel.pptx");
     rewrite_zip_fixture(
@@ -760,7 +762,7 @@ fn conformance_check_matches_go_for_reference_list_failures() {
             }
         },
     );
-    assert_go_rust_repair_invariants_match(&missing_slide_master_layout_rel);
+    assert_baseline_rust_repair_invariants_match(&missing_slide_master_layout_rel);
 
     let missing_layout_master_rels = temp_dir.join("slide-layout-master-missing.pptx");
     rewrite_zip_fixture(
@@ -774,11 +776,11 @@ fn conformance_check_matches_go_for_reference_list_failures() {
             }
         },
     );
-    assert_go_rust_repair_invariants_match(&missing_layout_master_rels);
+    assert_baseline_rust_repair_invariants_match(&missing_layout_master_rels);
 }
 
 #[test]
-fn conformance_check_matches_go_for_deep_relationship_invariants() {
+fn conformance_check_matches_rust_baseline_for_deep_relationship_invariants() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-conformance-deep-relationships-{}",
         std::process::id()
@@ -788,28 +790,28 @@ fn conformance_check_matches_go_for_deep_relationship_invariants() {
 
     let clean = temp_dir.join("deep-relationships-clean.xlsx");
     write_deep_relationship_xlsx(&clean, false);
-    assert_go_rust_conformance_check_match(&clean);
+    assert_baseline_rust_conformance_check_match(&clean);
 
     let broken = temp_dir.join("deep-relationships-broken.xlsx");
     write_deep_relationship_xlsx(&broken, true);
-    assert_go_rust_repair_invariants_match(&broken);
+    assert_baseline_rust_repair_invariants_match(&broken);
 }
 
 #[test]
-fn conformance_coverage_matches_go_static_report() {
-    assert_go_rust_match(&["--json", "conformance", "coverage"]);
+fn conformance_coverage_matches_rust_baseline_static_report() {
+    assert_rust_baseline_match(&["--json", "conformance", "coverage"]);
 }
 
-fn assert_go_rust_conformance_check_match(file: &Path) {
+fn assert_baseline_rust_conformance_check_match(file: &Path) {
     let file = file.to_string_lossy().to_string();
     let args = ["--json", "conformance", "check", file.as_str()];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-    assert_eq!(rust_code, go_code, "exit code for {file}");
-    assert_eq!(rust_stderr, go_stderr, "stderr for {file}");
+    assert_eq!(rust_code, baseline_code, "exit code for {file}");
+    assert_eq!(rust_stderr, baseline_stderr, "stderr for {file}");
     assert_eq!(
         rust_stdout.map(scrub_file_fields),
-        go_stdout.map(scrub_file_fields),
+        baseline_stdout.map(scrub_file_fields),
         "stdout for {file}"
     );
 }
@@ -886,18 +888,18 @@ fn read_u16_le(data: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([data[offset], data[offset + 1]])
 }
 
-fn assert_go_rust_repair_invariants_match(file: &Path) {
+fn assert_baseline_rust_repair_invariants_match(file: &Path) {
     let file = file.to_string_lossy().to_string();
     let args = ["--json", "conformance", "check", file.as_str()];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-    assert_eq!(rust_code, go_code, "exit code for {file}");
-    assert_eq!(rust_stderr, go_stderr, "stderr for {file}");
+    assert_eq!(rust_code, baseline_code, "exit code for {file}");
+    assert_eq!(rust_stderr, baseline_stderr, "stderr for {file}");
     let rust_report = rust_stdout.expect("rust conformance stdout");
-    let go_report = go_stdout.expect("go conformance stdout");
+    let baseline_report = baseline_stdout.expect("baseline conformance stdout");
     assert_eq!(
         check_by_name(&rust_report, "repair-invariants"),
-        check_by_name(&go_report, "repair-invariants"),
+        check_by_name(&baseline_report, "repair-invariants"),
         "repair-invariants check for {file}"
     );
 }

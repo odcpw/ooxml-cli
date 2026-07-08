@@ -135,7 +135,7 @@ pub(crate) fn agent_triage(args: &[String]) -> CliResult<Value> {
             },
             {
                 "code": "rust-surface-only",
-                "message": "The Rust port exposes only implemented paths; use capabilities rather than assuming legacy Go-only commands."
+                "message": "The Rust CLI exposes only implemented paths; use capabilities rather than assuming legacy-only commands."
             },
             {
                 "code": "health-is-advisory",

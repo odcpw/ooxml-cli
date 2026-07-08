@@ -2,7 +2,7 @@
 use super::*;
 
 #[test]
-fn top_level_diff_xlsx_matches_go_oracle_for_cell_value_change() {
+fn top_level_diff_xlsx_matches_rust_baseline_for_cell_value_change() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-diff-xlsx-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
@@ -26,7 +26,7 @@ fn top_level_diff_xlsx_matches_go_oracle_for_cell_value_change() {
     );
     let candidate = candidate.to_string_lossy().to_string();
 
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "diff",
         "testdata/xlsx/types-and-formulas/workbook.xlsx",
@@ -122,7 +122,7 @@ fn top_level_diff_xlsx_aligns_renamed_sheet_by_stable_identity() {
 }
 
 #[test]
-fn top_level_diff_docx_matches_go_oracle_for_paragraph_text_change() {
+fn top_level_diff_docx_matches_rust_baseline_for_paragraph_text_change() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-diff-docx-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
@@ -142,7 +142,7 @@ fn top_level_diff_docx_matches_go_oracle_for_paragraph_text_change() {
     );
     let candidate = candidate.to_string_lossy().to_string();
 
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "diff",
         "testdata/docx/mixed-blocks/document.docx",
@@ -151,7 +151,7 @@ fn top_level_diff_docx_matches_go_oracle_for_paragraph_text_change() {
 }
 
 #[test]
-fn top_level_diff_pptx_matches_go_oracle_for_title_text_change() {
+fn top_level_diff_pptx_matches_rust_baseline_for_title_text_change() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-diff-pptx-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
@@ -175,7 +175,7 @@ fn top_level_diff_pptx_matches_go_oracle_for_title_text_change() {
     );
     let candidate = candidate.to_string_lossy().to_string();
 
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "diff",
         "testdata/pptx/title-content/presentation.pptx",
@@ -184,7 +184,7 @@ fn top_level_diff_pptx_matches_go_oracle_for_title_text_change() {
 }
 
 #[test]
-fn pptx_diff_path_matches_go_oracle_for_title_text_change() {
+fn pptx_diff_path_matches_rust_baseline_for_title_text_change() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-pptx-diff-path-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
@@ -208,7 +208,7 @@ fn pptx_diff_path_matches_go_oracle_for_title_text_change() {
     );
     let candidate = candidate.to_string_lossy().to_string();
 
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "pptx",
         "diff",
@@ -218,8 +218,8 @@ fn pptx_diff_path_matches_go_oracle_for_title_text_change() {
 }
 
 #[test]
-fn top_level_diff_mismatched_family_error_matches_go_oracle() {
-    assert_go_rust_match(&[
+fn top_level_diff_mismatched_family_error_matches_rust_baseline() {
+    assert_rust_baseline_match(&[
         "--json",
         "diff",
         "testdata/xlsx/types-and-formulas/workbook.xlsx",

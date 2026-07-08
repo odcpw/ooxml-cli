@@ -3,13 +3,15 @@
 The Rust CLI is now the current/default product path. Build and run it with
 Cargo.
 
-The Go implementation is deprecated for product development and remains only a
-legacy oracle/reference on `codex/ooxml-go-reference`. The Rust smoke harness
-builds its Go oracle from a detached `codex/ooxml-go-reference` worktree by
-default, or from `OOXML_GO_ORACLE_DIR`/`OOXML_GO_ORACLE_REF` when deliberately
-overridden.
+The Go implementation is deprecated for product development and is no longer a
+test oracle. The Rust smoke harness does not build a Go worktree. Differential
+checks use the current Rust binary by default, or `OOXML_RUST_BASELINE_BIN`
+when deliberately comparing against another Rust build.
 
-The frozen Go contract lives in `testdata/golden/rust-port-contract/baseline.json`.
+The legacy frozen contract fixture lives in
+`testdata/golden/rust-port-contract/baseline.json`. Historical entries below
+still mention Go because they record the older porting milestones that produced
+those fixtures and parity checks.
 
 Latest milestone, 2026-06-21:
 

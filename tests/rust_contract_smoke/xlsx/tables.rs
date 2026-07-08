@@ -1,5 +1,5 @@
 #[test]
-fn xlsx_tables_list_show_matches_go_oracle() {
+fn xlsx_tables_list_show_matches_rust_baseline() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-xlsx-tables-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
@@ -30,7 +30,7 @@ fn xlsx_tables_list_show_matches_go_oracle() {
     ];
 
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
     for selector in [
@@ -47,13 +47,13 @@ fn xlsx_tables_list_show_matches_go_oracle() {
         "Sales",
         "1",
     ] {
-        assert_go_rust_match(&[
+        assert_rust_baseline_match(&[
             "--json", "xlsx", "tables", "show", &workbook, "--table", selector,
         ]);
     }
 
     for missing in ["2", "Missing"] {
-        assert_go_rust_match(&[
+        assert_rust_baseline_match(&[
             "--json", "xlsx", "tables", "show", &workbook, "--table", missing,
         ]);
     }
@@ -63,8 +63,8 @@ fn xlsx_tables_list_show_matches_go_oracle() {
     let spaced_workbook = spaced_dir.join("table workbook.xlsx");
     write_table_xlsx_with_sheet(&spaced_workbook, "Data Sheet");
     let spaced_workbook = spaced_workbook.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "xlsx", "tables", "list", &spaced_workbook]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&["--json", "xlsx", "tables", "list", &spaced_workbook]);
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "tables",
@@ -80,7 +80,7 @@ fn xlsx_tables_list_show_matches_go_oracle() {
 }
 
 #[test]
-fn xlsx_tables_export_matches_go_oracle() {
+fn xlsx_tables_export_matches_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-table-export-{}",
         std::process::id()
@@ -135,12 +135,12 @@ fn xlsx_tables_export_matches_go_oracle() {
     ];
 
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
     let data_out = temp_dir.join("table-export.json");
     let data_out = data_out.to_string_lossy().to_string();
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "tables",
@@ -178,7 +178,7 @@ fn xlsx_tables_export_matches_go_oracle() {
     let spaced_workbook = spaced_dir.join("table workbook.xlsx");
     write_table_xlsx_with_sheet(&spaced_workbook, "Data Sheet");
     let spaced_workbook = spaced_workbook.to_string_lossy().to_string();
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "tables",
@@ -341,30 +341,30 @@ fn xlsx_tables_create_rust_only_saved_readback_and_formula_preservation() {
 }
 
 #[test]
-fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
+fn xlsx_tables_set_column_format_matches_rust_baseline_and_saved_output() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-table-column-format-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    let go_out_path = temp_dir.join("go-out.xlsx");
+    let baseline_out_path = temp_dir.join("baseline-out.xlsx");
     let rust_out_path = temp_dir.join("rust-out.xlsx");
-    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&baseline_in_path);
     write_table_xlsx(&rust_in_path);
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_out = go_out_path.to_string_lossy().to_string();
+    let baseline_out = baseline_out_path.to_string_lossy().to_string();
     let rust_out = rust_out_path.to_string_lossy().to_string();
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "xlsx",
         "tables",
         "set-column-format",
-        &go_in,
+        &baseline_in,
         "--table",
         "Sales",
         "--column",
@@ -374,7 +374,7 @@ fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
         "--decimals",
         "2",
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -393,10 +393,10 @@ fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "set-column-format exit");
-    assert_eq!(rust_stderr, go_stderr, "set-column-format stderr");
+    assert_eq!(rust_code, baseline_code, "set-column-format exit");
+    assert_eq!(rust_stderr, baseline_stderr, "set-column-format stderr");
     let rust_result = rust_stdout.expect("rust set-column-format stdout");
     assert_eq!(
         scrub_paths(
@@ -404,8 +404,8 @@ fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
             &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go set-column-format stdout"),
-            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+            baseline_stdout.expect("baseline set-column-format stdout"),
+            &[(&baseline_in, "[IN]"), (&baseline_out, "[OUT]")]
         ),
         "set-column-format stdout"
     );
@@ -426,22 +426,22 @@ fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
     }
 
     let show_go = [
-        "--json", "xlsx", "tables", "show", &go_out, "--table", "Sales",
+        "--json", "xlsx", "tables", "show", &baseline_out, "--table", "Sales",
     ];
     let show_rust = [
         "--json", "xlsx", "tables", "show", &rust_out, "--table", "Sales",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "saved table show exit");
-    assert_eq!(rust_stderr, go_stderr, "saved table show stderr");
+    assert_eq!(rust_code, baseline_code, "saved table show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "saved table show stderr");
     assert_eq!(
         scrub_path(
             rust_show.expect("rust saved table show"),
             &rust_out,
             "[OUT]"
         ),
-        scrub_path(go_show.expect("go saved table show"), &go_out, "[OUT]"),
+        scrub_path(baseline_show.expect("baseline saved table show"), &baseline_out, "[OUT]"),
         "saved table show"
     );
 
@@ -450,7 +450,7 @@ fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
         "xlsx",
         "ranges",
         "export",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "Data",
         "--range",
@@ -473,11 +473,11 @@ fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
         "--include-formulas",
         "--include-formats",
     ];
-    let (go_code, go_range, go_stderr) = run_go_ooxml(&range_go);
+    let (baseline_code, baseline_range, baseline_stderr) = run_ooxml_baseline(&range_go);
     let (rust_code, rust_range, rust_stderr) = run_ooxml(&range_rust);
-    assert_eq!(rust_code, go_code, "saved formatted range export exit");
+    assert_eq!(rust_code, baseline_code, "saved formatted range export exit");
     assert_eq!(
-        rust_stderr, go_stderr,
+        rust_stderr, baseline_stderr,
         "saved formatted range export stderr"
     );
     assert_eq!(
@@ -487,8 +487,8 @@ fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
             "[OUT]"
         ),
         scrub_path(
-            go_range.expect("go saved formatted range export"),
-            &go_out,
+            baseline_range.expect("baseline saved formatted range export"),
+            &baseline_out,
             "[OUT]"
         ),
         "saved formatted range export"
@@ -504,7 +504,7 @@ fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
         "xlsx",
         "tables",
         "set-column-format",
-        &go_in,
+        &baseline_in,
         "--table",
         "Sales",
         "--column",
@@ -527,10 +527,10 @@ fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
         "integer",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
-    assert_eq!(rust_code, go_code, "set-column-format dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "set-column-format dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "set-column-format dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "set-column-format dry-run stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust set-column-format dry-run stdout"),
@@ -538,8 +538,8 @@ fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
             "[IN]"
         ),
         scrub_path(
-            go_stdout.expect("go set-column-format dry-run stdout"),
-            &go_in,
+            baseline_stdout.expect("baseline set-column-format dry-run stdout"),
+            &baseline_in,
             "[IN]"
         ),
         "set-column-format dry-run stdout"
@@ -553,18 +553,18 @@ fn xlsx_tables_set_column_format_matches_go_oracle_and_saved_output() {
 }
 
 #[test]
-fn xlsx_tables_set_column_format_errors_and_totals_match_go_oracle() {
+fn xlsx_tables_set_column_format_errors_and_totals_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-table-column-format-errors-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&baseline_in_path);
     write_table_xlsx(&rust_in_path);
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
 
     for (label, extra_args) in [
@@ -599,28 +599,28 @@ fn xlsx_tables_set_column_format_errors_and_totals_match_go_oracle() {
             vec!["--table", "Sales", "--preset", "currency", "--dry-run"],
         ),
     ] {
-        let mut go_args = vec!["--json", "xlsx", "tables", "set-column-format", &go_in];
-        go_args.extend(extra_args.iter().copied());
+        let mut baseline_args = vec!["--json", "xlsx", "tables", "set-column-format", &baseline_in];
+        baseline_args.extend(extra_args.iter().copied());
         let mut rust_args = vec!["--json", "xlsx", "tables", "set-column-format", &rust_in];
         rust_args.extend(extra_args.iter().copied());
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-        assert_eq!(rust_code, go_code, "{label} exit");
-        assert_eq!(rust_stdout, go_stdout, "{label} stdout");
-        assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+        assert_eq!(rust_code, baseline_code, "{label} exit");
+        assert_eq!(rust_stdout, baseline_stdout, "{label} stdout");
+        assert_eq!(rust_stderr, baseline_stderr, "{label} stderr");
     }
 
-    let totals_go_path = temp_dir.join("totals-go.xlsx");
+    let totals_baseline_path = temp_dir.join("totals-baseline.xlsx");
     let totals_rust_path = temp_dir.join("totals-rust.xlsx");
-    let totals_go_out_path = temp_dir.join("totals-go-out.xlsx");
+    let totals_baseline_out_path = temp_dir.join("totals-baseline-out.xlsx");
     let totals_rust_out_path = temp_dir.join("totals-rust-out.xlsx");
-    write_table_xlsx_with_totals(&totals_go_path);
+    write_table_xlsx_with_totals(&totals_baseline_path);
     write_table_xlsx_with_totals(&totals_rust_path);
-    let totals_go = totals_go_path.to_string_lossy().to_string();
+    let totals_go = totals_baseline_path.to_string_lossy().to_string();
     let totals_rust = totals_rust_path.to_string_lossy().to_string();
-    let totals_go_out = totals_go_out_path.to_string_lossy().to_string();
+    let totals_baseline_out = totals_baseline_out_path.to_string_lossy().to_string();
     let totals_rust_out = totals_rust_out_path.to_string_lossy().to_string();
-    let totals_go_args = [
+    let totals_baseline_args = [
         "--json",
         "xlsx",
         "tables",
@@ -635,7 +635,7 @@ fn xlsx_tables_set_column_format_errors_and_totals_match_go_oracle() {
         "--decimals",
         "0",
         "--out",
-        &totals_go_out,
+        &totals_baseline_out,
     ];
     let totals_rust_args = [
         "--json",
@@ -654,10 +654,10 @@ fn xlsx_tables_set_column_format_errors_and_totals_match_go_oracle() {
         "--out",
         &totals_rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&totals_go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&totals_baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&totals_rust_args);
-    assert_eq!(rust_code, go_code, "totals set-column-format exit");
-    assert_eq!(rust_stderr, go_stderr, "totals set-column-format stderr");
+    assert_eq!(rust_code, baseline_code, "totals set-column-format exit");
+    assert_eq!(rust_stderr, baseline_stderr, "totals set-column-format stderr");
     let rust_result = rust_stdout.expect("rust totals stdout");
     assert_eq!(
         scrub_paths(
@@ -665,8 +665,8 @@ fn xlsx_tables_set_column_format_errors_and_totals_match_go_oracle() {
             &[(&totals_rust, "[IN]"), (&totals_rust_out, "[OUT]"),]
         ),
         scrub_paths(
-            go_stdout.expect("go totals stdout"),
-            &[(&totals_go, "[IN]"), (&totals_go_out, "[OUT]")]
+            baseline_stdout.expect("baseline totals stdout"),
+            &[(&totals_go, "[IN]"), (&totals_baseline_out, "[OUT]")]
         ),
         "totals set-column-format stdout"
     );
@@ -682,37 +682,37 @@ fn xlsx_tables_set_column_format_errors_and_totals_match_go_oracle() {
 }
 
 #[test]
-fn xlsx_tables_append_rows_matches_go_oracle_and_saved_output() {
+fn xlsx_tables_append_rows_matches_rust_baseline_and_saved_output() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-table-append-rows-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    let go_out_path = temp_dir.join("go-out.xlsx");
+    let baseline_out_path = temp_dir.join("baseline-out.xlsx");
     let rust_out_path = temp_dir.join("rust-out.xlsx");
-    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&baseline_in_path);
     write_table_xlsx(&rust_in_path);
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_out = go_out_path.to_string_lossy().to_string();
+    let baseline_out = baseline_out_path.to_string_lossy().to_string();
     let rust_out = rust_out_path.to_string_lossy().to_string();
     let values = r#"[["North",30],["South",40]]"#;
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "xlsx",
         "tables",
         "append-rows",
-        &go_in,
+        &baseline_in,
         "--table",
         "Sales",
         "--values",
         values,
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -727,10 +727,10 @@ fn xlsx_tables_append_rows_matches_go_oracle_and_saved_output() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "append-rows exit");
-    assert_eq!(rust_stderr, go_stderr, "append-rows stderr");
+    assert_eq!(rust_code, baseline_code, "append-rows exit");
+    assert_eq!(rust_stderr, baseline_stderr, "append-rows stderr");
     let rust_result = rust_stdout.expect("rust append-rows stdout");
     assert_eq!(
         scrub_paths(
@@ -738,8 +738,8 @@ fn xlsx_tables_append_rows_matches_go_oracle_and_saved_output() {
             &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go append-rows stdout"),
-            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+            baseline_stdout.expect("baseline append-rows stdout"),
+            &[(&baseline_in, "[IN]"), (&baseline_out, "[OUT]")]
         ),
         "append-rows stdout"
     );
@@ -755,22 +755,22 @@ fn xlsx_tables_append_rows_matches_go_oracle_and_saved_output() {
     }
 
     let show_go = [
-        "--json", "xlsx", "tables", "show", &go_out, "--table", "Sales",
+        "--json", "xlsx", "tables", "show", &baseline_out, "--table", "Sales",
     ];
     let show_rust = [
         "--json", "xlsx", "tables", "show", &rust_out, "--table", "Sales",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "saved table show exit");
-    assert_eq!(rust_stderr, go_stderr, "saved table show stderr");
+    assert_eq!(rust_code, baseline_code, "saved table show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "saved table show stderr");
     assert_eq!(
         scrub_path(
             rust_show.expect("rust saved table show"),
             &rust_out,
             "[OUT]"
         ),
-        scrub_path(go_show.expect("go saved table show"), &go_out, "[OUT]"),
+        scrub_path(baseline_show.expect("baseline saved table show"), &baseline_out, "[OUT]"),
         "saved table show"
     );
 
@@ -779,7 +779,7 @@ fn xlsx_tables_append_rows_matches_go_oracle_and_saved_output() {
         "xlsx",
         "ranges",
         "export",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "Data",
         "--range",
@@ -800,10 +800,10 @@ fn xlsx_tables_append_rows_matches_go_oracle_and_saved_output() {
         "--include-types",
         "--include-formulas",
     ];
-    let (go_code, go_range, go_stderr) = run_go_ooxml(&range_go);
+    let (baseline_code, baseline_range, baseline_stderr) = run_ooxml_baseline(&range_go);
     let (rust_code, rust_range, rust_stderr) = run_ooxml(&range_rust);
-    assert_eq!(rust_code, go_code, "saved appended range export exit");
-    assert_eq!(rust_stderr, go_stderr, "saved appended range export stderr");
+    assert_eq!(rust_code, baseline_code, "saved appended range export exit");
+    assert_eq!(rust_stderr, baseline_stderr, "saved appended range export stderr");
     assert_eq!(
         scrub_path(
             rust_range.expect("rust saved appended range export"),
@@ -811,8 +811,8 @@ fn xlsx_tables_append_rows_matches_go_oracle_and_saved_output() {
             "[OUT]"
         ),
         scrub_path(
-            go_range.expect("go saved appended range export"),
-            &go_out,
+            baseline_range.expect("baseline saved appended range export"),
+            &baseline_out,
             "[OUT]"
         ),
         "saved appended range export"
@@ -868,18 +868,18 @@ fn write_table_xlsx_with_totals(dest: &Path) {
 }
 
 #[test]
-fn xlsx_tables_append_rows_dry_run_and_errors_match_go_oracle() {
+fn xlsx_tables_append_rows_dry_run_and_errors_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-table-append-rows-dry-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&baseline_in_path);
     write_table_xlsx(&rust_in_path);
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
     let values = r#"[[{"formula":"SUM(B2:B3)"},"dry"]]"#;
 
@@ -888,7 +888,7 @@ fn xlsx_tables_append_rows_dry_run_and_errors_match_go_oracle() {
         "xlsx",
         "tables",
         "append-rows",
-        &go_in,
+        &baseline_in,
         "--table",
         "Sales",
         "--values",
@@ -907,10 +907,10 @@ fn xlsx_tables_append_rows_dry_run_and_errors_match_go_oracle() {
         values,
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
-    assert_eq!(rust_code, go_code, "append-rows dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "append-rows dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "append-rows dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "append-rows dry-run stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust append-rows dry-run stdout"),
@@ -918,8 +918,8 @@ fn xlsx_tables_append_rows_dry_run_and_errors_match_go_oracle() {
             "[IN]"
         ),
         scrub_path(
-            go_stdout.expect("go append-rows dry-run stdout"),
-            &go_in,
+            baseline_stdout.expect("baseline append-rows dry-run stdout"),
+            &baseline_in,
             "[IN]"
         ),
         "append-rows dry-run stdout"
@@ -934,7 +934,7 @@ fn xlsx_tables_append_rows_dry_run_and_errors_match_go_oracle() {
         "xlsx",
         "tables",
         "append-rows",
-        &go_in,
+        &baseline_in,
         "--table",
         "Sales",
         "--values",
@@ -953,41 +953,41 @@ fn xlsx_tables_append_rows_dry_run_and_errors_match_go_oracle() {
         r#"[["Only one column"]]"#,
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&bad_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&bad_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&bad_rust);
-    assert_eq!(rust_code, go_code, "append-rows bad args exit");
-    assert_eq!(rust_stdout, go_stdout, "append-rows bad args stdout");
-    assert_eq!(rust_stderr, go_stderr, "append-rows bad args stderr");
+    assert_eq!(rust_code, baseline_code, "append-rows bad args exit");
+    assert_eq!(rust_stdout, baseline_stdout, "append-rows bad args stdout");
+    assert_eq!(rust_stderr, baseline_stderr, "append-rows bad args stderr");
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn xlsx_tables_append_records_matches_go_oracle_and_saved_output() {
+fn xlsx_tables_append_records_matches_rust_baseline_and_saved_output() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-table-append-records-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    let go_out_path = temp_dir.join("go-out.xlsx");
+    let baseline_out_path = temp_dir.join("baseline-out.xlsx");
     let rust_out_path = temp_dir.join("rust-out.xlsx");
-    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&baseline_in_path);
     write_table_xlsx(&rust_in_path);
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_out = go_out_path.to_string_lossy().to_string();
+    let baseline_out = baseline_out_path.to_string_lossy().to_string();
     let rust_out = rust_out_path.to_string_lossy().to_string();
     let records = r#"[{"Amount":30,"Region":"North"},{"Region":"South","Amount":{"value":"40","type":"number"}}]"#;
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "xlsx",
         "tables",
         "append-records",
-        &go_in,
+        &baseline_in,
         "--table",
         "Sales",
         "--expect-range",
@@ -995,7 +995,7 @@ fn xlsx_tables_append_records_matches_go_oracle_and_saved_output() {
         "--records",
         records,
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -1012,10 +1012,10 @@ fn xlsx_tables_append_records_matches_go_oracle_and_saved_output() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "append-records exit");
-    assert_eq!(rust_stderr, go_stderr, "append-records stderr");
+    assert_eq!(rust_code, baseline_code, "append-records exit");
+    assert_eq!(rust_stderr, baseline_stderr, "append-records stderr");
     let rust_result = rust_stdout.expect("rust append-records stdout");
     assert_eq!(
         scrub_paths(
@@ -1023,8 +1023,8 @@ fn xlsx_tables_append_records_matches_go_oracle_and_saved_output() {
             &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go append-records stdout"),
-            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+            baseline_stdout.expect("baseline append-records stdout"),
+            &[(&baseline_in, "[IN]"), (&baseline_out, "[OUT]")]
         ),
         "append-records stdout"
     );
@@ -1040,22 +1040,22 @@ fn xlsx_tables_append_records_matches_go_oracle_and_saved_output() {
     }
 
     let show_go = [
-        "--json", "xlsx", "tables", "show", &go_out, "--table", "Sales",
+        "--json", "xlsx", "tables", "show", &baseline_out, "--table", "Sales",
     ];
     let show_rust = [
         "--json", "xlsx", "tables", "show", &rust_out, "--table", "Sales",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "saved table show exit");
-    assert_eq!(rust_stderr, go_stderr, "saved table show stderr");
+    assert_eq!(rust_code, baseline_code, "saved table show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "saved table show stderr");
     assert_eq!(
         scrub_path(
             rust_show.expect("rust saved table show"),
             &rust_out,
             "[OUT]"
         ),
-        scrub_path(go_show.expect("go saved table show"), &go_out, "[OUT]"),
+        scrub_path(baseline_show.expect("baseline saved table show"), &baseline_out, "[OUT]"),
         "saved table show"
     );
 
@@ -1064,7 +1064,7 @@ fn xlsx_tables_append_records_matches_go_oracle_and_saved_output() {
         "xlsx",
         "ranges",
         "export",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "Data",
         "--range",
@@ -1085,11 +1085,11 @@ fn xlsx_tables_append_records_matches_go_oracle_and_saved_output() {
         "--include-types",
         "--include-formulas",
     ];
-    let (go_code, go_range, go_stderr) = run_go_ooxml(&range_go);
+    let (baseline_code, baseline_range, baseline_stderr) = run_ooxml_baseline(&range_go);
     let (rust_code, rust_range, rust_stderr) = run_ooxml(&range_rust);
-    assert_eq!(rust_code, go_code, "saved appended records export exit");
+    assert_eq!(rust_code, baseline_code, "saved appended records export exit");
     assert_eq!(
-        rust_stderr, go_stderr,
+        rust_stderr, baseline_stderr,
         "saved appended records export stderr"
     );
     assert_eq!(
@@ -1099,8 +1099,8 @@ fn xlsx_tables_append_records_matches_go_oracle_and_saved_output() {
             "[OUT]"
         ),
         scrub_path(
-            go_range.expect("go saved appended records export"),
-            &go_out,
+            baseline_range.expect("baseline saved appended records export"),
+            &baseline_out,
             "[OUT]"
         ),
         "saved appended records export"
@@ -1123,18 +1123,18 @@ fn xlsx_tables_append_records_matches_go_oracle_and_saved_output() {
 }
 
 #[test]
-fn xlsx_tables_append_records_dry_run_and_errors_match_go_oracle() {
+fn xlsx_tables_append_records_dry_run_and_errors_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-table-append-records-dry-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&baseline_in_path);
     write_table_xlsx(&rust_in_path);
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
 
     let dry_records = r#"[{"Region":"Dry","Ignored":"extra"}]"#;
@@ -1143,7 +1143,7 @@ fn xlsx_tables_append_records_dry_run_and_errors_match_go_oracle() {
         "xlsx",
         "tables",
         "append-records",
-        &go_in,
+        &baseline_in,
         "--table",
         "Sales",
         "--expect-range",
@@ -1172,10 +1172,10 @@ fn xlsx_tables_append_records_dry_run_and_errors_match_go_oracle() {
         "--ignore-extra-fields",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
-    assert_eq!(rust_code, go_code, "append-records dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "append-records dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "append-records dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "append-records dry-run stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust append-records dry-run stdout"),
@@ -1183,8 +1183,8 @@ fn xlsx_tables_append_records_dry_run_and_errors_match_go_oracle() {
             "[IN]"
         ),
         scrub_path(
-            go_stdout.expect("go append-records dry-run stdout"),
-            &go_in,
+            baseline_stdout.expect("baseline append-records dry-run stdout"),
+            &baseline_in,
             "[IN]"
         ),
         "append-records dry-run stdout"
@@ -1242,18 +1242,18 @@ fn xlsx_tables_append_records_dry_run_and_errors_match_go_oracle() {
             ],
         ),
     ] {
-        let mut go_args = vec!["--json", "xlsx", "tables", "append-records", &go_in];
-        go_args.extend(extra_args.iter().copied());
+        let mut baseline_args = vec!["--json", "xlsx", "tables", "append-records", &baseline_in];
+        baseline_args.extend(extra_args.iter().copied());
         let mut rust_args = vec!["--json", "xlsx", "tables", "append-records", &rust_in];
         rust_args.extend(extra_args.iter().copied());
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-        assert_eq!(rust_code, go_code, "{label} exit");
-        assert_eq!(rust_stdout, go_stdout, "{label} stdout");
-        assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+        assert_eq!(rust_code, baseline_code, "{label} exit");
+        assert_eq!(rust_stdout, baseline_stdout, "{label} stdout");
+        assert_eq!(rust_stderr, baseline_stderr, "{label} stderr");
     }
 
-    let blank_go = temp_dir.join("blank-go.xlsx");
+    let blank_go = temp_dir.join("blank-baseline.xlsx");
     let blank_rust = temp_dir.join("blank-rust.xlsx");
     write_table_xlsx_with_sheet_and_columns(&blank_go, "Data", ["", "Amount"]);
     write_table_xlsx_with_sheet_and_columns(&blank_rust, "Data", ["", "Amount"]);
@@ -1272,26 +1272,26 @@ fn xlsx_tables_append_records_dry_run_and_errors_match_go_oracle() {
         r#"[{"Amount":1}]"#,
         "--dry-run",
     ];
-    let mut go_args = blank_args[..4].to_vec();
-    go_args.push(&blank_go);
-    go_args.extend_from_slice(&blank_args[4..]);
+    let mut baseline_args = blank_args[..4].to_vec();
+    baseline_args.push(&blank_go);
+    baseline_args.extend_from_slice(&blank_args[4..]);
     let mut rust_args = blank_args[..4].to_vec();
     rust_args.push(&blank_rust);
     rust_args.extend_from_slice(&blank_args[4..]);
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "blank table column exit");
-    assert_eq!(rust_stdout, go_stdout, "blank table column stdout");
-    assert_eq!(rust_stderr, go_stderr, "blank table column stderr");
+    assert_eq!(rust_code, baseline_code, "blank table column exit");
+    assert_eq!(rust_stdout, baseline_stdout, "blank table column stdout");
+    assert_eq!(rust_stderr, baseline_stderr, "blank table column stderr");
 
-    let duplicate_go = temp_dir.join("duplicate-go.xlsx");
+    let duplicate_go = temp_dir.join("duplicate-baseline.xlsx");
     let duplicate_rust = temp_dir.join("duplicate-rust.xlsx");
     write_table_xlsx_with_sheet_and_columns(&duplicate_go, "Data", ["Region", "Region"]);
     write_table_xlsx_with_sheet_and_columns(&duplicate_rust, "Data", ["Region", "Region"]);
     let duplicate_go = duplicate_go.to_string_lossy().to_string();
     let duplicate_rust = duplicate_rust.to_string_lossy().to_string();
     let duplicate_records = r#"[{"Region":"North"}]"#;
-    let duplicate_go_args = [
+    let duplicate_baseline_args = [
         "--json",
         "xlsx",
         "tables",
@@ -1319,11 +1319,11 @@ fn xlsx_tables_append_records_dry_run_and_errors_match_go_oracle() {
         duplicate_records,
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&duplicate_go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&duplicate_baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&duplicate_rust_args);
-    assert_eq!(rust_code, go_code, "duplicate table column exit");
-    assert_eq!(rust_stdout, go_stdout, "duplicate table column stdout");
-    assert_eq!(rust_stderr, go_stderr, "duplicate table column stderr");
+    assert_eq!(rust_code, baseline_code, "duplicate table column exit");
+    assert_eq!(rust_stdout, baseline_stdout, "duplicate table column stdout");
+    assert_eq!(rust_stderr, baseline_stderr, "duplicate table column stderr");
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

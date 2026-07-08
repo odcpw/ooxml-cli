@@ -120,9 +120,9 @@ pub(super) fn parse_chart_inline_matrix(
 ) -> CliResult<(Vec<Vec<ChartDataCell>>, String)> {
     let value: Value = serde_json::from_str(raw)
         .map_err(|err| CliError::invalid_args(format!("invalid --values JSON matrix: {err}")))?;
-    let rows = value
-        .as_array()
-        .ok_or_else(|| CliError::invalid_args("invalid --values JSON matrix: json: cannot unmarshal non-array into Go value of type [][]interface {}"))?;
+    let rows = value.as_array().ok_or_else(|| {
+        CliError::invalid_args("invalid --values JSON matrix: expected a JSON array of arrays")
+    })?;
     if rows.is_empty() {
         return Err(CliError::invalid_args("inline values matrix is empty"));
     }

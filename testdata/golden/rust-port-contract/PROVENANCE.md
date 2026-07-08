@@ -1,26 +1,25 @@
 # Rust Port Contract Provenance
 
-This directory freezes the Go `ooxml-cli` implementation as the reference contract
-for a future Rust implementation.
+This directory stores the legacy frozen contract fixture that was used during
+the Rust port. It is retained as a historical compatibility snapshot, not as an
+active oracle.
 
 Generated on: 2026-06-18
 
-Reference implementation: current Go checkout on this branch.
+Original fixture source: historical legacy checkout on this branch.
 
-Golden generator:
-
-```bash
-UPDATE_GOLDENS=1 go test ./internal/cli -run TestRustPortContractGolden -count=1
-```
+Original golden generator: historical porting generator. Active regeneration
+should use Rust-native contract or release-trace goldens instead of legacy
+code.
 
 Primary golden:
 
 - `baseline.json`
 
-The harness scrubs temp files, serve/MCP working-copy paths, and session IDs.
-It intentionally keeps stable user-facing handles, selectors, JSON field names,
-exit codes, command strings, and readback envelopes because those are part of
-the Rust compatibility target.
+The active harness scrubs temp files, serve/MCP working-copy paths, and session
+IDs. It intentionally keeps stable user-facing handles, selectors, JSON field
+names, exit codes, command strings, and readback envelopes because those are
+part of the Rust compatibility target.
 
 Web smoke note:
 

@@ -1,11 +1,11 @@
 # Testing Strategy
 
-The test strategy is practical compatibility, not exhaustive OOXML conformance. Rust is the current/default product path; the Go implementation is deprecated for product development and remains only a legacy oracle/reference for parity and historical behavior. A change is trustworthy when it is covered at the right level for its risk: unit tests for pure logic, command-path tests for CLI contracts, validation for every mutation, and Office-open proof for compatibility-sensitive package writes.
+The test strategy is practical compatibility, not exhaustive OOXML conformance. Rust is the current/default product and proof path; the old implementation is historical source material, not an oracle. A change is trustworthy when it is covered at the right level for its risk: unit tests for pure logic, command-path tests for CLI contracts, validation for every mutation, release real-file traces, and Office-open proof for compatibility-sensitive package writes.
 
 ## Proof Ladder
 
 1. `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`: Rust format, lint, unit, and contract tests.
-2. Rust/Go oracle contract tests where parity is still being guarded.
+2. Rust contract smoke tests, legacy frozen JSON contract fixtures, and optional Rust-baseline/current differential checks through `OOXML_RUST_BASELINE_BIN`.
 3. `ooxml validate --strict <file>`: package, relationship, XML, semantic, and VBA consistency checks.
 4. Microsoft Open XML SDK validation: schema-order and enum checks that local validation can miss.
 5. LibreOffice/render/open checks: useful headless evidence for generated artifacts.
@@ -25,7 +25,7 @@ cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
 ```
 
-Run Go only when deliberately refreshing or checking the legacy oracle/reference, not as the normal product build.
+Do not use legacy code as the normal product proof path. Historical code may still explain where an older contract fixture came from, but current gates should be Rust-native.
 
 Focused loop:
 

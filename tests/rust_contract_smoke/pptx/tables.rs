@@ -1,5 +1,5 @@
 #[test]
-fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_oracle() {
+fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -11,12 +11,12 @@ fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_ora
     std::fs::create_dir_all(&temp_dir).expect("pptx table set-cell temp dir");
 
     let fixture = "testdata/pptx/table-slide/presentation.pptx";
-    let go_out = temp_dir.join("go-set-cell.pptx");
+    let baseline_out = temp_dir.join("baseline-set-cell.pptx");
     let rust_out = temp_dir.join("rust-set-cell.pptx");
-    let go_out_str = go_out.to_str().expect("go set-cell path");
+    let baseline_out_str = baseline_out.to_str().expect("baseline set-cell path");
     let rust_out_str = rust_out.to_str().expect("rust set-cell path");
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "tables",
@@ -33,7 +33,7 @@ fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_ora
         "--text",
         "Rust Port Cell",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -54,23 +54,23 @@ fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_ora
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "set-cell saved exit");
-    assert_eq!(rust_stderr, go_stderr, "set-cell saved stderr");
+    assert_eq!(rust_code, baseline_code, "set-cell saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "set-cell saved stderr");
     let rust_json = rust_stdout.expect("rust set-cell stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
-        scrub_path(go_stdout.expect("go set-cell stdout"), go_out_str, "[OUT]"),
+        scrub_path(baseline_stdout.expect("baseline set-cell stdout"), baseline_out_str, "[OUT]"),
         "set-cell saved stdout"
     );
-    assert!(go_out.exists(), "Go set-cell output missing");
+    assert!(baseline_out.exists(), "Rust baseline set-cell output missing");
     assert!(rust_out.exists(), "Rust set-cell output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
-        "--json", "pptx", "tables", "show", go_out_str, "--slide", "2", "--target", "table:1",
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
+        "--json", "pptx", "tables", "show", baseline_out_str, "--slide", "2", "--target", "table:1",
     ]);
     let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
         "--json",
@@ -83,8 +83,8 @@ fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_ora
         "--target",
         "table:1",
     ]);
-    assert_eq!(rust_show_code, go_show_code, "set-cell readback exit");
-    assert_eq!(rust_show_stderr, go_show_stderr, "set-cell readback stderr");
+    assert_eq!(rust_show_code, baseline_show_code, "set-cell readback exit");
+    assert_eq!(rust_show_stderr, baseline_show_stderr, "set-cell readback stderr");
     assert_eq!(
         scrub_path(
             rust_show_stdout.expect("rust set-cell readback"),
@@ -92,8 +92,8 @@ fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_ora
             "[OUT]"
         ),
         scrub_path(
-            go_show_stdout.expect("go set-cell readback"),
-            go_out_str,
+            baseline_show_stdout.expect("baseline set-cell readback"),
+            baseline_out_str,
             "[OUT]"
         ),
         "set-cell readback stdout"
@@ -117,13 +117,13 @@ fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_ora
         "Dry Cell",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "set-cell dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "set-cell dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "set-cell dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "set-cell dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust set-cell dry-run stdout"),
-        go_stdout.expect("go set-cell dry-run stdout"),
+        baseline_stdout.expect("baseline set-cell dry-run stdout"),
         "set-cell dry-run stdout"
     );
 
@@ -148,13 +148,13 @@ fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_ora
         text_file_str,
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&text_file_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&text_file_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&text_file_args);
-    assert_eq!(rust_code, go_code, "set-cell text-file dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "set-cell text-file dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "set-cell text-file dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "set-cell text-file dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust set-cell text-file dry-run stdout"),
-        go_stdout.expect("go set-cell text-file dry-run stdout"),
+        baseline_stdout.expect("baseline set-cell text-file dry-run stdout"),
         "set-cell text-file dry-run stdout"
     );
 
@@ -249,16 +249,16 @@ fn pptx_tables_set_cell_saved_readback_dry_run_text_file_and_errors_match_go_ora
         ],
     ];
     for args in error_cases {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-        assert_eq!(rust_code, go_code, "set-cell error exit for {args:?}");
-        assert_eq!(rust_stdout, go_stdout, "set-cell error stdout for {args:?}");
-        assert_eq!(rust_stderr, go_stderr, "set-cell error stderr for {args:?}");
+        assert_eq!(rust_code, baseline_code, "set-cell error exit for {args:?}");
+        assert_eq!(rust_stdout, baseline_stdout, "set-cell error stdout for {args:?}");
+        assert_eq!(rust_stderr, baseline_stderr, "set-cell error stderr for {args:?}");
     }
 }
 
 #[test]
-fn pptx_tables_insert_row_saved_readback_dry_run_and_errors_match_go_oracle() {
+fn pptx_tables_insert_row_saved_readback_dry_run_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -271,12 +271,12 @@ fn pptx_tables_insert_row_saved_readback_dry_run_and_errors_match_go_oracle() {
 
     let fixture = "testdata/pptx/table-slide/presentation.pptx";
     let merged_fixture = "testdata/pptx/table-merged/presentation.pptx";
-    let go_out = temp_dir.join("go-insert-row.pptx");
+    let baseline_out = temp_dir.join("baseline-insert-row.pptx");
     let rust_out = temp_dir.join("rust-insert-row.pptx");
-    let go_out_str = go_out.to_str().expect("go insert-row path");
+    let baseline_out_str = baseline_out.to_str().expect("baseline insert-row path");
     let rust_out_str = rust_out.to_str().expect("rust insert-row path");
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "tables",
@@ -289,7 +289,7 @@ fn pptx_tables_insert_row_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--at",
         "2",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -306,27 +306,27 @@ fn pptx_tables_insert_row_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "insert-row saved exit");
-    assert_eq!(rust_stderr, go_stderr, "insert-row saved stderr");
+    assert_eq!(rust_code, baseline_code, "insert-row saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "insert-row saved stderr");
     let rust_json = rust_stdout.expect("rust insert-row stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go insert-row stdout"),
-            go_out_str,
+            baseline_stdout.expect("baseline insert-row stdout"),
+            baseline_out_str,
             "[OUT]"
         ),
         "insert-row saved stdout"
     );
-    assert!(go_out.exists(), "Go insert-row output missing");
+    assert!(baseline_out.exists(), "Rust baseline insert-row output missing");
     assert!(rust_out.exists(), "Rust insert-row output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
-        "--json", "pptx", "tables", "show", go_out_str, "--slide", "2", "--target", "table:1",
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
+        "--json", "pptx", "tables", "show", baseline_out_str, "--slide", "2", "--target", "table:1",
     ]);
     let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
         "--json",
@@ -339,9 +339,9 @@ fn pptx_tables_insert_row_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--target",
         "table:1",
     ]);
-    assert_eq!(rust_show_code, go_show_code, "insert-row readback exit");
+    assert_eq!(rust_show_code, baseline_show_code, "insert-row readback exit");
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_stderr, baseline_show_stderr,
         "insert-row readback stderr"
     );
     assert_eq!(
@@ -351,8 +351,8 @@ fn pptx_tables_insert_row_saved_readback_dry_run_and_errors_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_show_stdout.expect("go insert-row readback"),
-            go_out_str,
+            baseline_show_stdout.expect("baseline insert-row readback"),
+            baseline_out_str,
             "[OUT]"
         ),
         "insert-row readback stdout"
@@ -372,13 +372,13 @@ fn pptx_tables_insert_row_saved_readback_dry_run_and_errors_match_go_oracle() {
         "2",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "insert-row dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "insert-row dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "insert-row dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "insert-row dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust insert-row dry-run stdout"),
-        go_stdout.expect("go insert-row dry-run stdout"),
+        baseline_stdout.expect("baseline insert-row dry-run stdout"),
         "insert-row dry-run stdout"
     );
 
@@ -453,22 +453,22 @@ fn pptx_tables_insert_row_saved_readback_dry_run_and_errors_match_go_oracle() {
         ],
     ];
     for args in error_cases {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-        assert_eq!(rust_code, go_code, "insert-row error exit for {args:?}");
+        assert_eq!(rust_code, baseline_code, "insert-row error exit for {args:?}");
         assert_eq!(
-            rust_stdout, go_stdout,
+            rust_stdout, baseline_stdout,
             "insert-row error stdout for {args:?}"
         );
         assert_eq!(
-            rust_stderr, go_stderr,
+            rust_stderr, baseline_stderr,
             "insert-row error stderr for {args:?}"
         );
     }
 }
 
 #[test]
-fn pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_go_oracle() {
+fn pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -480,12 +480,12 @@ fn pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_go_oracle() {
     std::fs::create_dir_all(&temp_dir).expect("pptx table temp dir");
 
     let fixture = "testdata/pptx/table-slide/presentation.pptx";
-    let go_out = temp_dir.join("go-delete-row.pptx");
+    let baseline_out = temp_dir.join("baseline-delete-row.pptx");
     let rust_out = temp_dir.join("rust-delete-row.pptx");
-    let go_out_str = go_out.to_str().expect("go delete-row path");
+    let baseline_out_str = baseline_out.to_str().expect("baseline delete-row path");
     let rust_out_str = rust_out.to_str().expect("rust delete-row path");
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "tables",
@@ -498,7 +498,7 @@ fn pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--row",
         "2",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -515,27 +515,27 @@ fn pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "delete-row saved exit");
-    assert_eq!(rust_stderr, go_stderr, "delete-row saved stderr");
+    assert_eq!(rust_code, baseline_code, "delete-row saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "delete-row saved stderr");
     let rust_json = rust_stdout.expect("rust delete-row stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go delete-row stdout"),
-            go_out_str,
+            baseline_stdout.expect("baseline delete-row stdout"),
+            baseline_out_str,
             "[OUT]"
         ),
         "delete-row saved stdout"
     );
-    assert!(go_out.exists(), "Go delete-row output missing");
+    assert!(baseline_out.exists(), "Rust baseline delete-row output missing");
     assert!(rust_out.exists(), "Rust delete-row output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
-        "--json", "pptx", "tables", "show", go_out_str, "--slide", "2", "--target", "table:1",
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
+        "--json", "pptx", "tables", "show", baseline_out_str, "--slide", "2", "--target", "table:1",
     ]);
     let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
         "--json",
@@ -548,9 +548,9 @@ fn pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--target",
         "table:1",
     ]);
-    assert_eq!(rust_show_code, go_show_code, "delete-row readback exit");
+    assert_eq!(rust_show_code, baseline_show_code, "delete-row readback exit");
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_stderr, baseline_show_stderr,
         "delete-row readback stderr"
     );
     assert_eq!(
@@ -560,8 +560,8 @@ fn pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_show_stdout.expect("go delete-row readback"),
-            go_out_str,
+            baseline_show_stdout.expect("baseline delete-row readback"),
+            baseline_out_str,
             "[OUT]"
         ),
         "delete-row readback stdout"
@@ -581,13 +581,13 @@ fn pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_go_oracle() {
         "2",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "delete-row dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "delete-row dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "delete-row dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "delete-row dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust delete-row dry-run stdout"),
-        go_stdout.expect("go delete-row dry-run stdout"),
+        baseline_stdout.expect("baseline delete-row dry-run stdout"),
         "delete-row dry-run stdout"
     );
 
@@ -635,22 +635,22 @@ fn pptx_tables_delete_row_saved_readback_dry_run_and_errors_match_go_oracle() {
             "--dry-run",
         ],
     ] {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-        assert_eq!(rust_code, go_code, "delete-row error exit for {args:?}");
+        assert_eq!(rust_code, baseline_code, "delete-row error exit for {args:?}");
         assert_eq!(
-            rust_stdout, go_stdout,
+            rust_stdout, baseline_stdout,
             "delete-row error stdout for {args:?}"
         );
         assert_eq!(
-            rust_stderr, go_stderr,
+            rust_stderr, baseline_stderr,
             "delete-row error stderr for {args:?}"
         );
     }
 }
 
 #[test]
-fn pptx_tables_column_saved_readback_dry_run_and_errors_match_go_oracle() {
+fn pptx_tables_column_saved_readback_dry_run_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -663,12 +663,12 @@ fn pptx_tables_column_saved_readback_dry_run_and_errors_match_go_oracle() {
 
     let fixture = "testdata/pptx/table-slide/presentation.pptx";
     let merged_fixture = "testdata/pptx/table-merged/presentation.pptx";
-    let go_insert_out = temp_dir.join("go-insert-col.pptx");
+    let baseline_insert_out = temp_dir.join("baseline-insert-col.pptx");
     let rust_insert_out = temp_dir.join("rust-insert-col.pptx");
-    let go_insert_out_str = go_insert_out.to_str().expect("go insert-col path");
+    let baseline_insert_out_str = baseline_insert_out.to_str().expect("baseline insert-col path");
     let rust_insert_out_str = rust_insert_out.to_str().expect("rust insert-col path");
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "tables",
@@ -683,7 +683,7 @@ fn pptx_tables_column_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--width-emu",
         "1234567",
         "--out",
-        go_insert_out_str,
+        baseline_insert_out_str,
     ];
     let rust_args = [
         "--json",
@@ -702,31 +702,31 @@ fn pptx_tables_column_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_insert_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "insert-col saved exit");
-    assert_eq!(rust_stderr, go_stderr, "insert-col saved stderr");
+    assert_eq!(rust_code, baseline_code, "insert-col saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "insert-col saved stderr");
     let rust_json = rust_stdout.expect("rust insert-col stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_insert_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go insert-col stdout"),
-            go_insert_out_str,
+            baseline_stdout.expect("baseline insert-col stdout"),
+            baseline_insert_out_str,
             "[OUT]"
         ),
         "insert-col saved stdout"
     );
-    assert!(go_insert_out.exists(), "Go insert-col output missing");
+    assert!(baseline_insert_out.exists(), "Rust baseline insert-col output missing");
     assert!(rust_insert_out.exists(), "Rust insert-col output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "tables",
         "show",
-        go_insert_out_str,
+        baseline_insert_out_str,
         "--slide",
         "2",
         "--target",
@@ -743,9 +743,9 @@ fn pptx_tables_column_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--target",
         "table:1",
     ]);
-    assert_eq!(rust_show_code, go_show_code, "insert-col readback exit");
+    assert_eq!(rust_show_code, baseline_show_code, "insert-col readback exit");
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_stderr, baseline_show_stderr,
         "insert-col readback stderr"
     );
     assert_eq!(
@@ -755,18 +755,18 @@ fn pptx_tables_column_saved_readback_dry_run_and_errors_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_show_stdout.expect("go insert-col readback"),
-            go_insert_out_str,
+            baseline_show_stdout.expect("baseline insert-col readback"),
+            baseline_insert_out_str,
             "[OUT]"
         ),
         "insert-col readback stdout"
     );
 
-    let go_delete_out = temp_dir.join("go-delete-col.pptx");
+    let baseline_delete_out = temp_dir.join("baseline-delete-col.pptx");
     let rust_delete_out = temp_dir.join("rust-delete-col.pptx");
-    let go_delete_out_str = go_delete_out.to_str().expect("go delete-col path");
+    let baseline_delete_out_str = baseline_delete_out.to_str().expect("baseline delete-col path");
     let rust_delete_out_str = rust_delete_out.to_str().expect("rust delete-col path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "tables",
@@ -779,7 +779,7 @@ fn pptx_tables_column_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--col",
         "2",
         "--out",
-        go_delete_out_str,
+        baseline_delete_out_str,
     ];
     let rust_args = [
         "--json",
@@ -796,31 +796,31 @@ fn pptx_tables_column_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--out",
         rust_delete_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "delete-col saved exit");
-    assert_eq!(rust_stderr, go_stderr, "delete-col saved stderr");
+    assert_eq!(rust_code, baseline_code, "delete-col saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "delete-col saved stderr");
     let rust_json = rust_stdout.expect("rust delete-col stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_delete_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go delete-col stdout"),
-            go_delete_out_str,
+            baseline_stdout.expect("baseline delete-col stdout"),
+            baseline_delete_out_str,
             "[OUT]"
         ),
         "delete-col saved stdout"
     );
-    assert!(go_delete_out.exists(), "Go delete-col output missing");
+    assert!(baseline_delete_out.exists(), "Rust baseline delete-col output missing");
     assert!(rust_delete_out.exists(), "Rust delete-col output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
         "--json",
         "pptx",
         "tables",
         "show",
-        go_delete_out_str,
+        baseline_delete_out_str,
         "--slide",
         "2",
         "--target",
@@ -837,9 +837,9 @@ fn pptx_tables_column_saved_readback_dry_run_and_errors_match_go_oracle() {
         "--target",
         "table:1",
     ]);
-    assert_eq!(rust_show_code, go_show_code, "delete-col readback exit");
+    assert_eq!(rust_show_code, baseline_show_code, "delete-col readback exit");
     assert_eq!(
-        rust_show_stderr, go_show_stderr,
+        rust_show_stderr, baseline_show_stderr,
         "delete-col readback stderr"
     );
     assert_eq!(
@@ -849,8 +849,8 @@ fn pptx_tables_column_saved_readback_dry_run_and_errors_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_show_stdout.expect("go delete-col readback"),
-            go_delete_out_str,
+            baseline_show_stdout.expect("baseline delete-col readback"),
+            baseline_delete_out_str,
             "[OUT]"
         ),
         "delete-col readback stdout"
@@ -886,19 +886,19 @@ fn pptx_tables_column_saved_readback_dry_run_and_errors_match_go_oracle() {
             "--dry-run",
         ],
     ] {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
         assert_eq!(
-            rust_code, go_code,
+            rust_code, baseline_code,
             "column dry-run exit for {dry_run_args:?}"
         );
         assert_eq!(
-            rust_stderr, go_stderr,
+            rust_stderr, baseline_stderr,
             "column dry-run stderr for {dry_run_args:?}"
         );
         assert_eq!(
             rust_stdout.expect("rust column dry-run stdout"),
-            go_stdout.expect("go column dry-run stdout"),
+            baseline_stdout.expect("baseline column dry-run stdout"),
             "column dry-run stdout for {dry_run_args:?}"
         );
     }
@@ -1058,16 +1058,16 @@ fn pptx_tables_column_saved_readback_dry_run_and_errors_match_go_oracle() {
         ],
     ];
     for args in error_cases {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-        assert_eq!(rust_code, go_code, "column error exit for {args:?}");
-        assert_eq!(rust_stdout, go_stdout, "column error stdout for {args:?}");
-        assert_eq!(rust_stderr, go_stderr, "column error stderr for {args:?}");
+        assert_eq!(rust_code, baseline_code, "column error exit for {args:?}");
+        assert_eq!(rust_stdout, baseline_stdout, "column error stdout for {args:?}");
+        assert_eq!(rust_stderr, baseline_stderr, "column error stderr for {args:?}");
     }
 }
 
 #[test]
-fn pptx_tables_update_from_xlsx_matches_go_oracle_saved_dry_run_and_errors() {
+fn pptx_tables_update_from_xlsx_matches_rust_baseline_saved_dry_run_and_errors() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -1087,11 +1087,11 @@ fn pptx_tables_update_from_xlsx_matches_go_oracle_saved_dry_run_and_errors() {
     write_pptx_update_table_xlsx(&table_workbook);
     let table_workbook_str = table_workbook.to_str().expect("source table workbook path");
 
-    let go_out = temp_dir.join("go-update-from-xlsx.pptx");
+    let baseline_out = temp_dir.join("baseline-update-from-xlsx.pptx");
     let rust_out = temp_dir.join("rust-update-from-xlsx.pptx");
-    let go_out_str = go_out.to_str().expect("go update output path");
+    let baseline_out_str = baseline_out.to_str().expect("baseline update output path");
     let rust_out_str = rust_out.to_str().expect("rust update output path");
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "tables",
@@ -1112,7 +1112,7 @@ fn pptx_tables_update_from_xlsx_matches_go_oracle_saved_dry_run_and_errors() {
         "--target",
         "table:1",
         "--out",
-        go_out_str,
+        baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -1137,27 +1137,27 @@ fn pptx_tables_update_from_xlsx_matches_go_oracle_saved_dry_run_and_errors() {
         "--out",
         rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "update-from-xlsx saved exit");
-    assert_eq!(rust_stderr, go_stderr, "update-from-xlsx saved stderr");
+    assert_eq!(rust_code, baseline_code, "update-from-xlsx saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "update-from-xlsx saved stderr");
     let rust_json = rust_stdout.expect("rust update-from-xlsx stdout");
     assert_eq!(
         scrub_path(rust_json.clone(), rust_out_str, "[OUT]"),
         scrub_path(
-            go_stdout.expect("go update-from-xlsx stdout"),
-            go_out_str,
+            baseline_stdout.expect("baseline update-from-xlsx stdout"),
+            baseline_out_str,
             "[OUT]"
         ),
         "update-from-xlsx saved stdout"
     );
-    assert!(go_out.exists(), "Go update-from-xlsx output missing");
+    assert!(baseline_out.exists(), "Rust baseline update-from-xlsx output missing");
     assert!(rust_out.exists(), "Rust update-from-xlsx output missing");
     assert_rust_emitted_ooxml_command_succeeds(&rust_json, "readbackCommand");
     assert_rust_emitted_ooxml_command_exits_zero(&rust_json, "validateCommand");
 
-    let (go_show_code, go_show_stdout, go_show_stderr) = run_go_ooxml(&[
-        "--json", "pptx", "tables", "show", go_out_str, "--slide", "2", "--target", "table:1",
+    let (baseline_show_code, baseline_show_stdout, baseline_show_stderr) = run_ooxml_baseline(&[
+        "--json", "pptx", "tables", "show", baseline_out_str, "--slide", "2", "--target", "table:1",
     ]);
     let (rust_show_code, rust_show_stdout, rust_show_stderr) = run_ooxml(&[
         "--json",
@@ -1170,8 +1170,8 @@ fn pptx_tables_update_from_xlsx_matches_go_oracle_saved_dry_run_and_errors() {
         "--target",
         "table:1",
     ]);
-    assert_eq!(rust_show_code, go_show_code, "update readback exit");
-    assert_eq!(rust_show_stderr, go_show_stderr, "update readback stderr");
+    assert_eq!(rust_show_code, baseline_show_code, "update readback exit");
+    assert_eq!(rust_show_stderr, baseline_show_stderr, "update readback stderr");
     assert_eq!(
         scrub_path(
             rust_show_stdout.expect("rust update readback"),
@@ -1179,8 +1179,8 @@ fn pptx_tables_update_from_xlsx_matches_go_oracle_saved_dry_run_and_errors() {
             "[OUT]"
         ),
         scrub_path(
-            go_show_stdout.expect("go update readback"),
-            go_out_str,
+            baseline_show_stdout.expect("baseline update readback"),
+            baseline_out_str,
             "[OUT]"
         ),
         "update readback stdout"
@@ -1202,13 +1202,13 @@ fn pptx_tables_update_from_xlsx_matches_go_oracle_saved_dry_run_and_errors() {
         "table:1",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_run_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_run_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_run_args);
-    assert_eq!(rust_code, go_code, "update-from-xlsx dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "update-from-xlsx dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "update-from-xlsx dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "update-from-xlsx dry-run stderr");
     assert_eq!(
         rust_stdout.expect("rust update-from-xlsx dry-run stdout"),
-        go_stdout.expect("go update-from-xlsx dry-run stdout"),
+        baseline_stdout.expect("baseline update-from-xlsx dry-run stdout"),
         "update-from-xlsx dry-run stdout"
     );
 
@@ -1367,11 +1367,11 @@ fn pptx_tables_update_from_xlsx_matches_go_oracle_saved_dry_run_and_errors() {
         ],
     ];
     for args in error_cases {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-        assert_eq!(rust_code, go_code, "update error exit for {args:?}");
-        assert_eq!(rust_stdout, go_stdout, "update error stdout for {args:?}");
-        assert_eq!(rust_stderr, go_stderr, "update error stderr for {args:?}");
+        assert_eq!(rust_code, baseline_code, "update error exit for {args:?}");
+        assert_eq!(rust_stdout, baseline_stdout, "update error stdout for {args:?}");
+        assert_eq!(rust_stderr, baseline_stderr, "update error stderr for {args:?}");
     }
 }
 

@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn conformance_check_matches_go_for_spreadsheet_semantic_references() {
+fn conformance_check_matches_rust_baseline_for_spreadsheet_semantic_references() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-conformance-spreadsheet-semantics-{}",
         std::process::id()
@@ -11,38 +11,38 @@ fn conformance_check_matches_go_for_spreadsheet_semantic_references() {
 
     let defined_names = temp_dir.join("defined-name-semantics.xlsx");
     write_defined_name_semantics_xlsx(&defined_names);
-    assert_go_rust_repair_invariants_match(&defined_names);
+    assert_baseline_rust_repair_invariants_match(&defined_names);
 
     let calc_chain = temp_dir.join("calc-chain-semantics.xlsx");
     write_calc_chain_semantics_xlsx(&calc_chain);
-    assert_go_rust_repair_invariants_match(&calc_chain);
+    assert_baseline_rust_repair_invariants_match(&calc_chain);
 
     let missing_styles = temp_dir.join("cell-style-missing-styles.xlsx");
     write_style_semantics_xlsx(&missing_styles, StyleFixtureKind::MissingStyles);
-    assert_go_rust_repair_invariants_match(&missing_styles);
+    assert_baseline_rust_repair_invariants_match(&missing_styles);
 
     let style_out_of_range = temp_dir.join("cell-style-out-of-range.xlsx");
     write_style_semantics_xlsx(&style_out_of_range, StyleFixtureKind::OutOfRange);
-    assert_go_rust_repair_invariants_match(&style_out_of_range);
+    assert_baseline_rust_repair_invariants_match(&style_out_of_range);
 
     let hyperlink_references = temp_dir.join("worksheet-hyperlink-references.xlsx");
     write_hyperlink_reference_xlsx(&hyperlink_references);
-    assert_go_rust_repair_invariants_match(&hyperlink_references);
-    assert_go_reports_hyperlink_reference_diagnostics(&hyperlink_references);
+    assert_baseline_rust_repair_invariants_match(&hyperlink_references);
+    assert_rust_baseline_reports_hyperlink_reference_diagnostics(&hyperlink_references);
 }
 
-fn assert_go_rust_repair_invariants_match(file: &Path) {
+fn assert_baseline_rust_repair_invariants_match(file: &Path) {
     let file = file.to_string_lossy().to_string();
     let args = ["--json", "conformance", "check", file.as_str()];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
-    assert_eq!(rust_code, go_code, "exit code for {file}");
-    assert_eq!(rust_stderr, go_stderr, "stderr for {file}");
+    assert_eq!(rust_code, baseline_code, "exit code for {file}");
+    assert_eq!(rust_stderr, baseline_stderr, "stderr for {file}");
     let rust_report = rust_stdout.expect("rust conformance stdout");
-    let go_report = go_stdout.expect("go conformance stdout");
+    let baseline_report = baseline_stdout.expect("baseline conformance stdout");
     assert_eq!(
         check_by_name(&rust_report, "repair-invariants"),
-        check_by_name(&go_report, "repair-invariants"),
+        check_by_name(&baseline_report, "repair-invariants"),
         "repair-invariants check for {file}"
     );
 }
@@ -207,14 +207,20 @@ fn write_hyperlink_reference_xlsx(dest: &Path) {
         .expect("finish worksheet hyperlink reference xlsx");
 }
 
-fn assert_go_reports_hyperlink_reference_diagnostics(file: &Path) {
+fn assert_rust_baseline_reports_hyperlink_reference_diagnostics(file: &Path) {
     let file = file.to_string_lossy().to_string();
     let args = ["--json", "conformance", "check", file.as_str()];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
-    assert_ne!(go_code, 0, "Go should reject hyperlink fixture");
-    assert_eq!(go_stderr, None, "Go hyperlink fixture stderr");
-    let go_report = go_stdout.expect("Go conformance stdout");
-    let diagnostics = check_by_name(&go_report, "repair-invariants")["diagnostics"]
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
+    assert_ne!(
+        baseline_code, 0,
+        "Rust baseline should reject hyperlink fixture"
+    );
+    assert_eq!(
+        baseline_stderr, None,
+        "Rust baseline hyperlink fixture stderr"
+    );
+    let baseline_report = baseline_stdout.expect("Rust baseline conformance stdout");
+    let diagnostics = check_by_name(&baseline_report, "repair-invariants")["diagnostics"]
         .as_array()
         .expect("repair-invariants diagnostics");
     let hyperlink_diagnostics: Vec<&Value> = diagnostics
@@ -224,7 +230,7 @@ fn assert_go_reports_hyperlink_reference_diagnostics(file: &Path) {
     assert_eq!(
         hyperlink_diagnostics.len(),
         3,
-        "Go hyperlink fixture should exercise missing relationship, wrong type, and internal TargetMode: {hyperlink_diagnostics:#?}"
+        "Rust baseline hyperlink fixture should exercise missing relationship, wrong type, and internal TargetMode: {hyperlink_diagnostics:#?}"
     );
 }
 

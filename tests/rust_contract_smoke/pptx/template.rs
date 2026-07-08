@@ -1,6 +1,6 @@
 #[test]
-fn pptx_template_inspect_and_validate_layout_match_go_oracle() {
-    assert_go_rust_json_match(
+fn pptx_template_inspect_and_validate_layout_match_rust_baseline() {
+    assert_baseline_rust_json_match(
         &[
             "--json",
             "pptx",
@@ -10,7 +10,7 @@ fn pptx_template_inspect_and_validate_layout_match_go_oracle() {
         ],
         "pptx template inspect branded manifest",
     );
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &[
             "--json",
             "pptx",
@@ -30,10 +30,10 @@ fn pptx_template_inspect_and_validate_layout_match_go_oracle() {
         "testdata/pptx/layout-qa-text-overflow/presentation.pptx",
     ] {
         let args = ["--json", "pptx", "validate-layout", fixture];
-        assert_go_rust_json_match(&args, fixture);
+        assert_baseline_rust_json_match(&args, fixture);
     }
 
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &[
             "--json",
             "pptx",
@@ -42,7 +42,7 @@ fn pptx_template_inspect_and_validate_layout_match_go_oracle() {
         ],
         "pptx validate-layout rejects xlsx",
     );
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &[
             "--json",
             "pptx",
@@ -54,8 +54,8 @@ fn pptx_template_inspect_and_validate_layout_match_go_oracle() {
 }
 
 #[test]
-fn template_tokens_profiles_and_xlsx_binding_plan_match_go_oracle() {
-    assert_go_rust_json_match(
+fn template_tokens_profiles_and_xlsx_binding_plan_match_rust_baseline() {
+    assert_baseline_rust_json_match(
         &[
             "--json",
             "template",
@@ -64,7 +64,7 @@ fn template_tokens_profiles_and_xlsx_binding_plan_match_go_oracle() {
         ],
         "template tokens pptx theme",
     );
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &[
             "--json",
             "template",
@@ -73,7 +73,7 @@ fn template_tokens_profiles_and_xlsx_binding_plan_match_go_oracle() {
         ],
         "template tokens pptx charts",
     );
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &[
             "--json",
             "template",
@@ -82,7 +82,7 @@ fn template_tokens_profiles_and_xlsx_binding_plan_match_go_oracle() {
         ],
         "template tokens xlsx charts",
     );
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &[
             "--json",
             "template",
@@ -105,7 +105,7 @@ fn template_tokens_profiles_and_xlsx_binding_plan_match_go_oracle() {
     fs::create_dir_all(&temp_dir).expect("template binding temp dir");
     let profile_path = temp_dir.join("profile.json");
     let profile_str = profile_path.to_string_lossy().to_string();
-    let (save_code, save_stdout, save_stderr) = run_go_ooxml(&[
+    let (save_code, save_stdout, save_stderr) = run_ooxml_baseline(&[
         "--json",
         "template",
         "profile",
@@ -116,14 +116,14 @@ fn template_tokens_profiles_and_xlsx_binding_plan_match_go_oracle() {
         "--description",
         "Demo",
     ]);
-    assert_eq!(save_code, 0, "go profile save for inspect fixture");
-    assert_eq!(save_stderr, None, "go profile save stderr");
+    assert_eq!(save_code, 0, "baseline profile save for inspect fixture");
+    assert_eq!(save_stderr, None, "baseline profile save stderr");
     fs::write(
         &profile_path,
-        serde_json::to_vec_pretty(&save_stdout.expect("go profile save stdout")).unwrap(),
+        serde_json::to_vec_pretty(&save_stdout.expect("baseline profile save stdout")).unwrap(),
     )
     .expect("write profile fixture");
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &["--json", "template", "profile", "inspect", &profile_str],
         "template profile inspect",
     );
@@ -144,7 +144,7 @@ fn template_tokens_profiles_and_xlsx_binding_plan_match_go_oracle() {
         "--range",
         "A1:P3",
     ];
-    assert_go_rust_json_match(&plan_args, "pptx xlsx-bindings plan");
+    assert_baseline_rust_json_match(&plan_args, "pptx xlsx-bindings plan");
 
     let duplicate_workbook = temp_dir.join("duplicate-bindings.xlsx");
     write_xlsx_bindings_workbook(&duplicate_workbook, "title");
@@ -162,28 +162,28 @@ fn template_tokens_profiles_and_xlsx_binding_plan_match_go_oracle() {
         "--range",
         "A1:P3",
     ];
-    assert_go_rust_json_match(&duplicate_args, "pptx xlsx-bindings duplicate target");
+    assert_baseline_rust_json_match(&duplicate_args, "pptx xlsx-bindings duplicate target");
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn template_parent_groups_are_help_only_like_go_oracle() {
+fn template_parent_groups_are_help_only_like_rust_baseline() {
     for args in [
         vec!["--json", "template"],
         vec!["--json", "template", "profile"],
         vec!["--json", "pptx", "template"],
     ] {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml_raw(&args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline_raw(&args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(&args);
-        assert_eq!(rust_code, go_code, "exit code for {args:?}");
-        assert_eq!(go_code, 0, "Go parent help exit for {args:?}");
-        assert!(go_stderr.is_empty(), "Go parent help stderr for {args:?}");
+        assert_eq!(rust_code, baseline_code, "exit code for {args:?}");
+        assert_eq!(baseline_code, 0, "Rust baseline parent help exit for {args:?}");
+        assert!(baseline_stderr.is_empty(), "Rust baseline parent help stderr for {args:?}");
         assert!(
             rust_stderr.is_empty(),
             "Rust parent help stderr for {args:?}: {rust_stderr}"
         );
-        assert!(go_stdout.contains("Usage:"), "Go help text for {args:?}");
+        assert!(baseline_stdout.contains("Usage:"), "Rust baseline help text for {args:?}");
         assert!(
             rust_stdout.contains("Usage:"),
             "Rust help text for {args:?}: {rust_stdout}"
@@ -192,7 +192,7 @@ fn template_parent_groups_are_help_only_like_go_oracle() {
 }
 
 #[test]
-fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_go_oracle() {
+fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_rust_baseline() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-template-apply-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
@@ -211,10 +211,10 @@ fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_go_oracle()
         &tokens_str,
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_args);
-    assert_eq!(rust_code, go_code, "template apply dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "template apply dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "template apply dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "template apply dry-run stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust dry-run stdout"),
@@ -222,18 +222,18 @@ fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_go_oracle()
             "[TOKENS]"
         ),
         scrub_path(
-            go_stdout.expect("go dry-run stdout"),
+            baseline_stdout.expect("baseline dry-run stdout"),
             &tokens_str,
             "[TOKENS]"
         ),
         "template apply dry-run stdout"
     );
 
-    let go_out = temp_dir.join("go-applied.pptx");
+    let baseline_out = temp_dir.join("baseline-applied.pptx");
     let rust_out = temp_dir.join("rust-applied.pptx");
-    let go_out_str = go_out.to_string_lossy().to_string();
+    let baseline_out_str = baseline_out.to_string_lossy().to_string();
     let rust_out_str = rust_out.to_string_lossy().to_string();
-    let go_args = [
+    let baseline_args = [
         "--json",
         "template",
         "apply",
@@ -241,7 +241,7 @@ fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_go_oracle()
         "--tokens",
         &tokens_str,
         "--out",
-        &go_out_str,
+        &baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -253,18 +253,18 @@ fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_go_oracle()
         "--out",
         &rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "template apply saved exit");
-    assert_eq!(rust_stderr, go_stderr, "template apply saved stderr");
+    assert_eq!(rust_code, baseline_code, "template apply saved exit");
+    assert_eq!(rust_stderr, baseline_stderr, "template apply saved stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust saved stdout"),
             &[(&tokens_str, "[TOKENS]"), (&rust_out_str, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go saved stdout"),
-            &[(&tokens_str, "[TOKENS]"), (&go_out_str, "[OUT]")]
+            baseline_stdout.expect("baseline saved stdout"),
+            &[(&tokens_str, "[TOKENS]"), (&baseline_out_str, "[OUT]")]
         ),
         "template apply saved stdout"
     );
@@ -286,11 +286,11 @@ fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_go_oracle()
         serde_json::json!("Aptos Display")
     );
 
-    let go_ranges_out = temp_dir.join("go-ranges.pptx");
+    let baseline_ranges_out = temp_dir.join("baseline-ranges.pptx");
     let rust_ranges_out = temp_dir.join("rust-ranges.pptx");
-    let go_ranges_out_str = go_ranges_out.to_string_lossy().to_string();
+    let baseline_ranges_out_str = baseline_ranges_out.to_string_lossy().to_string();
     let rust_ranges_out_str = rust_ranges_out.to_string_lossy().to_string();
-    let go_ranges_args = [
+    let baseline_ranges_args = [
         "--json",
         "template",
         "apply",
@@ -299,7 +299,7 @@ fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_go_oracle()
         &tokens_str,
         "--target-ranges",
         "--out",
-        &go_ranges_out_str,
+        &baseline_ranges_out_str,
     ];
     let rust_ranges_args = [
         "--json",
@@ -312,10 +312,10 @@ fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_go_oracle()
         "--out",
         &rust_ranges_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_ranges_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_ranges_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_ranges_args);
-    assert_eq!(rust_code, go_code, "template apply ranges exit");
-    assert_eq!(rust_stderr, go_stderr, "template apply ranges stderr");
+    assert_eq!(rust_code, baseline_code, "template apply ranges exit");
+    assert_eq!(rust_stderr, baseline_stderr, "template apply ranges stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust ranges stdout"),
@@ -323,7 +323,7 @@ fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_go_oracle()
             "[TOKENS]"
         ),
         scrub_path(
-            go_stdout.expect("go ranges stdout"),
+            baseline_stdout.expect("baseline ranges stdout"),
             &tokens_str,
             "[TOKENS]"
         ),
@@ -334,11 +334,11 @@ fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_go_oracle()
         "ranges-only apply should not produce an output file"
     );
 
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &["--json", "template", "apply", target],
         "template apply missing output mode",
     );
-    assert_go_rust_json_match(
+    assert_baseline_rust_json_match(
         &[
             "--json",
             "pptx",
@@ -354,7 +354,7 @@ fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_go_oracle()
 }
 
 #[test]
-fn template_apply_pptx_chart_and_text_style_targets_match_go_oracle() {
+fn template_apply_pptx_chart_and_text_style_targets_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-template-targets-{}",
         std::process::id()
@@ -368,11 +368,11 @@ fn template_apply_pptx_chart_and_text_style_targets_match_go_oracle() {
     let tokens_str = tokens_path.to_string_lossy().to_string();
 
     let chart_target = "testdata/pptx/chart-simple/presentation.pptx";
-    let go_chart_out = temp_dir.join("go-chart.pptx");
+    let baseline_chart_out = temp_dir.join("baseline-chart.pptx");
     let rust_chart_out = temp_dir.join("rust-chart.pptx");
-    let go_chart_out_str = go_chart_out.to_string_lossy().to_string();
+    let baseline_chart_out_str = baseline_chart_out.to_string_lossy().to_string();
     let rust_chart_out_str = rust_chart_out.to_string_lossy().to_string();
-    let go_chart_args = [
+    let baseline_chart_args = [
         "--json",
         "template",
         "apply",
@@ -381,7 +381,7 @@ fn template_apply_pptx_chart_and_text_style_targets_match_go_oracle() {
         &tokens_str,
         "--target-charts",
         "--out",
-        &go_chart_out_str,
+        &baseline_chart_out_str,
     ];
     let rust_chart_args = [
         "--json",
@@ -394,18 +394,18 @@ fn template_apply_pptx_chart_and_text_style_targets_match_go_oracle() {
         "--out",
         &rust_chart_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_chart_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_chart_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_chart_args);
-    assert_eq!(rust_code, go_code, "template apply PPTX charts exit");
-    assert_eq!(rust_stderr, go_stderr, "template apply PPTX charts stderr");
+    assert_eq!(rust_code, baseline_code, "template apply PPTX charts exit");
+    assert_eq!(rust_stderr, baseline_stderr, "template apply PPTX charts stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust PPTX chart apply stdout"),
             &[(&tokens_str, "[TOKENS]"), (&rust_chart_out_str, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go PPTX chart apply stdout"),
-            &[(&tokens_str, "[TOKENS]"), (&go_chart_out_str, "[OUT]")]
+            baseline_stdout.expect("baseline PPTX chart apply stdout"),
+            &[(&tokens_str, "[TOKENS]"), (&baseline_chart_out_str, "[OUT]")]
         ),
         "template apply PPTX charts stdout"
     );
@@ -432,11 +432,11 @@ fn template_apply_pptx_chart_and_text_style_targets_match_go_oracle() {
     );
 
     let text_target = "testdata/pptx/minimal-title/presentation.pptx";
-    let go_text_out = temp_dir.join("go-text-styles.pptx");
+    let baseline_text_out = temp_dir.join("baseline-text-styles.pptx");
     let rust_text_out = temp_dir.join("rust-text-styles.pptx");
-    let go_text_out_str = go_text_out.to_string_lossy().to_string();
+    let baseline_text_out_str = baseline_text_out.to_string_lossy().to_string();
     let rust_text_out_str = rust_text_out.to_string_lossy().to_string();
-    let go_text_args = [
+    let baseline_text_args = [
         "--json",
         "template",
         "apply",
@@ -445,7 +445,7 @@ fn template_apply_pptx_chart_and_text_style_targets_match_go_oracle() {
         &tokens_str,
         "--target-text-styles",
         "--out",
-        &go_text_out_str,
+        &baseline_text_out_str,
     ];
     let rust_text_args = [
         "--json",
@@ -458,18 +458,18 @@ fn template_apply_pptx_chart_and_text_style_targets_match_go_oracle() {
         "--out",
         &rust_text_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_text_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_text_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_text_args);
-    assert_eq!(rust_code, go_code, "template apply text styles exit");
-    assert_eq!(rust_stderr, go_stderr, "template apply text styles stderr");
+    assert_eq!(rust_code, baseline_code, "template apply text styles exit");
+    assert_eq!(rust_stderr, baseline_stderr, "template apply text styles stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust text styles apply stdout"),
             &[(&tokens_str, "[TOKENS]"), (&rust_text_out_str, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go text styles apply stdout"),
-            &[(&tokens_str, "[TOKENS]"), (&go_text_out_str, "[OUT]")]
+            baseline_stdout.expect("baseline text styles apply stdout"),
+            &[(&tokens_str, "[TOKENS]"), (&baseline_text_out_str, "[OUT]")]
         ),
         "template apply text styles stdout"
     );
@@ -494,18 +494,18 @@ fn template_apply_pptx_chart_and_text_style_targets_match_go_oracle() {
 }
 
 #[test]
-fn pptx_template_compile_simple_matches_go_oracle_and_validates() {
+fn pptx_template_compile_simple_matches_rust_baseline_and_validates() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-template-compile-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("template compile temp dir");
-    let go_out = temp_dir.join("go-compiled.pptx");
+    let baseline_out = temp_dir.join("baseline-compiled.pptx");
     let rust_out = temp_dir.join("rust-compiled.pptx");
-    let go_out_str = go_out.to_string_lossy().to_string();
+    let baseline_out_str = baseline_out.to_string_lossy().to_string();
     let rust_out_str = rust_out.to_string_lossy().to_string();
-    let go_args = [
+    let baseline_args = [
         "--json",
         "pptx",
         "template",
@@ -515,7 +515,7 @@ fn pptx_template_compile_simple_matches_go_oracle_and_validates() {
         "--archetype",
         "testdata/pptx/template-branded/presentation.pptx",
         "--out",
-        &go_out_str,
+        &baseline_out_str,
     ];
     let rust_args = [
         "--json",
@@ -529,25 +529,25 @@ fn pptx_template_compile_simple_matches_go_oracle_and_validates() {
         "--out",
         &rust_out_str,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "pptx template compile exit");
-    assert_eq!(rust_stderr, go_stderr, "pptx template compile stderr");
+    assert_eq!(rust_code, baseline_code, "pptx template compile exit");
+    assert_eq!(rust_stderr, baseline_stderr, "pptx template compile stderr");
     assert_eq!(
         scrub_template_compile_result(rust_stdout.expect("rust compile stdout"), &rust_out_str),
-        scrub_template_compile_result(go_stdout.expect("go compile stdout"), &go_out_str),
+        scrub_template_compile_result(baseline_stdout.expect("baseline compile stdout"), &baseline_out_str),
         "pptx template compile stdout"
     );
     assert!(rust_out.exists(), "Rust compiled PPTX exists");
     assert_strict_validate_succeeds(&rust_out_str, "compiled PPTX");
 
-    let (go_text_code, go_text, go_text_stderr) =
-        run_go_ooxml(&["--json", "pptx", "extract", "text", &go_out_str]);
+    let (baseline_text_code, baseline_text, baseline_text_stderr) =
+        run_ooxml_baseline(&["--json", "pptx", "extract", "text", &baseline_out_str]);
     let (rust_text_code, rust_text, rust_text_stderr) =
         run_ooxml(&["--json", "pptx", "extract", "text", &rust_out_str]);
-    assert_eq!(rust_text_code, go_text_code, "compiled text readback exit");
+    assert_eq!(rust_text_code, baseline_text_code, "compiled text readback exit");
     assert_eq!(
-        rust_text_stderr, go_text_stderr,
+        rust_text_stderr, baseline_text_stderr,
         "compiled text readback stderr"
     );
     assert_eq!(
@@ -556,7 +556,7 @@ fn pptx_template_compile_simple_matches_go_oracle_and_validates() {
             &rust_out_str,
             "[OUT]"
         ),
-        scrub_path(go_text.expect("go compiled text"), &go_out_str, "[OUT]"),
+        scrub_path(baseline_text.expect("baseline compiled text"), &baseline_out_str, "[OUT]"),
         "compiled PPTX text readback"
     );
 

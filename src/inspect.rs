@@ -56,7 +56,7 @@ fn inspect_xlsx(file: &str, entries: &[String]) -> CliResult<Value> {
                 "failed to inspect workbook: failed to read workbook part /{}: failed to parse XML part /{}: {}",
                 workbook_part,
                 workbook_part,
-                go_like_xml_parse_message(&err.message)
+                legacy_like_xml_parse_message(&err.message)
             ))
         } else {
             CliError::unexpected(format!(
@@ -136,7 +136,7 @@ fn inspect_docx(file: &str, entries: &[String]) -> CliResult<Value> {
                 "failed to inspect document: failed to read document part /{}: failed to parse XML part /{}: {}",
                 document_part,
                 document_part,
-                go_like_docx_xml_parse_message(&err)
+                legacy_like_docx_xml_parse_message(&err)
             ))
         } else {
             CliError::unexpected(format!(
@@ -197,7 +197,7 @@ fn is_xml_parse_error(message: &str) -> bool {
         || message.contains("not found before end of input")
 }
 
-fn go_like_xml_parse_message(message: &str) -> &'static str {
+fn legacy_like_xml_parse_message(message: &str) -> &'static str {
     if message.contains("unexpected EOF") || message.contains("not found before end of input") {
         "XML syntax error on line 1: unexpected EOF"
     } else {
@@ -205,11 +205,11 @@ fn go_like_xml_parse_message(message: &str) -> &'static str {
     }
 }
 
-fn go_like_docx_xml_parse_message(message: &str) -> &'static str {
+fn legacy_like_docx_xml_parse_message(message: &str) -> &'static str {
     if message.contains("unexpected EOF") {
         "etree: invalid XML format"
     } else {
-        go_like_xml_parse_message(message)
+        legacy_like_xml_parse_message(message)
     }
 }
 

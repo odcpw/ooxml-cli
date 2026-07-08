@@ -1,6 +1,6 @@
 #[test]
-fn xlsx_filters_sorts_show_matches_go_oracle() {
-    assert_go_rust_match(&[
+fn xlsx_filters_sorts_show_matches_rust_baseline() {
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "filters-sorts",
@@ -35,7 +35,7 @@ fn xlsx_filters_sorts_show_matches_go_oracle() {
 </worksheet>"#,
     );
     let workbook = workbook.to_string_lossy().to_string();
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "filters-sorts",
@@ -49,40 +49,40 @@ fn xlsx_filters_sorts_show_matches_go_oracle() {
 }
 
 #[test]
-fn xlsx_filters_sorts_set_autofilter_matches_go_oracle_and_saved_output() {
+fn xlsx_filters_sorts_set_autofilter_matches_rust_baseline_and_saved_output() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-filters-set-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    let go_out_path = temp_dir.join("go-out.xlsx");
+    let baseline_out_path = temp_dir.join("baseline-out.xlsx");
     let rust_out_path = temp_dir.join("rust-out.xlsx");
-    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("go input");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &baseline_in_path).expect("baseline input");
     fs::copy(
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
         &rust_in_path,
     )
     .expect("rust input");
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_out = go_out_path.to_string_lossy().to_string();
+    let baseline_out = baseline_out_path.to_string_lossy().to_string();
     let rust_out = rust_out_path.to_string_lossy().to_string();
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "xlsx",
         "filters-sorts",
         "set-autofilter",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "1",
         "--range",
         "A1:C1",
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -97,10 +97,10 @@ fn xlsx_filters_sorts_set_autofilter_matches_go_oracle_and_saved_output() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "set-autofilter exit");
-    assert_eq!(rust_stderr, go_stderr, "set-autofilter stderr");
+    assert_eq!(rust_code, baseline_code, "set-autofilter exit");
+    assert_eq!(rust_stderr, baseline_stderr, "set-autofilter stderr");
     let rust_result = rust_stdout.expect("rust set-autofilter stdout");
     assert_eq!(
         scrub_paths(
@@ -108,8 +108,8 @@ fn xlsx_filters_sorts_set_autofilter_matches_go_oracle_and_saved_output() {
             &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go set-autofilter stdout"),
-            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+            baseline_stdout.expect("baseline set-autofilter stdout"),
+            &[(&baseline_in, "[IN]"), (&baseline_out, "[OUT]")]
         ),
         "set-autofilter stdout"
     );
@@ -121,7 +121,7 @@ fn xlsx_filters_sorts_set_autofilter_matches_go_oracle_and_saved_output() {
         "xlsx",
         "filters-sorts",
         "show",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "1",
     ];
@@ -134,13 +134,13 @@ fn xlsx_filters_sorts_set_autofilter_matches_go_oracle_and_saved_output() {
         "--sheet",
         "1",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "saved show exit");
-    assert_eq!(rust_stderr, go_stderr, "saved show stderr");
+    assert_eq!(rust_code, baseline_code, "saved show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "saved show stderr");
     assert_eq!(
         scrub_path(rust_show.expect("rust saved show"), &rust_out, "[OUT]"),
-        scrub_path(go_show.expect("go saved show"), &go_out, "[OUT]"),
+        scrub_path(baseline_show.expect("baseline saved show"), &baseline_out, "[OUT]"),
         "saved show stdout"
     );
     assert!(
@@ -153,7 +153,7 @@ fn xlsx_filters_sorts_set_autofilter_matches_go_oracle_and_saved_output() {
         "xlsx",
         "filters-sorts",
         "set-autofilter",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "1",
         "--range",
@@ -172,13 +172,13 @@ fn xlsx_filters_sorts_set_autofilter_matches_go_oracle_and_saved_output() {
         "A1:C1",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
-    assert_eq!(rust_code, go_code, "dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "dry-run stderr");
     assert_eq!(
         scrub_path(rust_stdout.expect("rust dry-run"), &rust_in, "[IN]"),
-        scrub_path(go_stdout.expect("go dry-run"), &go_in, "[IN]"),
+        scrub_path(baseline_stdout.expect("baseline dry-run"), &baseline_in, "[IN]"),
         "dry-run stdout"
     );
     assert!(
@@ -191,7 +191,7 @@ fn xlsx_filters_sorts_set_autofilter_matches_go_oracle_and_saved_output() {
         "xlsx",
         "filters-sorts",
         "set-autofilter",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "1",
         "--range",
@@ -210,44 +210,44 @@ fn xlsx_filters_sorts_set_autofilter_matches_go_oracle_and_saved_output() {
         "not-a-range",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&bad_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&bad_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&bad_rust);
-    assert_eq!(rust_code, go_code, "invalid range exit");
-    assert_eq!(rust_stdout, go_stdout, "invalid range stdout");
-    assert_eq!(rust_stderr, go_stderr, "invalid range stderr");
+    assert_eq!(rust_code, baseline_code, "invalid range exit");
+    assert_eq!(rust_stdout, baseline_stdout, "invalid range stdout");
+    assert_eq!(rust_stderr, baseline_stderr, "invalid range stderr");
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn xlsx_filters_sorts_set_autofilter_on_table_matches_go_oracle() {
+fn xlsx_filters_sorts_set_autofilter_on_table_matches_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-filters-table-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-table-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-table-in.xlsx");
     let rust_in_path = temp_dir.join("rust-table-in.xlsx");
-    let go_out_path = temp_dir.join("go-table-out.xlsx");
+    let baseline_out_path = temp_dir.join("baseline-table-out.xlsx");
     let rust_out_path = temp_dir.join("rust-table-out.xlsx");
-    write_table_xlsx(&go_in_path);
+    write_table_xlsx(&baseline_in_path);
     write_table_xlsx(&rust_in_path);
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_out = go_out_path.to_string_lossy().to_string();
+    let baseline_out = baseline_out_path.to_string_lossy().to_string();
     let rust_out = rust_out_path.to_string_lossy().to_string();
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "xlsx",
         "filters-sorts",
         "set-autofilter",
-        &go_in,
+        &baseline_in,
         "--table",
         "Sales",
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -260,18 +260,18 @@ fn xlsx_filters_sorts_set_autofilter_on_table_matches_go_oracle() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "table set-autofilter exit");
-    assert_eq!(rust_stderr, go_stderr, "table set-autofilter stderr");
+    assert_eq!(rust_code, baseline_code, "table set-autofilter exit");
+    assert_eq!(rust_stderr, baseline_stderr, "table set-autofilter stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust table set-autofilter"),
             &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go table set-autofilter"),
-            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+            baseline_stdout.expect("baseline table set-autofilter"),
+            &[(&baseline_in, "[IN]"), (&baseline_out, "[OUT]")]
         ),
         "table set-autofilter stdout"
     );
@@ -281,7 +281,7 @@ fn xlsx_filters_sorts_set_autofilter_on_table_matches_go_oracle() {
         "xlsx",
         "filters-sorts",
         "show",
-        &go_out,
+        &baseline_out,
         "--table",
         "Sales",
     ];
@@ -294,13 +294,13 @@ fn xlsx_filters_sorts_set_autofilter_on_table_matches_go_oracle() {
         "--table",
         "Sales",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "table show exit");
-    assert_eq!(rust_stderr, go_stderr, "table show stderr");
+    assert_eq!(rust_code, baseline_code, "table show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "table show stderr");
     assert_eq!(
         scrub_path(rust_show.expect("rust table show"), &rust_out, "[OUT]"),
-        scrub_path(go_show.expect("go table show"), &go_out, "[OUT]"),
+        scrub_path(baseline_show.expect("baseline table show"), &baseline_out, "[OUT]"),
         "table show stdout"
     );
     assert!(
@@ -312,16 +312,16 @@ fn xlsx_filters_sorts_set_autofilter_on_table_matches_go_oracle() {
 }
 
 #[test]
-fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
+fn xlsx_filters_sorts_clear_autofilter_matches_rust_baseline_and_saved_output() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-filters-clear-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    let go_out_path = temp_dir.join("go-out.xlsx");
+    let baseline_out_path = temp_dir.join("baseline-out.xlsx");
     let rust_out_path = temp_dir.join("rust-out.xlsx");
     let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -333,23 +333,23 @@ fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
   </sheetData>
   <autoFilter ref="A1:C3"><filterColumn colId="0"><filters><filter val="North"/></filters></filterColumn></autoFilter>
 </worksheet>"#;
-    write_simple_xlsx_with_sheet_xml(&go_in_path, sheet_xml);
+    write_simple_xlsx_with_sheet_xml(&baseline_in_path, sheet_xml);
     write_simple_xlsx_with_sheet_xml(&rust_in_path, sheet_xml);
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_out = go_out_path.to_string_lossy().to_string();
+    let baseline_out = baseline_out_path.to_string_lossy().to_string();
     let rust_out = rust_out_path.to_string_lossy().to_string();
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "xlsx",
         "filters-sorts",
         "clear-autofilter",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "1",
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -362,10 +362,10 @@ fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "clear-autofilter exit");
-    assert_eq!(rust_stderr, go_stderr, "clear-autofilter stderr");
+    assert_eq!(rust_code, baseline_code, "clear-autofilter exit");
+    assert_eq!(rust_stderr, baseline_stderr, "clear-autofilter stderr");
     let rust_result = rust_stdout.expect("rust clear-autofilter stdout");
     assert_eq!(
         scrub_paths(
@@ -373,8 +373,8 @@ fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
             &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go clear-autofilter stdout"),
-            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+            baseline_stdout.expect("baseline clear-autofilter stdout"),
+            &[(&baseline_in, "[IN]"), (&baseline_out, "[OUT]")]
         ),
         "clear-autofilter stdout"
     );
@@ -386,7 +386,7 @@ fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
         "xlsx",
         "filters-sorts",
         "show",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "1",
     ];
@@ -399,17 +399,17 @@ fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
         "--sheet",
         "1",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "clear saved show exit");
-    assert_eq!(rust_stderr, go_stderr, "clear saved show stderr");
+    assert_eq!(rust_code, baseline_code, "clear saved show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "clear saved show stderr");
     assert_eq!(
         scrub_path(
             rust_show.expect("rust clear saved show"),
             &rust_out,
             "[OUT]"
         ),
-        scrub_path(go_show.expect("go clear saved show"), &go_out, "[OUT]"),
+        scrub_path(baseline_show.expect("baseline clear saved show"), &baseline_out, "[OUT]"),
         "clear saved show stdout"
     );
     assert!(
@@ -422,7 +422,7 @@ fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
         "xlsx",
         "filters-sorts",
         "clear-autofilter",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "1",
         "--expect-range",
@@ -441,13 +441,13 @@ fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
         "A1:C3",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
-    assert_eq!(rust_code, go_code, "clear dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "clear dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "clear dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "clear dry-run stderr");
     assert_eq!(
         scrub_path(rust_stdout.expect("rust clear dry-run"), &rust_in, "[IN]"),
-        scrub_path(go_stdout.expect("go clear dry-run"), &go_in, "[IN]"),
+        scrub_path(baseline_stdout.expect("baseline clear dry-run"), &baseline_in, "[IN]"),
         "clear dry-run stdout"
     );
     assert!(
@@ -455,7 +455,7 @@ fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
         "clear dry-run should not mutate source workbook"
     );
 
-    let no_filter_go = temp_dir.join("no-filter-go.xlsx");
+    let no_filter_go = temp_dir.join("no-filter-baseline.xlsx");
     let no_filter_rust = temp_dir.join("no-filter-rust.xlsx");
     write_simple_xlsx_with_sheet_xml(
         &no_filter_go,
@@ -493,10 +493,10 @@ fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
         "1",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&bad_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&bad_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&bad_rust);
-    assert_eq!(rust_code, go_code, "clear missing autoFilter exit");
-    assert_eq!(rust_stdout, go_stdout, "clear missing autoFilter stdout");
+    assert_eq!(rust_code, baseline_code, "clear missing autoFilter exit");
+    assert_eq!(rust_stdout, baseline_stdout, "clear missing autoFilter stdout");
     assert_eq!(
         scrub_path(
             rust_stderr.expect("rust clear missing autoFilter stderr"),
@@ -504,33 +504,33 @@ fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
             "[IN]"
         ),
         scrub_path(
-            go_stderr.expect("go clear missing autoFilter stderr"),
+            baseline_stderr.expect("baseline clear missing autoFilter stderr"),
             &no_filter_go,
             "[IN]"
         ),
         "clear missing autoFilter stderr"
     );
 
-    let go_table_in = temp_dir.join("go-table-in.xlsx");
+    let baseline_table_in = temp_dir.join("baseline-table-in.xlsx");
     let rust_table_in = temp_dir.join("rust-table-in.xlsx");
-    let go_table_out = temp_dir.join("go-table-out.xlsx");
+    let baseline_table_out = temp_dir.join("baseline-table-out.xlsx");
     let rust_table_out = temp_dir.join("rust-table-out.xlsx");
-    write_table_xlsx(&go_table_in);
+    write_table_xlsx(&baseline_table_in);
     write_table_xlsx(&rust_table_in);
-    let go_table_in = go_table_in.to_string_lossy().to_string();
+    let baseline_table_in = baseline_table_in.to_string_lossy().to_string();
     let rust_table_in = rust_table_in.to_string_lossy().to_string();
-    let go_table_out = go_table_out.to_string_lossy().to_string();
+    let baseline_table_out = baseline_table_out.to_string_lossy().to_string();
     let rust_table_out = rust_table_out.to_string_lossy().to_string();
     let table_go = [
         "--json",
         "xlsx",
         "filters-sorts",
         "clear-autofilter",
-        &go_table_in,
+        &baseline_table_in,
         "--table",
         "Sales",
         "--out",
-        &go_table_out,
+        &baseline_table_out,
     ];
     let table_rust = [
         "--json",
@@ -543,18 +543,18 @@ fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
         "--out",
         &rust_table_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&table_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&table_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&table_rust);
-    assert_eq!(rust_code, go_code, "table clear-autofilter exit");
-    assert_eq!(rust_stderr, go_stderr, "table clear-autofilter stderr");
+    assert_eq!(rust_code, baseline_code, "table clear-autofilter exit");
+    assert_eq!(rust_stderr, baseline_stderr, "table clear-autofilter stderr");
     assert_eq!(
         scrub_paths(
             rust_stdout.expect("rust table clear"),
             &[(&rust_table_in, "[IN]"), (&rust_table_out, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go table clear"),
-            &[(&go_table_in, "[IN]"), (&go_table_out, "[OUT]")]
+            baseline_stdout.expect("baseline table clear"),
+            &[(&baseline_table_in, "[IN]"), (&baseline_table_out, "[OUT]")]
         ),
         "table clear-autofilter stdout"
     );
@@ -563,16 +563,16 @@ fn xlsx_filters_sorts_clear_autofilter_matches_go_oracle_and_saved_output() {
 }
 
 #[test]
-fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
+fn xlsx_filters_sorts_add_column_filter_matches_rust_baseline_and_saved_output() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-filter-column-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    let go_out_path = temp_dir.join("go-out.xlsx");
+    let baseline_out_path = temp_dir.join("baseline-out.xlsx");
     let rust_out_path = temp_dir.join("rust-out.xlsx");
     let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -584,19 +584,19 @@ fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
   </sheetData>
   <autoFilter ref="A1:C3"/>
 </worksheet>"#;
-    write_simple_xlsx_with_sheet_xml(&go_in_path, sheet_xml);
+    write_simple_xlsx_with_sheet_xml(&baseline_in_path, sheet_xml);
     write_simple_xlsx_with_sheet_xml(&rust_in_path, sheet_xml);
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_out = go_out_path.to_string_lossy().to_string();
+    let baseline_out = baseline_out_path.to_string_lossy().to_string();
     let rust_out = rust_out_path.to_string_lossy().to_string();
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "xlsx",
         "filters-sorts",
         "add-column-filter",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "1",
         "--column",
@@ -604,7 +604,7 @@ fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
         "--values",
         "North,South,North",
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -621,10 +621,10 @@ fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "add-column-filter exit");
-    assert_eq!(rust_stderr, go_stderr, "add-column-filter stderr");
+    assert_eq!(rust_code, baseline_code, "add-column-filter exit");
+    assert_eq!(rust_stderr, baseline_stderr, "add-column-filter stderr");
     let rust_result = rust_stdout.expect("rust add-column-filter stdout");
     assert_eq!(
         scrub_paths(
@@ -632,8 +632,8 @@ fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
             &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go add-column-filter stdout"),
-            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+            baseline_stdout.expect("baseline add-column-filter stdout"),
+            &[(&baseline_in, "[IN]"), (&baseline_out, "[OUT]")]
         ),
         "add-column-filter stdout"
     );
@@ -645,7 +645,7 @@ fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
         "xlsx",
         "filters-sorts",
         "show",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "1",
     ];
@@ -658,13 +658,13 @@ fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
         "--sheet",
         "1",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "add saved show exit");
-    assert_eq!(rust_stderr, go_stderr, "add saved show stderr");
+    assert_eq!(rust_code, baseline_code, "add saved show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "add saved show stderr");
     assert_eq!(
         scrub_path(rust_show.expect("rust add saved show"), &rust_out, "[OUT]"),
-        scrub_path(go_show.expect("go add saved show"), &go_out, "[OUT]"),
+        scrub_path(baseline_show.expect("baseline add saved show"), &baseline_out, "[OUT]"),
         "add saved show stdout"
     );
     let sheet_xml = read_zip_string(&rust_out_path, "xl/worksheets/sheet1.xml");
@@ -679,7 +679,7 @@ fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
         "xlsx",
         "filters-sorts",
         "add-column-filter",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "1",
         "--column",
@@ -710,17 +710,17 @@ fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
         "20",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&custom_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&custom_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&custom_rust);
-    assert_eq!(rust_code, go_code, "custom dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "custom dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "custom dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "custom dry-run stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust custom dry-run"),
             &rust_out,
             "[OUT]"
         ),
-        scrub_path(go_stdout.expect("go custom dry-run"), &go_out, "[OUT]"),
+        scrub_path(baseline_stdout.expect("baseline custom dry-run"), &baseline_out, "[OUT]"),
         "custom dry-run stdout"
     );
     assert!(
@@ -728,7 +728,7 @@ fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
         "custom dry-run should not mutate saved workbook"
     );
 
-    let no_filter_go = temp_dir.join("no-filter-go.xlsx");
+    let no_filter_go = temp_dir.join("no-filter-baseline.xlsx");
     let no_filter_rust = temp_dir.join("no-filter-rust.xlsx");
     write_simple_xlsx_with_sheet_xml(
         &no_filter_go,
@@ -788,19 +788,19 @@ fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
             ],
         ),
     ] {
-        let (go_file, rust_file) = if label == "missing autoFilter" {
+        let (baseline_file, rust_file) = if label == "missing autoFilter" {
             (&no_filter_go, &no_filter_rust)
         } else {
-            (&go_out, &rust_out)
+            (&baseline_out, &rust_out)
         };
-        let mut go_args = vec![
+        let mut baseline_args = vec![
             "--json",
             "xlsx",
             "filters-sorts",
             "add-column-filter",
-            go_file,
+            baseline_file,
         ];
-        go_args.extend(extra_args.iter().copied());
+        baseline_args.extend(extra_args.iter().copied());
         let mut rust_args = vec![
             "--json",
             "xlsx",
@@ -809,27 +809,27 @@ fn xlsx_filters_sorts_add_column_filter_matches_go_oracle_and_saved_output() {
             rust_file,
         ];
         rust_args.extend(extra_args.iter().copied());
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-        assert_eq!(rust_code, go_code, "{label} exit");
-        assert_eq!(rust_stdout, go_stdout, "{label} stdout");
-        assert_eq!(rust_stderr, go_stderr, "{label} stderr");
+        assert_eq!(rust_code, baseline_code, "{label} exit");
+        assert_eq!(rust_stdout, baseline_stdout, "{label} stdout");
+        assert_eq!(rust_stderr, baseline_stderr, "{label} stderr");
     }
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
+fn xlsx_filters_sorts_clear_column_filter_matches_rust_baseline_and_saved_output() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-filter-column-clear-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    let go_out_path = temp_dir.join("go-out.xlsx");
+    let baseline_out_path = temp_dir.join("baseline-out.xlsx");
     let rust_out_path = temp_dir.join("rust-out.xlsx");
     let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -844,25 +844,25 @@ fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
     <filterColumn colId="2"><filters><filter val="Open"/></filters></filterColumn>
   </autoFilter>
 </worksheet>"#;
-    write_simple_xlsx_with_sheet_xml(&go_in_path, sheet_xml);
+    write_simple_xlsx_with_sheet_xml(&baseline_in_path, sheet_xml);
     write_simple_xlsx_with_sheet_xml(&rust_in_path, sheet_xml);
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_out = go_out_path.to_string_lossy().to_string();
+    let baseline_out = baseline_out_path.to_string_lossy().to_string();
     let rust_out = rust_out_path.to_string_lossy().to_string();
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "xlsx",
         "filters-sorts",
         "clear-column-filter",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "1",
         "--column",
         "0",
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -877,10 +877,10 @@ fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "clear-column-filter exit");
-    assert_eq!(rust_stderr, go_stderr, "clear-column-filter stderr");
+    assert_eq!(rust_code, baseline_code, "clear-column-filter exit");
+    assert_eq!(rust_stderr, baseline_stderr, "clear-column-filter stderr");
     let rust_result = rust_stdout.expect("rust clear-column-filter stdout");
     assert_eq!(
         scrub_paths(
@@ -888,8 +888,8 @@ fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
             &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go clear-column-filter stdout"),
-            &[(&go_in, "[IN]"), (&go_out, "[OUT]")]
+            baseline_stdout.expect("baseline clear-column-filter stdout"),
+            &[(&baseline_in, "[IN]"), (&baseline_out, "[OUT]")]
         ),
         "clear-column-filter stdout"
     );
@@ -901,7 +901,7 @@ fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
         "xlsx",
         "filters-sorts",
         "show",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "1",
     ];
@@ -914,10 +914,10 @@ fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
         "--sheet",
         "1",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "clear-column saved show exit");
-    assert_eq!(rust_stderr, go_stderr, "clear-column saved show stderr");
+    assert_eq!(rust_code, baseline_code, "clear-column saved show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "clear-column saved show stderr");
     assert_eq!(
         scrub_path(
             rust_show.expect("rust clear-column saved show"),
@@ -925,8 +925,8 @@ fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
             "[OUT]"
         ),
         scrub_path(
-            go_show.expect("go clear-column saved show"),
-            &go_out,
+            baseline_show.expect("baseline clear-column saved show"),
+            &baseline_out,
             "[OUT]"
         ),
         "clear-column saved show stdout"
@@ -940,7 +940,7 @@ fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
         "xlsx",
         "filters-sorts",
         "clear-column-filter",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "1",
         "--column",
@@ -959,10 +959,10 @@ fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
         "2",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
-    assert_eq!(rust_code, go_code, "clear-column dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "clear-column dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "clear-column dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "clear-column dry-run stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust clear-column dry-run"),
@@ -970,8 +970,8 @@ fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
             "[OUT]"
         ),
         scrub_path(
-            go_stdout.expect("go clear-column dry-run"),
-            &go_out,
+            baseline_stdout.expect("baseline clear-column dry-run"),
+            &baseline_out,
             "[OUT]"
         ),
         "clear-column dry-run stdout"
@@ -986,7 +986,7 @@ fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
         "xlsx",
         "filters-sorts",
         "clear-column-filter",
-        &go_out,
+        &baseline_out,
         "--sheet",
         "1",
         "--column",
@@ -1005,44 +1005,44 @@ fn xlsx_filters_sorts_clear_column_filter_matches_go_oracle_and_saved_output() {
         "1",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&missing_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&missing_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&missing_rust);
-    assert_eq!(rust_code, go_code, "clear-column missing exit");
-    assert_eq!(rust_stdout, go_stdout, "clear-column missing stdout");
-    assert_eq!(rust_stderr, go_stderr, "clear-column missing stderr");
+    assert_eq!(rust_code, baseline_code, "clear-column missing exit");
+    assert_eq!(rust_stdout, baseline_stdout, "clear-column missing stdout");
+    assert_eq!(rust_stderr, baseline_stderr, "clear-column missing stderr");
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
+fn xlsx_filters_sorts_set_and_clear_sort_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-filter-sort-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    let go_sort1_path = temp_dir.join("go-sort1.xlsx");
+    let baseline_sort1_path = temp_dir.join("baseline-sort1.xlsx");
     let rust_sort1_path = temp_dir.join("rust-sort1.xlsx");
-    let go_sort2_path = temp_dir.join("go-sort2.xlsx");
+    let baseline_sort2_path = temp_dir.join("baseline-sort2.xlsx");
     let rust_sort2_path = temp_dir.join("rust-sort2.xlsx");
-    let go_cleared_path = temp_dir.join("go-cleared.xlsx");
+    let baseline_cleared_path = temp_dir.join("baseline-cleared.xlsx");
     let rust_cleared_path = temp_dir.join("rust-cleared.xlsx");
-    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("go input");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &baseline_in_path).expect("baseline input");
     fs::copy(
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
         &rust_in_path,
     )
     .expect("rust input");
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
-    let go_sort1 = go_sort1_path.to_string_lossy().to_string();
+    let baseline_sort1 = baseline_sort1_path.to_string_lossy().to_string();
     let rust_sort1 = rust_sort1_path.to_string_lossy().to_string();
-    let go_sort2 = go_sort2_path.to_string_lossy().to_string();
+    let baseline_sort2 = baseline_sort2_path.to_string_lossy().to_string();
     let rust_sort2 = rust_sort2_path.to_string_lossy().to_string();
-    let go_cleared = go_cleared_path.to_string_lossy().to_string();
+    let baseline_cleared = baseline_cleared_path.to_string_lossy().to_string();
     let rust_cleared = rust_cleared_path.to_string_lossy().to_string();
 
     let set_go = [
@@ -1050,7 +1050,7 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "xlsx",
         "filters-sorts",
         "set-sort",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "1",
         "--ref",
@@ -1058,7 +1058,7 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "--column",
         "A",
         "--out",
-        &go_sort1,
+        &baseline_sort1,
     ];
     let set_rust = [
         "--json",
@@ -1075,10 +1075,10 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "--out",
         &rust_sort1,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&set_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&set_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&set_rust);
-    assert_eq!(rust_code, go_code, "set-sort exit");
-    assert_eq!(rust_stderr, go_stderr, "set-sort stderr");
+    assert_eq!(rust_code, baseline_code, "set-sort exit");
+    assert_eq!(rust_stderr, baseline_stderr, "set-sort stderr");
     let rust_set = rust_stdout.expect("rust set-sort stdout");
     assert_eq!(
         scrub_paths(
@@ -1086,8 +1086,8 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
             &[(&rust_in, "[IN]"), (&rust_sort1, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go set-sort stdout"),
-            &[(&go_in, "[IN]"), (&go_sort1, "[OUT]")]
+            baseline_stdout.expect("baseline set-sort stdout"),
+            &[(&baseline_in, "[IN]"), (&baseline_sort1, "[OUT]")]
         ),
         "set-sort stdout"
     );
@@ -1100,7 +1100,7 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "xlsx",
         "filters-sorts",
         "set-sort",
-        &go_sort1,
+        &baseline_sort1,
         "--sheet",
         "1",
         "--ref",
@@ -1111,7 +1111,7 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "--expect-sort",
         "A1:C3",
         "--out",
-        &go_sort2,
+        &baseline_sort2,
     ];
     let set2_rust = [
         "--json",
@@ -1131,10 +1131,10 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "--out",
         &rust_sort2,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&set2_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&set2_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&set2_rust);
-    assert_eq!(rust_code, go_code, "second set-sort exit");
-    assert_eq!(rust_stderr, go_stderr, "second set-sort stderr");
+    assert_eq!(rust_code, baseline_code, "second set-sort exit");
+    assert_eq!(rust_stderr, baseline_stderr, "second set-sort stderr");
     let rust_set2 = rust_stdout.expect("rust second set-sort stdout");
     assert_eq!(
         scrub_paths(
@@ -1142,8 +1142,8 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
             &[(&rust_sort1, "[IN]"), (&rust_sort2, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go second set-sort stdout"),
-            &[(&go_sort1, "[IN]"), (&go_sort2, "[OUT]")]
+            baseline_stdout.expect("baseline second set-sort stdout"),
+            &[(&baseline_sort1, "[IN]"), (&baseline_sort2, "[OUT]")]
         ),
         "second set-sort stdout"
     );
@@ -1158,7 +1158,7 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "xlsx",
         "filters-sorts",
         "show",
-        &go_sort2,
+        &baseline_sort2,
         "--sheet",
         "1",
     ];
@@ -1171,17 +1171,17 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "--sheet",
         "1",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "sort saved show exit");
-    assert_eq!(rust_stderr, go_stderr, "sort saved show stderr");
+    assert_eq!(rust_code, baseline_code, "sort saved show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "sort saved show stderr");
     assert_eq!(
         scrub_path(
             rust_show.expect("rust sort saved show"),
             &rust_sort2,
             "[OUT]"
         ),
-        scrub_path(go_show.expect("go sort saved show"), &go_sort2, "[OUT]"),
+        scrub_path(baseline_show.expect("baseline sort saved show"), &baseline_sort2, "[OUT]"),
         "sort saved show stdout"
     );
 
@@ -1190,7 +1190,7 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "xlsx",
         "filters-sorts",
         "set-sort",
-        &go_sort2,
+        &baseline_sort2,
         "--sheet",
         "1",
         "--ref",
@@ -1217,22 +1217,22 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "A1:B2",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&bad_expect_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&bad_expect_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&bad_expect_rust);
-    assert_eq!(rust_code, go_code, "set-sort bad expect exit");
-    assert_eq!(rust_stdout, go_stdout, "set-sort bad expect stdout");
-    assert_eq!(rust_stderr, go_stderr, "set-sort bad expect stderr");
+    assert_eq!(rust_code, baseline_code, "set-sort bad expect exit");
+    assert_eq!(rust_stdout, baseline_stdout, "set-sort bad expect stdout");
+    assert_eq!(rust_stderr, baseline_stderr, "set-sort bad expect stderr");
 
     let clear_go = [
         "--json",
         "xlsx",
         "filters-sorts",
         "clear-sort",
-        &go_sort2,
+        &baseline_sort2,
         "--sheet",
         "1",
         "--out",
-        &go_cleared,
+        &baseline_cleared,
     ];
     let clear_rust = [
         "--json",
@@ -1245,10 +1245,10 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "--out",
         &rust_cleared,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&clear_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&clear_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&clear_rust);
-    assert_eq!(rust_code, go_code, "clear-sort exit");
-    assert_eq!(rust_stderr, go_stderr, "clear-sort stderr");
+    assert_eq!(rust_code, baseline_code, "clear-sort exit");
+    assert_eq!(rust_stderr, baseline_stderr, "clear-sort stderr");
     let rust_clear = rust_stdout.expect("rust clear-sort stdout");
     assert_eq!(
         scrub_paths(
@@ -1256,8 +1256,8 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
             &[(&rust_sort2, "[IN]"), (&rust_cleared, "[OUT]")]
         ),
         scrub_paths(
-            go_stdout.expect("go clear-sort stdout"),
-            &[(&go_sort2, "[IN]"), (&go_cleared, "[OUT]")]
+            baseline_stdout.expect("baseline clear-sort stdout"),
+            &[(&baseline_sort2, "[IN]"), (&baseline_cleared, "[OUT]")]
         ),
         "clear-sort stdout"
     );
@@ -1269,7 +1269,7 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "xlsx",
         "filters-sorts",
         "show",
-        &go_cleared,
+        &baseline_cleared,
         "--sheet",
         "1",
     ];
@@ -1282,10 +1282,10 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "--sheet",
         "1",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_cleared_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_cleared_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_cleared_rust);
-    assert_eq!(rust_code, go_code, "clear-sort saved show exit");
-    assert_eq!(rust_stderr, go_stderr, "clear-sort saved show stderr");
+    assert_eq!(rust_code, baseline_code, "clear-sort saved show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "clear-sort saved show stderr");
     assert_eq!(
         scrub_path(
             rust_show.expect("rust clear-sort saved show"),
@@ -1293,8 +1293,8 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_show.expect("go clear-sort saved show"),
-            &go_cleared,
+            baseline_show.expect("baseline clear-sort saved show"),
+            &baseline_cleared,
             "[OUT]"
         ),
         "clear-sort saved show stdout"
@@ -1309,7 +1309,7 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "xlsx",
         "filters-sorts",
         "clear-sort",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "1",
         "--dry-run",
@@ -1324,11 +1324,11 @@ fn xlsx_filters_sorts_set_and_clear_sort_match_go_oracle() {
         "1",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&no_sort_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&no_sort_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&no_sort_rust);
-    assert_eq!(rust_code, go_code, "clear-sort missing exit");
-    assert_eq!(rust_stdout, go_stdout, "clear-sort missing stdout");
-    assert_eq!(rust_stderr, go_stderr, "clear-sort missing stderr");
+    assert_eq!(rust_code, baseline_code, "clear-sort missing exit");
+    assert_eq!(rust_stdout, baseline_stdout, "clear-sort missing stdout");
+    assert_eq!(rust_stderr, baseline_stderr, "clear-sort missing stderr");
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

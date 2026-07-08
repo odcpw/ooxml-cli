@@ -1,5 +1,5 @@
 #[test]
-fn docx_comments_list_matches_go_oracle() {
+fn docx_comments_list_matches_rust_baseline() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -36,24 +36,24 @@ fn docx_comments_list_matches_go_oracle() {
     ];
 
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 }
 
 #[test]
-fn docx_comments_add_matches_go_oracle() {
+fn docx_comments_add_matches_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-docx-comments-add-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("docx comments temp dir");
-    let go_out = temp_dir.join("comments-go.docx");
+    let baseline_out = temp_dir.join("comments-baseline.docx");
     let rust_out = temp_dir.join("comments-rust.docx");
-    let go_out = go_out.to_string_lossy().to_string();
+    let baseline_out = baseline_out.to_string_lossy().to_string();
     let rust_out = rust_out.to_string_lossy().to_string();
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "docx",
         "comments",
@@ -70,7 +70,7 @@ fn docx_comments_add_matches_go_oracle() {
         "--date",
         "2025-06-06T10:30:00Z",
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -91,11 +91,11 @@ fn docx_comments_add_matches_go_oracle() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "comments add exit");
-    assert_eq!(rust_stderr, go_stderr, "comments add stderr");
-    assert_eq!(rust_stdout, go_stdout, "comments add stdout");
+    assert_eq!(rust_code, baseline_code, "comments add exit");
+    assert_eq!(rust_stderr, baseline_stderr, "comments add stderr");
+    assert_eq!(rust_stdout, baseline_stdout, "comments add stdout");
     assert!(
         Path::new(&rust_out).exists(),
         "Rust comments output missing"
@@ -107,19 +107,19 @@ fn docx_comments_add_matches_go_oracle() {
     assert_eq!(validate_stderr, None, "validate stderr");
     assert!(validate_stdout.is_some(), "validate stdout");
 
-    let (go_list_code, go_list_stdout, go_list_stderr) =
-        run_go_ooxml(&["--json", "docx", "comments", "list", &go_out]);
+    let (baseline_list_code, baseline_list_stdout, baseline_list_stderr) =
+        run_ooxml_baseline(&["--json", "docx", "comments", "list", &baseline_out]);
     let (rust_list_code, rust_list_stdout, rust_list_stderr) =
         run_ooxml(&["--json", "docx", "comments", "list", &rust_out]);
-    assert_eq!(rust_list_code, go_list_code, "comments list readback exit");
+    assert_eq!(rust_list_code, baseline_list_code, "comments list readback exit");
     assert_eq!(
-        rust_list_stderr, go_list_stderr,
+        rust_list_stderr, baseline_list_stderr,
         "comments list readback stderr"
     );
-    let go_list = go_list_stdout.expect("Go comments list JSON");
+    let baseline_list = baseline_list_stdout.expect("Rust baseline comments list JSON");
     let rust_list = rust_list_stdout.expect("Rust comments list JSON");
     assert_eq!(
-        rust_list["comments"], go_list["comments"],
+        rust_list["comments"], baseline_list["comments"],
         "comments list readback"
     );
     assert_eq!(
@@ -145,7 +145,7 @@ fn docx_comments_add_matches_go_oracle() {
         "2025-06-06T10:30:00Z",
         "--dry-run",
     ];
-    assert_go_rust_match(&dry_run);
+    assert_rust_baseline_match(&dry_run);
 
     let missing_author = [
         "--json",
@@ -157,7 +157,7 @@ fn docx_comments_add_matches_go_oracle() {
         "No author",
         "--dry-run",
     ];
-    assert_go_rust_match(&missing_author);
+    assert_rust_baseline_match(&missing_author);
 
     let unsupported_type = [
         "--json",
@@ -173,25 +173,25 @@ fn docx_comments_add_matches_go_oracle() {
         "2025-06-06T10:30:00Z",
         "--dry-run",
     ];
-    assert_go_rust_match(&unsupported_type);
+    assert_rust_baseline_match(&unsupported_type);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn docx_comments_edit_matches_go_oracle() {
+fn docx_comments_edit_matches_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-docx-comments-edit-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("docx comments temp dir");
-    let go_out = temp_dir.join("comments-edit-go.docx");
+    let baseline_out = temp_dir.join("comments-edit-baseline.docx");
     let rust_out = temp_dir.join("comments-edit-rust.docx");
-    let go_out = go_out.to_string_lossy().to_string();
+    let baseline_out = baseline_out.to_string_lossy().to_string();
     let rust_out = rust_out.to_string_lossy().to_string();
 
-    let (hash_code, hash_stdout, hash_stderr) = run_go_ooxml(&[
+    let (hash_code, hash_stdout, hash_stderr) = run_ooxml_baseline(&[
         "--json",
         "docx",
         "comments",
@@ -207,7 +207,7 @@ fn docx_comments_edit_matches_go_oracle() {
         .as_str()
         .expect("comment content hash");
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "docx",
         "comments",
@@ -224,7 +224,7 @@ fn docx_comments_edit_matches_go_oracle() {
         "--expect-hash",
         hash,
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -245,11 +245,11 @@ fn docx_comments_edit_matches_go_oracle() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "comments edit exit");
-    assert_eq!(rust_stderr, go_stderr, "comments edit stderr");
-    assert_eq!(rust_stdout, go_stdout, "comments edit stdout");
+    assert_eq!(rust_code, baseline_code, "comments edit exit");
+    assert_eq!(rust_stderr, baseline_stderr, "comments edit stderr");
+    assert_eq!(rust_stdout, baseline_stdout, "comments edit stdout");
     assert!(Path::new(&rust_out).exists(), "Rust edit output missing");
 
     let (validate_code, validate_stdout, validate_stderr) =
@@ -258,12 +258,12 @@ fn docx_comments_edit_matches_go_oracle() {
     assert_eq!(validate_stderr, None, "validate stderr");
     assert!(validate_stdout.is_some(), "validate stdout");
 
-    let (go_list_code, go_list_stdout, go_list_stderr) = run_go_ooxml(&[
+    let (baseline_list_code, baseline_list_stdout, baseline_list_stderr) = run_ooxml_baseline(&[
         "--json",
         "docx",
         "comments",
         "list",
-        &go_out,
+        &baseline_out,
         "--comment-id",
         "0",
     ]);
@@ -276,15 +276,15 @@ fn docx_comments_edit_matches_go_oracle() {
         "--comment-id",
         "0",
     ]);
-    assert_eq!(rust_list_code, go_list_code, "comments edit readback exit");
+    assert_eq!(rust_list_code, baseline_list_code, "comments edit readback exit");
     assert_eq!(
-        rust_list_stderr, go_list_stderr,
+        rust_list_stderr, baseline_list_stderr,
         "comments edit readback stderr"
     );
-    let go_list = go_list_stdout.expect("Go comments edit readback JSON");
+    let baseline_list = baseline_list_stdout.expect("Rust baseline comments edit readback JSON");
     let rust_list = rust_list_stdout.expect("Rust comments edit readback JSON");
     assert_eq!(
-        rust_list["comments"], go_list["comments"],
+        rust_list["comments"], baseline_list["comments"],
         "comments edit readback"
     );
 
@@ -302,7 +302,7 @@ fn docx_comments_edit_matches_go_oracle() {
         "sha256:bogus",
         "--dry-run",
     ];
-    assert_go_rust_match(&wrong_hash);
+    assert_rust_baseline_match(&wrong_hash);
 
     let by_handle = [
         "--json",
@@ -318,7 +318,7 @@ fn docx_comments_edit_matches_go_oracle() {
         "2031-02-03T04:05:06Z",
         "--dry-run",
     ];
-    assert_go_rust_match(&by_handle);
+    assert_rust_baseline_match(&by_handle);
 
     let stale_handle = [
         "--json",
@@ -332,7 +332,7 @@ fn docx_comments_edit_matches_go_oracle() {
         "x",
         "--dry-run",
     ];
-    assert_go_rust_match(&stale_handle);
+    assert_rust_baseline_match(&stale_handle);
 
     let unsupported_type = [
         "--json",
@@ -346,25 +346,25 @@ fn docx_comments_edit_matches_go_oracle() {
         "Wrong package",
         "--dry-run",
     ];
-    assert_go_rust_match(&unsupported_type);
+    assert_rust_baseline_match(&unsupported_type);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn docx_comments_remove_matches_go_oracle() {
+fn docx_comments_remove_matches_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-docx-comments-remove-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("docx comments temp dir");
-    let go_out = temp_dir.join("comments-remove-go.docx");
+    let baseline_out = temp_dir.join("comments-remove-baseline.docx");
     let rust_out = temp_dir.join("comments-remove-rust.docx");
-    let go_out = go_out.to_string_lossy().to_string();
+    let baseline_out = baseline_out.to_string_lossy().to_string();
     let rust_out = rust_out.to_string_lossy().to_string();
 
-    let (hash_code, hash_stdout, hash_stderr) = run_go_ooxml(&[
+    let (hash_code, hash_stdout, hash_stderr) = run_ooxml_baseline(&[
         "--json",
         "docx",
         "comments",
@@ -380,7 +380,7 @@ fn docx_comments_remove_matches_go_oracle() {
         .as_str()
         .expect("comment content hash");
 
-    let go_args = [
+    let baseline_args = [
         "--json",
         "docx",
         "comments",
@@ -391,7 +391,7 @@ fn docx_comments_remove_matches_go_oracle() {
         "--expect-hash",
         hash,
         "--out",
-        &go_out,
+        &baseline_out,
     ];
     let rust_args = [
         "--json",
@@ -406,11 +406,11 @@ fn docx_comments_remove_matches_go_oracle() {
         "--out",
         &rust_out,
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "comments remove exit");
-    assert_eq!(rust_stderr, go_stderr, "comments remove stderr");
-    assert_eq!(rust_stdout, go_stdout, "comments remove stdout");
+    assert_eq!(rust_code, baseline_code, "comments remove exit");
+    assert_eq!(rust_stderr, baseline_stderr, "comments remove stderr");
+    assert_eq!(rust_stdout, baseline_stdout, "comments remove stdout");
     assert!(Path::new(&rust_out).exists(), "Rust remove output missing");
 
     let remove_json = rust_stdout.expect("Rust remove JSON");
@@ -426,22 +426,22 @@ fn docx_comments_remove_matches_go_oracle() {
     assert_eq!(validate_stderr, None, "validate stderr");
     assert!(validate_stdout.is_some(), "validate stdout");
 
-    let (go_list_code, go_list_stdout, go_list_stderr) =
-        run_go_ooxml(&["--json", "docx", "comments", "list", &go_out]);
+    let (baseline_list_code, baseline_list_stdout, baseline_list_stderr) =
+        run_ooxml_baseline(&["--json", "docx", "comments", "list", &baseline_out]);
     let (rust_list_code, rust_list_stdout, rust_list_stderr) =
         run_ooxml(&["--json", "docx", "comments", "list", &rust_out]);
     assert_eq!(
-        rust_list_code, go_list_code,
+        rust_list_code, baseline_list_code,
         "comments remove readback exit"
     );
     assert_eq!(
-        rust_list_stderr, go_list_stderr,
+        rust_list_stderr, baseline_list_stderr,
         "comments remove readback stderr"
     );
-    let go_list = go_list_stdout.expect("Go comments remove readback JSON");
+    let baseline_list = baseline_list_stdout.expect("Rust baseline comments remove readback JSON");
     let rust_list = rust_list_stdout.expect("Rust comments remove readback JSON");
     assert_eq!(
-        rust_list["comments"], go_list["comments"],
+        rust_list["comments"], baseline_list["comments"],
         "comments remove readback"
     );
     assert_eq!(rust_list["comments"], Value::Array(Vec::new()));
@@ -466,7 +466,7 @@ fn docx_comments_remove_matches_go_oracle() {
         "sha256:bogus",
         "--dry-run",
     ];
-    assert_go_rust_match(&wrong_hash);
+    assert_rust_baseline_match(&wrong_hash);
 
     let by_handle = [
         "--json",
@@ -478,7 +478,7 @@ fn docx_comments_remove_matches_go_oracle() {
         "H:docx/pt:doc/comment:n:0",
         "--dry-run",
     ];
-    assert_go_rust_match(&by_handle);
+    assert_rust_baseline_match(&by_handle);
 
     let stale_handle = [
         "--json",
@@ -490,7 +490,7 @@ fn docx_comments_remove_matches_go_oracle() {
         "H:docx/pt:doc/comment:n:9999",
         "--dry-run",
     ];
-    assert_go_rust_match(&stale_handle);
+    assert_rust_baseline_match(&stale_handle);
 
     let no_comments = [
         "--json",
@@ -502,7 +502,7 @@ fn docx_comments_remove_matches_go_oracle() {
         "0",
         "--dry-run",
     ];
-    assert_go_rust_match(&no_comments);
+    assert_rust_baseline_match(&no_comments);
 
     let missing_id = [
         "--json",
@@ -512,7 +512,7 @@ fn docx_comments_remove_matches_go_oracle() {
         "testdata/docx/with-comments/document.docx",
         "--dry-run",
     ];
-    assert_go_rust_match(&missing_id);
+    assert_rust_baseline_match(&missing_id);
 
     let unsupported_type = [
         "--json",
@@ -524,7 +524,7 @@ fn docx_comments_remove_matches_go_oracle() {
         "0",
         "--dry-run",
     ];
-    assert_go_rust_match(&unsupported_type);
+    assert_rust_baseline_match(&unsupported_type);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

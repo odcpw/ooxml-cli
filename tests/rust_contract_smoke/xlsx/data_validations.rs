@@ -1,6 +1,6 @@
 #[test]
-fn xlsx_data_validations_list_show_match_go_oracle() {
-    assert_go_rust_match(&[
+fn xlsx_data_validations_list_show_match_rust_baseline() {
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "data-validations",
@@ -28,7 +28,7 @@ fn xlsx_data_validations_list_show_match_go_oracle() {
 </worksheet>"#,
     );
     let workbook = workbook.to_string_lossy().to_string();
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "data-validations",
@@ -37,7 +37,7 @@ fn xlsx_data_validations_list_show_match_go_oracle() {
         "--sheet",
         "Sheet1",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "data-validations",
@@ -48,7 +48,7 @@ fn xlsx_data_validations_list_show_match_go_oracle() {
         "--range",
         "A1:A3",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "data-validations",
@@ -59,7 +59,7 @@ fn xlsx_data_validations_list_show_match_go_oracle() {
         "--range",
         "$B$1:$B$2 C1",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "xlsx",
         "data-validations",
@@ -75,30 +75,30 @@ fn xlsx_data_validations_list_show_match_go_oracle() {
 }
 
 #[test]
-fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
+fn xlsx_data_validations_create_update_delete_saved_outputs_match_rust_baseline() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-xlsx-dv-mutate-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
 
-    let go_create_out = temp_dir
-        .join("go-create.xlsx")
+    let baseline_create_out = temp_dir
+        .join("baseline-create.xlsx")
         .to_string_lossy()
         .to_string();
     let rust_create_out = temp_dir
         .join("rust-create.xlsx")
         .to_string_lossy()
         .to_string();
-    let go_update_out = temp_dir
-        .join("go-update.xlsx")
+    let baseline_update_out = temp_dir
+        .join("baseline-update.xlsx")
         .to_string_lossy()
         .to_string();
     let rust_update_out = temp_dir
         .join("rust-update.xlsx")
         .to_string_lossy()
         .to_string();
-    let go_delete_out = temp_dir
-        .join("go-delete.xlsx")
+    let baseline_delete_out = temp_dir
+        .join("baseline-delete.xlsx")
         .to_string_lossy()
         .to_string();
     let rust_delete_out = temp_dir
@@ -127,20 +127,20 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
         "Choose a color",
         "--out",
     ];
-    let mut go_args = create_common.to_vec();
-    go_args.push(&go_create_out);
+    let mut baseline_args = create_common.to_vec();
+    baseline_args.push(&baseline_create_out);
     let mut rust_args = create_common.to_vec();
     rust_args.push(&rust_create_out);
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "data validation create exit");
-    assert_eq!(rust_stderr, go_stderr, "data validation create stderr");
+    assert_eq!(rust_code, baseline_code, "data validation create exit");
+    assert_eq!(rust_stderr, baseline_stderr, "data validation create stderr");
     let rust_create = rust_stdout.expect("rust create stdout");
     assert_eq!(
         scrub_path(rust_create.clone(), &rust_create_out, "[CREATE_OUT]"),
         scrub_path(
-            go_stdout.expect("go create stdout"),
-            &go_create_out,
+            baseline_stdout.expect("baseline create stdout"),
+            &baseline_create_out,
             "[CREATE_OUT]"
         ),
         "data validation create stdout"
@@ -154,7 +154,7 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
         "xlsx",
         "data-validations",
         "show",
-        &go_create_out,
+        &baseline_create_out,
         "--sheet",
         "1",
         "--range",
@@ -171,13 +171,13 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
         "--range",
         "A1:A10",
     ];
-    let (go_code, go_show, go_stderr) = run_go_ooxml(&show_go);
+    let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
-    assert_eq!(rust_code, go_code, "saved create show exit");
-    assert_eq!(rust_stderr, go_stderr, "saved create show stderr");
+    assert_eq!(rust_code, baseline_code, "saved create show exit");
+    assert_eq!(rust_stderr, baseline_stderr, "saved create show stderr");
     assert_eq!(
         rust_show.expect("rust saved create show"),
-        go_show.expect("go saved create show"),
+        baseline_show.expect("baseline saved create show"),
         "saved create show"
     );
 
@@ -197,15 +197,15 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
         "list",
         "--out",
     ];
-    let mut go_args = vec![
+    let mut baseline_args = vec![
         "--json",
         "xlsx",
         "data-validations",
         "update",
-        &go_create_out,
+        &baseline_create_out,
     ];
-    go_args.extend_from_slice(&update_common[4..]);
-    go_args.push(&go_update_out);
+    baseline_args.extend_from_slice(&update_common[4..]);
+    baseline_args.push(&baseline_update_out);
     let mut rust_args = vec![
         "--json",
         "xlsx",
@@ -215,10 +215,10 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
     ];
     rust_args.extend_from_slice(&update_common[4..]);
     rust_args.push(&rust_update_out);
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "data validation update exit");
-    assert_eq!(rust_stderr, go_stderr, "data validation update stderr");
+    assert_eq!(rust_code, baseline_code, "data validation update exit");
+    assert_eq!(rust_stderr, baseline_stderr, "data validation update stderr");
     let rust_update = rust_stdout.expect("rust update stdout");
     assert_eq!(
         scrub_paths(
@@ -229,10 +229,10 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
             ]
         ),
         scrub_paths(
-            go_stdout.expect("go update stdout"),
+            baseline_stdout.expect("baseline update stdout"),
             &[
-                (&go_create_out, "[CREATE_OUT]"),
-                (&go_update_out, "[UPDATE_OUT]")
+                (&baseline_create_out, "[CREATE_OUT]"),
+                (&baseline_update_out, "[UPDATE_OUT]")
             ]
         ),
         "data validation update stdout"
@@ -256,15 +256,15 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
         "\"Red,Green,Blue,Amber\"",
         "--out",
     ];
-    let mut go_args = vec![
+    let mut baseline_args = vec![
         "--json",
         "xlsx",
         "data-validations",
         "delete",
-        &go_update_out,
+        &baseline_update_out,
     ];
-    go_args.extend_from_slice(&delete_common[4..]);
-    go_args.push(&go_delete_out);
+    baseline_args.extend_from_slice(&delete_common[4..]);
+    baseline_args.push(&baseline_delete_out);
     let mut rust_args = vec![
         "--json",
         "xlsx",
@@ -274,10 +274,10 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
     ];
     rust_args.extend_from_slice(&delete_common[4..]);
     rust_args.push(&rust_delete_out);
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-    assert_eq!(rust_code, go_code, "data validation delete exit");
-    assert_eq!(rust_stderr, go_stderr, "data validation delete stderr");
+    assert_eq!(rust_code, baseline_code, "data validation delete exit");
+    assert_eq!(rust_stderr, baseline_stderr, "data validation delete stderr");
     let rust_delete = rust_stdout.expect("rust delete stdout");
     assert_eq!(
         scrub_paths(
@@ -288,10 +288,10 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
             ]
         ),
         scrub_paths(
-            go_stdout.expect("go delete stdout"),
+            baseline_stdout.expect("baseline delete stdout"),
             &[
-                (&go_update_out, "[UPDATE_OUT]"),
-                (&go_delete_out, "[DELETE_OUT]")
+                (&baseline_update_out, "[UPDATE_OUT]"),
+                (&baseline_delete_out, "[DELETE_OUT]")
             ]
         ),
         "data validation delete stdout"
@@ -304,7 +304,7 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
         "xlsx",
         "data-validations",
         "list",
-        &go_delete_out,
+        &baseline_delete_out,
         "--sheet",
         "1",
     ];
@@ -317,10 +317,10 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
         "--sheet",
         "1",
     ];
-    let (go_code, go_list, go_stderr) = run_go_ooxml(&list_go);
+    let (baseline_code, baseline_list, baseline_stderr) = run_ooxml_baseline(&list_go);
     let (rust_code, rust_list, rust_stderr) = run_ooxml(&list_rust);
-    assert_eq!(rust_code, go_code, "deleted list exit");
-    assert_eq!(rust_stderr, go_stderr, "deleted list stderr");
+    assert_eq!(rust_code, baseline_code, "deleted list exit");
+    assert_eq!(rust_stderr, baseline_stderr, "deleted list stderr");
     assert_eq!(
         scrub_path(
             rust_list.expect("rust deleted list"),
@@ -328,8 +328,8 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
             "[DELETE_OUT]"
         ),
         scrub_path(
-            go_list.expect("go deleted list"),
-            &go_delete_out,
+            baseline_list.expect("baseline deleted list"),
+            &baseline_delete_out,
             "[DELETE_OUT]"
         ),
         "deleted list"
@@ -345,20 +345,20 @@ fn xlsx_data_validations_create_update_delete_saved_outputs_match_go_oracle() {
 }
 
 #[test]
-fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
+fn xlsx_data_validations_dry_run_and_errors_match_rust_baseline() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-xlsx-dv-dry-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
-    let go_in_path = temp_dir.join("go-in.xlsx");
+    let baseline_in_path = temp_dir.join("baseline-in.xlsx");
     let rust_in_path = temp_dir.join("rust-in.xlsx");
-    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &go_in_path).expect("copy go input");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &baseline_in_path).expect("copy baseline input");
     fs::copy(
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
         &rust_in_path,
     )
     .expect("copy rust input");
-    let go_in = go_in_path.to_string_lossy().to_string();
+    let baseline_in = baseline_in_path.to_string_lossy().to_string();
     let rust_in = rust_in_path.to_string_lossy().to_string();
 
     let before = read_zip_string(&rust_in_path, "xl/worksheets/sheet1.xml");
@@ -367,7 +367,7 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
         "xlsx",
         "data-validations",
         "create",
-        &go_in,
+        &baseline_in,
         "--sheet",
         "1",
         "--range",
@@ -398,10 +398,10 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
         "0",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&dry_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&dry_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&dry_rust);
-    assert_eq!(rust_code, go_code, "data validation dry-run exit");
-    assert_eq!(rust_stderr, go_stderr, "data validation dry-run stderr");
+    assert_eq!(rust_code, baseline_code, "data validation dry-run exit");
+    assert_eq!(rust_stderr, baseline_stderr, "data validation dry-run stderr");
     assert_eq!(
         scrub_path(
             rust_stdout.expect("rust data validation dry-run"),
@@ -409,8 +409,8 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
             "[IN]"
         ),
         scrub_path(
-            go_stdout.expect("go data validation dry-run"),
-            &go_in,
+            baseline_stdout.expect("baseline data validation dry-run"),
+            &baseline_in,
             "[IN]"
         ),
         "data validation dry-run stdout"
@@ -421,7 +421,7 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
         "data validation dry-run should not mutate source workbook"
     );
 
-    for (label, go_bad, rust_bad) in [
+    for (label, baseline_bad, rust_bad) in [
         (
             "missing list source",
             vec![
@@ -429,7 +429,7 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
                 "xlsx",
                 "data-validations",
                 "create",
-                &go_in,
+                &baseline_in,
                 "--sheet",
                 "1",
                 "--range",
@@ -460,7 +460,7 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
                 "xlsx",
                 "data-validations",
                 "create",
-                &go_in,
+                &baseline_in,
                 "--sheet",
                 "1",
                 "--range",
@@ -499,7 +499,7 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
                 "xlsx",
                 "data-validations",
                 "show",
-                &go_in,
+                &baseline_in,
                 "--sheet",
                 "1",
                 "--range",
@@ -518,10 +518,10 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
             ],
         ),
     ] {
-        let (go_code, go_stdout, go_stderr) = run_go_ooxml(&go_bad);
+        let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_bad);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_bad);
-        assert_eq!(rust_code, go_code, "{label} exit");
-        assert_eq!(rust_stdout, go_stdout, "{label} stdout");
+        assert_eq!(rust_code, baseline_code, "{label} exit");
+        assert_eq!(rust_stdout, baseline_stdout, "{label} stdout");
         assert_eq!(
             scrub_path(
                 rust_stderr.expect("rust data validation bad stderr"),
@@ -529,16 +529,16 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
                 "[IN]"
             ),
             scrub_path(
-                go_stderr.expect("go data validation bad stderr"),
-                &go_in,
+                baseline_stderr.expect("baseline data validation bad stderr"),
+                &baseline_in,
                 "[IN]"
             ),
             "{label} stderr"
         );
     }
 
-    let go_created = temp_dir
-        .join("go-created.xlsx")
+    let baseline_created = temp_dir
+        .join("baseline-created.xlsx")
         .to_string_lossy()
         .to_string();
     let rust_created = temp_dir
@@ -547,9 +547,9 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
         .to_string();
     for (input, output, runner) in [
         (
-            &go_in,
-            &go_created,
-            run_go_ooxml as fn(&[&str]) -> (i32, Option<Value>, Option<Value>),
+            &baseline_in,
+            &baseline_created,
+            run_ooxml_baseline as fn(&[&str]) -> (i32, Option<Value>, Option<Value>),
         ),
         (
             &rust_in,
@@ -583,7 +583,7 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
         "xlsx",
         "data-validations",
         "update",
-        &go_created,
+        &baseline_created,
         "--sheet",
         "1",
         "--range",
@@ -610,10 +610,10 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
         "whole",
         "--dry-run",
     ];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&guard_go);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&guard_go);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&guard_rust);
-    assert_eq!(rust_code, go_code, "guard mismatch exit");
-    assert_eq!(rust_stdout, go_stdout, "guard mismatch stdout");
+    assert_eq!(rust_code, baseline_code, "guard mismatch exit");
+    assert_eq!(rust_stdout, baseline_stdout, "guard mismatch stdout");
     assert_eq!(
         scrub_path(
             rust_stderr.expect("rust guard mismatch stderr"),
@@ -621,8 +621,8 @@ fn xlsx_data_validations_dry_run_and_errors_match_go_oracle() {
             "[CREATED]"
         ),
         scrub_path(
-            go_stderr.expect("go guard mismatch stderr"),
-            &go_created,
+            baseline_stderr.expect("baseline guard mismatch stderr"),
+            &baseline_created,
             "[CREATED]"
         ),
         "guard mismatch stderr"

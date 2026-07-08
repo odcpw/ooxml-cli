@@ -1,5 +1,5 @@
 #[test]
-fn docx_fields_list_matches_go_oracle() {
+fn docx_fields_list_matches_rust_baseline() {
     let cases: Vec<Vec<&str>> = vec![
         vec![
             "--json",
@@ -34,7 +34,7 @@ fn docx_fields_list_matches_go_oracle() {
     ];
 
     for args in cases {
-        assert_go_rust_match(&args);
+        assert_rust_baseline_match(&args);
     }
 
     let temp_dir =
@@ -55,7 +55,7 @@ fn docx_fields_list_matches_go_oracle() {
     </w:p>"#,
     );
     let ordered_docx = ordered_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "docx", "fields", "list", &ordered_docx]);
+    assert_rust_baseline_match(&["--json", "docx", "fields", "list", &ordered_docx]);
 
     let switched_docx = temp_dir.join("switched-field.docx");
     write_docx_with_body(
@@ -65,7 +65,7 @@ fn docx_fields_list_matches_go_oracle() {
     </w:p>"#,
     );
     let switched_docx = switched_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "fields",
@@ -89,7 +89,7 @@ fn docx_fields_list_matches_go_oracle() {
     </w:tbl>"#,
     );
     let table_docx = table_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "docx", "fields", "list", &table_docx]);
+    assert_rust_baseline_match(&["--json", "docx", "fields", "list", &table_docx]);
 
     let mixed_table_docx = temp_dir.join("table-field-foreign-text.docx");
     write_docx_with_body(
@@ -108,13 +108,13 @@ fn docx_fields_list_matches_go_oracle() {
     </w:tbl>"#,
     );
     let mixed_table_docx = mixed_table_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&["--json", "docx", "fields", "list", &mixed_table_docx]);
+    assert_rust_baseline_match(&["--json", "docx", "fields", "list", &mixed_table_docx]);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn docx_fields_insert_and_set_result_match_go_oracle() {
+fn docx_fields_insert_and_set_result_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-docx-fields-edit-{}",
         std::process::id()
@@ -122,12 +122,12 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("docx fields edit temp dir");
 
-    let go_insert_out = temp_dir.join("go-insert.docx");
+    let baseline_insert_out = temp_dir.join("baseline-insert.docx");
     let rust_insert_out = temp_dir.join("rust-insert.docx");
-    let go_insert_out = go_insert_out.to_string_lossy().to_string();
+    let baseline_insert_out = baseline_insert_out.to_string_lossy().to_string();
     let rust_insert_out = rust_insert_out.to_string_lossy().to_string();
     let insert_input = "testdata/docx/minimal/document.docx";
-    let go_insert_args = [
+    let baseline_insert_args = [
         "--json",
         "docx",
         "fields",
@@ -140,7 +140,7 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
         "--result",
         "1",
         "--out",
-        &go_insert_out,
+        &baseline_insert_out,
     ];
     let rust_insert_args = [
         "--json",
@@ -157,10 +157,10 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
         "--out",
         &rust_insert_out,
     ];
-    let (go_insert_code, go_insert_stdout, go_insert_stderr) = run_go_ooxml(&go_insert_args);
+    let (baseline_insert_code, baseline_insert_stdout, baseline_insert_stderr) = run_ooxml_baseline(&baseline_insert_args);
     let (rust_insert_code, rust_insert_stdout, rust_insert_stderr) = run_ooxml(&rust_insert_args);
-    assert_eq!(rust_insert_code, go_insert_code, "fields insert exit");
-    assert_eq!(rust_insert_stderr, go_insert_stderr, "fields insert stderr");
+    assert_eq!(rust_insert_code, baseline_insert_code, "fields insert exit");
+    assert_eq!(rust_insert_stderr, baseline_insert_stderr, "fields insert stderr");
     assert_eq!(
         scrub_path(
             rust_insert_stdout.expect("rust fields insert stdout"),
@@ -168,8 +168,8 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_insert_stdout.expect("go fields insert stdout"),
-            &go_insert_out,
+            baseline_insert_stdout.expect("baseline fields insert stdout"),
+            &baseline_insert_out,
             "[OUT]"
         ),
         "fields insert stdout"
@@ -178,13 +178,13 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
         run_ooxml(&["--json", "--strict", "validate", &rust_insert_out]);
     assert_eq!(validate_code, 0, "inserted docx validates");
     assert_eq!(validate_stderr, None, "inserted docx validation stderr");
-    let (go_list_code, go_list_stdout, go_list_stderr) =
-        run_go_ooxml(&["--json", "docx", "fields", "list", &go_insert_out]);
+    let (baseline_list_code, baseline_list_stdout, baseline_list_stderr) =
+        run_ooxml_baseline(&["--json", "docx", "fields", "list", &baseline_insert_out]);
     let (rust_list_code, rust_list_stdout, rust_list_stderr) =
         run_ooxml(&["--json", "docx", "fields", "list", &rust_insert_out]);
-    assert_eq!(rust_list_code, go_list_code, "insert readback list exit");
+    assert_eq!(rust_list_code, baseline_list_code, "insert readback list exit");
     assert_eq!(
-        rust_list_stderr, go_list_stderr,
+        rust_list_stderr, baseline_list_stderr,
         "insert readback list stderr"
     );
     assert_eq!(
@@ -194,14 +194,14 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_list_stdout.expect("go insert readback"),
-            &go_insert_out,
+            baseline_list_stdout.expect("baseline insert readback"),
+            &baseline_insert_out,
             "[OUT]"
         ),
         "insert readback list stdout"
     );
 
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "fields",
@@ -215,11 +215,11 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
     ]);
 
     let set_input = "testdata/docx/with-fields/document.docx";
-    let go_set_out = temp_dir.join("go-set.docx");
+    let baseline_set_out = temp_dir.join("baseline-set.docx");
     let rust_set_out = temp_dir.join("rust-set.docx");
-    let go_set_out = go_set_out.to_string_lossy().to_string();
+    let baseline_set_out = baseline_set_out.to_string_lossy().to_string();
     let rust_set_out = rust_set_out.to_string_lossy().to_string();
-    let go_set_args = [
+    let baseline_set_args = [
         "--json",
         "docx",
         "fields",
@@ -230,7 +230,7 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
         "--result",
         "42",
         "--out",
-        &go_set_out,
+        &baseline_set_out,
     ];
     let rust_set_args = [
         "--json",
@@ -245,10 +245,10 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
         "--out",
         &rust_set_out,
     ];
-    let (go_set_code, go_set_stdout, go_set_stderr) = run_go_ooxml(&go_set_args);
+    let (baseline_set_code, baseline_set_stdout, baseline_set_stderr) = run_ooxml_baseline(&baseline_set_args);
     let (rust_set_code, rust_set_stdout, rust_set_stderr) = run_ooxml(&rust_set_args);
-    assert_eq!(rust_set_code, go_set_code, "fields set-result exit");
-    assert_eq!(rust_set_stderr, go_set_stderr, "fields set-result stderr");
+    assert_eq!(rust_set_code, baseline_set_code, "fields set-result exit");
+    assert_eq!(rust_set_stderr, baseline_set_stderr, "fields set-result stderr");
     assert_eq!(
         scrub_path(
             rust_set_stdout.expect("rust fields set stdout"),
@@ -256,8 +256,8 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_set_stdout.expect("go fields set stdout"),
-            &go_set_out,
+            baseline_set_stdout.expect("baseline fields set stdout"),
+            &baseline_set_out,
             "[OUT]"
         ),
         "fields set-result stdout"
@@ -278,11 +278,11 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
     </w:p>"#,
     );
     let mixed_content_input = mixed_content_input.to_string_lossy().to_string();
-    let go_mixed_out = temp_dir.join("go-mixed-content-set.docx");
+    let baseline_mixed_out = temp_dir.join("baseline-mixed-content-set.docx");
     let rust_mixed_out = temp_dir.join("rust-mixed-content-set.docx");
-    let go_mixed_out = go_mixed_out.to_string_lossy().to_string();
+    let baseline_mixed_out = baseline_mixed_out.to_string_lossy().to_string();
     let rust_mixed_out = rust_mixed_out.to_string_lossy().to_string();
-    let go_mixed_args = [
+    let baseline_mixed_args = [
         "--json",
         "docx",
         "fields",
@@ -293,7 +293,7 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
         "--result",
         "8",
         "--out",
-        &go_mixed_out,
+        &baseline_mixed_out,
     ];
     let rust_mixed_args = [
         "--json",
@@ -308,10 +308,10 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
         "--out",
         &rust_mixed_out,
     ];
-    let (go_mixed_code, go_mixed_stdout, go_mixed_stderr) = run_go_ooxml(&go_mixed_args);
+    let (baseline_mixed_code, baseline_mixed_stdout, baseline_mixed_stderr) = run_ooxml_baseline(&baseline_mixed_args);
     let (rust_mixed_code, rust_mixed_stdout, rust_mixed_stderr) = run_ooxml(&rust_mixed_args);
-    assert_eq!(rust_mixed_code, go_mixed_code, "mixed field set exit");
-    assert_eq!(rust_mixed_stderr, go_mixed_stderr, "mixed field set stderr");
+    assert_eq!(rust_mixed_code, baseline_mixed_code, "mixed field set exit");
+    assert_eq!(rust_mixed_stderr, baseline_mixed_stderr, "mixed field set stderr");
     assert_eq!(
         scrub_path(
             rust_mixed_stdout.expect("rust mixed field set stdout"),
@@ -319,8 +319,8 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_mixed_stdout.expect("go mixed field set stdout"),
-            &go_mixed_out,
+            baseline_mixed_stdout.expect("baseline mixed field set stdout"),
+            &baseline_mixed_out,
             "[OUT]"
         ),
         "mixed field set stdout"
@@ -333,11 +333,11 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
         "mixed set-result validation stderr"
     );
 
-    let go_header_out = temp_dir.join("go-header.docx");
+    let baseline_header_out = temp_dir.join("baseline-header.docx");
     let rust_header_out = temp_dir.join("rust-header.docx");
-    let go_header_out = go_header_out.to_string_lossy().to_string();
+    let baseline_header_out = baseline_header_out.to_string_lossy().to_string();
     let rust_header_out = rust_header_out.to_string_lossy().to_string();
-    let go_header_args = [
+    let baseline_header_args = [
         "--json",
         "docx",
         "fields",
@@ -348,7 +348,7 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
         "--result",
         "9",
         "--out",
-        &go_header_out,
+        &baseline_header_out,
     ];
     let rust_header_args = [
         "--json",
@@ -363,11 +363,11 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
         "--out",
         &rust_header_out,
     ];
-    let (go_header_code, go_header_stdout, go_header_stderr) = run_go_ooxml(&go_header_args);
+    let (baseline_header_code, baseline_header_stdout, baseline_header_stderr) = run_ooxml_baseline(&baseline_header_args);
     let (rust_header_code, rust_header_stdout, rust_header_stderr) = run_ooxml(&rust_header_args);
-    assert_eq!(rust_header_code, go_header_code, "header field set exit");
+    assert_eq!(rust_header_code, baseline_header_code, "header field set exit");
     assert_eq!(
-        rust_header_stderr, go_header_stderr,
+        rust_header_stderr, baseline_header_stderr,
         "header field set stderr"
     );
     assert_eq!(
@@ -377,14 +377,14 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
             "[OUT]"
         ),
         scrub_path(
-            go_header_stdout.expect("go header field set stdout"),
-            &go_header_out,
+            baseline_header_stdout.expect("baseline header field set stdout"),
+            &baseline_header_out,
             "[OUT]"
         ),
         "header field set stdout"
     );
 
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "fields",
@@ -396,7 +396,7 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
         "42",
         "--dry-run",
     ]);
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "fields",
@@ -425,7 +425,7 @@ fn docx_fields_insert_and_set_result_match_go_oracle() {
     </w:tbl>"#,
     );
     let table_docx = table_docx.to_string_lossy().to_string();
-    assert_go_rust_match(&[
+    assert_rust_baseline_match(&[
         "--json",
         "docx",
         "fields",

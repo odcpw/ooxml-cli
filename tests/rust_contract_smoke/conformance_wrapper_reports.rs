@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn conformance_check_matches_go_for_invalid_package_open_wrapper_report() {
+fn conformance_check_matches_rust_baseline_for_invalid_package_open_wrapper_report() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-conformance-wrapper-open-{}",
         std::process::id()
@@ -13,14 +13,14 @@ fn conformance_check_matches_go_for_invalid_package_open_wrapper_report() {
 
     let invalid_arg = invalid_package.to_string_lossy().to_string();
     let args = ["--json", "conformance", "check", invalid_arg.as_str()];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
 
-    assert_eq!(rust_code, go_code, "exit code for invalid package");
-    assert_eq!(rust_stderr, go_stderr, "stderr for invalid package");
+    assert_eq!(rust_code, baseline_code, "exit code for invalid package");
+    assert_eq!(rust_stderr, baseline_stderr, "stderr for invalid package");
     assert_eq!(
         rust_stdout.clone().map(scrub_file_fields),
-        go_stdout.map(scrub_file_fields),
+        baseline_stdout.map(scrub_file_fields),
         "stdout for invalid package"
     );
 
@@ -35,14 +35,14 @@ fn conformance_check_matches_go_for_invalid_package_open_wrapper_report() {
 }
 
 #[test]
-fn conformance_check_matches_go_for_repo_validation_failed_report() {
+fn conformance_check_matches_rust_baseline_for_repo_validation_failed_report() {
     let args = [
         "--json",
         "conformance",
         "check",
         "testdata/xlsx/corrupted-missing-worksheet/workbook.xlsx",
     ];
-    assert_go_rust_match(&args);
+    assert_rust_baseline_match(&args);
 
     let (code, stdout, stderr) = run_ooxml(&args);
     assert_eq!(code, 5);
@@ -66,7 +66,7 @@ fn conformance_check_matches_go_for_repo_validation_failed_report() {
 }
 
 #[test]
-fn conformance_check_matches_go_for_repair_invariant_diagnostics_without_wrapper() {
+fn conformance_check_matches_rust_baseline_for_repair_invariant_diagnostics_without_wrapper() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-conformance-wrapper-invariants-{}",
         std::process::id()
@@ -96,17 +96,20 @@ fn conformance_check_matches_go_for_repair_invariant_diagnostics_without_wrapper
 
     let bad_arg = bad_content_type.to_string_lossy().to_string();
     let args = ["--json", "conformance", "check", bad_arg.as_str()];
-    let (go_code, go_stdout, go_stderr) = run_go_ooxml(&args);
+    let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
 
-    assert_eq!(rust_code, go_code, "exit code for repair invariant fixture");
     assert_eq!(
-        rust_stderr, go_stderr,
+        rust_code, baseline_code,
+        "exit code for repair invariant fixture"
+    );
+    assert_eq!(
+        rust_stderr, baseline_stderr,
         "stderr for repair invariant fixture"
     );
     assert_eq!(
         rust_stdout.clone().map(scrub_file_fields),
-        go_stdout.map(scrub_file_fields),
+        baseline_stdout.map(scrub_file_fields),
         "stdout for repair invariant fixture"
     );
 

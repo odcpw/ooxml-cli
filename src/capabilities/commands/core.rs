@@ -63,7 +63,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--online",
                     "online",
                     "bool",
-                    "accepted for Go compatibility; no network checks are performed",
+                    "accepted for legacy CLI compatibility; no network checks are performed",
                 ),
             ],
         ),

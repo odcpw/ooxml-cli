@@ -178,7 +178,7 @@ fn guide_json() -> Value {
         ],
         "warnings": [
             "Do not run mutation commands without an explicit --out, --dry-run, or user-approved --in-place path.",
-            "Do not assume Go-only commands exist in the Rust port; use capabilities before invoking a command family.",
+            "Do not assume legacy-only commands exist in the Rust CLI; use capabilities before invoking a command family.",
             "Use vba office-check for macro package open proof; on Windows it prefers Microsoft Office COM, but it does not execute macros.",
             "Use vba run-smoke only when the user explicitly asks for macro execution proof; it runs a harmless Excel VBA macro through desktop Office COM."
         ]
