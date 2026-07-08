@@ -1,4 +1,8 @@
-# Entity Batch Fix Notes
+# Audit Fix Handoff
+
+This document consolidates the independently audited fix waves that were integrated for the Rust 0.1.0 release candidate.
+
+## Entity Batch
 
 ## ENTITY-1
 - Status: fixed.
@@ -46,3 +50,74 @@
 - Shared helper: `src/xml_util.rs` now owns `append_xml_text_event`, `is_xml_text_event`, and `TextAccumulator`.
 - Sweep evidence: `rg 'Event::Text|Event::GeneralRef' src` now reports only `src/xml_util.rs`.
 - Golden updates: none. The behavior change corrects decoded text semantics and is covered by new command-path tests rather than pinned golden output updates.
+## OPC Batch
+
+### OPC-1
+
+Status: fixed.
+
+Files touched: `src/opc.rs`, `src/main.rs`, `src/validation.rs`, `src/conformance_invariants/relationships.rs`, `tests/rust_contract_smoke/conformance_relationships.rs`.
+
+Tests added: `validation_matches_relationship_targets_percent_decoded_and_case_insensitive`.
+
+Behavior change: relationship target existence checks now percent-decode target URIs and compare OPC part names ASCII-case-insensitively. Malformed percent escapes are reported as relationship target diagnostics instead of being treated as normal missing parts.
+
+### OPC-2
+
+Status: fixed.
+
+Files touched: `src/conformance_invariants/relationships.rs`, `tests/rust_contract_smoke/conformance_relationships.rs`.
+
+Tests added: `conformance_accepts_explicit_internal_target_mode`.
+
+Behavior change: `TargetMode="Internal"` is accepted as the explicit form of the internal relationship default. Values other than empty, `Internal`, and `External` remain conformance errors.
+
+### OPC-3
+
+Status: fixed.
+
+Files touched: `src/opc.rs`, `src/conformance_invariants/content_types.rs`, `tests/rust_contract_smoke/conformance_relationships.rs`.
+
+Tests added: `conformance_default_extension_matching_is_case_insensitive`.
+
+Behavior change: `[Content_Types].xml` Default extension keys are normalized to ASCII lowercase and lookup uses ASCII-case-insensitive extension matching.
+
+### OPC-4
+
+Status: fixed.
+
+Files touched: `src/validation.rs`, `tests/rust_contract_smoke/conformance_relationships.rs`.
+
+Tests added: `validate_reports_malformed_relationship_part_as_diagnostic`.
+
+Behavior change: malformed `.rels` XML now yields an error-severity `REL_MALFORMED` validation diagnostic and validation continues to inspect remaining relationship parts. The command returns a validation report instead of a top-level `unexpected` error.
+
+### OPC-5
+
+Status: fixed.
+
+Files touched: `src/opc.rs`, `src/main.rs`, `src/docx_comments.rs`, `src/docx_headers.rs`, `src/docx_images.rs`, `src/pptx_media.rs`, `src/pptx_mutation/charts/data.rs`, `src/pptx_mutation/comments.rs`, `src/pptx_mutation/import_merge.rs`, `src/pptx_mutation/layouts.rs`, `src/pptx_mutation/notes.rs`, `src/pptx_mutation/placement.rs`, `src/pptx_mutation/replace.rs`, `src/pptx_mutation/slides.rs`, `src/xlsx_charts/create.rs`, `src/xlsx_comments.rs`, `src/xlsx_metadata.rs`, `src/xlsx_mutation/format.rs`, `src/xlsx_mutation/format/style.rs`, `src/xlsx_pivots.rs`, `src/xlsx_sheet_lifecycle.rs`, `src/xlsx_table_create.rs`.
+
+Tests added: `ensure_content_type_override_detects_legal_existing_override_serializations`, `ensure_content_type_override_refuses_self_closing_types_root`.
+
+Behavior change: `ensure_content_type_override` parses existing Override elements instead of raw substring matching, so single quotes, attribute order, and ASCII case differences do not cause duplicate overrides. A self-closing or otherwise unsplicable `Types` root now returns an error instead of silently omitting the override.
+
+### OPC-6
+
+Status: fixed.
+
+Files touched: `src/diff.rs`, `tests/rust_contract_smoke/diff.rs`.
+
+Tests added: `top_level_diff_docx_reports_header_part_changes`, `top_level_diff_docx_reports_media_part_changes`.
+
+Behavior change: DOCX diff output now includes secondary-part comparison fields under `semantic`: `secondaryPartCountA`, `secondaryPartCountB`, `secondaryPartCountEqual`, `changedParts`, and `partDiffs`. The existing main-document `blocks` diff remains intact; secondary headers, footers, footnotes, endnotes, comments, styles, numbering, and media parts are compared by SHA-256 content hash.
+
+### Additional Test-Gate Fix
+
+Status: fixed.
+
+Files touched: `src/vba/run_smoke.rs`.
+
+Tests used: `vba_run_smoke_rejects_bad_cli_contract_before_office`.
+
+Behavior change: `vba run-smoke` now rejects invalid CLI-only options before the Windows/Office availability guard, preserving the existing test contract on non-Windows machines. This was outside the OPC findings but required for the mandated full `cargo test` gate.
