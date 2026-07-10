@@ -1,6 +1,6 @@
 use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+command_id_enum! {
 pub(super) enum CoreCommandId {
     Version,
     Capabilities,
@@ -38,7 +38,7 @@ pub(super) enum CoreCommandId {
     Validate,
     Diff,
     Verify,
-}
+}}
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
     vec![

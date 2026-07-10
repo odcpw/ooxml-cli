@@ -17,7 +17,7 @@ pub(super) const GROUP_COMMAND_COUNT: usize = 21;
 pub(super) const FRONT_COMMAND_COUNT: usize = GROUP_COMMAND_COUNT + 1;
 pub(super) const ROOT_OWNED_COMMAND_COUNT: usize = FRONT_COMMAND_COUNT + 1;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+command_id_enum! {
 pub(super) enum XlsxCommandId {
     Xlsx,
     Cells,
@@ -123,7 +123,7 @@ pub(super) enum XlsxCommandId {
     FreezeShow,
     FreezeSet,
     FreezeClear,
-}
+}}
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
     let mut specs = front_command_specs();

@@ -5,7 +5,7 @@ use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 pub(super) const COMMAND_COUNT: usize = 16;
 pub(super) const LEGACY_START: usize = 293;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+command_id_enum! {
 pub(super) enum VbaCommandId {
     Vba,
     BuildBin,
@@ -23,7 +23,7 @@ pub(super) enum VbaCommandId {
     RunSmoke,
     Attach,
     Remove,
-}
+}}
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
     vec![

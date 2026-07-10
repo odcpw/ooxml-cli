@@ -3,6 +3,19 @@ use std::borrow::Cow;
 use serde::Serialize;
 use serde_json::Value;
 
+macro_rules! command_id_enum {
+    ($visibility:vis enum $name:ident { $($variant:ident),+ $(,)? }) => {
+        #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        $visibility enum $name {
+            $($variant),+
+        }
+
+        impl $name {
+            $visibility const ALL: &'static [Self] = &[$(Self::$variant),+];
+        }
+    };
+}
+
 mod core;
 mod docx;
 mod pptx;
@@ -674,5 +687,233 @@ mod tests {
             mutation_with_reason["opIneligibleReason"],
             "exact mutation advisory"
         );
+    }
+
+    fn declared_command_ids() -> Vec<CommandId> {
+        core::CoreCommandId::ALL
+            .iter()
+            .copied()
+            .map(CommandId::Core)
+            .chain(
+                pptx::PptxCommandId::ALL
+                    .iter()
+                    .copied()
+                    .map(CommandId::Pptx),
+            )
+            .chain(
+                xlsx::XlsxCommandId::ALL
+                    .iter()
+                    .copied()
+                    .map(CommandId::Xlsx),
+            )
+            .chain(
+                docx::DocxCommandId::ALL
+                    .iter()
+                    .copied()
+                    .map(CommandId::Docx),
+            )
+            .chain(vba::VbaCommandId::ALL.iter().copied().map(CommandId::Vba))
+            .collect()
+    }
+
+    #[test]
+    fn complete_shadow_matches_full_legacy_value_and_serialized_order() {
+        let first = command_specs();
+        let second = command_specs();
+        let legacy = crate::capabilities::capability_commands();
+        assert_eq!(first.len(), 309);
+        assert_segment_matches_legacy(&first, &legacy);
+        assert_eq!(
+            first.iter().map(capability_value).collect::<Vec<_>>(),
+            second.iter().map(capability_value).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn complete_shadow_family_counts_and_order_are_exact() {
+        let specs = command_specs();
+        assert_eq!(core::CoreCommandId::ALL.len(), 36);
+        assert_eq!(pptx::PptxCommandId::ALL.len(), 108);
+        assert_eq!(xlsx::XlsxCommandId::ALL.len(), 104);
+        assert_eq!(docx::DocxCommandId::ALL.len(), 45);
+        assert_eq!(vba::VbaCommandId::ALL.len(), 16);
+        assert!(
+            specs[..36]
+                .iter()
+                .all(|spec| matches!(spec.id, CommandId::Core(_)))
+        );
+        assert!(
+            specs[36..144]
+                .iter()
+                .all(|spec| matches!(spec.id, CommandId::Pptx(_)))
+        );
+        assert!(
+            specs[144..248]
+                .iter()
+                .all(|spec| matches!(spec.id, CommandId::Xlsx(_)))
+        );
+        assert!(
+            specs[248..293]
+                .iter()
+                .all(|spec| matches!(spec.id, CommandId::Docx(_)))
+        );
+        assert!(
+            specs[293..309]
+                .iter()
+                .all(|spec| matches!(spec.id, CommandId::Vba(_)))
+        );
+    }
+
+    #[test]
+    fn every_declared_variant_maps_to_exactly_one_unique_spec_and_path() {
+        let declared = declared_command_ids();
+        let specs = command_specs();
+        let declared_set = declared.iter().copied().collect::<BTreeSet<_>>();
+        let spec_ids = specs.iter().map(|spec| spec.id).collect::<Vec<_>>();
+        let spec_id_set = spec_ids.iter().copied().collect::<BTreeSet<_>>();
+        let path_set = specs.iter().map(|spec| spec.path).collect::<BTreeSet<_>>();
+        assert_eq!(declared.len(), 309);
+        assert_eq!(declared_set.len(), declared.len());
+        assert_eq!(spec_id_set, declared_set);
+        assert_eq!(spec_ids.len(), spec_id_set.len());
+        assert_eq!(path_set.len(), specs.len());
+    }
+
+    #[test]
+    fn complete_shadow_execution_inventory_and_compatible_advisories_are_exact() {
+        let specs = command_specs();
+        let inventory = specs.iter().fold(
+            (0, 0, 0, 0),
+            |(groups, direct, inspect, mutation), spec| match &spec.execution {
+                ExecutionSupport::GroupOnly { .. } => (groups + 1, direct, inspect, mutation),
+                ExecutionSupport::DirectOnly { .. } => (groups, direct + 1, inspect, mutation),
+                ExecutionSupport::ServeInspect { .. } => (groups, direct, inspect + 1, mutation),
+                ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
+            },
+        );
+        assert_eq!(inventory, (55, 142, 42, 70));
+        assert_eq!(
+            specs
+                .iter()
+                .filter(|spec| match &spec.execution {
+                    ExecutionSupport::ServeInspect {
+                        reason: Some(reason),
+                    } => reason.contains("call via inspect in serve/MCP"),
+                    _ => false,
+                })
+                .count(),
+            23
+        );
+        let advisories = specs
+            .iter()
+            .filter_map(|spec| match &spec.execution {
+                ExecutionSupport::ServeMutation {
+                    reason: Some(reason),
+                } => Some((capability_value(spec)["path"].as_str()?.to_owned(), *reason)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            advisories,
+            vec![
+                (
+                    "ooxml repair normalize".to_owned(),
+                    "narrow repair command; run validate/conformance after normalization before handing the file to a user"
+                ),
+                (
+                    "ooxml docx tables create".to_owned(),
+                    "append-only first-class authoring; values must be a rectangular JSON matrix"
+                ),
+                (
+                    "ooxml vba create".to_owned(),
+                    "preferred cross-platform macro authoring path; legacy Office-COM create remains available without --pure for XLSM/PPTM seeds"
+                ),
+                (
+                    "ooxml vba rebuild".to_owned(),
+                    "safe module-set replacement path; rebuilds a fresh source-only vbaProject.bin rather than patching Office-authored binary metadata"
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn complete_serve_inspect_set_matches_independent_42_route_oracle() {
+        const PATHS: &[&str] = &[
+            "ooxml pptx slides list",
+            "ooxml pptx slides selectors",
+            "ooxml pptx slides show",
+            "ooxml pptx extract text",
+            "ooxml pptx extract notes",
+            "ooxml pptx notes show",
+            "ooxml pptx comments list",
+            "ooxml pptx masters list",
+            "ooxml pptx masters show",
+            "ooxml pptx layouts list",
+            "ooxml pptx layouts show",
+            "ooxml pptx tables show",
+            "ooxml pptx shapes show",
+            "ooxml xlsx sheets list",
+            "ooxml xlsx sheets show",
+            "ooxml xlsx comments list",
+            "ooxml xlsx conditional-formats list",
+            "ooxml xlsx conditional-formats show",
+            "ooxml xlsx hyperlinks list",
+            "ooxml xlsx hyperlinks show",
+            "ooxml xlsx filters-sorts show",
+            "ooxml xlsx names list",
+            "ooxml xlsx names show",
+            "ooxml xlsx tables list",
+            "ooxml xlsx tables show",
+            "ooxml xlsx tables export",
+            "ooxml xlsx workbook metadata inspect",
+            "ooxml xlsx ranges export",
+            "ooxml xlsx cells extract",
+            "ooxml xlsx freeze show",
+            "ooxml docx text",
+            "ooxml docx blocks",
+            "ooxml docx styles list",
+            "ooxml docx styles show",
+            "ooxml docx comments list",
+            "ooxml docx fields list",
+            "ooxml docx headers list",
+            "ooxml docx headers show",
+            "ooxml docx footers list",
+            "ooxml docx footers show",
+            "ooxml docx images list",
+            "ooxml docx tables show",
+        ];
+        let actual = command_specs()
+            .iter()
+            .filter(|spec| matches!(&spec.execution, ExecutionSupport::ServeInspect { .. }))
+            .filter_map(|spec| capability_value(spec)["path"].as_str().map(str::to_owned))
+            .collect::<BTreeSet<_>>();
+        let expected = PATHS
+            .iter()
+            .map(|path| (*path).to_owned())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(actual, expected);
+        assert_eq!(actual.len(), 42);
+    }
+
+    #[test]
+    fn complete_mutation_set_matches_frozen_70_command_contract() {
+        let frozen: Value = serde_json::from_str(include_str!(
+            "../testdata/golden/command-manifest-contract/capabilities.json"
+        ))
+        .expect("parse frozen capability contract");
+        let expected = frozen["commands"]
+            .as_array()
+            .expect("frozen commands array")
+            .iter()
+            .filter(|command| command["opCompatible"] == true)
+            .filter_map(|command| command["path"].as_str().map(str::to_owned))
+            .collect::<BTreeSet<_>>();
+        let actual = command_specs()
+            .iter()
+            .filter(|spec| matches!(&spec.execution, ExecutionSupport::ServeMutation { .. }))
+            .filter_map(|spec| capability_value(spec)["path"].as_str().map(str::to_owned))
+            .collect::<BTreeSet<_>>();
+        assert_eq!(actual, expected);
+        assert_eq!(actual.len(), 70);
     }
 }

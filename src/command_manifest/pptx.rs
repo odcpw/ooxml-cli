@@ -17,7 +17,7 @@ use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 const COMMAND_GROUP_REASON: &str = "it is a command group, not a leaf mutation command";
 pub(super) const GROUP_COMMAND_COUNT: usize = 20;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+command_id_enum! {
 pub(super) enum PptxCommandId {
     Pptx,
     Animations,
@@ -127,7 +127,7 @@ pub(super) enum PptxCommandId {
     ReplaceTextMapFromXlsx,
     ReplaceImages,
     Render,
-}
+}}
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
     let mut specs = group_command_specs();

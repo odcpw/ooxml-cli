@@ -5,7 +5,7 @@ use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 pub(super) const COMMAND_COUNT: usize = 45;
 pub(super) const LEGACY_START: usize = 248;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+command_id_enum! {
 pub(super) enum DocxCommandId {
     Docx,
     Comments,
@@ -52,7 +52,7 @@ pub(super) enum DocxCommandId {
     TablesClearCell,
     TablesInsertRow,
     TablesDeleteRow,
-}
+}}
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
     vec![
