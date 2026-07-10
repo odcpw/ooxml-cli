@@ -112,6 +112,14 @@ pub(super) enum XlsxCommandId {
     PivotsCreate,
     WorkbookMetadataInspect,
     WorkbookMetadataUpdate,
+    RangesExport,
+    RangesSet,
+    RangesSetFormat,
+    RangesSetStyle,
+    CellsExtract,
+    CellsSet,
+    CellsClear,
+    CellsSetBatch,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
