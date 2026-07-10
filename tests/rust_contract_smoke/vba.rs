@@ -4,7 +4,7 @@ use super::*;
 use std::collections::BTreeMap;
 
 #[test]
-fn vba_legacy_create_requires_windows_office_without_pure() {
+fn vba_legacy_create_validates_contract_and_non_windows_platform_guard() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -25,48 +25,94 @@ fn vba_legacy_create_requires_windows_office_without_pure() {
     .expect("write VBA source");
     fs::write(&helper_path, "Write-Output \"{}\"\r\n").expect("write fake helper");
 
-    let rust_out = temp_dir.join("rust-created.xlsm");
-    let rust_bin = temp_dir.join("rust-vbaProject.bin");
     let source = source_path.to_string_lossy().to_string();
     let helper = helper_path.to_string_lossy().to_string();
-    let rust_out = rust_out.to_string_lossy().to_string();
-    let rust_bin = rust_bin.to_string_lossy().to_string();
 
-    let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
-        "--json",
-        "vba",
-        "create",
-        &rust_out,
-        "--source",
-        &source,
-        "--extract-bin",
-        &rust_bin,
-        "--office-create-script",
-        &helper,
-        "--force",
-    ]);
-    assert_eq!(
-        rust_code, 4,
-        "legacy create should fail without desktop Windows Office"
-    );
-    assert_eq!(rust_stdout, None, "legacy create stdout");
-    let error = rust_stderr.expect("legacy create stderr");
-    assert_eq!(error["error"]["code"], "unsupported_type");
-    assert!(
-        error["error"]["message"]
-            .as_str()
-            .expect("legacy create message")
-            .contains("requires Windows desktop Microsoft Office"),
-        "legacy create should explain the platform guard: {error}"
-    );
-    assert!(
-        !Path::new(&rust_out).exists(),
-        "legacy create should not leave an output package"
-    );
-    assert!(
-        !Path::new(&rust_bin).exists(),
-        "legacy create should not leave an extracted VBA project"
-    );
+    #[cfg(not(windows))]
+    {
+        let rust_out = temp_dir
+            .join("rust-created.xlsm")
+            .to_string_lossy()
+            .to_string();
+        let rust_bin = temp_dir
+            .join("rust-vbaProject.bin")
+            .to_string_lossy()
+            .to_string();
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
+            "--json",
+            "vba",
+            "create",
+            &rust_out,
+            "--source",
+            &source,
+            "--extract-bin",
+            &rust_bin,
+            "--office-create-script",
+            &helper,
+            "--force",
+        ]);
+        assert_eq!(
+            rust_code, 4,
+            "legacy create should fail without desktop Windows Office"
+        );
+        assert_eq!(rust_stdout, None, "legacy create stdout");
+        let error = rust_stderr.expect("legacy create stderr");
+        assert_eq!(error["error"]["code"], "unsupported_type");
+        assert!(
+            error["error"]["message"]
+                .as_str()
+                .expect("legacy create message")
+                .contains("requires Windows desktop Microsoft Office"),
+            "legacy create should explain the platform guard: {error}"
+        );
+        assert!(
+            !Path::new(&rust_out).exists(),
+            "legacy create should not leave an output package"
+        );
+        assert!(
+            !Path::new(&rust_bin).exists(),
+            "legacy create should not leave an extracted VBA project"
+        );
+    }
+
+    #[cfg(windows)]
+    {
+        let rust_out = temp_dir
+            .join("rust-created.xlsm")
+            .to_string_lossy()
+            .to_string();
+        let rust_bin = temp_dir
+            .join("rust-vbaProject.bin")
+            .to_string_lossy()
+            .to_string();
+        let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&[
+            "--json",
+            "vba",
+            "create",
+            &rust_out,
+            "--source",
+            &source,
+            "--extract-bin",
+            &rust_bin,
+            "--office-create-script",
+            &helper,
+            "--force",
+        ]);
+        assert_eq!(
+            rust_code, 1,
+            "legacy create must reject a successful helper that omitted its artifacts"
+        );
+        assert_eq!(rust_stdout, None, "legacy create stdout");
+        let error = rust_stderr.expect("legacy create stderr");
+        assert_eq!(error["error"]["code"], "unexpected");
+        assert!(
+            error["error"]["message"]
+                .as_str()
+                .expect("legacy create message")
+                .contains("did not create the requested output package"),
+            "legacy create should explain the missing output artifact: {error}"
+        );
+    }
 
     let bad_xlsx = temp_dir.join("bad.xlsx").to_string_lossy().to_string();
     let bad_pptm = temp_dir.join("bad.pptm").to_string_lossy().to_string();

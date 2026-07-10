@@ -1,7 +1,7 @@
 # Release Real-File Trace Golden Provenance
 
-This golden records the compact, reviewed summary emitted by the Rust contract
-test for the highest-value OOXML release traces:
+This golden records the compact, reviewed summary emitted by the portable Rust
+contract test for the highest-value OOXML release traces:
 
 - XLSX charts
 - XLSX data validations
@@ -27,3 +27,8 @@ summary against `release-real-file-traces.json`. The PPTX render lane uses
 `OOXML_RUST_MOCK_RENDER=1` to prove the render command path in normal Linux CI
 without requiring local LibreOffice/poppler binaries; it is not desktop Office
 COM proof.
+
+The assertion parses the expected file as JSON and compares semantic values, so
+checkout-level LF/CRLF differences in the golden serialization do not cause
+Windows-only failures. Exact `vbaProject.bin` SHA-256 values remain pinned here,
+consistent with the dedicated VBA authoring golden suites.

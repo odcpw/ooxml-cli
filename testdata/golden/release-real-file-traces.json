@@ -49,7 +49,7 @@
     ]
   },
   "proofLevel": {
-    "linux": [
+    "portableRust": [
       "real input fixtures",
       "real saved outputs",
       "strict validation",
@@ -58,7 +58,7 @@
       "semantic zip-part checks",
       "macro-preservation checks for XLSM mutation inputs"
     ],
-    "officeCom": "not run by this Linux contract test"
+    "officeCom": "not run by this portable Rust contract test"
   },
   "scope": [
     "xlsx charts",

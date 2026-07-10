@@ -195,9 +195,9 @@ fn set_start_tag_count_attr(xml: &str, span: XmlElementSpan, count: usize) -> St
             open.to_string()
         }
     } else if let Some(pos) = open.rfind("/>") {
-        format!("{} count=\"{}\"/>", &open[..pos].trim_end(), count)
+        format!("{} count=\"{}\"/>", open[..pos].trim_end(), count)
     } else if let Some(pos) = open.rfind('>') {
-        format!("{} count=\"{}\">", &open[..pos].trim_end(), count)
+        format!("{} count=\"{}\">", open[..pos].trim_end(), count)
     } else {
         open.to_string()
     };

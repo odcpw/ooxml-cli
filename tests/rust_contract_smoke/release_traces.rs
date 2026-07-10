@@ -15,16 +15,16 @@ fn release_real_file_traces_cover_high_value_surfaces() {
             "pptx charts"
         ],
         "proofLevel": {
-            "linux": [
+            "portableRust": [
                 "real input fixtures",
                 "real saved outputs",
                 "strict validation",
                 "conformance check",
                 "readback commands",
-            "semantic zip-part checks",
-            "macro-preservation checks for XLSM mutation inputs"
+                "semantic zip-part checks",
+                "macro-preservation checks for XLSM mutation inputs"
             ],
-            "officeCom": "not run by this Linux contract test"
+            "officeCom": "not run by this portable Rust contract test"
         },
         "xlsxCharts": trace_xlsx_chart(&temp_dir),
         "xlsxDataValidations": trace_xlsx_data_validation(&temp_dir),
@@ -808,7 +808,13 @@ fn assert_release_trace_golden(summary: &Value) {
             golden_path.display()
         )
     });
-    if expected != actual {
+    let expected: Value = serde_json::from_str(&expected).unwrap_or_else(|err| {
+        panic!(
+            "invalid release trace golden JSON {}: {err}",
+            golden_path.display()
+        )
+    });
+    if expected != *summary {
         let actual_path = golden_path.with_extension("actual");
         std::fs::write(&actual_path, actual).expect("write release trace actual");
         panic!(

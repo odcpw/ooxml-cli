@@ -53,7 +53,33 @@ pub(crate) fn vba_create(output_path: &str, options: VbaCreateOptions<'_>) -> Cl
         force: options.force,
     };
     let script_result = invoke_create_script(&resolved)?;
+    validate_create_artifacts(&resolved.output_path, &resolved.extract_bin_path)?;
     complete_create_result(script_result, &resolved)
+}
+
+fn validate_create_artifacts(output_path: &str, extract_bin_path: &str) -> CliResult<()> {
+    require_create_artifact(output_path, "output package")?;
+    if !extract_bin_path.trim().is_empty() {
+        require_create_artifact(extract_bin_path, "extracted vbaProject.bin")?;
+    }
+    Ok(())
+}
+
+fn require_create_artifact(path: &str, label: &str) -> CliResult<()> {
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => Ok(()),
+        Ok(_) => Err(CliError::unexpected(format!(
+            "vba create helper reported success but the requested {label} is not a file: {path}"
+        ))),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            Err(CliError::unexpected(format!(
+                "vba create helper reported success but did not create the requested {label}: {path}"
+            )))
+        }
+        Err(err) => Err(CliError::unexpected(format!(
+            "vba create helper reported success but the requested {label} could not be verified at {path}: {err}"
+        ))),
+    }
 }
 
 fn normalize_create_family(value: &str, output_path: &str) -> CliResult<(String, bool)> {
@@ -512,4 +538,72 @@ fn find_program(name: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn successful_create_helper_must_materialize_requested_artifacts() {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_dir = env::temp_dir().join(format!(
+            "ooxml-vba-create-artifacts-{}-{suffix}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).expect("create temp dir");
+
+        let output = temp_dir.join("output.xlsm");
+        let extract_bin = temp_dir.join("vbaProject.bin");
+        let output_path = output.to_string_lossy().to_string();
+        let extract_bin_path = extract_bin.to_string_lossy().to_string();
+
+        let error = validate_create_artifacts(&output_path, &extract_bin_path)
+            .expect_err("missing output package must fail validation");
+        assert_eq!(error.code, "unexpected");
+        assert!(
+            error
+                .message
+                .contains("did not create the requested output package")
+        );
+
+        let output_directory = temp_dir.join("output-directory.xlsm");
+        fs::create_dir(&output_directory).expect("create output directory");
+        let error =
+            validate_create_artifacts(&output_directory.to_string_lossy(), &extract_bin_path)
+                .expect_err("output directory must fail validation");
+        assert_eq!(error.code, "unexpected");
+        assert!(error.message.contains("output package is not a file"));
+
+        fs::write(&output, b"package").expect("write output package");
+        let error = validate_create_artifacts(&output_path, &extract_bin_path)
+            .expect_err("missing extracted VBA project must fail validation");
+        assert_eq!(error.code, "unexpected");
+        assert!(
+            error
+                .message
+                .contains("did not create the requested extracted vbaProject.bin")
+        );
+
+        fs::create_dir(&extract_bin).expect("create extracted VBA project directory");
+        let error = validate_create_artifacts(&output_path, &extract_bin_path)
+            .expect_err("extracted VBA project directory must fail validation");
+        assert_eq!(error.code, "unexpected");
+        assert!(
+            error
+                .message
+                .contains("extracted vbaProject.bin is not a file")
+        );
+        fs::remove_dir(&extract_bin).expect("remove extracted VBA project directory");
+
+        fs::write(&extract_bin, b"vba").expect("write extracted VBA project");
+        validate_create_artifacts(&output_path, &extract_bin_path)
+            .expect("materialized artifacts should pass validation");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
