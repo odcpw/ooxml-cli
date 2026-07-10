@@ -65,7 +65,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
     let object_kinds_index = build_object_kinds_index(&commands);
     let mut document = json!({
         "tool": "ooxml",
-        "version": "0.0.1",
+        "version": env!("CARGO_PKG_VERSION"),
         "contractVersion": "ooxml-cli.agent-capabilities.v4",
         "packageTypes": ["pptx", "xlsx", "docx"],
         "outputModes": ["json via --json or --format json"],

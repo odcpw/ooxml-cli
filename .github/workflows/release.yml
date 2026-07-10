@@ -1,0 +1,128 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up stable Rust
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+
+      - name: Verify tag matches Cargo package version
+        shell: bash
+        run: |
+          package_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+          test "${GITHUB_REF_NAME}" = "v${package_version}"
+
+      - name: Run release gate
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --all-targets --locked -- -D warnings
+          cargo test --all-targets --locked
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary: ooxml
+            package: tar
+          - os: macos-14
+            target: aarch64-apple-darwin
+            binary: ooxml
+            package: tar
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            binary: ooxml
+            package: tar
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: ooxml.exe
+            package: zip
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up stable Rust target
+        run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }} --bin ooxml
+
+      - name: Package Unix binary
+        if: matrix.package == 'tar'
+        shell: bash
+        run: |
+          mkdir -p dist
+          asset="ooxml-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz"
+          tar -C "target/${{ matrix.target }}/release" -czf "dist/${asset}" "${{ matrix.binary }}"
+
+      - name: Package Windows binary
+        if: matrix.package == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $asset = "ooxml-$env:GITHUB_REF_NAME-${{ matrix.target }}.zip"
+          Compress-Archive `
+            -Path "target/${{ matrix.target }}/release/${{ matrix.binary }}" `
+            -DestinationPath "dist/$asset"
+
+      - name: Upload packaged binary
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: ooxml-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download packaged binaries
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum ooxml-* > SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --verify-tag --generate-notes --title "${GITHUB_REF_NAME}"

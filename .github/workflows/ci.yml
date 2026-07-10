@@ -59,8 +59,8 @@ jobs:
       - name: Compile all Rust targets
         run: cargo check --all-targets
 
-      - name: Run portable Rust unit tests
-        run: cargo test --bin ooxml
+      - name: Run full portable Rust test gate
+        run: cargo test --all-targets
 
   office-schema-conformance-windows:
     runs-on: windows-latest

@@ -36,8 +36,9 @@ build:
 	@$(CARGO) build --bin $(BINARY_NAME)
 	@echo "Built $(RUST_DEBUG_BIN)"
 
-# test: Run the normal Rust test gate without legacy oracle calls
-test: test-unit test-smoke
+# test: Run every Rust unit and integration target
+test:
+	@$(CARGO) test --all-targets
 
 # test-unit: Run Rust unit tests for the CLI binary
 test-unit:
@@ -109,7 +110,7 @@ check-fast:
 # check-local: Run the normal local Rust gate
 check-local: fmt-check check-fast clippy test build
 
-# check-ci: Run the Rust CI-equivalent gate
+# check-ci: Run the full Rust CI-equivalent gate
 check-ci: verify
 
 # office-edit-smoke: Windows only: build Rust, mutate DOCX/XLSX/PPTX fixtures, validate with Open XML SDK, and open outputs in desktop Office

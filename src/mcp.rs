@@ -95,7 +95,7 @@ impl McpState {
             "initialize" => Ok(json!({
                 "capabilities": {"resources": {}, "tools": {}},
                 "protocolVersion": "2025-06-18",
-                "serverInfo": {"name": "ooxml", "version": "0.0.1"},
+                "serverInfo": {"name": "ooxml", "version": env!("CARGO_PKG_VERSION")},
             })),
             "tools/list" => Ok(json!({"tools": mcp_tools()})),
             "tools/call" => self.handle_tools_call(params),
