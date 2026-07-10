@@ -4,6 +4,7 @@ mod charts;
 mod diff;
 mod extract_media_notes_comments;
 mod masters_layouts;
+mod replace;
 mod slides;
 mod tables;
 mod template;
@@ -119,6 +120,11 @@ pub(super) enum PptxCommandId {
     CommentsAdd,
     CommentsEdit,
     CommentsRemove,
+    ReplaceText,
+    ReplaceTextOccurrences,
+    ReplaceTextFromXlsx,
+    ReplaceTextMapFromXlsx,
+    ReplaceImages,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
@@ -132,7 +138,8 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
     specs.extend(charts::command_specs());
     specs.extend(tables::command_specs());
     specs.extend(extract_media_notes_comments::command_specs());
-    // Owner slices append in live legacy order: replace, render.
+    specs.extend(replace::command_specs());
+    // Owner slices append in live legacy order: render.
     // extract_media_notes_comments, replace, render.
     specs
 }
