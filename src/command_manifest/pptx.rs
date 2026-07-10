@@ -1,3 +1,4 @@
+mod animations;
 mod authoring;
 mod diff;
 mod slides;
@@ -64,6 +65,11 @@ pub(super) enum PptxCommandId {
     PlaceTableFromXlsx,
     ShapesSetBounds,
     ShapesDelete,
+    AnimationsList,
+    AnimationsAdd,
+    AnimationsRemove,
+    AnimationsReorder,
+    AnimationsPruneStale,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
@@ -72,8 +78,8 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
     specs.extend(slides::command_specs());
     specs.extend(template::command_specs());
     specs.extend(authoring::command_specs());
-    // Owner slices append in live legacy order: animations, masters_layouts,
-    // charts, tables,
+    specs.extend(animations::command_specs());
+    // Owner slices append in live legacy order: masters_layouts, charts, tables,
     // extract_media_notes_comments, replace, render.
     specs
 }
