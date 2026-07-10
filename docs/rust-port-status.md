@@ -1,19 +1,17 @@
-# Rust Port Status
+# Rust Product Status
 
-The Rust CLI is now the current/default product path. Build and run it with
-Cargo.
+The port is complete enough to own the product line: the Rust CLI is the implementation on `master`, Cargo/Make/CI are Rust-first, and the Go tree is deprecated reference material rather than a live oracle. `v0.1.0` is the first formal cross-platform binary release candidate.
 
-The Go implementation is deprecated for product development and is no longer a
-test oracle. The Rust smoke harness does not build a Go worktree. Differential
-checks use the current Rust binary by default, or `OOXML_RUST_BASELINE_BIN`
-when deliberately comparing against another Rust build.
+Current milestone, 2026-07-10:
 
-The legacy frozen contract fixture lives in
-`testdata/golden/rust-port-contract/baseline.json`. Historical entries below
-still mention Go because they record the older porting milestones that produced
-those fixtures and parity checks.
+- Reconciled remote `master` worksheet forms and limited source-only XLSM `.frm` packaging with the local Rust product line. Interactive Excel forms use `xlsx forms entry`; generated MSForms/UserForms remain package/list/extract-only and are not runtime-loadable.
+- Integrated the four audited fix waves: CLI/serve/MCP contract repair and real PPTX selector-based replacement; entity-aware OOXML text reads; OPC relationship/content-type validation and secondary DOCX diff coverage; and VBA Windows-1252, MS-OVBA chunk/decompression, CFB cycle, and early smoke-argument hardening. [FIXNOTES.md](../FIXNOTES.md) is the consolidated handoff.
+- `make check-ci` and CI now run the complete `cargo test --all-targets` gate. The release workflow reruns that gate before producing Linux x86_64, macOS arm64/x86_64, and Windows x86_64 assets plus `SHA256SUMS`.
+- Historical `*_baseline_*` helper names mean current-subject repeatability by default, not independent parity. Intentional differential runs use `OOXML_RUST_COMPARISON_BIN`, which must resolve to a distinct executable.
 
-Latest milestone, 2026-06-21:
+The frozen contract fixture remains at `testdata/golden/rust-port-contract/baseline.json`. The chronology below is retained as porting history; its older Go-oracle and default-parity wording is superseded by the current framing above.
+
+Archived milestone, 2026-06-21:
 
 - XLSX conditional-formatting now has Go-oracle and Rust parity for priority
   reorder. The Go oracle commit `1228417` adds

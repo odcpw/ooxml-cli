@@ -1,45 +1,38 @@
-# Pass 5 Handoff
+# Rust 0.1.0 Release Integration Handoff
 
-## What We Did
+## Scope
 
-- mode: focused release-trace follow-up
-- recommendations applied this pass: 1 / 1
-- branch: `master`
-- audit workspace: in-tree at `agent_ergonomics_audit/`
-- source commit: `dd420c9d5bcf190deb21b72648e408c31b321836`
+- candidate branch: `integrate/rust-master-0.1.0`
+- candidate version: `0.1.0`
+- product branch after acceptance: `master`
+- legacy Go status: reference material only, not a release oracle
+- detailed audited finding disposition: [`FIXNOTES.md`](../../FIXNOTES.md)
 
-## Uplift Summary
+## Integrated Evidence
 
-- Added a committed release trace golden over XLSX charts, XLSX data validations, XLSX conditional formats, pure Rust VBA XLSM/PPTM/DOCM package/source workflows, and PPTX charts.
-- Added committed LibreOffice-exported chart fixtures for XLSX and PPTX chart traces, with provenance.
-- Fixed conformance false positives for Office chart style/color-style content types.
-- Added XLSM macro-preservation proof for chart and data-validation mutations.
-- Updated the frozen coverage table and fixed stale PPTX producer README command examples.
+- Remote `master` worksheet-form support and limited XLSM `.frm` package/list/extract support were reconciled with the current Rust product line. Runtime-loadable generated UserForms, `.frx`, MSForms designer type-info, and binary-backed controls remain explicitly unsupported.
+- CLI/serve/MCP drift was repaired, including real selector-based `pptx replace text`, JSON-RPC notification/error behavior, global flag normalization, and a dispatcher coverage guard for every `opCompatible=true` capability.
+- OOXML entity handling now preserves named and numeric references across DOCX, PPTX, and XLSX reads and unrelated writes.
+- OPC relationship/content-type checks now handle URI decoding, ASCII-case rules, explicit internal targets, malformed relationship diagnostics, and legal existing override serializations. DOCX diff includes relevant secondary parts and media.
+- VBA hardening covers Windows-1252 extensions, MS-OVBA chunk boundaries and decompression ceilings, CFB FAT/mini-FAT cycle rejection, and local smoke-argument validation before platform availability errors.
 
-## Verification
+## Proof Contract
 
-- `cargo test --test rust_contract_smoke release_real_file_traces_cover_high_value_surfaces -- --nocapture`
-- `cargo test --test rust_contract_smoke conformance_ -- --nocapture`
-- `cargo test --test rust_contract_smoke xlsx_charts -- --nocapture`
-- `cargo test --test rust_contract_smoke xlsx_data_validations -- --nocapture`
-- Rust-native conditional-format focused checks for XLSM preservation, serve add/delete, reorder readback, and icon-set readback
-- `cargo test --test rust_contract_smoke pptx_charts -- --nocapture`
-- VBA authoring golden suites for XLSM/PPTM/DOCM/provenance
-- `cargo check --all-targets`
-- `cargo fmt --check`
-- `git diff --check`
+- `make check-ci` is the complete Rust gate and runs `cargo test --all-targets`.
+- Historical `*_baseline_*` helper names mean current-subject repeatability by default. Intentional differential runs set `OOXML_RUST_COMPARISON_BIN`; the harness rejects a comparison path that resolves to the current executable.
+- The tag-triggered release workflow requires `vX.Y.Z` to match `Cargo.toml`, reruns format/clippy/all-target tests, builds Linux x86_64, macOS arm64/x86_64, and Windows x86_64 archives, and publishes `SHA256SUMS` with the GitHub Release.
+- Windows Open XML SDK and desktop Office proof remain separate compatibility gates. A successful Linux Rust gate must not be reported as Office-open or macro-execution proof.
 
-## Remaining Work
+## Release Sequence
 
-- Retire or refresh stale Go-oracle comparisons for Rust-only conditional-format and VBA surfaces.
-- Run Windows Office/Open XML SDK proof before any release claim.
-- Consider broader producer-variant chart fixtures after the current release trace is stable.
+1. Land the reconciled candidate on `master` only after the full local Rust gate is green.
+2. Run the applicable Windows schema and Office COM gates against that exact commit and binary.
+3. Push `master`, create annotated tag `v0.1.0`, and push the tag.
+4. Verify all four platform assets and `SHA256SUMS` on the GitHub Release.
+5. Install the released binary and repo skill only after the published asset smoke passes.
 
-## Land-The-Plane Status
+## Open Proof
 
-- [ ] target's current branch pushed
-- [x] no new branch was created
-- [x] workspace folder will be committed alongside code
-- [ ] beads created for queued work
-- [x] manifest updated with `current_pass=5`
-- [x] pass-5 release trace golden present
+- Final all-target format, clippy, and test results belong in the release handoff/commit report for the exact candidate SHA.
+- The new workflow is not proven until it runs from the pushed `v0.1.0` tag.
+- Windows Office/Open XML SDK validation must be rerun after integration because the candidate combines previously independent form, entity, OPC, CLI, and VBA changes.

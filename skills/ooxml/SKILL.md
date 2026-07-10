@@ -28,6 +28,7 @@ build or resolve ooxml
 
 - Rust is the product path.
 - The Go code under `go/` is reference material only.
+- `v0.1.0` is the first formal Rust binary release; Cargo, Make, CI, and release assets all follow the Rust implementation.
 - Pure Rust VBA authoring is the preferred macro path for XLSM, PPTM, and DOCM.
 - Desktop Office COM is a proof oracle and legacy helper, not a core dependency.
 - The canonical distributable agent skill is this file: `skills/ooxml/SKILL.md`.
@@ -334,8 +335,11 @@ Broader local loop:
 ```bash
 cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
+make check-ci
 git diff --check
 ```
+
+`make check-ci` is the complete Rust gate. Historical `*_baseline_*` helpers rerun the current subject by default and therefore mean repeatability, not external parity. For an intentional differential run, set `OOXML_RUST_COMPARISON_BIN` to a distinct executable; the harness rejects subject-to-subject identity.
 
 Windows Office gates:
 
@@ -348,8 +352,10 @@ make check-release-fast
 make check-release-slow
 ```
 
-Run Go reference targets only when intentionally refreshing or comparing the
-legacy oracle.
+Run Go reference targets only when intentionally studying or refreshing legacy
+reference material; they are not a release oracle.
+
+Release tags must exactly match the Cargo version. A `vX.Y.Z` tag triggers the cross-platform GitHub release workflow, which reruns the Rust gate and publishes Linux x86_64, macOS arm64/x86_64, and Windows x86_64 archives with `SHA256SUMS`.
 
 ## Reference Docs
 

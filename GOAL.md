@@ -1,6 +1,8 @@
-# GOAL: First-Class Pure Rust VBA Authoring
+# GOAL: Rust OOXML Product And First-Class VBA Authoring
 
 This repo is now a Rust product. Go is deprecated/reference-only.
+
+The Rust implementation owns `master` and the release line. `v0.1.0` is the first formal cross-platform binary release; release candidates must pass the complete Rust `cargo test --all-targets` gate plus the Office-specific proof appropriate to the changed surfaces.
 
 The product goal is cross-platform Office VBA authoring: on Linux, macOS, or
 Windows, an agent must be able to create a valid `vbaProject.bin` from `.bas`
@@ -129,7 +131,8 @@ Office-authored compiled cache streams as the main path.
 
 Out of initial scope:
 
-- UserForms
+- runtime-loadable generated UserForms; XLSM source-only `.frm` package/list/extract support is intentionally limited and does not imply runtime support
+- `.frx` payloads, MSForms designer type-info generation, or binary-backed controls
 - digital signatures
 - password/protection editing
 - macro execution by default
@@ -161,6 +164,9 @@ Already integrated on `master`:
 - `validate --strict` and `conformance check` reject broken VBA package wiring:
   missing/duplicate `vbaProject` relationships, wrong `vbaProject.bin` content
   types, non-macro main parts with VBA payloads, and orphan VBA project parts
+- XLSM can package, list, and extract minimal `.frm` source while refusing `.frx` and binary-control claims; generated UserForms are not runtime-loadable
+- `xlsx forms entry` provides the supported interactive Excel form workflow through worksheet cells and non-ActiveX Form Controls
+- the audited release hardening covers XML entity preservation, OPC relationships/content types, secondary DOCX diff parts, real PPTX selector-based replacement, JSON-RPC serve/MCP behavior, Windows-1252, MS-OVBA chunk bounds, and CFB cycle rejection
 
 Known remaining gaps:
 
@@ -245,6 +251,7 @@ Move quickly without churning.
 - Run focused tests by filter during development.
 - Run `cargo fmt --check`, `cargo check --all-targets`, and broader tests at
   integration checkpoints.
+- Treat `make check-ci` as the complete local Rust gate; it runs all unit and integration targets.
 - Run Office proof only after generated packages are expected to open or execute.
 - Keep dev/test debug info low unless debugging needs it.
 - Use Cargo parallelism, incremental builds, low debug info, and an unsynced
@@ -300,7 +307,7 @@ can run under the explicit smoke harness.
 
 ## Work Rules
 
-- Work on `master`.
+- Keep `master` as the Rust product branch; prepare risky integrations in a dedicated worktree and merge only a green candidate.
 - Commit useful green checkpoints.
 - Push coherent checkpoints.
 - Use subagents, but assign disjoint slices and do not duplicate work.

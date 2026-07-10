@@ -53,6 +53,7 @@ Implemented behavior:
 - Create simple Excel entry forms with a VML-backed non-ActiveX Group Box, Label, worksheet text input cells, and Form Control buttons for submit, clear, and sample-fill macros.
 - XLSM pure authoring accepts `.frm` UserForm source for package/list/extract workflows only; Office runtime load is not supported yet.
 - `.frx` sidecars, valid MSForms designer type-info generation, and binary-backed form controls are refused instead of guessed.
+- Windows-1252 source text uses the defined extension mapping, MS-OVBA compression enforces 4096-byte chunk semantics and bounded decompression, and CFB readers reject FAT and mini-FAT cycles instead of repeating attacker-controlled chains.
 - DOCM pure authoring synthesizes Word's `ThisDocument` host module when needed.
 - Attach pure-generated VBA projects to existing or freshly scaffolded `.xlsx` / `.pptx` / `.docx` packages with `vba create --pure`.
 - Rebuild an existing `.xlsm` / `.pptm` / `.docm` package from a directory of supported source files with `vba rebuild --source-dir`.
@@ -209,6 +210,14 @@ Therefore:
 - The user-facing path for macro module-set changes is `vba rebuild --source-dir` or `vba create --pure` with the desired source files.
 
 ## Proof Gates
+
+Run the complete Rust gate before the platform-specific proof below:
+
+```bash
+make check-ci
+```
+
+That target includes `cargo fmt --all -- --check`, clippy with warnings denied, and the complete `cargo test --all-targets` suite.
 
 Fast schema-level VBA gate:
 

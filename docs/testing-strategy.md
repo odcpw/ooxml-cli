@@ -5,7 +5,7 @@ The test strategy is practical compatibility, not exhaustive OOXML conformance. 
 ## Proof Ladder
 
 1. `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --all-targets`: Rust format, lint, unit, and contract tests.
-2. Rust contract smoke tests, legacy frozen JSON contract fixtures, and optional Rust-baseline/current differential checks through `OOXML_RUST_BASELINE_BIN`.
+2. Rust contract smoke tests and legacy frozen JSON contract fixtures. Historical `*_baseline_*` helpers rerun the current Rust subject by default, which proves repeatability and supports their command-specific assertions but is not external parity evidence. Set `OOXML_RUST_COMPARISON_BIN` only for an intentional differential run; the harness canonicalizes both paths and refuses the current executable, symlinks to it, and Unix hard links to it.
 3. `ooxml validate --strict <file>`: package, relationship, XML, semantic, and VBA consistency checks.
 4. Microsoft Open XML SDK validation: schema-order and enum checks that local validation can miss.
 5. LibreOffice/render/open checks: useful headless evidence for generated artifacts.
@@ -23,7 +23,10 @@ $env:CARGO_PROFILE_DEV_DEBUG = "0"
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
+make check-ci
 ```
+
+`make check-ci` is the CI-equivalent Rust gate. It includes the full `cargo test --all-targets` suite, not a unit-only or one-smoke-test subset. CI also runs that full gate on Linux, macOS, and Windows.
 
 Do not use legacy code as the normal product proof path. Historical code may still explain where an older contract fixture came from, but current gates should be Rust-native.
 
@@ -120,3 +123,5 @@ Before calling a Windows-compatible editing path ready:
 4. Run the appropriate Office schema gate against the Rust binary.
 5. For compatibility-sensitive package writes, run the corresponding Office COM gate.
 6. Report the proof level and the summary JSON path.
+
+For a formal binary release, update the Cargo version and lockfile, land a green candidate, then push a matching `vX.Y.Z` tag. `.github/workflows/release.yml` rejects a tag/version mismatch, reruns format/clippy/all-target tests, builds native Linux x86_64, macOS arm64/x86_64, and Windows x86_64 archives, generates `SHA256SUMS`, and publishes those assets to the GitHub Release. `v0.1.0` is the first release under this process.

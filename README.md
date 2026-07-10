@@ -6,6 +6,8 @@
 
 Rust is the product and proof path. The legacy implementation is reference material only, not an oracle.
 
+The current release line is `0.1.x`; `v0.1.0` is the first formal Rust binary release. The 0.1.0 candidate integrates the audited CLI/serve/MCP, XML entity, OPC/relationship, DOCX diff, and VBA codec/CFB fixes recorded in [FIXNOTES.md](FIXNOTES.md).
+
 ## What It Handles
 
 | Family | Common work |
@@ -161,7 +163,10 @@ Broader local checks:
 ```powershell
 cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
+make check-ci
 ```
+
+`make check-ci` runs the complete Rust `cargo test --all-targets` gate. Historical `*_baseline_*` test helpers mean current-subject repeatability unless `OOXML_RUST_COMPARISON_BIN` is explicitly set; configured differential runs refuse to compare the current executable with itself.
 
 Windows Office proof gates:
 
@@ -203,12 +208,17 @@ mkdir -p ~/.codex/skills
 cp -R skills/ooxml ~/.codex/skills/
 ```
 
+## Releases
+
+Pushing a tag that exactly matches the Cargo version, such as `v0.1.0`, triggers `.github/workflows/release.yml`. The workflow reruns format, clippy, and the full Rust test gate, then builds GitHub Release assets for Linux x86_64, macOS arm64 and x86_64, and Windows x86_64. The release includes a combined `SHA256SUMS` file. Tags are created only after the candidate commit has passed the required local and Office-specific proof gates.
+
 ## Limits
 
 - `ooxml-cli` edits OOXML packages directly; it is not a full desktop Office replacement.
 - Macro execution is never implicit. Use `vba run-smoke` only when local Excel execution is intended.
 - For simple Excel forms, use `xlsx forms entry`; it creates a worksheet Group Box, Label, styled text input cells, and non-ActiveX Form Control buttons.
-- XLSM can package, list, and extract minimal `.frm` UserForm source, but generated MSForms/UserForms are not runtime-loadable yet. `.frx` sidecars, binary controls, PPTM/DOCM UserForms, digital signatures, password/protection editing, and arbitrary VBE compile proof are not supported.
+- XLSM can package, list, and extract minimal `.frm` UserForm source, but generated MSForms/UserForms are not runtime-loadable. `.frx` sidecars, MSForms designer type-info, binary-backed controls, and PPTM/DOCM UserForms remain unsupported.
+- Digital signatures, password/protection editing, and arbitrary VBE compile proof are not supported.
 - `vba add-module`, `replace-module`, and `remove-module` are guarded paths. Prefer `vba create --pure`, `vba rebuild`, or opaque `vba attach`.
 - Legacy code is not the normal development or proof path.
 
