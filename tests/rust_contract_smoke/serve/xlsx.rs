@@ -121,6 +121,431 @@ fn serve_inspect_supports_xlsx_sheets_show() {
 }
 
 #[test]
+fn serve_inspect_supports_xlsx_freeze_and_hyperlink_reads_without_mutation() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-serve-freeze-hyperlinks-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("inspect.xlsx");
+    write_freeze_hyperlink_inspect_xlsx(&input);
+    let input_str = input.to_string_lossy().to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let mut stdin = child.stdin.take().expect("serve stdin");
+    let stdout = child.stdout.take().expect("serve stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(1, "open", serde_json::json!({"file": input_str})),
+    );
+    let session = open_response["result"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let freeze_default = serve_inspect_success(
+        &mut stdin,
+        &mut reader,
+        2,
+        &session,
+        "xlsx freeze show",
+        serde_json::json!({}),
+    );
+    let working = freeze_default["file"]
+        .as_str()
+        .expect("working file")
+        .to_string();
+    let before = fs::read(&working).expect("read working package before inspect calls");
+    assert_cli_success_eq(
+        &freeze_default,
+        &["--json", "xlsx", "freeze", "show", &working],
+    );
+
+    let freeze_explicit = serve_inspect_success(
+        &mut stdin,
+        &mut reader,
+        3,
+        &session,
+        "xlsx freeze show",
+        serde_json::json!({"sheet": "Sheet1"}),
+    );
+    assert_cli_success_eq(
+        &freeze_explicit,
+        &[
+            "--json", "xlsx", "freeze", "show", &working, "--sheet", "Sheet1",
+        ],
+    );
+
+    let list_default = serve_inspect_success(
+        &mut stdin,
+        &mut reader,
+        4,
+        &session,
+        "xlsx hyperlinks list",
+        serde_json::json!({}),
+    );
+    assert_cli_success_eq(
+        &list_default,
+        &["--json", "xlsx", "hyperlinks", "list", &working],
+    );
+
+    let list_broken = serve_inspect_success(
+        &mut stdin,
+        &mut reader,
+        5,
+        &session,
+        "xlsx hyperlinks list",
+        serde_json::json!({"sheet": "sheetId:1", "include-broken": true}),
+    );
+    assert_cli_success_eq(
+        &list_broken,
+        &[
+            "--json",
+            "xlsx",
+            "hyperlinks",
+            "list",
+            &working,
+            "--sheet",
+            "sheetId:1",
+            "--include-broken",
+        ],
+    );
+    assert_eq!(list_broken["count"], 1, "broken-only hyperlink count");
+
+    let show = serve_inspect_success(
+        &mut stdin,
+        &mut reader,
+        6,
+        &session,
+        "xlsx hyperlinks show",
+        serde_json::json!({"sheet": "1", "cell": "A1"}),
+    );
+    assert_cli_success_eq(
+        &show,
+        &[
+            "--json",
+            "xlsx",
+            "hyperlinks",
+            "show",
+            &working,
+            "--sheet",
+            "1",
+            "--cell",
+            "A1",
+        ],
+    );
+
+    for (id, args, cli_tail) in [
+        (7, serde_json::json!({}), Vec::<&str>::new()),
+        (8, serde_json::json!({"cell": "A0"}), vec!["--cell", "A0"]),
+        (9, serde_json::json!({"cell": "Z9"}), vec!["--cell", "Z9"]),
+    ] {
+        let response = serve_inspect_response(
+            &mut stdin,
+            &mut reader,
+            id,
+            &session,
+            "xlsx hyperlinks show",
+            args,
+        );
+        let mut cli_args = vec!["--json", "xlsx", "hyperlinks", "show", working.as_str()];
+        cli_args.extend(cli_tail);
+        assert_serve_error_matches_cli(&response, &cli_args);
+    }
+
+    let plan = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(10, "plan", serde_json::json!({"session": session})),
+    );
+    assert_eq!(plan["result"]["opsCount"], 0);
+    assert_eq!(plan["result"]["plan"], serde_json::json!([]));
+    assert_eq!(
+        fs::read(&working).expect("read working package after inspect calls"),
+        before,
+        "read-only Serve inspect commands must not alter the working package"
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("serve exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn mcp_delegates_xlsx_freeze_and_hyperlink_reads_with_existing_error_envelope() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-mcp-freeze-hyperlinks-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("inspect.xlsx");
+    write_freeze_hyperlink_inspect_xlsx(&input);
+    let input_str = input.to_string_lossy().to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn mcp");
+    let mut stdin = child.stdin.take().expect("mcp stdin");
+    let stdout = child.stdout.take().expect("mcp stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let open_response = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            1,
+            "tools/call",
+            serde_json::json!({"name": "open", "arguments": {"file": input_str}}),
+        ),
+    );
+    let session = open_response["result"]["structuredContent"]["sessionId"]
+        .as_str()
+        .expect("session id")
+        .to_string();
+
+    let freeze = mcp_inspect_success(
+        &mut stdin,
+        &mut reader,
+        2,
+        &session,
+        "xlsx freeze show",
+        serde_json::json!({"sheet": "sheetId:1"}),
+    );
+    let working = freeze["file"]
+        .as_str()
+        .expect("working file")
+        .to_string();
+    let before = fs::read(&working).expect("read MCP working package before inspect calls");
+    assert_cli_success_eq(
+        &freeze,
+        &[
+            "--json",
+            "xlsx",
+            "freeze",
+            "show",
+            &working,
+            "--sheet",
+            "sheetId:1",
+        ],
+    );
+
+    let list = mcp_inspect_success(
+        &mut stdin,
+        &mut reader,
+        3,
+        &session,
+        "xlsx hyperlinks list",
+        serde_json::json!({"sheet": "Sheet1", "includeBroken": true}),
+    );
+    assert_cli_success_eq(
+        &list,
+        &[
+            "--json",
+            "xlsx",
+            "hyperlinks",
+            "list",
+            &working,
+            "--sheet",
+            "Sheet1",
+            "--include-broken",
+        ],
+    );
+    assert_eq!(list["count"], 1, "broken-only hyperlink count");
+
+    let show = mcp_inspect_success(
+        &mut stdin,
+        &mut reader,
+        4,
+        &session,
+        "xlsx hyperlinks show",
+        serde_json::json!({"cell": "A1"}),
+    );
+    assert_cli_success_eq(
+        &show,
+        &[
+            "--json",
+            "xlsx",
+            "hyperlinks",
+            "show",
+            &working,
+            "--cell",
+            "A1",
+        ],
+    );
+
+    for (id, args, cli_tail) in [
+        (5, serde_json::json!({}), Vec::<&str>::new()),
+        (6, serde_json::json!({"cell": "A0"}), vec!["--cell", "A0"]),
+        (7, serde_json::json!({"cell": "Z9"}), vec!["--cell", "Z9"]),
+    ] {
+        let response = mcp_inspect_response(
+            &mut stdin,
+            &mut reader,
+            id,
+            &session,
+            "xlsx hyperlinks show",
+            args,
+        );
+        let mut cli_args = vec!["--json", "xlsx", "hyperlinks", "show", working.as_str()];
+        cli_args.extend(cli_tail);
+        assert_mcp_error_matches_cli(&response, &cli_args);
+    }
+
+    let plan = serve_roundtrip(
+        &mut stdin,
+        &mut reader,
+        &rpc_request(
+            8,
+            "tools/call",
+            serde_json::json!({"name": "plan", "arguments": {"session": session}}),
+        ),
+    );
+    assert_eq!(plan["result"]["structuredContent"]["opsCount"], 0);
+    assert_eq!(
+        plan["result"]["structuredContent"]["plan"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        fs::read(&working).expect("read MCP working package after inspect calls"),
+        before,
+        "read-only MCP inspect commands must not alter the working package"
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("mcp exit");
+    assert!(status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn serve_inspect_success(
+    stdin: &mut impl Write,
+    reader: &mut impl BufRead,
+    id: i64,
+    session: &str,
+    command: &str,
+    args: Value,
+) -> Value {
+    let response = serve_inspect_response(stdin, reader, id, session, command, args);
+    assert!(
+        response.get("error").is_none(),
+        "Serve inspect failed for {command}: {response:?}"
+    );
+    response["result"].clone()
+}
+
+fn serve_inspect_response(
+    stdin: &mut impl Write,
+    reader: &mut impl BufRead,
+    id: i64,
+    session: &str,
+    command: &str,
+    args: Value,
+) -> Value {
+    serve_roundtrip(
+        stdin,
+        reader,
+        &rpc_request(
+            id,
+            "inspect",
+            serde_json::json!({"session": session, "command": command, "args": args}),
+        ),
+    )
+}
+
+fn mcp_inspect_success(
+    stdin: &mut impl Write,
+    reader: &mut impl BufRead,
+    id: i64,
+    session: &str,
+    command: &str,
+    args: Value,
+) -> Value {
+    let response = mcp_inspect_response(stdin, reader, id, session, command, args);
+    assert!(
+        response.get("error").is_none(),
+        "MCP inspect failed for {command}: {response:?}"
+    );
+    response["result"]["structuredContent"].clone()
+}
+
+fn mcp_inspect_response(
+    stdin: &mut impl Write,
+    reader: &mut impl BufRead,
+    id: i64,
+    session: &str,
+    command: &str,
+    args: Value,
+) -> Value {
+    serve_roundtrip(
+        stdin,
+        reader,
+        &rpc_request(
+            id,
+            "tools/call",
+            serde_json::json!({
+                "name": "inspect",
+                "arguments": {"session": session, "command": command, "args": args},
+            }),
+        ),
+    )
+}
+
+fn assert_cli_success_eq(actual: &Value, args: &[&str]) {
+    let (code, expected, stderr) = run_ooxml(args);
+    assert_eq!(code, 0, "direct CLI exit for {args:?}");
+    assert_eq!(stderr, None, "direct CLI stderr for {args:?}");
+    assert_eq!(actual, &expected.expect("direct CLI stdout"));
+}
+
+fn assert_serve_error_matches_cli(response: &Value, args: &[&str]) {
+    let (code, stdout, stderr) = run_ooxml(args);
+    assert_ne!(code, 0, "direct CLI should fail for {args:?}");
+    assert_eq!(stdout, None, "direct CLI stdout for {args:?}");
+    let cli_error = stderr.expect("direct CLI stderr");
+    assert_eq!(response["error"]["code"], code);
+    assert_eq!(response["error"]["message"], cli_error["error"]["message"]);
+    assert_eq!(response["error"]["data"]["type"], cli_error["error"]["code"]);
+    assert_eq!(response["error"]["data"]["exitCode"], code);
+}
+
+fn assert_mcp_error_matches_cli(response: &Value, args: &[&str]) {
+    let (code, stdout, stderr) = run_ooxml(args);
+    assert_ne!(code, 0, "direct CLI should fail for {args:?}");
+    assert_eq!(stdout, None, "direct CLI stdout for {args:?}");
+    let cli_error = stderr.expect("direct CLI stderr");
+    assert_eq!(response["error"]["code"], -32602);
+    assert_eq!(response["error"]["message"], cli_error["error"]["message"]);
+    assert_eq!(response["error"]["data"]["type"], cli_error["error"]["code"]);
+    assert_eq!(response["error"]["data"]["exitCode"], code);
+}
+
+fn write_freeze_hyperlink_inspect_xlsx(dest: &Path) {
+    write_simple_xlsx_with_sheet_xml(
+        dest,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+  <sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Jump</t></is></c><c r="C1" t="inlineStr"><is><t>Broken</t></is></c></row></sheetData>
+  <hyperlinks><hyperlink ref="A1" location="Sheet1!A2" display="Jump"/><hyperlink ref="C1" r:id="rIdMissing" display="Broken"/></hyperlinks>
+</worksheet>"#,
+    );
+}
+
+#[test]
 fn serve_inspect_supports_xlsx_filters_sorts_show() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-serve-filters-{}", std::process::id()));

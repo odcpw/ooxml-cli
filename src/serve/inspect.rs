@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::xlsx_freeze::xlsx_freeze_show;
 use crate::{
     CliError, CliResult, XlsxRangeExportOptions, XlsxTableExportOptions, docx_blocks_show,
     docx_comments_list, docx_fields_list, docx_header_footer_kind,
@@ -10,9 +11,10 @@ use crate::{
     pptx_masters_list, pptx_masters_show, pptx_notes_show, pptx_shapes_show, pptx_slide_selectors,
     pptx_slide_show, pptx_slides_list, pptx_tables_show, require_json_data_format,
     xlsx_cells_extract, xlsx_comments_list, xlsx_conditional_formats_list,
-    xlsx_conditional_formats_show, xlsx_filters_sorts_show, xlsx_names_list, xlsx_names_show,
-    xlsx_range_export_with_options, xlsx_sheets_list, xlsx_sheets_show, xlsx_tables_export,
-    xlsx_tables_list, xlsx_tables_show, xlsx_workbook_metadata_inspect,
+    xlsx_conditional_formats_show, xlsx_filters_sorts_show, xlsx_hyperlinks_list,
+    xlsx_hyperlinks_show, xlsx_names_list, xlsx_names_show, xlsx_range_export_with_options,
+    xlsx_sheets_list, xlsx_sheets_show, xlsx_tables_export, xlsx_tables_list, xlsx_tables_show,
+    xlsx_workbook_metadata_inspect,
 };
 
 pub(super) fn serve_inspect_command(
@@ -108,6 +110,22 @@ pub(super) fn serve_inspect_command(
         "xlsx sheets show" => {
             let sheet = json_optional_string(args, "sheet");
             xlsx_sheets_show(working, sheet.as_deref())
+        }
+        "xlsx freeze show" => {
+            let sheet = json_optional_string(args, "sheet");
+            xlsx_freeze_show(working, sheet.as_deref())
+        }
+        "xlsx hyperlinks list" => {
+            let sheet = json_optional_string(args, "sheet");
+            let include_broken = json_bool(args, "include-broken")
+                .or_else(|| json_bool(args, "includeBroken"))
+                .unwrap_or(false);
+            xlsx_hyperlinks_list(working, sheet.as_deref(), include_broken)
+        }
+        "xlsx hyperlinks show" => {
+            let sheet = json_optional_string(args, "sheet");
+            let cell = json_optional_string(args, "cell");
+            xlsx_hyperlinks_show(working, sheet.as_deref(), cell.as_deref())
         }
         "xlsx filters-sorts show" => {
             let sheet = json_optional_string(args, "sheet");
