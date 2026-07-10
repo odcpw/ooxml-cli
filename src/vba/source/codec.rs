@@ -252,6 +252,7 @@ pub(super) fn source_has_trailing_line_ending(source: &str) -> bool {
 pub(super) fn extension_for_module_kind(kind: &str) -> &'static str {
     match kind {
         "class" => ".cls",
+        "userform" => ".frm",
         _ => ".bas",
     }
 }

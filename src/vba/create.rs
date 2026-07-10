@@ -95,7 +95,7 @@ fn normalize_create_sources(values: &[String]) -> CliResult<Vec<String>> {
     }
     if out.is_empty() {
         return Err(CliError::invalid_args(
-            "--source is required (repeat it for each .bas/.cls file)",
+            "--source is required (repeat it for each .bas/.cls file; use vba create --pure for XLSM .frm UserForms)",
         ));
     }
     Ok(out)
@@ -136,7 +136,7 @@ fn validate_create_source_files(paths: &[String]) -> CliResult<()> {
             ".bas" | ".cls" => {}
             _ => {
                 return Err(CliError::invalid_args(format!(
-                    "VBA source must be .bas or .cls: {path}"
+                    "legacy Office-COM VBA create source must be .bas or .cls: {path}; use vba create --pure for XLSM .frm UserForms"
                 )));
             }
         }

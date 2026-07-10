@@ -272,6 +272,134 @@ fn vba_pure_create_builds_and_reads_back_xlsm_without_office_com() {
 }
 
 #[test]
+fn vba_pure_create_userform_xlsm_builds_and_reads_back_without_office_com() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-vba-pure-userform-{}-{suffix}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+
+    let macro_source_path = temp_dir.join("AgentSmoke.bas");
+    let form_source_path = temp_dir.join("Dialog.frm");
+    fs::write(
+        &macro_source_path,
+        "Attribute VB_Name = \"AgentSmoke\"\r\nPublic Sub ShowDialog()\r\n    Dialog.Show\r\nEnd Sub\r\n",
+    )
+    .expect("write standard source");
+    fs::write(
+        &form_source_path,
+        "VERSION 5.00\r\nBegin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} Dialog \r\n   Caption         =   \"Agent Dialog\"\r\nEnd\r\nAttribute VB_Name = \"Dialog\"\r\nPrivate Sub UserForm_Initialize()\r\n    Me.Caption = \"Hello from ooxml\"\r\nEnd Sub\r\n",
+    )
+    .expect("write userform source");
+
+    let input_path = temp_dir.join("input.xlsx");
+    let output_path = temp_dir.join("userform.xlsm");
+    let bin_path = temp_dir.join("vbaProject.bin");
+    let extract_dir = temp_dir.join("macros");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input_path).expect("copy workbook");
+
+    let input = input_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+    let macro_source = macro_source_path.to_string_lossy().to_string();
+    let form_source = form_source_path.to_string_lossy().to_string();
+    let bin = bin_path.to_string_lossy().to_string();
+    let extract = extract_dir.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "create",
+        &input,
+        "--pure",
+        "--family",
+        "xlsx",
+        "--source",
+        &macro_source,
+        "--source",
+        &form_source,
+        "--out",
+        &output,
+    ]);
+    assert_eq!(code, 0, "pure userform create exit");
+    assert_eq!(stderr, None, "pure userform create stderr");
+    let create = stdout.expect("pure userform create stdout");
+    assert_eq!(create["backend"], "pure-rust");
+    assert_eq!(create["createMode"], "pure");
+    let authored_modules = create["authoring"]["modules"].as_array().unwrap();
+    assert_eq!(authored_modules.len(), 4);
+    assert_eq!(authored_modules[0]["name"], "ThisWorkbook");
+    assert_eq!(authored_modules[1]["name"], "Sheet1");
+    assert_eq!(authored_modules[2]["name"], "AgentSmoke");
+    assert_eq!(authored_modules[3]["name"], "Dialog");
+    assert_eq!(authored_modules[3]["kind"], "userform");
+    assert_eq!(authored_modules[3]["hostSynthesized"], false);
+
+    let (code, _stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", &output]);
+    assert_eq!(code, 0, "validate pure userform xlsm");
+    assert_eq!(stderr, None, "validate pure userform stderr");
+    let (code, stdout, stderr) = run_ooxml(&["--json", "conformance", "check", &output]);
+    assert_eq!(code, 0, "conformance pure userform xlsm");
+    assert_eq!(stderr, None, "conformance pure userform stderr");
+    assert_eq!(stdout.expect("conformance stdout")["status"], "passed");
+
+    let (code, stdout, stderr) = run_ooxml(&["--json", "vba", "list", &output]);
+    assert_eq!(code, 0, "list pure userform xlsm");
+    assert_eq!(stderr, None, "list pure userform stderr");
+    let list = stdout.expect("list pure userform stdout");
+    assert_eq!(list["project"]["moduleCount"], 4);
+    assert!(
+        list["project"]["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|module| module["name"] == "Dialog"
+                && module["kind"] == "userform"
+                && module["extension"] == ".frm")
+    );
+
+    let (code, _stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "extract",
+        &output,
+        "--out-dir",
+        &extract,
+        "--module",
+        "module:Dialog",
+    ]);
+    assert_eq!(code, 0, "extract Dialog");
+    assert_eq!(stderr, None, "extract Dialog stderr");
+    let extracted_form = fs::read_to_string(extract_dir.join("Dialog.frm")).expect("Dialog.frm");
+    assert!(extracted_form.contains("Attribute VB_Name = \"Dialog\""));
+    assert!(extracted_form.contains("Private Sub UserForm_Initialize()"));
+    assert!(!extracted_form.contains("VERSION 5.00"));
+
+    let (code, _stdout, stderr) =
+        run_ooxml(&["--json", "vba", "extract-bin", &output, "--out", &bin]);
+    assert_eq!(code, 0, "extract-bin userform");
+    assert_eq!(stderr, None, "extract-bin userform stderr");
+    let (code, stdout, stderr) =
+        run_ooxml(&["--json", "vba", "inspect-bin", &bin, "--family", "xlsx"]);
+    assert_eq!(code, 0, "inspect-bin userform");
+    assert_eq!(stderr, None, "inspect-bin userform stderr");
+    let inspect = stdout.expect("inspect-bin userform stdout");
+    assert!(
+        inspect["project"]["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|module| module["name"] == "Dialog" && module["kind"] == "userform")
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn vba_pure_create_class_xlsm_adds_excel_host_codenames_without_office_com() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

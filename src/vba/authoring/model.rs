@@ -29,6 +29,7 @@ pub(super) enum VbaModuleKind {
     Document,
     Standard,
     Class,
+    UserForm,
 }
 
 impl VbaModuleKind {
@@ -37,6 +38,7 @@ impl VbaModuleKind {
             Self::Document => "document",
             Self::Standard => "standard",
             Self::Class => "class",
+            Self::UserForm => "userform",
         }
     }
 
@@ -45,6 +47,7 @@ impl VbaModuleKind {
             Self::Document => "Document",
             Self::Standard => "Module",
             Self::Class => "Class",
+            Self::UserForm => "BaseClass",
         }
     }
 
@@ -53,6 +56,20 @@ impl VbaModuleKind {
             Self::Document => 0x0022,
             Self::Standard => 0x0021,
             Self::Class => 0x0022,
+            Self::UserForm => 0x0022,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct VbaUserFormModel {
+    pub(super) caption: String,
+}
+
+impl VbaUserFormModel {
+    pub(super) fn new(caption: impl Into<String>) -> Self {
+        Self {
+            caption: caption.into(),
         }
     }
 }
@@ -63,6 +80,7 @@ pub(super) struct VbaModuleModel {
     pub(super) stream_name: String,
     pub(super) kind: VbaModuleKind,
     pub(super) source: Vec<u8>,
+    pub(super) user_form: Option<VbaUserFormModel>,
 }
 
 impl VbaModuleModel {
@@ -120,7 +138,19 @@ impl VbaModuleModel {
             stream_name,
             kind,
             source,
+            user_form: None,
         }
+    }
+
+    pub(super) fn user_form(
+        name: impl Into<String>,
+        stream_name: Option<impl Into<String>>,
+        source: Vec<u8>,
+        form: VbaUserFormModel,
+    ) -> Self {
+        let mut module = Self::new(name, stream_name, VbaModuleKind::UserForm, source);
+        module.user_form = Some(form);
+        module
     }
 
     pub(super) fn validate_for_build(&self) -> VbaAuthoringResult<()> {
@@ -131,6 +161,20 @@ impl VbaModuleModel {
                 "VBA module {} has empty source",
                 self.name
             )));
+        }
+        if self.kind == VbaModuleKind::UserForm {
+            let Some(form) = &self.user_form else {
+                return Err(VbaAuthoringError::invalid_model(format!(
+                    "VBA UserForm module {} is missing designer metadata",
+                    self.name
+                )));
+            };
+            if form.caption.len() > 255 {
+                return Err(VbaAuthoringError::invalid_model(format!(
+                    "VBA UserForm module {} caption is longer than 255 bytes",
+                    self.name
+                )));
+            }
         }
         Ok(())
     }
@@ -196,6 +240,7 @@ impl VbaProjectModel {
                     module.name
                 )));
             }
+            module.validate_for_build()?;
             let name_key = module.name.to_ascii_lowercase();
             if !names.insert(name_key) {
                 return Err(VbaAuthoringError::invalid_model(format!(

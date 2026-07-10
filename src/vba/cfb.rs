@@ -1446,6 +1446,34 @@ mod tests {
     }
 
     #[test]
+    fn build_streams_file_roundtrips_root_userform_storage_streams() {
+        let streams = BTreeMap::from([
+            ("PROJECT".to_string(), b"project".to_vec()),
+            ("VBA/dir".to_string(), b"dir".to_vec()),
+            ("VBA/_VBA_PROJECT".to_string(), b"vba".to_vec()),
+            ("VBA/Dialog".to_string(), b"source".to_vec()),
+            ("Dialog/\u{0001}CompObj".to_string(), b"compobj".to_vec()),
+            ("Dialog/\u{0003}VBFrame".to_string(), b"frame".to_vec()),
+            ("Dialog/f".to_string(), b"form".to_vec()),
+            ("Dialog/o".to_string(), Vec::new()),
+        ]);
+
+        let cfb = build_streams_file(&streams).expect("fresh CFB should build");
+        let opened = CfbFile::open(&cfb).expect("fresh CFB should reopen");
+
+        assert_eq!(
+            opened.stream("Dialog/\u{0001}CompObj").expect("CompObj"),
+            b"compobj"
+        );
+        assert_eq!(
+            opened.stream("Dialog/\u{0003}VBFrame").expect("VBFrame"),
+            b"frame"
+        );
+        assert_eq!(opened.stream("Dialog/f").expect("f"), b"form");
+        assert_eq!(opened.stream("Dialog/o").expect("o"), b"");
+    }
+
+    #[test]
     fn build_streams_file_roundtrips_cutoff_stream_as_regular_sector_chain() {
         let large = (0..WRITER_MINI_STREAM_CUTOFF)
             .map(|idx| (idx % 251) as u8)

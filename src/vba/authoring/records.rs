@@ -5,16 +5,24 @@ const PROJECT_GUID: &str = "{917DED54-440B-4FD1-A5C1-74ACF261E600}";
 const PROJECT_VERSION_MAJOR: u32 = 0x6C59D84B;
 const PROJECT_VERSION_MINOR: u16 = 0x0004;
 const WRITE_COOKIE: u16 = 0xFFFF;
+const USERFORM_PACKAGE_GUID: &str = "{AC9F2F90-E877-11CE-9F68-00AA00574A4F}";
+const MSFORMS_LIBID: &str = r#"*\G{0D452EE1-E08F-101A-852E-02608C4D0BB4}#2.0#0#C:\Program Files\Microsoft Office\root\VFS\System\FM20.DLL#Microsoft Forms 2.0 Object Library"#;
 
 pub(super) fn render_project_stream(project: &VbaProjectModel) -> Vec<u8> {
     let mut lines = Vec::new();
     lines.push(format!("ID=\"{PROJECT_GUID}\""));
     for module in &project.modules {
-        lines.push(format!(
-            "{}={}",
-            module.kind.project_key(),
-            project_stream_module_value(module)
-        ));
+        match module.kind {
+            VbaModuleKind::UserForm => {
+                lines.push(format!("Package={USERFORM_PACKAGE_GUID}"));
+                lines.push(format!("BaseClass={}", project_stream_module_value(module)));
+            }
+            _ => lines.push(format!(
+                "{}={}",
+                module.kind.project_key(),
+                project_stream_module_value(module)
+            )),
+        }
     }
     lines.push(format!("Name=\"{}\"", project.project_name));
     lines.push("HelpContextID=\"0\"".to_string());
@@ -76,7 +84,7 @@ pub(super) fn render_dir_stream(project: &VbaProjectModel) -> Vec<u8> {
     out.extend(fixed_u32_record(0x0008, 0));
     out.extend(project_version_record());
     out.extend(dual_string_record(0x000C, 0x003C, b""));
-    out.extend(render_registered_references());
+    out.extend(render_registered_references(project));
     out.extend(fixed_u16_record(0x000F, project.modules.len() as u16));
     out.extend(fixed_u16_record(0x0013, WRITE_COOKIE));
     for module in &project.modules {
@@ -99,8 +107,8 @@ pub(super) fn render_dir_stream(project: &VbaProjectModel) -> Vec<u8> {
     out
 }
 
-fn render_registered_references() -> Vec<u8> {
-    [
+fn render_registered_references(project: &VbaProjectModel) -> Vec<u8> {
+    let mut references = vec![
         (
             "stdole",
             r#"*\G{00020430-0000-0000-C000-000000000046}#2.0#0#C:\Windows\System32\stdole2.tlb#OLE Automation"#,
@@ -109,10 +117,18 @@ fn render_registered_references() -> Vec<u8> {
             "Office",
             r#"*\G{2DF8D04C-5BFA-101B-BDE5-00AA0044DE52}#2.0#0#C:\Program Files\Common Files\Microsoft Shared\OFFICE16\MSO.DLL#Microsoft Office 16.0 Object Library"#,
         ),
-    ]
-    .into_iter()
-    .flat_map(|(name, libid)| registered_reference_record(name, libid))
-    .collect()
+    ];
+    if project
+        .modules
+        .iter()
+        .any(|module| module.kind == VbaModuleKind::UserForm)
+    {
+        references.push(("MSForms", MSFORMS_LIBID));
+    }
+    references
+        .into_iter()
+        .flat_map(|(name, libid)| registered_reference_record(name, libid))
+        .collect()
 }
 
 fn registered_reference_record(name: &str, libid: &str) -> Vec<u8> {
@@ -172,7 +188,9 @@ fn vba_dir_record(id: u16, payload: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vba::authoring::model::{VbaModuleKind, VbaModuleModel, VbaProjectModel};
+    use crate::vba::authoring::model::{
+        VbaModuleKind, VbaModuleModel, VbaProjectModel, VbaUserFormModel,
+    };
 
     fn two_module_project() -> VbaProjectModel {
         VbaProjectModel::xlsx(vec![
@@ -201,6 +219,20 @@ mod tests {
             "Module1",
             b"Attribute VB_Name = \"Module1\"\r\nSub Hello()\r\nEnd Sub\r\n".to_vec(),
         )])
+    }
+
+    fn userform_project() -> VbaProjectModel {
+        VbaProjectModel::xlsx(vec![
+            VbaModuleModel::excel_workbook_document(),
+            VbaModuleModel::excel_sheet_document("Sheet1"),
+            VbaModuleModel::user_form(
+                "Dialog",
+                None::<String>,
+                b"Attribute VB_Name = \"Dialog\"\r\nPrivate Sub UserForm_Initialize()\r\nEnd Sub\r\n"
+                    .to_vec(),
+                VbaUserFormModel::new("Dialog"),
+            ),
+        ])
     }
 
     #[test]
@@ -232,6 +264,20 @@ mod tests {
         assert!(!text.contains("Document=ThisDocument"));
         assert!(!text.contains("Document=ThisWorkbook"));
         assert!(text.contains("Module1=0, 0, 0, 0, C\r\n"));
+    }
+
+    #[test]
+    fn project_stream_declares_userforms_as_package_baseclass_pairs() {
+        let text = String::from_utf8(render_project_stream(&userform_project())).unwrap();
+        assert!(text.contains("Package={AC9F2F90-E877-11CE-9F68-00AA00574A4F}\r\n"));
+        assert!(text.contains("BaseClass=Dialog\r\n"));
+        assert!(
+            !text
+                .replace("\r\n", "\n")
+                .lines()
+                .any(|line| line == "Class=Dialog")
+        );
+        assert!(text.contains("Dialog=0, 0, 0, 0, C\r\n"));
     }
 
     #[test]
@@ -376,6 +422,29 @@ mod tests {
             VbaModuleKind::Standard.dir_record_id(),
             &[]
         ));
+    }
+
+    #[test]
+    fn userform_dir_stream_uses_designer_module_type_without_class_private_flag() {
+        let dir = render_dir_stream(&userform_project());
+        assert!(contains_record(&dir, 0x000F, &3_u16.to_le_bytes()));
+        assert!(contains_record(&dir, 0x0019, b"Dialog"));
+        assert!(contains_record(
+            &dir,
+            VbaModuleKind::UserForm.dir_record_id(),
+            &[]
+        ));
+        assert_eq!(record_count(&dir, 0x0028, &[]), 0);
+
+        let mut expected = vec![
+            0x0001, 0x004A, 0x0002, 0x0014, 0x0003, 0x0004, 0x0005, 0x0006, 0x0007, 0x0008, 0x0009,
+            0x000C, 0x0016, 0x000D, 0x0016, 0x000D, 0x0016, 0x000D, 0x000F, 0x0013,
+        ];
+        expected.extend(module_record_ids(VbaModuleKind::Document));
+        expected.extend(module_record_ids(VbaModuleKind::Document));
+        expected.extend(module_record_ids(VbaModuleKind::UserForm));
+        expected.push(0x0010);
+        assert_eq!(record_ids_in_order(&dir), expected);
     }
 
     fn contains_record(data: &[u8], id: u16, payload: &[u8]) -> bool {

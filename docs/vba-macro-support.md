@@ -1,6 +1,6 @@
 # VBA Macro Support
 
-`ooxml-cli` supports practical VBA package workflows for Excel, PowerPoint, and Word macro-enabled files. The implementation is deliberately conservative: XLSM, PPTM, and DOCM can be authored from `.bas` / `.cls` source through the pure Rust `vba create --pure` path, with host document modules synthesized where needed. Package wiring is mutated safely, and source streams are only rewritten where the supported behavior is proven.
+`ooxml-cli` supports practical VBA package workflows for Excel, PowerPoint, and Word macro-enabled files. The implementation is deliberately conservative: XLSM, PPTM, and DOCM can be authored from `.bas` / `.cls` source through the pure Rust `vba create --pure` path, with host document modules synthesized where needed. XLSM can package, list, and extract minimal `.frm` UserForm source, but generated forms are not runtime-loadable yet. Package wiring is mutated safely, and source streams are only rewritten where the supported behavior is proven.
 
 Authoritative specs:
 
@@ -42,6 +42,7 @@ ooxml --json vba remove <file.xlsm|file.pptm|file.docm> --out output.xlsx|output
 ooxml --json vba list <file.xlsm|file.pptm|file.docm>
 ooxml --json vba extract <file.xlsm|file.pptm|file.docm> --out-dir macros/
 ooxml --json vba replace-module <file.xlsm|file.pptm|file.docm> --module Module1 --source Module1.bas --expect-sha256 <sha256> --allow-experimental-vba-source-rewrite --out output.xlsm|output.pptm|output.docm
+ooxml --json xlsx forms entry --out entry-form.xlsm --field Name --field Email --field Notes
 ```
 
 Implemented behavior:
@@ -49,6 +50,9 @@ Implemented behavior:
 - Detect package macro state and VBA consistency.
 - Build source-only/cache-free XLSM/PPTM/DOCM `vbaProject.bin` files in pure Rust.
 - XLSM/PPTM/DOCM pure authoring accepts `.bas` and `.cls` source modules.
+- Create simple Excel entry forms with a VML-backed non-ActiveX Group Box, Label, worksheet text input cells, and Form Control buttons for submit, clear, and sample-fill macros.
+- XLSM pure authoring accepts `.frm` UserForm source for package/list/extract workflows only; Office runtime load is not supported yet.
+- `.frx` sidecars, valid MSForms designer type-info generation, and binary-backed form controls are refused instead of guessed.
 - DOCM pure authoring synthesizes Word's `ThisDocument` host module when needed.
 - Attach pure-generated VBA projects to existing or freshly scaffolded `.xlsx` / `.pptx` / `.docx` packages with `vba create --pure`.
 - Rebuild an existing `.xlsm` / `.pptm` / `.docm` package from a directory of supported source files with `vba rebuild --source-dir`.
@@ -62,6 +66,29 @@ Implemented behavior:
 - Preserve exact no-op replacement bytes.
 - Refuse signed packages for attach/remove/source-changing rewrites.
 - Refuse Office-shaped module-set add/remove before writing output.
+
+## Worksheet Form Controls
+
+For a simple Excel form that users can fill in directly on a worksheet, use
+`xlsx forms entry` instead of VBA UserForm authoring:
+
+```powershell
+ooxml --json xlsx forms entry `
+  --out .\out\entry-form.xlsm `
+  --field Name `
+  --field Email `
+  --field Notes `
+  --button "Submit Entry"
+ooxml --json validate --strict .\out\entry-form.xlsm
+ooxml --json vba list .\out\entry-form.xlsm
+```
+
+The command creates a fresh `.xlsm` with a form sheet, an entries sheet, a
+non-ActiveX Group Box, Label, and Form Control buttons stored in VML. Text input
+uses styled worksheet cells because normal worksheet Form Controls do not expose
+a working non-ActiveX edit box. Desktop Excel proof on Windows showed the
+workbook opens without repair, `Fill Sample` populates inputs, `Clear` clears
+them, and `Submit Entry` appends a submitted row to the entries sheet.
 
 ## Pure XLSM/PPTM/DOCM Creation Path
 
@@ -78,6 +105,22 @@ ooxml --json vba create .\workbook.xlsx `
 ooxml validate --strict .\out\workbook.xlsm
 ooxml --json vba list .\out\workbook.xlsm
 ```
+
+For a minimal XLSM UserForm, pass a `.frm` source alongside any standard modules:
+
+```powershell
+ooxml --json vba create .\workbook.xlsx `
+  --pure `
+  --family xlsx `
+  --source .\macros\AgentSmoke.bas `
+  --source .\macros\Dialog.frm `
+  --out .\out\userform.xlsm
+ooxml --json validate --strict .\out\userform.xlsm
+ooxml --json vba list .\out\userform.xlsm
+ooxml --json vba extract .\out\userform.xlsm --out-dir .\out\macros
+```
+
+The current `.frm` path writes PROJECT `Package`/`BaseClass` entries, `dir` metadata, module source, and minimal root designer storage streams. Computer Use testing with Excel shows these generated forms open as package content but fail runtime instantiation with an ActiveX Designer type-information mismatch. Treat this as package/list/extract support, not working interactive UserForms. `.frx` sidecars, embedded controls, valid MSForms designer stream generation, and PPTM/DOCM form packaging are not supported yet.
 
 For PowerPoint:
 
@@ -265,6 +308,9 @@ Proof level `microsoft-office-com-open` means desktop Office opened the package 
 - User-supplied `ThisDocument` document-module replacement beyond the synthesized host module.
 - Procedure/function-level editing helpers.
 - Signatures/resigning.
-- Forms and `.frx` import/export.
+- Runtime-loadable generated UserForms.
+- Valid MSForms designer type-info stream generation.
+- `.frx` import/export and binary-backed form controls.
+- PPTM/DOCM UserForm packaging.
 - Password/protection editing.
 - Access/ACCDB VBA.

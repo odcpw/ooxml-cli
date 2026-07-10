@@ -43,6 +43,7 @@ const XLSX_PARENT_GROUP_PATHS: &[&str] = &[
     "ooxml xlsx comments",
     "ooxml xlsx data-validations",
     "ooxml xlsx filters-sorts",
+    "ooxml xlsx forms",
     "ooxml xlsx freeze",
     "ooxml xlsx hyperlinks",
     "ooxml xlsx names",

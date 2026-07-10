@@ -209,11 +209,17 @@ oox --json xlsx ranges export workbook.xlsx --sheet Sheet1 --range A1:D10 --incl
 oox --json xlsx cells set workbook.xlsx --sheet Sheet1 --cell A1 --value "Hello" --out edited.xlsx
 oox --json xlsx tables create edited.xlsx --sheet Sheet1 --range A1:D10 --table Sales --out tabled.xlsx
 oox --json xlsx conditional-formats add tabled.xlsx --sheet Sheet1 --range D2:D10 --type cell-is --operator greaterThan --formula 100 --out formatted.xlsx
+oox --json xlsx forms entry --out entry-form.xlsm --field Name --field Email --field Notes
 oox --json validate --strict formatted.xlsx
 ```
 
 Treat workbooks as structured data, not CSV. Prefer table, range, and cell
 commands with stale-source guards and readback fields.
+
+For simple Excel data-entry forms, prefer `xlsx forms entry`. It generates a
+macro-enabled workbook with a non-ActiveX Group Box, Label, worksheet text input
+cells, and Form Control buttons assigned to submit, clear, and sample-fill VBA
+macros. Do not use unfinished MSForms/UserForm authoring for this workflow.
 
 ### DOCX / DOCM
 
@@ -238,6 +244,7 @@ oox --json xlsx scaffold workbook.xlsx --force
 oox --json vba build-bin --family xlsx --source macros/Module1.bas --out vbaProject.bin
 oox --json vba attach workbook.xlsx --bin vbaProject.bin --out workbook.xlsm
 oox --json vba create workbook.xlsx --pure --family xlsx --source macros/Module1.bas --out workbook.xlsm
+oox --json vba create workbook.xlsx --pure --family xlsx --source macros/Module1.bas --source macros/Dialog.frm --out userform.xlsm
 oox --json vba rebuild workbook.xlsm --source-dir macros --out rebuilt.xlsm
 oox --json vba list workbook.xlsm
 oox --json vba extract workbook.xlsm --out-dir macros
@@ -274,10 +281,15 @@ VBA limits:
 
 - `vba create --pure`, `vba build-bin`, `vba attach`, `vba rebuild`,
   `vba list`, and `vba extract` are the normal macro workflows.
+- Simple Excel entry forms are supported through `xlsx forms entry`; they use
+  worksheet cells plus non-ActiveX Form Controls, not ActiveX/MSForms controls.
 - `vba add-module`, `replace-module`, and `remove-module` are guarded and are
   not the preferred path for Office-shaped projects.
-- Macro execution automation, VBE compile proof, signatures, UserForms, and
-  password/protection editing are not general features.
+- XLSM pure authoring can package, list, and extract minimal `.frm` UserForm
+  source, but generated forms are not runtime-loadable yet. `.frx` sidecars,
+  binary-backed controls, valid MSForms designer stream generation,
+  PPTM/DOCM UserForms, macro execution automation, VBE compile proof,
+  signatures, and password/protection editing are not general features.
 - `run-smoke` is the explicit local proof harness for harmless generated XLSM
   macros. It runs Excel and should only be used when macro execution is wanted.
 

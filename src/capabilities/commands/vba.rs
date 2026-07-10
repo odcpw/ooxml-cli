@@ -78,7 +78,7 @@ pub(super) fn commands() -> Vec<Value> {
                 "--source",
                 "source",
                 "stringArray",
-                "repeatable .bas or .cls source file to import",
+                "repeatable .bas/.cls source file, plus package/list/extract-only .frm for pure XLSM mode; legacy Office-COM mode supports .bas/.cls",
             ),
             flag(
                 "--visible",

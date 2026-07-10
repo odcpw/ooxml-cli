@@ -1,4 +1,5 @@
 mod codec;
+mod forms;
 mod model;
 mod records;
 
@@ -11,7 +12,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{CliError, CliResult, command_arg};
 
-use model::{VbaModuleKind, VbaModuleModel, VbaProjectModel};
+use model::{VbaModuleKind, VbaModuleModel, VbaProjectModel, VbaUserFormModel};
 
 use super::cfb::build_streams_file;
 use super::model::VbaMutationOptions;
@@ -92,12 +93,39 @@ fn render_complete_stream_map(project: &VbaProjectModel) -> VbaAuthoringResult<V
         "VBA/_VBA_PROJECT".to_string(),
         records::render_vba_project_stream(),
     );
+    for module in &project.modules {
+        if module.kind == VbaModuleKind::UserForm {
+            rendered
+                .streams
+                .extend(forms::render_user_form_storage_streams(module));
+        }
+    }
     Ok(rendered.streams)
 }
 
 fn build_vba_project_bin(project: &VbaProjectModel) -> VbaAuthoringResult<Vec<u8>> {
     let streams = render_complete_stream_map(project)?;
     build_streams_file(&streams).map_err(VbaAuthoringError::build_failed)
+}
+
+pub(crate) fn vba_xlsx_standard_module_project_bin(
+    module_name: &str,
+    source: &str,
+    sheet_code_names: &[&str],
+) -> CliResult<Vec<u8>> {
+    let mut modules = Vec::new();
+    modules.push(VbaModuleModel::excel_workbook_document());
+    for sheet_code_name in sheet_code_names {
+        modules.push(VbaModuleModel::excel_sheet_document(*sheet_code_name));
+    }
+    modules.push(VbaModuleModel::new(
+        module_name,
+        None::<String>,
+        VbaModuleKind::Standard,
+        source.as_bytes().to_vec(),
+    ));
+    let project = VbaProjectModel::xlsx(modules);
+    build_vba_project_bin(&project).map_err(authoring_error_to_cli)
 }
 
 pub(crate) struct VbaBuildBinOptions<'a> {
@@ -300,7 +328,7 @@ fn collect_source_dir_sources(source_dir: &str) -> CliResult<Vec<String>> {
     });
     if sources.is_empty() {
         return Err(CliError::target_not_found(format!(
-            "no .bas or .cls files found under --source-dir {source_dir}"
+            "no .bas, .cls, .frm, or .frx files found under --source-dir {source_dir}"
         )));
     }
     Ok(sources
@@ -346,7 +374,7 @@ fn is_vba_source_path(path: &Path) -> bool {
             .unwrap_or_default()
             .to_ascii_lowercase()
             .as_str(),
-        "bas" | "cls"
+        "bas" | "cls" | "frm" | "frx"
     )
 }
 
@@ -354,6 +382,7 @@ fn build_bin_from_sources(family: Option<&str>, sources: &[String]) -> CliResult
     let family = normalize_build_family(family.unwrap_or_default())?;
     let source_paths = normalize_source_values(sources)?;
     let source_modules = read_source_modules(&source_paths)?;
+    reject_unsupported_userform_family(&family, &source_modules)?;
     let inserted_vb_names = source_modules
         .iter()
         .filter(|input| input.inserted_vb_name)
@@ -393,6 +422,22 @@ fn build_bin_from_sources(family: Option<&str>, sources: &[String]) -> CliResult
     })
 }
 
+fn reject_unsupported_userform_family(
+    family: &str,
+    source_modules: &[SourceModuleInput],
+) -> CliResult<()> {
+    if family == "xlsx"
+        || !source_modules
+            .iter()
+            .any(|input| input.module.kind == VbaModuleKind::UserForm)
+    {
+        return Ok(());
+    }
+    Err(CliError::unsupported_type(
+        "pure UserForm authoring is currently supported only for --family xlsx; PPTM/DOCM UserForm packaging is not Office-proven yet",
+    ))
+}
+
 fn module_summary_json(project: &VbaProjectModel) -> Value {
     Value::Array(
         project
@@ -413,7 +458,7 @@ fn module_summary_json(project: &VbaProjectModel) -> Value {
 fn needs_excel_host_document_modules(modules: &[VbaModuleModel]) -> bool {
     modules
         .iter()
-        .any(|module| module.kind == VbaModuleKind::Class)
+        .any(|module| matches!(module.kind, VbaModuleKind::Class | VbaModuleKind::UserForm))
 }
 
 fn with_excel_host_document_modules(mut user_modules: Vec<VbaModuleModel>) -> Vec<VbaModuleModel> {
@@ -515,7 +560,7 @@ fn normalize_source_values(values: &[String]) -> CliResult<Vec<String>> {
     }
     if out.is_empty() {
         return Err(CliError::invalid_args(
-            "--source is required (repeat it for each .bas/.cls file)",
+            "--source is required (repeat it for each .bas/.cls/.frm file)",
         ));
     }
     Ok(out)
@@ -542,7 +587,12 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
         )));
     }
     let kind = source_kind_from_path(path)?;
-    let text = normalized_source_text_for_kind(kind, &String::from_utf8_lossy(&data));
+    let raw_text = String::from_utf8_lossy(&data);
+    let normalized_raw_text = codec::normalize_vba_line_endings(&raw_text);
+    let user_form_caption = (kind == VbaModuleKind::UserForm)
+        .then(|| userform_caption_from_export(&normalized_raw_text))
+        .flatten();
+    let text = normalized_source_text_for_kind(kind, &raw_text);
     let attr_name = vb_name_attribute(&text);
     let name = attr_name.unwrap_or_else(|| {
         Path::new(path)
@@ -561,7 +611,20 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
         source_text =
             ensure_class_module_attributes(&String::from_utf8_lossy(&source_text)).into_bytes();
     }
-    let module = VbaModuleModel::new(name, None::<String>, kind, source_text);
+    if kind == VbaModuleKind::UserForm {
+        source_text =
+            ensure_userform_module_attributes(&String::from_utf8_lossy(&source_text)).into_bytes();
+    }
+    let module = if kind == VbaModuleKind::UserForm {
+        VbaModuleModel::user_form(
+            name.clone(),
+            None::<String>,
+            source_text,
+            VbaUserFormModel::new(user_form_caption.unwrap_or_else(|| name.clone())),
+        )
+    } else {
+        VbaModuleModel::new(name, None::<String>, kind, source_text)
+    };
     module
         .validate_for_build()
         .map_err(authoring_error_to_cli)?;
@@ -582,18 +645,22 @@ fn source_kind_from_path(path: &str) -> CliResult<VbaModuleKind> {
     {
         "bas" => Ok(VbaModuleKind::Standard),
         "cls" => Ok(VbaModuleKind::Class),
+        "frm" => Ok(VbaModuleKind::UserForm),
+        "frx" => Err(CliError::unsupported_type(format!(
+            "VBA .frx sidecars are not supported by pure UserForm authoring yet: {path}; pass the .frm only for a generated blank designer storage"
+        ))),
         _ => Err(CliError::invalid_args(format!(
-            "VBA source must be .bas or .cls: {path}"
+            "VBA source must be .bas, .cls, or .frm: {path}"
         ))),
     }
 }
 
 fn normalized_source_text_for_kind(kind: VbaModuleKind, text: &str) -> String {
     let normalized = codec::normalize_vba_line_endings(text);
-    if kind == VbaModuleKind::Class {
-        strip_exported_class_wrapper(&normalized)
-    } else {
-        normalized
+    match kind {
+        VbaModuleKind::Class => strip_exported_class_wrapper(&normalized),
+        VbaModuleKind::UserForm => strip_exported_userform_wrapper(&normalized),
+        _ => normalized,
     }
 }
 
@@ -665,6 +732,98 @@ fn ensure_class_module_attributes(text: &str) -> String {
     let mut out = lines.join("\r\n");
     out.push_str("\r\n");
     out
+}
+
+fn strip_exported_userform_wrapper(text: &str) -> String {
+    let lines = text.split("\r\n").collect::<Vec<_>>();
+    if !lines
+        .first()
+        .is_some_and(|line| line.trim().eq_ignore_ascii_case("VERSION 5.00"))
+    {
+        return text.to_string();
+    }
+    let mut depth = 0_usize;
+    let mut end_idx = None;
+    for (idx, line) in lines.iter().enumerate().skip(1) {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("Begin ") {
+            depth += 1;
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case("End") && depth > 0 {
+            depth -= 1;
+            if depth == 0 {
+                end_idx = Some(idx);
+                break;
+            }
+        }
+    }
+    let Some(end_idx) = end_idx else {
+        return text.to_string();
+    };
+    lines[end_idx + 1..].join("\r\n")
+}
+
+fn ensure_userform_module_attributes(text: &str) -> String {
+    let mut lines = text
+        .split("\r\n")
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    if lines.last().is_some_and(String::is_empty) {
+        lines.pop();
+    }
+    let insert_at = lines
+        .iter()
+        .position(|line| {
+            !line
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("attribute ")
+        })
+        .unwrap_or(lines.len());
+    let required = [
+        (
+            "vb_base",
+            "Attribute VB_Base = \"0{F8A47041-B2A6-11CE-8027-00AA00611080}\"",
+        ),
+        ("vb_globalnamespace", "Attribute VB_GlobalNameSpace = False"),
+        ("vb_creatable", "Attribute VB_Creatable = False"),
+        ("vb_predeclaredid", "Attribute VB_PredeclaredId = True"),
+        ("vb_exposed", "Attribute VB_Exposed = False"),
+        ("vb_templatederived", "Attribute VB_TemplateDerived = False"),
+        ("vb_customizable", "Attribute VB_Customizable = False"),
+    ];
+    let mut missing = required
+        .into_iter()
+        .filter_map(|(key, line)| (!has_attribute(&lines, key)).then_some(line.to_string()))
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        let mut out = lines.join("\r\n");
+        out.push_str("\r\n");
+        return out;
+    }
+    for line in missing.drain(..).rev() {
+        lines.insert(insert_at, line);
+    }
+    let mut out = lines.join("\r\n");
+    out.push_str("\r\n");
+    out
+}
+
+fn userform_caption_from_export(text: &str) -> Option<String> {
+    text.replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .lines()
+        .find_map(|line| {
+            let trimmed = line.trim();
+            let lower = trimmed.to_ascii_lowercase();
+            if !lower.starts_with("caption") {
+                return None;
+            }
+            let (_, value) = trimmed.split_once('=')?;
+            let value = value.trim().trim_matches('"').trim();
+            (!value.is_empty()).then(|| value.to_string())
+        })
 }
 
 fn has_attribute(lines: &[String], name: &str) -> bool {
@@ -781,6 +940,52 @@ mod tests {
     }
 
     #[test]
+    fn imported_userform_source_strips_designer_wrapper_and_adds_attributes() {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ooxml-vba-userform-source-{}-{suffix}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let path = temp_dir.join("Dialog.frm");
+        fs::write(
+            &path,
+            "VERSION 5.00\r\nBegin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} Dialog \r\n   Caption         =   \"Agent Dialog\"\r\nEnd\r\nAttribute VB_Name = \"Dialog\"\r\nPrivate Sub UserForm_Initialize()\r\nEnd Sub\r\n",
+        )
+        .expect("write form");
+
+        let input = read_source_module(&path.to_string_lossy()).expect("read userform module");
+        let source = String::from_utf8(input.module.source).expect("source utf8");
+
+        assert_eq!(input.module.kind, VbaModuleKind::UserForm);
+        assert_eq!(input.module.name, "Dialog");
+        assert_eq!(
+            input.module.user_form.as_ref().unwrap().caption,
+            "Agent Dialog"
+        );
+        assert!(source.starts_with("Attribute VB_Name = \"Dialog\"\r\n"));
+        assert!(source.contains("Private Sub UserForm_Initialize()"));
+        assert!(!source.contains("VERSION 5.00"));
+        assert!(source.contains("Attribute VB_Base = \"0{F8A47041-B2A6-11CE-8027-00AA00611080}\""));
+        assert!(source.contains("Attribute VB_PredeclaredId = True"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn frx_sidecars_are_refused_by_pure_authoring() {
+        let err = source_kind_from_path("Dialog.frx").expect_err("frx refusal");
+        assert_eq!(err.code, "unsupported_type");
+        assert!(
+            err.message.contains(".frx sidecars are not supported"),
+            "unexpected .frx error: {err:?}"
+        );
+    }
+
+    #[test]
     fn xlsx_class_authoring_synthesizes_excel_host_documents() {
         let suffix = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -809,6 +1014,38 @@ mod tests {
         assert_eq!(project.project.modules[1].kind, VbaModuleKind::Document);
         assert_eq!(project.project.modules[2].name, "Worker");
         assert_eq!(project.project.modules[2].kind, VbaModuleKind::Class);
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn xlsx_userform_authoring_synthesizes_excel_host_documents() {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ooxml-vba-userform-host-docs-{}-{suffix}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let form_path = temp_dir.join("Dialog.frm");
+        fs::write(
+            &form_path,
+            "VERSION 5.00\r\nBegin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} Dialog \r\nEnd\r\nAttribute VB_Name = \"Dialog\"\r\nPrivate Sub UserForm_Initialize()\r\nEnd Sub\r\n",
+        )
+        .expect("write form source");
+
+        let project =
+            build_bin_from_sources(Some("xlsx"), &[form_path.to_string_lossy().to_string()])
+                .expect("build userform project");
+
+        assert_eq!(project.project.modules.len(), 3);
+        assert_eq!(project.project.modules[0].name, "ThisWorkbook");
+        assert_eq!(project.project.modules[0].kind, VbaModuleKind::Document);
+        assert_eq!(project.project.modules[1].name, "Sheet1");
+        assert_eq!(project.project.modules[1].kind, VbaModuleKind::Document);
+        assert_eq!(project.project.modules[2].name, "Dialog");
+        assert_eq!(project.project.modules[2].kind, VbaModuleKind::UserForm);
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
