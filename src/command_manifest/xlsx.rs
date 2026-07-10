@@ -82,6 +82,18 @@ pub(super) enum XlsxCommandId {
     DataValidationsCreate,
     DataValidationsUpdate,
     DataValidationsDelete,
+    HyperlinksList,
+    HyperlinksShow,
+    HyperlinksAdd,
+    HyperlinksUpdate,
+    HyperlinksDelete,
+    FiltersSortsShow,
+    FiltersSortsSetAutofilter,
+    FiltersSortsClearAutofilter,
+    FiltersSortsAddColumnFilter,
+    FiltersSortsClearColumnFilter,
+    FiltersSortsSetSort,
+    FiltersSortsClearSort,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {

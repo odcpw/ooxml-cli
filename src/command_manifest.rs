@@ -384,6 +384,37 @@ mod tests {
     }
 
     #[test]
+    fn current_xlsx_shadow_is_a_contiguous_legacy_prefix_and_unique_stable() {
+        let start = core::command_specs().len() + pptx::command_specs().len();
+        let first = xlsx::command_specs();
+        let second = xlsx::command_specs();
+        let legacy = crate::capabilities::capability_commands();
+        let end = start + first.len();
+
+        assert_segment_matches_legacy(&first, &legacy[start..end]);
+        assert_eq!(
+            first
+                .iter()
+                .map(|spec| spec.id)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            first.len()
+        );
+        assert_eq!(
+            first
+                .iter()
+                .map(|spec| spec.path)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            first.len()
+        );
+        assert_eq!(
+            first.iter().map(capability_value).collect::<Vec<_>>(),
+            second.iter().map(capability_value).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn core_ids_paths_and_repeated_builds_are_unique_and_stable() {
         let first = core::command_specs();
         let second = core::command_specs();
