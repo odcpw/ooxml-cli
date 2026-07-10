@@ -233,12 +233,12 @@ The execution model must not contain function pointers or protocol handlers:
 enum ExecutionSupport {
     DirectOnly { reason: Option<&'static str> },
     ServeInspect { reason: Option<&'static str> },
-    ServeMutation,
+    ServeMutation { reason: Option<&'static str> },
     GroupOnly { reason: Option<&'static str> },
 }
 ```
 
-The optional reason mirrors the existing wire exactly: `None` must serialize with the current omission behavior, and `Some` must preserve the exact legacy text. In particular, do not invent a reason for a `DirectOnly` entry whose capability object currently omits `opIneligibleReason` merely to strengthen an internal invariant.
+The optional reason mirrors the existing wire exactly: `None` must serialize with the current omission behavior, and `Some` must preserve the exact legacy text. Advisory reason text is orthogonal to mutation compatibility: a `ServeMutation` remains operation-compatible whether its exact wire reason is absent or present. In particular, do not invent a reason for any entry whose capability object currently omits `opIneligibleReason` merely to strengthen an internal invariant.
 
 Handlers remain in their current CLI/Serve modules. Independently exhaustive tests prove that metadata classifications and routes agree in both directions. This prevents the manifest from becoming a service locator, keeps protocol dependencies out of capability metadata, and lets routing be rolled back without undoing the registry.
 
@@ -372,7 +372,7 @@ Add focused tests before replacing each source of truth. C2 installs every immed
 
 1. **Capability exactness**: exact full-document serialized output plus exact JSON value comparisons, including order and omission checks for group, direct-only, inspect, and mutation shapes. At C5, retain the legacy producer only under `#[cfg(test)]` inside the capability module and compare it with the typed producer in a capability-module unit test, where private helpers remain accessible. Independently run a black-box integration golden against the compiled `ooxml --json capabilities` binary so the production wiring is proven without `cfg(test)` internals.
 2. **Registry/capability uniqueness**: canonical paths and `CommandId`s are unique. Alias collision tests remain namespace-specific in their current owners; there is no generic manifest alias set to validate.
-3. **Execution honesty**: all 70 operation-compatible mutations have one mutation classification and one row in the Serve-owned mutation table; all 42 canonical Serve inspect commands have one `ServeInspect` classification and one row in the Serve-owned inspect table; the temporary 23 `wire_promised` cases exactly match capability prose; every `DirectOnly`/group reason matches the legacy wire as exact `Some(text)` or omitted `None`.
+3. **Execution honesty**: all 70 operation-compatible mutations have one mutation classification and one row in the Serve-owned mutation table; all 42 canonical Serve inspect commands have one `ServeInspect` classification and one row in the Serve-owned inspect table; the temporary 23 `wire_promised` cases exactly match capability prose; every execution reason, including mutation advisories, matches the legacy wire as exact `Some(text)` or omitted `None`.
 4. **Help exactness**: build an exhaustive byte-level corpus covering root help; every canonical group topic; every canonical executable leaf reachable by help; every help alias from `GROUP_TOPICS`; and unknown, ambiguous, and operation-ineligible help paths. Record argv, stdout bytes, stderr bytes, and exit status. Compare bytes, including whitespace and final newlines, rather than normalized strings. The corpus is generated/enumerated from the existing help owners before any consumer changes and is not refreshed merely because an implementation output changed.
 5. **Completion exactness**: exact output for Bash, Fish, PowerShell, and Zsh, including order and trailing newline.
 6. **CLI process contract**: raw first-token `serve`/`mcp` selection, global flag placement, stdout/stderr, text newline normalization, JSON errors, and exit codes.

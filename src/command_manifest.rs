@@ -39,7 +39,7 @@ struct FlagSpec {
 enum ExecutionSupport {
     DirectOnly { reason: Option<&'static str> },
     ServeInspect { reason: Option<&'static str> },
-    ServeMutation,
+    ServeMutation { reason: Option<&'static str> },
     GroupOnly { reason: Option<&'static str> },
 }
 
@@ -102,7 +102,7 @@ fn capability_value_from_parts<'a>(
     flag_constraints: Option<&'a Value>,
 ) -> Value {
     let (op_compatible, op_ineligible_reason) = match execution {
-        ExecutionSupport::ServeMutation => (true, None),
+        ExecutionSupport::ServeMutation { reason } => (true, *reason),
         ExecutionSupport::DirectOnly { reason }
         | ExecutionSupport::ServeInspect { reason }
         | ExecutionSupport::GroupOnly { reason } => (false, *reason),
@@ -236,16 +236,33 @@ mod tests {
             );
             assert_eq!(value["opCompatible"], false);
         }
-        let mutation = capability_value_from_parts(
+        let mutation_without_reason = capability_value_from_parts(
             &["test-only"],
             "test-only",
             "Test-only DTO input.",
             &[],
             &[],
-            &ExecutionSupport::ServeMutation,
+            &ExecutionSupport::ServeMutation { reason: None },
             None,
         );
-        assert_eq!(mutation["opCompatible"], true);
-        assert!(mutation.get("opIneligibleReason").is_none());
+        assert_eq!(mutation_without_reason["opCompatible"], true);
+        assert!(mutation_without_reason.get("opIneligibleReason").is_none());
+
+        let mutation_with_reason = capability_value_from_parts(
+            &["test-only"],
+            "test-only",
+            "Test-only DTO input.",
+            &[],
+            &[],
+            &ExecutionSupport::ServeMutation {
+                reason: Some("exact mutation advisory"),
+            },
+            None,
+        );
+        assert_eq!(mutation_with_reason["opCompatible"], true);
+        assert_eq!(
+            mutation_with_reason["opIneligibleReason"],
+            "exact mutation advisory"
+        );
     }
 }

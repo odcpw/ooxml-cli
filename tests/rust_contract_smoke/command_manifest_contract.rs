@@ -1,6 +1,6 @@
 use super::*;
 use serde::Deserialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 const HELP_CORPUS_JSON: &str =
     include_str!("../../testdata/golden/command-manifest-contract/help-corpus.json");
@@ -90,6 +90,38 @@ fn capabilities_match_exact_raw_bytes_and_frozen_contract_shapes() {
             .filter(|command| command["opCompatible"] == true)
             .count(),
         70
+    );
+    let compatible_advisories = commands
+        .iter()
+        .filter(|command| command["opCompatible"] == true)
+        .filter_map(|command| {
+            Some((
+                command["path"].as_str()?,
+                command["opIneligibleReason"].as_str()?,
+            ))
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        compatible_advisories,
+        BTreeMap::from([
+            (
+                "ooxml docx tables create",
+                "append-only first-class authoring; values must be a rectangular JSON matrix",
+            ),
+            (
+                "ooxml repair normalize",
+                "narrow repair command; run validate/conformance after normalization before handing the file to a user",
+            ),
+            (
+                "ooxml vba create",
+                "preferred cross-platform macro authoring path; legacy Office-COM create remains available without --pure for XLSM/PPTM seeds",
+            ),
+            (
+                "ooxml vba rebuild",
+                "safe module-set replacement path; rebuilds a fresh source-only vbaProject.bin rather than patching Office-authored binary metadata",
+            ),
+        ]),
+        "only the four frozen operation-compatible commands carry advisory reasons"
     );
 
     let inspect_promises = commands
