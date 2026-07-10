@@ -21,3 +21,6 @@ testdata/pptx/** binary diff=binary merge=binary -text
 *.py text eol=lf
 *.sh text eol=lf
 Makefile text eol=lf
+
+# Command-manifest contract goldens are raw-byte text fixtures on every platform.
+testdata/golden/command-manifest-contract/** text eol=lf

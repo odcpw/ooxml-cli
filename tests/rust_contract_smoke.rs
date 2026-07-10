@@ -18,13 +18,28 @@ fn run_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
     run_ooxml_with_env(args, &[])
 }
 
-fn run_ooxml_raw(args: &[&str]) -> (i32, String, String) {
+struct ProcessOutput {
+    code: i32,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+fn run_ooxml_process(args: &[&str]) -> ProcessOutput {
     let output = Command::new(env!("CARGO_BIN_EXE_ooxml"))
         .args(args)
         .output()
         .expect("run Rust ooxml");
+    ProcessOutput {
+        code: output.status.code().unwrap_or(-1),
+        stdout: output.stdout,
+        stderr: output.stderr,
+    }
+}
+
+fn run_ooxml_raw(args: &[&str]) -> (i32, String, String) {
+    let output = run_ooxml_process(args);
     (
-        output.status.code().unwrap_or(-1),
+        output.code,
         String::from_utf8_lossy(&output.stdout).into_owned(),
         String::from_utf8_lossy(&output.stderr).into_owned(),
     )
@@ -1140,6 +1155,9 @@ mod capabilities;
 
 #[path = "rust_contract_smoke/utility.rs"]
 mod utility;
+
+#[path = "rust_contract_smoke/command_manifest_contract.rs"]
+mod command_manifest_contract;
 
 #[path = "rust_contract_smoke/conformance_image_payloads.rs"]
 mod conformance_image_payloads;

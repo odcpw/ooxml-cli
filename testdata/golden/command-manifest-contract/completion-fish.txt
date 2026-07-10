@@ -1,0 +1,25 @@
+# fish completion for ooxml
+complete -c ooxml -n '__fish_use_subcommand' -a apply
+complete -c ooxml -n '__fish_use_subcommand' -a agent
+complete -c ooxml -n '__fish_use_subcommand' -a agent-triage
+complete -c ooxml -n '__fish_use_subcommand' -a capabilities
+complete -c ooxml -n '__fish_use_subcommand' -a completion
+complete -c ooxml -n '__fish_use_subcommand' -a conformance
+complete -c ooxml -n '__fish_use_subcommand' -a convert
+complete -c ooxml -n '__fish_use_subcommand' -a diff
+complete -c ooxml -n '__fish_use_subcommand' -a doctor
+complete -c ooxml -n '__fish_use_subcommand' -a docx
+complete -c ooxml -n '__fish_use_subcommand' -a find
+complete -c ooxml -n '__fish_use_subcommand' -a help
+complete -c ooxml -n '__fish_use_subcommand' -a inspect
+complete -c ooxml -n '__fish_use_subcommand' -a mcp
+complete -c ooxml -n '__fish_use_subcommand' -a pptx
+complete -c ooxml -n '__fish_use_subcommand' -a repair
+complete -c ooxml -n '__fish_use_subcommand' -a robot-docs
+complete -c ooxml -n '__fish_use_subcommand' -a serve
+complete -c ooxml -n '__fish_use_subcommand' -a template
+complete -c ooxml -n '__fish_use_subcommand' -a validate
+complete -c ooxml -n '__fish_use_subcommand' -a vba
+complete -c ooxml -n '__fish_use_subcommand' -a verify
+complete -c ooxml -n '__fish_use_subcommand' -a version
+complete -c ooxml -n '__fish_use_subcommand' -a xlsx

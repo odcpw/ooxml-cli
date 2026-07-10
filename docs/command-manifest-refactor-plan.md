@@ -44,7 +44,9 @@ All measurements below were taken from baseline commit `63c703c` before implemen
 | Serve inspect canonical command labels, before C1 | 39 |
 | Serve inspect alias labels, before C1 | 6 |
 | Serve inspect total accepted labels, before C1 | 45 |
-| Entries in `GROUP_TOPICS` | 98 |
+| Tuple rows in `GROUP_TOPICS` | 50 |
+| Declared `GROUP_TOPICS` alias-owner records | 37 |
+| Deduplicated, non-self `GROUP_TOPICS` alias argv | 35 |
 | Ordered top-level completion tokens | 24 |
 | Capability/object family filters in the surveyed filter table | 21 |
 | Alias entries across the surveyed hand-maintained tables | 32 (scope-local census, not globally unique aliases) |

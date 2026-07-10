@@ -1,0 +1,419 @@
+{
+  "schemaVersion": 1,
+  "topics": [
+    {
+      "path": [
+        "completion"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "convert"
+      ],
+      "aliases": [
+        "package"
+      ]
+    },
+    {
+      "path": [
+        "repair"
+      ],
+      "aliases": [
+        "package"
+      ]
+    },
+    {
+      "path": [
+        "template"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "template",
+        "profile"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "conformance"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "docx"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "docx",
+        "comments"
+      ],
+      "aliases": [
+        "comment"
+      ]
+    },
+    {
+      "path": [
+        "docx",
+        "fields"
+      ],
+      "aliases": [
+        "field"
+      ]
+    },
+    {
+      "path": [
+        "docx",
+        "headers"
+      ],
+      "aliases": [
+        "header"
+      ]
+    },
+    {
+      "path": [
+        "docx",
+        "footers"
+      ],
+      "aliases": [
+        "footer"
+      ]
+    },
+    {
+      "path": [
+        "docx",
+        "images"
+      ],
+      "aliases": [
+        "image"
+      ]
+    },
+    {
+      "path": [
+        "docx",
+        "paragraphs"
+      ],
+      "aliases": [
+        "paragraph"
+      ]
+    },
+    {
+      "path": [
+        "docx",
+        "styles"
+      ],
+      "aliases": [
+        "style"
+      ]
+    },
+    {
+      "path": [
+        "docx",
+        "tables"
+      ],
+      "aliases": [
+        "table"
+      ]
+    },
+    {
+      "path": [
+        "pptx"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "pptx",
+        "animations"
+      ],
+      "aliases": [
+        "animation"
+      ]
+    },
+    {
+      "path": [
+        "pptx",
+        "charts"
+      ],
+      "aliases": [
+        "chart"
+      ]
+    },
+    {
+      "path": [
+        "pptx",
+        "comments"
+      ],
+      "aliases": [
+        "comment"
+      ]
+    },
+    {
+      "path": [
+        "pptx",
+        "extract"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "pptx",
+        "layouts"
+      ],
+      "aliases": [
+        "layout"
+      ]
+    },
+    {
+      "path": [
+        "pptx",
+        "masters"
+      ],
+      "aliases": [
+        "master"
+      ]
+    },
+    {
+      "path": [
+        "pptx",
+        "media"
+      ],
+      "aliases": [
+        "media"
+      ]
+    },
+    {
+      "path": [
+        "pptx",
+        "notes"
+      ],
+      "aliases": [
+        "note"
+      ]
+    },
+    {
+      "path": [
+        "pptx",
+        "place"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "pptx",
+        "replace"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "pptx",
+        "shapes"
+      ],
+      "aliases": [
+        "shape"
+      ]
+    },
+    {
+      "path": [
+        "pptx",
+        "slides"
+      ],
+      "aliases": [
+        "slide"
+      ]
+    },
+    {
+      "path": [
+        "pptx",
+        "template"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "pptx",
+        "text"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "xlsx"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "xlsx",
+        "cells"
+      ],
+      "aliases": [
+        "cell"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "charts"
+      ],
+      "aliases": [
+        "chart"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "cols"
+      ],
+      "aliases": [
+        "col"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "colwidths"
+      ],
+      "aliases": [
+        "column-width"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "comments"
+      ],
+      "aliases": [
+        "comment"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "conditional-formats"
+      ],
+      "aliases": [
+        "conditional-format",
+        "conditional-formatting",
+        "cf"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "data-validations"
+      ],
+      "aliases": [
+        "data-validation",
+        "dv"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "filters-sorts"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "xlsx",
+        "freeze"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "xlsx",
+        "hyperlinks"
+      ],
+      "aliases": [
+        "hyperlink"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "names"
+      ],
+      "aliases": [
+        "name"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "pivots"
+      ],
+      "aliases": [
+        "pivot"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "ranges"
+      ],
+      "aliases": [
+        "range"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "rowheights"
+      ],
+      "aliases": [
+        "row-height"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "rows"
+      ],
+      "aliases": [
+        "row"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "sheets"
+      ],
+      "aliases": [
+        "sheet"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "tables"
+      ],
+      "aliases": [
+        "table"
+      ]
+    },
+    {
+      "path": [
+        "xlsx",
+        "workbook"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "xlsx",
+        "workbook",
+        "metadata"
+      ],
+      "aliases": []
+    }
+  ]
+}

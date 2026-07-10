@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "serve-eof",
+      "category": "raw-first",
+      "argv": [
+        "serve"
+      ],
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "serve-json-eof",
+      "category": "raw-first",
+      "argv": [
+        "serve",
+        "--json"
+      ],
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "mcp-eof",
+      "category": "raw-first",
+      "argv": [
+        "mcp"
+      ],
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "mcp-json-eof",
+      "category": "raw-first",
+      "argv": [
+        "mcp",
+        "--json"
+      ],
+      "status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "json-before-serve",
+      "category": "raw-first-order",
+      "argv": [
+        "--json",
+        "serve"
+      ],
+      "status": 2,
+      "stdout": "",
+      "stderr": "{\"error\":{\"code\":\"invalid_args\",\"exitCode\":2,\"message\":\"unsupported Rust-port contract command: serve\"}}\n"
+    },
+    {
+      "name": "json-before-mcp",
+      "category": "raw-first-order",
+      "argv": [
+        "--json",
+        "mcp"
+      ],
+      "status": 2,
+      "stdout": "",
+      "stderr": "{\"error\":{\"code\":\"invalid_args\",\"exitCode\":2,\"message\":\"unsupported Rust-port contract command: mcp\"}}\n"
+    },
+    {
+      "name": "json-leading",
+      "category": "global-json",
+      "argv": [
+        "--json",
+        "version"
+      ],
+      "status": 0,
+      "stdout": "{\"tool\":\"ooxml\",\"version\":\"0.1.0\"}\n",
+      "stderr": ""
+    },
+    {
+      "name": "json-trailing",
+      "category": "global-json",
+      "argv": [
+        "version",
+        "--json"
+      ],
+      "status": 0,
+      "stdout": "{\"tool\":\"ooxml\",\"version\":\"0.1.0\"}\n",
+      "stderr": ""
+    },
+    {
+      "name": "format-json-leading",
+      "category": "format-placement",
+      "argv": [
+        "--format",
+        "json",
+        "version"
+      ],
+      "status": 0,
+      "stdout": "{\"tool\":\"ooxml\",\"version\":\"0.1.0\"}\n",
+      "stderr": ""
+    },
+    {
+      "name": "format-json-local",
+      "category": "format-placement",
+      "argv": [
+        "version",
+        "--format",
+        "json"
+      ],
+      "status": 2,
+      "stdout": "",
+      "stderr": "{\"error\":{\"code\":\"invalid_args\",\"exitCode\":2,\"message\":\"unsupported Rust-port contract command: version --format json\"}}\n"
+    },
+    {
+      "name": "strict-leading",
+      "category": "strict-placement",
+      "argv": [
+        "--json",
+        "--strict",
+        "validate",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx"
+      ],
+      "status": 0,
+      "stdout": "{\"file\":\"testdata/xlsx/minimal-workbook/workbook.xlsx\",\"status\":\"valid\",\"summary\":{\"errors\":0,\"info\":0,\"warnings\":0},\"valid\":true}\n",
+      "stderr": ""
+    },
+    {
+      "name": "strict-local",
+      "category": "strict-placement",
+      "argv": [
+        "--json",
+        "validate",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--strict"
+      ],
+      "status": 0,
+      "stdout": "{\"file\":\"testdata/xlsx/minimal-workbook/workbook.xlsx\",\"status\":\"valid\",\"summary\":{\"errors\":0,\"info\":0,\"warnings\":0},\"valid\":true}\n",
+      "stderr": ""
+    },
+    {
+      "name": "text-success-newline",
+      "category": "text-output",
+      "argv": [
+        "completion",
+        "bash"
+      ],
+      "status": 0,
+      "stdout": "# bash completion for ooxml\n_ooxml()\n{\n    local cur=\"${COMP_WORDS[COMP_CWORD]}\"\n    local commands=\"apply agent agent-triage capabilities completion conformance convert diff doctor docx find help inspect mcp pptx repair robot-docs serve template validate vba verify version xlsx\"\n    if [[ $COMP_CWORD -eq 1 ]]; then\n        COMPREPLY=( $(compgen -W \"$commands\" -- \"$cur\") )\n    else\n        COMPREPLY=()\n    fi\n}\ncomplete -F _ooxml ooxml\n",
+      "stderr": ""
+    },
+    {
+      "name": "text-local-format",
+      "category": "format-placement",
+      "argv": [
+        "robot-docs",
+        "guide",
+        "--format",
+        "text"
+      ],
+      "status": 0,
+      "stdout": "OOXML robot guide\n\nPrinciples:\n- Use --json for machine-readable output whenever a command supports it.\n- Inspect before mutating and keep readback commands from mutation output.\n- Prefer stable selectors, handles, hashes, and generated command fields over positional guesses.\n- Reuse generated command fields for validation and readback.\n- Use --in-place only when the user explicitly asks to overwrite the input.\n\nDiscovery:\n- ooxml --json capabilities\n- ooxml --json capabilities --for slides\n- ooxml --json capabilities --for conditional-formats\n- ooxml --json capabilities --for modules\n- ooxml agent-triage\n- ooxml robot-docs guide\n- ooxml --json inspect <file>\n- ooxml --json find <query> <file>\n- ooxml --json doctor health\n  Filters: pptx, xlsx, docx, vba, apply, convert, diff, repair, template, capabilities, help, doctor, find, robot-docs, agent, agent-triage, completion, conformance, serve, mcp, version, package, template, slide, shape, animation, master, layout, placeholder, sheet, range, form, conditional-format, data-validation, cell, hyperlink, table, pivot, name, block, paragraph, style, theme, comment, chart, field, header, footer, image, media, module\n  Filter aliases: slides -> slide, shapes -> shape, animations -> animation, masters -> master, layouts -> layout, placeholders -> placeholder, sheets -> sheet, ranges -> range, forms -> form, conditional-formats -> conditional-format, conditional-formatting -> conditional-format, cf -> conditional-format, data-validations -> data-validation, dv -> data-validation, cells -> cell, hyperlinks -> hyperlink, tables -> table, pivots -> pivot, names -> name, blocks -> block, paragraphs -> paragraph, styles -> style, themes -> theme, comments -> comment, charts -> chart, fields -> field, headers -> header, footers -> footer, images -> image, modules -> module, macros -> module, macro -> module\n\nPreflight and release proof:\n- ooxml validate --strict <file>\n- ooxml --json doctor\n- ooxml --json doctor capabilities\n- ooxml --json conformance coverage\n- ooxml --json conformance check <file>\n- ooxml --json repair normalize <file> --out <normalized-file>\n\nPPTX read:\n- ooxml --json pptx slides list <file>\n- ooxml --json pptx shapes show <file> --slide <n>\n- ooxml --json pptx tables show <file> --slide <n>\n- ooxml --json pptx charts list <file>\n- ooxml --json pptx extract text <file>\n- ooxml --json pptx extract notes <file>\n\nPPTX mutate:\n- ooxml --json pptx replace text-occurrences <file> --match-text <old> --new-text <new> --out <file>\n- ooxml --json pptx tables set-cell <file> --slide <n> --target <selector> --row <n> --col <n> --text <text> --out <file>\n- ooxml --json pptx notes set <file> --slide <n> --text <text> --out <file>\n- ooxml --json pptx shapes set-bounds <file> --slide <n> --target <selector> --bounds <json> --out <file>\n\nXLSX read:\n- ooxml --json xlsx sheets list <file>\n- ooxml --json xlsx cells extract <file>\n- ooxml --json xlsx ranges export <file> --sheet <sheet> --range <range>\n- ooxml --json xlsx names list <file>\n- ooxml --json xlsx tables list <file>\n- ooxml --json xlsx charts list <file>\n\nXLSX mutate:\n- ooxml --json xlsx cells set <file> --sheet <sheet> --cell <cell> --value <value> --out <file>\n- ooxml --json xlsx ranges set <file> --sheet <sheet> --range <range> --values <json> --out <file>\n- ooxml --json xlsx names add <file> --name <name> --ref <ref> --out <file>\n- ooxml --json xlsx tables append-rows <file> --table <table> --values <json> --out <file>\n\nDOCX read:\n- ooxml --json docx text <file>\n- ooxml --json docx blocks show <file>\n- ooxml --json docx tables show <file>\n- ooxml --json docx comments list <file>\n- ooxml --json docx images list <file>\n\nDOCX mutate:\n- ooxml --json docx paragraphs append <file> --text <text> --out <file>\n- ooxml --json docx paragraphs set <file> --index <n> --text <text> --out <file>\n- ooxml --json docx tables create <file> --values <json-matrix> --out <file>\n- ooxml --json docx tables set-cell <file> --table <n> --row <n> --col <n> --expect-hash <hash> --text <text> --out <file>\n- ooxml --json docx comments add <file> --anchor-block <n> --author <name> --text <text> --out <file>\n\nVBA package operations:\n- ooxml --json vba inspect <file>\n- ooxml --json vba build-bin --family xlsx|pptx|docx --source <module.bas> --out <vbaProject.bin>\n- ooxml --json vba create <file.xlsx|file.pptx|file.docx> --pure --source <module.bas> --out <file.xlsm|file.pptm|file.docm>\n- ooxml --json vba list <file>\n- ooxml --json vba extract <file> --out-dir <dir>\n- ooxml --json vba attach <file> --bin <vbaProject.bin> --out <file>\n- ooxml --json vba remove <file> --out <file>\n- ooxml --json vba run-smoke [file.xlsm] --smoke-mode Standard|Class --out-dir <proof-dir>\n- ooxml --json convert xlsm-to-xlsx <file.xlsm> --out <file.xlsx>\n\nWarnings:\n- Do not run mutation commands without an explicit --out, --dry-run, or user-approved --in-place path.\n- Do not assume legacy-only commands exist in the Rust CLI; use capabilities before invoking a command family.\n- Use vba office-check for macro package open proof; on Windows it prefers Microsoft Office COM, but it does not execute macros.\n- Use vba run-smoke only when the user explicitly asks for macro execution proof; it runs a harmless Excel VBA macro through desktop Office COM.\n",
+      "stderr": ""
+    },
+    {
+      "name": "text-leading-format",
+      "category": "format-placement",
+      "argv": [
+        "--format",
+        "text",
+        "robot-docs",
+        "guide"
+      ],
+      "status": 0,
+      "stdout": "OOXML robot guide\n\nPrinciples:\n- Use --json for machine-readable output whenever a command supports it.\n- Inspect before mutating and keep readback commands from mutation output.\n- Prefer stable selectors, handles, hashes, and generated command fields over positional guesses.\n- Reuse generated command fields for validation and readback.\n- Use --in-place only when the user explicitly asks to overwrite the input.\n\nDiscovery:\n- ooxml --json capabilities\n- ooxml --json capabilities --for slides\n- ooxml --json capabilities --for conditional-formats\n- ooxml --json capabilities --for modules\n- ooxml agent-triage\n- ooxml robot-docs guide\n- ooxml --json inspect <file>\n- ooxml --json find <query> <file>\n- ooxml --json doctor health\n  Filters: pptx, xlsx, docx, vba, apply, convert, diff, repair, template, capabilities, help, doctor, find, robot-docs, agent, agent-triage, completion, conformance, serve, mcp, version, package, template, slide, shape, animation, master, layout, placeholder, sheet, range, form, conditional-format, data-validation, cell, hyperlink, table, pivot, name, block, paragraph, style, theme, comment, chart, field, header, footer, image, media, module\n  Filter aliases: slides -> slide, shapes -> shape, animations -> animation, masters -> master, layouts -> layout, placeholders -> placeholder, sheets -> sheet, ranges -> range, forms -> form, conditional-formats -> conditional-format, conditional-formatting -> conditional-format, cf -> conditional-format, data-validations -> data-validation, dv -> data-validation, cells -> cell, hyperlinks -> hyperlink, tables -> table, pivots -> pivot, names -> name, blocks -> block, paragraphs -> paragraph, styles -> style, themes -> theme, comments -> comment, charts -> chart, fields -> field, headers -> header, footers -> footer, images -> image, modules -> module, macros -> module, macro -> module\n\nPreflight and release proof:\n- ooxml validate --strict <file>\n- ooxml --json doctor\n- ooxml --json doctor capabilities\n- ooxml --json conformance coverage\n- ooxml --json conformance check <file>\n- ooxml --json repair normalize <file> --out <normalized-file>\n\nPPTX read:\n- ooxml --json pptx slides list <file>\n- ooxml --json pptx shapes show <file> --slide <n>\n- ooxml --json pptx tables show <file> --slide <n>\n- ooxml --json pptx charts list <file>\n- ooxml --json pptx extract text <file>\n- ooxml --json pptx extract notes <file>\n\nPPTX mutate:\n- ooxml --json pptx replace text-occurrences <file> --match-text <old> --new-text <new> --out <file>\n- ooxml --json pptx tables set-cell <file> --slide <n> --target <selector> --row <n> --col <n> --text <text> --out <file>\n- ooxml --json pptx notes set <file> --slide <n> --text <text> --out <file>\n- ooxml --json pptx shapes set-bounds <file> --slide <n> --target <selector> --bounds <json> --out <file>\n\nXLSX read:\n- ooxml --json xlsx sheets list <file>\n- ooxml --json xlsx cells extract <file>\n- ooxml --json xlsx ranges export <file> --sheet <sheet> --range <range>\n- ooxml --json xlsx names list <file>\n- ooxml --json xlsx tables list <file>\n- ooxml --json xlsx charts list <file>\n\nXLSX mutate:\n- ooxml --json xlsx cells set <file> --sheet <sheet> --cell <cell> --value <value> --out <file>\n- ooxml --json xlsx ranges set <file> --sheet <sheet> --range <range> --values <json> --out <file>\n- ooxml --json xlsx names add <file> --name <name> --ref <ref> --out <file>\n- ooxml --json xlsx tables append-rows <file> --table <table> --values <json> --out <file>\n\nDOCX read:\n- ooxml --json docx text <file>\n- ooxml --json docx blocks show <file>\n- ooxml --json docx tables show <file>\n- ooxml --json docx comments list <file>\n- ooxml --json docx images list <file>\n\nDOCX mutate:\n- ooxml --json docx paragraphs append <file> --text <text> --out <file>\n- ooxml --json docx paragraphs set <file> --index <n> --text <text> --out <file>\n- ooxml --json docx tables create <file> --values <json-matrix> --out <file>\n- ooxml --json docx tables set-cell <file> --table <n> --row <n> --col <n> --expect-hash <hash> --text <text> --out <file>\n- ooxml --json docx comments add <file> --anchor-block <n> --author <name> --text <text> --out <file>\n\nVBA package operations:\n- ooxml --json vba inspect <file>\n- ooxml --json vba build-bin --family xlsx|pptx|docx --source <module.bas> --out <vbaProject.bin>\n- ooxml --json vba create <file.xlsx|file.pptx|file.docx> --pure --source <module.bas> --out <file.xlsm|file.pptm|file.docm>\n- ooxml --json vba list <file>\n- ooxml --json vba extract <file> --out-dir <dir>\n- ooxml --json vba attach <file> --bin <vbaProject.bin> --out <file>\n- ooxml --json vba remove <file> --out <file>\n- ooxml --json vba run-smoke [file.xlsm] --smoke-mode Standard|Class --out-dir <proof-dir>\n- ooxml --json convert xlsm-to-xlsx <file.xlsm> --out <file.xlsx>\n\nWarnings:\n- Do not run mutation commands without an explicit --out, --dry-run, or user-approved --in-place path.\n- Do not assume legacy-only commands exist in the Rust CLI; use capabilities before invoking a command family.\n- Use vba office-check for macro package open proof; on Windows it prefers Microsoft Office COM, but it does not execute macros.\n- Use vba run-smoke only when the user explicitly asks for macro execution proof; it runs a harmless Excel VBA macro through desktop Office COM.\n",
+      "stderr": ""
+    },
+    {
+      "name": "json-error-newline",
+      "category": "json-error",
+      "argv": [
+        "--json",
+        "definitely-not-a-command"
+      ],
+      "status": 2,
+      "stdout": "",
+      "stderr": "{\"error\":{\"code\":\"invalid_args\",\"exitCode\":2,\"message\":\"unsupported Rust-port contract command: definitely-not-a-command\"}}\n"
+    },
+    {
+      "name": "json-typo-error",
+      "category": "json-error",
+      "argv": [
+        "--jsno",
+        "version"
+      ],
+      "status": 2,
+      "stdout": "",
+      "stderr": "{\"error\":{\"code\":\"invalid_args\",\"exitCode\":2,\"message\":\"unknown global flag: --jsno; did you mean --json? Try: ooxml --json version\"}}\n"
+    },
+    {
+      "name": "format-text-error",
+      "category": "json-error",
+      "argv": [
+        "--format",
+        "text",
+        "inspect",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx"
+      ],
+      "status": 2,
+      "stdout": "",
+      "stderr": "{\"error\":{\"code\":\"invalid_args\",\"exitCode\":2,\"message\":\"text output is not supported for this command; use --json or --format json\"}}\n"
+    }
+  ]
+}

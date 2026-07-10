@@ -1,0 +1,8 @@
+#compdef ooxml
+# zsh completion for ooxml
+_ooxml() {
+  local -a commands
+  commands=(apply agent agent-triage capabilities completion conformance convert diff doctor docx find help inspect mcp pptx repair robot-docs serve template validate vba verify version xlsx)
+  _describe 'command' commands
+}
+compdef _ooxml ooxml

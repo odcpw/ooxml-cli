@@ -645,3 +645,27 @@ fn render_children(children: &[(String, String)]) -> String {
 fn global_flags_text() -> &'static str {
     "  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n"
 }
+
+#[cfg(test)]
+mod tests {
+    use super::GROUP_TOPICS;
+
+    #[test]
+    fn group_topics_match_committed_path_and_alias_inventory() {
+        let expected: serde_json::Value = serde_json::from_str(include_str!(
+            "../testdata/golden/command-manifest-contract/group-topics.json"
+        ))
+        .expect("GROUP_TOPICS inventory JSON");
+        let actual = GROUP_TOPICS
+            .iter()
+            .map(|(path, _, _, aliases)| {
+                serde_json::json!({
+                    "path": path,
+                    "aliases": aliases,
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(expected["schemaVersion"], 1);
+        assert_eq!(expected["topics"], serde_json::json!(actual));
+    }
+}

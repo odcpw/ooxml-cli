@@ -1,0 +1,12 @@
+# bash completion for ooxml
+_ooxml()
+{
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    local commands="apply agent agent-triage capabilities completion conformance convert diff doctor docx find help inspect mcp pptx repair robot-docs serve template validate vba verify version xlsx"
+    if [[ $COMP_CWORD -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+    else
+        COMPREPLY=()
+    fi
+}
+complete -F _ooxml ooxml
