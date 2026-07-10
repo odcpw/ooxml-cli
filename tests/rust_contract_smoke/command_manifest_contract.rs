@@ -8,6 +8,10 @@ const PROCESS_MATRIX_JSON: &str =
     include_str!("../../testdata/golden/command-manifest-contract/process-matrix.json");
 const GROUP_TOPICS_JSON: &str =
     include_str!("../../testdata/golden/command-manifest-contract/group-topics.json");
+const CAPABILITIES_JSON: &[u8] =
+    include_bytes!("../../testdata/golden/command-manifest-contract/capabilities.json");
+
+const INSPECT_PROMISE: &str = "call via inspect in serve/MCP";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,6 +53,115 @@ struct ProcessCase {
     status: i32,
     stdout: String,
     stderr: String,
+}
+
+#[test]
+fn capabilities_match_exact_raw_bytes_and_frozen_contract_shapes() {
+    let actual = run_ooxml_process(&["--json", "capabilities"]);
+    assert_eq!(actual.code, 0, "capabilities exit");
+    assert_eq!(actual.stderr, b"", "capabilities stderr");
+    assert_eq!(actual.stdout, CAPABILITIES_JSON, "capabilities stdout");
+    assert!(CAPABILITIES_JSON.ends_with(b"\n"));
+    assert!(!CAPABILITIES_JSON.ends_with(b"\n\n"));
+    assert!(!CAPABILITIES_JSON.contains(&b'\r'));
+
+    let document: Value = serde_json::from_slice(CAPABILITIES_JSON).expect("capabilities JSON");
+    let commands = document["commands"]
+        .as_array()
+        .expect("capability commands");
+    assert_eq!(commands.len(), 309);
+    let paths = commands
+        .iter()
+        .map(|command| {
+            command["path"]
+                .as_str()
+                .expect("capability path")
+                .to_string()
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        paths.len(),
+        commands.len(),
+        "capability paths must be unique"
+    );
+    assert_eq!(
+        commands
+            .iter()
+            .filter(|command| command["opCompatible"] == true)
+            .count(),
+        70
+    );
+
+    let inspect_promises = commands
+        .iter()
+        .filter(|command| {
+            command["opIneligibleReason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains(INSPECT_PROMISE))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(inspect_promises.len(), 23);
+    assert!(
+        inspect_promises
+            .iter()
+            .all(|command| command["opCompatible"] == false)
+    );
+    assert_eq!(
+        inspect_promises
+            .iter()
+            .filter(|command| {
+                command["opIneligibleReason"] == "read-only command; call via inspect in serve/MCP"
+            })
+            .count(),
+        22
+    );
+    assert_eq!(
+        command_by_path(commands, "ooxml docx tables show")["opIneligibleReason"],
+        "read-only command; call via inspect in serve/MCP; generated table hashes feed hash-guarded DOCX table mutations"
+    );
+
+    let group = command_by_path(commands, "ooxml xlsx");
+    assert_eq!(group["opCompatible"], false);
+    assert_eq!(group["localFlags"], serde_json::json!([]));
+    assert_eq!(group["targetObjectKinds"], serde_json::json!([]));
+    assert_eq!(
+        group["opIneligibleReason"],
+        "it is a command group, not a leaf mutation command"
+    );
+    assert!(group.get("flagConstraints").is_none());
+
+    let inspect = command_by_path(commands, "ooxml xlsx freeze show");
+    assert_eq!(inspect["opCompatible"], false);
+    assert_eq!(
+        inspect["opIneligibleReason"],
+        "read-only command; call via inspect in serve/MCP"
+    );
+    assert!(
+        inspect["localFlags"]
+            .as_array()
+            .is_some_and(|flags| !flags.is_empty())
+    );
+    assert!(inspect.get("flagConstraints").is_none());
+
+    let direct_only = command_by_path(commands, "ooxml pptx scaffold");
+    assert_eq!(direct_only["opCompatible"], false);
+    assert!(direct_only.get("opIneligibleReason").is_none());
+    assert!(direct_only.get("flagConstraints").is_none());
+
+    let mutation = command_by_path(commands, "ooxml xlsx cells set");
+    assert_eq!(mutation["opCompatible"], true);
+    assert!(mutation.get("opIneligibleReason").is_none());
+    assert!(mutation.get("flagConstraints").is_none());
+    assert!(
+        mutation["localFlags"]
+            .as_array()
+            .is_some_and(|flags| !flags.is_empty())
+    );
+
+    let constrained = command_by_path(commands, "ooxml xlsx conditional-formats add");
+    assert_eq!(constrained["opCompatible"], true);
+    assert!(constrained.get("opIneligibleReason").is_none());
+    assert!(constrained["flagConstraints"].is_object());
 }
 
 #[test]
@@ -335,4 +448,11 @@ fn assert_process_case(case: &ProcessCase) {
         case.name,
         args
     );
+}
+
+fn command_by_path<'a>(commands: &'a [Value], path: &str) -> &'a Value {
+    commands
+        .iter()
+        .find(|command| command["path"].as_str() == Some(path))
+        .expect("missing representative capability command")
 }

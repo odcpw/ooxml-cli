@@ -396,9 +396,35 @@ fn serve_dispatches_every_op_compatible_capability_to_validation() {
                 .to_string()
         })
         .collect::<Vec<_>>();
-    assert!(
-        !commands.is_empty(),
-        "op-compatible command inventory empty"
+    let command_set = commands.iter().cloned().collect::<BTreeSet<_>>();
+    assert_eq!(commands.len(), 70, "advertised opCompatible command count");
+    assert_eq!(
+        command_set.len(),
+        commands.len(),
+        "advertised opCompatible commands must be unique"
+    );
+    let frozen_caps: Value = serde_json::from_str(include_str!(
+        "../../testdata/golden/command-manifest-contract/capabilities.json"
+    ))
+    .expect("frozen capabilities JSON");
+    let frozen_command_set = frozen_caps["commands"]
+        .as_array()
+        .expect("frozen capability commands")
+        .iter()
+        .filter(|command| command["opCompatible"].as_bool().unwrap_or(false))
+        .map(|command| {
+            command["path"]
+                .as_str()
+                .expect("frozen command path")
+                .strip_prefix("ooxml ")
+                .expect("frozen ooxml prefix")
+                .to_string()
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(frozen_command_set.len(), 70);
+    assert_eq!(
+        command_set, frozen_command_set,
+        "advertised opCompatible set drifted from the committed contract"
     );
 
     let temp_dir = std::env::temp_dir().join(format!(
