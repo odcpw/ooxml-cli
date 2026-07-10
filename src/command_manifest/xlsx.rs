@@ -72,6 +72,11 @@ pub(super) enum XlsxCommandId {
     CommentsAdd,
     CommentsUpdate,
     CommentsRemove,
+    ConditionalFormatsList,
+    ConditionalFormatsShow,
+    ConditionalFormatsAdd,
+    ConditionalFormatsDelete,
+    ConditionalFormatsReorder,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
