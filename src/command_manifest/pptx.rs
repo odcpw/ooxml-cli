@@ -1,6 +1,7 @@
 mod animations;
 mod authoring;
 mod diff;
+mod masters_layouts;
 mod slides;
 mod template;
 
@@ -70,6 +71,18 @@ pub(super) enum PptxCommandId {
     AnimationsRemove,
     AnimationsReorder,
     AnimationsPruneStale,
+    MastersList,
+    MastersShow,
+    MastersAddPlaceholder,
+    MastersImport,
+    LayoutsList,
+    LayoutsShow,
+    LayoutsClone,
+    LayoutsImport,
+    LayoutsRename,
+    LayoutsSetBounds,
+    LayoutsDeleteShape,
+    LayoutsAddPlaceholder,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
@@ -79,7 +92,8 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
     specs.extend(template::command_specs());
     specs.extend(authoring::command_specs());
     specs.extend(animations::command_specs());
-    // Owner slices append in live legacy order: masters_layouts, charts, tables,
+    specs.extend(masters_layouts::command_specs());
+    // Owner slices append in live legacy order: charts, tables,
     // extract_media_notes_comments, replace, render.
     specs
 }
