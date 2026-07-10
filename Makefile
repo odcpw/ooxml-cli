@@ -40,9 +40,9 @@ build:
 test:
 	@$(CARGO) test --all-targets
 
-# test-unit: Run Rust unit tests for the CLI binary
+# test-unit: Run Rust unit tests for the library
 test-unit:
-	@$(CARGO) test --bin $(BINARY_NAME)
+	@$(CARGO) test --lib
 
 # test-smoke: Run the frozen Rust integration smoke
 test-smoke:

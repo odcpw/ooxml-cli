@@ -34,7 +34,7 @@ Focused loop:
 
 ```powershell
 cargo test --test rust_contract_smoke <filter> -- --nocapture
-cargo test <module_filter> --bin ooxml -- --nocapture
+cargo test --lib <module_filter> -- --nocapture
 ```
 
 Windows Office proof:
