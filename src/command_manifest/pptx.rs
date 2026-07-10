@@ -1,3 +1,4 @@
+mod authoring;
 mod diff;
 mod slides;
 mod template;
@@ -48,6 +49,21 @@ pub(super) enum PptxCommandId {
     TemplateCompile,
     XlsxBindingsPlan,
     XlsxBindingsApply,
+    Scaffold,
+    ShapesShow,
+    ShapesGet,
+    AddTextbox,
+    TextSet,
+    FieldsInspect,
+    FieldsSet,
+    ThemeUpdate,
+    TranslateExport,
+    TranslateApply,
+    PlaceImage,
+    PlaceTable,
+    PlaceTableFromXlsx,
+    ShapesSetBounds,
+    ShapesDelete,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
@@ -55,8 +71,9 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
     specs.extend(diff::command_specs());
     specs.extend(slides::command_specs());
     specs.extend(template::command_specs());
-    // Owner slices append in live legacy order: authoring, animations,
-    // masters_layouts, charts, tables,
+    specs.extend(authoring::command_specs());
+    // Owner slices append in live legacy order: animations, masters_layouts,
+    // charts, tables,
     // extract_media_notes_comments, replace, render.
     specs
 }
@@ -253,4 +270,8 @@ fn inspect(reason: &'static str) -> ExecutionSupport {
     ExecutionSupport::ServeInspect {
         reason: Some(reason),
     }
+}
+
+fn mutation(reason: Option<&'static str>) -> ExecutionSupport {
+    ExecutionSupport::ServeMutation { reason }
 }
