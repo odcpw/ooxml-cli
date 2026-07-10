@@ -193,7 +193,7 @@ go-reference-test:
 go-reference-test-short:
 	@$(GO) -C "$(GO_REFERENCE_DIR)" test -short ./...
 
-# rust-baseline-contract: Run the Rust smoke contract, optionally against OOXML_RUST_BASELINE_BIN
+# rust-baseline-contract: Run current-subject repeatability, or compare a distinct OOXML_RUST_COMPARISON_BIN
 rust-baseline-contract:
 	@$(CARGO) test --test rust_contract_smoke
 
