@@ -42,6 +42,20 @@ pub(super) enum XlsxCommandId {
     WorkbookMetadata,
     Scaffold,
     FormsEntry,
+    SheetsList,
+    SheetsShow,
+    SheetsAdd,
+    SheetsRename,
+    SheetsMove,
+    SheetsDelete,
+    ColwidthsShow,
+    ColwidthsSet,
+    RowheightsShow,
+    RowheightsSet,
+    RowsInsert,
+    RowsDelete,
+    ColsInsert,
+    ColsDelete,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
@@ -91,6 +105,7 @@ pub(super) fn front_command_specs() -> Vec<CommandSpec> {
             ),
         ],
         direct("it creates a package and is not an apply/serve mutation op"),
+        None,
     ));
     specs
 }
@@ -278,6 +293,7 @@ pub(super) fn forms_command_specs() -> Vec<CommandSpec> {
             ),
         ],
         direct("it creates a package and is not an apply/serve mutation op"),
+        None,
     )]
 }
 
@@ -301,6 +317,7 @@ fn group(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spec(
     id: XlsxCommandId,
     path: &'static [&'static str],
@@ -309,6 +326,7 @@ fn spec(
     target_object_kinds: &'static [&'static str],
     local_flags: Vec<FlagSpec>,
     execution: ExecutionSupport,
+    flag_constraints: Option<serde_json::Value>,
 ) -> CommandSpec {
     CommandSpec {
         id: CommandId::Xlsx(id),
@@ -318,7 +336,7 @@ fn spec(
         target_object_kinds,
         local_flags,
         execution,
-        flag_constraints: None,
+        flag_constraints,
     }
 }
 
