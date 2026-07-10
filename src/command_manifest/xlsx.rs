@@ -107,6 +107,11 @@ pub(super) enum XlsxCommandId {
     TablesAppendRows,
     TablesAppendRecords,
     TablesSetColumnFormat,
+    PivotsList,
+    PivotsShow,
+    PivotsCreate,
+    WorkbookMetadataInspect,
+    WorkbookMetadataUpdate,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
