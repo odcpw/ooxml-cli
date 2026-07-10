@@ -758,6 +758,32 @@ fn vba_create_capability_advertises_mode_constraints() {
 }
 
 #[test]
+fn vba_source_capabilities_scope_minimal_userforms_honestly() {
+    let (rust_code, rust_stdout, rust_stderr) =
+        run_ooxml(&["--json", "capabilities", "--for", "vba"]);
+    assert_eq!(rust_code, 0);
+    assert_eq!(rust_stderr, None);
+    let rust_caps = rust_stdout.expect("Rust VBA capabilities");
+
+    for path in [
+        "ooxml vba build-bin",
+        "ooxml vba rebuild",
+        "ooxml vba extract",
+    ] {
+        let command = command_by_path(&rust_caps, path);
+        let contract = serde_json::to_string(command)
+            .expect("serialize VBA capability")
+            .to_ascii_lowercase();
+        for required in [".frm", "xlsm", "not runtime-loadable", "pptm/docm"] {
+            assert!(
+                contract.contains(required),
+                "{path} should scope minimal UserForm support with {required:?}: {command:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn pptx_fields_set_capability_advertises_footer_synthesis() {
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&["--json", "capabilities"]);
     assert_eq!(rust_code, 0);

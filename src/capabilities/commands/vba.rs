@@ -123,7 +123,7 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml vba build-bin",
             "build-bin --family xlsx|pptx|docx --source Module1.bas --out vbaProject.bin",
-            "Build a source-only vbaProject.bin from source files using pure Rust.",
+            "Build a source-only vbaProject.bin from .bas/.cls source using pure Rust; XLSM also accepts minimal .frm for package/list/extract only, not runtime-loaded forms or PPTM/DOCM UserForms.",
             &["module"],
             false,
             Some(
@@ -134,7 +134,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--family",
                     "family",
                     "string",
-                    "target host family; xlsx, pptx, and docx support .bas and .cls source, with host modules synthesized where required",
+                    "target host family; xlsx, pptx, and docx support .bas/.cls, while only xlsx accepts minimal .frm for XLSM package/list/extract; generated forms are not runtime-loadable and PPTM/DOCM UserForms are unsupported",
                 ),
                 flag(
                     "--force",
@@ -147,7 +147,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--source",
                     "source",
                     "stringArray",
-                    "repeatable .bas or .cls source file",
+                    "repeatable .bas/.cls source file; xlsx alone also accepts minimal .frm for XLSM package/list/extract, not runtime-loadable forms or PPTM/DOCM UserForms",
                 ),
             ],
         ),
@@ -155,7 +155,7 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml vba rebuild",
             "rebuild <workbook.xlsm|deck.pptm|document.docm> --source-dir macros --out <edited.xlsm|edited.pptm|edited.docm>",
-            "Rebuild a macro-enabled package from a directory of .bas/.cls sources using pure Rust.",
+            "Rebuild a macro-enabled package from .bas/.cls sources using pure Rust; XLSM also accepts minimal .frm for package/list/extract only, not runtime-loaded forms or PPTM/DOCM UserForms.",
             &["package", "module"],
             true,
             Some(
@@ -191,7 +191,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--source-dir",
                     "sourceDir",
                     "string",
-                    "directory recursively scanned for .bas and .cls source files",
+                    "directory recursively scanned for .bas/.cls source; XLSM rebuild also scans minimal .frm for package/list/extract, but generated forms are not runtime-loadable and PPTM/DOCM UserForms are unsupported",
                 ),
             ],
         ),
@@ -239,10 +239,12 @@ pub(super) fn commands() -> Vec<Value> {
         capability_command(
             "ooxml vba extract",
             "extract <file>",
-            "Extract parseable VBA source modules to .bas/.cls files.",
+            "Extract parseable VBA source to .bas/.cls files and minimal .frm from supported XLSM packages; generated forms are not runtime-loadable and PPTM/DOCM UserForms are unsupported.",
             &["package", "module"],
             false,
-            Some("source extraction writes .bas/.cls files but does not mutate the Office package"),
+            Some(
+                "source extraction writes .bas/.cls and supported XLSM .frm files but does not mutate the Office package; .frm support is package/list/extract only, not runtime-loadable or available for PPTM/DOCM",
+            ),
             vec![
                 flag(
                     "--module",
@@ -254,7 +256,7 @@ pub(super) fn commands() -> Vec<Value> {
                     "--out-dir",
                     "outDir",
                     "string",
-                    "directory for extracted .bas/.cls modules",
+                    "directory for extracted .bas/.cls modules and minimal .frm from supported XLSM packages; forms are not runtime-loadable and PPTM/DOCM UserForms are unsupported",
                 ),
             ],
         ),
