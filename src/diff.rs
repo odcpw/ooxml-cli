@@ -13,13 +13,12 @@ use crate::{
     CliError, CliResult, DocxRichBlockReport, EXIT_DIFF_THRESHOLD, EXIT_PARTIAL_SUCCESS,
     EXIT_RENDER_FAILED, EXIT_SUCCESS, EXIT_UNEXPECTED, GlobalFlags, InspectPackageKind,
     WorkbookSheet, XlsxTableRef, append_xml_text_event, attr, content_type_for_part,
-    decode_xml_text, detect_inspect_package_type, docx_rich_block_reports,
-    find_docx_document_part, find_xlsx_workbook_part, is_docx_comments_part,
-    is_docx_endnotes_part, is_docx_footer_part, is_docx_footnotes_part, is_docx_header_part,
-    is_docx_media_part, is_docx_numbering_part, is_docx_styles_part, is_xml_text_event,
-    local_name, normalize_xl_target, package_type, parse_cell_ref, pptx_diff, relationship_entries,
-    relationships_part_for, shared_strings, sheet_cells, workbook_sheets, xlsx_styles, xlsx_tables,
-    zip_bytes, zip_entry_names, zip_text,
+    detect_inspect_package_type, docx_rich_block_reports, find_docx_document_part,
+    find_xlsx_workbook_part, is_docx_comments_part, is_docx_endnotes_part, is_docx_footer_part,
+    is_docx_footnotes_part, is_docx_header_part, is_docx_media_part, is_docx_numbering_part,
+    is_docx_styles_part, is_xml_text_event, local_name, normalize_xl_target, package_type,
+    parse_cell_ref, pptx_diff, relationship_entries, relationships_part_for, shared_strings,
+    sheet_cells, workbook_sheets, xlsx_styles, xlsx_tables, zip_bytes, zip_entry_names, zip_text,
 };
 
 pub(crate) struct DiffCommandOutput {

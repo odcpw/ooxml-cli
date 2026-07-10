@@ -34,8 +34,7 @@ use crate::cli_args::value_flag_present;
 use crate::{
     CliError, CliResult, append_xml_text_event, attr, attr_exact, content_type_for_part,
     ensure_content_type_override, is_xml_text_event, local_name, needs_xml_space_preserve,
-    pptx_shapes_get,
-    relationship_entries_from_xml, relationship_target_from_source_to_target,
+    pptx_shapes_get, relationship_entries_from_xml, relationship_target_from_source_to_target,
     relationships_part_for, replace_xml_span, resolve_relationship_target,
     validate_xlsx_mutation_output_flags, xml_direct_child_ranges, xml_escape, zip_text,
 };
