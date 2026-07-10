@@ -1,5 +1,6 @@
 mod diff;
 mod slides;
+mod template;
 
 use serde_json::Value;
 
@@ -42,13 +43,19 @@ pub(super) enum PptxCommandId {
     CloneSlide,
     NewSlideFromLayout,
     ValidateLayout,
+    TemplateInspect,
+    TemplateCapture,
+    TemplateCompile,
+    XlsxBindingsPlan,
+    XlsxBindingsApply,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
     let mut specs = group_command_specs();
     specs.extend(diff::command_specs());
     specs.extend(slides::command_specs());
-    // Owner slices append in live legacy order: template, authoring, animations,
+    specs.extend(template::command_specs());
+    // Owner slices append in live legacy order: authoring, animations,
     // masters_layouts, charts, tables,
     // extract_media_notes_comments, replace, render.
     specs
