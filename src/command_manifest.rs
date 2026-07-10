@@ -289,6 +289,101 @@ mod tests {
     }
 
     #[test]
+    fn xlsx_root_owned_segments_match_their_noncontiguous_legacy_offsets() {
+        let legacy = crate::capabilities::capability_commands();
+        let xlsx_start = core::command_specs().len() + pptx::command_specs().len();
+        let front = xlsx::front_command_specs();
+        let forms = xlsx::forms_command_specs();
+
+        assert_eq!(xlsx_start, 144);
+        assert_eq!(front.len(), xlsx::FRONT_COMMAND_COUNT);
+        assert_eq!(xlsx::FRONT_COMMAND_COUNT, 22);
+        assert_segment_matches_legacy(&front, &legacy[xlsx_start..166]);
+        assert_eq!(forms.len(), 1);
+        assert_segment_matches_legacy(&forms, &legacy[218..219]);
+    }
+
+    #[test]
+    fn xlsx_root_owned_ids_paths_and_repeated_builds_are_unique_stable() {
+        let first = xlsx::front_command_specs()
+            .into_iter()
+            .chain(xlsx::forms_command_specs())
+            .collect::<Vec<_>>();
+        let second = xlsx::front_command_specs()
+            .into_iter()
+            .chain(xlsx::forms_command_specs())
+            .collect::<Vec<_>>();
+
+        assert_eq!(first.len(), xlsx::ROOT_OWNED_COMMAND_COUNT);
+        assert_eq!(xlsx::ROOT_OWNED_COMMAND_COUNT, 23);
+        assert_eq!(
+            first
+                .iter()
+                .map(|spec| spec.id)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            first.len()
+        );
+        assert_eq!(
+            first
+                .iter()
+                .map(|spec| spec.path)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            first.len()
+        );
+        assert_eq!(
+            first.iter().map(capability_value).collect::<Vec<_>>(),
+            second.iter().map(capability_value).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            first
+                .iter()
+                .filter(|spec| matches!(&spec.execution, ExecutionSupport::GroupOnly { .. }))
+                .count(),
+            21
+        );
+        assert!(
+            first[..xlsx::GROUP_COMMAND_COUNT]
+                .iter()
+                .all(|spec| matches!(
+                    &spec.execution,
+                    ExecutionSupport::GroupOnly {
+                        reason: Some("it is a command group, not a leaf mutation command")
+                    }
+                ))
+        );
+        assert!(
+            first[xlsx::GROUP_COMMAND_COUNT..]
+                .iter()
+                .all(|spec| matches!(
+                    &spec.execution,
+                    ExecutionSupport::DirectOnly {
+                        reason: Some("it creates a package and is not an apply/serve mutation op")
+                    }
+                ))
+        );
+    }
+
+    #[test]
+    fn root_aggregation_appends_current_xlsx_builder_after_core_and_pptx() {
+        let core_len = core::command_specs().len();
+        let pptx_len = pptx::command_specs().len();
+        let xlsx = xlsx::command_specs();
+        let root = command_specs();
+        let start = core_len + pptx_len;
+        let end = start + xlsx.len();
+
+        assert_eq!(
+            root[start..end]
+                .iter()
+                .map(|spec| spec.id)
+                .collect::<Vec<_>>(),
+            xlsx.iter().map(|spec| spec.id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn core_ids_paths_and_repeated_builds_are_unique_and_stable() {
         let first = core::command_specs();
         let second = core::command_specs();
