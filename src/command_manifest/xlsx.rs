@@ -94,6 +94,12 @@ pub(super) enum XlsxCommandId {
     FiltersSortsClearColumnFilter,
     FiltersSortsSetSort,
     FiltersSortsClearSort,
+    NamesList,
+    NamesShow,
+    NamesAdd,
+    NamesUpdate,
+    NamesRename,
+    NamesDelete,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
