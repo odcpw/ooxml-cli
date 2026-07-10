@@ -1,5 +1,6 @@
 mod animations;
 mod authoring;
+mod charts;
 mod diff;
 mod masters_layouts;
 mod slides;
@@ -83,6 +84,18 @@ pub(super) enum PptxCommandId {
     LayoutsSetBounds,
     LayoutsDeleteShape,
     LayoutsAddPlaceholder,
+    ChartsList,
+    ChartsShow,
+    ChartsCreate,
+    ChartsUpdateData,
+    ChartsSetTitle,
+    ChartsSetLegend,
+    ChartsSetChartAreaFill,
+    ChartsSetPlotAreaFill,
+    ChartsSetSeriesStyle,
+    ChartsSetAxis,
+    ChartsConvertType,
+    ChartsCopyStyle,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
@@ -93,7 +106,8 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
     specs.extend(authoring::command_specs());
     specs.extend(animations::command_specs());
     specs.extend(masters_layouts::command_specs());
-    // Owner slices append in live legacy order: charts, tables,
+    specs.extend(charts::command_specs());
+    // Owner slices append in live legacy order: tables,
     // extract_media_notes_comments, replace, render.
     specs
 }
