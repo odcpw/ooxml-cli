@@ -157,12 +157,76 @@ mod tests {
         let legacy = crate::capabilities::capability_commands();
 
         assert_eq!(core.len(), 36);
-        assert_eq!(root.len(), 36);
         assert_eq!(
-            root.iter().map(|spec| spec.id).collect::<Vec<_>>(),
+            root[..core.len()]
+                .iter()
+                .map(|spec| spec.id)
+                .collect::<Vec<_>>(),
             core.iter().map(|spec| spec.id).collect::<Vec<_>>()
         );
         assert_segment_matches_legacy(&core, &legacy[..core.len()]);
+    }
+
+    #[test]
+    fn pptx_group_segment_matches_legacy_after_core() {
+        let core_len = core::command_specs().len();
+        let pptx = pptx::command_specs();
+        let groups = &pptx[..pptx::GROUP_COMMAND_COUNT];
+        let root = command_specs();
+        let legacy = crate::capabilities::capability_commands();
+        let root_pptx_end = core_len + pptx.len();
+        let group_end = core_len + pptx::GROUP_COMMAND_COUNT;
+
+        assert_eq!(groups.len(), 20);
+        assert_eq!(
+            root[core_len..root_pptx_end]
+                .iter()
+                .map(|spec| spec.id)
+                .collect::<Vec<_>>(),
+            pptx.iter().map(|spec| spec.id).collect::<Vec<_>>()
+        );
+        assert_segment_matches_legacy(groups, &legacy[core_len..group_end]);
+    }
+
+    #[test]
+    fn pptx_group_ids_paths_and_repeated_builds_are_unique_stable_groups() {
+        let first = pptx::command_specs();
+        let second = pptx::command_specs();
+        let first_groups = &first[..pptx::GROUP_COMMAND_COUNT];
+        let second_groups = &second[..pptx::GROUP_COMMAND_COUNT];
+        assert_eq!(first_groups.len(), 20);
+        assert_eq!(
+            first_groups
+                .iter()
+                .map(|spec| spec.id)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            first_groups.len()
+        );
+        assert_eq!(
+            first_groups
+                .iter()
+                .map(|spec| spec.path)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            first_groups.len()
+        );
+        assert!(first_groups.iter().all(|spec| matches!(
+            &spec.execution,
+            ExecutionSupport::GroupOnly {
+                reason: Some("it is a command group, not a leaf mutation command")
+            }
+        )));
+        assert_eq!(
+            first_groups
+                .iter()
+                .map(capability_value)
+                .collect::<Vec<_>>(),
+            second_groups
+                .iter()
+                .map(capability_value)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
