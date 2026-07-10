@@ -100,6 +100,13 @@ pub(super) enum XlsxCommandId {
     NamesUpdate,
     NamesRename,
     NamesDelete,
+    TablesList,
+    TablesShow,
+    TablesExport,
+    TablesCreate,
+    TablesAppendRows,
+    TablesAppendRecords,
+    TablesSetColumnFormat,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
