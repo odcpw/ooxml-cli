@@ -64,10 +64,10 @@ fn run_ooxml_with_env(args: &[&str], envs: &[(&str, &str)]) -> (i32, Option<Valu
 }
 
 fn run_ooxml_baseline(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
-    let output = Command::new(rust_baseline_ooxml_binary())
+    let output = Command::new(rust_repeat_or_comparison_binary())
         .args(args)
         .output()
-        .expect("run Rust baseline ooxml");
+        .expect("run Rust repeat/comparison ooxml");
     let code = output.status.code().unwrap_or(-1);
     let stdout = parse_json(&output.stdout);
     let stderr = parse_json(&output.stderr);
@@ -75,10 +75,10 @@ fn run_ooxml_baseline(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
 }
 
 fn run_ooxml_baseline_raw(args: &[&str]) -> (i32, String, String) {
-    let output = Command::new(rust_baseline_ooxml_binary())
+    let output = Command::new(rust_repeat_or_comparison_binary())
         .args(args)
         .output()
-        .expect("run Rust baseline ooxml");
+        .expect("run Rust repeat/comparison ooxml");
     (
         output.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -90,31 +90,88 @@ fn run_ooxml_baseline_with_input(
     args: &[&str],
     input: &str,
 ) -> (i32, Option<Value>, Option<Value>) {
-    let mut child = Command::new(rust_baseline_ooxml_binary())
+    let mut child = Command::new(rust_repeat_or_comparison_binary())
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("run Rust baseline ooxml with stdin");
+        .expect("run Rust repeat/comparison ooxml with stdin");
     child
         .stdin
         .take()
-        .expect("Rust baseline ooxml stdin")
+        .expect("Rust repeat/comparison ooxml stdin")
         .write_all(input.as_bytes())
-        .expect("write Rust baseline ooxml stdin");
-    let output = child.wait_with_output().expect("wait Rust baseline ooxml");
+        .expect("write Rust repeat/comparison ooxml stdin");
+    let output = child
+        .wait_with_output()
+        .expect("wait Rust repeat/comparison ooxml");
     let code = output.status.code().unwrap_or(-1);
     let stdout = parse_json(&output.stdout);
     let stderr = parse_json(&output.stderr);
     (code, stdout, stderr)
 }
 
-fn rust_baseline_ooxml_binary() -> PathBuf {
-    std::env::var_os("OOXML_RUST_BASELINE_BIN")
+/// Resolve the second process used by the historical `*_baseline_*` helpers.
+///
+/// With no environment override, those tests rerun the current subject and
+/// prove repeatability plus their command-specific assertions. An explicit
+/// comparison is differential evidence, so it must resolve to a distinct
+/// executable instead of silently comparing the subject with itself.
+fn rust_repeat_or_comparison_binary() -> PathBuf {
+    let subject = PathBuf::from(env!("CARGO_BIN_EXE_ooxml"));
+    let Some(comparison) = std::env::var_os("OOXML_RUST_COMPARISON_BIN")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_ooxml")))
+    else {
+        return subject;
+    };
+    assert_distinct_comparison_binary(&subject, &comparison);
+    comparison
+}
+
+fn assert_distinct_comparison_binary(subject: &Path, comparison: &Path) {
+    let subject = fs::canonicalize(subject).unwrap_or_else(|err| {
+        panic!(
+            "failed to resolve current Rust subject executable {}: {err}",
+            subject.display()
+        )
+    });
+    let comparison = fs::canonicalize(comparison).unwrap_or_else(|err| {
+        panic!(
+            "failed to resolve OOXML_RUST_COMPARISON_BIN {}: {err}",
+            comparison.display()
+        )
+    });
+    assert_ne!(
+        subject,
+        comparison,
+        "OOXML_RUST_COMPARISON_BIN must resolve to a different executable than the current Rust subject ({})",
+        subject.display()
+    );
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let subject_metadata = fs::metadata(&subject).expect("current Rust subject metadata");
+        let comparison_metadata =
+            fs::metadata(&comparison).expect("configured Rust comparison metadata");
+        assert!(
+            subject_metadata.dev() != comparison_metadata.dev()
+                || subject_metadata.ino() != comparison_metadata.ino(),
+            "OOXML_RUST_COMPARISON_BIN must not be a hard link to the current Rust subject ({})",
+            subject.display()
+        );
+    }
+}
+
+#[test]
+fn configured_rust_comparison_refuses_current_subject_identity() {
+    let subject = PathBuf::from(env!("CARGO_BIN_EXE_ooxml"));
+    assert!(
+        std::panic::catch_unwind(|| assert_distinct_comparison_binary(&subject, &subject)).is_err(),
+        "configured differential checks must reject subject-to-subject identity"
+    );
 }
 
 fn assert_rust_baseline_match(args: &[&str]) {

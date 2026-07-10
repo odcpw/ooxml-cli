@@ -96,7 +96,7 @@ fn run_ooxml_raw(args: &[&str]) -> (i32, String, String) {
 }
 
 fn run_ooxml_baseline_raw(args: &[&str]) -> (i32, String, String) {
-    let output = std::process::Command::new(rust_baseline_ooxml_binary())
+    let output = std::process::Command::new(rust_repeat_or_comparison_binary())
         .args(args)
         .output()
         .expect("run Rust baseline ooxml raw");
