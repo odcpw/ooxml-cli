@@ -144,18 +144,96 @@ fn assert_segment_matches_legacy(specs: &[CommandSpec], legacy: &[Value]) {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use serde_json::json;
 
     use super::*;
 
     #[test]
-    fn empty_family_aggregation_is_deterministic_and_matches_empty_legacy_segment() {
-        let first = command_specs();
-        let second = command_specs();
-        assert!(first.is_empty());
-        assert!(second.is_empty());
-        assert_segment_matches_legacy(&first, &[]);
-        assert_segment_matches_legacy(&second, &[]);
+    fn core_segment_matches_legacy_and_leads_root_aggregation() {
+        let core = core::command_specs();
+        let root = command_specs();
+        let legacy = crate::capabilities::capability_commands();
+
+        assert_eq!(core.len(), 36);
+        assert_eq!(root.len(), 36);
+        assert_eq!(
+            root.iter().map(|spec| spec.id).collect::<Vec<_>>(),
+            core.iter().map(|spec| spec.id).collect::<Vec<_>>()
+        );
+        assert_segment_matches_legacy(&core, &legacy[..core.len()]);
+    }
+
+    #[test]
+    fn core_ids_paths_and_repeated_builds_are_unique_and_stable() {
+        let first = core::command_specs();
+        let second = core::command_specs();
+        assert_eq!(first.len(), 36);
+        assert_eq!(
+            first
+                .iter()
+                .map(|spec| spec.id)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            first.len()
+        );
+        assert_eq!(
+            first
+                .iter()
+                .map(|spec| spec.path)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            first.len()
+        );
+        assert_eq!(
+            first.iter().map(capability_value).collect::<Vec<_>>(),
+            second.iter().map(capability_value).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn core_execution_support_has_two_mutations_and_only_semantic_groups() {
+        let specs = core::command_specs();
+        let mutations = specs
+            .iter()
+            .filter_map(|spec| match &spec.execution {
+                ExecutionSupport::ServeMutation { reason } => Some((spec.id, *reason)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            mutations,
+            vec![
+                (
+                    CommandId::Core(core::CoreCommandId::RepairNormalize),
+                    Some(
+                        "narrow repair command; run validate/conformance after normalization before handing the file to a user"
+                    )
+                ),
+                (CommandId::Core(core::CoreCommandId::TemplateApply), None),
+            ]
+        );
+        assert_eq!(
+            specs
+                .iter()
+                .filter_map(|spec| match &spec.execution {
+                    ExecutionSupport::GroupOnly { .. } => Some(spec.id),
+                    _ => None,
+                })
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([
+                CommandId::Core(core::CoreCommandId::Completion),
+                CommandId::Core(core::CoreCommandId::Conformance),
+                CommandId::Core(core::CoreCommandId::Template),
+                CommandId::Core(core::CoreCommandId::TemplateProfile),
+            ])
+        );
+        assert!(
+            specs
+                .iter()
+                .all(|spec| !matches!(&spec.execution, ExecutionSupport::ServeInspect { .. }))
+        );
     }
 
     #[test]
