@@ -77,6 +77,11 @@ pub(super) enum XlsxCommandId {
     ConditionalFormatsAdd,
     ConditionalFormatsDelete,
     ConditionalFormatsReorder,
+    DataValidationsList,
+    DataValidationsShow,
+    DataValidationsCreate,
+    DataValidationsUpdate,
+    DataValidationsDelete,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
