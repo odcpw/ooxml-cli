@@ -120,6 +120,9 @@ pub(super) enum XlsxCommandId {
     CellsSet,
     CellsClear,
     CellsSetBatch,
+    FreezeShow,
+    FreezeSet,
+    FreezeClear,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {

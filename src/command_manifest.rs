@@ -415,6 +415,89 @@ mod tests {
     }
 
     #[test]
+    fn complete_xlsx_shadow_has_expected_execution_inventory() {
+        let specs = xlsx::command_specs();
+        assert_eq!(specs.len(), 104);
+        let inventory = specs.iter().fold(
+            (0, 0, 0, 0),
+            |(groups, direct, inspect, mutation), spec| match &spec.execution {
+                ExecutionSupport::GroupOnly { .. } => (groups + 1, direct, inspect, mutation),
+                ExecutionSupport::DirectOnly { .. } => (groups, direct + 1, inspect, mutation),
+                ExecutionSupport::ServeInspect { .. } => (groups, direct, inspect + 1, mutation),
+                ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
+            },
+        );
+        assert_eq!(inventory, (21, 34, 17, 32));
+        assert_eq!(
+            specs
+                .iter()
+                .filter(|spec| match &spec.execution {
+                    ExecutionSupport::ServeInspect {
+                        reason: Some(reason),
+                    } => reason.contains("call via inspect in serve/MCP"),
+                    _ => false,
+                })
+                .count(),
+            14
+        );
+    }
+
+    #[test]
+    fn xlsx_serve_inspect_classification_matches_independent_dispatch_oracle() {
+        const SERVE_INSPECT_PATHS: &[&str] = &[
+            "ooxml xlsx sheets list",
+            "ooxml xlsx sheets show",
+            "ooxml xlsx comments list",
+            "ooxml xlsx conditional-formats list",
+            "ooxml xlsx conditional-formats show",
+            "ooxml xlsx hyperlinks list",
+            "ooxml xlsx hyperlinks show",
+            "ooxml xlsx filters-sorts show",
+            "ooxml xlsx names list",
+            "ooxml xlsx names show",
+            "ooxml xlsx tables list",
+            "ooxml xlsx tables show",
+            "ooxml xlsx tables export",
+            "ooxml xlsx workbook metadata inspect",
+            "ooxml xlsx ranges export",
+            "ooxml xlsx cells extract",
+            "ooxml xlsx freeze show",
+        ];
+        let actual = xlsx::command_specs()
+            .iter()
+            .filter(|spec| matches!(&spec.execution, ExecutionSupport::ServeInspect { .. }))
+            .filter_map(|spec| capability_value(spec)["path"].as_str().map(str::to_owned))
+            .collect::<BTreeSet<_>>();
+        let expected = SERVE_INSPECT_PATHS
+            .iter()
+            .map(|path| (*path).to_string())
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(actual, expected);
+        assert_eq!(actual.len(), 17);
+    }
+
+    #[test]
+    fn xlsx_serve_mutations_match_legacy_op_compatible_set() {
+        let specs = xlsx::command_specs();
+        let start = core::command_specs().len() + pptx::command_specs().len();
+        let legacy = crate::capabilities::capability_commands();
+        let expected = legacy[start..start + specs.len()]
+            .iter()
+            .filter(|command| command["opCompatible"] == true)
+            .filter_map(|command| command["path"].as_str().map(str::to_owned))
+            .collect::<BTreeSet<_>>();
+        let actual = specs
+            .iter()
+            .filter(|spec| matches!(&spec.execution, ExecutionSupport::ServeMutation { .. }))
+            .filter_map(|spec| capability_value(spec)["path"].as_str().map(str::to_owned))
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(actual, expected);
+        assert_eq!(actual.len(), 32);
+    }
+
+    #[test]
     fn core_ids_paths_and_repeated_builds_are_unique_and_stable() {
         let first = core::command_specs();
         let second = core::command_specs();
