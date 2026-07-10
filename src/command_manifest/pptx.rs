@@ -1,4 +1,5 @@
 mod diff;
+mod slides;
 
 use serde_json::Value;
 
@@ -30,13 +31,25 @@ pub(super) enum PptxCommandId {
     Translate,
     XlsxBindings,
     Diff,
+    SlidesList,
+    SlidesSelectors,
+    SlidesShow,
+    SlidesDelete,
+    SlidesMove,
+    SlidesReorder,
+    SlidesImportSlide,
+    SlidesMerge,
+    CloneSlide,
+    NewSlideFromLayout,
+    ValidateLayout,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
     let mut specs = group_command_specs();
     specs.extend(diff::command_specs());
-    // Owner slices append in live legacy order: slides, template, authoring,
-    // animations, masters_layouts, charts, tables,
+    specs.extend(slides::command_specs());
+    // Owner slices append in live legacy order: template, authoring, animations,
+    // masters_layouts, charts, tables,
     // extract_media_notes_comments, replace, render.
     specs
 }
@@ -225,6 +238,12 @@ fn flag(
 
 fn direct(reason: &'static str) -> ExecutionSupport {
     ExecutionSupport::DirectOnly {
+        reason: Some(reason),
+    }
+}
+
+fn inspect(reason: &'static str) -> ExecutionSupport {
+    ExecutionSupport::ServeInspect {
         reason: Some(reason),
     }
 }
