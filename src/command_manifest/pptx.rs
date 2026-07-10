@@ -4,6 +4,7 @@ mod charts;
 mod diff;
 mod extract_media_notes_comments;
 mod masters_layouts;
+mod render;
 mod replace;
 mod slides;
 mod tables;
@@ -125,6 +126,7 @@ pub(super) enum PptxCommandId {
     ReplaceTextFromXlsx,
     ReplaceTextMapFromXlsx,
     ReplaceImages,
+    Render,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
@@ -139,8 +141,7 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
     specs.extend(tables::command_specs());
     specs.extend(extract_media_notes_comments::command_specs());
     specs.extend(replace::command_specs());
-    // Owner slices append in live legacy order: render.
-    // extract_media_notes_comments, replace, render.
+    specs.extend(render::command_specs());
     specs
 }
 

@@ -261,6 +261,34 @@ mod tests {
     }
 
     #[test]
+    fn complete_pptx_shadow_has_expected_execution_inventory() {
+        let specs = pptx::command_specs();
+        assert_eq!(specs.len(), 108);
+        let inventory = specs.iter().fold(
+            (0, 0, 0, 0),
+            |(groups, direct, inspect, mutation), spec| match &spec.execution {
+                ExecutionSupport::GroupOnly { .. } => (groups + 1, direct, inspect, mutation),
+                ExecutionSupport::DirectOnly { .. } => (groups, direct + 1, inspect, mutation),
+                ExecutionSupport::ServeInspect { .. } => (groups, direct, inspect + 1, mutation),
+                ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
+            },
+        );
+        assert_eq!(inventory, (20, 64, 13, 11));
+        assert_eq!(
+            specs
+                .iter()
+                .filter(|spec| match &spec.execution {
+                    ExecutionSupport::ServeInspect {
+                        reason: Some(reason),
+                    } => reason.contains("call via inspect in serve/MCP"),
+                    _ => false,
+                })
+                .count(),
+            8
+        );
+    }
+
+    #[test]
     fn core_ids_paths_and_repeated_builds_are_unique_and_stable() {
         let first = core::command_specs();
         let second = core::command_specs();
