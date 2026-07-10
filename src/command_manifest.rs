@@ -230,6 +230,37 @@ mod tests {
     }
 
     #[test]
+    fn current_pptx_shadow_matches_legacy_and_is_unique_stable() {
+        let core_len = core::command_specs().len();
+        let first = pptx::command_specs();
+        let second = pptx::command_specs();
+        let legacy = crate::capabilities::capability_commands();
+        let end = core_len + first.len();
+
+        assert_segment_matches_legacy(&first, &legacy[core_len..end]);
+        assert_eq!(
+            first
+                .iter()
+                .map(|spec| spec.id)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            first.len()
+        );
+        assert_eq!(
+            first
+                .iter()
+                .map(|spec| spec.path)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            first.len()
+        );
+        assert_eq!(
+            first.iter().map(capability_value).collect::<Vec<_>>(),
+            second.iter().map(capability_value).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn core_ids_paths_and_repeated_builds_are_unique_and_stable() {
         let first = core::command_specs();
         let second = core::command_specs();
