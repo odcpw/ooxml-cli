@@ -4,6 +4,7 @@ mod charts;
 mod diff;
 mod masters_layouts;
 mod slides;
+mod tables;
 mod template;
 
 use serde_json::Value;
@@ -96,6 +97,13 @@ pub(super) enum PptxCommandId {
     ChartsSetAxis,
     ChartsConvertType,
     ChartsCopyStyle,
+    TablesShow,
+    TablesSetCell,
+    TablesDeleteRow,
+    TablesInsertRow,
+    TablesDeleteCol,
+    TablesInsertCol,
+    TablesUpdateFromXlsx,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
@@ -107,7 +115,8 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
     specs.extend(animations::command_specs());
     specs.extend(masters_layouts::command_specs());
     specs.extend(charts::command_specs());
-    // Owner slices append in live legacy order: tables,
+    specs.extend(tables::command_specs());
+    // Owner slices append in live legacy order:
     // extract_media_notes_comments, replace, render.
     specs
 }
