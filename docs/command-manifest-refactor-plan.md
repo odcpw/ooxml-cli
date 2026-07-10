@@ -195,6 +195,8 @@ CommandId
 
 Each family/submodule exposes a deterministic owned builder such as `fn command_specs() -> Vec<CommandSpec>`, and the root extends one owned `Vec<CommandSpec>` in the current capability order. No leaked allocations, hash iteration, runtime/distributed registration, or implicit sorting is allowed. Build the vector on demand initially. A private `OnceLock<Vec<CommandSpec>>` cache may be considered later only after profiling shows a need and tests prove it does not change values, output order, visibility, or initialization behavior; it is not part of the first implementation.
 
+Family root IDs and builders live in mirrored private files under `src/command_manifest/`; later owner slices add their submodule mirrors there while existing capability files remain legacy-only equality oracles. The first populated owner slice must compile-prove construction in its family file and inclusion through the ordered root aggregation.
+
 `CommandId` is stable internal identity. Canonical command text is metadata, not identity. The initial registry contains canonical capability entries only; it does not contain a generic alias collection.
 
 ### 7.2 CommandSpec scope

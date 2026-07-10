@@ -9,6 +9,8 @@ mod capabilities;
 mod cli_args;
 mod cli_core;
 mod cli_dispatch;
+#[allow(dead_code)]
+mod command_manifest;
 mod command_text;
 mod completion;
 mod conformance;
