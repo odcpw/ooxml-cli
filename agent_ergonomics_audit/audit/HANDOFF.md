@@ -33,6 +33,15 @@
 
 ## Open Proof
 
-- Final all-target format, clippy, and test results belong in the release handoff/commit report for the exact candidate SHA.
 - The new workflow is not proven until it runs from the pushed `v0.1.0` tag.
 - Windows Office/Open XML SDK validation must be rerun after integration because the candidate combines previously independent form, entity, OPC, CLI, and VBA changes.
+
+## Local Verification
+
+- `cargo fmt --all -- --check`: passed.
+- `cargo clippy --all-targets -- -D warnings`: passed.
+- `cargo test --all-targets`: passed, 420 tests total (82 binary unit tests, 323 Rust contract tests, and 15 focused integration/golden tests).
+- `make check-ci`: passed end to end, including the full all-target test gate and debug binary build.
+- Conflict-sensitive PPTX replacement, DOCX secondary diff, OPC relationship, serve dispatcher, worksheet form, VBA codec/CFB, entity, and smoke-contract filters: passed.
+- `RCH_DISABLED=1 cargo build --release --locked --bin ooxml`: passed; `target/release/ooxml --json version` reported `0.1.0`.
+- Release workflow YAML parsed locally, and its `v0.1.0` tag/version guard passed locally. Cross-platform runner execution remains tag-time proof.
