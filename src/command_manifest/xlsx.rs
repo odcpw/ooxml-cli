@@ -68,6 +68,10 @@ pub(super) enum XlsxCommandId {
     ChartsConvertType,
     ChartsCopyStyle,
     ChartsSetAxis,
+    CommentsList,
+    CommentsAdd,
+    CommentsUpdate,
+    CommentsRemove,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
