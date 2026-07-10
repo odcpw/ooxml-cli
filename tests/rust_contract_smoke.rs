@@ -1019,12 +1019,14 @@ fn frozen_cli_slice_matches_legacy_baseline() {
             .collect();
         let (code, stdout, stderr) = run_ooxml(&args);
         assert_eq!(code, case["exitCode"], "exit code for {:?}", args);
-        assert_eq!(
-            stdout,
-            nullable(&case["stdoutJson"]),
-            "stdout for {:?}",
-            args
-        );
+        let mut expected_stdout = nullable(&case["stdoutJson"]);
+        if args == ["--json", "version"] {
+            expected_stdout = Some(serde_json::json!({
+                "tool": "ooxml",
+                "version": env!("CARGO_PKG_VERSION")
+            }));
+        }
+        assert_eq!(stdout, expected_stdout, "stdout for {:?}", args);
         assert_eq!(
             stderr,
             nullable(&case["stderrJson"]),

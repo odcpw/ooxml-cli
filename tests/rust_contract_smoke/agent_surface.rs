@@ -465,7 +465,10 @@ fn frozen_mcp_discovery_and_flow_match_legacy_baseline() {
         "resourceTemplates": templates_response["result"]["resourceTemplates"].clone(),
         "commandResource": summarize_mcp_command_resource(&command_response["result"], command_uri),
     });
-    assert_eq!(discovery, baseline["mcp"]["discovery"]);
+    let mut expected_discovery = baseline["mcp"]["discovery"].clone();
+    expected_discovery["initialize"]["serverInfo"]["version"] =
+        Value::String(env!("CARGO_PKG_VERSION").to_string());
+    assert_eq!(discovery, expected_discovery);
 
     let mut replacements = vec![
         (input_str.clone(), "[MCP_INPUT_XLSX]".to_string()),
