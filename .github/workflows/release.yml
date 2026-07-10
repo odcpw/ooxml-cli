@@ -25,8 +25,10 @@ jobs:
       - name: Check out release tag
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Set up stable Rust
-        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+      - name: Set up Rust 1.96.0
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.96.0
 
       - name: Verify tag matches Cargo package version
         shell: bash
@@ -70,8 +72,10 @@ jobs:
       - name: Check out release tag
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Set up stable Rust target
-        run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+      - name: Set up Rust 1.96.0 target
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --target ${{ matrix.target }}
+          rustup default 1.96.0
 
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }} --bin ooxml
