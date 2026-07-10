@@ -2,6 +2,7 @@ mod animations;
 mod authoring;
 mod charts;
 mod diff;
+mod extract_media_notes_comments;
 mod masters_layouts;
 mod slides;
 mod tables;
@@ -104,6 +105,20 @@ pub(super) enum PptxCommandId {
     TablesDeleteCol,
     TablesInsertCol,
     TablesUpdateFromXlsx,
+    ExtractText,
+    ExtractNotes,
+    ExtractImages,
+    ExtractXml,
+    MediaList,
+    MediaAdd,
+    MediaReplace,
+    NotesShow,
+    NotesSet,
+    NotesClear,
+    CommentsList,
+    CommentsAdd,
+    CommentsEdit,
+    CommentsRemove,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
@@ -116,7 +131,8 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
     specs.extend(masters_layouts::command_specs());
     specs.extend(charts::command_specs());
     specs.extend(tables::command_specs());
-    // Owner slices append in live legacy order:
+    specs.extend(extract_media_notes_comments::command_specs());
+    // Owner slices append in live legacy order: replace, render.
     // extract_media_notes_comments, replace, render.
     specs
 }
