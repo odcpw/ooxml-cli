@@ -305,6 +305,7 @@ fn serve_open_supports_in_place_backup_commit() {
 include!("serve/docx.rs");
 
 include!("serve/xlsx.rs");
+include!("serve/inspect_contract.rs");
 
 #[test]
 fn serve_op_rejects_unknown_family_commands_in_dispatchers() {
