@@ -56,6 +56,18 @@ pub(super) enum XlsxCommandId {
     RowsDelete,
     ColsInsert,
     ColsDelete,
+    ChartsList,
+    ChartsShow,
+    ChartsCreate,
+    ChartsUpdateSource,
+    ChartsSetTitle,
+    ChartsSetLegend,
+    ChartsSetChartAreaFill,
+    ChartsSetPlotAreaFill,
+    ChartsSetSeriesStyle,
+    ChartsConvertType,
+    ChartsCopyStyle,
+    ChartsSetAxis,
 }
 
 pub(super) fn command_specs() -> Vec<CommandSpec> {
