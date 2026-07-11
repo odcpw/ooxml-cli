@@ -54,7 +54,6 @@ mod runtime_util;
 mod selector_util;
 mod serve;
 mod template_workflow;
-mod typed_command_adapter;
 mod validation;
 mod validation_pptx;
 mod vba;

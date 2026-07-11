@@ -1137,33 +1137,6 @@ mod tests {
     }
 
     #[test]
-    fn guarded_xlsx_sheet_read_ids_keep_exact_spec_paths() {
-        let specs = xlsx::command_specs();
-        let guarded = [
-            (
-                XlsxCommandId::SheetsList,
-                &["xlsx", "sheets", "list"] as &[&str],
-            ),
-            (
-                XlsxCommandId::SheetsShow,
-                &["xlsx", "sheets", "show"] as &[&str],
-            ),
-            (
-                XlsxCommandId::CellsSet,
-                &["xlsx", "cells", "set"] as &[&str],
-            ),
-        ];
-        for (id, expected_path) in guarded {
-            let matches = specs
-                .iter()
-                .filter(|spec| spec.id == CommandId::Xlsx(id))
-                .collect::<Vec<_>>();
-            assert_eq!(matches.len(), 1);
-            assert_eq!(matches[0].path, expected_path);
-        }
-    }
-
-    #[test]
     fn help_projection_covers_each_unique_canonical_spec_path_exactly() {
         let specs = command_specs();
         let paths = specs.iter().map(|spec| spec.path).collect::<BTreeSet<_>>();

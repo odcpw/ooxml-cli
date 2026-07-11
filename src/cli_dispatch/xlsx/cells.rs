@@ -2,11 +2,9 @@ use serde_json::Value;
 
 use crate::cli_args::*;
 use crate::cli_core::{CliError, CliResult};
-use crate::command_manifest::{CommandId, XlsxCommandId};
-use crate::typed_command_adapter::xlsx_cells_set_by_id;
 use crate::xlsx_mutation::{
     XlsxCellsClearOptions, XlsxCellsSetBatchOptions, XlsxCellsSetOptions, xlsx_cells_clear,
-    xlsx_cells_set_batch,
+    xlsx_cells_set, xlsx_cells_set_batch,
 };
 use crate::xlsx_sheets::xlsx_cells_extract;
 
@@ -70,7 +68,7 @@ pub(super) fn dispatch_xlsx_cells(args: &[String]) -> CliResult<Value> {
                 no_validate,
                 in_place,
             };
-            xlsx_cells_set_by_id(CommandId::Xlsx(XlsxCommandId::CellsSet), file, options)
+            xlsx_cells_set(file, options)
         }
         [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "cells" && verb == "clear" =>
