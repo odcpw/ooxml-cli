@@ -64,6 +64,12 @@ Use the narrowest test that proves the behavior:
 - PPTX visual placement/layout: render representative decks.
 - VBA changes: strict validation, Open XML SDK validation, and Office/LibreOffice load evidence before compatibility claims.
 
+For command discovery and dispatch changes, keep ownership boundaries explicit:
+
+- A canonical command-path or CLI-grammar change requires the nearest focused direct-CLI behavior test, including valid output and the relevant invalid/error-precedence case.
+- Also run the shared manifest contract gate when canonical identity or capability metadata changes, and the inspect or mutation namespace gate when a Serve/MCP label or alias changes.
+- Do not infer parser or grammar completeness from `CommandSpec`, capability flags, or namespace tables. Positional forms, repeated flags, aliases, defaults, and validation order remain owned by explicit CLI dispatch unless a separately reviewed grammar project models and proves them.
+
 Every mutating command should prove:
 
 - exactly one destination mode: `--out`, `--in-place`, or `--dry-run`;

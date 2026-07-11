@@ -1,9 +1,24 @@
 # Typed command manifest and library-boundary refactor plan
 
-Status: proposed; implementation has not started
+Status: implemented through cleanup; final validation and release qualification pending
 Target branch: `refactor/typed-command-manifest`
 Baseline commit: `63c703cb5c7162cd364e694ceb45d60bdbdf45d5`
-Release status: deferred until the refactor is complete, polished, and requalified
+Implementation head: `fc683a4957e561741b3c6aa06ae176523dc30f35`
+Release status: deferred; no release or tag has been created from this refactor
+
+## Implementation closeout
+
+The implementation landed as 48 reviewable commits after the baseline. The sequence froze black-box contracts, extracted the library and thin binary, built the family-owned 309-spec manifest incrementally, made it authoritative, migrated help/completion/MCP and the Serve inspect and mutation namespaces, installed permanent cross-boundary probes, then removed the 10,411-line legacy capability catalog and the temporary typed-command adapter. The final cleanup left the external product contract unchanged and retained the committed byte-exact capability, help, completion, Serve, and MCP proofs.
+
+Current authority boundaries are deliberate:
+
+- `CommandId` and the 309 ordered `CommandSpec` rows own canonical command identity and capability metadata.
+- The Serve-owned inspect table owns 42 canonical inspect labels plus six aliases; the Serve-owned mutation table owns 70 canonical mutation labels plus 14 aliases.
+- CLI dispatch remains the authority for positional grammar, flag aliases, defaults, validation and error precedence. The manifest is not a complete parser grammar.
+- Group help and namespace-specific aliases remain with their existing owners where they are presentation or input grammar rather than canonical identity.
+- The committed 301,008-byte capability golden and black-box process corpora remain independent output-contract authorities for the compiled binary.
+
+F1 stops here. Broad CLI ID attachment proved ceremonial: across the three guarded proof routing/adapter diffs, the net production addition was 87 lines (excluding the module declaration), while a same-census recount found the direct CLI grammar-guard inventory unchanged. That proof adapter was removed during cleanup. The durable rule is narrower: attach typed IDs where command identity crosses subsystem or metadata boundaries; keep local CLI grammar explicit when the handler is already selected unambiguously. Release work is deferred to a separately reviewed qualification step.
 
 ## 1. Outcome
 
@@ -35,7 +50,7 @@ All measurements below were taken from baseline commit `63c703c` before implemen
 | Capability objects with `opCompatible: true` (Serve mutation promise) | 70 |
 | Lines under `src/capabilities/**` | 10,411 |
 | Lines in the surveyed CLI dispatch modules | 6,672 |
-| Lines under the surveyed Serve operation-dispatch modules | 3,027 |
+| Lines under the surveyed Serve routing modules (2,727 mutation dispatch + 300 inspect) | 3,027 |
 | `src/main.rs` lines | 517 |
 | CLI match patterns in the surveyed dispatch modules, approximately | 256 |
 | Canonical Serve mutation commands promised/routed | 70 |
@@ -631,9 +646,11 @@ Acceptance: C10w remains green through the table; exactly 70 mutation specs and 
 
 Rollback: preserve the C10w guarded typed-ID path for `xlsx cells set`, restore the other 69 mutations to their prior canonical-string routing, and remove the generalized namespace table without touching inspect migration or manifest metadata.
 
-### C11+ — Family-by-family consumer convergence
+### C11+ — Original family-convergence proposal, intentionally stopped
 
-Repeat small, independently reviewable slices:
+This was the original continuation proposal, not a remaining migration checklist. The F1 residual audit tested its premise with three guarded attachment proofs and found that broad CLI ID attachment duplicated routing without replacing or simplifying the explicit grammar guards. The stop decision is complete: retain the narrower cross-subsystem/metadata uses of typed IDs and do not perform the family migrations below unless a future, separately reviewed grammar project supplies a new benefit and proof model.
+
+The proposed slices were:
 
 1. XLSX read commands;
 2. XLSX typed-option mutations;
@@ -644,18 +661,17 @@ Repeat small, independently reviewable slices:
 7. core/template/VBA utilities;
 8. remaining raw-argument commands, identity only.
 
-For every slice, move only identity/metadata/eligibility facts the manifest truly models. Keep specialized parsers and handlers explicit. Measure duplicated tables removed, but never optimize for line-count reduction at the expense of contract clarity.
+Had that proposal continued, every slice would have moved only identity/metadata/eligibility facts the manifest truly models while keeping specialized parsers and handlers explicit. The residual audit instead established the stop boundary above.
 
-### C-final — Cleanup and release preparation
+### C-final — Cleanup complete; qualification pending
 
-- Remove superseded internal metadata tables only after all consumers and tests prove them unused.
-- Treat removal of the private `#[cfg(test)]` legacy capability producer as its own final cleanup commit after every typed consumer is active and the black-box capability golden is green; keep the black-box golden and permanent `CommandId`-keyed inspect probes.
-- Update architecture and contributor documentation.
-- Refresh census, duplication map, test counts, clippy, and golden checksums.
-- Run full local and hosted platform gates.
+- X1 cleanup is complete: the superseded internal metadata tables, private `#[cfg(test)]` legacy capability producer, and temporary proof adapter are removed; the black-box golden and permanent `CommandId`-keyed inspect probes remain.
+- Architecture and contributor documentation are updated, and the ignored final census/duplication ledger is refreshed.
+- Local Rust format, clippy, build, documentation, unit, contract, and all-target gates are green.
+- V1 remains pending: run hosted platform, strict artifact, Open XML SDK, and desktop Office qualification before an evidence-backed release-readiness review.
 - Prepare, but do not create, release notes/tag/artifacts.
 
-Acceptance: clean tree, no dead shadow source, stable public surface, all gates green, and an explicit release-readiness review.
+Cleanup acceptance is met: no dead shadow source remains and the public surface is stable. Release acceptance remains pending the V1 qualification and explicit release-readiness review.
 
 Rollback: cleanup deletions are separable from functional migrations.
 
@@ -753,9 +769,9 @@ P0  Reviewed plan and baseline
 ├── K1 ────────────────────────────────────────┤
 ├── P1 ────────────────────────────────────────┤
 ├── SU ────────────────────────────────────────┤
-└── SM ────────────────────────────────────────┴── F1  Family-by-family migrations
-                                                   └── X1  Superseded-table cleanup
-                                                       └── V1  Final gates and refreshed metrics
+└── SM ────────────────────────────────────────┴── F1  Residual attachment audit + stop decision [complete]
+                                                   └── X1  Superseded-table/adapter cleanup [complete]
+                                                       └── V1  Hosted/platform/Office/release qualification [pending]
                                                            └── R0  Release-readiness review, no release
 ```
 
@@ -770,8 +786,9 @@ Additional dependency rules:
 - SU depends on SI. The temporary string-keyed builder/`wire_promised` marker cannot be removed before SU installs all 42 permanent `CommandId`-keyed probes and passes set, uniqueness, alias-canonicalization, Serve-recognition, and MCP-recognition tests.
 - W1 depends on R1 and proves only `xlsx cells set`; it does not depend on SI, SU, P1, or the full mutation table.
 - SM depends on W1 and generalizes its guarded-ID pattern to the sole 70-row mutation namespace table; SM remains independent of SI/SU.
-- F1 joins all consumer branches—H1, K1, P1, SU, and SM—so broad family convergence/cleanup cannot bypass help, completion, MCP, inspect, or mutation work.
-- X1 cannot start while any legacy table remains an active oracle or rollback path.
+- F1 joined all consumer branches—H1, K1, P1, SU, and SM—for the residual attachment audit. Its completed stop decision means the original C11+ family migrations are not prerequisites for cleanup or qualification.
+- X1 followed the F1 stop decision and is complete: no legacy table remains an active oracle or rollback path, and the temporary attachment adapter is removed.
+- V1 follows X1 and covers the still-pending hosted platform, strict artifact, Open XML SDK, desktop Office, and release-qualification gates; local Rust gates and refreshed metrics are already complete.
 - R0 cannot create a tag or release; it only produces an evidence-backed go/no-go recommendation.
 
 ## 14. Metrics and stop conditions

@@ -2,7 +2,15 @@
 
 The port is complete enough to own the product line: the Rust CLI is the implementation on `master`, Cargo/Make/CI are Rust-first, and the Go tree is deprecated reference material rather than a live oracle. `v0.1.0` is the first formal cross-platform binary release candidate.
 
-Current milestone, 2026-07-10:
+Current milestone, 2026-07-11:
+
+- Completed the typed-command-manifest refactor through cleanup. The product is now a library crate with a four-line binary adapter; the ordered, family-owned 309-spec manifest is authoritative for command identity and capability metadata.
+- Serve command identity is explicit and namespace-owned: inspect has 42 canonical IDs and 48 accepted labels; mutation has 70 canonical IDs and 84 accepted labels. Permanent private-ID probes and black-box Serve/MCP/direct tests keep these sets bidirectionally aligned.
+- Capability JSON, leaf help, completion scripts, MCP command resources, and discovery/process matrices retain exact committed contracts. The full capabilities stdout remains pinned by the 301,008-byte binary golden.
+- Removed the superseded 10,411-line test-only capability catalog and the temporary command adapter. CLI positional/flag grammar remains explicit and is not inferred from manifest metadata.
+- Local Rust format, clippy, build, documentation, unit, contract, and all-target test gates are green on the implementation branch. Hosted platform, strict artifact, Open XML SDK, desktop Office, and release qualification remain pending. No release or tag has been created.
+
+Previous milestone, 2026-07-10:
 
 - Reconciled remote `master` worksheet forms and limited source-only XLSM `.frm` packaging with the local Rust product line. Interactive Excel forms use `xlsx forms entry`; generated MSForms/UserForms remain package/list/extract-only and are not runtime-loadable.
 - Integrated the four audited fix waves: CLI/serve/MCP contract repair and real PPTX selector-based replacement; entity-aware OOXML text reads; OPC relationship/content-type validation and secondary DOCX diff coverage; and VBA Windows-1252, MS-OVBA chunk/decompression, CFB cycle, and early smoke-argument hardening. [FIXNOTES.md](../FIXNOTES.md) is the consolidated handoff.
