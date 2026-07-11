@@ -461,6 +461,28 @@ fn completion_shells_emit_text_scripts() {
 }
 
 #[test]
+fn completion_invalid_shell_errors_remain_exact() {
+    for (args, expected) in [
+        (
+            vec!["--json", "completion", "bash", "extra"],
+            "completion requires exactly one shell: bash, fish, powershell, or zsh",
+        ),
+        (
+            vec!["--json", "completion", "unknown"],
+            "unsupported completion shell: unknown (expected bash, fish, powershell, or zsh)",
+        ),
+    ] {
+        let (code, stdout, stderr) = run_ooxml(&args);
+        assert_eq!(code, 2);
+        assert_eq!(stdout, None);
+        assert_eq!(
+            stderr.expect("completion error")["error"]["message"],
+            expected
+        );
+    }
+}
+
+#[test]
 fn completion_includes_dispatched_top_level_commands() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_ooxml"))
         .args(["completion", "bash"])

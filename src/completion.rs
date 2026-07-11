@@ -1,4 +1,5 @@
 use crate::cli_dispatch::{DispatchBody, DispatchOutput};
+use crate::command_manifest::completion_tokens;
 use crate::{CliError, CliResult, EXIT_SUCCESS};
 
 pub(crate) fn completion(args: &[String]) -> CliResult<DispatchOutput> {
@@ -24,35 +25,6 @@ pub(crate) fn completion(args: &[String]) -> CliResult<DispatchOutput> {
     })
 }
 
-fn commands() -> &'static [&'static str] {
-    &[
-        "apply",
-        "agent",
-        "agent-triage",
-        "capabilities",
-        "completion",
-        "conformance",
-        "convert",
-        "diff",
-        "doctor",
-        "docx",
-        "find",
-        "help",
-        "inspect",
-        "mcp",
-        "pptx",
-        "repair",
-        "robot-docs",
-        "serve",
-        "template",
-        "validate",
-        "vba",
-        "verify",
-        "version",
-        "xlsx",
-    ]
-}
-
 fn bash_completion() -> String {
     format!(
         r#"# bash completion for ooxml
@@ -68,13 +40,13 @@ _ooxml()
 }}
 complete -F _ooxml ooxml
 "#,
-        commands = commands().join(" ")
+        commands = completion_tokens().join(" ")
     )
 }
 
 fn fish_completion() -> String {
     let mut lines = vec!["# fish completion for ooxml".to_string()];
-    for command in commands() {
+    for command in completion_tokens() {
         lines.push(format!(
             "complete -c ooxml -n '__fish_use_subcommand' -a {command}"
         ));
@@ -96,7 +68,7 @@ Register-ArgumentCompleter -Native -CommandName ooxml -ScriptBlock {{
         }}
 }}
 "#,
-        commands = commands()
+        commands = completion_tokens()
             .iter()
             .map(|command| format!("'{command}'"))
             .collect::<Vec<_>>()
@@ -115,6 +87,6 @@ _ooxml() {{
 }}
 compdef _ooxml ooxml
 "#,
-        commands = commands().join(" ")
+        commands = completion_tokens().join(" ")
     )
 }

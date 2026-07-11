@@ -157,6 +157,114 @@ pub(crate) fn help_projection(canonical_path: &[String]) -> Option<HelpProjectio
         })
 }
 
+struct CompletionSpec {
+    token: &'static str,
+    command: Option<CommandId>,
+}
+
+const COMPLETION_SPECS: &[CompletionSpec] = &[
+    CompletionSpec {
+        token: "apply",
+        command: Some(CommandId::Core(core::CoreCommandId::Apply)),
+    },
+    CompletionSpec {
+        token: "agent",
+        command: None,
+    },
+    CompletionSpec {
+        token: "agent-triage",
+        command: Some(CommandId::Core(core::CoreCommandId::AgentTriage)),
+    },
+    CompletionSpec {
+        token: "capabilities",
+        command: Some(CommandId::Core(core::CoreCommandId::Capabilities)),
+    },
+    CompletionSpec {
+        token: "completion",
+        command: Some(CommandId::Core(core::CoreCommandId::Completion)),
+    },
+    CompletionSpec {
+        token: "conformance",
+        command: Some(CommandId::Core(core::CoreCommandId::Conformance)),
+    },
+    CompletionSpec {
+        token: "convert",
+        command: Some(CommandId::Core(core::CoreCommandId::ConvertXlsmToXlsx)),
+    },
+    CompletionSpec {
+        token: "diff",
+        command: Some(CommandId::Core(core::CoreCommandId::Diff)),
+    },
+    CompletionSpec {
+        token: "doctor",
+        command: Some(CommandId::Core(core::CoreCommandId::Doctor)),
+    },
+    CompletionSpec {
+        token: "docx",
+        command: Some(CommandId::Docx(docx::DocxCommandId::Docx)),
+    },
+    CompletionSpec {
+        token: "find",
+        command: Some(CommandId::Core(core::CoreCommandId::Find)),
+    },
+    CompletionSpec {
+        token: "help",
+        command: Some(CommandId::Core(core::CoreCommandId::Help)),
+    },
+    CompletionSpec {
+        token: "inspect",
+        command: Some(CommandId::Core(core::CoreCommandId::Inspect)),
+    },
+    CompletionSpec {
+        token: "mcp",
+        command: Some(CommandId::Core(core::CoreCommandId::Mcp)),
+    },
+    CompletionSpec {
+        token: "pptx",
+        command: Some(CommandId::Pptx(pptx::PptxCommandId::Pptx)),
+    },
+    CompletionSpec {
+        token: "repair",
+        command: Some(CommandId::Core(core::CoreCommandId::RepairNormalize)),
+    },
+    CompletionSpec {
+        token: "robot-docs",
+        command: Some(CommandId::Core(core::CoreCommandId::RobotDocs)),
+    },
+    CompletionSpec {
+        token: "serve",
+        command: Some(CommandId::Core(core::CoreCommandId::Serve)),
+    },
+    CompletionSpec {
+        token: "template",
+        command: Some(CommandId::Core(core::CoreCommandId::Template)),
+    },
+    CompletionSpec {
+        token: "validate",
+        command: Some(CommandId::Core(core::CoreCommandId::Validate)),
+    },
+    CompletionSpec {
+        token: "vba",
+        command: Some(CommandId::Vba(vba::VbaCommandId::Vba)),
+    },
+    CompletionSpec {
+        token: "verify",
+        command: Some(CommandId::Core(core::CoreCommandId::Verify)),
+    },
+    CompletionSpec {
+        token: "version",
+        command: Some(CommandId::Core(core::CoreCommandId::Version)),
+    },
+    CompletionSpec {
+        token: "xlsx",
+        command: Some(CommandId::Xlsx(xlsx::XlsxCommandId::Xlsx)),
+    },
+];
+
+pub(crate) fn completion_tokens() -> Vec<&'static str> {
+    COMPLETION_SPECS.iter().map(|spec| spec.token).collect()
+}
+
 fn capability_value(spec: &CommandSpec) -> Value {
     capability_value_from_parts(
         spec.path,
@@ -1049,5 +1157,69 @@ mod tests {
         assert!(
             help_projection(&["xlsx".to_owned(), "names".to_owned(), "list".to_owned()]).is_some()
         );
+    }
+
+    #[test]
+    fn completion_projection_is_exact_ordered_and_id_backed() {
+        const EXPECTED: &[&str] = &[
+            "apply",
+            "agent",
+            "agent-triage",
+            "capabilities",
+            "completion",
+            "conformance",
+            "convert",
+            "diff",
+            "doctor",
+            "docx",
+            "find",
+            "help",
+            "inspect",
+            "mcp",
+            "pptx",
+            "repair",
+            "robot-docs",
+            "serve",
+            "template",
+            "validate",
+            "vba",
+            "verify",
+            "version",
+            "xlsx",
+        ];
+        let specs = command_specs();
+        let tokens = completion_tokens();
+        assert_eq!(tokens, EXPECTED);
+        assert_eq!(COMPLETION_SPECS.len(), 24);
+        assert_eq!(
+            COMPLETION_SPECS
+                .iter()
+                .filter(|row| row.command.is_some())
+                .count(),
+            23
+        );
+        assert_eq!(
+            COMPLETION_SPECS
+                .iter()
+                .filter(|row| row.command.is_none())
+                .map(|row| row.token)
+                .collect::<Vec<_>>(),
+            vec!["agent"]
+        );
+        assert_eq!(
+            tokens.iter().copied().collect::<BTreeSet<_>>().len(),
+            tokens.len()
+        );
+        for row in COMPLETION_SPECS {
+            let Some(id) = row.command else {
+                continue;
+            };
+            let matches = specs
+                .iter()
+                .filter(|spec| spec.id == id)
+                .collect::<Vec<_>>();
+            assert_eq!(matches.len(), 1, "completion ID for {}", row.token);
+            assert_eq!(matches[0].path.first().copied(), Some(row.token));
+        }
     }
 }
