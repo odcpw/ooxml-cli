@@ -100,6 +100,29 @@ pub(crate) fn capability_commands() -> Vec<Value> {
     command_specs().iter().map(capability_value).collect()
 }
 
+#[cfg(test)]
+pub(crate) fn manifest_serve_inspect_ids() -> Vec<CommandId> {
+    command_specs()
+        .into_iter()
+        .filter(|spec| matches!(spec.execution, ExecutionSupport::ServeInspect { .. }))
+        .map(|spec| spec.id)
+        .collect()
+}
+
+#[cfg(test)]
+pub(crate) fn manifest_serve_inspect_prose_ids() -> Vec<CommandId> {
+    command_specs()
+        .into_iter()
+        .filter(|spec| {
+            matches!(spec.execution, ExecutionSupport::ServeInspect { .. })
+                && capability_value(spec)["opIneligibleReason"]
+                    .as_str()
+                    .is_some_and(|reason| reason.contains("call via inspect in serve/MCP"))
+        })
+        .map(|spec| spec.id)
+        .collect()
+}
+
 pub(crate) fn command_id_for_canonical_path(canonical_path: &[&str]) -> Option<CommandId> {
     command_specs()
         .into_iter()
@@ -1066,65 +1089,6 @@ mod tests {
                 ),
             ]
         );
-    }
-
-    #[test]
-    fn complete_serve_inspect_set_matches_independent_42_route_oracle() {
-        const PATHS: &[&str] = &[
-            "ooxml pptx slides list",
-            "ooxml pptx slides selectors",
-            "ooxml pptx slides show",
-            "ooxml pptx extract text",
-            "ooxml pptx extract notes",
-            "ooxml pptx notes show",
-            "ooxml pptx comments list",
-            "ooxml pptx masters list",
-            "ooxml pptx masters show",
-            "ooxml pptx layouts list",
-            "ooxml pptx layouts show",
-            "ooxml pptx tables show",
-            "ooxml pptx shapes show",
-            "ooxml xlsx sheets list",
-            "ooxml xlsx sheets show",
-            "ooxml xlsx comments list",
-            "ooxml xlsx conditional-formats list",
-            "ooxml xlsx conditional-formats show",
-            "ooxml xlsx hyperlinks list",
-            "ooxml xlsx hyperlinks show",
-            "ooxml xlsx filters-sorts show",
-            "ooxml xlsx names list",
-            "ooxml xlsx names show",
-            "ooxml xlsx tables list",
-            "ooxml xlsx tables show",
-            "ooxml xlsx tables export",
-            "ooxml xlsx workbook metadata inspect",
-            "ooxml xlsx ranges export",
-            "ooxml xlsx cells extract",
-            "ooxml xlsx freeze show",
-            "ooxml docx text",
-            "ooxml docx blocks",
-            "ooxml docx styles list",
-            "ooxml docx styles show",
-            "ooxml docx comments list",
-            "ooxml docx fields list",
-            "ooxml docx headers list",
-            "ooxml docx headers show",
-            "ooxml docx footers list",
-            "ooxml docx footers show",
-            "ooxml docx images list",
-            "ooxml docx tables show",
-        ];
-        let actual = command_specs()
-            .iter()
-            .filter(|spec| matches!(&spec.execution, ExecutionSupport::ServeInspect { .. }))
-            .filter_map(|spec| capability_value(spec)["path"].as_str().map(str::to_owned))
-            .collect::<BTreeSet<_>>();
-        let expected = PATHS
-            .iter()
-            .map(|path| (*path).to_owned())
-            .collect::<BTreeSet<_>>();
-        assert_eq!(actual, expected);
-        assert_eq!(actual.len(), 42);
     }
 
     #[test]

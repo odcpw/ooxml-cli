@@ -1,109 +1,10 @@
 use std::collections::BTreeMap;
 
-struct ServeInspectContractCase {
-    family: &'static str,
-    command: &'static str,
-    aliases: &'static [&'static str],
-    fixture: &'static str,
-    args: Value,
-    direct_argv: &'static [&'static str],
-    wire_promised: bool,
-}
-
-fn serve_inspect_contract_cases() -> Vec<ServeInspectContractCase> {
-    vec![
-        inspect_case("xlsx", "xlsx ranges export", &[], "xlsx-minimal", serde_json::json!({"sheet": "1", "range": "A1"}), &["xlsx", "ranges", "export", "{file}", "--sheet", "1", "--range", "A1"], true),
-        inspect_case("xlsx", "xlsx cells extract", &[], "xlsx-minimal", serde_json::json!({}), &["xlsx", "cells", "extract", "{file}"], true),
-        inspect_case("xlsx", "xlsx comments list", &[], "xlsx-minimal", serde_json::json!({}), &["xlsx", "comments", "list", "{file}"], true),
-        inspect_case(
-            "xlsx",
-            "xlsx conditional-formats list",
-            &[
-                "xlsx conditional-formatting list",
-                "xlsx conditional-format list",
-                "xlsx cf list",
-            ],
-            "xlsx-cf",
-            serde_json::json!({"sheet": "1"}),
-            &["xlsx", "conditional-formats", "list", "{file}", "--sheet", "1"],
-            true,
-        ),
-        inspect_case(
-            "xlsx",
-            "xlsx conditional-formats show",
-            &[
-                "xlsx conditional-formatting show",
-                "xlsx conditional-format show",
-                "xlsx cf show",
-            ],
-            "xlsx-cf",
-            serde_json::json!({"sheet": "1", "rule": "block:1/rule:1"}),
-            &["xlsx", "conditional-formats", "show", "{file}", "--sheet", "1", "--rule", "block:1/rule:1"],
-            true,
-        ),
-        inspect_case("xlsx", "xlsx sheets list", &[], "xlsx-minimal", serde_json::json!({}), &["xlsx", "sheets", "list", "{file}"], true),
-        inspect_case("xlsx", "xlsx sheets show", &[], "xlsx-minimal", serde_json::json!({"sheet": "1"}), &["xlsx", "sheets", "show", "{file}", "--sheet", "1"], true),
-        inspect_case("xlsx", "xlsx freeze show", &[], "xlsx-hyperlinks", serde_json::json!({"sheet": "1"}), &["xlsx", "freeze", "show", "{file}", "--sheet", "1"], true),
-        inspect_case("xlsx", "xlsx hyperlinks list", &[], "xlsx-hyperlinks", serde_json::json!({"sheet": "1"}), &["xlsx", "hyperlinks", "list", "{file}", "--sheet", "1"], true),
-        inspect_case("xlsx", "xlsx hyperlinks show", &[], "xlsx-hyperlinks", serde_json::json!({"sheet": "1", "cell": "A1"}), &["xlsx", "hyperlinks", "show", "{file}", "--sheet", "1", "--cell", "A1"], true),
-        inspect_case("xlsx", "xlsx filters-sorts show", &[], "xlsx-minimal", serde_json::json!({"sheet": "1"}), &["xlsx", "filters-sorts", "show", "{file}", "--sheet", "1"], true),
-        inspect_case("xlsx", "xlsx names list", &[], "xlsx-names", serde_json::json!({}), &["xlsx", "names", "list", "{file}"], true),
-        inspect_case("xlsx", "xlsx names show", &[], "xlsx-names", serde_json::json!({"name": "GlobalName"}), &["xlsx", "names", "show", "{file}", "--name", "GlobalName"], false),
-        inspect_case("xlsx", "xlsx tables list", &[], "xlsx-tables", serde_json::json!({"sheet": "Data"}), &["xlsx", "tables", "list", "{file}", "--sheet", "Data"], true),
-        inspect_case("xlsx", "xlsx tables show", &[], "xlsx-tables", serde_json::json!({"sheet": "Data", "table": "Sales"}), &["xlsx", "tables", "show", "{file}", "--sheet", "Data", "--table", "Sales"], true),
-        inspect_case("xlsx", "xlsx tables export", &[], "xlsx-tables", serde_json::json!({"sheet": "Data", "table": "Sales"}), &["xlsx", "tables", "export", "{file}", "--sheet", "Data", "--table", "Sales"], false),
-        inspect_case("xlsx", "xlsx workbook metadata inspect", &[], "xlsx-minimal", serde_json::json!({}), &["xlsx", "workbook", "metadata", "inspect", "{file}"], false),
-        inspect_case("docx", "docx text", &[], "docx-minimal", serde_json::json!({}), &["docx", "text", "{file}"], false),
-        inspect_case("docx", "docx fields list", &[], "docx-minimal", serde_json::json!({}), &["docx", "fields", "list", "{file}"], false),
-        inspect_case("docx", "docx headers list", &[], "docx-headers", serde_json::json!({}), &["docx", "headers", "list", "{file}"], false),
-        inspect_case("docx", "docx footers list", &[], "docx-headers", serde_json::json!({}), &["docx", "footers", "list", "{file}"], false),
-        inspect_case("docx", "docx headers show", &[], "docx-headers", serde_json::json!({"selector": "header:1:default"}), &["docx", "headers", "show", "{file}", "--selector", "header:1:default"], false),
-        inspect_case("docx", "docx footers show", &[], "docx-headers", serde_json::json!({"id": "rId11"}), &["docx", "footers", "show", "{file}", "--id", "rId11"], false),
-        inspect_case("docx", "docx images list", &[], "docx-minimal", serde_json::json!({}), &["docx", "images", "list", "{file}"], false),
-        inspect_case("docx", "docx comments list", &[], "docx-minimal", serde_json::json!({}), &["docx", "comments", "list", "{file}"], false),
-        inspect_case("docx", "docx blocks", &[], "docx-mixed-blocks", serde_json::json!({"block": 0}), &["docx", "blocks", "{file}", "--block", "0"], false),
-        inspect_case("docx", "docx styles list", &[], "docx-styles", serde_json::json!({"type": "paragraph"}), &["docx", "styles", "list", "{file}", "--type", "paragraph"], false),
-        inspect_case("docx", "docx styles show", &[], "docx-styles", serde_json::json!({"style": "Heading2"}), &["docx", "styles", "show", "{file}", "--style", "Heading2"], false),
-        inspect_case("docx", "docx tables show", &[], "docx-tables", serde_json::json!({"table": 1}), &["docx", "tables", "show", "{file}", "--table", "1"], true),
-        inspect_case("pptx", "pptx slides list", &[], "pptx-title-content", serde_json::json!({}), &["pptx", "slides", "list", "{file}"], true),
-        inspect_case("pptx", "pptx slides selectors", &[], "pptx-title-content", serde_json::json!({"slide": 1}), &["pptx", "slides", "selectors", "{file}", "--slide", "1"], false),
-        inspect_case("pptx", "pptx slides show", &[], "pptx-title-content", serde_json::json!({"slide": 1}), &["pptx", "slides", "show", "{file}", "--slide", "1"], true),
-        inspect_case("pptx", "pptx extract text", &[], "pptx-title-content", serde_json::json!({"slide": 1}), &["pptx", "extract", "text", "{file}", "--slide", "1"], true),
-        inspect_case("pptx", "pptx extract notes", &[], "pptx-notes", serde_json::json!({"slide": 1}), &["pptx", "extract", "notes", "{file}", "--slide", "1"], true),
-        inspect_case("pptx", "pptx notes show", &[], "pptx-notes", serde_json::json!({"slide": 1}), &["pptx", "notes", "show", "{file}", "--slide", "1"], true),
-        inspect_case("pptx", "pptx comments list", &[], "pptx-title-content", serde_json::json!({}), &["pptx", "comments", "list", "{file}"], false),
-        inspect_case("pptx", "pptx masters list", &[], "pptx-title-content", serde_json::json!({}), &["pptx", "masters", "list", "{file}"], true),
-        inspect_case("pptx", "pptx masters show", &[], "pptx-title-content", serde_json::json!({"master": 1}), &["pptx", "masters", "show", "{file}", "--master", "1"], false),
-        inspect_case("pptx", "pptx layouts list", &[], "pptx-title-content", serde_json::json!({}), &["pptx", "layouts", "list", "{file}"], true),
-        inspect_case("pptx", "pptx layouts show", &[], "pptx-title-content", serde_json::json!({"layout": "1"}), &["pptx", "layouts", "show", "{file}", "--layout", "1"], false),
-        inspect_case("pptx", "pptx tables show", &[], "pptx-title-content", serde_json::json!({"slide": 1}), &["pptx", "tables", "show", "{file}", "--slide", "1"], true),
-        inspect_case("pptx", "pptx shapes show", &[], "pptx-title-content", serde_json::json!({"slide": 1, "includeText": true, "includeBounds": true}), &["pptx", "shapes", "show", "{file}", "--slide", "1", "--include-text", "--include-bounds"], false),
-    ]
-}
-
-fn inspect_case(
-    family: &'static str,
-    command: &'static str,
-    aliases: &'static [&'static str],
-    fixture: &'static str,
-    args: Value,
-    direct_argv: &'static [&'static str],
-    wire_promised: bool,
-) -> ServeInspectContractCase {
-    ServeInspectContractCase {
-        family,
-        command,
-        aliases,
-        fixture,
-        args,
-        direct_argv,
-        wire_promised,
-    }
-}
+use crate::inspect_probe_cases::{InspectProbeCase, inspect_probe_cases};
 
 #[test]
 fn serve_and_mcp_cover_the_full_canonical_inspect_contract() {
-    let cases = serve_inspect_contract_cases();
+    let cases = inspect_probe_cases(|canonical| canonical);
     assert_inspect_contract_inventory(&cases);
 
     let temp_dir = std::env::temp_dir().join(format!(
@@ -193,7 +94,7 @@ fn serve_and_mcp_cover_the_full_canonical_inspect_contract() {
             &mut serve_reader,
             request_id,
             &serve_sessions[case.fixture],
-            case.command,
+            case.key,
             case.args.clone(),
         );
         request_id += 1;
@@ -205,16 +106,16 @@ fn serve_and_mcp_cover_the_full_canonical_inspect_contract() {
         assert_eq!(
             serve_result, direct_serve,
             "Serve result must equal direct CLI JSON for {}",
-            case.command
+            case.key
         );
-        serve_canonical.insert(case.command, serve_result);
+        serve_canonical.insert(case.key, serve_result);
 
         let mcp_result = run_mcp_inspect_contract_call(
             &mut mcp_stdin,
             &mut mcp_reader,
             request_id,
             &mcp_sessions[case.fixture],
-            case.command,
+            case.key,
             case.args.clone(),
         );
         request_id += 1;
@@ -223,9 +124,9 @@ fn serve_and_mcp_cover_the_full_canonical_inspect_contract() {
         assert_eq!(
             mcp_result, direct_mcp,
             "MCP structuredContent must equal direct CLI JSON for {}",
-            case.command
+            case.key
         );
-        mcp_canonical.insert(case.command, mcp_result);
+        mcp_canonical.insert(case.key, mcp_result);
     }
 
     for case in &cases {
@@ -240,9 +141,9 @@ fn serve_and_mcp_cover_the_full_canonical_inspect_contract() {
             );
             request_id += 1;
             assert_eq!(
-                serve_alias, serve_canonical[case.command],
+                serve_alias, serve_canonical[case.key],
                 "Serve alias {alias} must equal {}",
-                case.command
+                case.key
             );
 
             let mcp_alias = run_mcp_inspect_contract_call(
@@ -255,9 +156,9 @@ fn serve_and_mcp_cover_the_full_canonical_inspect_contract() {
             );
             request_id += 1;
             assert_eq!(
-                mcp_alias, mcp_canonical[case.command],
+                mcp_alias, mcp_canonical[case.key],
                 "MCP alias {alias} must equal {}",
-                case.command
+                case.key
             );
         }
     }
@@ -349,16 +250,19 @@ fn serve_and_mcp_cover_the_full_canonical_inspect_contract() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
-fn assert_inspect_contract_inventory(cases: &[ServeInspectContractCase]) {
+fn assert_inspect_contract_inventory(cases: &[InspectProbeCase<&'static str>]) {
     assert_eq!(cases.len(), 42);
-    let commands = cases.iter().map(|case| case.command).collect::<BTreeSet<_>>();
+    let commands = cases
+        .iter()
+        .map(|case| case.canonical)
+        .collect::<BTreeSet<_>>();
     assert_eq!(commands.len(), cases.len());
     for case in cases {
         assert_eq!(
             case.direct_argv.iter().filter(|arg| **arg == "{file}").count(),
             1,
             "direct argv must contain one explicit file slot for {}",
-            case.command
+            case.canonical
         );
         assert_eq!(case.direct_argv.first().copied(), Some(case.family));
     }
@@ -380,7 +284,7 @@ fn assert_inspect_contract_inventory(cases: &[ServeInspectContractCase]) {
         cases
             .iter()
             .filter(|case| !case.aliases.is_empty())
-            .map(|case| case.command)
+            .map(|case| case.canonical)
             .collect::<BTreeSet<_>>(),
         BTreeSet::from([
             "xlsx conditional-formats list",
@@ -399,44 +303,6 @@ fn assert_inspect_contract_inventory(cases: &[ServeInspectContractCase]) {
         ])
     );
 
-    let promised = cases
-        .iter()
-        .filter(|case| case.wire_promised)
-        .map(|case| case.command)
-        .collect::<BTreeSet<_>>();
-    assert_eq!(promised.len(), 23);
-    for (family, expected) in [("xlsx", 14), ("docx", 1), ("pptx", 8)] {
-        assert_eq!(
-            cases
-                .iter()
-                .filter(|case| case.family == family && case.wire_promised)
-                .count(),
-            expected,
-            "wire-promised {family} inspect commands"
-        );
-    }
-    let capabilities: Value = serde_json::from_str(include_str!(
-        "../../../testdata/golden/command-manifest-contract/capabilities.json"
-    ))
-    .expect("frozen capabilities JSON");
-    let capability_promised = capabilities["commands"]
-        .as_array()
-        .expect("capability commands")
-        .iter()
-        .filter(|command| {
-            command["opIneligibleReason"]
-                .as_str()
-                .is_some_and(|reason| reason.contains("call via inspect in serve/MCP"))
-        })
-        .map(|command| {
-            command["path"]
-                .as_str()
-                .expect("capability path")
-                .strip_prefix("ooxml ")
-                .expect("ooxml path prefix")
-        })
-        .collect::<BTreeSet<_>>();
-    assert_eq!(promised, capability_promised);
 }
 
 fn run_serve_inspect_contract_call(
@@ -484,7 +350,7 @@ fn run_mcp_inspect_contract_call(
     response["result"]["structuredContent"].clone()
 }
 
-fn run_direct_inspect_contract_call(case: &ServeInspectContractCase, working: &str) -> Value {
+fn run_direct_inspect_contract_call(case: &InspectProbeCase<&'static str>, working: &str) -> Value {
     let mut command = Command::new(env!("CARGO_BIN_EXE_ooxml"));
     command.arg("--json");
     for arg in case.direct_argv {
@@ -494,7 +360,7 @@ fn run_direct_inspect_contract_call(case: &ServeInspectContractCase, working: &s
     assert!(
         output.status.success(),
         "direct CLI failed for {} with argv {:?}: {}",
-        case.command,
+        case.key,
         case.direct_argv,
         String::from_utf8_lossy(&output.stderr)
     );
@@ -502,7 +368,7 @@ fn run_direct_inspect_contract_call(case: &ServeInspectContractCase, working: &s
     assert!(
         parsed.is_ok(),
         "direct CLI emitted invalid JSON for {}: {:?}: {}",
-        case.command,
+        case.key,
         parsed.as_ref().err(),
         String::from_utf8_lossy(&output.stdout)
     );

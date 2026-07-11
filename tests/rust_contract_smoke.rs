@@ -7,6 +7,9 @@ use std::process::{Command, Stdio};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
+#[path = "support/inspect_probe_cases.rs"]
+mod inspect_probe_cases;
+
 fn baseline() -> Value {
     serde_json::from_str(include_str!(
         "../testdata/golden/rust-port-contract/baseline.json"

@@ -242,106 +242,144 @@ pub(super) fn resolve_serve_inspect_command(command: &str) -> Option<CommandId> 
 }
 
 #[cfg(test)]
+#[path = "../../tests/support/inspect_probe_cases.rs"]
+mod inspect_probe_cases;
+
+#[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use super::*;
+    use crate::command_manifest::{manifest_serve_inspect_ids, manifest_serve_inspect_prose_ids};
+    use inspect_probe_cases::inspect_probe_cases;
 
     #[test]
-    fn inspect_namespace_is_exact_unique_and_fully_resolvable() {
-        const EXPECTED_LABELS: &[&str] = &[
-            "xlsx ranges export",
-            "xlsx cells extract",
-            "xlsx comments list",
-            "xlsx conditional-formats list",
-            "xlsx conditional-formatting list",
-            "xlsx conditional-format list",
-            "xlsx cf list",
-            "xlsx conditional-formats show",
-            "xlsx conditional-formatting show",
-            "xlsx conditional-format show",
-            "xlsx cf show",
-            "xlsx sheets list",
-            "xlsx sheets show",
-            "xlsx freeze show",
-            "xlsx hyperlinks list",
-            "xlsx hyperlinks show",
-            "xlsx filters-sorts show",
-            "xlsx names list",
-            "xlsx names show",
-            "xlsx tables list",
-            "xlsx tables show",
-            "xlsx tables export",
-            "xlsx workbook metadata inspect",
-            "docx text",
-            "docx fields list",
-            "docx headers list",
-            "docx footers list",
-            "docx headers show",
-            "docx footers show",
-            "docx images list",
-            "docx comments list",
-            "docx blocks",
-            "docx styles list",
-            "docx styles show",
-            "docx tables show",
-            "pptx slides list",
-            "pptx slides selectors",
-            "pptx slides show",
-            "pptx extract text",
-            "pptx extract notes",
-            "pptx notes show",
-            "pptx comments list",
-            "pptx masters list",
-            "pptx masters show",
-            "pptx layouts list",
-            "pptx layouts show",
-            "pptx tables show",
-            "pptx shapes show",
-        ];
-        let ids = SERVE_INSPECT_SPECS
+    fn manifest_namespace_and_real_id_probes_are_exact_and_bidirectional() {
+        let probes = inspect_probe_cases(|canonical| {
+            resolve_serve_inspect_command(canonical)
+                .expect("shared canonical inspect probe must resolve")
+        });
+        let manifest_ids = manifest_serve_inspect_ids()
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let namespace_ids = SERVE_INSPECT_SPECS
             .iter()
             .map(|spec| spec.id)
             .collect::<BTreeSet<_>>();
-        let canonicals = SERVE_INSPECT_SPECS
+        let probe_ids = probes
+            .iter()
+            .map(|probe| probe.key)
+            .collect::<BTreeSet<_>>();
+        let namespace_canonicals = SERVE_INSPECT_SPECS
             .iter()
             .map(|spec| spec.canonical)
             .collect::<BTreeSet<_>>();
-        let labels = SERVE_INSPECT_SPECS
+        let probe_canonicals = probes
+            .iter()
+            .map(|probe| probe.canonical)
+            .collect::<BTreeSet<_>>();
+        let namespace_labels = SERVE_INSPECT_SPECS
             .iter()
             .flat_map(|spec| std::iter::once(spec.canonical).chain(spec.aliases.iter().copied()))
             .collect::<BTreeSet<_>>();
+        let probe_labels = probes
+            .iter()
+            .flat_map(|probe| std::iter::once(probe.canonical).chain(probe.aliases.iter().copied()))
+            .collect::<BTreeSet<_>>();
 
         assert_eq!(SERVE_INSPECT_SPECS.len(), 42);
-        assert_eq!(ids.len(), 42);
-        assert_eq!(canonicals.len(), 42);
-        assert_eq!(labels.len(), 48);
-        assert_eq!(
-            labels,
-            EXPECTED_LABELS.iter().copied().collect::<BTreeSet<_>>()
-        );
-        assert_eq!(
-            SERVE_INSPECT_SPECS
-                .iter()
-                .map(|spec| spec.aliases.len())
-                .sum::<usize>(),
-            6
-        );
-        for (family, count) in [("xlsx", 17), ("docx", 12), ("pptx", 13)] {
-            assert_eq!(
+        assert_eq!(probes.len(), 42);
+        assert_eq!(manifest_ids.len(), 42);
+        assert_eq!(namespace_ids.len(), 42);
+        assert_eq!(probe_ids.len(), 42);
+        assert_eq!(manifest_ids, namespace_ids);
+        assert_eq!(namespace_ids, probe_ids);
+        assert_eq!(namespace_canonicals, probe_canonicals);
+        assert_eq!(namespace_labels.len(), 48);
+        assert_eq!(namespace_labels, probe_labels);
+
+        let mut namespace_families = BTreeMap::new();
+        let mut probe_families = BTreeMap::new();
+        let mut manifest_families = BTreeMap::new();
+        for family in ["xlsx", "docx", "pptx"] {
+            namespace_families.insert(
+                family,
                 SERVE_INSPECT_SPECS
                     .iter()
                     .filter(|spec| spec.canonical.starts_with(family))
-                    .count(),
-                count
+                    .map(|spec| spec.id)
+                    .collect::<BTreeSet<_>>(),
+            );
+            probe_families.insert(
+                family,
+                probes
+                    .iter()
+                    .filter(|probe| probe.family == family)
+                    .map(|probe| probe.key)
+                    .collect::<BTreeSet<_>>(),
+            );
+            manifest_families.insert(
+                family,
+                manifest_ids
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        matches!(
+                            (family, id),
+                            ("xlsx", CommandId::Xlsx(_))
+                                | ("docx", CommandId::Docx(_))
+                                | ("pptx", CommandId::Pptx(_))
+                        )
+                    })
+                    .collect::<BTreeSet<_>>(),
             );
         }
-        for spec in SERVE_INSPECT_SPECS {
-            assert_eq!(resolve_serve_inspect_command(spec.canonical), Some(spec.id));
-            for alias in spec.aliases {
-                assert_eq!(resolve_serve_inspect_command(alias), Some(spec.id));
+        for (family, count) in [("xlsx", 17), ("docx", 12), ("pptx", 13)] {
+            assert_eq!(
+                namespace_families[family], probe_families[family],
+                "exact {family} ID set"
+            );
+            assert_eq!(
+                manifest_families[family], namespace_families[family],
+                "manifest {family} ID set"
+            );
+            assert_eq!(namespace_families[family].len(), count);
+        }
+
+        for probe in &probes {
+            assert!(!probe.fixture.is_empty());
+            assert!(probe.args.is_object());
+            assert_eq!(
+                probe
+                    .direct_argv
+                    .iter()
+                    .filter(|arg| **arg == "{file}")
+                    .count(),
+                1
+            );
+            assert_eq!(probe.direct_argv.first().copied(), Some(probe.family));
+            assert_eq!(
+                resolve_serve_inspect_command(probe.canonical),
+                Some(probe.key)
+            );
+            for alias in probe.aliases {
+                assert_eq!(resolve_serve_inspect_command(alias), Some(probe.key));
             }
         }
+
+        let prose_ids = manifest_serve_inspect_prose_ids()
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        assert_eq!(prose_ids.len(), 23);
+        assert!(prose_ids.is_subset(&manifest_ids));
+        for (family, expected) in [("xlsx", 14), ("docx", 1), ("pptx", 8)] {
+            assert_eq!(
+                prose_ids.intersection(&namespace_families[family]).count(),
+                expected
+            );
+        }
+
         assert_eq!(resolve_serve_inspect_command("xlsx not-real"), None);
     }
 }
