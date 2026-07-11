@@ -18,7 +18,7 @@ const COMMAND_GROUP_REASON: &str = "it is a command group, not a leaf mutation c
 pub(super) const GROUP_COMMAND_COUNT: usize = 20;
 
 command_id_enum! {
-pub(super) enum PptxCommandId {
+pub(crate) enum PptxCommandId {
     Pptx,
     Animations,
     Charts,

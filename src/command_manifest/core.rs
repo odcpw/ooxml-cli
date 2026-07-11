@@ -1,7 +1,7 @@
 use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 
 command_id_enum! {
-pub(super) enum CoreCommandId {
+pub(crate) enum CoreCommandId {
     Version,
     Capabilities,
     AgentTriage,

@@ -9,6 +9,7 @@ use crate::{
     json_string, package_mutation_temp_path, package_type, validate, validate_exit_code,
 };
 mod inspect;
+mod inspect_namespace;
 mod op;
 mod op_dispatch;
 use inspect::serve_inspect_command;

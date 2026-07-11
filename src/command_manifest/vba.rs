@@ -6,7 +6,7 @@ pub(super) const COMMAND_COUNT: usize = 16;
 pub(super) const LEGACY_START: usize = 293;
 
 command_id_enum! {
-pub(super) enum VbaCommandId {
+pub(crate) enum VbaCommandId {
     Vba,
     BuildBin,
     Create,

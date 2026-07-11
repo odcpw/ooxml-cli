@@ -22,10 +22,11 @@ mod pptx;
 mod vba;
 mod xlsx;
 
+pub(crate) use docx::DocxCommandId;
+pub(crate) use pptx::PptxCommandId;
 pub(crate) use xlsx::XlsxCommandId;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[allow(private_interfaces)]
 pub(crate) enum CommandId {
     Core(core::CoreCommandId),
     Pptx(pptx::PptxCommandId),

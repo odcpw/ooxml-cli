@@ -262,6 +262,50 @@ fn serve_and_mcp_cover_the_full_canonical_inspect_contract() {
         }
     }
 
+    for (fixture, command) in [
+        ("xlsx-minimal", "xlsx not-real"),
+        ("docx-minimal", "docx not-real"),
+        ("pptx-title-content", "pptx not-real"),
+    ] {
+        let expected = format!("unsupported serve inspect command: {command}");
+        let serve_response = serve_roundtrip(
+            &mut serve_stdin,
+            &mut serve_reader,
+            &rpc_request(
+                request_id,
+                "inspect",
+                serde_json::json!({
+                    "session": serve_sessions[fixture],
+                    "command": command,
+                    "args": {},
+                }),
+            ),
+        );
+        request_id += 1;
+        assert_eq!(serve_response["error"]["message"], expected);
+        assert_eq!(serve_response["error"]["data"]["type"], "invalid_args");
+
+        let mcp_response = serve_roundtrip(
+            &mut mcp_stdin,
+            &mut mcp_reader,
+            &rpc_request(
+                request_id,
+                "tools/call",
+                serde_json::json!({
+                    "name": "inspect",
+                    "arguments": {
+                        "session": mcp_sessions[fixture],
+                        "command": command,
+                        "args": {},
+                    },
+                }),
+            ),
+        );
+        request_id += 1;
+        assert_eq!(mcp_response["error"]["message"], expected);
+        assert_eq!(mcp_response["error"]["data"]["type"], "invalid_args");
+    }
+
     assert_eq!(serve_working.len(), fixtures.len());
     assert_eq!(mcp_working.len(), fixtures.len());
     for fixture in fixtures.keys() {

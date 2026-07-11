@@ -6,7 +6,7 @@ pub(super) const COMMAND_COUNT: usize = 45;
 pub(super) const LEGACY_START: usize = 248;
 
 command_id_enum! {
-pub(super) enum DocxCommandId {
+pub(crate) enum DocxCommandId {
     Docx,
     Comments,
     Fields,
