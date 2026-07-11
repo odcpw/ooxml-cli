@@ -1,5 +1,8 @@
+#[cfg(test)]
 mod commands;
-pub(crate) use commands::capability_commands;
+
+#[cfg(test)]
+pub(crate) use commands::legacy_capability_commands;
 
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,6 +15,10 @@ use crate::{
     CliError, CliResult, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS, EXIT_RENDER_FAILED, EXIT_SUCCESS,
     EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED, EXIT_UNSUPPORTED_TYPE, parse_string_flag,
 };
+
+pub(crate) fn capability_commands() -> Vec<Value> {
+    crate::command_manifest::capability_commands()
+}
 
 pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
     reject_capabilities_unknown_flags(args)?;

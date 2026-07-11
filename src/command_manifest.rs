@@ -92,6 +92,10 @@ fn command_specs() -> Vec<CommandSpec> {
     specs
 }
 
+pub(crate) fn capability_commands() -> Vec<Value> {
+    command_specs().iter().map(capability_value).collect()
+}
+
 fn capability_value(spec: &CommandSpec) -> Value {
     capability_value_from_parts(
         spec.path,
@@ -167,7 +171,7 @@ mod tests {
     fn core_segment_matches_legacy_and_leads_root_aggregation() {
         let core = core::command_specs();
         let root = command_specs();
-        let legacy = crate::capabilities::capability_commands();
+        let legacy = crate::capabilities::legacy_capability_commands();
 
         assert_eq!(core.len(), 36);
         assert_eq!(
@@ -186,7 +190,7 @@ mod tests {
         let pptx = pptx::command_specs();
         let groups = &pptx[..pptx::GROUP_COMMAND_COUNT];
         let root = command_specs();
-        let legacy = crate::capabilities::capability_commands();
+        let legacy = crate::capabilities::legacy_capability_commands();
         let root_pptx_end = core_len + pptx.len();
         let group_end = core_len + pptx::GROUP_COMMAND_COUNT;
 
@@ -247,7 +251,7 @@ mod tests {
         let core_len = core::command_specs().len();
         let first = pptx::command_specs();
         let second = pptx::command_specs();
-        let legacy = crate::capabilities::capability_commands();
+        let legacy = crate::capabilities::legacy_capability_commands();
         let end = core_len + first.len();
 
         assert_segment_matches_legacy(&first, &legacy[core_len..end]);
@@ -303,7 +307,7 @@ mod tests {
 
     #[test]
     fn xlsx_root_owned_segments_match_their_noncontiguous_legacy_offsets() {
-        let legacy = crate::capabilities::capability_commands();
+        let legacy = crate::capabilities::legacy_capability_commands();
         let xlsx_start = core::command_specs().len() + pptx::command_specs().len();
         let front = xlsx::front_command_specs();
         let forms = xlsx::forms_command_specs();
@@ -401,7 +405,7 @@ mod tests {
         let start = core::command_specs().len() + pptx::command_specs().len();
         let first = xlsx::command_specs();
         let second = xlsx::command_specs();
-        let legacy = crate::capabilities::capability_commands();
+        let legacy = crate::capabilities::legacy_capability_commands();
         let end = start + first.len();
 
         assert_segment_matches_legacy(&first, &legacy[start..end]);
@@ -494,7 +498,7 @@ mod tests {
     fn xlsx_serve_mutations_match_legacy_op_compatible_set() {
         let specs = xlsx::command_specs();
         let start = core::command_specs().len() + pptx::command_specs().len();
-        let legacy = crate::capabilities::capability_commands();
+        let legacy = crate::capabilities::legacy_capability_commands();
         let expected = legacy[start..start + specs.len()]
             .iter()
             .filter(|command| command["opCompatible"] == true)
@@ -720,7 +724,7 @@ mod tests {
     fn complete_shadow_matches_full_legacy_value_and_serialized_order() {
         let first = command_specs();
         let second = command_specs();
-        let legacy = crate::capabilities::capability_commands();
+        let legacy = crate::capabilities::legacy_capability_commands();
         assert_eq!(first.len(), 309);
         assert_segment_matches_legacy(&first, &legacy);
         assert_eq!(

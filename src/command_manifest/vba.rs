@@ -730,7 +730,7 @@ mod tests {
     #[test]
     fn complete_vba_segment_matches_fixed_legacy_tail_and_root_placement() {
         let specs = command_specs();
-        let legacy = crate::capabilities::capability_commands();
+        let legacy = crate::capabilities::legacy_capability_commands();
         let root = crate::command_manifest::command_specs();
         let start = crate::command_manifest::core::command_specs().len()
             + crate::command_manifest::pptx::command_specs().len()
@@ -793,7 +793,7 @@ mod tests {
     #[test]
     fn vba_serve_mutations_match_legacy_and_live_dispatch_with_advisories() {
         let specs = command_specs();
-        let legacy = crate::capabilities::capability_commands();
+        let legacy = crate::capabilities::legacy_capability_commands();
         let expected = legacy[LEGACY_START..LEGACY_START + COMMAND_COUNT]
             .iter()
             .filter(|command| command["opCompatible"] == true)

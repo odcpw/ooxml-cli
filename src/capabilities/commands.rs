@@ -7,7 +7,7 @@ mod xlsx;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-pub(crate) fn capability_commands() -> Vec<Value> {
+pub(crate) fn legacy_capability_commands() -> Vec<Value> {
     let mut commands = Vec::new();
     commands.extend(core::commands());
     commands.extend(pptx::commands());

@@ -1524,7 +1524,7 @@ mod tests {
     #[test]
     fn complete_docx_segment_matches_fixed_legacy_slice_and_root_placement() {
         let specs = command_specs();
-        let legacy = crate::capabilities::capability_commands();
+        let legacy = crate::capabilities::legacy_capability_commands();
         let root = crate::command_manifest::command_specs();
         let start = crate::command_manifest::core::command_specs().len()
             + crate::command_manifest::pptx::command_specs().len()
@@ -1612,7 +1612,7 @@ mod tests {
     #[test]
     fn docx_serve_mutations_match_legacy_op_compatible_set_and_advisory() {
         let specs = command_specs();
-        let legacy = crate::capabilities::capability_commands();
+        let legacy = crate::capabilities::legacy_capability_commands();
         let expected = legacy[LEGACY_START..LEGACY_START + COMMAND_COUNT]
             .iter()
             .filter(|command| command["opCompatible"] == true)

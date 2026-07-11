@@ -396,7 +396,7 @@ mod tests {
     #[test]
     fn structure_segment_matches_fixed_legacy_slice() {
         let specs = command_specs();
-        let legacy = crate::capabilities::capability_commands();
+        let legacy = crate::capabilities::legacy_capability_commands();
         assert_eq!(specs.len(), COMMAND_COUNT);
         assert_segment_matches_legacy(&specs, &legacy[LEGACY_START..LEGACY_START + COMMAND_COUNT]);
     }
