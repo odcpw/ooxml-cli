@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 use super::super::super::op::{ServeOp, push_serve_plan_string_flag};
+use crate::command_manifest::DocxCommandId;
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, docx_blocks_delete,
     docx_blocks_insert_after, docx_blocks_replace, json_i64, json_optional_string,
@@ -9,11 +10,12 @@ use crate::{
 
 pub(super) fn serve_docx_blocks_op(
     working: &str,
+    command_id: DocxCommandId,
     command: &str,
     args: &Value,
 ) -> CliResult<ServeOp> {
-    let op = match command {
-        "docx blocks replace" => {
+    let op = match command_id {
+        DocxCommandId::BlocksReplace => {
             let block = json_i64(args, "block")?
                 .ok_or_else(|| CliError::invalid_args("block is required"))?;
             if block < 1 {
@@ -64,7 +66,7 @@ pub(super) fn serve_docx_blocks_op(
                 readback,
             }
         }
-        "docx blocks delete" => {
+        DocxCommandId::BlocksDelete => {
             let block = json_i64(args, "block")?
                 .ok_or_else(|| CliError::invalid_args("block is required"))?;
             if block < 1 {
@@ -104,7 +106,7 @@ pub(super) fn serve_docx_blocks_op(
                 readback,
             }
         }
-        "docx blocks insert-after" => {
+        DocxCommandId::BlocksInsertAfter => {
             let block = json_i64(args, "block")?.unwrap_or(0);
             if block < 0 {
                 return Err(CliError::invalid_args("--block must be >= 0"));

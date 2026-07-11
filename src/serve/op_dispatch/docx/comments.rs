@@ -2,6 +2,7 @@ use serde_json::{Value, json};
 use std::fs;
 
 use super::super::super::op::{ServeOp, push_serve_plan_string_flag};
+use crate::command_manifest::DocxCommandId;
 use crate::{
     CliError, CliResult, DocxCommentEditSpec, DocxParagraphMutationOptions, current_utc_rfc3339,
     docx_comments_add, docx_comments_edit, docx_comments_remove, json_i64, json_optional_string,
@@ -9,11 +10,12 @@ use crate::{
 
 pub(super) fn serve_docx_comments_op(
     working: &str,
+    command_id: DocxCommandId,
     command: &str,
     args: &Value,
 ) -> CliResult<ServeOp> {
-    let op = match command {
-        "docx comments add" => {
+    let op = match command_id {
+        DocxCommandId::CommentsAdd => {
             let anchor_block = match json_i64(args, "anchor-block")? {
                 Some(value) => value,
                 None => json_i64(args, "anchorBlock")?.unwrap_or(0),
@@ -70,7 +72,7 @@ pub(super) fn serve_docx_comments_op(
                 readback,
             }
         }
-        "docx comments edit" => {
+        DocxCommandId::CommentsEdit => {
             let comment_id_set =
                 args.get("comment-id").is_some() || args.get("commentId").is_some();
             let handle_set = args.get("handle").is_some();
@@ -181,7 +183,7 @@ pub(super) fn serve_docx_comments_op(
                 readback,
             }
         }
-        "docx comments remove" => {
+        DocxCommandId::CommentsRemove => {
             let comment_id_set =
                 args.get("comment-id").is_some() || args.get("commentId").is_some();
             let handle_set = args.get("handle").is_some();

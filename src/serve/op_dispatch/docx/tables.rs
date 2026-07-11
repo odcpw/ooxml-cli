@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 use super::super::super::op::{ServeOp, push_serve_plan_string_flag};
+use crate::command_manifest::DocxCommandId;
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, docx_tables_clear_cell,
     docx_tables_delete_row, docx_tables_insert_row, docx_tables_set_cell, json_i64,
@@ -10,11 +11,12 @@ use crate::{
 
 pub(super) fn serve_docx_tables_op(
     working: &str,
+    command_id: DocxCommandId,
     command: &str,
     args: &Value,
 ) -> CliResult<ServeOp> {
-    let op = match command {
-        "docx tables set-cell" => {
+    let op = match command_id {
+        DocxCommandId::TablesSetCell => {
             let table = json_i64(args, "table")?
                 .ok_or_else(|| CliError::invalid_args("table is required"))?;
             let row =
@@ -88,7 +90,7 @@ pub(super) fn serve_docx_tables_op(
                 readback,
             }
         }
-        "docx tables clear-cell" => {
+        DocxCommandId::TablesClearCell => {
             let table = json_i64(args, "table")?
                 .ok_or_else(|| CliError::invalid_args("table is required"))?;
             let row =
@@ -139,7 +141,7 @@ pub(super) fn serve_docx_tables_op(
                 readback,
             }
         }
-        "docx tables insert-row" => {
+        DocxCommandId::TablesInsertRow => {
             let table = json_i64(args, "table")?
                 .ok_or_else(|| CliError::invalid_args("table is required"))?;
             let at =
@@ -184,7 +186,7 @@ pub(super) fn serve_docx_tables_op(
                 readback,
             }
         }
-        "docx tables delete-row" => {
+        DocxCommandId::TablesDeleteRow => {
             let table = json_i64(args, "table")?
                 .ok_or_else(|| CliError::invalid_args("table is required"))?;
             let row =

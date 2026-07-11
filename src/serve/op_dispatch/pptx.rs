@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 use super::super::op::ServeOp;
+use crate::command_manifest::PptxCommandId;
 use crate::{
     CliError, CliResult, json_bool, json_i64,
     pptx_mutation::{
@@ -10,9 +11,14 @@ use crate::{
     },
 };
 
-pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliResult<ServeOp> {
-    let op = match command {
-        "pptx tables set-cell" => {
+pub(super) fn serve_pptx_op(
+    working: &str,
+    command_id: PptxCommandId,
+    command: &str,
+    args: &Value,
+) -> CliResult<ServeOp> {
+    let op = match command_id {
+        PptxCommandId::TablesSetCell => {
             let slide = required_i64(args, "slide")?;
             let row = required_i64(args, "row")?;
             let col = required_i64(args, "col")?;
@@ -40,7 +46,7 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
 
             finish_pptx_tables_op(working, command, plan_args, pptx_tables_set_cell)?
         }
-        "pptx tables delete-row" => {
+        PptxCommandId::TablesDeleteRow => {
             let slide = required_i64(args, "slide")?;
             let row = required_i64(args, "row")?;
             let mut plan_args = pptx_table_target_args(args, slide)?;
@@ -48,7 +54,7 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
 
             finish_pptx_tables_op(working, command, plan_args, pptx_tables_delete_row)?
         }
-        "pptx tables insert-row" => {
+        PptxCommandId::TablesInsertRow => {
             let slide = required_i64(args, "slide")?;
             let at = required_i64(args, "at")?;
             let mut plan_args = pptx_table_target_args(args, slide)?;
@@ -56,7 +62,7 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
 
             finish_pptx_tables_op(working, command, plan_args, pptx_tables_insert_row)?
         }
-        "pptx tables delete-col" => {
+        PptxCommandId::TablesDeleteCol => {
             let slide = required_i64(args, "slide")?;
             let col = required_i64(args, "col")?;
             let mut plan_args = pptx_table_target_args(args, slide)?;
@@ -64,7 +70,7 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
 
             finish_pptx_tables_op(working, command, plan_args, pptx_tables_delete_col)?
         }
-        "pptx tables insert-col" => {
+        PptxCommandId::TablesInsertCol => {
             let slide = required_i64(args, "slide")?;
             let at = required_i64(args, "at")?;
             let mut plan_args = pptx_table_target_args(args, slide)?;
@@ -75,7 +81,7 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
 
             finish_pptx_tables_op(working, command, plan_args, pptx_tables_insert_col)?
         }
-        "pptx tables update-from-xlsx" => {
+        PptxCommandId::TablesUpdateFromXlsx => {
             let slide = required_i64(args, "slide")?;
             let workbook = required_string(args, "workbook")?;
             let mut plan_args = pptx_table_target_args(args, slide)?;
@@ -112,7 +118,7 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
 
             finish_pptx_tables_op(working, command, plan_args, pptx_tables_update_from_xlsx)?
         }
-        "pptx notes set" => {
+        PptxCommandId::NotesSet => {
             let slide = required_i64(args, "slide")?;
             let (text, text_present) = optional_string(args, "text")?;
             if !text_present {
@@ -128,14 +134,14 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
 
             finish_pptx_notes_op(working, command, plan_args, pptx_notes_set)?
         }
-        "pptx notes clear" => {
+        PptxCommandId::NotesClear => {
             let slide = required_i64(args, "slide")?;
             let mut plan_args = Vec::new();
             push_cli_flag(&mut plan_args, "--slide", &slide.to_string());
 
             finish_pptx_notes_op(working, command, plan_args, pptx_notes_clear)?
         }
-        "pptx shapes delete" => {
+        PptxCommandId::ShapesDelete => {
             let slide = required_i64(args, "slide")?;
             let target = required_string(args, "target")?;
             let mut plan_args = Vec::new();
@@ -144,7 +150,7 @@ pub(super) fn serve_pptx_op(working: &str, command: &str, args: &Value) -> CliRe
 
             finish_pptx_shapes_op(working, command, plan_args, pptx_shapes_delete)?
         }
-        "pptx replace text-occurrences" => {
+        PptxCommandId::ReplaceTextOccurrences => {
             let match_text = required_string_alias(args, "match-text", "matchText")?;
             let new_text = required_string_alias(args, "new-text", "newText")?;
             let mut plan_args = Vec::new();

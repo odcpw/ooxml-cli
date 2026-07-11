@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 use super::super::super::op::{ServeOp, push_serve_plan_string_flag};
+use crate::command_manifest::DocxCommandId;
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, docx_fields_insert, docx_fields_set_result,
     json_optional_string, json_string,
@@ -8,11 +9,12 @@ use crate::{
 
 pub(super) fn serve_docx_fields_op(
     working: &str,
+    command_id: DocxCommandId,
     command: &str,
     args: &Value,
 ) -> CliResult<ServeOp> {
-    let op = match command {
-        "docx fields insert" => {
+    let op = match command_id {
+        DocxCommandId::FieldsInsert => {
             let location = json_string(args, "location")?;
             let field_code = json_optional_string(args, "field-code")
                 .or_else(|| json_optional_string(args, "fieldCode"))
@@ -48,7 +50,7 @@ pub(super) fn serve_docx_fields_op(
                 readback,
             }
         }
-        "docx fields set-result" => {
+        DocxCommandId::FieldsSetResult => {
             let selector = json_string(args, "selector")?;
             if args.get("result").is_none() {
                 return Err(CliError::invalid_args("result is required"));

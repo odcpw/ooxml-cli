@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 use super::super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
+use crate::command_manifest::DocxCommandId;
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, DocxStyleApplyOptions, DocxStyleTarget,
     docx_styles_apply, json_bool, json_i64, json_optional_string, normalize_docx_style_target,
@@ -9,11 +10,12 @@ use crate::{
 
 pub(super) fn serve_docx_styles_op(
     working: &str,
+    command_id: DocxCommandId,
     command: &str,
     args: &Value,
 ) -> CliResult<ServeOp> {
-    let op = match command {
-        "docx styles apply" => {
+    let op = match command_id {
+        DocxCommandId::StylesApply => {
             let handle_set = args.get("handle").is_some();
             let index_set = args.get("index").is_some();
             if handle_set && index_set {

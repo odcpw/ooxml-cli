@@ -17,9 +17,14 @@ use crate::{
 
 use super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
 
-pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliResult<ServeOp> {
-    let op = match command {
-        "xlsx cells set" => {
+pub(super) fn serve_xlsx_op(
+    working: &str,
+    command_id: XlsxCommandId,
+    command: &str,
+    args: &Value,
+) -> CliResult<ServeOp> {
+    let op = match command_id {
+        XlsxCommandId::CellsSet => {
             let sheet = json_string(args, "sheet")?;
             let cell = json_string(args, "cell")?;
             let value = json_string(args, "value")?;
@@ -36,8 +41,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 no_validate: true,
                 in_place: true,
             };
-            let readback =
-                xlsx_cells_set_by_id(CommandId::Xlsx(XlsxCommandId::CellsSet), working, options)?;
+            let readback = xlsx_cells_set_by_id(CommandId::Xlsx(command_id), working, options)?;
             let plan_flags = vec![
                 json!("--cell"),
                 json!(cell),
@@ -53,7 +57,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx comments add" => {
+        XlsxCommandId::CommentsAdd => {
             let sheet = json_optional_string(args, "sheet");
             let cell = json_string(args, "cell")?;
             let author = json_string(args, "author")?;
@@ -88,7 +92,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx comments update" => {
+        XlsxCommandId::CommentsUpdate => {
             let sheet = json_optional_string(args, "sheet");
             let comment_id = match json_i64(args, "comment-id")? {
                 Some(value) => Some(value),
@@ -143,7 +147,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx comments remove" | "xlsx comments delete" => {
+        XlsxCommandId::CommentsRemove => {
             let sheet = json_optional_string(args, "sheet");
             let comment_id = match json_i64(args, "comment-id")? {
                 Some(value) => Some(value),
@@ -186,10 +190,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx conditional-formats add"
-        | "xlsx conditional-formatting add"
-        | "xlsx conditional-format add"
-        | "xlsx cf add" => {
+        XlsxCommandId::ConditionalFormatsAdd => {
             let sheet = json_optional_string(args, "sheet");
             let range = json_string(args, "range")?;
             let rule_type = json_optional_string(args, "type");
@@ -271,14 +272,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx conditional-formats delete"
-        | "xlsx conditional-formats remove"
-        | "xlsx conditional-formatting delete"
-        | "xlsx conditional-formatting remove"
-        | "xlsx conditional-format delete"
-        | "xlsx conditional-format remove"
-        | "xlsx cf delete"
-        | "xlsx cf remove" => {
+        XlsxCommandId::ConditionalFormatsDelete => {
             let sheet = json_optional_string(args, "sheet");
             let rule = json_string(args, "rule")?;
             let readback = xlsx_conditional_formats_delete(
@@ -316,10 +310,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx conditional-formats reorder"
-        | "xlsx conditional-formatting reorder"
-        | "xlsx conditional-format reorder"
-        | "xlsx cf reorder" => {
+        XlsxCommandId::ConditionalFormatsReorder => {
             let sheet = json_optional_string(args, "sheet");
             let rule = json_string(args, "rule")?;
             let priority = json_i64(args, "priority")?
@@ -361,7 +352,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx ranges set" => {
+        XlsxCommandId::RangesSet => {
             let sheet = json_string(args, "sheet")?;
             let range = json_optional_string(args, "range");
             let anchor = json_optional_string(args, "anchor");
@@ -415,7 +406,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx ranges set-format" => {
+        XlsxCommandId::RangesSetFormat => {
             let sheet = json_string(args, "sheet")?;
             let range = json_string(args, "range")?;
             let preset = json_optional_string(args, "preset");
@@ -457,7 +448,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx charts set-series-style" => {
+        XlsxCommandId::ChartsSetSeriesStyle => {
             let sheet = json_optional_string(args, "sheet");
             let chart = json_optional_string(args, "chart");
             let series = json_i64(args, "series")?.unwrap_or(1);
@@ -534,7 +525,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx colwidths set" => {
+        XlsxCommandId::ColwidthsSet => {
             let sheet = json_optional_string(args, "sheet");
             let range = json_string(args, "range")?;
             let width_text = json_number_string(args, "width")?;
@@ -577,7 +568,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx rowheights set" => {
+        XlsxCommandId::RowheightsSet => {
             let sheet = json_optional_string(args, "sheet");
             let range = json_string(args, "range")?;
             let height_text = json_number_string(args, "height")?;
@@ -620,7 +611,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx tables append-rows" => {
+        XlsxCommandId::TablesAppendRows => {
             let sheet = json_optional_string(args, "sheet");
             let table = json_optional_string(args, "table");
             let values = json_optional_serialized(args, "values")?;
@@ -679,7 +670,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx tables append-records" => {
+        XlsxCommandId::TablesAppendRecords => {
             let sheet = json_optional_string(args, "sheet");
             let table = json_string(args, "table")?;
             let expect_range = json_optional_string(args, "expect-range")
@@ -745,7 +736,7 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
                 readback,
             }
         }
-        "xlsx workbook metadata update" => {
+        XlsxCommandId::WorkbookMetadataUpdate => {
             let title = json_optional_string(args, "title");
             let subject = json_optional_string(args, "subject");
             let creator = json_optional_string(args, "creator");

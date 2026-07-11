@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 use super::super::super::op::{ServeOp, push_serve_plan_string_flag};
+use crate::command_manifest::DocxCommandId;
 use crate::{
     CliError, CliResult, DocxHeaderFooterSetTextOptions, docx_headers_footers_set_text, json_i64,
     json_optional_string, normalize_docx_header_footer_show_type, resolve_required_docx_table_text,
@@ -8,12 +9,13 @@ use crate::{
 
 pub(super) fn serve_docx_headers_footers_op(
     working: &str,
+    command_id: DocxCommandId,
     command: &str,
     args: &Value,
 ) -> CliResult<ServeOp> {
-    let op = match command {
-        "docx headers set-text" | "docx footers set-text" => {
-            let kind = if command.contains("footers") {
+    let op = match command_id {
+        DocxCommandId::HeadersSetText | DocxCommandId::FootersSetText => {
+            let kind = if command_id == DocxCommandId::FootersSetText {
                 "footer"
             } else {
                 "header"

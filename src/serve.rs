@@ -12,6 +12,7 @@ mod inspect;
 mod inspect_namespace;
 mod op;
 mod op_dispatch;
+mod op_namespace;
 use inspect::serve_inspect_command;
 use op::ServeOp;
 use op_dispatch::serve_op_command;

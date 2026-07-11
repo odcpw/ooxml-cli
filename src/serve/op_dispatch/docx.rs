@@ -9,33 +9,46 @@ mod styles;
 mod tables;
 
 use super::super::op::ServeOp;
+use crate::command_manifest::DocxCommandId;
 use crate::{CliError, CliResult};
 
-pub(super) fn serve_docx_op(working: &str, command: &str, args: &Value) -> CliResult<ServeOp> {
-    let op = match command {
-        family_command
-            if family_command.starts_with("docx headers ")
-                || family_command.starts_with("docx footers ") =>
-        {
-            headers_footers::serve_docx_headers_footers_op(working, family_command, args)?
+pub(super) fn serve_docx_op(
+    working: &str,
+    command_id: DocxCommandId,
+    command: &str,
+    args: &Value,
+) -> CliResult<ServeOp> {
+    let op = match command_id {
+        DocxCommandId::HeadersSetText | DocxCommandId::FootersSetText => {
+            headers_footers::serve_docx_headers_footers_op(working, command_id, command, args)?
         }
-        family_command if family_command.starts_with("docx fields ") => {
-            fields::serve_docx_fields_op(working, family_command, args)?
+        DocxCommandId::FieldsInsert | DocxCommandId::FieldsSetResult => {
+            fields::serve_docx_fields_op(working, command_id, command, args)?
         }
-        family_command if family_command.starts_with("docx paragraphs ") => {
-            paragraphs::serve_docx_paragraphs_op(working, family_command, args)?
+        DocxCommandId::ParagraphsAppend
+        | DocxCommandId::ParagraphsInsert
+        | DocxCommandId::ParagraphsSet
+        | DocxCommandId::ParagraphsClear => {
+            paragraphs::serve_docx_paragraphs_op(working, command_id, command, args)?
         }
-        family_command if family_command.starts_with("docx styles ") => {
-            styles::serve_docx_styles_op(working, family_command, args)?
+        DocxCommandId::StylesApply => {
+            styles::serve_docx_styles_op(working, command_id, command, args)?
         }
-        family_command if family_command.starts_with("docx blocks ") => {
-            blocks::serve_docx_blocks_op(working, family_command, args)?
+        DocxCommandId::BlocksReplace
+        | DocxCommandId::BlocksDelete
+        | DocxCommandId::BlocksInsertAfter => {
+            blocks::serve_docx_blocks_op(working, command_id, command, args)?
         }
-        family_command if family_command.starts_with("docx comments ") => {
-            comments::serve_docx_comments_op(working, family_command, args)?
+        DocxCommandId::CommentsAdd
+        | DocxCommandId::CommentsEdit
+        | DocxCommandId::CommentsRemove => {
+            comments::serve_docx_comments_op(working, command_id, command, args)?
         }
-        family_command if family_command.starts_with("docx tables ") => {
-            tables::serve_docx_tables_op(working, family_command, args)?
+        DocxCommandId::TablesSetCell
+        | DocxCommandId::TablesClearCell
+        | DocxCommandId::TablesInsertRow
+        | DocxCommandId::TablesDeleteRow => {
+            tables::serve_docx_tables_op(working, command_id, command, args)?
         }
         _ => {
             return Err(CliError::invalid_args(format!(

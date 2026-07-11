@@ -2133,14 +2133,14 @@ fn serve_op_supports_xlsx_comments_add_update_remove() {
         "op",
         serde_json::json!({
             "session": session,
-            "command": "xlsx comments remove",
+            "command": "xlsx comments delete",
             "args": {"commentId": 0, "expectHash": updated_hash},
         }),
     );
     let remove_response = serve_roundtrip(&mut stdin, &mut reader, &remove);
     assert!(
         remove_response.get("error").is_none(),
-        "comments remove op failed: {remove_response:?}"
+        "comments delete alias op failed: {remove_response:?}"
     );
     assert_eq!(
         remove_response["result"]["readback"]["previousText"],
@@ -2156,7 +2156,7 @@ fn serve_op_supports_xlsx_comments_add_update_remove() {
         .iter()
         .map(|item| item["argv"][2].as_str().expect("plan verb").to_string())
         .collect::<Vec<_>>();
-    assert_eq!(verbs, ["add", "update", "remove"]);
+    assert_eq!(verbs, ["add", "update", "delete"]);
 
     let commit = rpc_request(7, "commit", serde_json::json!({"session": session}));
     let commit_response = serve_roundtrip(&mut stdin, &mut reader, &commit);

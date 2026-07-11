@@ -5,23 +5,52 @@ mod xlsx;
 use serde_json::{Value, json};
 
 use super::op::ServeOp;
+use super::op_namespace::resolve_serve_mutation_command;
+use crate::command_manifest::{
+    CommandId, CoreCommandId, DocxCommandId, PptxCommandId, VbaCommandId, XlsxCommandId,
+};
 use crate::{
     CliError, CliResult, DispatchBody, GlobalFlags, dispatch, json_string, json_u32,
     pptx_replace_text_in_place,
 };
 
 pub(super) fn serve_op_command(working: &str, command: &str, args: &Value) -> CliResult<ServeOp> {
-    let op = match command {
-        generic_command if is_generic_serve_mutation_command(generic_command) => {
-            serve_generic_mutation_op(working, generic_command, args)?
-        }
-        family_command if family_command.starts_with("xlsx ") => {
-            xlsx::serve_xlsx_op(working, family_command, args)?
-        }
-        family_command if family_command.starts_with("docx ") => {
-            docx::serve_docx_op(working, family_command, args)?
-        }
-        "pptx replace text" => {
+    let Some(command_id) = resolve_serve_mutation_command(command) else {
+        return Err(CliError::invalid_args(format!(
+            "unsupported serve op command: {command}"
+        )));
+    };
+    let op = match command_id {
+        CommandId::Core(CoreCommandId::RepairNormalize | CoreCommandId::TemplateApply)
+        | CommandId::Xlsx(
+            XlsxCommandId::SheetsAdd
+            | XlsxCommandId::SheetsRename
+            | XlsxCommandId::SheetsMove
+            | XlsxCommandId::SheetsDelete
+            | XlsxCommandId::DataValidationsCreate
+            | XlsxCommandId::DataValidationsUpdate
+            | XlsxCommandId::DataValidationsDelete
+            | XlsxCommandId::HyperlinksAdd
+            | XlsxCommandId::HyperlinksUpdate
+            | XlsxCommandId::HyperlinksDelete
+            | XlsxCommandId::NamesAdd
+            | XlsxCommandId::NamesUpdate
+            | XlsxCommandId::NamesRename
+            | XlsxCommandId::NamesDelete
+            | XlsxCommandId::TablesCreate
+            | XlsxCommandId::FreezeSet
+            | XlsxCommandId::FreezeClear,
+        )
+        | CommandId::Docx(DocxCommandId::Replace | DocxCommandId::TablesCreate)
+        | CommandId::Vba(
+            VbaCommandId::Create
+            | VbaCommandId::Rebuild
+            | VbaCommandId::Attach
+            | VbaCommandId::Remove,
+        ) => serve_generic_mutation_op(working, command, args)?,
+        CommandId::Xlsx(id) => xlsx::serve_xlsx_op(working, id, command, args)?,
+        CommandId::Docx(id) => docx::serve_docx_op(working, id, command, args)?,
+        CommandId::Pptx(PptxCommandId::ReplaceText) => {
             let slide = json_u32(args, "slide")?.unwrap_or(1);
             let target = json_string(args, "target")?;
             let text = json_string(args, "text")?;
@@ -41,9 +70,7 @@ pub(super) fn serve_op_command(working: &str, command: &str, args: &Value) -> Cl
                 readback,
             }
         }
-        family_command if family_command.starts_with("pptx ") => {
-            pptx::serve_pptx_op(working, family_command, args)?
-        }
+        CommandId::Pptx(id) => pptx::serve_pptx_op(working, id, command, args)?,
         _ => {
             return Err(CliError::invalid_args(format!(
                 "unsupported serve op command: {command}"
@@ -51,37 +78,6 @@ pub(super) fn serve_op_command(working: &str, command: &str, args: &Value) -> Cl
         }
     };
     Ok(op)
-}
-
-fn is_generic_serve_mutation_command(command: &str) -> bool {
-    matches!(
-        command,
-        "repair normalize"
-            | "template apply"
-            | "xlsx sheets add"
-            | "xlsx sheets rename"
-            | "xlsx sheets move"
-            | "xlsx sheets delete"
-            | "xlsx data-validations create"
-            | "xlsx data-validations update"
-            | "xlsx data-validations delete"
-            | "xlsx hyperlinks add"
-            | "xlsx hyperlinks update"
-            | "xlsx hyperlinks delete"
-            | "xlsx names add"
-            | "xlsx names update"
-            | "xlsx names rename"
-            | "xlsx names delete"
-            | "xlsx tables create"
-            | "xlsx freeze set"
-            | "xlsx freeze clear"
-            | "docx replace"
-            | "docx tables create"
-            | "vba create"
-            | "vba rebuild"
-            | "vba attach"
-            | "vba remove"
-    )
 }
 
 fn serve_generic_mutation_op(working: &str, command: &str, args: &Value) -> CliResult<ServeOp> {

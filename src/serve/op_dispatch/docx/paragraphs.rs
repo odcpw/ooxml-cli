@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 use super::super::super::op::{ServeOp, push_serve_plan_string_flag};
+use crate::command_manifest::DocxCommandId;
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, docx_paragraphs_append,
     docx_paragraphs_clear, docx_paragraphs_insert, docx_paragraphs_set, json_i64,
@@ -9,11 +10,12 @@ use crate::{
 
 pub(super) fn serve_docx_paragraphs_op(
     working: &str,
+    command_id: DocxCommandId,
     command: &str,
     args: &Value,
 ) -> CliResult<ServeOp> {
-    let op = match command {
-        "docx paragraphs append" => {
+    let op = match command_id {
+        DocxCommandId::ParagraphsAppend => {
             let text = json_optional_string(args, "text");
             let text_file = json_optional_string(args, "text-file")
                 .or_else(|| json_optional_string(args, "textFile"));
@@ -46,7 +48,7 @@ pub(super) fn serve_docx_paragraphs_op(
                 readback,
             }
         }
-        "docx paragraphs insert" => {
+        DocxCommandId::ParagraphsInsert => {
             let insert_after = match json_i64(args, "insert-after")? {
                 Some(value) => value,
                 None => json_i64(args, "insertAfter")?.unwrap_or(0),
@@ -87,7 +89,7 @@ pub(super) fn serve_docx_paragraphs_op(
                 readback,
             }
         }
-        "docx paragraphs set" => {
+        DocxCommandId::ParagraphsSet => {
             let handle_set = args.get("handle").is_some();
             let index_set = args.get("index").is_some();
             if handle_set && index_set {
@@ -149,7 +151,7 @@ pub(super) fn serve_docx_paragraphs_op(
                 readback,
             }
         }
-        "docx paragraphs clear" => {
+        DocxCommandId::ParagraphsClear => {
             let handle_set = args.get("handle").is_some();
             let index_set = args.get("index").is_some();
             if handle_set && index_set {

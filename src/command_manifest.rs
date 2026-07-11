@@ -22,8 +22,10 @@ mod pptx;
 mod vba;
 mod xlsx;
 
+pub(crate) use core::CoreCommandId;
 pub(crate) use docx::DocxCommandId;
 pub(crate) use pptx::PptxCommandId;
+pub(crate) use vba::VbaCommandId;
 pub(crate) use xlsx::XlsxCommandId;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -119,6 +121,15 @@ pub(crate) fn manifest_serve_inspect_prose_ids() -> Vec<CommandId> {
                     .as_str()
                     .is_some_and(|reason| reason.contains("call via inspect in serve/MCP"))
         })
+        .map(|spec| spec.id)
+        .collect()
+}
+
+#[cfg(test)]
+pub(crate) fn manifest_serve_mutation_ids() -> Vec<CommandId> {
+    command_specs()
+        .into_iter()
+        .filter(|spec| matches!(spec.execution, ExecutionSupport::ServeMutation { .. }))
         .map(|spec| spec.id)
         .collect()
 }
