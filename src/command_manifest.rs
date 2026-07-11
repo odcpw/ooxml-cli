@@ -99,6 +99,64 @@ pub(crate) fn capability_commands() -> Vec<Value> {
     command_specs().iter().map(capability_value).collect()
 }
 
+pub(crate) struct HelpFlagProjection {
+    name: &'static str,
+    description: &'static str,
+}
+
+impl HelpFlagProjection {
+    pub(crate) fn name(&self) -> &'static str {
+        self.name
+    }
+
+    pub(crate) fn description(&self) -> &'static str {
+        self.description
+    }
+}
+
+pub(crate) struct HelpProjection {
+    use_text: &'static str,
+    short: &'static str,
+    local_flags: Vec<HelpFlagProjection>,
+}
+
+impl HelpProjection {
+    pub(crate) fn use_text(&self) -> &'static str {
+        self.use_text
+    }
+
+    pub(crate) fn short(&self) -> &'static str {
+        self.short
+    }
+
+    pub(crate) fn local_flags(&self) -> &[HelpFlagProjection] {
+        &self.local_flags
+    }
+}
+
+pub(crate) fn help_projection(canonical_path: &[String]) -> Option<HelpProjection> {
+    command_specs()
+        .into_iter()
+        .find(|spec| {
+            spec.path
+                .iter()
+                .copied()
+                .eq(canonical_path.iter().map(String::as_str))
+        })
+        .map(|spec| HelpProjection {
+            use_text: spec.use_text,
+            short: spec.short,
+            local_flags: spec
+                .local_flags
+                .iter()
+                .map(|flag| HelpFlagProjection {
+                    name: flag.name,
+                    description: flag.description,
+                })
+                .collect(),
+        })
+}
+
 fn capability_value(spec: &CommandSpec) -> Value {
     capability_value_from_parts(
         spec.path,
@@ -949,5 +1007,47 @@ mod tests {
             assert_eq!(matches.len(), 1);
             assert_eq!(matches[0].path, expected_path);
         }
+    }
+
+    #[test]
+    fn help_projection_covers_each_unique_canonical_spec_path_exactly() {
+        let specs = command_specs();
+        let paths = specs.iter().map(|spec| spec.path).collect::<BTreeSet<_>>();
+        assert_eq!(paths.len(), specs.len());
+        for spec in &specs {
+            let canonical_path = spec
+                .path
+                .iter()
+                .map(|part| (*part).to_owned())
+                .collect::<Vec<_>>();
+            let projection = help_projection(&canonical_path).expect("canonical help projection");
+            assert_eq!(projection.use_text(), spec.use_text);
+            assert_eq!(projection.short(), spec.short);
+            assert_eq!(projection.local_flags().len(), spec.local_flags.len());
+            for (projected, expected) in projection.local_flags().iter().zip(&spec.local_flags) {
+                assert_eq!(projected.name(), expected.name);
+                assert_eq!(projected.description(), expected.description);
+            }
+        }
+    }
+
+    #[test]
+    fn help_projection_rejects_aliases_and_unknown_paths() {
+        assert!(
+            help_projection(&["xlsx".to_owned(), "name".to_owned(), "list".to_owned()]).is_none()
+        );
+        assert!(help_projection(&["xlsx".to_owned(), "defined-names".to_owned()]).is_none());
+        assert!(
+            help_projection(&[
+                "xlsx".to_owned(),
+                "defined-names".to_owned(),
+                "list".to_owned(),
+            ])
+            .is_none()
+        );
+        assert!(help_projection(&["not-a-command".to_owned()]).is_none());
+        assert!(
+            help_projection(&["xlsx".to_owned(), "names".to_owned(), "list".to_owned()]).is_some()
+        );
     }
 }

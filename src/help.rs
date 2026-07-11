@@ -5,6 +5,7 @@ use serde_json::Value;
 use crate::agent_aliases::{CONDITIONAL_FORMAT_TOPIC_ALIASES, DATA_VALIDATION_TOPIC_ALIASES};
 use crate::capabilities::capability_commands;
 use crate::cli_dispatch::{DispatchBody, DispatchOutput};
+use crate::command_manifest::{HelpProjection, help_projection};
 use crate::{CliError, CliResult, EXIT_SUCCESS};
 
 const ROOT_SUMMARY: &str = "ooxml is the Rust port of ooxml-cli for proven OOXML automation.";
@@ -337,7 +338,7 @@ pub(crate) fn help(args: &[String]) -> CliResult<DispatchOutput> {
         root_help()
     } else if is_group_path(&topic) {
         group_help(&topic)?
-    } else if let Some(command) = command_for_topic(&topic) {
+    } else if let Some(command) = help_projection(&topic) {
         leaf_help(&topic, &command)
     } else {
         return Err(CliError::invalid_args(format!(
@@ -484,20 +485,16 @@ fn group_help(topic: &[String]) -> CliResult<String> {
     Ok(out)
 }
 
-fn leaf_help(topic: &[String], command: &Value) -> String {
-    let use_text = command["use"].as_str().unwrap_or_default();
-    let short = command["short"]
-        .as_str()
-        .unwrap_or("Rust-supported command.");
+fn leaf_help(topic: &[String], command: &HelpProjection) -> String {
+    let use_text = command.use_text();
+    let short = command.short();
     let usage = leaf_usage(topic, use_text);
     let mut out = format!("{short}\n\nUsage:\n  ooxml {usage}\n");
-    if let Some(flags) = command["localFlags"].as_array()
-        && !flags.is_empty()
-    {
+    if !command.local_flags().is_empty() {
         out.push_str("\nFlags:\n");
-        for flag in flags {
-            let name = flag["name"].as_str().unwrap_or_default();
-            let description = flag["description"].as_str().unwrap_or_default();
+        for flag in command.local_flags() {
+            let name = flag.name();
+            let description = flag.description();
             out.push_str(&format!("  {name:<24} {description}\n"));
         }
     }
