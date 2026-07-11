@@ -1,5 +1,7 @@
 use serde_json::Value;
 
+use crate::command_manifest::{CommandId, XlsxCommandId};
+use crate::typed_command_adapter::xlsx_sheets_read;
 use crate::xlsx_freeze::xlsx_freeze_show;
 use crate::{
     CliError, CliResult, XlsxRangeExportOptions, XlsxTableExportOptions, docx_blocks_show,
@@ -13,8 +15,7 @@ use crate::{
     xlsx_cells_extract, xlsx_comments_list, xlsx_conditional_formats_list,
     xlsx_conditional_formats_show, xlsx_filters_sorts_show, xlsx_hyperlinks_list,
     xlsx_hyperlinks_show, xlsx_names_list, xlsx_names_show, xlsx_range_export_with_options,
-    xlsx_sheets_list, xlsx_sheets_show, xlsx_tables_export, xlsx_tables_list, xlsx_tables_show,
-    xlsx_workbook_metadata_inspect,
+    xlsx_tables_export, xlsx_tables_list, xlsx_tables_show, xlsx_workbook_metadata_inspect,
 };
 
 pub(super) fn serve_inspect_command(
@@ -106,10 +107,16 @@ pub(super) fn serve_inspect_command(
             let rule = json_string(args, "rule")?;
             xlsx_conditional_formats_show(working, sheet.as_deref(), &rule)
         }
-        "xlsx sheets list" => xlsx_sheets_list(working),
+        "xlsx sheets list" => {
+            xlsx_sheets_read(CommandId::Xlsx(XlsxCommandId::SheetsList), working, None)
+        }
         "xlsx sheets show" => {
             let sheet = json_optional_string(args, "sheet");
-            xlsx_sheets_show(working, sheet.as_deref())
+            xlsx_sheets_read(
+                CommandId::Xlsx(XlsxCommandId::SheetsShow),
+                working,
+                sheet.as_deref(),
+            )
         }
         "xlsx freeze show" => {
             let sheet = json_optional_string(args, "sheet");

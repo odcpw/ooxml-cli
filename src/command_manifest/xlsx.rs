@@ -18,7 +18,7 @@ pub(super) const FRONT_COMMAND_COUNT: usize = GROUP_COMMAND_COUNT + 1;
 pub(super) const ROOT_OWNED_COMMAND_COUNT: usize = FRONT_COMMAND_COUNT + 1;
 
 command_id_enum! {
-pub(super) enum XlsxCommandId {
+pub(crate) enum XlsxCommandId {
     Xlsx,
     Cells,
     Charts,

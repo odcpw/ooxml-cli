@@ -22,8 +22,11 @@ mod pptx;
 mod vba;
 mod xlsx;
 
+pub(crate) use xlsx::XlsxCommandId;
+
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-enum CommandId {
+#[allow(private_interfaces)]
+pub(crate) enum CommandId {
     Core(core::CoreCommandId),
     Pptx(pptx::PptxCommandId),
     Xlsx(xlsx::XlsxCommandId),
@@ -919,5 +922,28 @@ mod tests {
             .collect::<BTreeSet<_>>();
         assert_eq!(actual, expected);
         assert_eq!(actual.len(), 70);
+    }
+
+    #[test]
+    fn guarded_xlsx_sheet_read_ids_keep_exact_spec_paths() {
+        let specs = xlsx::command_specs();
+        let guarded = [
+            (
+                XlsxCommandId::SheetsList,
+                &["xlsx", "sheets", "list"] as &[&str],
+            ),
+            (
+                XlsxCommandId::SheetsShow,
+                &["xlsx", "sheets", "show"] as &[&str],
+            ),
+        ];
+        for (id, expected_path) in guarded {
+            let matches = specs
+                .iter()
+                .filter(|spec| spec.id == CommandId::Xlsx(id))
+                .collect::<Vec<_>>();
+            assert_eq!(matches.len(), 1);
+            assert_eq!(matches[0].path, expected_path);
+        }
     }
 }

@@ -32,6 +32,25 @@ fn xlsx_sheets_show_matches_rust_baseline() {
 }
 
 #[test]
+fn guarded_xlsx_sheet_reads_preserve_direct_valid_and_invalid_contracts() {
+    let fixture = "testdata/xlsx/minimal-workbook/workbook.xlsx";
+    for args in [
+        vec!["--json", "xlsx", "sheets", "list", fixture],
+        vec!["--json", "xlsx", "sheets", "show", fixture],
+        vec![
+            "--json", "xlsx", "sheets", "show", fixture, "--sheet", "1",
+        ],
+        vec![
+            "--json", "xlsx", "sheets", "show", fixture, "--unknown-sheet-flag",
+        ],
+        vec!["--json", "xlsx", "sheets", "show", fixture, "--sheet"],
+        vec!["--json", "xlsx", "sheets", "list", fixture, "--bogus"],
+    ] {
+        assert_rust_baseline_match(&args);
+    }
+}
+
+#[test]
 fn xlsx_sheets_add_matches_rust_baseline_shape_and_saved_output() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-xlsx-sheets-add-{}", std::process::id()));

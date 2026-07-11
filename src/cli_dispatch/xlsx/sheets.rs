@@ -2,23 +2,28 @@ use serde_json::Value;
 
 use crate::cli_args::*;
 use crate::cli_core::{CliError, CliResult};
+use crate::command_manifest::{CommandId, XlsxCommandId};
+use crate::typed_command_adapter::xlsx_sheets_read;
 use crate::{
     XlsxSheetsAddOptions, XlsxSheetsDeleteOptions, XlsxSheetsMoveOptions, XlsxSheetsRenameOptions,
-    xlsx_sheets_add, xlsx_sheets_delete, xlsx_sheets_list, xlsx_sheets_move, xlsx_sheets_rename,
-    xlsx_sheets_show,
+    xlsx_sheets_add, xlsx_sheets_delete, xlsx_sheets_move, xlsx_sheets_rename,
 };
 
 pub(super) fn dispatch_xlsx_sheets(args: &[String]) -> CliResult<Value> {
     match args {
         [family, group, verb, file] if family == "xlsx" && group == "sheets" && verb == "list" => {
-            xlsx_sheets_list(file)
+            xlsx_sheets_read(CommandId::Xlsx(XlsxCommandId::SheetsList), file, None)
         }
         [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "sheets" && verb == "show" =>
         {
             reject_unknown_flags(rest, &["--sheet"], &[])?;
             let sheet = parse_string_flag(rest, "--sheet")?;
-            xlsx_sheets_show(file, sheet.as_deref())
+            xlsx_sheets_read(
+                CommandId::Xlsx(XlsxCommandId::SheetsShow),
+                file,
+                sheet.as_deref(),
+            )
         }
         [family, group, verb, file, rest @ ..]
             if family == "xlsx" && group == "sheets" && verb == "add" =>
