@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 
+use crate::command_manifest::{capability_command_for_id, command_id_for_canonical_path};
 use crate::{CliError, CliResult, capabilities, json_field};
 
 pub(crate) fn mcp_tool_success(tool: &str, payload: Value, next_actions: Vec<String>) -> Value {
@@ -312,9 +313,12 @@ pub(crate) fn mcp_command_resource_for_uri(uri: &str) -> CliResult<Value> {
         ));
     }
     let normalized = normalize_command_resource_path(decoded);
-    capabilities::capability_commands()
-        .into_iter()
-        .find(|command| command["path"].as_str() == Some(normalized.as_str()))
+    let canonical_path = normalized
+        .strip_prefix("ooxml ")
+        .map(|path| path.split(' ').collect::<Vec<_>>())
+        .unwrap_or_default();
+    command_id_for_canonical_path(&canonical_path)
+        .and_then(capability_command_for_id)
         .ok_or_else(|| {
             CliError::file_not_found(format!(
                 "unknown command: {decoded}; discover valid commands via resource://capabilities"

@@ -99,6 +99,20 @@ pub(crate) fn capability_commands() -> Vec<Value> {
     command_specs().iter().map(capability_value).collect()
 }
 
+pub(crate) fn command_id_for_canonical_path(canonical_path: &[&str]) -> Option<CommandId> {
+    command_specs()
+        .into_iter()
+        .find(|spec| spec.path == canonical_path)
+        .map(|spec| spec.id)
+}
+
+pub(crate) fn capability_command_for_id(command_id: CommandId) -> Option<Value> {
+    command_specs()
+        .into_iter()
+        .find(|spec| spec.id == command_id)
+        .map(|spec| capability_value(&spec))
+}
+
 pub(crate) struct HelpFlagProjection {
     name: &'static str,
     description: &'static str,
@@ -950,6 +964,50 @@ mod tests {
         assert_eq!(spec_id_set, declared_set);
         assert_eq!(spec_ids.len(), spec_id_set.len());
         assert_eq!(path_set.len(), specs.len());
+    }
+
+    #[test]
+    fn canonical_paths_and_ids_roundtrip_without_duplicates_or_gaps() {
+        let specs = command_specs();
+        let declared = declared_command_ids().into_iter().collect::<BTreeSet<_>>();
+        let mut resolved_ids = BTreeSet::new();
+        let mut resolved_paths = BTreeSet::new();
+
+        assert_eq!(specs.len(), 309);
+        for spec in &specs {
+            let resolved = command_id_for_canonical_path(spec.path);
+            assert_eq!(
+                resolved,
+                Some(spec.id),
+                "canonical path: {}",
+                spec.path.join(" ")
+            );
+            let Some(resolved) = resolved else {
+                continue;
+            };
+            assert!(resolved_ids.insert(resolved), "duplicate ID: {resolved:?}");
+            assert!(
+                resolved_paths.insert(spec.path),
+                "duplicate canonical path: {}",
+                spec.path.join(" ")
+            );
+
+            let capability = capability_command_for_id(resolved);
+            assert!(
+                capability.is_some(),
+                "missing capability for ID: {resolved:?}"
+            );
+            let Some(capability) = capability else {
+                continue;
+            };
+            assert_eq!(
+                capability["path"].as_str(),
+                Some(format!("ooxml {}", spec.path.join(" ")).as_str())
+            );
+        }
+
+        assert_eq!(resolved_ids, declared);
+        assert_eq!(resolved_paths.len(), 309);
     }
 
     #[test]

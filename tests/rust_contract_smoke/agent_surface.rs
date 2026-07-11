@@ -697,33 +697,74 @@ fn mcp_command_resources_cover_advertised_rust_capabilities() {
         }
     }
 
-    let unknown = serve_roundtrip(
-        &mut stdin,
-        &mut reader,
-        &rpc_request(
-            id,
-            "resources/read",
-            serde_json::json!({"uri": "resource://command/xlsx%20not%20real"}),
+    for uri in [
+        "resource://command/%20%20ooxml%20%20xlsx%20%20cells%20%20set%20%20",
+        "resource://command/%78lsx%20cells%20set",
+    ] {
+        let response = serve_roundtrip(
+            &mut stdin,
+            &mut reader,
+            &rpc_request(id, "resources/read", serde_json::json!({"uri": uri})),
+        );
+        id += 1;
+        assert!(
+            response.get("error").is_none(),
+            "normalized command resource should resolve: {response:?}"
+        );
+        let summary = summarize_mcp_command_resource(&response["result"], uri);
+        assert_eq!(summary["path"], "ooxml xlsx cells set");
+    }
+
+    for (uri, error_type, message) in [
+        (
+            "resource://command/xlsx%20not%20real",
+            "file_not_found",
+            "unknown command: xlsx not real; discover valid commands via resource://capabilities",
         ),
-    );
-    id += 1;
-    assert!(
-        unknown.get("error").is_some(),
-        "unknown command resource should fail: {unknown:?}"
-    );
-    let bad_escape = serve_roundtrip(
-        &mut stdin,
-        &mut reader,
-        &rpc_request(
-            id,
-            "resources/read",
-            serde_json::json!({"uri": "resource://command/xlsx%ZZbad"}),
+        (
+            "resource://command/",
+            "invalid_args",
+            "resource://command/{path} requires a command path",
         ),
-    );
-    assert!(
-        bad_escape.get("error").is_some(),
-        "invalid command resource URI should fail: {bad_escape:?}"
-    );
+        (
+            "resource://command/xlsx%ZZbad",
+            "invalid_args",
+            "invalid percent escape in command resource URI: xlsx%ZZbad",
+        ),
+        (
+            "resource://command/%FF",
+            "invalid_args",
+            "command resource URI path is not valid UTF-8: invalid utf-8 sequence of 1 bytes from index 0",
+        ),
+        (
+            "resource://command/docx%20comment%20list",
+            "file_not_found",
+            "unknown command: docx comment list; discover valid commands via resource://capabilities",
+        ),
+        (
+            "resource://command/xlsx%20cell%20set",
+            "file_not_found",
+            "unknown command: xlsx cell set; discover valid commands via resource://capabilities",
+        ),
+        (
+            "resource://command/convert",
+            "file_not_found",
+            "unknown command: convert; discover valid commands via resource://capabilities",
+        ),
+    ] {
+        let response = serve_roundtrip(
+            &mut stdin,
+            &mut reader,
+            &rpc_request(id, "resources/read", serde_json::json!({"uri": uri})),
+        );
+        id += 1;
+        assert_eq!(response["error"]["code"], -32602, "error code for {uri}");
+        assert_eq!(
+            response["error"]["data"]["type"], error_type,
+            "error type for {uri}"
+        );
+        assert_eq!(response["error"]["message"], message, "message for {uri}");
+    }
 
     drop(stdin);
     let status = child.wait().expect("mcp exit");
