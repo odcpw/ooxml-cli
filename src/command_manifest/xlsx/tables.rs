@@ -434,14 +434,19 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::*;
-    use crate::command_manifest::{assert_segment_matches_legacy, capability_value};
+    use crate::command_manifest::{
+        assert_segment_matches_frozen_contract, capability_value, frozen_contract_commands,
+    };
 
     #[test]
-    fn tables_segment_matches_fixed_legacy_slice() {
+    fn tables_segment_matches_frozen_contract_slice() {
         let specs = command_specs();
-        let legacy = crate::capabilities::legacy_capability_commands();
+        let frozen = frozen_contract_commands();
         assert_eq!(specs.len(), COMMAND_COUNT);
-        assert_segment_matches_legacy(&specs, &legacy[LEGACY_START..LEGACY_START + COMMAND_COUNT]);
+        assert_segment_matches_frozen_contract(
+            &specs,
+            &frozen[LEGACY_START..LEGACY_START + COMMAND_COUNT],
+        );
     }
 
     #[test]

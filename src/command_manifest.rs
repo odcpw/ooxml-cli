@@ -364,14 +364,26 @@ fn capability_value_from_parts<'a>(
 }
 
 #[cfg(test)]
-fn assert_segment_matches_legacy(specs: &[CommandSpec], legacy: &[Value]) {
-    assert_eq!(specs.len(), legacy.len(), "manifest segment length");
-    for (index, (spec, expected)) in specs.iter().zip(legacy).enumerate() {
+pub(crate) fn frozen_contract_commands() -> Vec<Value> {
+    let contract: Value = serde_json::from_str(include_str!(
+        "../testdata/golden/command-manifest-contract/capabilities.json"
+    ))
+    .expect("parse frozen capability contract");
+    contract["commands"]
+        .as_array()
+        .expect("frozen capability commands")
+        .clone()
+}
+
+#[cfg(test)]
+fn assert_segment_matches_frozen_contract(specs: &[CommandSpec], frozen: &[Value]) {
+    assert_eq!(specs.len(), frozen.len(), "manifest segment length");
+    for (index, (spec, expected)) in specs.iter().zip(frozen).enumerate() {
         let actual = capability_value(spec);
         assert_eq!(actual, *expected, "manifest segment value at index {index}");
         assert_eq!(
             serde_json::to_string(&actual).expect("serialize shadow capability value"),
-            serde_json::to_string(expected).expect("serialize legacy capability value"),
+            serde_json::to_string(expected).expect("serialize frozen capability value"),
             "manifest segment JSON at index {index}"
         );
     }
@@ -386,10 +398,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn core_segment_matches_legacy_and_leads_root_aggregation() {
+    fn core_segment_matches_frozen_contract_and_leads_root_aggregation() {
         let core = core::command_specs();
         let root = command_specs();
-        let legacy = crate::capabilities::legacy_capability_commands();
+        let frozen = frozen_contract_commands();
 
         assert_eq!(core.len(), 36);
         assert_eq!(
@@ -399,16 +411,16 @@ mod tests {
                 .collect::<Vec<_>>(),
             core.iter().map(|spec| spec.id).collect::<Vec<_>>()
         );
-        assert_segment_matches_legacy(&core, &legacy[..core.len()]);
+        assert_segment_matches_frozen_contract(&core, &frozen[..core.len()]);
     }
 
     #[test]
-    fn pptx_group_segment_matches_legacy_after_core() {
+    fn pptx_group_segment_matches_frozen_contract_after_core() {
         let core_len = core::command_specs().len();
         let pptx = pptx::command_specs();
         let groups = &pptx[..pptx::GROUP_COMMAND_COUNT];
         let root = command_specs();
-        let legacy = crate::capabilities::legacy_capability_commands();
+        let frozen = frozen_contract_commands();
         let root_pptx_end = core_len + pptx.len();
         let group_end = core_len + pptx::GROUP_COMMAND_COUNT;
 
@@ -420,7 +432,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             pptx.iter().map(|spec| spec.id).collect::<Vec<_>>()
         );
-        assert_segment_matches_legacy(groups, &legacy[core_len..group_end]);
+        assert_segment_matches_frozen_contract(groups, &frozen[core_len..group_end]);
     }
 
     #[test]
@@ -465,14 +477,14 @@ mod tests {
     }
 
     #[test]
-    fn current_pptx_shadow_matches_legacy_and_is_unique_stable() {
+    fn current_pptx_shadow_matches_frozen_contract_and_is_unique_stable() {
         let core_len = core::command_specs().len();
         let first = pptx::command_specs();
         let second = pptx::command_specs();
-        let legacy = crate::capabilities::legacy_capability_commands();
+        let frozen = frozen_contract_commands();
         let end = core_len + first.len();
 
-        assert_segment_matches_legacy(&first, &legacy[core_len..end]);
+        assert_segment_matches_frozen_contract(&first, &frozen[core_len..end]);
         assert_eq!(
             first
                 .iter()
@@ -524,8 +536,8 @@ mod tests {
     }
 
     #[test]
-    fn xlsx_root_owned_segments_match_their_noncontiguous_legacy_offsets() {
-        let legacy = crate::capabilities::legacy_capability_commands();
+    fn xlsx_root_owned_segments_match_their_frozen_contract_offsets() {
+        let frozen = frozen_contract_commands();
         let xlsx_start = core::command_specs().len() + pptx::command_specs().len();
         let front = xlsx::front_command_specs();
         let forms = xlsx::forms_command_specs();
@@ -533,9 +545,9 @@ mod tests {
         assert_eq!(xlsx_start, 144);
         assert_eq!(front.len(), xlsx::FRONT_COMMAND_COUNT);
         assert_eq!(xlsx::FRONT_COMMAND_COUNT, 22);
-        assert_segment_matches_legacy(&front, &legacy[xlsx_start..166]);
+        assert_segment_matches_frozen_contract(&front, &frozen[xlsx_start..166]);
         assert_eq!(forms.len(), 1);
-        assert_segment_matches_legacy(&forms, &legacy[218..219]);
+        assert_segment_matches_frozen_contract(&forms, &frozen[218..219]);
     }
 
     #[test]
@@ -619,14 +631,14 @@ mod tests {
     }
 
     #[test]
-    fn current_xlsx_shadow_is_a_contiguous_legacy_prefix_and_unique_stable() {
+    fn current_xlsx_shadow_is_a_contiguous_frozen_prefix_and_unique_stable() {
         let start = core::command_specs().len() + pptx::command_specs().len();
         let first = xlsx::command_specs();
         let second = xlsx::command_specs();
-        let legacy = crate::capabilities::legacy_capability_commands();
+        let frozen = frozen_contract_commands();
         let end = start + first.len();
 
-        assert_segment_matches_legacy(&first, &legacy[start..end]);
+        assert_segment_matches_frozen_contract(&first, &frozen[start..end]);
         assert_eq!(
             first
                 .iter()
@@ -713,11 +725,11 @@ mod tests {
     }
 
     #[test]
-    fn xlsx_serve_mutations_match_legacy_op_compatible_set() {
+    fn xlsx_serve_mutations_match_frozen_contract_op_compatible_set() {
         let specs = xlsx::command_specs();
         let start = core::command_specs().len() + pptx::command_specs().len();
-        let legacy = crate::capabilities::legacy_capability_commands();
-        let expected = legacy[start..start + specs.len()]
+        let frozen = frozen_contract_commands();
+        let expected = frozen[start..start + specs.len()]
             .iter()
             .filter(|command| command["opCompatible"] == true)
             .filter_map(|command| command["path"].as_str().map(str::to_owned))
@@ -939,12 +951,12 @@ mod tests {
     }
 
     #[test]
-    fn complete_shadow_matches_full_legacy_value_and_serialized_order() {
+    fn complete_shadow_matches_full_frozen_value_and_serialized_order() {
         let first = command_specs();
         let second = command_specs();
-        let legacy = crate::capabilities::legacy_capability_commands();
+        let frozen = frozen_contract_commands();
         assert_eq!(first.len(), 309);
-        assert_segment_matches_legacy(&first, &legacy);
+        assert_segment_matches_frozen_contract(&first, &frozen);
         assert_eq!(
             first.iter().map(capability_value).collect::<Vec<_>>(),
             second.iter().map(capability_value).collect::<Vec<_>>()

@@ -1,9 +1,3 @@
-#[cfg(test)]
-mod commands;
-
-#[cfg(test)]
-pub(crate) use commands::legacy_capability_commands;
-
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 

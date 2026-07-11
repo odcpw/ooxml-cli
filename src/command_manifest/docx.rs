@@ -1480,7 +1480,9 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::*;
-    use crate::command_manifest::{assert_segment_matches_legacy, capability_value};
+    use crate::command_manifest::{
+        assert_segment_matches_frozen_contract, capability_value, frozen_contract_commands,
+    };
 
     const SERVE_INSPECT_PATHS: &[&str] = &[
         "ooxml docx text",
@@ -1522,16 +1524,19 @@ mod tests {
     ];
 
     #[test]
-    fn complete_docx_segment_matches_fixed_legacy_slice_and_root_placement() {
+    fn complete_docx_segment_matches_frozen_slice_and_root_placement() {
         let specs = command_specs();
-        let legacy = crate::capabilities::legacy_capability_commands();
+        let frozen = frozen_contract_commands();
         let root = crate::command_manifest::command_specs();
         let start = crate::command_manifest::core::command_specs().len()
             + crate::command_manifest::pptx::command_specs().len()
             + crate::command_manifest::xlsx::command_specs().len();
         assert_eq!(start, LEGACY_START);
         assert_eq!(specs.len(), COMMAND_COUNT);
-        assert_segment_matches_legacy(&specs, &legacy[LEGACY_START..LEGACY_START + COMMAND_COUNT]);
+        assert_segment_matches_frozen_contract(
+            &specs,
+            &frozen[LEGACY_START..LEGACY_START + COMMAND_COUNT],
+        );
         assert_eq!(
             root[start..start + COMMAND_COUNT]
                 .iter()
@@ -1610,10 +1615,10 @@ mod tests {
     }
 
     #[test]
-    fn docx_serve_mutations_match_legacy_op_compatible_set_and_advisory() {
+    fn docx_serve_mutations_match_frozen_op_compatible_set_and_advisory() {
         let specs = command_specs();
-        let legacy = crate::capabilities::legacy_capability_commands();
-        let expected = legacy[LEGACY_START..LEGACY_START + COMMAND_COUNT]
+        let frozen = frozen_contract_commands();
+        let expected = frozen[LEGACY_START..LEGACY_START + COMMAND_COUNT]
             .iter()
             .filter(|command| command["opCompatible"] == true)
             .filter_map(|command| command["path"].as_str().map(str::to_owned))
