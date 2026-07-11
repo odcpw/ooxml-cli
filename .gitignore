@@ -79,3 +79,6 @@ __pycache__/
 
 # Local real Office macro fixtures for manual compatibility checks
 /testdata/vba/local/
+
+# bv (beads viewer) local config and caches
+.bv/
