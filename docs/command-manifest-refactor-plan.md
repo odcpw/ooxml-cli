@@ -1,6 +1,6 @@
 # Typed command manifest and library-boundary refactor plan
 
-Status: implemented through cleanup; final validation and release qualification pending
+Status: implementation, cleanup, and available qualification complete; release deferred
 Target branch: `refactor/typed-command-manifest`
 Baseline commit: `63c703cb5c7162cd364e694ceb45d60bdbdf45d5`
 Implementation head: `fc683a4957e561741b3c6aa06ae176523dc30f35`
@@ -663,15 +663,16 @@ The proposed slices were:
 
 Had that proposal continued, every slice would have moved only identity/metadata/eligibility facts the manifest truly models while keeping specialized parsers and handlers explicit. The residual audit instead established the stop boundary above.
 
-### C-final — Cleanup complete; qualification pending
+### C-final — Cleanup and available qualification complete
 
 - X1 cleanup is complete: the superseded internal metadata tables, private `#[cfg(test)]` legacy capability producer, and temporary proof adapter are removed; the black-box golden and permanent `CommandId`-keyed inspect probes remain.
 - Architecture and contributor documentation are updated, and the ignored final census/duplication ledger is refreshed.
-- Local Rust format, clippy, build, documentation, unit, contract, and all-target gates are green.
-- V1 remains pending: run hosted platform, strict artifact, Open XML SDK, and desktop Office qualification before an evidence-backed release-readiness review.
-- Prepare, but do not create, release notes/tag/artifacts.
+- Local Rust format, clippy, build, documentation, unit, contract, all-target, web build/smoke, strict artifact, conformance, and LibreOffice gates are green.
+- Hosted CI run `29135760620` is green across Linux, macOS, Windows portable tests, and Windows Open XML SDK/conformance smoke.
+- Desktop Office requalification remains pending because Legion is reachable on the tailnet but has no available SSH, WinRM, or other remote-management listener. This is a release-evidence limitation, not a known product failure.
+- The evidence-backed recommendation is architecture/integration go and public-release hold until the separate release-preparation pass resolves or explicitly accepts the desktop Office gap. No release notes, tag, or artifacts were published.
 
-Cleanup acceptance is met: no dead shadow source remains and the public surface is stable. Release acceptance remains pending the V1 qualification and explicit release-readiness review.
+Cleanup and integration acceptance are met: no dead shadow source remains, the public surface is stable, and all locally or hosted-accessible qualification gates are green. Public release remains a separate, explicitly authorized decision.
 
 Rollback: cleanup deletions are separable from functional migrations.
 

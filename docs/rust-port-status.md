@@ -8,7 +8,7 @@ Current milestone, 2026-07-11:
 - Serve command identity is explicit and namespace-owned: inspect has 42 canonical IDs and 48 accepted labels; mutation has 70 canonical IDs and 84 accepted labels. Permanent private-ID probes and black-box Serve/MCP/direct tests keep these sets bidirectionally aligned.
 - Capability JSON, leaf help, completion scripts, MCP command resources, and discovery/process matrices retain exact committed contracts. The full capabilities stdout remains pinned by the 301,008-byte binary golden.
 - Removed the superseded 10,411-line test-only capability catalog and the temporary command adapter. CLI positional/flag grammar remains explicit and is not inferred from manifest metadata.
-- Local Rust format, clippy, build, documentation, unit, contract, and all-target test gates are green on the implementation branch. Hosted platform, strict artifact, Open XML SDK, desktop Office, and release qualification remain pending. No release or tag has been created.
+- Local Rust format, clippy, build, documentation, unit, contract, all-target, web build/smoke, strict artifact, conformance, and LibreOffice gates are green on the implementation branch. Hosted CI run `29135760620` is also green across Linux, macOS, Windows portable tests, and Windows Open XML SDK/conformance smoke. Desktop Office requalification on Legion remains pending because remote management is unavailable; no release or tag has been created.
 
 Previous milestone, 2026-07-10:
 
