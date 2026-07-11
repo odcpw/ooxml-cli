@@ -936,6 +936,10 @@ mod tests {
                 XlsxCommandId::SheetsShow,
                 &["xlsx", "sheets", "show"] as &[&str],
             ),
+            (
+                XlsxCommandId::CellsSet,
+                &["xlsx", "cells", "set"] as &[&str],
+            ),
         ];
         for (id, expected_path) in guarded {
             let matches = specs

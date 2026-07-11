@@ -1,14 +1,16 @@
 use serde_json::{Value, json};
 
+use crate::command_manifest::{CommandId, XlsxCommandId};
+use crate::typed_command_adapter::xlsx_cells_set_by_id;
 use crate::{
     CliError, CliResult, XlsxCellsSetOptions, XlsxChartSetSeriesStyleOptions,
     XlsxColWidthsSetOptions, XlsxCommentsAddOptions, XlsxCommentsRemoveOptions,
     XlsxCommentsUpdateOptions, XlsxConditionalFormatMutationOptions, XlsxRangesSetFormatOptions,
     XlsxRangesSetOptions, XlsxRowHeightsSetOptions, XlsxTablesAppendRecordsOptions,
     XlsxTablesAppendRowsOptions, XlsxWorkbookMetadataUpdateOptions, json_bool, json_i64,
-    json_optional_serialized, json_optional_string, json_string, xlsx_cells_set,
-    xlsx_charts_set_series_style, xlsx_colwidths_set, xlsx_comments_add, xlsx_comments_remove,
-    xlsx_comments_update, xlsx_conditional_formats_add, xlsx_conditional_formats_delete,
+    json_optional_serialized, json_optional_string, json_string, xlsx_charts_set_series_style,
+    xlsx_colwidths_set, xlsx_comments_add, xlsx_comments_remove, xlsx_comments_update,
+    xlsx_conditional_formats_add, xlsx_conditional_formats_delete,
     xlsx_conditional_formats_reorder, xlsx_ranges_set, xlsx_ranges_set_format, xlsx_rowheights_set,
     xlsx_tables_append_records, xlsx_tables_append_rows, xlsx_workbook_metadata_update,
 };
@@ -21,22 +23,21 @@ pub(super) fn serve_xlsx_op(working: &str, command: &str, args: &Value) -> CliRe
             let sheet = json_string(args, "sheet")?;
             let cell = json_string(args, "cell")?;
             let value = json_string(args, "value")?;
-            let readback = xlsx_cells_set(
-                working,
-                XlsxCellsSetOptions {
-                    sheet: Some(&sheet),
-                    cell: Some(&cell),
-                    ref_: None,
-                    value: Some(&value),
-                    formula: None,
-                    value_type: None,
-                    out: None,
-                    backup: None,
-                    dry_run: false,
-                    no_validate: true,
-                    in_place: true,
-                },
-            )?;
+            let options = XlsxCellsSetOptions {
+                sheet: Some(&sheet),
+                cell: Some(&cell),
+                ref_: None,
+                value: Some(&value),
+                formula: None,
+                value_type: None,
+                out: None,
+                backup: None,
+                dry_run: false,
+                no_validate: true,
+                in_place: true,
+            };
+            let readback =
+                xlsx_cells_set_by_id(CommandId::Xlsx(XlsxCommandId::CellsSet), working, options)?;
             let plan_flags = vec![
                 json!("--cell"),
                 json!(cell),

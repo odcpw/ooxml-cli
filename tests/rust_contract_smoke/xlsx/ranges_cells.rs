@@ -486,6 +486,7 @@ fn xlsx_cells_set_matches_rust_baseline_and_emitted_commands_run() {
     ] {
         assert_rust_emitted_ooxml_command_succeeds(&rust_raw, field);
     }
+    assert_xlsx_strict_valid(&rust_out);
 
     let export_args_go = [
         "--json",
@@ -566,6 +567,32 @@ fn xlsx_cells_set_matches_rust_baseline_and_emitted_commands_run() {
     );
 
     let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn guarded_xlsx_cells_set_preserves_direct_error_precedence() {
+    let fixture = "testdata/xlsx/minimal-workbook/workbook.xlsx";
+    for args in [
+        vec![
+            "--json",
+            "xlsx",
+            "cells",
+            "set",
+            fixture,
+            "--unknown-cell-flag",
+        ],
+        vec!["--json", "xlsx", "cells", "set", fixture],
+        vec![
+            "--json", "xlsx", "cells", "set", fixture, "--sheet", "1", "--cell", "A1",
+            "--value", "value", "--formula", "=1+1", "--dry-run",
+        ],
+        vec![
+            "--json", "xlsx", "cells", "set", fixture, "--sheet", "1", "--cell", "A1",
+            "--value", "value", "--type", "not-a-cell-type", "--dry-run",
+        ],
+    ] {
+        assert_rust_baseline_match(&args);
+    }
 }
 
 #[test]
