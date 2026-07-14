@@ -24,6 +24,10 @@ OOXML_WEB_BASE_PATH=
 EMAIL_TRANSPORT=dev
 ```
 
+Set `OOXML_BIN` to a command available on `PATH` or to an absolute executable
+path. Do not use a relative path: OOXML subprocesses run from per-thread data
+directories.
+
 `EMAIL_TRANSPORT=dev` writes magic links to
 `../.flue-ooxml-web-data/auth/magic-links.jsonl`. For real login, configure
 Microsoft or Google OAuth with:

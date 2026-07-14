@@ -45,6 +45,31 @@ function Release-ComObject {
     }
 }
 
+function Test-TransientOfficeBusyError {
+    param(
+        [System.Exception]$Exception,
+        [switch]$IncludeExcelBusy
+    )
+
+    $current = $Exception
+    while ($null -ne $current) {
+        $hresult = [int64]$current.HResult
+        if ($hresult -eq -2147418111 -or $hresult -eq -2147417846) {
+            return $true
+        }
+        if ($IncludeExcelBusy -and $hresult -eq -2146777998) {
+            return $true
+        }
+        $current = $current.InnerException
+    }
+
+    $message = [string]$Exception
+    if ($message -match "0x80010001|0x8001010A|RPC_E_CALL_REJECTED|RPC_E_SERVERCALL_RETRYLATER") {
+        return $true
+    }
+    return ($IncludeExcelBusy -and $message -match "0x800AC472")
+}
+
 function New-OracleResult {
     param(
         [Parameter(Mandatory = $true)]
@@ -154,6 +179,7 @@ function Stop-NewOfficeProcesses {
         [datetime]$StartedAt
     )
 
+    $candidateIds = New-Object System.Collections.Generic.List[int]
     foreach ($process in @(Get-Process -Name $Names -ErrorAction SilentlyContinue)) {
         if ($ExistingIds.ContainsKey([int]$process.Id)) {
             continue
@@ -167,9 +193,31 @@ function Stop-NewOfficeProcesses {
             continue
         }
         try {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            [void]$candidateIds.Add([int]$process.Id)
         }
         catch {}
+    }
+
+    # Quit() returns before an Office COM local server has necessarily left the
+    # process table and Running Object Table. Let only the processes started by
+    # this oracle finish graceful shutdown before resorting to force. Killing a
+    # healthy, exiting Excel process can trigger recovery state and make the
+    # next automation client fail with RPC_E_CALL_REJECTED.
+    foreach ($processId in $candidateIds) {
+        try {
+            Wait-Process -Id $processId -Timeout 10 -ErrorAction SilentlyContinue
+        }
+        catch {}
+        if ($null -ne (Get-Process -Id $processId -ErrorAction SilentlyContinue)) {
+            try {
+                Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+                Wait-Process -Id $processId -Timeout 10 -ErrorAction SilentlyContinue
+            }
+            catch {}
+        }
+    }
+    if ($candidateIds.Count -gt 0) {
+        Start-Sleep -Milliseconds 250
     }
 }
 
@@ -333,7 +381,25 @@ function Test-ExcelOpen {
         Set-AutomationSecurity -Application $excel
         $identity = Get-OfficeIdentity -Application $excel
 
-        $workbook = $excel.Workbooks.Open($Path, 0, $true)
+        $openAttempt = 0
+        while ($true) {
+            try {
+                $workbook = $excel.Workbooks.Open($Path, 0, $true)
+                break
+            }
+            catch {
+                $openAttempt++
+                $isTransientBusy = Test-TransientOfficeBusyError -Exception $_.Exception -IncludeExcelBusy
+                if (-not $isTransientBusy -or $openAttempt -ge 40) {
+                    throw
+                }
+                # Excel may accept its automation object before startup and
+                # add-in work has yielded the Workbooks collection. Retry the
+                # same read-only open on that instance for at most ten seconds
+                # instead of creating another competing COM server.
+                Start-Sleep -Milliseconds 250
+            }
+        }
         $timer.Stop()
         return New-OracleResult -Path $Path -Family "xlsx" -Application "Excel" -Status "passed" -ElapsedMs $timer.ElapsedMilliseconds -OfficeVersion $identity.version -OfficeBuild $identity.build
     }
@@ -496,7 +562,20 @@ foreach ($input in $oracleInputs) {
         continue
     }
 
-    $results.Add((Invoke-OfficeOpenWithTimeout -Path $path -Root $root -OutputDir $output -TimeoutSeconds $TimeoutSeconds -Index $inputIndex))
+    $result = Invoke-OfficeOpenWithTimeout -Path $path -Root $root -OutputDir $output -TimeoutSeconds $TimeoutSeconds -Index $inputIndex
+    if (
+        $result.status -eq "failed" -and
+        $result.errorMessage -match "0x80010001|0x8001010A|RPC_E_CALL_REJECTED|RPC_E_SERVERCALL_RETRYLATER"
+    ) {
+        # Office can briefly reject a new automation client while the prior
+        # local COM server is leaving the Running Object Table. Retry only
+        # this transient class once; timeouts and document/open failures stay
+        # final so the oracle cannot hide a repair or compatibility problem.
+        Write-Host ("Office COM was temporarily busy for {0}; retrying once." -f $path)
+        Start-Sleep -Milliseconds 500
+        $result = Invoke-OfficeOpenWithTimeout -Path $path -Root $root -OutputDir $output -TimeoutSeconds $TimeoutSeconds -Index $inputIndex
+    }
+    $results.Add($result)
     $inputIndex++
 }
 

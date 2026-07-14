@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const baseUrl = process.env.OOXML_WEB_BASE_URL || 'http://localhost:3583';
 const scriptDir = fileURLToPath(new URL('.', import.meta.url));
-const defaultFixture = resolve(scriptDir, '../../../testdata/pptx/minimal-title/presentation.pptx');
+const defaultFixture = resolve(scriptDir, '../../testdata/pptx/minimal-title/presentation.pptx');
 const fixture = resolve(process.argv[2] || process.env.OOXML_WEB_SMOKE_FIXTURE || defaultFixture);
 const magicLinkLog = resolve(process.env.OOXML_MAGIC_LINK_LOG || resolve(process.env.OOXML_WEB_DATA_DIR || '../.flue-ooxml-web-data', 'auth/magic-links.jsonl'));
 const runId = new Date().toISOString().replace(/[:.]/g, '-').toLowerCase();

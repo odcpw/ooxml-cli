@@ -77,19 +77,19 @@ fn render_with_local_tools(file: &str, out_dir: &Path, slides: &[u32]) -> CliRes
             "required render tool not available: pdftoppm",
         ));
     }
-    let status = Command::new("soffice")
+    let output = Command::new("soffice")
         .args(["--headless", "--convert-to", "pdf", "--outdir"])
         .arg(out_dir)
         .arg(file)
-        .status()
+        .output()
         .map_err(|err| CliError::unexpected(err.to_string()))?;
-    if !status.success() {
+    if !output.status.success() {
         return Err(CliError::unexpected("soffice render failed"));
     }
     let pdf_path = out_dir.join(format!("{}.pdf", file_stem(file)));
     for slide in slides {
         let prefix = out_dir.join("slide");
-        let status = Command::new("pdftoppm")
+        let output = Command::new("pdftoppm")
             .arg("-png")
             .arg("-r")
             .arg("144")
@@ -99,9 +99,9 @@ fn render_with_local_tools(file: &str, out_dir: &Path, slides: &[u32]) -> CliRes
             .arg(slide.to_string())
             .arg(&pdf_path)
             .arg(&prefix)
-            .status()
+            .output()
             .map_err(|err| CliError::unexpected(err.to_string()))?;
-        if !status.success() {
+        if !output.status.success() {
             return Err(CliError::unexpected("pdftoppm rasterize failed"));
         }
         let generated = out_dir.join(format!("slide-{slide}.png"));

@@ -226,6 +226,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\tools\windows-office-vba-smoke.ps1 `
   -RepoRoot . `
   -RequireOpenXmlSdk `
+  -RunConformance `
   -SkipOffice `
   -EnableVbaObjectModelAccess
 ```
@@ -237,6 +238,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\tools\windows-office-vba-smoke.ps1 `
   -RepoRoot . `
   -RequireOpenXmlSdk `
+  -RunConformance `
   -EnableVbaObjectModelAccess `
   -OfficeOracleTimeoutSeconds 120
 ```

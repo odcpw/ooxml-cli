@@ -48,6 +48,23 @@ Each file open runs in a bounded child PowerShell process; use
 `-TimeoutSeconds` to tune the per-file COM-open timeout when Office is slow to
 start.
 
+Office COM automation must run in the logged-in desktop session. An SSH command
+normally runs in Windows session 0, where Office can hang on invisible first-run,
+privacy, recovery, or add-in UI. For an unattended remote proof:
+
+1. Sign in to Windows and complete each Office application's first-run screens.
+2. Open and close Word, Excel, and PowerPoint normally once.
+3. Launch the proof through an `Interactive` scheduled task owned by that same
+   user; keep the task at `Limited` run level unless the proof itself requires
+   elevation.
+4. Treat a task or process timeout as a failed proof. Do not dismiss repair
+   prompts or silently retry document/open failures.
+
+The oracle retries only known transient Office-busy HRESULTs. It first gives
+Office processes created by the current check time to exit after `Quit()`, then
+force-stops confirmed survivors. Office processes that existed before the check
+are outside the cleanup scope.
+
 ## Edit Smoke Gate
 
 For routine development, use the fastest gate that proves what you need:

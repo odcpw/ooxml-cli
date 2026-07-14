@@ -461,6 +461,9 @@ function errorResponse(c: Context, error: unknown, status: 400 | 404 | 500, opti
 
 function renderErrorResponse(c: Context, error: unknown): Response {
   const message = errorMessage(error);
+  if (message === 'Thread not found') {
+    return errorResponse(c, error, 404);
+  }
   const errorId = randomUUID();
   console.error('[ooxml-web] render failed', { errorId, error: message });
   return c.json({ error: publicRenderErrorMessage(message), errorId }, 500);

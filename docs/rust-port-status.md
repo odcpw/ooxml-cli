@@ -2,13 +2,25 @@
 
 The port is complete enough to own the product line: the Rust CLI is the implementation on `master`, Cargo/Make/CI are Rust-first, and the Go tree is deprecated reference material rather than a live oracle. `v0.1.0` is the first formal cross-platform binary release candidate.
 
-Current milestone, 2026-07-11:
+Current milestone, updated 2026-07-14:
 
 - Completed the typed-command-manifest refactor through cleanup. The product is now a library crate with a four-line binary adapter; the ordered, family-owned 309-spec manifest is authoritative for command identity and capability metadata.
 - Serve command identity is explicit and namespace-owned: inspect has 42 canonical IDs and 48 accepted labels; mutation has 70 canonical IDs and 84 accepted labels. Permanent private-ID probes and black-box Serve/MCP/direct tests keep these sets bidirectionally aligned.
 - Capability JSON, leaf help, completion scripts, MCP command resources, and discovery/process matrices retain exact committed contracts. The full capabilities stdout remains pinned by the 301,008-byte binary golden.
 - Removed the superseded 10,411-line test-only capability catalog and the temporary command adapter. CLI positional/flag grammar remains explicit and is not inferred from manifest metadata.
-- Local Rust format, clippy, build, documentation, unit, contract, all-target, web build/smoke, strict artifact, conformance, and LibreOffice gates are green on the implementation branch. Hosted CI run `29135760620` is also green across Linux, macOS, Windows portable tests, and Windows Open XML SDK/conformance smoke. Desktop Office requalification on Legion remains pending because remote management is unavailable; no release or tag has been created.
+- Local Rust format, warnings-as-errors clippy, build, 504-test all-target,
+  strict artifact, conformance, and LibreOffice gates are green. The web
+  dependency closure now has zero npm advisories; typecheck, production build,
+  auth isolation, auth abuse, and non-PPTX smokes pass. The credentialed model
+  smoke remains optional and unrun because no `OPENAI_API_KEY` is configured.
+- Current desktop Office requalification on Legion is green. The normal edit
+  lane passed 64/64 scenarios and the VBA lane passed 19/19 scenarios, including
+  77 total real Word/Excel/PowerPoint opens on Office 16.0 build 20131. Both
+  lanes required Open XML SDK and conformance validation. Temporary scheduled
+  tasks were removed and no test Office process remains.
+- Hosted CI run `29135760620` remains the last green cross-platform baseline;
+  the current polish commit must pass the same matrix after push. No release or
+  tag has been created.
 
 Previous milestone, 2026-07-10:
 
