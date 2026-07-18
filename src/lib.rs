@@ -253,9 +253,10 @@ pub(crate) use xlsx_metadata::{
 };
 pub(crate) use xlsx_model::{
     CellValue, RangeBounds, WorkbookSheet, XlsxCellEntry, build_dense_xlsx_rows,
-    build_sparse_xlsx_rows, builtin_num_format_code, col_name, is_xlsx_handle, normalize_xl_target,
-    normalize_xlsx_cell_ref, parse_cell_ref, parse_cli_range, parse_range, parse_xlsx_cell_handle,
-    resolve_sheet, resolve_sheet_by_sheet_id_unique, shared_strings, sheet_cells,
+    build_sparse_xlsx_rows, builtin_num_format_code, col_name, decode_xlsx_raw_cell,
+    is_xlsx_handle, normalize_xl_target, normalize_xlsx_cell_ref, parse_cell_ref, parse_cli_range,
+    parse_range, parse_xlsx_cell_handle, resolve_sheet, resolve_sheet_by_sheet_id_unique,
+    shared_strings, shared_strings_for_indices, sheet_cells, sheet_raw_cells_in_range,
     sorted_xlsx_cells, used_range_for_cells, used_range_json, used_range_ref, workbook_sheets,
     xlsx_dimension_declared, xlsx_merged_cell_count, xlsx_sheet_selectors, xlsx_styles,
 };
@@ -270,7 +271,7 @@ pub(crate) use xlsx_pivots::{
 };
 pub(crate) use xlsx_ranges::{
     XlsxRangeExportOptions, check_range_max_cells, normalize_xlsx_ranges_set_data_format,
-    require_json_data_format, xlsx_range_export_with_options,
+    require_json_data_format, xlsx_range_export_with_options, xlsx_range_export_with_output_limit,
 };
 pub(crate) use xlsx_sheet_lifecycle::{
     XlsxSheetsAddOptions, XlsxSheetsDeleteOptions, XlsxSheetsMoveOptions, XlsxSheetsRenameOptions,
@@ -310,8 +311,8 @@ pub(crate) use xml_util::{
 };
 pub(crate) use zip_io::{
     copy_zip_with_binary_part_overrides_and_removals, copy_zip_with_part_override,
-    copy_zip_with_part_overrides, copy_zip_with_part_overrides_and_removals, zip_bytes,
-    zip_entry_exists, zip_entry_names, zip_entry_set, zip_text,
+    copy_zip_with_part_overrides, copy_zip_with_part_overrides_and_removals, with_zip_entry_reader,
+    zip_bytes, zip_entry_exists, zip_entry_names, zip_entry_set, zip_text,
 };
 
 #[doc(hidden)]

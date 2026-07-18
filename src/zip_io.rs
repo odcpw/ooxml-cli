@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
-use std::io::{Read, Seek, Write};
+use std::io::{BufRead, BufReader, Read, Seek, Write};
 use std::path::Path;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
@@ -65,6 +65,67 @@ pub(crate) fn zip_bytes(path: &str, name: &str) -> CliResult<Vec<u8>> {
         declared_size,
         MAX_ZIP_PART_UNCOMPRESSED_BYTES,
     )
+}
+
+pub(crate) fn with_zip_entry_reader<T>(
+    path: &str,
+    name: &str,
+    parse: impl FnOnce(&mut dyn BufRead) -> CliResult<T>,
+) -> CliResult<T> {
+    let mut archive = open_zip(path)?;
+    let file = archive
+        .by_name(name)
+        .map_err(|err| CliError::unexpected(format!("missing zip part {name}: {err}")))?;
+    let declared_size = file.size();
+    check_zip_entry_declared_size(name, declared_size, MAX_ZIP_PART_UNCOMPRESSED_BYTES)?;
+
+    let counting = LimitedCountingReader::new(file, name, MAX_ZIP_PART_UNCOMPRESSED_BYTES);
+    let mut reader = BufReader::new(counting);
+    let parsed = parse(&mut reader);
+    let drained = std::io::copy(&mut reader, &mut std::io::sink())
+        .map_err(|err| CliError::unexpected(format!("failed to read zip entry {name}: {err}")));
+    let actual_size = reader.get_ref().bytes_read;
+
+    let parsed = parsed?;
+    drained?;
+    if actual_size != declared_size {
+        return Err(CliError::unexpected(format!(
+            "zip entry {name} uncompressed size mismatch ({actual_size} != declared {declared_size} bytes)"
+        )));
+    }
+    Ok(parsed)
+}
+
+struct LimitedCountingReader<R> {
+    inner: R,
+    name: String,
+    limit: u64,
+    bytes_read: u64,
+}
+
+impl<R> LimitedCountingReader<R> {
+    fn new(inner: R, name: &str, limit: u64) -> Self {
+        Self {
+            inner,
+            name: name.to_string(),
+            limit,
+            bytes_read: 0,
+        }
+    }
+}
+
+impl<R: Read> Read for LimitedCountingReader<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buffer)?;
+        self.bytes_read = self.bytes_read.saturating_add(read as u64);
+        if self.bytes_read > self.limit {
+            return Err(std::io::Error::other(format!(
+                "zip entry {} exceeds uncompressed size limit ({} > {} bytes)",
+                self.name, self.bytes_read, self.limit
+            )));
+        }
+        Ok(read)
+    }
 }
 
 fn open_zip(path: &str) -> CliResult<ZipArchive<File>> {
@@ -412,5 +473,54 @@ mod tests {
             err.message
                 .contains("zip package exceeds total uncompressed size limit")
         );
+    }
+
+    #[test]
+    fn zip_entry_reader_drains_after_callback_and_checks_crc() {
+        let temp = std::env::temp_dir().join(format!(
+            "ooxml-zip-reader-{}-{}.zip",
+            std::process::id(),
+            crate::chrono_like_counter()
+        ));
+        fs::write(&temp, zip_with_entries(&[("sheet.xml", b"abcdef")])).expect("write zip");
+        let value =
+            with_zip_entry_reader(temp.to_str().expect("temp path"), "sheet.xml", |reader| {
+                let mut prefix = [0_u8; 2];
+                reader
+                    .read_exact(&mut prefix)
+                    .map_err(|err| CliError::unexpected(err.to_string()))?;
+                Ok(prefix)
+            })
+            .expect("stream zip entry");
+        assert_eq!(&value, b"ab");
+        let _ = fs::remove_file(temp);
+    }
+
+    #[test]
+    fn zip_entry_reader_rejects_bad_crc_even_after_short_callback() {
+        let mut data = zip_with_entries(&[("sheet.xml", b"payload with a nonzero crc")]);
+        overwrite_crc_after_signature(&mut data, b"PK\x03\x04", 14);
+        overwrite_crc_after_signature(&mut data, b"PK\x01\x02", 16);
+        let temp = std::env::temp_dir().join(format!(
+            "ooxml-zip-reader-bad-crc-{}-{}.zip",
+            std::process::id(),
+            crate::chrono_like_counter()
+        ));
+        fs::write(&temp, data).expect("write corrupt zip");
+        let err =
+            with_zip_entry_reader(temp.to_str().expect("temp path"), "sheet.xml", |_reader| {
+                Ok(())
+            })
+            .expect_err("bad CRC must fail");
+        assert!(err.message.to_ascii_lowercase().contains("checksum"));
+        let _ = fs::remove_file(temp);
+    }
+
+    fn overwrite_crc_after_signature(data: &mut [u8], signature: &[u8], crc_offset: usize) {
+        let start = data
+            .windows(signature.len())
+            .position(|window| window == signature)
+            .expect("zip signature");
+        data[start + crc_offset..start + crc_offset + 4].copy_from_slice(&0_u32.to_le_bytes());
     }
 }

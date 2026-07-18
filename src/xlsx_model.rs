@@ -1,7 +1,10 @@
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
+use quick_xml::name::{Namespace, ResolveResult};
+use quick_xml::reader::NsReader;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::io::BufRead;
 
 use crate::{
     CliError, CliResult, append_xml_text_event, attr, attr_exact, is_xml_text_event, local_name,
@@ -320,6 +323,464 @@ pub(crate) struct CellValue {
     pub(crate) has_formula: bool,
 }
 
+const SPREADSHEETML_TRANSITIONAL_NS: &[u8] =
+    b"http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+const SPREADSHEETML_STRICT_NS: &[u8] = b"http://purl.oclc.org/ooxml/spreadsheetml/main";
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct RawCellValue {
+    pub(crate) cell_type: String,
+    pub(crate) raw_value: String,
+    pub(crate) inline_text: String,
+    pub(crate) formula: String,
+    pub(crate) style_index: Option<u32>,
+}
+
+pub(crate) struct RawRangeScan {
+    pub(crate) cells: BTreeMap<(u32, u32), RawCellValue>,
+    pub(crate) saw_nonzero_style_index: bool,
+    pub(crate) saw_style_zero: bool,
+}
+
+#[derive(Clone)]
+struct SpreadsheetFrame {
+    local_name: String,
+    valid_namespace: bool,
+}
+
+pub(crate) fn sheet_raw_cells_in_range(
+    source: &mut dyn BufRead,
+    bounds: RangeBounds,
+    output_cell_limit: Option<u64>,
+) -> CliResult<RawRangeScan> {
+    let mut reader = NsReader::from_reader(source);
+    reader.config_mut().trim_text(false);
+    let mut buffer = Vec::new();
+    let mut stack = Vec::<SpreadsheetFrame>::new();
+    let mut saw_root = false;
+    let mut allow_unbound = false;
+    let mut active_cell: Option<(usize, u32, u32, RawCellValue)> = None;
+    let mut value_depth = None;
+    let mut inline_text_depth = None;
+    let mut formula_depth = None;
+    let mut cells = BTreeMap::new();
+    let mut saw_nonzero_style_index = false;
+    let mut saw_style_zero = false;
+
+    loop {
+        let (resolved, event) = reader
+            .read_resolved_event_into(&mut buffer)
+            .map_err(|err| CliError::unexpected(format!("invalid worksheet XML: {err}")))?;
+        match event {
+            Event::Start(element) => {
+                let local = local_name(element.name().as_ref()).to_string();
+                let namespace = spreadsheet_namespace_kind(resolved);
+                if stack.is_empty() {
+                    if saw_root {
+                        return Err(CliError::unexpected(
+                            "invalid worksheet XML: multiple root elements",
+                        ));
+                    }
+                    if local != "worksheet" || namespace == SpreadsheetNamespace::Foreign {
+                        return Err(CliError::unexpected(format!(
+                            "invalid worksheet root element {local:?} or namespace"
+                        )));
+                    }
+                    saw_root = true;
+                    allow_unbound = namespace == SpreadsheetNamespace::Unbound;
+                }
+                let valid_namespace = namespace == SpreadsheetNamespace::Spreadsheet
+                    || (allow_unbound && namespace == SpreadsheetNamespace::Unbound);
+                let depth = stack.len();
+
+                if local == "c"
+                    && valid_namespace
+                    && worksheet_parent_path(&stack, &["worksheet", "sheetData", "row"])
+                {
+                    active_cell =
+                        raw_cell_from_element(&element, bounds).and_then(|(col, row, raw)| {
+                            if let Some(style_index) = raw.style_index {
+                                saw_nonzero_style_index |= style_index != 0;
+                                saw_style_zero |= style_index == 0;
+                            }
+                            coordinate_in_output_prefix(bounds, col, row, output_cell_limit)
+                                .then_some((depth, col, row, raw))
+                        });
+                } else if active_cell.is_some()
+                    && local == "v"
+                    && valid_namespace
+                    && worksheet_parent_path(&stack, &["worksheet", "sheetData", "row", "c"])
+                {
+                    value_depth = Some(depth);
+                } else if active_cell.is_some()
+                    && local == "f"
+                    && valid_namespace
+                    && worksheet_parent_path(&stack, &["worksheet", "sheetData", "row", "c"])
+                {
+                    formula_depth = Some(depth);
+                } else if active_cell.is_some()
+                    && local == "t"
+                    && valid_namespace
+                    && worksheet_inline_text_parent_path(&stack)
+                {
+                    inline_text_depth = Some(depth);
+                }
+
+                stack.push(SpreadsheetFrame {
+                    local_name: local,
+                    valid_namespace,
+                });
+            }
+            Event::Empty(element) => {
+                let local = local_name(element.name().as_ref()).to_string();
+                let namespace = spreadsheet_namespace_kind(resolved);
+                if stack.is_empty() {
+                    if saw_root {
+                        return Err(CliError::unexpected(
+                            "invalid worksheet XML: multiple root elements",
+                        ));
+                    }
+                    if local != "worksheet" || namespace == SpreadsheetNamespace::Foreign {
+                        return Err(CliError::unexpected(format!(
+                            "invalid worksheet root element {local:?} or namespace"
+                        )));
+                    }
+                    saw_root = true;
+                    allow_unbound = namespace == SpreadsheetNamespace::Unbound;
+                }
+                let valid_namespace = namespace == SpreadsheetNamespace::Spreadsheet
+                    || (allow_unbound && namespace == SpreadsheetNamespace::Unbound);
+                if local == "c"
+                    && valid_namespace
+                    && worksheet_parent_path(&stack, &["worksheet", "sheetData", "row"])
+                    && let Some((col, row, raw)) = raw_cell_from_element(&element, bounds)
+                {
+                    if let Some(style_index) = raw.style_index {
+                        saw_nonzero_style_index |= style_index != 0;
+                        saw_style_zero |= style_index == 0;
+                    }
+                    if coordinate_in_output_prefix(bounds, col, row, output_cell_limit) {
+                        cells.insert((col, row), raw);
+                    }
+                }
+            }
+            event if is_xml_text_event(&event) => {
+                if let Some((_, _, _, raw)) = active_cell.as_mut() {
+                    if value_depth.is_some() {
+                        append_xml_text_event(&mut raw.raw_value, &event);
+                    } else if inline_text_depth.is_some() {
+                        append_xml_text_event(&mut raw.inline_text, &event);
+                    } else if formula_depth.is_some() {
+                        append_xml_text_event(&mut raw.formula, &event);
+                    }
+                }
+            }
+            Event::End(element) => {
+                let depth = stack.len().checked_sub(1).ok_or_else(|| {
+                    CliError::unexpected("invalid worksheet XML: unmatched end element")
+                })?;
+                let local = local_name(element.name().as_ref()).to_string();
+                let frame = stack.last().ok_or_else(|| {
+                    CliError::unexpected("invalid worksheet XML: unmatched end element")
+                })?;
+                if frame.local_name != local {
+                    return Err(CliError::unexpected(format!(
+                        "invalid worksheet XML: closing {local:?} does not match {:?}",
+                        frame.local_name
+                    )));
+                }
+                if value_depth == Some(depth) {
+                    value_depth = None;
+                }
+                if inline_text_depth == Some(depth) {
+                    inline_text_depth = None;
+                }
+                if formula_depth == Some(depth) {
+                    formula_depth = None;
+                }
+                if matches!(active_cell, Some((cell_depth, _, _, _)) if cell_depth == depth)
+                    && local == "c"
+                {
+                    let (_, col, row, raw) = active_cell.take().expect("active cell");
+                    cells.insert((col, row), raw);
+                }
+                stack.pop();
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+        buffer.clear();
+    }
+
+    if !saw_root {
+        return Err(CliError::unexpected(
+            "invalid worksheet XML: no root element",
+        ));
+    }
+    if !stack.is_empty() {
+        return Err(CliError::unexpected(
+            "invalid worksheet XML: unexpected EOF",
+        ));
+    }
+    Ok(RawRangeScan {
+        cells,
+        saw_nonzero_style_index,
+        saw_style_zero,
+    })
+}
+
+pub(crate) fn shared_strings_for_indices(
+    source: &mut dyn BufRead,
+    wanted_indices: &BTreeSet<usize>,
+) -> CliResult<BTreeMap<usize, String>> {
+    let mut reader = NsReader::from_reader(source);
+    reader.config_mut().trim_text(false);
+    let mut buffer = Vec::new();
+    let mut stack = Vec::<SpreadsheetFrame>::new();
+    let mut saw_root = false;
+    let mut allow_unbound = false;
+    let mut string_index = 0usize;
+    let mut active_string: Option<(usize, String)> = None;
+    let mut text_depth = None;
+    let mut strings = BTreeMap::new();
+
+    loop {
+        let (resolved, event) = reader
+            .read_resolved_event_into(&mut buffer)
+            .map_err(|err| CliError::unexpected(format!("invalid shared strings XML: {err}")))?;
+        match event {
+            Event::Start(element) => {
+                let local = local_name(element.name().as_ref()).to_string();
+                let namespace = spreadsheet_namespace_kind(resolved);
+                if stack.is_empty() {
+                    if saw_root {
+                        return Err(CliError::unexpected(
+                            "invalid shared strings XML: multiple root elements",
+                        ));
+                    }
+                    if local != "sst" || namespace == SpreadsheetNamespace::Foreign {
+                        return Err(CliError::unexpected(format!(
+                            "invalid shared strings root element {local:?} or namespace"
+                        )));
+                    }
+                    saw_root = true;
+                    allow_unbound = namespace == SpreadsheetNamespace::Unbound;
+                }
+                let valid_namespace = namespace == SpreadsheetNamespace::Spreadsheet
+                    || (allow_unbound && namespace == SpreadsheetNamespace::Unbound);
+                let depth = stack.len();
+                if local == "si" && valid_namespace && shared_string_parent_path(&stack, &["sst"]) {
+                    if wanted_indices.contains(&string_index) {
+                        active_string = Some((depth, String::new()));
+                    }
+                } else if active_string.is_some()
+                    && local == "t"
+                    && valid_namespace
+                    && shared_string_text_parent_path(&stack)
+                {
+                    text_depth = Some(depth);
+                }
+                stack.push(SpreadsheetFrame {
+                    local_name: local,
+                    valid_namespace,
+                });
+            }
+            Event::Empty(element) => {
+                let local = local_name(element.name().as_ref()).to_string();
+                let namespace = spreadsheet_namespace_kind(resolved);
+                if stack.is_empty() {
+                    if saw_root {
+                        return Err(CliError::unexpected(
+                            "invalid shared strings XML: multiple root elements",
+                        ));
+                    }
+                    if local != "sst" || namespace == SpreadsheetNamespace::Foreign {
+                        return Err(CliError::unexpected(format!(
+                            "invalid shared strings root element {local:?} or namespace"
+                        )));
+                    }
+                    saw_root = true;
+                    allow_unbound = namespace == SpreadsheetNamespace::Unbound;
+                } else if local == "si"
+                    && (namespace == SpreadsheetNamespace::Spreadsheet
+                        || (allow_unbound && namespace == SpreadsheetNamespace::Unbound))
+                    && shared_string_parent_path(&stack, &["sst"])
+                {
+                    if wanted_indices.contains(&string_index) {
+                        strings.insert(string_index, String::new());
+                    }
+                    string_index = string_index.saturating_add(1);
+                }
+            }
+            event if is_xml_text_event(&event) => {
+                if text_depth.is_some()
+                    && let Some((_, text)) = active_string.as_mut()
+                {
+                    append_xml_text_event(text, &event);
+                }
+            }
+            Event::End(element) => {
+                let depth = stack.len().checked_sub(1).ok_or_else(|| {
+                    CliError::unexpected("invalid shared strings XML: unmatched end element")
+                })?;
+                let local = local_name(element.name().as_ref()).to_string();
+                let frame = stack.last().ok_or_else(|| {
+                    CliError::unexpected("invalid shared strings XML: unmatched end element")
+                })?;
+                if frame.local_name != local {
+                    return Err(CliError::unexpected(format!(
+                        "invalid shared strings XML: closing {local:?} does not match {:?}",
+                        frame.local_name
+                    )));
+                }
+                if text_depth == Some(depth) {
+                    text_depth = None;
+                }
+                let closes_shared_string = local == "si"
+                    && frame.valid_namespace
+                    && stack.len() == 2
+                    && shared_string_parent_path(&stack[..1], &["sst"]);
+                if closes_shared_string {
+                    if matches!(active_string, Some((si_depth, _)) if si_depth == depth) {
+                        let (_, text) = active_string.take().expect("active shared string");
+                        strings.insert(string_index, text);
+                    }
+                    string_index = string_index.saturating_add(1);
+                }
+                stack.pop();
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+        buffer.clear();
+    }
+
+    if !saw_root {
+        return Err(CliError::unexpected(
+            "invalid shared strings XML: no root element",
+        ));
+    }
+    if !stack.is_empty() {
+        return Err(CliError::unexpected(
+            "invalid shared strings XML: unexpected EOF",
+        ));
+    }
+    Ok(strings)
+}
+
+pub(crate) fn decode_xlsx_raw_cell(
+    raw: &RawCellValue,
+    shared_strings: &BTreeMap<usize, String>,
+    styles: &[XlsxStyle],
+) -> CellValue {
+    let style = raw
+        .style_index
+        .and_then(|index| styles.get(index as usize).cloned())
+        .unwrap_or_default();
+    let (kind, matrix_value, display_value) = decode_xlsx_cell_value_with_lookup(
+        &raw.cell_type,
+        &raw.raw_value,
+        &raw.inline_text,
+        &raw.formula,
+        |index| shared_strings.get(&index).cloned(),
+        &style,
+    );
+    CellValue {
+        kind,
+        matrix_value,
+        display_value,
+        raw_value: if raw.cell_type == "inlineStr" {
+            String::new()
+        } else {
+            raw.raw_value.clone()
+        },
+        formula: raw.formula.clone(),
+        style_index: raw.style_index,
+        number_format_id: style.number_format_id,
+        number_format_code: style.number_format_code,
+        date_style: style.date_style,
+        has_formula: !raw.formula.is_empty(),
+    }
+}
+
+fn raw_cell_from_element(
+    element: &BytesStart<'_>,
+    bounds: RangeBounds,
+) -> Option<(u32, u32, RawCellValue)> {
+    let raw_ref = attr(element, "r")?;
+    let (col, row) = parse_cell_ref(&raw_ref).ok()?;
+    if raw_ref != format!("{}{}", col_name(col), row) || !range_contains_cell(bounds, col, row) {
+        return None;
+    }
+    Some((
+        col,
+        row,
+        RawCellValue {
+            cell_type: attr(element, "t").unwrap_or_default(),
+            style_index: attr(element, "s").and_then(|value| value.parse::<u32>().ok()),
+            ..RawCellValue::default()
+        },
+    ))
+}
+
+fn coordinate_in_output_prefix(
+    bounds: RangeBounds,
+    col: u32,
+    row: u32,
+    output_cell_limit: Option<u64>,
+) -> bool {
+    let normalized = bounds.normalized();
+    let ordinal = u64::from(row - normalized.start_row)
+        .saturating_mul(u64::from(normalized.col_count()))
+        .saturating_add(u64::from(col - normalized.start_col));
+    output_cell_limit.is_none_or(|limit| ordinal < limit)
+}
+
+fn worksheet_parent_path(stack: &[SpreadsheetFrame], path: &[&str]) -> bool {
+    stack.len() == path.len()
+        && stack
+            .iter()
+            .zip(path)
+            .all(|(frame, expected)| frame.valid_namespace && frame.local_name == *expected)
+}
+
+fn worksheet_inline_text_parent_path(stack: &[SpreadsheetFrame]) -> bool {
+    stack.len() >= 5
+        && worksheet_parent_path(&stack[..4], &["worksheet", "sheetData", "row", "c"])
+        && stack[4].valid_namespace
+        && stack[4].local_name == "is"
+        && stack[5..].iter().all(|frame| frame.valid_namespace)
+}
+
+fn shared_string_parent_path(stack: &[SpreadsheetFrame], path: &[&str]) -> bool {
+    worksheet_parent_path(stack, path)
+}
+
+fn shared_string_text_parent_path(stack: &[SpreadsheetFrame]) -> bool {
+    stack.len() >= 2
+        && shared_string_parent_path(&stack[..2], &["sst", "si"])
+        && stack[2..].iter().all(|frame| frame.valid_namespace)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SpreadsheetNamespace {
+    Spreadsheet,
+    Unbound,
+    Foreign,
+}
+
+fn spreadsheet_namespace_kind(resolved: ResolveResult<'_>) -> SpreadsheetNamespace {
+    match resolved {
+        ResolveResult::Bound(Namespace(uri))
+            if uri == SPREADSHEETML_TRANSITIONAL_NS || uri == SPREADSHEETML_STRICT_NS =>
+        {
+            SpreadsheetNamespace::Spreadsheet
+        }
+        ResolveResult::Unbound => SpreadsheetNamespace::Unbound,
+        _ => SpreadsheetNamespace::Foreign,
+    }
+}
+
 pub(crate) fn sheet_cells(
     xml: &str,
     shared_strings: &[String],
@@ -446,10 +907,28 @@ fn decode_xlsx_cell_value(
     shared_strings: &[String],
     style: &XlsxStyle,
 ) -> (String, Value, String) {
+    decode_xlsx_cell_value_with_lookup(
+        cell_type,
+        raw,
+        inline_text,
+        formula,
+        |index| shared_strings.get(index).cloned(),
+        style,
+    )
+}
+
+fn decode_xlsx_cell_value_with_lookup(
+    cell_type: &str,
+    raw: &str,
+    inline_text: &str,
+    formula: &str,
+    shared_string: impl Fn(usize) -> Option<String>,
+    style: &XlsxStyle,
+) -> (String, Value, String) {
     match cell_type {
         "s" => {
             let idx = raw.parse::<usize>().unwrap_or(usize::MAX);
-            let text = shared_strings.get(idx).cloned().unwrap_or_default();
+            let text = shared_string(idx).unwrap_or_default();
             ("string".to_string(), Value::String(text.clone()), text)
         }
         "inlineStr" => (
@@ -549,4 +1028,98 @@ pub(crate) fn xlsx_merged_cell_count(xml: &str) -> usize {
         }
     }
     count
+}
+
+#[cfg(test)]
+mod streaming_tests {
+    use super::*;
+    use std::io::{BufReader, Cursor, Read};
+
+    struct ChunkedReader<R> {
+        inner: R,
+        chunk_size: usize,
+    }
+
+    impl<R: Read> Read for ChunkedReader<R> {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            let len = buffer.len().min(self.chunk_size);
+            self.inner.read(&mut buffer[..len])
+        }
+    }
+
+    fn parse_sheet(
+        xml: &str,
+        range: &str,
+        limit: Option<u64>,
+    ) -> CliResult<BTreeMap<(u32, u32), RawCellValue>> {
+        let chunked = ChunkedReader {
+            inner: Cursor::new(xml.as_bytes()),
+            chunk_size: 3,
+        };
+        let mut reader = BufReader::with_capacity(5, chunked);
+        sheet_raw_cells_in_range(&mut reader, parse_range(range)?, limit).map(|scan| scan.cells)
+    }
+
+    #[test]
+    fn streamed_sheet_reader_handles_prefixed_transitional_and_strict_xml() {
+        for namespace in [
+            "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+            "http://purl.oclc.org/ooxml/spreadsheetml/main",
+        ] {
+            let xml = format!(
+                r#"<s:worksheet xmlns:s="{namespace}"><s:sheetData><s:row r="1"><s:c r="A1" t="inlineStr"><s:is><s:r><s:t>rich &amp; </s:t></s:r><s:r><s:t>text</s:t></s:r></s:is></s:c><s:c r="B1"><s:f>SUM(1,2)</s:f><s:v>3</s:v></s:c></s:row></s:sheetData></s:worksheet>"#
+            );
+            let cells = parse_sheet(&xml, "A1:B1", None).expect("streamed worksheet");
+            assert_eq!(cells[&(1, 1)].inline_text, "rich & text");
+            assert_eq!(cells[&(2, 1)].formula, "SUM(1,2)");
+            assert_eq!(cells[&(2, 1)].raw_value, "3");
+        }
+    }
+
+    #[test]
+    fn streamed_sheet_reader_is_ancestry_and_namespace_aware() {
+        let xml = r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:x="urn:foreign"><x:sheetData><x:row><x:c r="A1"><x:v>bad-wrapper</x:v></x:c></x:row></x:sheetData><sheetData><row><x:c r="A1"><x:v>bad-cell</x:v></x:c><c r="A1"><x:v>bad-value</x:v><v>good</v></c></row></sheetData></worksheet>"#;
+        let cells = parse_sheet(xml, "A1", None).expect("worksheet");
+        assert_eq!(cells[&(1, 1)].raw_value, "good");
+    }
+
+    #[test]
+    fn streamed_sheet_reader_preserves_last_duplicate_and_coordinate_prefix() {
+        let xml = r#"<worksheet><sheetData><row r="2"><c r="B2"><v>outside-prefix</v></c><c r="A2"><v>row-two</v></c></row><row r="1"><c r="A1"><v>first</v></c><c r="a1"><v>lowercase</v></c><c r="$A$1"><v>absolute</v></c><c r="A1"><v>last</v></c><c r="C1"><v>third</v></c></row></sheetData></worksheet>"#;
+        let cells = parse_sheet(xml, "C2:A1", Some(4)).expect("worksheet");
+        assert_eq!(cells[&(1, 1)].raw_value, "last");
+        assert_eq!(cells[&(1, 2)].raw_value, "row-two");
+        assert_eq!(cells[&(3, 1)].raw_value, "third");
+        assert!(!cells.contains_key(&(2, 2)));
+        assert_eq!(cells.len(), 3);
+    }
+
+    #[test]
+    fn streamed_sheet_reader_fails_on_malformed_tail() {
+        let xml = r#"<worksheet><sheetData><row><c r="A1"><v>1</v></c></row></sheetData><broken"#;
+        let err = parse_sheet(xml, "A1", None).expect_err("malformed tail must fail");
+        assert!(err.message.contains("invalid worksheet XML"));
+    }
+
+    #[test]
+    fn streamed_shared_strings_are_sparse_rich_and_namespace_aware() {
+        let xml = r#"<s:sst xmlns:s="http://purl.oclc.org/ooxml/spreadsheetml/main" xmlns:x="urn:foreign"><s:si><s:t>zero</s:t></s:si><x:si><x:t>does not consume an index</x:t></x:si><s:si><x:t>ignore</x:t><s:r><s:t>want &amp; </s:t></s:r><s:r><s:t>this</s:t></s:r></s:si><s:si><s:t>two</s:t></s:si></s:sst>"#;
+        let chunked = ChunkedReader {
+            inner: Cursor::new(xml.as_bytes()),
+            chunk_size: 2,
+        };
+        let mut reader = BufReader::with_capacity(4, chunked);
+        let strings =
+            shared_strings_for_indices(&mut reader, &BTreeSet::from([1])).expect("shared strings");
+        assert_eq!(strings, BTreeMap::from([(1, "want & this".to_string())]));
+    }
+
+    #[test]
+    fn streamed_shared_strings_fail_on_malformed_tail() {
+        let xml = r#"<sst><si><t>complete</t></si><broken"#;
+        let mut reader = BufReader::new(Cursor::new(xml.as_bytes()));
+        let err = shared_strings_for_indices(&mut reader, &BTreeSet::from([0]))
+            .expect_err("malformed shared strings tail must fail");
+        assert!(err.message.contains("invalid shared strings XML"));
+    }
 }

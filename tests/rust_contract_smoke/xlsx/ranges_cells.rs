@@ -59,6 +59,104 @@ fn xlsx_ranges_export_matches_rust_baseline() {
 }
 
 #[test]
+fn xlsx_ranges_export_rejects_input_as_data_out_without_modifying_it() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-range-data-out-safety-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("workbook.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("stage workbook");
+    let before = fs::read(&input).expect("read input before");
+    let input = input.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        &input,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--data-out",
+        &input,
+    ]);
+    assert_eq!(code, 2);
+    assert!(stdout.is_none());
+    let stderr = stderr.expect("JSON error");
+    assert_eq!(stderr["error"]["code"], "invalid_args");
+    assert!(
+        stderr["error"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("must not resolve to the input workbook")
+    );
+    assert_eq!(fs::read(&input).expect("read input after"), before);
+    let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn xlsx_ranges_export_checks_range_limit_before_opening_workbook() {
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "ranges",
+        "export",
+        "/definitely/missing/workbook.xlsx",
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1:B2",
+        "--max-cells",
+        "1",
+    ]);
+    assert_eq!(code, 2);
+    assert!(stdout.is_none());
+    let stderr = stderr.expect("JSON error");
+    assert_eq!(stderr["error"]["code"], "invalid_args");
+    assert!(
+        stderr["error"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("above --max-cells 1")
+    );
+}
+
+#[test]
+fn xlsx_capped_readback_preserves_format_matrix_presence_from_full_range() {
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "cells",
+        "clear",
+        "testdata/xlsx/types-and-formulas/workbook.xlsx",
+        "--sheet",
+        "Types",
+        "--range",
+        "G2:H2",
+        "--readback-max-cells",
+        "1",
+        "--dry-run",
+    ]);
+    assert_eq!(code, 0);
+    assert!(stderr.is_none());
+    let destination = &stdout.expect("JSON output")["destination"];
+    assert_eq!(destination["truncated"], true);
+    assert_eq!(destination["styleIndexes"], serde_json::json!([[null]]));
+    assert_eq!(
+        destination["numberFormatIds"],
+        serde_json::json!([[null]])
+    );
+    assert_eq!(
+        destination["numberFormatCodes"],
+        serde_json::json!([[null]])
+    );
+}
+
+#[test]
 fn xlsx_ranges_set_matches_rust_baseline_and_saved_output() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-xlsx-ranges-set-{}", std::process::id()));
