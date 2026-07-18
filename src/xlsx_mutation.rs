@@ -21,9 +21,10 @@ use std::collections::BTreeMap;
 use crate::{
     CliError, CliResult, RangeBounds, WorkbookSheet, XlsxRangeExportOptions, col_name, command_arg,
     needs_xml_space_preserve, normalize_xl_target, parse_xlsx_row_spans, rebuild_xlsx_sheet_data,
-    reject_xlsx_merged_cell_intersection, relationships, render_xlsx_row, render_xml_attrs,
-    resolve_sheet, workbook_sheets, xlsx_range_export_with_options, xlsx_sheet_data_span,
-    xlsx_sheet_selectors, xlsx_used_range_from_cell_refs, xml_escape, zip_text,
+    reject_xlsx_merged_cell_intersection, relationships, render_xlsx_row_with_prefix,
+    render_xml_attrs, resolve_sheet, workbook_sheets, xlsx_range_export_with_options,
+    xlsx_sheet_data_span, xlsx_sheet_selectors, xlsx_used_range_from_cell_refs, xml_escape,
+    zip_text,
 };
 #[derive(Clone)]
 pub(crate) struct XlsxMatrixCell {
@@ -105,6 +106,10 @@ pub(crate) fn set_xlsx_range_in_sheet_xml(
     reject_xlsx_merged_cell_intersection(xml, bounds)?;
     let sheet_data = xlsx_sheet_data_span(xml)?;
     let row_spans = parse_xlsx_row_spans(xml, sheet_data.as_ref())?;
+    let prefix = find_xlsx_element_start(xml, "sheetData")
+        .or_else(|| find_xlsx_element_start(xml, "worksheet"))
+        .map(|(_, prefix)| prefix)
+        .unwrap_or_default();
 
     let mut stats = XlsxRangeSetStats::default();
     let mut changed_rows = BTreeMap::<u32, String>::new();
@@ -152,9 +157,10 @@ pub(crate) fn set_xlsx_range_in_sheet_xml(
                             {
                                 rendered_cells.insert(
                                     col_number,
-                                    render_empty_xlsx_cell_with_attrs(
+                                    render_empty_xlsx_cell_with_attrs_prefixed(
                                         &addr,
                                         Some(&existing_cell.attrs),
+                                        &prefix,
                                     ),
                                 );
                             } else {
@@ -175,6 +181,7 @@ pub(crate) fn set_xlsx_range_in_sheet_xml(
                             &addr,
                             &empty,
                             existing_cell.map(|span| &span.attrs),
+                            &prefix,
                         )?;
                         rendered_cells.insert(col_number, rendered);
                         row_changed = true;
@@ -191,8 +198,12 @@ pub(crate) fn set_xlsx_range_in_sheet_xml(
                 }
                 continue;
             }
-            let (rendered, wrote_formula) =
-                render_xlsx_cell_with_attrs(&addr, cell, existing_cell.map(|span| &span.attrs))?;
+            let (rendered, wrote_formula) = render_xlsx_cell_with_attrs(
+                &addr,
+                cell,
+                existing_cell.map(|span| &span.attrs),
+                &prefix,
+            )?;
             rendered_cells.insert(col_number, rendered);
             row_changed = true;
             if existing_cell.is_some_and(|span| span.has_formula) {
@@ -210,7 +221,7 @@ pub(crate) fn set_xlsx_range_in_sheet_xml(
         if row_changed {
             changed_rows.insert(
                 row_number,
-                render_xlsx_row(row_number, existing_row, rendered_cells),
+                render_xlsx_row_with_prefix(row_number, existing_row, rendered_cells, &prefix),
             );
         }
     }
@@ -230,6 +241,7 @@ fn render_xlsx_cell_with_attrs(
     addr: &str,
     cell: &XlsxMatrixCell,
     attrs: Option<&BTreeMap<String, String>>,
+    prefix: &str,
 ) -> CliResult<(String, bool)> {
     let mut attrs = attrs.cloned().unwrap_or_default();
     attrs.insert("r".to_string(), addr.to_string());
@@ -244,24 +256,36 @@ fn render_xlsx_cell_with_attrs(
                 ""
             };
             (
-                format!("<is><t{space_attr}>{}</t></is>", xml_escape(&value)),
+                format!(
+                    "<{prefix}is><{prefix}t{space_attr}>{}</{prefix}t></{prefix}is>",
+                    xml_escape(&value)
+                ),
                 false,
             )
         }
-        "number" => (format!("<v>{}</v>", xml_escape(&value)), false),
+        "number" => (
+            format!("<{prefix}v>{}</{prefix}v>", xml_escape(&value)),
+            false,
+        ),
         "bool" | "boolean" => {
             let value = match cell.value.trim().to_ascii_lowercase().as_str() {
                 "true" | "1" => "1",
                 _ => "0",
             };
             attrs.insert("t".to_string(), "b".to_string());
-            (format!("<v>{value}</v>"), false)
+            (format!("<{prefix}v>{value}</{prefix}v>"), false)
         }
-        "formula" => (format!("<f>{}</f>", xml_escape(&value)), true),
+        "formula" => (
+            format!("<{prefix}f>{}</{prefix}f>", xml_escape(&value)),
+            true,
+        ),
         _ => unreachable!("cell kind normalized earlier"),
     };
     Ok((
-        format!("<c{}>{content}</c>", render_xml_attrs(&attrs)),
+        format!(
+            "<{prefix}c{}>{content}</{prefix}c>",
+            render_xml_attrs(&attrs)
+        ),
         wrote_formula,
     ))
 }
@@ -348,20 +372,29 @@ fn render_empty_xlsx_cell_with_attrs(
     addr: &str,
     attrs: Option<&BTreeMap<String, String>>,
 ) -> String {
+    render_empty_xlsx_cell_with_attrs_prefixed(addr, attrs, "")
+}
+
+fn render_empty_xlsx_cell_with_attrs_prefixed(
+    addr: &str,
+    attrs: Option<&BTreeMap<String, String>>,
+    prefix: &str,
+) -> String {
     let mut attrs = attrs.cloned().unwrap_or_default();
     attrs.insert("r".to_string(), addr.to_string());
     attrs.remove("t");
-    format!("<c{}/>", render_xml_attrs(&attrs))
+    format!("<{prefix}c{}/>", render_xml_attrs(&attrs))
 }
 
 fn replace_xlsx_dimension(xml: &str, range: Option<&str>) -> String {
-    let dimension = range.map(|range| format!("<dimension ref=\"{range}\"/>"));
-    if let Some(start) = xml.find("<dimension")
+    let existing_dimension = find_xlsx_element_start(xml, "dimension");
+    if let Some((start, prefix)) = existing_dimension
         && let Some(end) = xml[start..]
             .find("/>")
             .map(|offset| start + offset + "/>".len())
             .or_else(|| xml[start..].find('>').map(|offset| start + offset + 1))
     {
+        let dimension = range.map(|range| format!("<{prefix}dimension ref=\"{range}\"/>"));
         let mut updated =
             String::with_capacity(xml.len() + dimension.as_ref().map_or(0, String::len));
         updated.push_str(&xml[..start]);
@@ -371,9 +404,10 @@ fn replace_xlsx_dimension(xml: &str, range: Option<&str>) -> String {
         updated.push_str(&xml[end..]);
         return updated;
     }
-    if let Some(dimension) = dimension
-        && let Some(sheet_data_start) = xml.find("<sheetData")
+    if let Some(range) = range
+        && let Some((sheet_data_start, prefix)) = find_xlsx_element_start(xml, "sheetData")
     {
+        let dimension = format!("<{prefix}dimension ref=\"{range}\"/>");
         let mut updated = String::with_capacity(xml.len() + dimension.len());
         updated.push_str(&xml[..sheet_data_start]);
         updated.push_str(&dimension);
@@ -381,6 +415,33 @@ fn replace_xlsx_dimension(xml: &str, range: Option<&str>) -> String {
         return updated;
     }
     xml.to_string()
+}
+
+fn find_xlsx_element_start(xml: &str, local_name: &str) -> Option<(usize, String)> {
+    let mut cursor = 0usize;
+    while let Some(offset) = xml[cursor..].find('<') {
+        let start = cursor + offset;
+        let after = &xml[start + 1..];
+        let first = after.as_bytes().first().copied()?;
+        if matches!(first, b'/' | b'?' | b'!') {
+            cursor = start + 1;
+            continue;
+        }
+        let name_end = after
+            .find(|ch: char| ch.is_ascii_whitespace() || matches!(ch, '>' | '/'))
+            .unwrap_or(after.len());
+        let qualified_name = &after[..name_end];
+        if qualified_name == local_name {
+            return Some((start, String::new()));
+        }
+        if let Some(prefix) = qualified_name.strip_suffix(local_name)
+            && prefix.ends_with(':')
+        {
+            return Some((start, prefix.to_string()));
+        }
+        cursor = start + 1;
+    }
+    None
 }
 
 pub(crate) fn xlsx_range_destination_json(

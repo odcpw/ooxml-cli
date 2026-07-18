@@ -278,8 +278,8 @@ pub(crate) use xlsx_sheet_lifecycle::{
 };
 pub(crate) use xlsx_sheet_xml::{
     XlsxCellSpan, parse_xlsx_row_spans, range_bounds_ref, rebuild_xlsx_sheet_data,
-    reject_xlsx_merged_cell_intersection, render_xlsx_row, xlsx_sheet_data_span,
-    xlsx_used_range_from_cell_refs,
+    reject_xlsx_merged_cell_intersection, render_xlsx_row, render_xlsx_row_with_prefix,
+    xlsx_sheet_data_span, xlsx_used_range_from_cell_refs,
 };
 pub(crate) use xlsx_sheets::{xlsx_cells_extract, xlsx_sheets_list, xlsx_sheets_show};
 pub(crate) use xlsx_structure::{

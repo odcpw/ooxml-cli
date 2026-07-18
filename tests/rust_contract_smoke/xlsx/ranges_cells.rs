@@ -176,6 +176,63 @@ fn xlsx_ranges_set_matches_rust_baseline_and_saved_output() {
 }
 
 #[test]
+fn xlsx_ranges_set_updates_namespace_prefixed_worksheet_dimension() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-prefixed-dimension-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input = temp_dir.join("input.xlsx");
+    let output = temp_dir.join("output.xlsx");
+    write_simple_xlsx_with_sheet_xml(
+        &input,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:worksheet xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <x:dimension ref="A1:P5"/>
+  <x:sheetData><x:row r="1"><x:c r="A1" t="inlineStr"><x:is><x:t>header</x:t></x:is></x:c></x:row></x:sheetData>
+</x:worksheet>"#,
+    );
+    let input_s = input.to_string_lossy().to_string();
+    let output_s = output.to_string_lossy().to_string();
+    let args = [
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &input_s,
+        "--sheet",
+        "Sheet1",
+        "--anchor",
+        "P37978",
+        "--values",
+        r#"[["tail",7,{"formula":"SUM(Q37978:Q37978)"}]]"#,
+        "--out",
+        &output_s,
+    ];
+    let (code, stdout, stderr) = run_ooxml(&args);
+    assert_eq!(code, 0, "ranges set exit: {stderr:?} {stdout:?}");
+    let sheet_xml = read_zip_string(&output, "xl/worksheets/sheet1.xml");
+    assert!(
+        sheet_xml.contains(r#"<x:dimension ref="A1:R37978"/>"#),
+        "prefixed dimension was not expanded: {sheet_xml}"
+    );
+    assert!(
+        sheet_xml.contains(
+            r#"<x:row r="37978"><x:c r="P37978" t="inlineStr"><x:is><x:t>tail</x:t></x:is></x:c><x:c r="Q37978"><x:v>7</x:v></x:c><x:c r="R37978"><x:f>SUM(Q37978:Q37978)</x:f></x:c></x:row>"#
+        ),
+        "tail cell missing: {sheet_xml}"
+    );
+    for unprefixed in ["<row", "<c ", "<is>", "<t>", "<v>", "<f>"] {
+        assert!(
+            !sheet_xml.contains(unprefixed),
+            "inserted SpreadsheetML descendant lost its namespace prefix ({unprefixed}): {sheet_xml}"
+        );
+    }
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_ranges_set_formula_recalc_metadata_matches_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-ranges-set-formula-recalc-{}",

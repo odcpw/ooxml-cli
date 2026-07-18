@@ -274,6 +274,180 @@ fn xlsx_pivots_create_matches_rust_baseline_saved_readback_dry_run_and_errors() 
 }
 
 #[test]
+fn xlsx_pivots_create_adds_prefixed_worksheet_pivot_parts() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-pivots-prefixed-worksheet-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let base_path = temp_dir.join("base.xlsx");
+    let input_path = temp_dir.join("prefixed.xlsx");
+    let output_path = temp_dir.join("pivoted.xlsx");
+    write_table_xlsx(&base_path);
+    let base = base_path.to_string_lossy().to_string();
+    rewrite_zip_fixture(&base, &input_path, |name, data| {
+        if name == "xl/workbook.xml" {
+            let mut xml = String::from_utf8(data).expect("workbook XML utf8");
+            xml = xml.replace(
+                r#" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#,
+                "",
+            );
+            xml = xml.replacen("<workbook xmlns=", "<x:workbook xmlns:x=", 1);
+            xml = xml.replace("</workbook>", "</x:workbook>");
+            for tag in ["sheets", "sheet"] {
+                xml = xml.replace(&format!("<{tag}"), &format!("<x:{tag}"));
+                xml = xml.replace(&format!("</{tag}>"), &format!("</x:{tag}>"));
+            }
+            xml = xml.replacen(
+                "<x:sheet name=",
+                r#"<x:sheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" name="#,
+                1,
+            );
+            return Some((name.to_string(), xml.into_bytes()));
+        }
+        if name != "xl/worksheets/sheet1.xml" {
+            return Some((name.to_string(), data));
+        }
+        let mut xml = String::from_utf8(data).expect("worksheet XML utf8");
+        xml = xml.replacen("<worksheet xmlns=", "<x:worksheet xmlns:x=", 1);
+        xml = xml.replace("</worksheet>", "</x:worksheet>");
+        for tag in [
+            "dimension",
+            "sheetData",
+            "row",
+            "c",
+            "is",
+            "t",
+            "v",
+            "tableParts",
+            "tablePart",
+        ] {
+            xml = xml.replace(&format!("<{tag}"), &format!("<x:{tag}"));
+            xml = xml.replace(&format!("</{tag}>"), &format!("</x:{tag}>"));
+        }
+        Some((name.to_string(), xml.into_bytes()))
+    });
+    let input = input_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "pivots",
+        "create",
+        &input,
+        "--table",
+        "Sales",
+        "--name",
+        "SalesPivot",
+        "--rows",
+        "Region",
+        "--values",
+        "Amount:sum",
+        "--anchor",
+        "D1",
+        "--out",
+        &output,
+    ]);
+    assert_eq!(code, 0, "pivots create exit: {stderr:?} {stdout:?}");
+    let sheet_xml = read_zip_string(&output_path, "xl/worksheets/sheet1.xml");
+    let workbook_xml = read_zip_string(&output_path, "xl/workbook.xml");
+    assert!(sheet_xml.contains("xmlns:r="), "relationships namespace missing");
+    assert!(
+        sheet_xml.contains(
+            r#"<x:pivotTableParts count="1"><x:pivotTablePart r:id="rId2"/></x:pivotTableParts>"#
+        ),
+        "prefixed pivotTableParts missing: {sheet_xml}"
+    );
+    assert!(
+        workbook_xml.contains(
+            r#"<x:pivotCaches><x:pivotCache cacheId="1" r:id="rId2"/></x:pivotCaches>"#
+        ),
+        "prefixed pivotCaches missing: {workbook_xml}"
+    );
+    let workbook_start = workbook_xml
+        .split_once('>')
+        .map(|(_, rest)| rest)
+        .and_then(|rest| rest.split_once('>').map(|(start, _)| start))
+        .unwrap_or_default();
+    assert!(
+        workbook_start.contains("xmlns:r="),
+        "workbook root relationships namespace missing: {workbook_xml}"
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_pivots_create_appends_to_existing_worksheet_pivot_parts() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-pivots-two-same-sheet-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let input_path = temp_dir.join("input.xlsx");
+    let first_path = temp_dir.join("first.xlsx");
+    let second_path = temp_dir.join("second.xlsx");
+    write_table_xlsx(&input_path);
+    let input = input_path.to_string_lossy().to_string();
+    let first = first_path.to_string_lossy().to_string();
+    let second = second_path.to_string_lossy().to_string();
+
+    for (source, output, name, anchor) in [
+        (&input, &first, "SalesPivotOne", "D1"),
+        (&first, &second, "SalesPivotTwo", "G1"),
+    ] {
+        let (code, stdout, stderr) = run_ooxml(&[
+            "--json",
+            "xlsx",
+            "pivots",
+            "create",
+            source,
+            "--table",
+            "Sales",
+            "--name",
+            name,
+            "--rows",
+            "Region",
+            "--values",
+            "Amount:sum",
+            "--anchor",
+            anchor,
+            "--out",
+            output,
+        ]);
+        assert_eq!(code, 0, "pivots create {name} exit: {stderr:?} {stdout:?}");
+    }
+
+    let sheet_xml = read_zip_string(&second_path, "xl/worksheets/sheet1.xml");
+    assert_eq!(
+        sheet_xml.matches("<pivotTableParts").count(),
+        1,
+        "worksheet must contain one pivotTableParts container: {sheet_xml}"
+    );
+    assert!(
+        sheet_xml.contains(r#"<pivotTableParts count="2">"#),
+        "pivotTableParts count was not updated: {sheet_xml}"
+    );
+    assert_eq!(
+        sheet_xml.matches("<pivotTablePart ").count(),
+        2,
+        "both pivotTablePart children must be retained: {sheet_xml}"
+    );
+    let (code, list, stderr) = run_ooxml(&["--json", "xlsx", "pivots", "list", &second]);
+    assert_eq!(code, 0, "pivots list exit: {stderr:?} {list:?}");
+    let pivots = list
+        .expect("pivots list output")["pivots"]
+        .as_array()
+        .expect("pivots array")
+        .to_vec();
+    assert_eq!(pivots.len(), 2, "both pivots must be discoverable");
+    assert_xlsx_strict_valid(&second);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_pivots_create_keeps_defined_names_calc_pr_before_pivot_caches() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-pivots-workbook-order-{}",

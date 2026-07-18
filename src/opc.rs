@@ -320,30 +320,34 @@ fn content_type_override_exists(xml: &str, normalized_part_name: &str) -> CliRes
 fn content_types_root_close_start(xml: &str) -> CliResult<usize> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
-    let mut depth = 0usize;
-    let mut in_root = false;
-    loop {
-        let before = reader.buffer_position() as usize;
+    let root_name = loop {
         match reader.read_event() {
-            Ok(Event::Start(e)) if !in_root && local_name(e.name().as_ref()) == "Types" => {
-                in_root = true;
-                depth = 1;
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "Types" => {
+                break String::from_utf8_lossy(e.name().as_ref()).into_owned();
             }
-            Ok(Event::Start(_)) if in_root => {
-                depth += 1;
-            }
-            Ok(Event::Empty(e)) if !in_root && local_name(e.name().as_ref()) == "Types" => {
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "Types" => {
                 return Err(CliError::unexpected(
                     "[Content_Types].xml Types root is self-closing; cannot insert Override",
                 ));
             }
-            Ok(Event::End(e)) if in_root && local_name(e.name().as_ref()) == "Types" => {
-                if depth == 1 {
-                    return Ok(before);
-                }
-                depth = depth.saturating_sub(1);
+            Ok(Event::Eof) => {
+                return Err(CliError::unexpected(
+                    "[Content_Types].xml Types root element not found",
+                ));
             }
-            Ok(Event::End(_)) if in_root => {
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    };
+    let mut depth = 1usize;
+    loop {
+        let event_start = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(_)) => depth += 1,
+            Ok(Event::End(e)) => {
+                if depth == 1 && e.name().as_ref() == root_name.as_bytes() {
+                    return Ok(event_start);
+                }
                 depth = depth.saturating_sub(1);
             }
             Ok(Event::Eof) => break,
@@ -442,6 +446,64 @@ mod tests {
             "error should explain unsafe content-types XML shape: {}",
             err.message
         );
+    }
+
+    #[test]
+    fn ensure_content_type_override_inserts_after_spaced_empty_child() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ct:Types xmlns:ct="http://schemas.openxmlformats.org/package/2006/content-types"><ct:Override PartName="/xl/tables/table1.xml" ContentType="application/xml" /></ct:Types>"#;
+        let updated = ensure_content_type_override(
+            xml.to_string(),
+            "/xl/pivotTables/pivotTable1.xml",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml",
+        )
+        .expect("insert override after spaced empty child");
+        assert!(
+            updated.contains(
+                r#"ContentType="application/xml" /><Override PartName="/xl/pivotTables/pivotTable1.xml""#
+            ),
+            "override was inserted inside the prior empty element: {updated}"
+        );
+        assert!(updated.ends_with("</ct:Types>"));
+        let mut reader = Reader::from_str(&updated);
+        loop {
+            match reader.read_event() {
+                Ok(Event::Eof) => break,
+                Ok(_) => {}
+                Err(err) => panic!("updated content types must remain well-formed: {err}"),
+            }
+        }
+    }
+
+    #[test]
+    fn ensure_content_type_override_ignores_fake_root_close_in_trailing_comment() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ct:Types xmlns:ct="http://schemas.openxmlformats.org/package/2006/content-types"><ct:Default Extension="xml" ContentType="application/xml"/></ct:Types><!-- fake </ct:Types> -->"#;
+        let updated = ensure_content_type_override(
+            xml.to_string(),
+            "/xl/pivotTables/pivotTable1.xml",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml",
+        )
+        .expect("insert override before parsed root close");
+        let override_pos = updated.find("<Override").expect("inserted Override");
+        let root_close_pos = updated.find("</ct:Types>").expect("real root close");
+        let comment_pos = updated.find("<!-- fake").expect("trailing comment");
+        assert!(
+            override_pos < root_close_pos,
+            "Override must be inside Types: {updated}"
+        );
+        assert!(
+            root_close_pos < comment_pos,
+            "trailing comment must remain outside Types: {updated}"
+        );
+        let mut reader = Reader::from_str(&updated);
+        loop {
+            match reader.read_event() {
+                Ok(Event::Eof) => break,
+                Ok(_) => {}
+                Err(err) => panic!("updated content types must remain well-formed: {err}"),
+            }
+        }
     }
 
     #[test]

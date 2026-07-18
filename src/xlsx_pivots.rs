@@ -708,6 +708,9 @@ fn build_pivot_create_artifacts(
         REL_PIVOT_TABLE,
         &relationship_target_from_source_to_target(&target_sheet_part_uri, &pivot_table_uri),
     );
+    let target_sheet_part = part_name(&target_sheet_part_uri);
+    let target_sheet_xml =
+        add_worksheet_pivot_reference(&zip_text(file, &target_sheet_part)?, &pivot_rid)?;
 
     let workbook_rels_xml = zip_text(file, "xl/_rels/workbook.xml.rels")?;
     let next_workbook_rid =
@@ -743,6 +746,7 @@ fn build_pivot_create_artifacts(
     overrides.insert(part_name(&pivot_table_uri), pivot_table_xml);
     overrides.insert(relationships_part_for(&pivot_table_uri), pivot_rels_xml);
     overrides.insert(worksheet_rels_part, worksheet_rels_xml);
+    overrides.insert(target_sheet_part, target_sheet_xml);
 
     Ok(PivotCreateArtifacts {
         name: pivot_name,
@@ -1165,37 +1169,275 @@ fn render_relationships_xml(relationships: &[(&str, &str, String)]) -> String {
 }
 
 fn add_workbook_pivot_cache(workbook_xml: &str, cache_id: i32, rid: &str) -> String {
+    let prefix = find_xml_element_start(workbook_xml, "workbook")
+        .and_then(|(_, root_name)| root_name.strip_suffix("workbook").map(str::to_string))
+        .unwrap_or_default();
     let entry = format!(
-        r#"<pivotCache cacheId="{cache_id}" r:id="{}"/>"#,
+        r#"<{prefix}pivotCache cacheId="{cache_id}" r:id="{}"/>"#,
         xml_attr_escape(rid)
     );
-    if let Some(pos) = workbook_xml.find("</pivotCaches>") {
+    if let Some(pos) = workbook_xml.find(&format!("</{prefix}pivotCaches>")) {
         let mut out = String::with_capacity(workbook_xml.len() + entry.len());
         out.push_str(&workbook_xml[..pos]);
         out.push_str(&entry);
         out.push_str(&workbook_xml[pos..]);
         return out;
     }
-    let wrapper = format!("<pivotCaches>{entry}</pivotCaches>");
+    let wrapper = format!("<{prefix}pivotCaches>{entry}</{prefix}pivotCaches>");
     insert_xlsx_workbook_child_ordered(workbook_xml, "pivotCaches", &wrapper)
         .unwrap_or_else(|| workbook_xml.to_string())
 }
 
 fn ensure_workbook_r_namespace(mut workbook_xml: String) -> String {
-    if workbook_xml.contains("xmlns:r=") {
-        return workbook_xml;
-    }
-    if let Some(pos) = workbook_xml.find("<workbook") {
+    if let Some((pos, _)) = find_xml_element_start(&workbook_xml, "workbook") {
         let insert_pos = workbook_xml[pos..]
             .find('>')
             .map(|offset| pos + offset)
             .unwrap_or(pos);
+        if workbook_xml[pos..=insert_pos].contains("xmlns:r=") {
+            return workbook_xml;
+        }
         workbook_xml.insert_str(
             insert_pos,
             r#" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#,
         );
     }
     workbook_xml
+}
+
+fn add_worksheet_pivot_reference(worksheet_xml: &str, rid: &str) -> CliResult<String> {
+    let (_, root_name) = find_xml_element_start(worksheet_xml, "worksheet")
+        .ok_or_else(|| CliError::unexpected("worksheet root element was not found"))?;
+    let prefix = root_name.strip_suffix("worksheet").unwrap_or_default();
+    let pivot_part = format!(
+        r#"<{prefix}pivotTablePart r:id="{}"/>"#,
+        xml_attr_escape(rid)
+    );
+    let mut updated = if let Some(parts) = worksheet_pivot_table_parts_span(worksheet_xml)? {
+        if parts.empty {
+            let replacement = format!(
+                r#"<{} count="1">{pivot_part}</{}>"#,
+                parts.qualified_name, parts.qualified_name
+            );
+            replace_xml_slice(worksheet_xml, parts.start, parts.end, &replacement)
+        } else {
+            let open = set_xml_start_tag_count(
+                &worksheet_xml[parts.start..parts.open_end],
+                parts.child_count + 1,
+            )?;
+            let mut replacement =
+                String::with_capacity(parts.end - parts.start + open.len() + pivot_part.len());
+            replacement.push_str(&open);
+            replacement.push_str(&worksheet_xml[parts.open_end..parts.close_start]);
+            replacement.push_str(&pivot_part);
+            replacement.push_str(&worksheet_xml[parts.close_start..parts.end]);
+            replace_xml_slice(worksheet_xml, parts.start, parts.end, &replacement)
+        }
+    } else {
+        let child =
+            format!(r#"<{prefix}pivotTableParts count="1">{pivot_part}</{prefix}pivotTableParts>"#);
+        let ext_lst = format!("<{prefix}extLst");
+        let insert_at = worksheet_xml
+            .find(&ext_lst)
+            .or_else(|| worksheet_xml.rfind(&format!("</{root_name}>")))
+            .ok_or_else(|| CliError::unexpected("worksheet root closing tag was not found"))?;
+        replace_xml_slice(worksheet_xml, insert_at, insert_at, &child)
+    };
+    let (root_start, _) = find_xml_element_start(&updated, "worksheet")
+        .ok_or_else(|| CliError::unexpected("worksheet root element was not found"))?;
+    let root_open_end = updated[root_start..]
+        .find('>')
+        .map(|offset| root_start + offset)
+        .ok_or_else(|| CliError::unexpected("worksheet root start tag is incomplete"))?;
+    if !updated[root_start..=root_open_end].contains("xmlns:r=") {
+        updated.insert_str(
+            root_open_end,
+            r#" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships""#,
+        );
+    }
+    Ok(updated)
+}
+
+struct WorksheetPivotTablePartsSpan {
+    start: usize,
+    open_end: usize,
+    close_start: usize,
+    end: usize,
+    qualified_name: String,
+    child_count: usize,
+    empty: bool,
+}
+
+fn worksheet_pivot_table_parts_span(
+    worksheet_xml: &str,
+) -> CliResult<Option<WorksheetPivotTablePartsSpan>> {
+    let mut reader = Reader::from_str(worksheet_xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        let start = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "pivotTableParts" => {
+                let qualified_name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                let open_end = reader.buffer_position() as usize;
+                let mut depth = 1usize;
+                let mut child_count = 0usize;
+                loop {
+                    let close_start = reader.buffer_position() as usize;
+                    match reader.read_event() {
+                        Ok(Event::Start(e)) => {
+                            if depth == 1 && local_name(e.name().as_ref()) == "pivotTablePart" {
+                                child_count += 1;
+                            }
+                            depth += 1;
+                        }
+                        Ok(Event::Empty(e)) => {
+                            if depth == 1 && local_name(e.name().as_ref()) == "pivotTablePart" {
+                                child_count += 1;
+                            }
+                        }
+                        Ok(Event::End(e)) => {
+                            if depth == 1 && e.name().as_ref() == qualified_name.as_bytes() {
+                                return Ok(Some(WorksheetPivotTablePartsSpan {
+                                    start,
+                                    open_end,
+                                    close_start,
+                                    end: reader.buffer_position() as usize,
+                                    qualified_name,
+                                    child_count,
+                                    empty: false,
+                                }));
+                            }
+                            depth = depth.saturating_sub(1);
+                        }
+                        Ok(Event::Eof) => {
+                            return Err(CliError::unexpected("pivotTableParts has no closing tag"));
+                        }
+                        Err(err) => return Err(CliError::unexpected(err.to_string())),
+                        _ => {}
+                    }
+                }
+            }
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "pivotTableParts" => {
+                return Ok(Some(WorksheetPivotTablePartsSpan {
+                    start,
+                    open_end: reader.buffer_position() as usize,
+                    close_start: reader.buffer_position() as usize,
+                    end: reader.buffer_position() as usize,
+                    qualified_name: String::from_utf8_lossy(e.name().as_ref()).into_owned(),
+                    child_count: 0,
+                    empty: true,
+                }));
+            }
+            Ok(Event::Eof) => return Ok(None),
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+}
+
+fn set_xml_start_tag_count(tag: &str, count: usize) -> CliResult<String> {
+    let tag_end = tag
+        .rfind('>')
+        .ok_or_else(|| CliError::unexpected("invalid pivotTableParts start tag"))?;
+    let bytes = tag.as_bytes();
+    let mut cursor = 1usize;
+    while cursor < tag_end && !bytes[cursor].is_ascii_whitespace() && bytes[cursor] != b'/' {
+        cursor += 1;
+    }
+    while cursor < tag_end {
+        while cursor < tag_end && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= tag_end || bytes[cursor] == b'/' {
+            break;
+        }
+        let name_start = cursor;
+        while cursor < tag_end
+            && !bytes[cursor].is_ascii_whitespace()
+            && bytes[cursor] != b'='
+            && bytes[cursor] != b'/'
+        {
+            cursor += 1;
+        }
+        let name_end = cursor;
+        while cursor < tag_end && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= tag_end || bytes[cursor] != b'=' {
+            return Err(CliError::unexpected("invalid pivotTableParts attribute"));
+        }
+        cursor += 1;
+        while cursor < tag_end && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= tag_end || !matches!(bytes[cursor], b'\"' | b'\'') {
+            return Err(CliError::unexpected("invalid pivotTableParts attribute"));
+        }
+        let quote = bytes[cursor];
+        let value_start = cursor + 1;
+        cursor = value_start;
+        while cursor < tag_end && bytes[cursor] != quote {
+            cursor += 1;
+        }
+        if cursor >= tag_end {
+            return Err(CliError::unexpected("invalid pivotTableParts attribute"));
+        }
+        let value_end = cursor;
+        if local_name(&tag.as_bytes()[name_start..name_end]) == "count" {
+            let mut out = String::with_capacity(tag.len() + 4);
+            out.push_str(&tag[..value_start]);
+            out.push_str(&count.to_string());
+            out.push_str(&tag[value_end..]);
+            return Ok(out);
+        }
+        cursor += 1;
+    }
+    let insert_at = if tag[..tag_end].trim_end().ends_with('/') {
+        tag[..tag_end]
+            .rfind('/')
+            .ok_or_else(|| CliError::unexpected("invalid pivotTableParts start tag"))?
+    } else {
+        tag_end
+    };
+    let mut out = String::with_capacity(tag.len() + 16);
+    out.push_str(&tag[..insert_at]);
+    out.push_str(&format!(r#" count="{count}""#));
+    out.push_str(&tag[insert_at..]);
+    Ok(out)
+}
+
+fn replace_xml_slice(xml: &str, start: usize, end: usize, replacement: &str) -> String {
+    let mut out = String::with_capacity(xml.len() + replacement.len());
+    out.push_str(&xml[..start]);
+    out.push_str(replacement);
+    out.push_str(&xml[end..]);
+    out
+}
+
+fn find_xml_element_start(xml: &str, local_name: &str) -> Option<(usize, String)> {
+    let mut cursor = 0usize;
+    while let Some(offset) = xml[cursor..].find('<') {
+        let start = cursor + offset;
+        let after = &xml[start + 1..];
+        let first = after.as_bytes().first().copied()?;
+        if matches!(first, b'/' | b'?' | b'!') {
+            cursor = start + 1;
+            continue;
+        }
+        let name_end = after
+            .find(|ch: char| ch.is_ascii_whitespace() || matches!(ch, '>' | '/'))
+            .unwrap_or(after.len());
+        let qualified_name = &after[..name_end];
+        if qualified_name == local_name
+            || qualified_name
+                .strip_suffix(local_name)
+                .is_some_and(|prefix| prefix.ends_with(':'))
+        {
+            return Some((start, qualified_name.to_string()));
+        }
+        cursor = start + 1;
+    }
+    None
 }
 
 fn add_pivot_content_type_overrides(

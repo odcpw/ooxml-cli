@@ -226,14 +226,23 @@ pub(crate) fn render_xlsx_row(
     row_span: Option<&XlsxRowSpan>,
     cells: BTreeMap<u32, String>,
 ) -> String {
+    render_xlsx_row_with_prefix(row_number, row_span, cells, "")
+}
+
+pub(crate) fn render_xlsx_row_with_prefix(
+    row_number: u32,
+    row_span: Option<&XlsxRowSpan>,
+    cells: BTreeMap<u32, String>,
+    prefix: &str,
+) -> String {
     let mut attrs = row_span.map(|span| span.attrs.clone()).unwrap_or_default();
     attrs.insert("r".to_string(), row_number.to_string());
     attrs.remove("spans");
-    let mut out = format!("<row{}>", render_xml_attrs(&attrs));
+    let mut out = format!("<{prefix}row{}>", render_xml_attrs(&attrs));
     for cell_xml in cells.into_values() {
         out.push_str(&cell_xml);
     }
-    out.push_str("</row>");
+    out.push_str(&format!("</{prefix}row>"));
     out
 }
 
