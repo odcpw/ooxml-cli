@@ -97,6 +97,10 @@ fn apply_batch_matches_rust_baseline_and_writes_valid_xlsx() {
         &rust_json["applied"][0]["readback"],
         "rangesExportCommand",
     );
+    assert_rust_emitted_ooxml_command_succeeds(
+        &rust_json["applied"][0]["readback"],
+        "sheetShowCommand",
+    );
 
     let (export_code, export_stdout, export_stderr) = run_ooxml(&[
         "--json",

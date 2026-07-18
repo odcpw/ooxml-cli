@@ -9,10 +9,10 @@ use super::{
     set_xlsx_range_in_sheet_xml, validate_xlsx_mutation_output_flags, xlsx_range_destination_json,
 };
 use crate::{
-    CliError, CliResult, RangeBounds, add_xlsx_formula_recalc_package_updates,
+    CliError, CliResult, EXIT_SUCCESS, RangeBounds, add_xlsx_formula_recalc_package_updates,
     check_range_max_cells, col_name, copy_zip_with_part_overrides_and_removals,
     normalize_xlsx_ranges_set_data_format, parse_cell_ref, parse_cli_range, range_bounds_ref,
-    validate, xlsx_ranges_set_temp_path, zip_text,
+    validate, validate_exit_code, xlsx_ranges_set_temp_path, zip_text,
 };
 
 pub(crate) struct XlsxRangesSetOptions<'a> {
@@ -109,7 +109,13 @@ pub(crate) fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> 
     )?;
     copy_zip_with_part_overrides_and_removals(file, &readback_path, &overrides, &removals)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        let report = validate(&readback_path, true)?;
+        if validate_exit_code(&report, true) != EXIT_SUCCESS {
+            let _ = fs::remove_file(&readback_path);
+            return Err(CliError::validation_failed(
+                "updated XLSX range package failed strict validation",
+            ));
+        }
     }
     let destination =
         xlsx_range_destination_json(&readback_path, commit_path, &sheet, &sheet_part, &range)?;

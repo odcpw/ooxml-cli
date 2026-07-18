@@ -124,9 +124,11 @@ pub(crate) fn xlsx_tables_set_column_format(
     copy_json_field(&range_result, &mut result, "validateCommand");
     copy_json_field(&range_result, &mut result, "cellsExtractCommand");
     copy_json_field(&range_result, &mut result, "rangesExportCommand");
+    copy_json_field(&range_result, &mut result, "sheetShowCommand");
     copy_json_field(&range_result, &mut result, "validateCommandTemplate");
     copy_json_field(&range_result, &mut result, "cellsExtractCommandTemplate");
     copy_json_field(&range_result, &mut result, "rangesExportCommandTemplate");
+    copy_json_field(&range_result, &mut result, "sheetShowCommandTemplate");
     add_xlsx_table_format_commands(
         &mut result,
         output_path,

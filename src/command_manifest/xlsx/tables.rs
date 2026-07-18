@@ -163,7 +163,7 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                     "--data-format",
                     "dataFormat",
                     "string",
-                    "matrix data format: json, csv, or tsv",
+                    "matrix format: JSON preserves typed numbers and booleans; CSV/TSV values are imported as text",
                 ),
                 flag(
                     "--dry-run",

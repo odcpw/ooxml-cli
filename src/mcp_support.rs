@@ -155,7 +155,8 @@ fn mcp_readback_text_for_op(value: &Value) -> String {
             "\"sheetPrimarySelector\":{},\"sheetSelectors\":{},\"range\":{},",
             "\"rows\":{},\"cols\":{},\"values\":{},\"types\":{},\"formulas\":{},",
             "\"formulaCount\":{},\"truncated\":{}}},\"validateCommand\":{},",
-            "\"cellsExtractCommand\":{},\"rangesExportCommand\":{}}}"
+            "\"cellsExtractCommand\":{},\"rangesExportCommand\":{},",
+            "\"sheetShowCommand\":{}}}"
         ),
         json_field(value, "file"),
         json_field(value, "sheet"),
@@ -184,7 +185,8 @@ fn mcp_readback_text_for_op(value: &Value) -> String {
         json_field(destination, "truncated"),
         json_field(value, "validateCommand"),
         json_field(value, "cellsExtractCommand"),
-        json_field(value, "rangesExportCommand")
+        json_field(value, "rangesExportCommand"),
+        json_field(value, "sheetShowCommand")
     )
 }
 

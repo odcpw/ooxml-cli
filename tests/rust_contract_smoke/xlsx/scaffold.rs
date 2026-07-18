@@ -424,6 +424,7 @@ fn xlsx_scaffold_rust_only_builds_formula_table_workbook() {
     assert_eq!(format_result["range"], "E2:E5");
     assert_eq!(format_result["column"], "Revenue");
     assert_rust_emitted_ooxml_command_succeeds(&format_result, "rangesExportCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&format_result, "sheetShowCommand");
 
     let cf_result = run_ooxml_json_ok("workflow conditional format", &[
         "--json",

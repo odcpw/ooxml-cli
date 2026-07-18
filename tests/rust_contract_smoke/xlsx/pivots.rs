@@ -146,6 +146,16 @@ fn xlsx_pivots_create_matches_rust_baseline_saved_readback_dry_run_and_errors() 
     assert_eq!(create["location"], "D1:E5");
     assert_rust_emitted_ooxml_command_succeeds(&create, "validateCommand");
     assert_rust_emitted_ooxml_command_succeeds(&create, "pivotsListCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&create, "pivotsShowCommand");
+    assert!(
+        create["pivotsShowCommand"]
+            .as_str()
+            .expect("pivots show command")
+            .contains("--pivot part:/xl/pivotTables/pivotTable1.xml"),
+        "created pivot proof should use its durable part selector: {create}"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&create, "sourceExportCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&create, "conformanceCommand");
     assert_xlsx_strict_valid(&rust_out);
     for part in [
         "xl/pivotTables/pivotTable1.xml",
@@ -274,6 +284,63 @@ fn xlsx_pivots_create_matches_rust_baseline_saved_readback_dry_run_and_errors() 
 }
 
 #[test]
+fn xlsx_pivots_create_rejects_failed_internal_strict_validation() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-pivots-validation-gate-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let valid_path = temp_dir.join("valid.xlsx");
+    let broken_path = temp_dir.join("broken.xlsx");
+    let output_path = temp_dir.join("output.xlsx");
+    write_table_xlsx(&valid_path);
+    rewrite_zip_fixture(
+        valid_path.to_str().expect("valid path"),
+        &broken_path,
+        |name, data| {
+            if name != "xl/_rels/workbook.xml.rels" {
+                return Some((name.to_string(), data));
+            }
+            let xml = String::from_utf8(data).expect("workbook rels utf8");
+            let xml = xml.replace(
+                "</Relationships>",
+                r#"<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml" Target="missing.xml"/></Relationships>"#,
+            );
+            Some((name.to_string(), xml.into_bytes()))
+        },
+    );
+    let broken = broken_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "pivots",
+        "create",
+        &broken,
+        "--table",
+        "Sales",
+        "--rows",
+        "Region",
+        "--values",
+        "Amount:sum",
+        "--out",
+        &output,
+    ]);
+    assert_eq!(code, 5, "strict validation gate exit: {stderr:?}");
+    assert_eq!(stdout, None, "failed mutation must not return success JSON");
+    assert_eq!(
+        stderr.expect("validation error")["error"]["code"],
+        "validation_failed"
+    );
+    assert!(
+        !output_path.exists(),
+        "failed pivot validation must not leave an output workbook"
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_pivots_create_adds_prefixed_worksheet_pivot_parts() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-pivots-prefixed-worksheet-{}",
@@ -393,9 +460,10 @@ fn xlsx_pivots_create_appends_to_existing_worksheet_pivot_parts() {
     let first = first_path.to_string_lossy().to_string();
     let second = second_path.to_string_lossy().to_string();
 
-    for (source, output, name, anchor) in [
-        (&input, &first, "SalesPivotOne", "D1"),
-        (&first, &second, "SalesPivotTwo", "G1"),
+    let mut second_create = None;
+    for (source, output, anchor) in [
+        (&input, &first, "D1"),
+        (&first, &second, "G1"),
     ] {
         let (code, stdout, stderr) = run_ooxml(&[
             "--json",
@@ -406,7 +474,7 @@ fn xlsx_pivots_create_appends_to_existing_worksheet_pivot_parts() {
             "--table",
             "Sales",
             "--name",
-            name,
+            "SalesPivot",
             "--rows",
             "Region",
             "--values",
@@ -416,7 +484,13 @@ fn xlsx_pivots_create_appends_to_existing_worksheet_pivot_parts() {
             "--out",
             output,
         ]);
-        assert_eq!(code, 0, "pivots create {name} exit: {stderr:?} {stdout:?}");
+        assert_eq!(
+            code, 0,
+            "pivots create at {anchor} exit: {stderr:?} {stdout:?}"
+        );
+        if output == &second {
+            second_create = stdout;
+        }
     }
 
     let sheet_xml = read_zip_string(&second_path, "xl/worksheets/sheet1.xml");
@@ -442,6 +516,23 @@ fn xlsx_pivots_create_appends_to_existing_worksheet_pivot_parts() {
         .expect("pivots array")
         .to_vec();
     assert_eq!(pivots.len(), 2, "both pivots must be discoverable");
+    assert_eq!(
+        pivots
+            .iter()
+            .filter(|pivot| pivot["name"] == "SalesPivot")
+            .count(),
+        2,
+        "regression requires duplicate pivot names"
+    );
+    let second_create = second_create.expect("second pivot create result");
+    assert!(
+        second_create["pivotsShowCommand"]
+            .as_str()
+            .expect("second pivot show command")
+            .contains("--pivot part:/xl/pivotTables/pivotTable2.xml"),
+        "repeat create should point at the newly allocated pivot part: {second_create}"
+    );
+    assert_rust_emitted_ooxml_command_succeeds(&second_create, "pivotsShowCommand");
     assert_xlsx_strict_valid(&second);
 
     let _ = fs::remove_dir_all(&temp_dir);

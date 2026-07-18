@@ -460,6 +460,7 @@
               "ref": "A1",
               "sheet": "Sheet1",
               "sheetNumber": 1,
+              "sheetShowCommand": "ooxml --json xlsx sheets show [SESSION_WORKING_PACKAGE] --sheet sheetId:1",
               "type": "string",
               "validateCommand": "ooxml validate --strict [SESSION_WORKING_PACKAGE]",
               "value": "serve-contract"
@@ -648,6 +649,7 @@
                   "ref": "A1",
                   "sheet": "Sheet1",
                   "sheetNumber": 1,
+                  "sheetShowCommand": "ooxml --json xlsx sheets show [SERVE_OUT_XLSX] --sheet sheetId:1",
                   "type": "string",
                   "validateCommand": "ooxml validate --strict [SERVE_OUT_XLSX]",
                   "value": "serve-contract"
@@ -916,7 +918,7 @@
             "result": {
               "content": [
                 {
-                  "text": "{\"command\":\"xlsx cells set\",\"index\":0,\"next_actions\":[\"call inspect with session=\\\"[MCP_SESSION]\\\" to confirm the change against the working copy\",\"call validate with session=\\\"[MCP_SESSION]\\\" before committing\",\"call commit with session=\\\"[MCP_SESSION]\\\" to write the output\"],\"readback\":{\"file\":\"[SESSION_WORKING_PACKAGE]\",\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"ref\":\"A1\",\"handle\":\"H:xlsx/ws:1/cell:a:A1\",\"type\":\"string\",\"value\":\"mcp-contract\",\"previousType\":\"string\",\"previousValue\":\"Hello\",\"created\":false,\"output\":\"[SESSION_WORKING_PACKAGE]\",\"dryRun\":false,\"destination\":{\"file\":\"[SESSION_WORKING_PACKAGE]\",\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"sheetPrimarySelector\":\"sheetId:1\",\"sheetSelectors\":[\"sheetId:1\",\"sheet:1\",\"#1\",\"rId:rId1\",\"rid:rId1\",\"part:/xl/worksheets/sheet1.xml\",\"name:Sheet1\",\"~Sheet1\",\"Sheet1\"],\"range\":\"A1\",\"rows\":1,\"cols\":1,\"values\":[[\"mcp-contract\"]],\"types\":[[\"string\"]],\"formulas\":[[null]],\"formulaCount\":0,\"truncated\":false},\"validateCommand\":\"ooxml validate --strict [SESSION_WORKING_PACKAGE]\",\"cellsExtractCommand\":\"ooxml --json xlsx cells extract [SESSION_WORKING_PACKAGE] --sheet sheetId:1 --range A1 --include-empty\",\"rangesExportCommand\":\"ooxml --json xlsx ranges export [SESSION_WORKING_PACKAGE] --sheet sheetId:1 --range A1 --include-types --include-formulas --include-formats\"}}",
+                  "text": "{\"command\":\"xlsx cells set\",\"index\":0,\"next_actions\":[\"call inspect with session=\\\"[MCP_SESSION]\\\" to confirm the change against the working copy\",\"call validate with session=\\\"[MCP_SESSION]\\\" before committing\",\"call commit with session=\\\"[MCP_SESSION]\\\" to write the output\"],\"readback\":{\"file\":\"[SESSION_WORKING_PACKAGE]\",\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"ref\":\"A1\",\"handle\":\"H:xlsx/ws:1/cell:a:A1\",\"type\":\"string\",\"value\":\"mcp-contract\",\"previousType\":\"string\",\"previousValue\":\"Hello\",\"created\":false,\"output\":\"[SESSION_WORKING_PACKAGE]\",\"dryRun\":false,\"destination\":{\"file\":\"[SESSION_WORKING_PACKAGE]\",\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"sheetPrimarySelector\":\"sheetId:1\",\"sheetSelectors\":[\"sheetId:1\",\"sheet:1\",\"#1\",\"rId:rId1\",\"rid:rId1\",\"part:/xl/worksheets/sheet1.xml\",\"name:Sheet1\",\"~Sheet1\",\"Sheet1\"],\"range\":\"A1\",\"rows\":1,\"cols\":1,\"values\":[[\"mcp-contract\"]],\"types\":[[\"string\"]],\"formulas\":[[null]],\"formulaCount\":0,\"truncated\":false},\"validateCommand\":\"ooxml validate --strict [SESSION_WORKING_PACKAGE]\",\"cellsExtractCommand\":\"ooxml --json xlsx cells extract [SESSION_WORKING_PACKAGE] --sheet sheetId:1 --range A1 --include-empty\",\"rangesExportCommand\":\"ooxml --json xlsx ranges export [SESSION_WORKING_PACKAGE] --sheet sheetId:1 --range A1 --include-types --include-formulas --include-formats\",\"sheetShowCommand\":\"ooxml --json xlsx sheets show [SESSION_WORKING_PACKAGE] --sheet sheetId:1\"}}",
                   "type": "text"
                 }
               ],
@@ -978,6 +980,7 @@
                   "ref": "A1",
                   "sheet": "Sheet1",
                   "sheetNumber": 1,
+                  "sheetShowCommand": "ooxml --json xlsx sheets show [SESSION_WORKING_PACKAGE] --sheet sheetId:1",
                   "type": "string",
                   "validateCommand": "ooxml validate --strict [SESSION_WORKING_PACKAGE]",
                   "value": "mcp-contract"
@@ -1151,7 +1154,7 @@
             "result": {
               "content": [
                 {
-                  "text": "{\"applied\":[{\"index\":0,\"command\":\"xlsx cells set\",\"readback\":{\"cellsExtractCommand\":\"ooxml --json xlsx cells extract [MCP_OUT_XLSX] --sheet sheetId:1 --range A1 --include-empty\",\"created\":false,\"destination\":{\"cols\":1,\"file\":\"[MCP_OUT_XLSX]\",\"formulaCount\":0,\"formulas\":[[null]],\"range\":\"A1\",\"rows\":1,\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"sheetPrimarySelector\":\"sheetId:1\",\"sheetSelectors\":[\"sheetId:1\",\"sheet:1\",\"#1\",\"rId:rId1\",\"rid:rId1\",\"part:/xl/worksheets/sheet1.xml\",\"name:Sheet1\",\"~Sheet1\",\"Sheet1\"],\"truncated\":false,\"types\":[[\"string\"]],\"values\":[[\"mcp-contract\"]]},\"dryRun\":false,\"file\":\"[MCP_OUT_XLSX]\",\"handle\":\"H:xlsx/ws:1/cell:a:A1\",\"output\":\"[MCP_OUT_XLSX]\",\"previousType\":\"string\",\"previousValue\":\"Hello\",\"rangesExportCommand\":\"ooxml --json xlsx ranges export [MCP_OUT_XLSX] --sheet sheetId:1 --range A1 --include-types --include-formulas --include-formats\",\"ref\":\"A1\",\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"type\":\"string\",\"validateCommand\":\"ooxml validate --strict [MCP_OUT_XLSX]\",\"value\":\"mcp-contract\"}}],\"dryRun\":false,\"file\":\"[MCP_INPUT_XLSX]\",\"next_actions\":[\"verify the output: ooxml validate --strict [MCP_OUT_XLSX]\"],\"opsCount\":1,\"output\":\"[MCP_OUT_XLSX]\",\"schemaVersion\":1,\"validateCommand\":\"ooxml validate --strict [MCP_OUT_XLSX]\"}",
+                  "text": "{\"applied\":[{\"index\":0,\"command\":\"xlsx cells set\",\"readback\":{\"cellsExtractCommand\":\"ooxml --json xlsx cells extract [MCP_OUT_XLSX] --sheet sheetId:1 --range A1 --include-empty\",\"created\":false,\"destination\":{\"cols\":1,\"file\":\"[MCP_OUT_XLSX]\",\"formulaCount\":0,\"formulas\":[[null]],\"range\":\"A1\",\"rows\":1,\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"sheetPrimarySelector\":\"sheetId:1\",\"sheetSelectors\":[\"sheetId:1\",\"sheet:1\",\"#1\",\"rId:rId1\",\"rid:rId1\",\"part:/xl/worksheets/sheet1.xml\",\"name:Sheet1\",\"~Sheet1\",\"Sheet1\"],\"truncated\":false,\"types\":[[\"string\"]],\"values\":[[\"mcp-contract\"]]},\"dryRun\":false,\"file\":\"[MCP_OUT_XLSX]\",\"handle\":\"H:xlsx/ws:1/cell:a:A1\",\"output\":\"[MCP_OUT_XLSX]\",\"previousType\":\"string\",\"previousValue\":\"Hello\",\"rangesExportCommand\":\"ooxml --json xlsx ranges export [MCP_OUT_XLSX] --sheet sheetId:1 --range A1 --include-types --include-formulas --include-formats\",\"ref\":\"A1\",\"sheet\":\"Sheet1\",\"sheetNumber\":1,\"sheetShowCommand\":\"ooxml --json xlsx sheets show [MCP_OUT_XLSX] --sheet sheetId:1\",\"type\":\"string\",\"validateCommand\":\"ooxml validate --strict [MCP_OUT_XLSX]\",\"value\":\"mcp-contract\"}}],\"dryRun\":false,\"file\":\"[MCP_INPUT_XLSX]\",\"next_actions\":[\"verify the output: ooxml validate --strict [MCP_OUT_XLSX]\"],\"opsCount\":1,\"output\":\"[MCP_OUT_XLSX]\",\"schemaVersion\":1,\"validateCommand\":\"ooxml validate --strict [MCP_OUT_XLSX]\"}",
                   "type": "text"
                 }
               ],
@@ -1210,6 +1213,7 @@
                       "ref": "A1",
                       "sheet": "Sheet1",
                       "sheetNumber": 1,
+                      "sheetShowCommand": "ooxml --json xlsx sheets show [MCP_OUT_XLSX] --sheet sheetId:1",
                       "type": "string",
                       "validateCommand": "ooxml validate --strict [MCP_OUT_XLSX]",
                       "value": "mcp-contract"

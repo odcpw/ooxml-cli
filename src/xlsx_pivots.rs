@@ -16,14 +16,15 @@ use model::{
 use output::{select_xlsx_pivot, xlsx_pivot_item_json};
 
 use crate::{
-    CliError, CliResult, RelationshipEntry, WorkbookSheet, XlsxRangeExportOptions,
+    CliError, CliResult, EXIT_SUCCESS, RelationshipEntry, WorkbookSheet, XlsxRangeExportOptions,
     add_relationship_to_xml, allocate_relationship_id, attr, col_name, command_arg,
     copy_zip_with_part_overrides, ensure_content_type_override, insert_xlsx_workbook_child_ordered,
     local_name, parse_cell_ref, parse_range, relationship_entries, relationship_entries_from_xml,
     relationship_target_from_source_to_target, relationships_part_for, resolve_relationship_target,
-    resolve_sheet, select_xlsx_table, validate, validate_xlsx_mutation_output_flags,
-    workbook_sheets, xlsx_range_export_with_options, xlsx_ranges_set_temp_path, xlsx_tables,
-    xlsx_workbook_waiting_for_formula_recalc, xml_attr_escape, zip_entry_names, zip_text,
+    resolve_sheet, select_xlsx_table, validate, validate_exit_code,
+    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_range_export_with_options,
+    xlsx_ranges_set_temp_path, xlsx_tables, xlsx_workbook_waiting_for_formula_recalc,
+    xml_attr_escape, zip_entry_names, zip_text,
 };
 
 const XLSX_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -142,7 +143,13 @@ pub(crate) fn xlsx_pivots_create(
     };
     copy_zip_with_part_overrides(file, &readback_path, &artifacts.overrides)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        let report = validate(&readback_path, true)?;
+        if validate_exit_code(&report, true) != EXIT_SUCCESS {
+            let _ = fs::remove_file(&readback_path);
+            return Err(CliError::validation_failed(
+                "created XLSX pivot package failed strict validation",
+            ));
+        }
     }
 
     if options.dry_run {
@@ -208,6 +215,31 @@ pub(crate) fn xlsx_pivots_create(
             "pivotsListCommand".to_string(),
             json!(format!(
                 "ooxml --json xlsx pivots list {}",
+                command_arg(commit_path)
+            )),
+        );
+        result.insert(
+            "pivotsShowCommand".to_string(),
+            json!(format!(
+                "ooxml --json xlsx pivots show {} --sheet {} --pivot {}",
+                command_arg(commit_path),
+                command_arg(&artifacts.target_sheet),
+                command_arg(&format!("part:{}", artifacts.pivot_table_uri))
+            )),
+        );
+        result.insert(
+            "sourceExportCommand".to_string(),
+            json!(format!(
+                "ooxml --json xlsx ranges export {} --sheet {} --range {} --include-types --include-formulas",
+                command_arg(commit_path),
+                command_arg(&artifacts.source_sheet),
+                command_arg(&artifacts.source_range)
+            )),
+        );
+        result.insert(
+            "conformanceCommand".to_string(),
+            json!(format!(
+                "ooxml --json conformance check {}",
                 command_arg(commit_path)
             )),
         );

@@ -615,6 +615,11 @@ pub(crate) fn add_xlsx_range_mutation_commands(
     } else {
         "rangesExportCommandTemplate"
     };
+    let sheet_key = if output_path.is_some() {
+        "sheetShowCommand"
+    } else {
+        "sheetShowCommandTemplate"
+    };
     result.insert(
         validate_key.to_string(),
         json!(format!("ooxml validate --strict {}", command_arg(target))),
@@ -635,6 +640,14 @@ pub(crate) fn add_xlsx_range_mutation_commands(
             command_arg(target),
             command_arg(sheet_selector),
             command_arg(range)
+        )),
+    );
+    result.insert(
+        sheet_key.to_string(),
+        json!(format!(
+            "ooxml --json xlsx sheets show {} --sheet {}",
+            command_arg(target),
+            command_arg(sheet_selector)
         )),
     );
 }

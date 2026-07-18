@@ -92,11 +92,13 @@ fn xlsx_ranges_set_matches_rust_baseline_and_saved_output() {
         baseline_stdout.expect("baseline ranges set stdout"),
         &[(&baseline_in, "[IN]"), (&baseline_out, "[OUT]")],
     );
+    let rust_raw = rust_stdout.expect("rust ranges set stdout");
     let rust_json = scrub_paths(
-        rust_stdout.expect("rust ranges set stdout"),
+        rust_raw.clone(),
         &[(&rust_in, "[IN]"), (&rust_out, "[OUT]")],
     );
     assert_eq!(rust_json, baseline_json, "ranges set stdout");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_raw, "sheetShowCommand");
 
     let export_args_go = [
         "--json",
@@ -540,6 +542,7 @@ fn xlsx_cells_set_matches_rust_baseline_and_emitted_commands_run() {
         "validateCommand",
         "cellsExtractCommand",
         "rangesExportCommand",
+        "sheetShowCommand",
     ] {
         assert_rust_emitted_ooxml_command_succeeds(&rust_raw, field);
     }
@@ -711,6 +714,7 @@ fn xlsx_cells_clear_matches_rust_baseline_saved_dry_run_and_errors() {
         "validateCommand",
         "cellsExtractCommand",
         "rangesExportCommand",
+        "sheetShowCommand",
     ] {
         assert_rust_emitted_ooxml_command_succeeds(&rust_raw, field);
     }
@@ -911,6 +915,7 @@ fn xlsx_cells_set_batch_matches_rust_baseline_saved_stdin_and_errors() {
         "validateCommand",
         "cellsExtractCommand",
         "rangesExportCommand",
+        "sheetShowCommand",
     ] {
         assert_rust_emitted_ooxml_command_succeeds(&rust_raw, field);
     }
@@ -1051,6 +1056,67 @@ fn xlsx_cells_set_batch_matches_rust_baseline_saved_stdin_and_errors() {
         "--dry-run",
     ]);
 
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_ranges_set_rejects_failed_internal_strict_validation() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-ranges-validation-gate-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let valid_path = temp_dir.join("valid.xlsx");
+    let broken_path = temp_dir.join("broken.xlsx");
+    let output_path = temp_dir.join("output.xlsx");
+    write_simple_xlsx_with_sheet_xml(
+        &valid_path,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1"/><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>old</t></is></c></row></sheetData></worksheet>"#,
+    );
+    rewrite_zip_fixture(
+        valid_path.to_str().expect("valid path"),
+        &broken_path,
+        |name, data| {
+            if name != "xl/_rels/workbook.xml.rels" {
+                return Some((name.to_string(), data));
+            }
+            let xml = String::from_utf8(data).expect("workbook rels utf8");
+            let xml = xml.replace(
+                "</Relationships>",
+                r#"<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml" Target="missing.xml"/></Relationships>"#,
+            );
+            Some((name.to_string(), xml.into_bytes()))
+        },
+    );
+    let broken = broken_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "ranges",
+        "set",
+        &broken,
+        "--sheet",
+        "Sheet1",
+        "--range",
+        "A1",
+        "--values",
+        r#"[["new"]]"#,
+        "--out",
+        &output,
+    ]);
+    assert_eq!(code, 5, "strict validation gate exit: {stderr:?}");
+    assert_eq!(stdout, None, "failed mutation must not return success JSON");
+    assert_eq!(
+        stderr.expect("validation error")["error"]["code"],
+        "validation_failed"
+    );
+    assert!(
+        !output_path.exists(),
+        "failed range validation must not leave an output workbook"
+    );
     let _ = fs::remove_dir_all(&temp_dir);
 }
 

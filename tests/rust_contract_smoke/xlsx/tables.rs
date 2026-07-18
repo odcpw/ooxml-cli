@@ -419,6 +419,7 @@ fn xlsx_tables_set_column_format_matches_rust_baseline_and_saved_output() {
         "validateCommand",
         "cellsExtractCommand",
         "rangesExportCommand",
+        "sheetShowCommand",
         "tableShowCommand",
         "tableExportCommand",
     ] {

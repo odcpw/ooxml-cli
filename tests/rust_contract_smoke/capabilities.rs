@@ -821,6 +821,28 @@ fn pptx_fields_set_capability_advertises_footer_synthesis() {
 }
 
 #[test]
+fn xlsx_matrix_data_format_help_explains_typed_json_and_text_delimited_values() {
+    let (code, stdout, stderr) = run_ooxml(&["--json", "capabilities"]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    let capabilities = stdout.expect("capabilities");
+    for path in ["ooxml xlsx ranges set", "ooxml xlsx tables append-rows"] {
+        let command = command_by_path(&capabilities, path);
+        let data_format = command["localFlags"]
+            .as_array()
+            .expect("local flags")
+            .iter()
+            .find(|flag| flag["name"] == "--data-format")
+            .expect("data-format flag");
+        assert_eq!(
+            data_format["description"],
+            "matrix format: JSON preserves typed numbers and booleans; CSV/TSV values are imported as text",
+            "{path} should make type preservation explicit"
+        );
+    }
+}
+
+#[test]
 fn artifact_proof_matrix_classifies_inventory_coverage() {
     let Some(powershell) = powershell_for_windows_contract_test() else {
         eprintln!("skipping artifact proof matrix test because PowerShell is not available");

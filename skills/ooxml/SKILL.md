@@ -217,6 +217,28 @@ oox --json validate --strict formatted.xlsx
 Treat workbooks as structured data, not CSV. Prefer table, range, and cell
 commands with stale-source guards and readback fields.
 
+For large XLSX files, keep authoring and proof incremental:
+
+1. Create the styled workbook skeleton first. If a general workbook serializer
+   cannot hold the full dataset, leave large sheets header-only and bulk-load
+   them with `xlsx ranges set`. Use `--values-file`, `--data-format json`, an
+   explicit `--max-cells`, and a distinct `--out` file.
+2. Use typed JSON for numeric or boolean columns that feed pivots. CSV and TSV
+   inputs are imported as text, even when a field looks numeric.
+3. Run the generated `sheetShowCommand` and compare `dimensionDeclared` with
+   `usedRange.ref`. Export small head and tail ranges to prove that the first and
+   final expected rows and their types survived.
+4. Create pivots from an explicit table or guarded source range. Run the
+   generated pivot-show, source-export, and strict-validation commands.
+5. At the final milestone, run
+   `oox --json conformance check workbook.xlsx --office-check` with
+   `--office-check-out-dir proof/office`, or perform an equivalent application
+   open-and-save round trip. Deep conformance can take minutes on a
+   multi-million-cell workbook, so use targeted readback during iteration.
+
+Strict validation is necessary, but it does not prove that Excel or
+LibreOffice will consume every tail row or pivot definition correctly.
+
 For simple Excel data-entry forms, prefer `xlsx forms entry`. It generates a
 macro-enabled workbook with a non-ActiveX Group Box, Label, worksheet text input
 cells, and Form Control buttons assigned to submit, clear, and sample-fill VBA
