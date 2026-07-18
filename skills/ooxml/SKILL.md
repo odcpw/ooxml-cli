@@ -207,6 +207,7 @@ PPTX coordinates are EMUs.
 oox --json xlsx scaffold workbook.xlsx --force
 oox --json xlsx sheets list workbook.xlsx
 oox --json xlsx ranges export workbook.xlsx --sheet Sheet1 --range A1:D10 --include-types
+oox --json xlsx ranges export workbook.xlsx --sheet Sheet1 --range A1:D100000 --max-cells 400000 --data-out range.json
 oox --json xlsx cells set workbook.xlsx --sheet Sheet1 --cell A1 --value "Hello" --out edited.xlsx
 oox --json xlsx tables create edited.xlsx --sheet Sheet1 --range A1:D10 --table Sales --out tabled.xlsx
 oox --json xlsx conditional-formats add tabled.xlsx --sheet Sheet1 --range D2:D10 --type cell-is --operator greaterThan --formula 100 --out formatted.xlsx
@@ -216,6 +217,20 @@ oox --json validate --strict formatted.xlsx
 
 Treat workbooks as structured data, not CSV. Prefer table, range, and cell
 commands with stale-source guards and readback fields.
+
+Large range export and generated readback use bounded worksheet scanning and
+materialize only the shared-string entries referenced by the requested cells.
+This bounds worksheet and shared-string working state, but JSON memory still
+grows with the requested output. Set an explicit `--max-cells`; for a large
+payload, prefer `--data-out <payload.json>`, and always choose a data-out path
+that is distinct from the source workbook.
+
+Package mutations preflight every unchanged ZIP entry through normal
+decompression, then raw-copy its verified compressed payload into the new
+package. This preserves normal unchanged content and metadata without
+recompression, but it is not a byte-for-byte preservation guarantee for
+arbitrary custom ZIP comments or extra fields. Always run
+`oox --json validate --strict <changed-file>` after mutation.
 
 For large XLSX files, keep authoring and proof incremental:
 
