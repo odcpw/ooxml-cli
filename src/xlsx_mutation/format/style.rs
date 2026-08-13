@@ -2,7 +2,6 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::Path;
 
 use super::super::{
@@ -18,8 +17,7 @@ use crate::{
     CliError, CliResult, RangeBounds, check_range_max_cells, col_name,
     copy_zip_with_part_overrides, ensure_content_type_override, local_name, parse_cli_range,
     parse_xlsx_row_spans, range_bounds_ref, rebuild_xlsx_sheet_data, render_xlsx_row,
-    render_xml_attrs, validate, xlsx_ranges_set_temp_path, xlsx_sheet_data_span,
-    xlsx_used_range_from_cell_refs, xml_attrs, zip_text,
+    render_xml_attrs, xlsx_sheet_data_span, xlsx_used_range_from_cell_refs, xml_attrs, zip_text,
 };
 
 pub(crate) struct XlsxRangesSetStyleOptions<'a> {
@@ -140,17 +138,7 @@ pub(crate) fn xlsx_ranges_set_style(
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        xlsx_ranges_set_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "xlsx-style");
 
     let mut overrides = BTreeMap::new();
     overrides.insert(sheet_part.clone(), updated_sheet_xml);
@@ -161,24 +149,18 @@ pub(crate) fn xlsx_ranges_set_style(
     }
     copy_zip_with_part_overrides(file, &readback_path, &overrides)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
     let destination =
         xlsx_range_destination_json(&readback_path, commit_path, &sheet, &sheet_part, &range)?;
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
 
     let rows = bounds.row_count();
     let cols = bounds.col_count();

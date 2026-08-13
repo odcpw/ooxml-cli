@@ -1,16 +1,15 @@
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
-use std::fs;
 
 use crate::pptx_readback::{
     pptx_available_shape_selectors, pptx_shape_entry_matches, pptx_shapes_get, pptx_shapes_show,
 };
 use crate::{
     CliError, CliResult, attr, attr_exact, command_arg, copy_zip_with_part_override, local_name,
-    package_mutation_temp_path, package_type, parse_i64_flag, parse_string_flag,
-    relationship_entries_from_xml, remove_xml_span, replace_xml_span, resolve_relationship_target,
-    validate, validate_xlsx_mutation_output_flags, xml_direct_child_ranges, zip_text,
+    package_type, parse_i64_flag, parse_string_flag, relationship_entries_from_xml,
+    remove_xml_span, replace_xml_span, resolve_relationship_target,
+    validate_xlsx_mutation_output_flags, xml_direct_child_ranges, zip_text,
 };
 
 #[derive(Clone)]
@@ -552,17 +551,7 @@ fn stage_shape_mutation(
         .out
         .as_deref()
         .filter(|value| !value.trim().is_empty());
-    let write_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        package_mutation_temp_path(file, "pptx-shape")
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let write_path = crate::mutation_staging_path(file, output_path, "pptx-shape");
     copy_zip_with_part_override(
         file,
         &write_path,
@@ -570,7 +559,7 @@ fn stage_shape_mutation(
         updated_xml,
     )?;
     if !options.no_validate {
-        validate(&write_path, true)?;
+        crate::validate_owned_mutation_output(&write_path)?;
     }
     Ok(write_path)
 }
@@ -581,25 +570,14 @@ fn finish_shape_mutation(
     options: &PptxShapeMutationOptions,
     output_path: Option<&str>,
 ) -> CliResult<()> {
-    if options.dry_run {
-        let _ = fs::remove_file(staged_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options
-            .backup
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(staged_path, file)
-            .or_else(|_| {
-                fs::copy(staged_path, file)?;
-                fs::remove_file(staged_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
-    Ok(())
+    crate::finish_mutation_output(
+        file,
+        staged_path,
+        output_path,
+        options.in_place,
+        options.backup.as_deref(),
+        options.dry_run,
+    )
 }
 
 fn ensure_pptx_package(file: &str) -> CliResult<()> {

@@ -5,10 +5,7 @@ use std::path::Path;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
-use crate::{
-    CliError, CliResult, EXIT_SUCCESS, command_arg, package_mutation_temp_path, validate,
-    validate_exit_code, xml_escape,
-};
+use crate::{CliError, CliResult, command_arg, package_mutation_temp_path, xml_escape};
 
 const PRESENTATION_PART: &str = "ppt/presentation.xml";
 const SLIDE_PART: &str = "ppt/slides/slide1.xml";
@@ -44,25 +41,10 @@ pub(crate) fn pptx_scaffold(output: &str, options: PptxScaffoldOptions<'_>) -> C
     write_pptx_scaffold_package(&temp_path, title, subtitle)?;
 
     if !options.no_validate {
-        let report = validate(&temp_path, true)?;
-        if validate_exit_code(&report, true) != EXIT_SUCCESS {
-            let _ = fs::remove_file(&temp_path);
-            return Err(CliError::validation_failed(
-                "generated PPTX scaffold failed strict validation",
-            ));
-        }
+        crate::validate_owned_mutation_output(&temp_path)?;
     }
 
-    if output_path.exists() {
-        fs::remove_file(output_path)
-            .map_err(|err| CliError::unexpected(format!("failed to replace output file: {err}")))?;
-    }
-    fs::rename(&temp_path, output_path)
-        .or_else(|_| {
-            fs::copy(&temp_path, output_path)?;
-            fs::remove_file(&temp_path)
-        })
-        .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    crate::finish_mutation_output(output, &temp_path, Some(output), false, None, false)?;
 
     Ok(pptx_scaffold_result(
         output,

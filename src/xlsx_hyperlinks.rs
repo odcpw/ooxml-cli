@@ -2,17 +2,15 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
-use std::fs;
 use std::path::Path;
 
 use crate::{
     CliError, CliResult, RelationshipEntry, WorkbookSheet, XmlNamedRange, allocate_relationship_id,
     command_arg, copy_zip_with_part_overrides, local_name, normalize_xl_target,
     relationship_entries_from_xml, relationships, relationships_part_for, render_xml_attrs,
-    replace_xml_span, resolve_sheet, selector_candidates, validate,
-    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_ranges_set_temp_path,
-    xml_attr_escape, xml_attrs_map, xml_direct_child_ranges, xml_open_tag_from_start,
-    xml_tag_prefix, zip_text,
+    replace_xml_span, resolve_sheet, selector_candidates, validate_xlsx_mutation_output_flags,
+    workbook_sheets, xml_attr_escape, xml_attrs_map, xml_direct_child_ranges,
+    xml_open_tag_from_start, xml_tag_prefix, zip_text,
 };
 
 const REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
@@ -568,35 +566,19 @@ fn write_xlsx_hyperlink_mutation(
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        xlsx_ranges_set_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "xlsx-hyperlinks");
     copy_zip_with_part_overrides(file, &readback_path, text_overrides)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
     Ok(commit_path.map(ToString::to_string))
 }
 

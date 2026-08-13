@@ -1,0 +1,280 @@
+{
+  "schema_version": "kerf.semantic-model.v1",
+  "model_id": "ooxml-mutation-validation",
+  "subjects": [
+    {"id": "intent", "kind": "intent"}
+  ],
+  "scopes": [
+    {
+      "id": "mutation-transaction-scope",
+      "subject": "intent",
+      "contexts": ["docx", "pptx", "vba", "xlsx", "strict", "no-validate"]
+    }
+  ],
+  "entities": [
+    {
+      "id": "req-validation-before-publication",
+      "subject": "intent",
+      "label": "A mutation may publish only after accepted strict validation or explicit bypass",
+      "kind": "requirement",
+      "modality": "must",
+      "acceptance_claims": ["claim-validation-factor"]
+    },
+    {
+      "id": "artifact-state",
+      "subject": "intent",
+      "label": "Mutation artifact lifecycle",
+      "kind": "carrier",
+      "fact": "mutation-artifact-state",
+      "authority": "validation-authority"
+    },
+    {
+      "id": "validation-authority",
+      "subject": "intent",
+      "label": "Strict mutation validation gate",
+      "kind": "authority",
+      "protocol": "single_writer",
+      "writers": ["mutation-gate"]
+    },
+    {
+      "id": "mutation-gate",
+      "subject": "intent",
+      "label": "Shared mutation validation boundary",
+      "kind": "actor",
+      "actor_kind": "state-machine"
+    },
+    {
+      "id": "stage-transition",
+      "subject": "intent",
+      "label": "Create caller-owned stage",
+      "kind": "transition"
+    },
+    {
+      "id": "validation-transition",
+      "subject": "intent",
+      "label": "Accept, reject, or explicitly bypass validation",
+      "kind": "transition"
+    },
+    {
+      "id": "promotion-transition",
+      "subject": "intent",
+      "label": "Publish validated or explicitly bypassed stage",
+      "kind": "transition"
+    },
+    {
+      "id": "mutation-observation",
+      "subject": "intent",
+      "label": "Input bytes, artifact presence, exit code, and validation status",
+      "kind": "observation"
+    }
+  ],
+  "relations": [
+    {
+      "id": "requirement-observed-by",
+      "kind": "requires_observation",
+      "tails": ["req-validation-before-publication"],
+      "heads": ["mutation-observation"]
+    },
+    {
+      "id": "requirement-realized-by",
+      "kind": "realized_by",
+      "tails": ["req-validation-before-publication"],
+      "heads": ["artifact-state", "stage-transition", "validation-transition", "promotion-transition"]
+    },
+    {
+      "id": "gate-writes-artifact-state",
+      "kind": "writes",
+      "tails": ["mutation-gate"],
+      "heads": ["artifact-state"]
+    }
+  ],
+  "bindings": [
+    {
+      "id": "binding-factor-model",
+      "subject": "intent",
+      "kind": "source_artifact",
+      "artifact_sha256": "cd75f7f9d03b1f70a2c82974e248c6f7605d5beb0a7a0ebd44c2f14ee762874b",
+      "locator": "docs/mutation-validation.factor.json"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev-factor-specification",
+      "subject": "intent",
+      "binding": "binding-factor-model",
+      "kind": "specification",
+      "acquisition": "declared",
+      "sha256": "cd75f7f9d03b1f70a2c82974e248c6f7605d5beb0a7a0ebd44c2f14ee762874b",
+      "source": "docs/mutation-validation.factor.json",
+      "coverage": {
+        "contexts": ["docx", "pptx", "vba", "xlsx", "strict", "no-validate"],
+        "limitations": [
+          "declared finite contract; source correspondence requires executed tests",
+          "backup and filesystem failure behavior are outside this projection"
+        ]
+      }
+    }
+  ],
+  "closures": [
+    {
+      "id": "closure-declared-transaction",
+      "subject": "intent",
+      "scope": "mutation-transaction-scope",
+      "domain": "states and action language in the declared mutation transaction",
+      "kind": "exhaustive_finite",
+      "evidence": ["ev-factor-specification"]
+    }
+  ],
+  "claims": [
+    {
+      "id": "claim-validation-factor",
+      "subject": "intent",
+      "scope": "mutation-transaction-scope",
+      "kind": "requirement_satisfied",
+      "statement": "The declared transaction separates rejection, accepted validation, and explicit bypass before publication",
+      "epistemic_class": "bounded_check",
+      "verdict": "unknown",
+      "subjects": ["req-validation-before-publication", "artifact-state", "mutation-gate"],
+      "nonclaims": [
+        "the finite intent model does not by itself prove the Rust implementation",
+        "the model does not claim minimum source-code size or full filesystem failure coverage"
+      ]
+    }
+  ],
+  "work_items": [
+    {
+      "id": "work-centralize-validation-authority",
+      "intent": "Route every package mutation through the strict validation authority without deleting original inputs",
+      "changes": ["validation-authority", "validation-transition", "promotion-transition"],
+      "satisfies": ["req-validation-before-publication"],
+      "evidence_gates": ["claim-validation-factor"]
+    }
+  ],
+  "projections": [
+    {
+      "id": "mutation-transaction-lts",
+      "subject": "intent",
+      "scope": "mutation-transaction-scope",
+      "operation": "validate-lts",
+      "lowering_version": "ooxml-mutation-transaction-v1",
+      "target_input": {
+        "schema_version": "kerf.lts.v1",
+        "machine": {
+          "initial": "input",
+          "actions": ["promote", "stage", "validation_fail", "validation_pass", "validation_skip"],
+          "states": [
+            {
+              "id": "input",
+              "observation": "input_unchanged;artifact_absent",
+              "transitions": {
+                "promote": {"to": "input", "emission": "disabled"},
+                "stage": {"to": "staged", "emission": "owned_stage_created"},
+                "validation_fail": {"to": "input", "emission": "disabled"},
+                "validation_pass": {"to": "input", "emission": "disabled"},
+                "validation_skip": {"to": "input", "emission": "disabled"}
+              }
+            },
+            {
+              "id": "staged",
+              "observation": "input_unchanged;owned_stage_present;unpublished",
+              "transitions": {
+                "promote": {"to": "staged", "emission": "disabled"},
+                "stage": {"to": "staged", "emission": "disabled"},
+                "validation_fail": {"to": "rejected", "emission": "exit_5;owned_stage_removed"},
+                "validation_pass": {"to": "validated", "emission": "strict_validation_accepted"},
+                "validation_skip": {"to": "bypassed", "emission": "explicit_no_validate"}
+              }
+            },
+            {
+              "id": "validated",
+              "observation": "input_unchanged;validated_stage_present;unpublished",
+              "transitions": {
+                "promote": {"to": "published", "emission": "success;artifact_published"},
+                "stage": {"to": "validated", "emission": "disabled"},
+                "validation_fail": {"to": "validated", "emission": "disabled"},
+                "validation_pass": {"to": "validated", "emission": "disabled"},
+                "validation_skip": {"to": "validated", "emission": "disabled"}
+              }
+            },
+            {
+              "id": "bypassed",
+              "observation": "input_unchanged;unvalidated_stage_present;explicit_bypass",
+              "transitions": {
+                "promote": {"to": "published", "emission": "success;artifact_published"},
+                "stage": {"to": "bypassed", "emission": "disabled"},
+                "validation_fail": {"to": "bypassed", "emission": "disabled"},
+                "validation_pass": {"to": "bypassed", "emission": "disabled"},
+                "validation_skip": {"to": "bypassed", "emission": "disabled"}
+              }
+            },
+            {
+              "id": "rejected",
+              "observation": "input_unchanged;artifact_absent;exit_5",
+              "transitions": {
+                "promote": {"to": "rejected", "emission": "disabled"},
+                "stage": {"to": "rejected", "emission": "disabled"},
+                "validation_fail": {"to": "rejected", "emission": "disabled"},
+                "validation_pass": {"to": "rejected", "emission": "disabled"},
+                "validation_skip": {"to": "rejected", "emission": "disabled"}
+              }
+            },
+            {
+              "id": "published",
+              "observation": "artifact_published;success",
+              "transitions": {
+                "promote": {"to": "published", "emission": "disabled"},
+                "stage": {"to": "published", "emission": "disabled"},
+                "validation_fail": {"to": "published", "emission": "disabled"},
+                "validation_pass": {"to": "published", "emission": "disabled"},
+                "validation_skip": {"to": "published", "emission": "disabled"}
+              }
+            }
+          ]
+        },
+        "context": {
+          "initial": "start",
+          "states": [
+            {"id": "start", "transitions": {"stage": "staged"}},
+            {"id": "staged", "transitions": {"validation_fail": "rejected", "validation_pass": "validated", "validation_skip": "bypassed"}},
+            {"id": "validated", "transitions": {"promote": "published"}},
+            {"id": "bypassed", "transitions": {"promote": "published"}},
+            {"id": "rejected", "transitions": {}},
+            {"id": "published", "transitions": {}}
+          ]
+        }
+      },
+      "scope_entities": [
+        "req-validation-before-publication",
+        "artifact-state",
+        "validation-authority",
+        "mutation-gate",
+        "stage-transition",
+        "validation-transition",
+        "promotion-transition",
+        "mutation-observation"
+      ],
+      "entity_map": [
+        {"source": "artifact-state", "target_pointer": "/machine/states"},
+        {"source": "stage-transition", "target_pointer": "/machine/states/0/transitions/stage"},
+        {"source": "validation-transition", "target_pointer": "/machine/states/1/transitions"},
+        {"source": "promotion-transition", "target_pointer": "/machine/states/2/transitions/promote"},
+        {"source": "mutation-observation", "target_pointer": "/machine/states/4/observation"}
+      ],
+      "relation_map": [
+        {"source": "gate-writes-artifact-state", "target_pointer": "/machine/states/1/transitions"}
+      ],
+      "omitted_entities": [
+        {"id": "req-validation-before-publication", "reason": "requirement traceability remains in the semantic manifest"},
+        {"id": "validation-authority", "reason": "authority identity is outside kerf.lts.v1"},
+        {"id": "mutation-gate", "reason": "actor identity is outside kerf.lts.v1"}
+      ],
+      "omitted_relations": [
+        {"id": "requirement-observed-by", "reason": "requirement traceability is outside the LTS transition relation"},
+        {"id": "requirement-realized-by", "reason": "requirement traceability is outside the LTS transition relation"}
+      ],
+      "evidence_ids": ["ev-factor-specification"],
+      "closure_ids": ["closure-declared-transaction"],
+      "source_claim_ceiling": "bounded_check"
+    }
+  ]
+}

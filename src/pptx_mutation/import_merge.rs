@@ -14,8 +14,8 @@ use crate::{
     ensure_content_type_override, has_flag, local_name, package_mutation_temp_path, package_type,
     parse_i64_flag, parse_string_flag, relationship_entries_from_xml,
     relationship_target_from_source_to_target, relationships_part_for, replace_xml_span,
-    resolve_relationship_target, validate, validate_xlsx_mutation_output_flags, xml_attr_escape,
-    zip_bytes, zip_entry_names, zip_text,
+    resolve_relationship_target, validate_xlsx_mutation_output_flags, xml_attr_escape, zip_bytes,
+    zip_entry_names, zip_text,
 };
 
 mod output;
@@ -667,7 +667,7 @@ fn stage_merge_slides(
         let _ = fs::remove_file(temp);
     }
     if !options.no_validate {
-        validate(&final_path, true)?;
+        crate::validate_owned_mutation_output(&final_path)?;
     }
     Ok(final_path)
 }
@@ -1445,7 +1445,7 @@ fn stage_editor(
         &BTreeSet::new(),
     )?;
     if !options.no_validate {
-        validate(&write_path, true)?;
+        crate::validate_owned_mutation_output(&write_path)?;
     }
     Ok(write_path)
 }
@@ -1455,17 +1455,11 @@ fn stage_path_for_options(file: &str, options: &PptxImportMutationOptions) -> Cl
         .out
         .as_deref()
         .filter(|value| !value.trim().is_empty());
-    if options.dry_run || options.in_place || output_path == Some(file) {
-        Ok(package_mutation_temp_path(file, "pptx-import"))
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })
-            .map(ToString::to_string)
-    }
+    Ok(crate::mutation_staging_path(
+        file,
+        output_path,
+        "pptx-import",
+    ))
 }
 
 fn finish_import_mutation(
@@ -1474,25 +1468,14 @@ fn finish_import_mutation(
     options: &PptxImportMutationOptions,
     output_path: Option<&str>,
 ) -> CliResult<()> {
-    if options.dry_run {
-        let _ = fs::remove_file(staged_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options
-            .backup
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(staged_path, file)
-            .or_else(|_| {
-                fs::copy(staged_path, file)?;
-                fs::remove_file(staged_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
-    Ok(())
+    crate::finish_mutation_output(
+        file,
+        staged_path,
+        output_path,
+        options.in_place,
+        options.backup.as_deref(),
+        options.dry_run,
+    )
 }
 
 fn mutation_output_path(file: &str, options: &PptxImportMutationOptions) -> Option<String> {

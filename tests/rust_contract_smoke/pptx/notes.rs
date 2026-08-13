@@ -198,3 +198,44 @@ fn pptx_notes_set_clear_dry_run_and_errors_match_rust_baseline() {
     assert_eq!(rust_stdout, baseline_stdout, "notes set out-of-range stdout");
     assert_eq!(rust_stderr, baseline_stderr, "notes set out-of-range stderr");
 }
+
+#[test]
+fn pptx_notes_set_rejects_failed_internal_strict_validation() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-notes-invalid-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("notes temp dir");
+    let output_path = temp_dir.join("output.pptx");
+    let output = output_path.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "notes",
+        "set",
+        "testdata/pptx/corrupted-dangling-layout/presentation.pptx",
+        "--slide",
+        "1",
+        "--text",
+        "strict-validation-probe",
+        "--out",
+        &output,
+    ]);
+
+    assert_eq!(code, 5, "strict validation gate exit: {stderr:?}");
+    assert_eq!(stdout, None, "failed mutation must not return success JSON");
+    assert_eq!(
+        stderr.expect("validation error")["error"]["code"],
+        "validation_failed"
+    );
+    assert!(
+        !output_path.exists(),
+        "failed notes validation must not leave an output presentation"
+    );
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}

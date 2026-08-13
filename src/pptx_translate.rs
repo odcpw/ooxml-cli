@@ -6,10 +6,10 @@ use std::fs;
 
 use crate::{
     CliError, CliResult, XmlNamedRange, attr, attr_exact, copy_zip_with_part_overrides,
-    current_utc_rfc3339, has_flag, local_name, needs_xml_space_preserve,
-    package_mutation_temp_path, package_type, parse_string_flag, parse_string_flags,
-    relationship_entries, relationships_part_for, replace_xml_span, resolve_relationship_target,
-    xml_direct_child_ranges, xml_escape, xml_fragment_bounds, xml_tag_prefix, zip_text,
+    current_utc_rfc3339, has_flag, local_name, needs_xml_space_preserve, package_type,
+    parse_string_flag, parse_string_flags, relationship_entries, relationships_part_for,
+    replace_xml_span, resolve_relationship_target, xml_direct_child_ranges, xml_escape,
+    xml_fragment_bounds, xml_tag_prefix, zip_text,
 };
 
 const MANIFEST_VERSION: &str = "1.0.0";
@@ -195,16 +195,12 @@ pub(crate) fn pptx_translate_apply(
         }
     }
 
-    let output_path = output.as_deref().unwrap_or(file);
-    let write_path = if output_path == file {
-        package_mutation_temp_path(file, "pptx-translate")
-    } else {
-        output_path.to_string()
-    };
+    let requested_out = output.as_deref().filter(|value| !value.trim().is_empty());
+    let in_place = requested_out.is_none() || requested_out == Some(file);
+    let write_path = crate::mutation_staging_path(file, requested_out, "pptx-translate");
     copy_zip_with_part_overrides(file, &write_path, &overrides)?;
-    if output_path == file {
-        fs::rename(&write_path, file).map_err(|err| CliError::unexpected(err.to_string()))?;
-    }
+    crate::validate_owned_mutation_output(&write_path)?;
+    crate::finish_mutation_output(file, &write_path, requested_out, in_place, None, false)?;
 
     let mut result = Map::new();
     result.insert("entriesProcessed".to_string(), json!(processed));

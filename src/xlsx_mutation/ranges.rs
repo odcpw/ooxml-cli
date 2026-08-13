@@ -9,10 +9,10 @@ use super::{
     set_xlsx_range_in_sheet_xml, validate_xlsx_mutation_output_flags, xlsx_range_destination_json,
 };
 use crate::{
-    CliError, CliResult, EXIT_SUCCESS, RangeBounds, add_xlsx_formula_recalc_package_updates,
+    CliError, CliResult, RangeBounds, add_xlsx_formula_recalc_package_updates,
     check_range_max_cells, col_name, copy_zip_with_part_overrides_and_removals,
     normalize_xlsx_ranges_set_data_format, parse_cell_ref, parse_cli_range, range_bounds_ref,
-    validate, validate_exit_code, xlsx_ranges_set_temp_path, zip_text,
+    zip_text,
 };
 
 pub(crate) struct XlsxRangesSetOptions<'a> {
@@ -86,17 +86,7 @@ pub(crate) fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> 
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        xlsx_ranges_set_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "xlsx-ranges");
     let mut overrides = BTreeMap::new();
     let mut removals = BTreeSet::new();
     overrides.insert(sheet_part.clone(), updated_xml);
@@ -109,30 +99,18 @@ pub(crate) fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> 
     )?;
     copy_zip_with_part_overrides_and_removals(file, &readback_path, &overrides, &removals)?;
     if !options.no_validate {
-        let report = validate(&readback_path, true)?;
-        if validate_exit_code(&report, true) != EXIT_SUCCESS {
-            let _ = fs::remove_file(&readback_path);
-            return Err(CliError::validation_failed(
-                "updated XLSX range package failed strict validation",
-            ));
-        }
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
     let destination =
         xlsx_range_destination_json(&readback_path, commit_path, &sheet, &sheet_part, &range)?;
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
 
     let rows = bounds.row_count();
     let cols = bounds.col_count();

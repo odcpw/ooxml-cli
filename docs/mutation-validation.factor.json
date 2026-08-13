@@ -1,0 +1,160 @@
+{
+  "schema_version": "kerf.factor.v1",
+  "machine": {
+    "initial": "input",
+    "actions": [
+      "promote",
+      "select_docx",
+      "select_pptx",
+      "select_vba",
+      "select_xlsx",
+      "validation_fail",
+      "validation_pass",
+      "validation_skip"
+    ],
+    "states": [
+      {
+        "id": "input",
+        "observation": "input_unchanged;artifact_absent",
+        "transitions": {
+          "promote": {"to": "input", "emission": "disabled"},
+          "select_docx": {"to": "staged", "emission": "owned_stage_created"},
+          "select_pptx": {"to": "staged", "emission": "owned_stage_created"},
+          "select_vba": {"to": "staged", "emission": "owned_stage_created"},
+          "select_xlsx": {"to": "staged", "emission": "owned_stage_created"},
+          "validation_fail": {"to": "input", "emission": "disabled"},
+          "validation_pass": {"to": "input", "emission": "disabled"},
+          "validation_skip": {"to": "input", "emission": "disabled"}
+        }
+      },
+      {
+        "id": "staged",
+        "observation": "input_unchanged;owned_stage_present;unpublished",
+        "transitions": {
+          "promote": {"to": "staged", "emission": "disabled"},
+          "select_docx": {"to": "staged", "emission": "disabled"},
+          "select_pptx": {"to": "staged", "emission": "disabled"},
+          "select_vba": {"to": "staged", "emission": "disabled"},
+          "select_xlsx": {"to": "staged", "emission": "disabled"},
+          "validation_fail": {"to": "rejected", "emission": "exit_5;owned_stage_removed"},
+          "validation_pass": {"to": "validated", "emission": "strict_validation_accepted"},
+          "validation_skip": {"to": "bypassed", "emission": "explicit_no_validate"}
+        }
+      },
+      {
+        "id": "validated",
+        "observation": "input_unchanged;validated_stage_present;unpublished",
+        "transitions": {
+          "promote": {"to": "published", "emission": "success;artifact_published"},
+          "select_docx": {"to": "validated", "emission": "disabled"},
+          "select_pptx": {"to": "validated", "emission": "disabled"},
+          "select_vba": {"to": "validated", "emission": "disabled"},
+          "select_xlsx": {"to": "validated", "emission": "disabled"},
+          "validation_fail": {"to": "validated", "emission": "disabled"},
+          "validation_pass": {"to": "validated", "emission": "disabled"},
+          "validation_skip": {"to": "validated", "emission": "disabled"}
+        }
+      },
+      {
+        "id": "bypassed",
+        "observation": "input_unchanged;unvalidated_stage_present;explicit_bypass",
+        "transitions": {
+          "promote": {"to": "published", "emission": "success;artifact_published"},
+          "select_docx": {"to": "bypassed", "emission": "disabled"},
+          "select_pptx": {"to": "bypassed", "emission": "disabled"},
+          "select_vba": {"to": "bypassed", "emission": "disabled"},
+          "select_xlsx": {"to": "bypassed", "emission": "disabled"},
+          "validation_fail": {"to": "bypassed", "emission": "disabled"},
+          "validation_pass": {"to": "bypassed", "emission": "disabled"},
+          "validation_skip": {"to": "bypassed", "emission": "disabled"}
+        }
+      },
+      {
+        "id": "rejected",
+        "observation": "input_unchanged;artifact_absent;exit_5",
+        "transitions": {
+          "promote": {"to": "rejected", "emission": "disabled"},
+          "select_docx": {"to": "rejected", "emission": "disabled"},
+          "select_pptx": {"to": "rejected", "emission": "disabled"},
+          "select_vba": {"to": "rejected", "emission": "disabled"},
+          "select_xlsx": {"to": "rejected", "emission": "disabled"},
+          "validation_fail": {"to": "rejected", "emission": "disabled"},
+          "validation_pass": {"to": "rejected", "emission": "disabled"},
+          "validation_skip": {"to": "rejected", "emission": "disabled"}
+        }
+      },
+      {
+        "id": "published",
+        "observation": "artifact_published;success",
+        "transitions": {
+          "promote": {"to": "published", "emission": "disabled"},
+          "select_docx": {"to": "published", "emission": "disabled"},
+          "select_pptx": {"to": "published", "emission": "disabled"},
+          "select_vba": {"to": "published", "emission": "disabled"},
+          "select_xlsx": {"to": "published", "emission": "disabled"},
+          "validation_fail": {"to": "published", "emission": "disabled"},
+          "validation_pass": {"to": "published", "emission": "disabled"},
+          "validation_skip": {"to": "published", "emission": "disabled"}
+        }
+      }
+    ]
+  },
+  "context": {
+    "initial": "choose_family",
+    "states": [
+      {
+        "id": "choose_family",
+        "transitions": {
+          "select_docx": "docx_staged",
+          "select_pptx": "pptx_staged",
+          "select_vba": "vba_staged",
+          "select_xlsx": "xlsx_staged"
+        }
+      },
+      {"id": "docx_staged", "transitions": {"validation_fail": "docx_rejected", "validation_pass": "docx_validated", "validation_skip": "docx_bypassed"}},
+      {"id": "pptx_staged", "transitions": {"validation_fail": "pptx_rejected", "validation_pass": "pptx_validated", "validation_skip": "pptx_bypassed"}},
+      {"id": "vba_staged", "transitions": {"validation_fail": "vba_rejected", "validation_pass": "vba_validated", "validation_skip": "vba_bypassed"}},
+      {"id": "xlsx_staged", "transitions": {"validation_fail": "xlsx_rejected", "validation_pass": "xlsx_validated", "validation_skip": "xlsx_bypassed"}},
+      {"id": "docx_validated", "transitions": {"promote": "docx_published"}},
+      {"id": "pptx_validated", "transitions": {"promote": "pptx_published"}},
+      {"id": "vba_validated", "transitions": {"promote": "vba_published"}},
+      {"id": "xlsx_validated", "transitions": {"promote": "xlsx_published"}},
+      {"id": "docx_bypassed", "transitions": {"promote": "docx_published"}},
+      {"id": "pptx_bypassed", "transitions": {"promote": "pptx_published"}},
+      {"id": "vba_bypassed", "transitions": {"promote": "vba_published"}},
+      {"id": "xlsx_bypassed", "transitions": {"promote": "xlsx_published"}},
+      {"id": "docx_rejected", "transitions": {}},
+      {"id": "pptx_rejected", "transitions": {}},
+      {"id": "vba_rejected", "transitions": {}},
+      {"id": "xlsx_rejected", "transitions": {}},
+      {"id": "docx_published", "transitions": {}},
+      {"id": "pptx_published", "transitions": {}},
+      {"id": "vba_published", "transitions": {}},
+      {"id": "xlsx_published", "transitions": {}}
+    ]
+  },
+  "factor_map": [
+    {"machine_state": "input", "context_state": "choose_family", "boundary_state": "input"},
+    {"machine_state": "staged", "context_state": "docx_staged", "boundary_state": "staged"},
+    {"machine_state": "staged", "context_state": "pptx_staged", "boundary_state": "staged"},
+    {"machine_state": "staged", "context_state": "vba_staged", "boundary_state": "staged"},
+    {"machine_state": "staged", "context_state": "xlsx_staged", "boundary_state": "staged"},
+    {"machine_state": "validated", "context_state": "docx_validated", "boundary_state": "validated"},
+    {"machine_state": "validated", "context_state": "pptx_validated", "boundary_state": "validated"},
+    {"machine_state": "validated", "context_state": "vba_validated", "boundary_state": "validated"},
+    {"machine_state": "validated", "context_state": "xlsx_validated", "boundary_state": "validated"},
+    {"machine_state": "bypassed", "context_state": "docx_bypassed", "boundary_state": "bypassed"},
+    {"machine_state": "bypassed", "context_state": "pptx_bypassed", "boundary_state": "bypassed"},
+    {"machine_state": "bypassed", "context_state": "vba_bypassed", "boundary_state": "bypassed"},
+    {"machine_state": "bypassed", "context_state": "xlsx_bypassed", "boundary_state": "bypassed"},
+    {"machine_state": "rejected", "context_state": "docx_rejected", "boundary_state": "rejected"},
+    {"machine_state": "rejected", "context_state": "pptx_rejected", "boundary_state": "rejected"},
+    {"machine_state": "rejected", "context_state": "vba_rejected", "boundary_state": "rejected"},
+    {"machine_state": "rejected", "context_state": "xlsx_rejected", "boundary_state": "rejected"},
+    {"machine_state": "published", "context_state": "docx_published", "boundary_state": "published"},
+    {"machine_state": "published", "context_state": "pptx_published", "boundary_state": "published"},
+    {"machine_state": "published", "context_state": "vba_published", "boundary_state": "published"},
+    {"machine_state": "published", "context_state": "xlsx_published", "boundary_state": "published"}
+  ],
+  "limits": {"max_product_states": 64}
+}

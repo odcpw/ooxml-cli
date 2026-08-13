@@ -44,11 +44,9 @@ pub(crate) fn pptx_charts_create(file: &str, args: &[String]) -> CliResult<Value
     let output_path = chart_mutation_output_path(file, &options);
     let readback_path = if options.dry_run {
         create.staged_path.clone()
-    } else if options.in_place || output_path.as_deref() == Some(file) {
-        finish_chart_mutation(file, &create.staged_path, &options, output_path.as_deref())?;
-        file.to_string()
     } else {
-        create.staged_path.clone()
+        finish_chart_mutation(file, &create.staged_path, &options, output_path.as_deref())?;
+        output_path.clone().unwrap_or_else(|| file.to_string())
     };
 
     let mut chart = selected_chart_json(
@@ -257,11 +255,9 @@ pub(crate) fn pptx_charts_update_data(file: &str, args: &[String]) -> CliResult<
     let output_path = chart_mutation_output_path(file, &options);
     let readback_path = if options.dry_run {
         staged_path.clone()
-    } else if options.in_place || output_path.as_deref() == Some(file) {
-        finish_chart_mutation(file, &staged_path, &options, output_path.as_deref())?;
-        file.to_string()
     } else {
-        staged_path.clone()
+        finish_chart_mutation(file, &staged_path, &options, output_path.as_deref())?;
+        output_path.clone().unwrap_or_else(|| file.to_string())
     };
     let mut chart = selected_chart_json(&readback_path, slide, &selected.part_selector())?;
     if let Some(object) = chart.as_object_mut() {

@@ -2,7 +2,6 @@ use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::Path;
 
 mod model;
@@ -16,14 +15,13 @@ use model::{
 use output::{select_xlsx_pivot, xlsx_pivot_item_json};
 
 use crate::{
-    CliError, CliResult, EXIT_SUCCESS, RelationshipEntry, WorkbookSheet, XlsxRangeExportOptions,
+    CliError, CliResult, RelationshipEntry, WorkbookSheet, XlsxRangeExportOptions,
     add_relationship_to_xml, allocate_relationship_id, attr, col_name, command_arg,
     copy_zip_with_part_overrides, ensure_content_type_override, insert_xlsx_workbook_child_ordered,
     local_name, parse_cell_ref, parse_range, relationship_entries, relationship_entries_from_xml,
     relationship_target_from_source_to_target, relationships_part_for, resolve_relationship_target,
-    resolve_sheet, select_xlsx_table, validate, validate_exit_code,
-    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_range_export_with_options,
-    xlsx_ranges_set_temp_path, xlsx_tables, xlsx_workbook_waiting_for_formula_recalc,
+    resolve_sheet, select_xlsx_table, validate_xlsx_mutation_output_flags, workbook_sheets,
+    xlsx_range_export_with_options, xlsx_tables, xlsx_workbook_waiting_for_formula_recalc,
     xml_attr_escape, zip_entry_names, zip_text,
 };
 
@@ -130,42 +128,20 @@ pub(crate) fn xlsx_pivots_create(
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        xlsx_ranges_set_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "xlsx-pivots");
     copy_zip_with_part_overrides(file, &readback_path, &artifacts.overrides)?;
     if !options.no_validate {
-        let report = validate(&readback_path, true)?;
-        if validate_exit_code(&report, true) != EXIT_SUCCESS {
-            let _ = fs::remove_file(&readback_path);
-            return Err(CliError::validation_failed(
-                "created XLSX pivot package failed strict validation",
-            ));
-        }
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
 
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to replace workbook: {err}")))?;
-    }
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
 
     let mut result = Map::new();
     result.insert("file".to_string(), json!(file));

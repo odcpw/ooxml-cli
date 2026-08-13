@@ -55,37 +55,21 @@ pub(crate) fn xlsx_charts_create(
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        xlsx_ranges_set_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "xlsx-charts");
 
     copy_zip_with_part_overrides(file, &readback_path, &artifacts.overrides)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
 
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
 
     Ok(xlsx_chart_create_result(
         file,
@@ -184,40 +168,24 @@ pub(crate) fn xlsx_charts_update_source(
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        xlsx_ranges_set_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "xlsx-charts");
 
     copy_zip_with_part_override(file, &readback_path, &chart_part, &updated_xml)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
     let readback_charts = load_xlsx_charts(&readback_path, options.sheet)?;
     let readback = select_xlsx_chart(&readback_charts, &format!("part:{}", selected.part_uri))?;
     let chart_item = xlsx_chart_item_for_update(commit_path, &readback);
 
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
 
     Ok(xlsx_chart_update_source_result(
         ChartUpdateSourceResultInput {

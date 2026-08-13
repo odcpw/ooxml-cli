@@ -93,6 +93,77 @@ fn repair_normalize_fixes_xlsx_workbook_child_order() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+#[test]
+fn repair_normalize_validates_before_in_place_promotion() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-repair-validation-gate-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("repair temp dir");
+    let broken_path = temp_dir.join("broken.xlsx");
+    let backup_path = temp_dir.join("backup.xlsx");
+    rewrite_zip_fixture(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &broken_path,
+        |name, data| {
+            if name == "xl/workbook.xml" {
+                return Some((
+                    name.to_string(),
+                    br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <workbookPr/>
+  <definedNames><definedName name="SalesData">Sheet1!$A$1:$B$2</definedName></definedNames>
+  <bookViews><workbookView activeTab="0"/></bookViews>
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+  <calcPr calcId="191029"/>
+</workbook>"#
+                        .to_vec(),
+                ));
+            }
+            if name == "xl/_rels/workbook.xml.rels" {
+                let xml = String::from_utf8(data).expect("workbook rels utf8");
+                let xml = xml.replace(
+                    "</Relationships>",
+                    r#"<Relationship Id="rIdMissing" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml" Target="missing.xml"/></Relationships>"#,
+                );
+                return Some((name.to_string(), xml.into_bytes()));
+            }
+            Some((name.to_string(), data))
+        },
+    );
+    let original_bytes = fs::read(&broken_path).expect("broken input bytes");
+    let broken = broken_path.to_string_lossy().to_string();
+    let backup = backup_path.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "repair",
+        "normalize",
+        &broken,
+        "--in-place",
+        "--backup",
+        &backup,
+    ]);
+
+    assert_eq!(code, 5, "strict validation gate exit: {stderr:?}");
+    assert_eq!(stdout, None, "failed repair must not return success JSON");
+    assert_eq!(
+        stderr.expect("validation error")["error"]["code"],
+        "validation_failed"
+    );
+    assert_eq!(
+        fs::read(&broken_path).expect("preserved input bytes"),
+        original_bytes,
+        "failed validation must not promote the staged repair"
+    );
+    assert!(
+        !backup_path.exists(),
+        "backup must only be created immediately before a validated promotion"
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
 fn run_ooxml_json_ok(label: &str, args: &[&str]) -> Value {
     let (code, stdout, stderr) = run_ooxml(args);
     assert_eq!(code, 0, "{label} exit");

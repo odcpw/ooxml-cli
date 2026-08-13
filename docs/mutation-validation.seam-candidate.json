@@ -1,0 +1,56 @@
+{
+  "schema_version": 3,
+  "id": "shared-validation-and-publication-authorities",
+  "subject_identity": "git:7daccc32c768fc825360315ffacc05169b7c9dca+patch:f171f916b10f26138f13f3e5a1bf9bab39ebff56a244c6d1def73e540a85705c",
+  "assignments": {
+    "validate-report-observer": "validation",
+    "shared-validation-assertion": "validation",
+    "shared-publication-authority": "runtime",
+    "repair-policy": "repair",
+    "serve-working-copy": "serve",
+    "explicit-validation-bypass": "cli"
+  },
+  "replacements": {
+    "docx-validation-guard": "shared-validation-assertion",
+    "pptx-validation-guard": "shared-validation-assertion",
+    "xlsx-validation-guard": "shared-validation-assertion",
+    "vba-validation-guard": "shared-validation-assertion",
+    "docx-output-publisher": "shared-publication-authority",
+    "pptx-output-publisher": "shared-publication-authority",
+    "xlsx-output-publisher": "shared-publication-authority",
+    "vba-output-publisher": "shared-publication-authority"
+  },
+  "evidence": {
+    "mutation-protocol-preservation": {
+      "semantic_constraint_id": "mutation-protocol-preservation",
+      "subject_identity": "git:7daccc32c768fc825360315ffacc05169b7c9dca+patch:f171f916b10f26138f13f3e5a1bf9bab39ebff56a244c6d1def73e540a85705c",
+      "candidate_semantics_sha256": "c198061b2f2236e5b5bb891d16cc6d691f0ccb241e1197fe66279222bd2d62f0",
+      "kind": "executed_observation",
+      "claim_id": "ooxml-mutation-protocol-corpus-v1",
+      "closure": "complete_for_declared_corpus",
+      "status": "accepted",
+      "plan_sha256": "7ee624cc4bbdf2372d6a8e360e239a8d954f6b83bae712d8f714eaf3756659b9",
+      "receipt_sha256": "264ccd152dd68078c9d2649e3447e34f7469af19fcb057d029b54afe46154149",
+      "evaluator_sha256": "1e205c23dc058a5834ca0806c1143dae0ee4e5f1650ddad3ad4dcd28af88860a",
+      "skill_sha256": "cd4364178c85fef8825b66aaf4ef7d2094c5fa6eb6b8a25907ea070876e403d6",
+      "procedure_manifest_sha256": "f50e5fee693dd00eda281bf4a51b0316f1b186398e6dd4a218f0d96072ba8d88",
+      "commands": [
+        "cargo run --quiet --bin kerf-observe -- /home/oliver/Projects/odcpw/ooxml-cli/docs/mutation-validation.observe.json"
+      ],
+      "artifacts": [
+        "docs/mutation-validation.observe.json",
+        "docs/mutation-validation.evidence.json"
+      ],
+      "negative_control": {
+        "id": "explicit-no-validate-bypass",
+        "status": "passed",
+        "receipt_sha256": "a12da8530f58058396796b56856cc07cfdb20043e2317d6d1861d5a1f163c388"
+      }
+    }
+  },
+  "adapters": [],
+  "nonclaims": [
+    "The executed evidence is complete only for the declared mutation regression corpus.",
+    "The fold does not claim elimination of every temporary-file leak on post-validation readback failure."
+  ]
+}

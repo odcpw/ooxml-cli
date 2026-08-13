@@ -178,6 +178,119 @@ fn xlsx_workbook_metadata_update_dry_run_matches_rust_baseline() {
 }
 
 #[test]
+fn xlsx_workbook_metadata_update_rejects_failed_internal_strict_validation() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-workbook-metadata-invalid-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let output_path = temp_dir.join("output.xlsx");
+    let output = output_path.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "workbook",
+        "metadata",
+        "update",
+        "testdata/xlsx/corrupted-missing-worksheet/workbook.xlsx",
+        "--title",
+        "strict-validation-probe",
+        "--out",
+        &output,
+    ]);
+
+    assert_eq!(code, 5, "strict validation gate exit: {stderr:?}");
+    assert_eq!(stdout, None, "failed mutation must not return success JSON");
+    assert_eq!(
+        stderr.expect("validation error")["error"]["code"],
+        "validation_failed"
+    );
+    assert!(
+        !output_path.exists(),
+        "failed metadata validation must not leave an output workbook"
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_workbook_metadata_update_no_validate_is_an_explicit_escape_hatch() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-workbook-metadata-no-validate-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let output_path = temp_dir.join("output.xlsx");
+    let output = output_path.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "workbook",
+        "metadata",
+        "update",
+        "testdata/xlsx/corrupted-missing-worksheet/workbook.xlsx",
+        "--title",
+        "no-validation-probe",
+        "--no-validate",
+        "--out",
+        &output,
+    ]);
+
+    assert_eq!(code, 0, "no-validate mutation exit: {stderr:?}");
+    assert!(stdout.is_some(), "successful mutation must return JSON");
+    assert_eq!(stderr, None, "no-validate mutation stderr");
+    assert!(
+        output_path.exists(),
+        "explicit --no-validate must preserve the documented bypass"
+    );
+    let (validate_code, _, _) = run_ooxml(&["--json", "validate", "--strict", &output]);
+    assert_eq!(
+        validate_code, 5,
+        "escape-hatch control must remain an invalid package witness"
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_workbook_metadata_validation_failure_preserves_preexisting_output() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-workbook-metadata-existing-output-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let output_path = temp_dir.join("existing.xlsx");
+    let sentinel = b"pre-existing-output-must-survive";
+    fs::write(&output_path, sentinel).expect("write sentinel output");
+    let output = output_path.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "workbook",
+        "metadata",
+        "update",
+        "testdata/xlsx/corrupted-missing-worksheet/workbook.xlsx",
+        "--title",
+        "strict-validation-probe",
+        "--out",
+        &output,
+    ]);
+
+    assert_eq!(code, 5, "strict validation gate exit: {stderr:?}");
+    assert_eq!(stdout, None, "failed mutation must not return success JSON");
+    assert_eq!(
+        fs::read(&output_path).expect("preserved sentinel output"),
+        sentinel,
+        "validation failure must not overwrite or delete a pre-existing destination"
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_workbook_metadata_clear_fields_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-xlsx-workbook-metadata-clear-{}",

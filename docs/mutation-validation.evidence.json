@@ -1,0 +1,32 @@
+{
+  "schema_version": "ooxml.mutation-validation-evidence.v1",
+  "claim": "For the declared regression corpus, normal package mutations publish only a strictly accepted or explicitly bypassed caller-owned stage, and validation failure preserves the input and any pre-existing destination.",
+  "observation_plan": "docs/mutation-validation.observe.json",
+  "observe_command": "cargo run --quiet --bin kerf-observe -- /home/oliver/Projects/odcpw/ooxml-cli/docs/mutation-validation.observe.json",
+  "result": {
+    "status": "conformant",
+    "input_sha256": "7ee624cc4bbdf2372d6a8e360e239a8d954f6b83bae712d8f714eaf3756659b9",
+    "binding_sha256": "25922db748d72e0b92dfee0086167ac5c937c118703f0a40c930532bbf77b96c",
+    "subject_sha256": "13cafcb4f43327176cbd25bf2182743b377ff3e3a95d3a6d8984b16a241c5aca",
+    "repetitions_requested": 2,
+    "repetitions_completed": 2,
+    "deterministic_raw_observations": true,
+    "negative_controls_passed": true,
+    "action_stdout_sha256": "628ec428e7e933c20ab8d9a4d2024bd122723e1efa9535304ae8c3c8e43ea0d1",
+    "negative_control_stdout_sha256": "a12da8530f58058396796b56856cc07cfdb20043e2317d6d1861d5a1f163c388",
+    "local_lts_certificate_accepted": true
+  },
+  "coverage": [
+    "shared publication helper unit tests",
+    "strict rejection across DOCX, PPTX, VBA, XLSX ranges, XLSX pivots, and XLSX metadata",
+    "pre-existing --out preservation",
+    "repair validation before in-place promotion",
+    "PPTX chart committed-path readback",
+    "explicit --no-validate negative control"
+  ],
+  "nonclaims": [
+    "This is complete only for the declared finite regression corpus.",
+    "It does not prove crash consistency under power loss or behavior on every filesystem.",
+    "It does not replace Microsoft Office interoperability testing."
+  ]
+}

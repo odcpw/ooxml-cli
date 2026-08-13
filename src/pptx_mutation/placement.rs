@@ -10,12 +10,11 @@ use crate::{
     CliError, CliResult, XlsxRangeExportOptions, add_relationship_to_xml, allocate_relationship_id,
     attr, check_range_max_cells, copy_zip_with_binary_part_overrides_and_removals,
     copy_zip_with_part_overrides, ensure_content_type_override, local_name,
-    needs_xml_space_preserve, package_mutation_temp_path, package_type, parse_cli_range,
-    parse_i64_flag, parse_range, parse_string_flag, pptx_slide_show, range_bounds_ref,
-    relationship_entries_from_xml, relationship_target_from_source_to_target,
-    relationships_part_for, select_xlsx_table, validate, validate_xlsx_mutation_output_flags,
-    xlsx_range_export_with_options, xlsx_tables, xml_attr_escape, xml_direct_child_ranges,
-    xml_escape, zip_entry_names, zip_text,
+    needs_xml_space_preserve, package_type, parse_cli_range, parse_i64_flag, parse_range,
+    parse_string_flag, pptx_slide_show, range_bounds_ref, relationship_entries_from_xml,
+    relationship_target_from_source_to_target, relationships_part_for, select_xlsx_table,
+    validate_xlsx_mutation_output_flags, xlsx_range_export_with_options, xlsx_tables,
+    xml_attr_escape, xml_direct_child_ranges, xml_escape, zip_entry_names, zip_text,
 };
 
 mod output;
@@ -1299,17 +1298,7 @@ fn stage_placement_mutation(
         .out
         .as_deref()
         .filter(|value| !value.trim().is_empty());
-    let staged_path = if options.dry_run || options.in_place || requested_out == Some(file) {
-        package_mutation_temp_path(file, label)
-    } else {
-        requested_out
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let staged_path = crate::mutation_staging_path(file, requested_out, label);
     if binary_overrides.is_empty() {
         copy_zip_with_part_overrides(file, &staged_path, text_overrides)?;
     } else {
@@ -1322,7 +1311,7 @@ fn stage_placement_mutation(
         )?;
     }
     if !options.no_validate {
-        validate(&staged_path, true)?;
+        crate::validate_owned_mutation_output(&staged_path)?;
     }
     Ok(PlacementStage {
         staged_path,
@@ -1336,25 +1325,14 @@ fn finish_placement_mutation(
     options: &PlacementMutationOptions,
     output_path: Option<&str>,
 ) -> CliResult<()> {
-    if options.dry_run {
-        let _ = fs::remove_file(staged_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options
-            .backup
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(staged_path, file)
-            .or_else(|_| {
-                fs::copy(staged_path, file)?;
-                fs::remove_file(staged_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
-    Ok(())
+    crate::finish_mutation_output(
+        file,
+        staged_path,
+        output_path,
+        options.in_place,
+        options.backup.as_deref(),
+        options.dry_run,
+    )
 }
 
 fn placement_output_path(file: &str, options: &PlacementMutationOptions) -> Option<String> {

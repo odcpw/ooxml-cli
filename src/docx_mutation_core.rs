@@ -5,7 +5,7 @@ use crate::{
     CliError, CliResult, DocxRichBlockReport, EXIT_INVALID_ARGS, EXIT_TARGET_NOT_FOUND,
     InspectPackageKind, copy_zip_with_binary_part_overrides_and_removals,
     copy_zip_with_part_override, copy_zip_with_part_overrides, detect_inspect_package_type,
-    docx_mutation_temp_path, docx_rich_block_reports, package_type, validate,
+    docx_rich_block_reports, package_type,
 };
 
 pub(crate) fn docx_validate_strict_command(file: &str) -> String {
@@ -98,36 +98,19 @@ pub(crate) fn write_docx_mutation_output(
     options: DocxParagraphMutationOptions<'_>,
 ) -> CliResult<()> {
     let output_path = options.out.filter(|value| !value.trim().is_empty());
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        docx_mutation_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "docx-mutation");
     copy_zip_with_part_override(file, &readback_path, document_part, updated_xml)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
-    Ok(())
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )
 }
 
 pub(crate) fn write_docx_package_mutation_output(
@@ -136,36 +119,19 @@ pub(crate) fn write_docx_package_mutation_output(
     options: DocxParagraphMutationOptions<'_>,
 ) -> CliResult<()> {
     let output_path = options.out.filter(|value| !value.trim().is_empty());
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        docx_mutation_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "docx-mutation");
     copy_zip_with_part_overrides(file, &readback_path, overrides)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
-    Ok(())
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )
 }
 
 pub(crate) fn write_docx_package_binary_mutation_output(
@@ -175,17 +141,7 @@ pub(crate) fn write_docx_package_binary_mutation_output(
     options: DocxParagraphMutationOptions<'_>,
 ) -> CliResult<()> {
     let output_path = options.out.filter(|value| !value.trim().is_empty());
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        docx_mutation_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "docx-mutation");
     copy_zip_with_binary_part_overrides_and_removals(
         file,
         &readback_path,
@@ -194,23 +150,16 @@ pub(crate) fn write_docx_package_binary_mutation_output(
         &BTreeSet::new(),
     )?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
-    Ok(())
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )
 }
 
 pub(crate) const HANDLE_MALFORMED: &str = "HANDLE_MALFORMED";

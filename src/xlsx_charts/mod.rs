@@ -2,7 +2,6 @@ use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::Path;
 
 use crate::{
@@ -12,9 +11,8 @@ use crate::{
     copy_zip_with_part_overrides, decode_xml_text, ensure_content_type_override, is_xml_text_event,
     local_name, parse_cell_ref, parse_range, relationship_entries, relationship_entries_from_xml,
     relationship_target_from_source_to_target, relationships_part_for, resolve_relationship_target,
-    resolve_sheet, select_xlsx_table, selector_candidates, validate,
-    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_range_export_with_options,
-    xlsx_ranges_set_temp_path, xlsx_sheet_selectors, xlsx_tables,
+    resolve_sheet, select_xlsx_table, selector_candidates, validate_xlsx_mutation_output_flags,
+    workbook_sheets, xlsx_range_export_with_options, xlsx_sheet_selectors, xlsx_tables,
     xlsx_workbook_waiting_for_formula_recalc, xml_attr_escape, xml_escape, zip_entry_names,
     zip_text,
 };

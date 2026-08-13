@@ -16,7 +16,7 @@ use std::path::Path;
 
 use crate::{
     CliError, CliResult, copy_zip_with_binary_part_overrides_and_removals,
-    package_mutation_temp_path, validate, validate_xlsx_mutation_output_flags, zip_bytes,
+    validate_xlsx_mutation_output_flags, zip_bytes,
 };
 
 use super::inspect::inspect_vba_package;
@@ -417,17 +417,7 @@ where
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        package_mutation_temp_path(file, "vba-source-mutation")
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "vba-source-mutation");
 
     let mut binary_overrides = BTreeMap::new();
     binary_overrides.insert(part_name, rewritten);
@@ -440,31 +430,20 @@ where
         &removals,
     )?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
 
     let (mut output_info, mut output_project) = inspect_source_project_for_file(&readback_path)?;
-    if !options.dry_run {
-        if options.in_place || output_path == Some(file) {
-            if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
-                fs::copy(file, backup_path).map_err(|err| {
-                    CliError::unexpected(format!("failed to create backup: {err}"))
-                })?;
-            }
-            fs::rename(&readback_path, file)
-                .or_else(|_| {
-                    fs::copy(&readback_path, file)?;
-                    fs::remove_file(&readback_path)
-                })
-                .map_err(|err| {
-                    CliError::unexpected(format!("failed to write output file: {err}"))
-                })?;
-            (output_info, output_project) = inspect_source_project_for_file(file)?;
-        } else if let Some(path) = output_path {
-            (output_info, output_project) = inspect_source_project_for_file(path)?;
-        }
-    } else {
-        let _ = fs::remove_file(&readback_path);
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    if let Some(path) = commit_path {
+        (output_info, output_project) = inspect_source_project_for_file(path)?;
     }
 
     let target = if options.dry_run {

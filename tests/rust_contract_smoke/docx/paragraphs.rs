@@ -70,6 +70,59 @@ fn docx_paragraphs_append_matches_rust_baseline() {
 }
 
 #[test]
+fn docx_paragraphs_append_rejects_failed_internal_strict_validation() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-docx-paragraphs-invalid-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("docx paragraphs temp dir");
+    let broken_path = temp_dir.join("broken.docx");
+    let output_path = temp_dir.join("output.docx");
+    rewrite_zip_fixture(
+        "testdata/docx/minimal/document.docx",
+        &broken_path,
+        |name, data| {
+            if name != "_rels/.rels" {
+                return Some((name.to_string(), data));
+            }
+            let xml = String::from_utf8(data).expect("package rels utf8");
+            let xml = xml.replace(
+                "</Relationships>",
+                r#"<Relationship Id="rIdMissing" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml" Target="missing.xml"/></Relationships>"#,
+            );
+            Some((name.to_string(), xml.into_bytes()))
+        },
+    );
+    let broken = broken_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "append",
+        &broken,
+        "--text",
+        "strict-validation-probe",
+        "--out",
+        &output,
+    ]);
+
+    assert_eq!(code, 5, "strict validation gate exit: {stderr:?}");
+    assert_eq!(stdout, None, "failed mutation must not return success JSON");
+    assert_eq!(
+        stderr.expect("validation error")["error"]["code"],
+        "validation_failed"
+    );
+    assert!(
+        !output_path.exists(),
+        "failed DOCX validation must not leave an output document"
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn docx_paragraphs_append_dry_run_and_errors_match_rust_baseline() {
     let temp_dir = std::env::temp_dir().join(format!(
         "ooxml-rust-docx-paragraphs-dry-run-{}",

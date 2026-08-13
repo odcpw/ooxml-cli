@@ -2,20 +2,18 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::Path;
 
 use crate::{
-    CellValue, CliError, CliResult, EXIT_SUCCESS, RangeBounds, WorkbookSheet, XlsxTableRef,
+    CellValue, CliError, CliResult, RangeBounds, WorkbookSheet, XlsxTableRef,
     add_relationship_to_xml, allocate_relationship_id, command_arg,
     copy_zip_with_part_overrides_and_removals, ensure_content_type_override, local_name,
     normalize_xl_target, parse_range, range_bounds_ref, reject_xlsx_merged_cell_intersection,
     relationship_entries_from_xml, relationship_target_from_source_to_target, relationships,
-    relationships_part_for, replace_xml_span, resolve_sheet, shared_strings, sheet_cells, validate,
-    validate_exit_code, validate_xlsx_mutation_output_flags, workbook_sheets,
-    xlsx_range_destination_json, xlsx_ranges_set_temp_path, xlsx_sheet_selectors,
-    xlsx_source_command, xlsx_styles, xlsx_tables, xml_attr_escape, xml_direct_child_ranges,
-    xml_open_tag_from_start, xml_tag_prefix, zip_entry_names, zip_text,
+    relationships_part_for, replace_xml_span, resolve_sheet, shared_strings, sheet_cells,
+    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_range_destination_json,
+    xlsx_sheet_selectors, xlsx_source_command, xlsx_styles, xlsx_tables, xml_attr_escape,
+    xml_direct_child_ranges, xml_open_tag_from_start, xml_tag_prefix, zip_entry_names, zip_text,
 };
 
 const REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
@@ -102,17 +100,7 @@ pub(crate) fn xlsx_tables_create(
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        xlsx_ranges_set_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "xlsx-table-create");
 
     let mut overrides = BTreeMap::new();
     overrides.insert(target.sheet_part.clone(), updated_sheet_xml);
@@ -121,32 +109,21 @@ pub(crate) fn xlsx_tables_create(
     overrides.insert("[Content_Types].xml".to_string(), content_types);
     copy_zip_with_part_overrides_and_removals(file, &readback_path, &overrides, &BTreeSet::new())?;
     if !options.no_validate {
-        let report = validate(&readback_path, true)?;
-        if validate_exit_code(&report, true) != EXIT_SUCCESS {
-            return Err(CliError::validation_failed(
-                "created XLSX table package failed strict validation",
-            ));
-        }
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
 
     let table = table_ref_for_created_table(file, &target, &table_xml)?;
     let destination =
         xlsx_table_create_destination_json(&readback_path, commit_path, &target, &table)?;
 
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
 
     let mut result = Map::new();
     result.insert("file".to_string(), json!(file));

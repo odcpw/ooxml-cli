@@ -193,15 +193,17 @@ pub(crate) use pptx_translate::{pptx_translate_apply, pptx_translate_export};
 pub(crate) use pptx_xlsx_bindings::{pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan};
 pub(crate) use repair::repair_normalize;
 pub(crate) use runtime_util::{
-    chrono_like_counter, current_utc_rfc3339, docx_mutation_temp_path, package_mutation_temp_path,
-    xlsx_ranges_set_temp_path,
+    chrono_like_counter, current_utc_rfc3339, finish_mutation_output, mutation_staging_path,
+    package_mutation_temp_path,
 };
 pub(crate) use selector_util::{add_selector, selector_candidates};
 pub(crate) use serve::{ServeState, run_serve_stdio};
 pub(crate) use template_workflow::{
     template_apply, template_profile_inspect, template_profile_save, template_tokens,
 };
-pub(crate) use validation::{validate, validate_exit_code};
+pub(crate) use validation::{
+    validate, validate_exit_code, validate_mutation_output, validate_owned_mutation_output,
+};
 pub(crate) use xlsx_authoring::{XlsxScaffoldOptions, xlsx_scaffold};
 pub(crate) use xlsx_charts::{
     XlsxChartConvertTypeOptions, XlsxChartCopyStyleOptions, XlsxChartCreateOptions,

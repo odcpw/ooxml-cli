@@ -24,11 +24,9 @@ where
     let output_path = chart_mutation_output_path(file, &options);
     let readback_path = if options.dry_run {
         staged_path.clone()
-    } else if options.in_place || output_path.as_deref() == Some(file) {
-        finish_chart_mutation(file, &staged_path, &options, output_path.as_deref())?;
-        file.to_string()
     } else {
-        staged_path.clone()
+        finish_chart_mutation(file, &staged_path, &options, output_path.as_deref())?;
+        output_path.clone().unwrap_or_else(|| file.to_string())
     };
 
     let mut chart = selected_chart_json(&readback_path, slide, &selected.part_selector())?;
@@ -365,17 +363,7 @@ pub(super) fn stage_chart_package_mutation(
         .out
         .as_deref()
         .filter(|value| !value.trim().is_empty());
-    let write_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        package_mutation_temp_path(file, "pptx-chart")
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let write_path = crate::mutation_staging_path(file, output_path, "pptx-chart");
     copy_zip_with_binary_part_overrides_and_removals(
         file,
         &write_path,
@@ -384,7 +372,7 @@ pub(super) fn stage_chart_package_mutation(
         &BTreeSet::new(),
     )?;
     if !options.no_validate {
-        validate(&write_path, true)?;
+        crate::validate_owned_mutation_output(&write_path)?;
     }
     Ok(write_path)
 }
@@ -395,25 +383,14 @@ pub(super) fn finish_chart_mutation(
     options: &PptxChartMutationOptions,
     output_path: Option<&str>,
 ) -> CliResult<()> {
-    if options.dry_run {
-        let _ = fs::remove_file(staged_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options
-            .backup
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(staged_path, file)
-            .or_else(|_| {
-                fs::copy(staged_path, file)?;
-                fs::remove_file(staged_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
-    Ok(())
+    crate::finish_mutation_output(
+        file,
+        staged_path,
+        output_path,
+        options.in_place,
+        options.backup.as_deref(),
+        options.dry_run,
+    )
 }
 
 pub(super) fn chart_mutation_result_json(input: ChartMutationResultInput<'_>) -> Value {

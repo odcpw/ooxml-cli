@@ -1,7 +1,6 @@
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 
 use super::{
     ImageBatchReplacePlan, ImageBatchSlideResult, ImageReplacePlan, PptxReplaceMutationOptions,
@@ -10,8 +9,8 @@ use super::{
 };
 use crate::{
     CliError, CliResult, RelationshipEntry, command_arg,
-    copy_zip_with_binary_part_overrides_and_removals, copy_zip_with_part_overrides,
-    package_mutation_temp_path, package_type, validate, xml_attr_escape,
+    copy_zip_with_binary_part_overrides_and_removals, copy_zip_with_part_overrides, package_type,
+    xml_attr_escape,
 };
 
 pub(super) fn text_from_xlsx_result_json(
@@ -519,17 +518,7 @@ pub(super) fn write_replace_mutation(
         .out
         .as_deref()
         .filter(|value| !value.trim().is_empty());
-    let write_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        package_mutation_temp_path(file, "pptx-replace")
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let write_path = crate::mutation_staging_path(file, output_path, "pptx-replace");
     if binary_overrides.is_empty() {
         copy_zip_with_part_overrides(file, &write_path, text_overrides)?;
     } else {
@@ -542,27 +531,16 @@ pub(super) fn write_replace_mutation(
         )?;
     }
     if !options.no_validate {
-        validate(&write_path, true)?;
+        crate::validate_owned_mutation_output(&write_path)?;
     }
-    if options.dry_run {
-        let _ = fs::remove_file(&write_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options
-            .backup
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&write_path, file)
-            .or_else(|_| {
-                fs::copy(&write_path, file)?;
-                fs::remove_file(&write_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
-    Ok(())
+    crate::finish_mutation_output(
+        file,
+        &write_path,
+        output_path,
+        options.in_place,
+        options.backup.as_deref(),
+        options.dry_run,
+    )
 }
 
 fn mutation_output_path(file: &str, options: &PptxReplaceMutationOptions) -> Option<String> {

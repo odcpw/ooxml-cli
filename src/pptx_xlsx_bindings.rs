@@ -9,7 +9,7 @@ use crate::pptx_mutation::{
 use crate::{
     CliError, CliResult, XlsxRangeExportOptions, XlsxTableExportOptions, command_arg, has_flag,
     package_mutation_temp_path, parse_i64_flag, parse_string_flag, pptx_shapes_show,
-    pptx_tables_show, reject_unknown_flags, validate, validate_xlsx_mutation_output_flags,
+    pptx_tables_show, reject_unknown_flags, validate_xlsx_mutation_output_flags,
     xlsx_range_export_with_options, xlsx_tables_export,
 };
 
@@ -130,7 +130,7 @@ pub(crate) fn pptx_xlsx_bindings_apply(file: &str, args: &[String]) -> CliResult
 
     if current != file {
         if !options.no_validate {
-            validate(&current, true)?;
+            crate::validate_owned_mutation_output(&current)?;
         }
         if options.dry_run {
             let _ = fs::remove_file(&current);
@@ -138,7 +138,7 @@ pub(crate) fn pptx_xlsx_bindings_apply(file: &str, args: &[String]) -> CliResult
             commit_apply_output(file, &current, output.as_deref(), &options)?;
         }
     } else if !options.no_validate {
-        validate(file, true)?;
+        crate::validate_mutation_output(file)?;
     }
     for path in temp_paths {
         if path != current {

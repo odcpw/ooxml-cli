@@ -6,8 +6,8 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
 use crate::{
-    CliError, CliResult, command_arg, validate, validate_exit_code,
-    vba::vba_xlsx_standard_module_project_bin, xml_attr_escape, xml_escape,
+    CliError, CliResult, command_arg, vba::vba_xlsx_standard_module_project_bin, xml_attr_escape,
+    xml_escape,
 };
 
 const WORKBOOK_PART: &str = "xl/workbook.xml";
@@ -93,25 +93,10 @@ pub(crate) fn xlsx_forms_entry(options: XlsxFormsEntryOptions<'_>) -> CliResult<
     )?;
 
     if !options.no_validate {
-        let report = validate(&temp_path, true)?;
-        if validate_exit_code(&report, true) != crate::EXIT_SUCCESS {
-            let _ = fs::remove_file(&temp_path);
-            return Err(CliError::validation_failed(
-                "generated entry form workbook failed strict validation",
-            ));
-        }
+        crate::validate_owned_mutation_output(&temp_path)?;
     }
 
-    if out_path.exists() {
-        fs::remove_file(out_path)
-            .map_err(|err| CliError::unexpected(format!("failed to replace output file: {err}")))?;
-    }
-    fs::rename(&temp_path, out_path)
-        .or_else(|_| {
-            fs::copy(&temp_path, out_path)?;
-            fs::remove_file(&temp_path)
-        })
-        .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    crate::finish_mutation_output(out, &temp_path, Some(out), false, None, false)?;
 
     Ok(entry_result(
         out,

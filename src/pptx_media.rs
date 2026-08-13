@@ -8,10 +8,10 @@ use crate::cli_args::value_flag_present;
 use crate::{
     CliError, CliResult, RelationshipEntry, allocate_relationship_id, attr, attr_exact,
     content_type_for_part, copy_zip_with_binary_part_overrides_and_removals,
-    ensure_content_type_override, local_name, package_mutation_temp_path, package_type,
-    relationship_entries, relationship_target_from_source_to_target, relationships_part_for,
-    replace_xml_span, resolve_relationship_target, validate, validate_xlsx_mutation_output_flags,
-    xml_attr_escape, zip_entry_exists, zip_entry_names, zip_text,
+    ensure_content_type_override, local_name, package_type, relationship_entries,
+    relationship_target_from_source_to_target, relationships_part_for, replace_xml_span,
+    resolve_relationship_target, validate_xlsx_mutation_output_flags, xml_attr_escape,
+    zip_entry_exists, zip_entry_names, zip_text,
 };
 
 mod media_types;
@@ -899,17 +899,7 @@ fn write_media_mutation(
         .out
         .as_deref()
         .filter(|value| !value.trim().is_empty());
-    let write_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        package_mutation_temp_path(file, "pptx-media")
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let write_path = crate::mutation_staging_path(file, output_path, "pptx-media");
     copy_zip_with_binary_part_overrides_and_removals(
         file,
         &write_path,
@@ -918,27 +908,16 @@ fn write_media_mutation(
         &BTreeSet::new(),
     )?;
     if !options.no_validate {
-        validate(&write_path, true)?;
+        crate::validate_owned_mutation_output(&write_path)?;
     }
-    if options.dry_run {
-        let _ = fs::remove_file(&write_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup) = options
-            .backup
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            fs::copy(file, backup)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&write_path, file)
-            .or_else(|_| {
-                fs::copy(&write_path, file)?;
-                fs::remove_file(&write_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
-    Ok(())
+    crate::finish_mutation_output(
+        file,
+        &write_path,
+        output_path,
+        options.in_place,
+        options.backup.as_deref(),
+        options.dry_run,
+    )
 }
 
 fn media_mutation_output_path(file: &str, options: &MutationOptions) -> Option<String> {

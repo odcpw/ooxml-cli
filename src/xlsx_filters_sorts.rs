@@ -2,16 +2,14 @@ use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
-use std::fs;
 use std::path::Path;
 
 use crate::xlsx_tables::{XlsxTableRef, select_xlsx_table, xlsx_tables};
 use crate::{
     CliError, CliResult, RangeBounds, WorkbookSheet, command_arg, copy_zip_with_part_override,
     local_name, normalize_xl_target, parse_range, range_bounds_ref, relationships,
-    render_xml_attrs, replace_xml_span, resolve_sheet, validate,
-    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_ranges_set_temp_path,
-    xml_attr_escape, xml_attrs_map, xml_direct_child_ranges, xml_fragment_bounds,
+    render_xml_attrs, replace_xml_span, resolve_sheet, validate_xlsx_mutation_output_flags,
+    workbook_sheets, xml_attr_escape, xml_attrs_map, xml_direct_child_ranges, xml_fragment_bounds,
     xml_open_tag_from_start, xml_tag_prefix, zip_text,
 };
 

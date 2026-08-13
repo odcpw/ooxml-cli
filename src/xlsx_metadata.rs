@@ -2,13 +2,12 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
-use std::fs;
 
 use crate::{
     CliError, CliResult, command_arg, copy_zip_with_part_overrides, ensure_content_type_override,
     ensure_package_root_relationship_xml, find_xlsx_workbook_part, local_name,
-    relationship_entries, resolve_relationship_target, validate,
-    validate_xlsx_mutation_output_flags, xlsx_ranges_set_temp_path, zip_entry_names, zip_text,
+    relationship_entries, resolve_relationship_target, validate_xlsx_mutation_output_flags,
+    zip_entry_names, zip_text,
 };
 
 mod calc;
@@ -339,37 +338,21 @@ pub(crate) fn xlsx_workbook_metadata_update(
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        xlsx_ranges_set_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "xlsx-metadata");
 
     copy_zip_with_part_overrides(file, &readback_path, &overrides)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
     let readback = read_xlsx_workbook_metadata(&readback_path)?;
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
 
     let mut result = Map::new();
     result.insert("file".to_string(), json!(file));

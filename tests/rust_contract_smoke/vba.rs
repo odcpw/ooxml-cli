@@ -2409,6 +2409,44 @@ fn vba_opaque_attach_extract_remove_matches_rust_baseline() {
 }
 
 #[test]
+fn vba_attach_rejects_failed_internal_strict_validation() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-vba-attach-invalid-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let bin_path = temp_dir.join("vbaProject.bin");
+    let output_path = temp_dir.join("output.xlsm");
+    fs::write(&bin_path, b"opaque-vba-project").expect("write opaque VBA project");
+    let bin = bin_path.to_string_lossy().to_string();
+    let output = output_path.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "attach",
+        "testdata/xlsx/corrupted-missing-worksheet/workbook.xlsx",
+        "--bin",
+        &bin,
+        "--out",
+        &output,
+    ]);
+
+    assert_eq!(code, 5, "strict validation gate exit: {stderr:?}");
+    assert_eq!(stdout, None, "failed mutation must not return success JSON");
+    assert_eq!(
+        stderr.expect("validation error")["error"]["code"],
+        "validation_failed"
+    );
+    assert!(
+        !output_path.exists(),
+        "failed VBA validation must not leave an output package"
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn vba_convert_xlsm_to_xlsx_alias_removes_macros() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

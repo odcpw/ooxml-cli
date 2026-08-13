@@ -2,12 +2,11 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::fs;
 
 use crate::{
     CliError, CliResult, command_arg, copy_zip_with_part_overrides, find_xlsx_workbook_part,
-    local_name, package_mutation_temp_path, validate, validate_xlsx_mutation_output_flags,
-    xlsx_workbook_child_order, zip_entry_names, zip_text,
+    local_name, validate_xlsx_mutation_output_flags, xlsx_workbook_child_order, zip_entry_names,
+    zip_text,
 };
 
 pub(crate) fn repair_normalize(file: &str, args: &[String]) -> CliResult<Value> {
@@ -31,21 +30,33 @@ pub(crate) fn repair_normalize(file: &str, args: &[String]) -> CliResult<Value> 
     })?;
     let workbook_xml = zip_text(file, &workbook_part)?;
     let normalized = normalize_xlsx_workbook_child_order_xml(&workbook_xml, &workbook_part)?;
-    let output_path = resolve_repair_output_path(file, out.as_deref(), in_place, dry_run)?;
+    let output_path = if in_place {
+        file.to_string()
+    } else {
+        out.as_deref().unwrap_or(file).to_string()
+    };
 
     if !dry_run {
         if normalized.changed || !in_place {
-            write_repair_output(
+            let staged_path = crate::mutation_staging_path(
                 file,
-                &output_path,
-                &workbook_part,
-                &normalized.xml,
+                out.as_deref().filter(|value| !value.trim().is_empty()),
+                "repair-normalize",
+            );
+            stage_repair_output(file, &staged_path, &workbook_part, &normalized.xml)?;
+            if !no_validate {
+                crate::validate_owned_mutation_output(&staged_path)?;
+            }
+            crate::finish_mutation_output(
+                file,
+                &staged_path,
+                out.as_deref(),
                 in_place,
                 backup.as_deref(),
+                false,
             )?;
-        }
-        if !no_validate {
-            validate(if in_place { file } else { &output_path }, true)?;
+        } else if !no_validate {
+            crate::validate_mutation_output(file)?;
         }
     }
 
@@ -77,53 +88,15 @@ pub(crate) fn repair_normalize(file: &str, args: &[String]) -> CliResult<Value> 
     }))
 }
 
-fn resolve_repair_output_path(
-    file: &str,
-    out: Option<&str>,
-    in_place: bool,
-    dry_run: bool,
-) -> CliResult<String> {
-    if dry_run {
-        return Ok(package_mutation_temp_path(file, "repair-normalize"));
-    }
-    if in_place {
-        Ok(package_mutation_temp_path(file, "repair-normalize"))
-    } else {
-        out.filter(|value| !value.trim().is_empty())
-            .map(str::to_string)
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })
-    }
-}
-
-fn write_repair_output(
+fn stage_repair_output(
     file: &str,
     output_path: &str,
     workbook_part: &str,
     workbook_xml: &str,
-    in_place: bool,
-    backup: Option<&str>,
 ) -> CliResult<()> {
     let mut overrides = BTreeMap::new();
     overrides.insert(workbook_part.to_string(), workbook_xml.to_string());
-    copy_zip_with_part_overrides(file, output_path, &overrides)?;
-    if !in_place {
-        return Ok(());
-    }
-    if let Some(backup_path) = backup.filter(|value| !value.trim().is_empty()) {
-        fs::copy(file, backup_path)
-            .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-    }
-    fs::rename(output_path, file)
-        .or_else(|_| {
-            fs::copy(output_path, file)?;
-            fs::remove_file(output_path)
-        })
-        .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    Ok(())
+    copy_zip_with_part_overrides(file, output_path, &overrides)
 }
 
 struct NormalizedWorkbook {

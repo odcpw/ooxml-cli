@@ -344,13 +344,7 @@ fn atomic_copy_to_output(source: &str, output: &str) -> CliResult<()> {
     let temp = package_mutation_temp_path(output, "commit");
     fs::copy(source, &temp)
         .map_err(|err| CliError::unexpected(format!("failed to stage commit output: {err}")))?;
-    fs::rename(&temp, output)
-        .or_else(|_| {
-            fs::copy(&temp, output)?;
-            fs::remove_file(&temp)
-        })
-        .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    Ok(())
+    crate::finish_mutation_output(output, &temp, Some(output), false, None, false)
 }
 
 fn json_rpc_parse_error(message: String) -> Value {

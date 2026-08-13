@@ -1,0 +1,107 @@
+{
+  "schema_version": "kerf.observation-plan.v1",
+  "subject": {
+    "schema_version": "kerf.cert.lts-subject.v1",
+    "machine": {
+      "initial": "ready",
+      "actions": ["verify"],
+      "states": [
+        {
+          "id": "ready",
+          "observation": "ready",
+          "transitions": {
+            "verify": {"to": "verified", "emission": "corpus-passed"}
+          }
+        },
+        {
+          "id": "verified",
+          "observation": "verified",
+          "transitions": {
+            "verify": {"to": "verified", "emission": "corpus-passed"}
+          }
+        }
+      ]
+    },
+    "context": {
+      "initial": "one-check",
+      "states": [
+        {"id": "one-check", "transitions": {"verify": "done"}},
+        {"id": "done", "transitions": {}}
+      ]
+    }
+  },
+  "binding": {
+    "id": "ooxml-mutation-validation-tests",
+    "working_directory": "/home/oliver/Projects/odcpw/ooxml-cli",
+    "environment": {
+      "HOME": "/home/oliver",
+      "PATH": "/home/oliver/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+    },
+    "open": {
+      "program": "/usr/bin/true",
+      "program_sha256": "8bc9a73afd7d85061160857536e093ded799dae7a2f0cf5758c4553f2f83002d",
+      "expected_control": {"exit_code": 0}
+    },
+    "reset": {
+      "program": "/usr/bin/true",
+      "program_sha256": "8bc9a73afd7d85061160857536e093ded799dae7a2f0cf5758c4553f2f83002d",
+      "expected_control": {"exit_code": 0}
+    },
+    "initial_probe": {
+      "program": "/usr/bin/printf",
+      "program_sha256": "c06f1e931d10653b6a02b3a0c2ea4288e87f8c4a4e12be6aab538f31577f65f1",
+      "args": ["ready"]
+    },
+    "close": {
+      "program": "/usr/bin/true",
+      "program_sha256": "8bc9a73afd7d85061160857536e093ded799dae7a2f0cf5758c4553f2f83002d",
+      "expected_control": {"exit_code": 0}
+    },
+    "action_invocations": [
+      {
+        "action": "verify",
+        "invocation": {
+          "program": "/usr/bin/bash",
+          "program_sha256": "575e03ac834b739349a4484de481abcd06a6f7193cefc795260a32a1943f20a5",
+          "args": [
+            "-lc",
+            "/usr/bin/cargo test --lib runtime_util::tests >/dev/null 2>&1 && /usr/bin/cargo test --test rust_contract_smoke failed_internal_strict_validation >/dev/null 2>&1 && /usr/bin/cargo test --test rust_contract_smoke xlsx_workbook_metadata_validation_failure_preserves_preexisting_output >/dev/null 2>&1 && /usr/bin/cargo test --test rust_contract_smoke repair_normalize_validates_before_in_place_promotion >/dev/null 2>&1 && /usr/bin/cargo test --test rust_contract_smoke pptx_chart_style_mutations_match_rust_baseline_and_validate >/dev/null 2>&1 && /usr/bin/printf 'corpus-passed|verified'"
+          ]
+        }
+      }
+    ],
+    "output_classes": [
+      {
+        "id": "initial-ready",
+        "exit_code": 0,
+        "stdout_hex": "7265616479",
+        "stderr_hex": "",
+        "observation": "ready"
+      },
+      {
+        "id": "corpus-verified",
+        "exit_code": 0,
+        "stdout_hex": "636f727075732d7061737365647c7665726966696564",
+        "stderr_hex": "",
+        "observation": "verified",
+        "emission": "corpus-passed"
+      }
+    ],
+    "negative_controls": [
+      {
+        "id": "no-validate-control",
+        "invocation": {
+          "program": "/usr/bin/bash",
+          "program_sha256": "575e03ac834b739349a4484de481abcd06a6f7193cefc795260a32a1943f20a5",
+          "args": [
+            "-lc",
+            "/usr/bin/cargo test --test rust_contract_smoke xlsx_workbook_metadata_update_no_validate_is_an_explicit_escape_hatch >/dev/null 2>&1 && /usr/bin/printf 'bypass-control-passed'"
+          ]
+        },
+        "expected_rejection": "explicit bypass output belongs to no strict-validation acceptance class"
+      }
+    ]
+  },
+  "actions": ["verify"],
+  "repetitions": 2
+}

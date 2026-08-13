@@ -10,7 +10,7 @@ use crate::pptx_mutation::{pptx_clone_slide, pptx_slides_delete};
 use crate::{
     CliError, CliResult, attr, copy_zip_with_part_overrides, current_utc_rfc3339, local_name,
     package_mutation_temp_path, package_type, parse_string_flag, pptx_all_slides, pptx_shapes_show,
-    pptx_slides_list, reject_unknown_flags, validate, xml_escape, xml_token_name, zip_text,
+    pptx_slides_list, reject_unknown_flags, xml_escape, xml_token_name, zip_text,
 };
 
 pub(crate) fn pptx_template_capture(file: &str, args: &[String]) -> CliResult<Value> {
@@ -243,12 +243,14 @@ pub(crate) fn pptx_template_compile(
         working = deleted;
     }
 
-    validate(&working, true)?;
+    crate::validate_owned_mutation_output(&working)?;
     if let Some(parent) = Path::new(&out).parent() {
         fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
     }
-    fs::copy(&working, &out)
-        .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    let publish_stage = crate::mutation_staging_path(&out, Some(&out), "pptx-template-publish");
+    fs::copy(&working, &publish_stage)
+        .map_err(|err| CliError::unexpected(format!("failed to stage output file: {err}")))?;
+    crate::finish_mutation_output(&out, &publish_stage, Some(&out), false, None, false)?;
     remove_temp_file(&working);
     let completed_at = current_utc_rfc3339();
     Ok(json!({

@@ -6,8 +6,8 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
 use crate::{
-    CliError, CliResult, EXIT_SUCCESS, command_arg, package_mutation_temp_path,
-    render_docx_paragraph, resolve_optional_docx_paragraph_text, validate, validate_exit_code,
+    CliError, CliResult, command_arg, package_mutation_temp_path, render_docx_paragraph,
+    resolve_optional_docx_paragraph_text,
 };
 
 const DOCUMENT_PART: &str = "word/document.xml";
@@ -38,25 +38,10 @@ pub(crate) fn docx_scaffold(output: &str, options: DocxScaffoldOptions<'_>) -> C
     write_docx_scaffold_package(&temp_path, &text)?;
 
     if !options.no_validate {
-        let report = validate(&temp_path, true)?;
-        if validate_exit_code(&report, true) != EXIT_SUCCESS {
-            let _ = fs::remove_file(&temp_path);
-            return Err(CliError::validation_failed(
-                "generated DOCX scaffold failed strict validation",
-            ));
-        }
+        crate::validate_owned_mutation_output(&temp_path)?;
     }
 
-    if output_path.exists() {
-        fs::remove_file(output_path)
-            .map_err(|err| CliError::unexpected(format!("failed to replace output file: {err}")))?;
-    }
-    fs::rename(&temp_path, output_path)
-        .or_else(|_| {
-            fs::copy(&temp_path, output_path)?;
-            fs::remove_file(&temp_path)
-        })
-        .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    crate::finish_mutation_output(output, &temp_path, Some(output), false, None, false)?;
 
     Ok(docx_scaffold_result(output, &text, !options.no_validate))
 }

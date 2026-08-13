@@ -6,8 +6,8 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
 use crate::{
-    CliError, CliResult, EXIT_SUCCESS, command_arg, default_xlsx_styles_xml,
-    package_mutation_temp_path, validate, validate_exit_code, xml_attr_escape, xml_escape,
+    CliError, CliResult, command_arg, default_xlsx_styles_xml, package_mutation_temp_path,
+    xml_attr_escape, xml_escape,
 };
 
 const WORKBOOK_PART: &str = "xl/workbook.xml";
@@ -39,25 +39,10 @@ pub(crate) fn xlsx_scaffold(output: &str, options: XlsxScaffoldOptions<'_>) -> C
     write_xlsx_scaffold_package(&temp_path, &sheet_name)?;
 
     if !options.no_validate {
-        let report = validate(&temp_path, true)?;
-        if validate_exit_code(&report, true) != EXIT_SUCCESS {
-            let _ = fs::remove_file(&temp_path);
-            return Err(CliError::validation_failed(
-                "generated XLSX scaffold failed strict validation",
-            ));
-        }
+        crate::validate_owned_mutation_output(&temp_path)?;
     }
 
-    if output_path.exists() {
-        fs::remove_file(output_path)
-            .map_err(|err| CliError::unexpected(format!("failed to replace output file: {err}")))?;
-    }
-    fs::rename(&temp_path, output_path)
-        .or_else(|_| {
-            fs::copy(&temp_path, output_path)?;
-            fs::remove_file(&temp_path)
-        })
-        .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
+    crate::finish_mutation_output(output, &temp_path, Some(output), false, None, false)?;
 
     Ok(xlsx_scaffold_result(
         output,

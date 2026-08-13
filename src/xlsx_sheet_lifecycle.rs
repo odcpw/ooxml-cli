@@ -2,7 +2,6 @@ use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::Path;
 
 use crate::{
@@ -10,8 +9,8 @@ use crate::{
     allocate_relationship_id, command_arg, copy_zip_with_part_overrides_and_removals,
     ensure_content_type_override, local_name, normalize_xl_target, relationships,
     relationships_part_for, render_xml_attrs, replace_xml_span, resolve_relationship_target,
-    resolve_sheet, validate, validate_xlsx_mutation_output_flags, workbook_sheets,
-    xlsx_ranges_set_temp_path, xlsx_sheet_selectors, xml_attr_escape, xml_attrs_map, zip_text,
+    resolve_sheet, validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_sheet_selectors,
+    xml_attr_escape, xml_attrs_map, zip_text,
 };
 
 const REL_WORKSHEET: &str =
@@ -452,21 +451,11 @@ fn write_sheet_mutation_package(
     } else {
         output_path.map(str::to_string)
     };
-    let readback_path = if write.dry_run || write.in_place || output_path == Some(file) {
-        xlsx_ranges_set_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "xlsx-sheets");
 
     copy_zip_with_part_overrides_and_removals(file, &readback_path, &overrides, &removals)?;
     if !write.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
     Ok(XlsxSheetMutationPackage {
         readback_path,
@@ -479,21 +468,14 @@ fn finish_sheet_mutation_package(
     write: &XlsxSheetMutationWrite<'_>,
     package: &XlsxSheetMutationPackage,
 ) -> CliResult<()> {
-    if write.dry_run {
-        let _ = fs::remove_file(&package.readback_path);
-    } else if write.in_place || write.out.filter(|value| !value.trim().is_empty()) == Some(file) {
-        if let Some(backup_path) = write.backup.filter(|value| !value.trim().is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&package.readback_path, file)
-            .or_else(|_| {
-                fs::copy(&package.readback_path, file)?;
-                fs::remove_file(&package.readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
-    Ok(())
+    crate::finish_mutation_output(
+        file,
+        &package.readback_path,
+        write.out.filter(|value| !value.trim().is_empty()),
+        write.in_place,
+        write.backup,
+        write.dry_run,
+    )
 }
 
 fn collect_xlsx_sheets_mutation_destination(

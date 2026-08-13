@@ -2,16 +2,15 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
-use std::fs;
 
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, EXIT_TARGET_NOT_FOUND, HANDLE_SCOPE_STALE,
     InspectPackageKind, allocate_relationship_id, attr, copy_zip_with_part_overrides,
-    detect_inspect_package_type, docx_handle_error, docx_mutation_temp_path,
-    docx_rich_block_reports, ensure_content_type_override, find_docx_document_part, local_name,
-    package_type, relationship_entries, relationship_target_from_source_to_target,
-    relationships_part_for, resolve_optional_docx_paragraph_text, resolve_relationship_target,
-    validate, validate_xlsx_mutation_output_flags, xml_attr_escape, xml_tag_prefix, xml_token_name,
+    detect_inspect_package_type, docx_handle_error, docx_rich_block_reports,
+    ensure_content_type_override, find_docx_document_part, local_name, package_type,
+    relationship_entries, relationship_target_from_source_to_target, relationships_part_for,
+    resolve_optional_docx_paragraph_text, resolve_relationship_target,
+    validate_xlsx_mutation_output_flags, xml_attr_escape, xml_tag_prefix, xml_token_name,
     zip_entry_exists, zip_entry_names, zip_text,
 };
 
@@ -421,36 +420,19 @@ fn write_docx_mutation_overrides_output(
     options: DocxParagraphMutationOptions<'_>,
 ) -> CliResult<()> {
     let output_path = options.out.filter(|value| !value.trim().is_empty());
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        docx_mutation_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "docx-comments");
     copy_zip_with_part_overrides(file, &readback_path, overrides)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
-    Ok(())
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )
 }
 
 #[derive(Clone, Copy)]

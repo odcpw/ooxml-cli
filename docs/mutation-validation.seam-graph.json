@@ -1,0 +1,70 @@
+{
+  "schema_version": 3,
+  "decision": {
+    "id": "mutation-validation-publication-seam",
+    "consumer": "OOXML package mutation transaction refactor",
+    "retirement_condition": "one accepted global authority fold with no remaining direct-output writer in the declared mutation inventory",
+    "source_identity": {
+      "kind": "git_tree",
+      "repository": "ooxml-cli",
+      "revision": "7daccc32c768fc825360315ffacc05169b7c9dca",
+      "tree_sha256": "dd7810ad7f2617374ee671c71a2bde118b4144c58eeec6c02adc4f7294f4dfc9",
+      "working_tree_state": "dirty",
+      "dirty_patch_sha256": "f171f916b10f26138f13f3e5a1bf9bab39ebff56a244c6d1def73e540a85705c"
+    },
+    "protected_observations": [
+      {
+        "id": "mutation-protocol-corpus",
+        "manifest_sha256": "7ee624cc4bbdf2372d6a8e360e239a8d954f6b83bae712d8f714eaf3756659b9"
+      }
+    ],
+    "selection_rule": "pareto_after_hard_feasibility",
+    "prior_decision_receipts": []
+  },
+  "change_model": "independent_bernoulli",
+  "module_overhead_bits": 16,
+  "semantic_steps": 70,
+  "vertices": [
+    {"id": "validate-report-observer", "kind": "observer", "current_module": "validation", "replacement_allowed": false, "description_bits": 32, "move_cost": 4, "public_contract": true, "contract_churn_cost": 5},
+    {"id": "shared-validation-assertion", "kind": "authority", "current_module": "validation", "authority_key": "mutation-acceptance", "description_bits": 28, "move_cost": 2},
+    {"id": "shared-publication-authority", "kind": "authority", "current_module": "runtime", "authority_key": "artifact-publication", "description_bits": 40, "move_cost": 3},
+    {"id": "docx-validation-guard", "kind": "authority-copy", "current_module": "docx", "authority_key": "mutation-acceptance", "description_bits": 18, "special_case_bits": 12},
+    {"id": "pptx-validation-guard", "kind": "authority-copy", "current_module": "pptx", "authority_key": "mutation-acceptance", "description_bits": 18, "special_case_bits": 12},
+    {"id": "xlsx-validation-guard", "kind": "authority-copy", "current_module": "xlsx", "authority_key": "mutation-acceptance", "description_bits": 18, "special_case_bits": 12},
+    {"id": "vba-validation-guard", "kind": "authority-copy", "current_module": "vba", "authority_key": "mutation-acceptance", "description_bits": 18, "special_case_bits": 12},
+    {"id": "docx-output-publisher", "kind": "authority-copy", "current_module": "docx", "authority_key": "artifact-publication", "description_bits": 24, "special_case_bits": 16},
+    {"id": "pptx-output-publisher", "kind": "authority-copy", "current_module": "pptx", "authority_key": "artifact-publication", "description_bits": 24, "special_case_bits": 16},
+    {"id": "xlsx-output-publisher", "kind": "authority-copy", "current_module": "xlsx", "authority_key": "artifact-publication", "description_bits": 24, "special_case_bits": 16},
+    {"id": "vba-output-publisher", "kind": "authority-copy", "current_module": "vba", "authority_key": "artifact-publication", "description_bits": 24, "special_case_bits": 16},
+    {"id": "repair-policy", "kind": "policy", "current_module": "repair", "description_bits": 20, "move_cost": 2},
+    {"id": "serve-working-copy", "kind": "state", "current_module": "serve", "mutable": true, "description_bits": 24, "move_cost": 4},
+    {"id": "explicit-validation-bypass", "kind": "public-contract", "current_module": "cli", "replacement_allowed": false, "description_bits": 12, "public_contract": true, "contract_churn_cost": 8}
+  ],
+  "hyperedges": [
+    {"id": "observe-before-assert", "kind": "read_write", "members": ["validate-report-observer", "shared-validation-assertion"], "tails": ["validate-report-observer"], "heads": ["shared-validation-assertion"], "weight": 5, "frequency": 70, "mutable": true, "protocol_bits": 4, "layers": ["static", "runtime"]},
+    {"id": "accepted-stage-publishes", "kind": "sync", "members": ["shared-validation-assertion", "shared-publication-authority"], "tails": ["shared-validation-assertion"], "heads": ["shared-publication-authority"], "weight": 8, "frequency": 70, "volume": 1, "mutable": true, "ordered": true, "protocol_bits": 6, "boundary_information_bits": 140, "layers": ["static", "runtime"]},
+    {"id": "repair-specialization", "kind": "read_write", "members": ["repair-policy", "shared-validation-assertion", "shared-publication-authority"], "weight": 2, "frequency": 2, "mutable": true, "ordered": true, "layers": ["static", "runtime"]},
+    {"id": "serve-specialization", "kind": "sync", "members": ["serve-working-copy", "shared-validation-assertion", "shared-publication-authority"], "weight": 2, "frequency": 4, "mutable": true, "ordered": true, "layers": ["static", "runtime"]},
+    {"id": "bypass-to-publication", "kind": "write", "members": ["explicit-validation-bypass", "shared-publication-authority"], "tails": ["explicit-validation-bypass"], "heads": ["shared-publication-authority"], "weight": 1, "frequency": 1, "mutable": true, "ordered": true, "layers": ["contract", "runtime"]}
+  ],
+  "constraints": [
+    {"id": "observer-remains-observer", "kind": "forbid_replacement", "vertex": "validate-report-observer"},
+    {"id": "bypass-remains-explicit", "kind": "forbid_replacement", "vertex": "explicit-validation-bypass"},
+    {"id": "serve-state-remains-owned", "kind": "pin", "vertex": "serve-working-copy", "module": "serve"}
+  ],
+  "semantic_constraints": [
+    {
+      "id": "mutation-protocol-preservation",
+      "required": true,
+      "observation": "mutation-protocol-corpus",
+      "evidence_kind": "executed_observation",
+      "required_closure": "complete_for_declared_corpus",
+      "negative_control_id": "explicit-no-validate-bypass"
+    }
+  ],
+  "nonclaims": [
+    "The graph is a decision model of the mutation boundary, not a complete source-program model.",
+    "The declared corpus does not prove power-loss crash consistency or Office interoperability.",
+    "Description and change costs are consistent decision estimates, not literal compressed program sizes."
+  ]
+}

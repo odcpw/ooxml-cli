@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
 use crate::{
-    CliError, CliResult, copy_zip_with_binary_part_overrides_and_removals,
-    package_mutation_temp_path, relationships_part_for, validate,
+    CliError, CliResult, copy_zip_with_binary_part_overrides_and_removals, relationships_part_for,
     validate_xlsx_mutation_output_flags, zip_bytes, zip_text,
 };
 
@@ -190,17 +189,7 @@ where
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        package_mutation_temp_path(file, "vba-mutation")
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "vba-mutation");
 
     for key in text_overrides.keys().chain(binary_overrides.keys()) {
         removals.remove(key);
@@ -213,24 +202,18 @@ where
         removals,
     )?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
     let output_info = readback(&readback_path)?;
 
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.trim().is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
 
     let target = if options.dry_run {
         vba_output_placeholder(if output_info.macro_enabled {

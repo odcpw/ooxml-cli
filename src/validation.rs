@@ -2,14 +2,16 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeSet;
+use std::fs;
+use std::io::ErrorKind;
 
 use crate::{
-    CliResult, EXIT_PARTIAL_SUCCESS, EXIT_SUCCESS, EXIT_VALIDATION_FAILED, InspectPackageKind,
-    detect_inspect_package_type, find_docx_document_part, find_xlsx_workbook_part, local_name,
-    opc_part_lookup_key, opc_part_lookup_set, relationship_entries, relationship_source_uri,
-    relationships, relationships_part_for, resolve_relationship_target,
-    resolve_relationship_target_part_uri, workbook_sheets, xlsx_workbook_child_order,
-    zip_entry_names, zip_entry_set, zip_text,
+    CliError, CliResult, EXIT_PARTIAL_SUCCESS, EXIT_SUCCESS, EXIT_VALIDATION_FAILED,
+    InspectPackageKind, detect_inspect_package_type, find_docx_document_part,
+    find_xlsx_workbook_part, local_name, opc_part_lookup_key, opc_part_lookup_set,
+    relationship_entries, relationship_source_uri, relationships, relationships_part_for,
+    resolve_relationship_target, resolve_relationship_target_part_uri, workbook_sheets,
+    xlsx_workbook_child_order, zip_entry_names, zip_entry_set, zip_text,
 };
 
 pub(crate) fn validate(file: &str, strict: bool) -> CliResult<Value> {
@@ -34,6 +36,42 @@ pub(crate) fn validate_exit_code(report: &Value, strict: bool) -> i32 {
         EXIT_PARTIAL_SUCCESS
     } else {
         EXIT_SUCCESS
+    }
+}
+
+/// Enforce the strict validation gate for a package produced by a mutation.
+///
+/// `validate` is an observer: a successfully computed report can still describe
+/// an invalid package. Mutation paths must use this assertion boundary before
+/// they publish success or promote an artifact.
+pub(crate) fn validate_mutation_output(file: &str) -> CliResult<Value> {
+    let report = validate(file, true)?;
+    if validate_exit_code(&report, true) == EXIT_SUCCESS {
+        return Ok(report);
+    }
+    Err(CliError::validation_failed(format!(
+        "mutation output failed strict validation: {}",
+        serde_json::to_string(&report).expect("serialize validation report")
+    )))
+}
+
+/// Enforce strict validation and remove an invalid caller-owned artifact.
+///
+/// The caller is asserting that `file` is a staging/output artifact created by
+/// the current mutation, never the pre-existing input package.
+pub(crate) fn validate_owned_mutation_output(file: &str) -> CliResult<Value> {
+    match validate_mutation_output(file) {
+        Ok(report) => Ok(report),
+        Err(mut err) => {
+            if let Err(cleanup_err) = fs::remove_file(file)
+                && cleanup_err.kind() != ErrorKind::NotFound
+            {
+                err.message.push_str(&format!(
+                    "; failed to remove invalid mutation output {file}: {cleanup_err}"
+                ));
+            }
+            Err(err)
+        }
     }
 }
 

@@ -14,8 +14,8 @@ use crate::{
     is_xlsx_handle, normalize_xl_target, normalize_xlsx_cell_ref, parse_cell_ref, parse_cli_range,
     parse_xlsx_cell_handle, parse_xlsx_row_spans, range_bounds_ref, rebuild_xlsx_sheet_data,
     relationships, render_xlsx_row, resolve_sheet, resolve_sheet_by_sheet_id_unique,
-    shared_strings, sheet_cells, validate, workbook_sheets, xlsx_ranges_set_temp_path,
-    xlsx_sheet_data_span, xlsx_styles, xlsx_used_range_from_cell_refs, zip_text,
+    shared_strings, sheet_cells, workbook_sheets, xlsx_sheet_data_span, xlsx_styles,
+    xlsx_used_range_from_cell_refs, zip_text,
 };
 
 pub(crate) struct XlsxCellsSetOptions<'a> {
@@ -150,17 +150,7 @@ pub(crate) fn xlsx_cells_set(file: &str, options: XlsxCellsSetOptions<'_>) -> Cl
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        xlsx_ranges_set_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "xlsx-cells");
     let mut overrides = BTreeMap::new();
     let mut removals = BTreeSet::new();
     overrides.insert(sheet_part.clone(), updated_xml);
@@ -173,7 +163,7 @@ pub(crate) fn xlsx_cells_set(file: &str, options: XlsxCellsSetOptions<'_>) -> Cl
     )?;
     copy_zip_with_part_overrides_and_removals(file, &readback_path, &overrides, &removals)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
     let destination = xlsx_range_destination_json(
         &readback_path,
@@ -182,20 +172,14 @@ pub(crate) fn xlsx_cells_set(file: &str, options: XlsxCellsSetOptions<'_>) -> Cl
         &sheet_part,
         &target.cell_ref,
     )?;
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
 
     let mut result = Map::new();
     result.insert("file".to_string(), json!(file));
@@ -275,17 +259,7 @@ pub(crate) fn xlsx_cells_clear(file: &str, options: XlsxCellsClearOptions<'_>) -
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        xlsx_ranges_set_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "xlsx-cells");
     let mut overrides = BTreeMap::new();
     let mut removals = BTreeSet::new();
     overrides.insert(sheet_part.clone(), updated_xml);
@@ -298,7 +272,7 @@ pub(crate) fn xlsx_cells_clear(file: &str, options: XlsxCellsClearOptions<'_>) -
     )?;
     copy_zip_with_part_overrides_and_removals(file, &readback_path, &overrides, &removals)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
     let destination = xlsx_range_destination_json_with_max(
         &readback_path,
@@ -308,20 +282,14 @@ pub(crate) fn xlsx_cells_clear(file: &str, options: XlsxCellsClearOptions<'_>) -
         &range,
         options.readback_max_cells,
     )?;
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
 
     let mut result = Map::new();
     result.insert("file".to_string(), json!(file));
@@ -444,17 +412,7 @@ pub(crate) fn xlsx_cells_set_batch(
     } else {
         output_path
     };
-    let readback_path = if options.dry_run || options.in_place || output_path == Some(file) {
-        xlsx_ranges_set_temp_path(file)
-    } else {
-        output_path
-            .ok_or_else(|| {
-                CliError::invalid_args(
-                    "must specify exactly one of --out, --in-place, or --dry-run",
-                )
-            })?
-            .to_string()
-    };
+    let readback_path = crate::mutation_staging_path(file, output_path, "xlsx-cells");
     let mut overrides = BTreeMap::new();
     let mut removals = BTreeSet::new();
     overrides.insert(sheet_part.clone(), updated_xml);
@@ -467,7 +425,7 @@ pub(crate) fn xlsx_cells_set_batch(
     )?;
     copy_zip_with_part_overrides_and_removals(file, &readback_path, &overrides, &removals)?;
     if !options.no_validate {
-        validate(&readback_path, true)?;
+        crate::validate_owned_mutation_output(&readback_path)?;
     }
     let destination = xlsx_range_destination_json_with_max(
         &readback_path,
@@ -477,20 +435,14 @@ pub(crate) fn xlsx_cells_set_batch(
         &range,
         options.readback_max_cells,
     )?;
-    if options.dry_run {
-        let _ = fs::remove_file(&readback_path);
-    } else if options.in_place || output_path == Some(file) {
-        if let Some(backup_path) = options.backup.filter(|value| !value.is_empty()) {
-            fs::copy(file, backup_path)
-                .map_err(|err| CliError::unexpected(format!("failed to create backup: {err}")))?;
-        }
-        fs::rename(&readback_path, file)
-            .or_else(|_| {
-                fs::copy(&readback_path, file)?;
-                fs::remove_file(&readback_path)
-            })
-            .map_err(|err| CliError::unexpected(format!("failed to write output file: {err}")))?;
-    }
+    crate::finish_mutation_output(
+        file,
+        &readback_path,
+        output_path,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
 
     let mut result = Map::new();
     result.insert("file".to_string(), json!(file));
