@@ -6,6 +6,7 @@ use std::path::Path;
 
 use crate::xlsx_sheet_xml::{
     XlsxWorksheetRootBounds as WorksheetRootBounds,
+    xlsx_direct_worksheet_child_range as direct_worksheet_child_range,
     xlsx_worksheet_root_bounds_permissive as worksheet_root_bounds,
 };
 use crate::{
@@ -617,21 +618,6 @@ fn ensure_sheet_data_xml(xml: &str) -> CliResult<String> {
             element_name(&prefix, "sheetData"),
             element_name(&prefix, "sheetData")
         ),
-    )
-}
-
-fn direct_worksheet_child_range(
-    xml: &str,
-    root: &WorksheetRootBounds,
-    kind: &str,
-) -> CliResult<Option<crate::XmlNamedRange>> {
-    if root.self_closing || root.open_end >= root.close_start {
-        return Ok(None);
-    }
-    Ok(
-        xml_direct_child_ranges(xml, root.open_end, root.close_start)?
-            .into_iter()
-            .find(|child| child.kind == kind),
     )
 }
 

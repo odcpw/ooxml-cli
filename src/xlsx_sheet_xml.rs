@@ -3,8 +3,8 @@ use quick_xml::events::Event;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    CliError, CliResult, RangeBounds, attr, col_name, local_name, parse_cell_ref, parse_range,
-    render_xml_attrs, xml_attrs,
+    CliError, CliResult, RangeBounds, XmlNamedRange, attr, col_name, local_name, parse_cell_ref,
+    parse_range, render_xml_attrs, xml_attrs, xml_direct_child_ranges,
 };
 #[derive(Clone)]
 pub(crate) struct XlsxSheetDataSpan {
@@ -98,6 +98,21 @@ fn xlsx_worksheet_root_bounds_impl(
             _ => {}
         }
     }
+}
+
+pub(crate) fn xlsx_direct_worksheet_child_range(
+    xml: &str,
+    root: &XlsxWorksheetRootBounds,
+    kind: &str,
+) -> CliResult<Option<XmlNamedRange>> {
+    if root.self_closing || root.open_end >= root.close_start {
+        return Ok(None);
+    }
+    Ok(
+        xml_direct_child_ranges(xml, root.open_end, root.close_start)?
+            .into_iter()
+            .find(|child| child.kind == kind),
+    )
 }
 
 pub(crate) fn xlsx_sheet_data_span(xml: &str) -> CliResult<Option<XlsxSheetDataSpan>> {

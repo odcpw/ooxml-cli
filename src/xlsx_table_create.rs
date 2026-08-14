@@ -6,6 +6,7 @@ use std::path::Path;
 
 use crate::xlsx_sheet_xml::{
     XlsxWorksheetRootBounds as WorksheetRootBounds,
+    xlsx_direct_worksheet_child_range as direct_worksheet_child_range,
     xlsx_worksheet_root_bounds as worksheet_root_bounds,
 };
 use crate::{
@@ -568,21 +569,6 @@ fn add_xlsx_table_create_commands(
     );
     export.push_str(" --include-types --include-formulas");
     result.insert(export_key.to_string(), json!(export));
-}
-
-fn direct_worksheet_child_range(
-    xml: &str,
-    root: &WorksheetRootBounds,
-    kind: &str,
-) -> CliResult<Option<crate::XmlNamedRange>> {
-    if root.self_closing || root.open_end >= root.close_start {
-        return Ok(None);
-    }
-    Ok(
-        xml_direct_child_ranges(xml, root.open_end, root.close_start)?
-            .into_iter()
-            .find(|child| child.kind == kind),
-    )
 }
 
 fn insert_worksheet_child(
