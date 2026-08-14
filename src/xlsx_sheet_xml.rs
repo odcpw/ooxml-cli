@@ -31,6 +31,75 @@ pub(crate) struct XlsxCellSpan {
     pub(crate) has_formula: bool,
 }
 
+#[derive(Clone)]
+pub(crate) struct XlsxWorksheetRootBounds {
+    pub(crate) start: usize,
+    pub(crate) open_end: usize,
+    pub(crate) close_start: usize,
+    pub(crate) end: usize,
+    pub(crate) tag_name: String,
+    pub(crate) self_closing: bool,
+}
+
+pub(crate) fn xlsx_worksheet_root_bounds(xml: &str) -> CliResult<XlsxWorksheetRootBounds> {
+    xlsx_worksheet_root_bounds_impl(xml, true)
+}
+
+pub(crate) fn xlsx_worksheet_root_bounds_permissive(
+    xml: &str,
+) -> CliResult<XlsxWorksheetRootBounds> {
+    xlsx_worksheet_root_bounds_impl(xml, false)
+}
+
+fn xlsx_worksheet_root_bounds_impl(
+    xml: &str,
+    reject_other_root: bool,
+) -> CliResult<XlsxWorksheetRootBounds> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        let before = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "worksheet" => {
+                let open_end = reader.buffer_position() as usize;
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let close_tag = format!("</{tag_name}>");
+                let close_start = xml
+                    .rfind(&close_tag)
+                    .ok_or_else(|| CliError::unexpected("worksheet root has no closing tag"))?;
+                return Ok(XlsxWorksheetRootBounds {
+                    start: before,
+                    open_end,
+                    close_start,
+                    end: close_start + close_tag.len(),
+                    tag_name,
+                    self_closing: false,
+                });
+            }
+            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "worksheet" => {
+                let end = reader.buffer_position() as usize;
+                return Ok(XlsxWorksheetRootBounds {
+                    start: before,
+                    open_end: end,
+                    close_start: end,
+                    end,
+                    tag_name: String::from_utf8_lossy(e.name().as_ref()).to_string(),
+                    self_closing: true,
+                });
+            }
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if reject_other_root => {
+                return Err(CliError::unexpected(format!(
+                    "worksheet root is {:?}",
+                    local_name(e.name().as_ref())
+                )));
+            }
+            Ok(Event::Eof) => return Err(CliError::unexpected("worksheet root not found")),
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+}
+
 pub(crate) fn xlsx_sheet_data_span(xml: &str) -> CliResult<Option<XlsxSheetDataSpan>> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(false);
@@ -390,5 +459,26 @@ pub(crate) fn xlsx_used_range_from_cell_refs(xml: &str) -> Option<String> {
             col_name(max_col),
             max_row
         ))
+    }
+}
+
+#[cfg(test)]
+mod worksheet_root_tests {
+    use super::{xlsx_worksheet_root_bounds, xlsx_worksheet_root_bounds_permissive};
+
+    #[test]
+    fn strict_root_parser_rejects_a_nested_worksheet() {
+        let error = xlsx_worksheet_root_bounds("<root><worksheet/></root>")
+            .err()
+            .expect("strict callers reject a non-worksheet document root");
+        assert!(error.message.contains("root"));
+    }
+
+    #[test]
+    fn permissive_root_parser_preserves_nested_worksheet_discovery() {
+        let bounds = xlsx_worksheet_root_bounds_permissive("<root><worksheet/></root>")
+            .expect("legacy permissive callers find a nested worksheet");
+        assert!(bounds.self_closing);
+        assert_eq!(bounds.start, 6);
     }
 }

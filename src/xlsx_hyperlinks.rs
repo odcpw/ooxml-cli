@@ -4,6 +4,10 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use crate::xlsx_sheet_xml::{
+    XlsxWorksheetRootBounds as WorksheetRootBounds,
+    xlsx_worksheet_root_bounds_permissive as worksheet_root_bounds,
+};
 use crate::{
     CliError, CliResult, RelationshipEntry, WorkbookSheet, XmlNamedRange, allocate_relationship_id,
     command_arg, copy_zip_with_part_overrides, local_name, normalize_xl_target,
@@ -99,16 +103,6 @@ struct XlsxHyperlinkSheet {
     sheet: WorkbookSheet,
     part: String,
     xml: String,
-}
-
-#[derive(Clone)]
-struct WorksheetRootBounds {
-    start: usize,
-    open_end: usize,
-    close_start: usize,
-    end: usize,
-    tag_name: String,
-    self_closing: bool,
 }
 
 pub(crate) fn xlsx_hyperlinks_list(
@@ -783,45 +777,6 @@ fn check_hyperlink_guards(
 fn hyperlinks_range(sheet_xml: &str) -> CliResult<Option<XmlNamedRange>> {
     let root = worksheet_root_bounds(sheet_xml)?;
     direct_worksheet_child_range(sheet_xml, &root, "hyperlinks")
-}
-
-fn worksheet_root_bounds(xml: &str) -> CliResult<WorksheetRootBounds> {
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(false);
-    loop {
-        let before = reader.buffer_position() as usize;
-        match reader.read_event() {
-            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "worksheet" => {
-                let open_end = reader.buffer_position() as usize;
-                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                let close_tag = format!("</{tag_name}>");
-                let close_start = xml
-                    .rfind(&close_tag)
-                    .ok_or_else(|| CliError::unexpected("worksheet root has no closing tag"))?;
-                return Ok(WorksheetRootBounds {
-                    start: before,
-                    open_end,
-                    close_start,
-                    end: close_start + close_tag.len(),
-                    tag_name,
-                    self_closing: false,
-                });
-            }
-            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "worksheet" => {
-                return Ok(WorksheetRootBounds {
-                    start: before,
-                    open_end: reader.buffer_position() as usize,
-                    close_start: reader.buffer_position() as usize,
-                    end: reader.buffer_position() as usize,
-                    tag_name: String::from_utf8_lossy(e.name().as_ref()).to_string(),
-                    self_closing: true,
-                });
-            }
-            Ok(Event::Eof) => return Err(CliError::unexpected("worksheet root not found")),
-            Err(err) => return Err(CliError::unexpected(err.to_string())),
-            _ => {}
-        }
-    }
 }
 
 fn direct_worksheet_child_range(

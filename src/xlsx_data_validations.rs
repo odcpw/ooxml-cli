@@ -4,6 +4,10 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use crate::xlsx_sheet_xml::{
+    XlsxWorksheetRootBounds as WorksheetRootBounds,
+    xlsx_worksheet_root_bounds as worksheet_root_bounds,
+};
 use crate::{
     CliError, CliResult, WorkbookSheet, append_xml_text_event, command_arg,
     copy_zip_with_part_override, is_xml_text_event, local_name, normalize_xl_target, relationships,
@@ -11,16 +15,6 @@ use crate::{
     validate_xlsx_mutation_output_flags, workbook_sheets, xml_attrs_map, xml_direct_child_ranges,
     xml_escape, xml_fragment_bounds, xml_open_tag_from_start, xml_tag_prefix, zip_text,
 };
-
-#[derive(Clone)]
-struct WorksheetRootBounds {
-    start: usize,
-    open_end: usize,
-    close_start: usize,
-    end: usize,
-    tag_name: String,
-    self_closing: bool,
-}
 
 #[derive(Clone, Debug)]
 struct XlsxDataValidation {
@@ -1113,52 +1107,6 @@ fn write_data_validation_mutation(
         options.dry_run,
     )?;
     Ok(commit_path.map(ToOwned::to_owned))
-}
-
-fn worksheet_root_bounds(xml: &str) -> CliResult<WorksheetRootBounds> {
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(false);
-    loop {
-        let before = reader.buffer_position() as usize;
-        match reader.read_event() {
-            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "worksheet" => {
-                let open_end = reader.buffer_position() as usize;
-                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                let close_tag = format!("</{tag_name}>");
-                let close_start = xml
-                    .rfind(&close_tag)
-                    .ok_or_else(|| CliError::unexpected("worksheet root has no closing tag"))?;
-                return Ok(WorksheetRootBounds {
-                    start: before,
-                    open_end,
-                    close_start,
-                    end: close_start + close_tag.len(),
-                    tag_name,
-                    self_closing: false,
-                });
-            }
-            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == "worksheet" => {
-                let end = reader.buffer_position() as usize;
-                return Ok(WorksheetRootBounds {
-                    start: before,
-                    open_end: end,
-                    close_start: end,
-                    end,
-                    tag_name: String::from_utf8_lossy(e.name().as_ref()).to_string(),
-                    self_closing: true,
-                });
-            }
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                return Err(CliError::unexpected(format!(
-                    "worksheet root is {:?}",
-                    local_name(e.name().as_ref())
-                )));
-            }
-            Ok(Event::Eof) => return Err(CliError::unexpected("worksheet root not found")),
-            Err(err) => return Err(CliError::unexpected(err.to_string())),
-            _ => {}
-        }
-    }
 }
 
 fn insert_worksheet_child(
