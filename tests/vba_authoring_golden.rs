@@ -20,6 +20,13 @@ const CLASS_GOLDEN_INSPECT_JSON: &str =
     include_str!("../testdata/golden/vba-authoring/xlsx-class/inspect-bin.json");
 const CLASS_GOLDEN_SHA256: &str =
     "6afab85a97be6608d0bfdf011be599a2c4f1f018447788def5a289d9814f6172";
+const USERFORM_FIXTURE_DIR: &str = "testdata/golden/vba-authoring/xlsx-userform";
+const USERFORM_GOLDEN_BIN: &[u8] =
+    include_bytes!("../testdata/golden/vba-authoring/xlsx-userform/vbaProject.bin");
+const USERFORM_GOLDEN_INSPECT_JSON: &str =
+    include_str!("../testdata/golden/vba-authoring/xlsx-userform/inspect-bin.json");
+const USERFORM_GOLDEN_SHA256: &str =
+    "2f2e8d21d1615bf57d7df66a257b6c8f1091109794138905c81ac4f7d5fce3c0";
 
 fn run_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
     let output = Command::new(env!("CARGO_BIN_EXE_ooxml"))
@@ -567,6 +574,100 @@ fn xlsx_class_vba_build_bin_matches_golden_and_attaches() {
         fs::read_to_string(extract_dir.join("Worker.cls")).expect("read extracted Worker");
     assert!(extracted_worker.contains("Public Function Message()"));
     assert!(extracted_worker.contains("Hello from build-bin attach"));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_userform_vba_build_bin_matches_golden_and_is_byte_deterministic() {
+    let temp_dir = temp_dir("vba-xlsx-userform-authoring-golden");
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("create temp dir");
+
+    let agent_source = format!("{USERFORM_FIXTURE_DIR}/AgentSmoke.bas");
+    let form_source = format!("{USERFORM_FIXTURE_DIR}/Dialog.frm");
+    let generated_bin_path = temp_dir.join("vbaProject.bin");
+    let second_bin_path = temp_dir.join("vbaProject-second.bin");
+    let generated_bin = path_string(&generated_bin_path);
+    let second_bin = path_string(&second_bin_path);
+
+    let build = assert_ok(
+        "build xlsx userform vbaProject.bin",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "build-bin",
+            "--family",
+            "xlsx",
+            "--source",
+            &agent_source,
+            "--source",
+            &form_source,
+            "--out",
+            &generated_bin,
+        ]),
+    );
+    assert_eq!(build["backend"], "pure-rust");
+    assert_eq!(build["family"], "xlsx");
+    assert_eq!(build["bytesWritten"], USERFORM_GOLDEN_BIN.len());
+    assert_eq!(build["sha256"], USERFORM_GOLDEN_SHA256);
+    assert_eq!(build["modules"].as_array().expect("build modules").len(), 4);
+    assert_eq!(build["modules"][0]["name"], "ThisWorkbook");
+    assert_eq!(build["modules"][0]["hostSynthesized"], true);
+    assert_eq!(build["modules"][1]["name"], "Sheet1");
+    assert_eq!(build["modules"][1]["hostSynthesized"], true);
+    assert_eq!(build["modules"][2]["name"], "AgentSmoke");
+    assert_eq!(build["modules"][2]["kind"], "standard");
+    assert_eq!(build["modules"][3]["name"], "Dialog");
+    assert_eq!(build["modules"][3]["kind"], "userform");
+
+    let _second_build = assert_ok(
+        "build xlsx userform vbaProject.bin a second time",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "build-bin",
+            "--family",
+            "xlsx",
+            "--source",
+            &agent_source,
+            "--source",
+            &form_source,
+            "--out",
+            &second_bin,
+        ]),
+    );
+    let generated_bytes = fs::read(&generated_bin_path).expect("read generated vbaProject.bin");
+    let second_bytes = fs::read(&second_bin_path).expect("read second vbaProject.bin");
+    assert_eq!(
+        generated_bytes, second_bytes,
+        "two userform builds must be byte-stable"
+    );
+    assert_eq!(
+        generated_bytes, USERFORM_GOLDEN_BIN,
+        "userform vbaProject.bin golden drift"
+    );
+    assert_eq!(sha256_hex(&generated_bytes), USERFORM_GOLDEN_SHA256);
+
+    let mut inspect = assert_ok(
+        "inspect generated userform vbaProject.bin",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "inspect-bin",
+            &generated_bin,
+            "--family",
+            "xlsx",
+        ]),
+    );
+    let golden_inspect: Value = serde_json::from_str(USERFORM_GOLDEN_INSPECT_JSON)
+        .expect("parse userform inspect-bin golden");
+    inspect["file"] = golden_inspect["file"].clone();
+    inspect["attachCommandTemplate"] = golden_inspect["attachCommandTemplate"].clone();
+    assert_eq!(
+        inspect, golden_inspect,
+        "userform inspect-bin JSON golden drift"
+    );
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

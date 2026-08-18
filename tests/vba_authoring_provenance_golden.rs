@@ -65,6 +65,15 @@ const FIXTURES: &[Fixture] = &[
         expected_sha256: "21479229375710ab564da290ba3e32f430a70ec1bbeaac9b4998a18037faf19c",
         sources: &["AgentSmoke.bas"],
     },
+    Fixture {
+        name: "xlsx-userform",
+        family: "xlsx",
+        provenance: include_str!("../testdata/golden/vba-authoring/xlsx-userform/PROVENANCE.md"),
+        bin: include_bytes!("../testdata/golden/vba-authoring/xlsx-userform/vbaProject.bin"),
+        expected_size: 7680,
+        expected_sha256: "2f2e8d21d1615bf57d7df66a257b6c8f1091109794138905c81ac4f7d5fce3c0",
+        sources: &["AgentSmoke.bas", "Dialog.frm"],
+    },
 ];
 
 #[test]
