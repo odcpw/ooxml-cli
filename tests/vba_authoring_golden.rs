@@ -27,6 +27,7 @@ const USERFORM_GOLDEN_INSPECT_JSON: &str =
     include_str!("../testdata/golden/vba-authoring/xlsx-userform/inspect-bin.json");
 const USERFORM_GOLDEN_SHA256: &str =
     "2f2e8d21d1615bf57d7df66a257b6c8f1091109794138905c81ac4f7d5fce3c0";
+const USERFORM_RUNTIME_WARNING: &str = "generated MSForms UserForms open as package content but are not runtime-loadable; treat as package/list/extract support";
 
 fn run_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
     let output = Command::new(env!("CARGO_BIN_EXE_ooxml"))
@@ -611,6 +612,14 @@ fn xlsx_userform_vba_build_bin_matches_golden_and_is_byte_deterministic() {
     assert_eq!(build["family"], "xlsx");
     assert_eq!(build["bytesWritten"], USERFORM_GOLDEN_BIN.len());
     assert_eq!(build["sha256"], USERFORM_GOLDEN_SHA256);
+    assert_eq!(build["userFormsRuntimeLoadable"], false);
+    assert!(
+        build["warnings"]
+            .as_array()
+            .expect("build warnings")
+            .iter()
+            .any(|warning| warning == USERFORM_RUNTIME_WARNING)
+    );
     assert_eq!(build["modules"].as_array().expect("build modules").len(), 4);
     assert_eq!(build["modules"][0]["name"], "ThisWorkbook");
     assert_eq!(build["modules"][0]["hostSynthesized"], true);
@@ -770,8 +779,17 @@ fn xlsx_userform_vba_build_bin_matches_golden_and_is_byte_deterministic() {
             &rebuilt,
         ]),
     );
+    assert_eq!(rebuild["userFormsRuntimeLoadable"], false);
+    assert_eq!(rebuild["authoring"]["userFormsRuntimeLoadable"], false);
     assert_eq!(rebuild["authoring"]["sha256"], USERFORM_GOLDEN_SHA256);
     assert_eq!(rebuild["sourcesDiscovered"].as_array().unwrap().len(), 2);
+    assert!(
+        rebuild["authoring"]["warnings"]
+            .as_array()
+            .expect("rebuild warnings")
+            .iter()
+            .any(|warning| warning == USERFORM_RUNTIME_WARNING)
+    );
 
     let _rebuilt_form_extract = assert_ok(
         "extract Dialog from rebuilt userform workbook",
