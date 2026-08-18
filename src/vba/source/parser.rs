@@ -124,6 +124,7 @@ pub(super) fn parse_source_project(data: &[u8]) -> Result<SourceProject, String>
             primary_selector: String::new(),
             selectors: Vec::new(),
             source: String::new(),
+            user_form_caption: None,
             warnings: Vec::new(),
         };
         if item.name.is_empty() {
@@ -138,6 +139,10 @@ pub(super) fn parse_source_project(data: &[u8]) -> Result<SourceProject, String>
             || user_form_names.contains(&item.stream_name.to_ascii_lowercase())
         {
             item.kind = "userform".to_string();
+        }
+        if item.kind.eq_ignore_ascii_case("userform") {
+            item.user_form_caption =
+                user_form_caption_from_storage(&cfb_file, &item.stream_name, code_page);
         }
         item.extension = extension_for_module_kind(&item.kind).to_string();
         let stream_path = format!("VBA/{}", item.stream_name);
@@ -175,6 +180,66 @@ pub(super) fn parse_source_project(data: &[u8]) -> Result<SourceProject, String>
     }
     project.modules.sort_by_key(|module| module.number);
     Ok(project)
+}
+
+fn user_form_caption_from_storage(
+    cfb_file: &CfbFile<'_>,
+    stream_name: &str,
+    code_page: i32,
+) -> Option<String> {
+    let frame = cfb_file
+        .stream(&format!("{stream_name}/\u{0003}VBFrame"))
+        .ok()?;
+    let text = std::str::from_utf8(&frame)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|_| decode_module_source(&frame, code_page));
+    user_form_caption_from_designer(&text)
+}
+
+fn user_form_caption_from_designer(text: &str) -> Option<String> {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let lines = normalized.lines().collect::<Vec<_>>();
+    if !lines
+        .first()
+        .is_some_and(|line| line.trim().eq_ignore_ascii_case("VERSION 5.00"))
+    {
+        return None;
+    }
+
+    let mut depth = 0_usize;
+    for line in lines.iter().skip(1) {
+        let trimmed = line.trim();
+        if trimmed
+            .get(..6)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("begin "))
+        {
+            depth += 1;
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case("End") && depth > 0 {
+            depth -= 1;
+            if depth == 0 {
+                return None;
+            }
+            continue;
+        }
+        if depth != 1 {
+            continue;
+        }
+        let Some((name, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if !name.trim().eq_ignore_ascii_case("Caption") {
+            continue;
+        }
+        let value = value.trim();
+        let value = value
+            .strip_prefix('"')
+            .and_then(|inner| inner.strip_suffix('"'))
+            .unwrap_or(value);
+        return Some(value.replace("\"\"", "\""));
+    }
+    None
 }
 
 fn user_form_names_from_project_metadata(project: &SourceProject) -> BTreeSet<String> {

@@ -1,5 +1,8 @@
-use super::super::codepage::encode_windows_1252_char;
 use super::{VbaAuthoringError, VbaAuthoringResult};
+
+pub(super) use super::super::codec::{
+    compress_container_literals, normalize_vba_line_endings, utf16le_bytes,
+};
 
 pub(super) fn encode_module_source(
     source: &[u8],
@@ -10,79 +13,8 @@ pub(super) fn encode_module_source(
             "pure VBA authoring currently supports only Windows-1252 code page 1252",
         ));
     }
-    let mut text = normalize_vba_line_endings(&String::from_utf8_lossy(source));
-    let mut warnings = Vec::new();
-    if !text.ends_with("\r\n") {
-        text.push_str("\r\n");
-        warnings.push("appended trailing CRLF to VBA source".to_string());
-    }
-
-    let mut out = Vec::with_capacity(text.len());
-    for ch in text.chars() {
-        let Some(encoded) = encode_windows_1252_char(ch) else {
-            return Err(VbaAuthoringError::invalid_model(format!(
-                "VBA source contains character {ch:?} that cannot be encoded with code page {code_page}"
-            )));
-        };
-        out.push(encoded);
-    }
-    Ok((out, warnings))
-}
-
-pub(super) fn normalize_vba_line_endings(text: &str) -> String {
-    text.replace("\r\n", "\n")
-        .replace('\r', "\n")
-        .replace('\n', "\r\n")
-}
-
-pub(super) fn compress_container_literals(mut raw: &[u8]) -> Vec<u8> {
-    let mut out = vec![0x01];
-    while raw.len() >= 4096 {
-        append_raw_chunk(&mut out, &raw[..4096]);
-        raw = &raw[4096..];
-    }
-    if raw.is_empty() {
-        return out;
-    }
-    if literal_chunk_size(raw.len()) > 4096 {
-        append_raw_chunk(&mut out, raw);
-    } else {
-        append_literal_chunk(&mut out, raw);
-    }
-    out
-}
-
-fn append_raw_chunk(out: &mut Vec<u8>, raw: &[u8]) {
-    debug_assert!(!raw.is_empty());
-    debug_assert!(raw.len() <= 4096);
-    let header = ((raw.len() - 1) as u16) | 0x3000;
-    out.extend(header.to_le_bytes());
-    out.extend_from_slice(raw);
-}
-
-fn append_literal_chunk(out: &mut Vec<u8>, literal_chunk: &[u8]) {
-    debug_assert!(literal_chunk_size(literal_chunk.len()) <= 4096);
-    let mut chunk = Vec::with_capacity(literal_chunk_size(literal_chunk.len()));
-    let mut offset = 0;
-    while offset < literal_chunk.len() {
-        let n = (literal_chunk.len() - offset).min(8);
-        chunk.push(0x00);
-        chunk.extend_from_slice(&literal_chunk[offset..offset + n]);
-        offset += n;
-    }
-    let header = ((chunk.len() - 1) as u16) | 0x3000 | 0x8000;
-    out.extend(header.to_le_bytes());
-    out.extend(chunk);
-}
-
-fn literal_chunk_size(literal_len: usize) -> usize {
-    literal_len + literal_len.div_ceil(8)
-}
-
-pub(super) fn utf16le_bytes(text: &str) -> Vec<u8> {
-    text.encode_utf16()
-        .flat_map(|unit| unit.to_le_bytes())
-        .collect()
+    super::super::codec::encode_module_source(source, i32::from(code_page))
+        .map_err(VbaAuthoringError::invalid_model)
 }
 
 #[cfg(test)]
@@ -163,13 +95,13 @@ mod tests {
     }
 
     #[test]
-    fn module_source_rejects_undefined_windows_1252_controls() {
-        let error = encode_module_source(
+    fn module_source_preserves_undefined_windows_1252_controls() {
+        let (encoded, _) = encode_module_source(
             "Sub Hi()\n    MsgBox \"\u{0081}\"\nEnd Sub".as_bytes(),
             1252,
         )
-        .expect_err("undefined CP1252 control should fail");
-        assert!(error.message.contains("cannot be encoded"));
+        .expect("undefined CP1252 control should round-trip");
+        assert!(encoded.contains(&0x81));
     }
 
     #[test]

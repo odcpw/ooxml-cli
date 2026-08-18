@@ -3,6 +3,8 @@
 use super::*;
 use std::collections::BTreeMap;
 
+const USERFORM_RUNTIME_WARNING: &str = "generated MSForms UserForms open as package content but are not runtime-loadable; treat as package/list/extract support";
+
 #[test]
 fn vba_legacy_create_validates_contract_and_non_windows_platform_guard() {
     let suffix = std::time::SystemTime::now()
@@ -376,6 +378,15 @@ fn vba_pure_create_userform_xlsm_builds_and_reads_back_without_office_com() {
     let create = stdout.expect("pure userform create stdout");
     assert_eq!(create["backend"], "pure-rust");
     assert_eq!(create["createMode"], "pure");
+    assert_eq!(create["userFormsRuntimeLoadable"], false);
+    assert_eq!(create["authoring"]["userFormsRuntimeLoadable"], false);
+    assert!(
+        create["authoring"]["warnings"]
+            .as_array()
+            .expect("userform warnings")
+            .iter()
+            .any(|warning| warning == USERFORM_RUNTIME_WARNING)
+    );
     let authored_modules = create["authoring"]["modules"].as_array().unwrap();
     assert_eq!(authored_modules.len(), 4);
     assert_eq!(authored_modules[0]["name"], "ThisWorkbook");
@@ -421,9 +432,11 @@ fn vba_pure_create_userform_xlsm_builds_and_reads_back_without_office_com() {
     assert_eq!(code, 0, "extract Dialog");
     assert_eq!(stderr, None, "extract Dialog stderr");
     let extracted_form = fs::read_to_string(extract_dir.join("Dialog.frm")).expect("Dialog.frm");
+    assert!(extracted_form.starts_with(
+        "VERSION 5.00\r\nBegin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} Dialog\r\n   Caption = \"Agent Dialog\"\r\nEnd\r\n"
+    ));
     assert!(extracted_form.contains("Attribute VB_Name = \"Dialog\""));
     assert!(extracted_form.contains("Private Sub UserForm_Initialize()"));
-    assert!(!extracted_form.contains("VERSION 5.00"));
 
     let (code, _stdout, stderr) =
         run_ooxml(&["--json", "vba", "extract-bin", &output, "--out", &bin]);

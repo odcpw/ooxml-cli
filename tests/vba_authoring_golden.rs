@@ -20,6 +20,14 @@ const CLASS_GOLDEN_INSPECT_JSON: &str =
     include_str!("../testdata/golden/vba-authoring/xlsx-class/inspect-bin.json");
 const CLASS_GOLDEN_SHA256: &str =
     "6afab85a97be6608d0bfdf011be599a2c4f1f018447788def5a289d9814f6172";
+const USERFORM_FIXTURE_DIR: &str = "testdata/golden/vba-authoring/xlsx-userform";
+const USERFORM_GOLDEN_BIN: &[u8] =
+    include_bytes!("../testdata/golden/vba-authoring/xlsx-userform/vbaProject.bin");
+const USERFORM_GOLDEN_INSPECT_JSON: &str =
+    include_str!("../testdata/golden/vba-authoring/xlsx-userform/inspect-bin.json");
+const USERFORM_GOLDEN_SHA256: &str =
+    "2f2e8d21d1615bf57d7df66a257b6c8f1091109794138905c81ac4f7d5fce3c0";
+const USERFORM_RUNTIME_WARNING: &str = "generated MSForms UserForms open as package content but are not runtime-loadable; treat as package/list/extract support";
 
 fn run_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
     let output = Command::new(env!("CARGO_BIN_EXE_ooxml"))
@@ -567,6 +575,242 @@ fn xlsx_class_vba_build_bin_matches_golden_and_attaches() {
         fs::read_to_string(extract_dir.join("Worker.cls")).expect("read extracted Worker");
     assert!(extracted_worker.contains("Public Function Message()"));
     assert!(extracted_worker.contains("Hello from build-bin attach"));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_userform_vba_build_bin_matches_golden_and_is_byte_deterministic() {
+    let temp_dir = temp_dir("vba-xlsx-userform-authoring-golden");
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("create temp dir");
+
+    let agent_source = format!("{USERFORM_FIXTURE_DIR}/AgentSmoke.bas");
+    let form_source = format!("{USERFORM_FIXTURE_DIR}/Dialog.frm");
+    let generated_bin_path = temp_dir.join("vbaProject.bin");
+    let second_bin_path = temp_dir.join("vbaProject-second.bin");
+    let generated_bin = path_string(&generated_bin_path);
+    let second_bin = path_string(&second_bin_path);
+
+    let build = assert_ok(
+        "build xlsx userform vbaProject.bin",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "build-bin",
+            "--family",
+            "xlsx",
+            "--source",
+            &agent_source,
+            "--source",
+            &form_source,
+            "--out",
+            &generated_bin,
+        ]),
+    );
+    assert_eq!(build["backend"], "pure-rust");
+    assert_eq!(build["family"], "xlsx");
+    assert_eq!(build["bytesWritten"], USERFORM_GOLDEN_BIN.len());
+    assert_eq!(build["sha256"], USERFORM_GOLDEN_SHA256);
+    assert_eq!(build["userFormsRuntimeLoadable"], false);
+    assert!(
+        build["warnings"]
+            .as_array()
+            .expect("build warnings")
+            .iter()
+            .any(|warning| warning == USERFORM_RUNTIME_WARNING)
+    );
+    assert_eq!(build["modules"].as_array().expect("build modules").len(), 4);
+    assert_eq!(build["modules"][0]["name"], "ThisWorkbook");
+    assert_eq!(build["modules"][0]["hostSynthesized"], true);
+    assert_eq!(build["modules"][1]["name"], "Sheet1");
+    assert_eq!(build["modules"][1]["hostSynthesized"], true);
+    assert_eq!(build["modules"][2]["name"], "AgentSmoke");
+    assert_eq!(build["modules"][2]["kind"], "standard");
+    assert_eq!(build["modules"][3]["name"], "Dialog");
+    assert_eq!(build["modules"][3]["kind"], "userform");
+
+    let _second_build = assert_ok(
+        "build xlsx userform vbaProject.bin a second time",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "build-bin",
+            "--family",
+            "xlsx",
+            "--source",
+            &agent_source,
+            "--source",
+            &form_source,
+            "--out",
+            &second_bin,
+        ]),
+    );
+    let generated_bytes = fs::read(&generated_bin_path).expect("read generated vbaProject.bin");
+    let second_bytes = fs::read(&second_bin_path).expect("read second vbaProject.bin");
+    assert_eq!(
+        generated_bytes, second_bytes,
+        "two userform builds must be byte-stable"
+    );
+    assert_eq!(
+        generated_bytes, USERFORM_GOLDEN_BIN,
+        "userform vbaProject.bin golden drift"
+    );
+    assert_eq!(sha256_hex(&generated_bytes), USERFORM_GOLDEN_SHA256);
+
+    let mut inspect = assert_ok(
+        "inspect generated userform vbaProject.bin",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "inspect-bin",
+            &generated_bin,
+            "--family",
+            "xlsx",
+        ]),
+    );
+    let golden_inspect: Value = serde_json::from_str(USERFORM_GOLDEN_INSPECT_JSON)
+        .expect("parse userform inspect-bin golden");
+    inspect["file"] = golden_inspect["file"].clone();
+    inspect["attachCommandTemplate"] = golden_inspect["attachCommandTemplate"].clone();
+    assert_eq!(
+        inspect, golden_inspect,
+        "userform inspect-bin JSON golden drift"
+    );
+
+    let scaffold_path = temp_dir.join("scaffold.xlsx");
+    let attached_path = temp_dir.join("userform.xlsm");
+    let extract_dir = temp_dir.join("macros");
+    let rebuilt_path = temp_dir.join("rebuilt.xlsm");
+    let rebuilt_extract_dir = temp_dir.join("rebuilt-macros");
+    let scaffold = path_string(&scaffold_path);
+    let attached = path_string(&attached_path);
+    let extract = path_string(&extract_dir);
+    let rebuilt = path_string(&rebuilt_path);
+    let rebuilt_extract = path_string(&rebuilt_extract_dir);
+
+    let scaffold_result = assert_ok(
+        "scaffold workbook for userform VBA",
+        run_ooxml(&["--json", "xlsx", "scaffold", &scaffold, "--force"]),
+    );
+    assert_eq!(scaffold_result["family"], "xlsx");
+    assert_eq!(scaffold_result["created"], true);
+
+    let attach = assert_ok(
+        "attach userform vbaProject.bin to scaffolded workbook",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "attach",
+            &scaffold,
+            "--bin",
+            &generated_bin,
+            "--out",
+            &attached,
+        ]),
+    );
+    assert_eq!(attach["result"]["action"], "attach");
+    assert_eq!(attach["result"]["family"], "xlsx");
+    assert_eq!(attach["result"]["macroEnabled"], true);
+
+    let _agent_extract = assert_ok(
+        "extract AgentSmoke from userform workbook",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "extract",
+            &attached,
+            "--out-dir",
+            &extract,
+            "--module",
+            "module:AgentSmoke",
+        ]),
+    );
+    let form_extract = assert_ok(
+        "extract Dialog from userform workbook",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "extract",
+            &attached,
+            "--out-dir",
+            &extract,
+            "--module",
+            "module:Dialog",
+        ]),
+    );
+    assert_eq!(form_extract["modules"][0]["name"], "Dialog");
+    assert_eq!(form_extract["modules"][0]["kind"], "userform");
+
+    let extracted_agent =
+        fs::read_to_string(extract_dir.join("AgentSmoke.bas")).expect("read AgentSmoke.bas");
+    let fixture_agent = fs::read_to_string(&agent_source).expect("read fixture AgentSmoke.bas");
+    assert_eq!(
+        normalize_newlines(&extracted_agent),
+        normalize_newlines(&fixture_agent),
+        "extracted standard source drifted from userform fixture"
+    );
+    let extracted_form =
+        fs::read_to_string(extract_dir.join("Dialog.frm")).expect("read Dialog.frm");
+    let fixture_form = fs::read_to_string(&form_source).expect("read fixture Dialog.frm");
+    assert_eq!(
+        normalize_newlines(&extracted_form),
+        normalize_newlines(&fixture_form),
+        "extracted UserForm wrapper or caption drifted from fixture"
+    );
+    assert!(extracted_form.starts_with(
+        "VERSION 5.00\r\nBegin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} Dialog\r\n   Caption = \"Golden Dialog\"\r\nEnd\r\nAttribute VB_Name = \"Dialog\"\r\n"
+    ));
+    assert!(
+        extracted_form
+            .contains("    Caption = \"Runtime caption must not replace designer caption\"\r\n")
+    );
+
+    let rebuild = assert_ok(
+        "rebuild userform workbook from extracted sources",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "rebuild",
+            &attached,
+            "--source-dir",
+            &extract,
+            "--out",
+            &rebuilt,
+        ]),
+    );
+    assert_eq!(rebuild["userFormsRuntimeLoadable"], false);
+    assert_eq!(rebuild["authoring"]["userFormsRuntimeLoadable"], false);
+    assert_eq!(rebuild["authoring"]["sha256"], USERFORM_GOLDEN_SHA256);
+    assert_eq!(rebuild["sourcesDiscovered"].as_array().unwrap().len(), 2);
+    assert!(
+        rebuild["authoring"]["warnings"]
+            .as_array()
+            .expect("rebuild warnings")
+            .iter()
+            .any(|warning| warning == USERFORM_RUNTIME_WARNING)
+    );
+
+    let _rebuilt_form_extract = assert_ok(
+        "extract Dialog from rebuilt userform workbook",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "extract",
+            &rebuilt,
+            "--out-dir",
+            &rebuilt_extract,
+            "--module",
+            "module:Dialog",
+        ]),
+    );
+    let rebuilt_form = fs::read_to_string(rebuilt_extract_dir.join("Dialog.frm"))
+        .expect("read rebuilt Dialog.frm");
+    assert_eq!(
+        normalize_newlines(&rebuilt_form),
+        normalize_newlines(&fixture_form),
+        "extract-to-rebuild must preserve the designer caption"
+    );
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

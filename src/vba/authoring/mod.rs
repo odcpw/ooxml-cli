@@ -3,7 +3,7 @@ mod forms;
 mod model;
 mod records;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -19,6 +19,8 @@ use super::model::VbaMutationOptions;
 use super::mutation::attach_vba_project_bytes;
 
 type VbaStreamMap = BTreeMap<String, Vec<u8>>;
+
+const USERFORM_RUNTIME_WARNING: &str = "generated MSForms UserForms open as package content but are not runtime-loadable; treat as package/list/extract support";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VbaAuthoringErrorKind {
@@ -151,6 +153,7 @@ struct SourceModuleInput {
     path: String,
     module: VbaModuleModel,
     inserted_vb_name: bool,
+    ignored_frx_sidecar: Option<String>,
 }
 
 struct BuildBinOutcome {
@@ -201,6 +204,7 @@ pub(crate) fn vba_build_bin(options: VbaBuildBinOptions<'_>) -> CliResult<Value>
         "sources".to_string(),
         source_summary_json(&outcome.source_modules),
     );
+    insert_userform_runtime_flag(&mut result, &outcome);
     result.insert("warnings".to_string(), json!(authoring_warnings(&outcome)));
     result.insert(
         "inspectBinCommand".to_string(),
@@ -226,19 +230,8 @@ pub(crate) fn vba_create_pure(file: &str, options: VbaPureCreateOptions<'_>) -> 
     };
     map.insert("backend".to_string(), json!("pure-rust"));
     map.insert("createMode".to_string(), json!("pure"));
-    map.insert(
-        "authoring".to_string(),
-        json!({
-            "family": outcome.family.clone(),
-            "projectName": outcome.project.project_name.clone(),
-            "codePage": outcome.project.code_page,
-            "bytesGenerated": outcome.bin.len(),
-            "sha256": outcome.sha256.clone(),
-            "modules": module_summary_json(&outcome.project),
-            "sources": source_summary_json(&outcome.source_modules),
-            "warnings": authoring_warnings(&outcome),
-        }),
-    );
+    insert_userform_runtime_flag(map, &outcome);
+    map.insert("authoring".to_string(), authoring_summary_json(&outcome));
     Ok(result)
 }
 
@@ -254,19 +247,8 @@ pub(crate) fn vba_rebuild(file: &str, options: VbaRebuildOptions<'_>) -> CliResu
     map.insert("rebuildMode".to_string(), json!("pure"));
     map.insert("sourceDir".to_string(), json!(options.source_dir));
     map.insert("sourcesDiscovered".to_string(), json!(source_paths));
-    map.insert(
-        "authoring".to_string(),
-        json!({
-            "family": outcome.family.clone(),
-            "projectName": outcome.project.project_name.clone(),
-            "codePage": outcome.project.code_page,
-            "bytesGenerated": outcome.bin.len(),
-            "sha256": outcome.sha256.clone(),
-            "modules": module_summary_json(&outcome.project),
-            "sources": source_summary_json(&outcome.source_modules),
-            "warnings": authoring_warnings(&outcome),
-        }),
-    );
+    insert_userform_runtime_flag(map, &outcome);
+    map.insert("authoring".to_string(), authoring_summary_json(&outcome));
     Ok(result)
 }
 
@@ -325,6 +307,15 @@ fn collect_source_dir_sources(source_dir: &str) -> CliResult<Vec<String>> {
             .to_ascii_lowercase()
             .cmp(&right.to_string_lossy().to_ascii_lowercase())
             .then_with(|| left.cmp(right))
+    });
+    let userform_keys = sources
+        .iter()
+        .filter(|path| path_has_extension(path, "frm"))
+        .filter_map(|path| userform_sidecar_key(path))
+        .collect::<BTreeSet<_>>();
+    sources.retain(|path| {
+        !path_has_extension(path, "frx")
+            || userform_sidecar_key(path).is_none_or(|key| !userform_keys.contains(&key))
     });
     if sources.is_empty() {
         return Err(CliError::target_not_found(format!(
@@ -455,6 +446,37 @@ fn module_summary_json(project: &VbaProjectModel) -> Value {
     )
 }
 
+fn authoring_summary_json(outcome: &BuildBinOutcome) -> Value {
+    let mut result = Map::new();
+    result.insert("family".to_string(), json!(outcome.family.clone()));
+    result.insert(
+        "projectName".to_string(),
+        json!(outcome.project.project_name.clone()),
+    );
+    result.insert("codePage".to_string(), json!(outcome.project.code_page));
+    result.insert("bytesGenerated".to_string(), json!(outcome.bin.len()));
+    result.insert("sha256".to_string(), json!(outcome.sha256.clone()));
+    result.insert("modules".to_string(), module_summary_json(&outcome.project));
+    result.insert(
+        "sources".to_string(),
+        source_summary_json(&outcome.source_modules),
+    );
+    insert_userform_runtime_flag(&mut result, outcome);
+    result.insert("warnings".to_string(), json!(authoring_warnings(outcome)));
+    Value::Object(result)
+}
+
+fn insert_userform_runtime_flag(result: &mut Map<String, Value>, outcome: &BuildBinOutcome) {
+    if outcome
+        .project
+        .modules
+        .iter()
+        .any(|module| module.kind == VbaModuleKind::UserForm)
+    {
+        result.insert("userFormsRuntimeLoadable".to_string(), json!(false));
+    }
+}
+
 fn needs_excel_host_document_modules(modules: &[VbaModuleModel]) -> bool {
     modules
         .iter()
@@ -520,6 +542,22 @@ fn authoring_warnings(outcome: &BuildBinOutcome) -> Vec<String> {
             "inserted Attribute VB_Name for module(s): {}",
             outcome.inserted_vb_names.join(", ")
         ));
+    }
+    for source in &outcome.source_modules {
+        if let Some(sidecar) = &source.ignored_frx_sidecar {
+            warnings.push(format!(
+                "ignored adjacent UserForm .frx sidecar {sidecar} next to {}; pure UserForm authoring does not import .frx data",
+                source.path
+            ));
+        }
+    }
+    if outcome
+        .project
+        .modules
+        .iter()
+        .any(|module| module.kind == VbaModuleKind::UserForm)
+    {
+        warnings.push(USERFORM_RUNTIME_WARNING.to_string());
     }
     warnings.push(
         "generated vbaProject.bin is source-only/cache-free; Office is expected to regenerate compiled cache streams on open"
@@ -587,12 +625,16 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
         )));
     }
     let kind = source_kind_from_path(path)?;
-    let raw_text = String::from_utf8_lossy(&data);
-    let normalized_raw_text = codec::normalize_vba_line_endings(&raw_text);
+    let ignored_frx_sidecar = (kind == VbaModuleKind::UserForm)
+        .then(|| adjacent_frx_sidecar(Path::new(path)))
+        .flatten()
+        .map(|sidecar| stable_path_display(&sidecar.to_string_lossy()));
+    let raw_text = decode_source_file_text(path, &data)?;
+    let normalized_raw_text = codec::normalize_vba_line_endings(raw_text);
     let user_form_caption = (kind == VbaModuleKind::UserForm)
         .then(|| userform_caption_from_export(&normalized_raw_text))
         .flatten();
-    let text = normalized_source_text_for_kind(kind, &raw_text);
+    let text = normalized_source_text_for_kind(kind, raw_text);
     let attr_name = vb_name_attribute(&text);
     let name = attr_name.unwrap_or_else(|| {
         Path::new(path)
@@ -603,18 +645,17 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
     });
     let inserted_vb_name = vb_name_attribute(&text).is_none();
     let mut source_text = if inserted_vb_name {
-        format!("Attribute VB_Name = \"{name}\"\r\n{text}").into_bytes()
+        format!("Attribute VB_Name = \"{name}\"\r\n{text}")
     } else {
-        text.into_bytes()
+        text
     };
     if kind == VbaModuleKind::Class {
-        source_text =
-            ensure_class_module_attributes(&String::from_utf8_lossy(&source_text)).into_bytes();
+        source_text = ensure_class_module_attributes(&source_text);
     }
     if kind == VbaModuleKind::UserForm {
-        source_text =
-            ensure_userform_module_attributes(&String::from_utf8_lossy(&source_text)).into_bytes();
+        source_text = ensure_userform_module_attributes(&source_text);
     }
+    let source_text = source_text.into_bytes();
     let module = if kind == VbaModuleKind::UserForm {
         VbaModuleModel::user_form(
             name.clone(),
@@ -632,6 +673,82 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
         path: stable_path_display(path),
         module,
         inserted_vb_name,
+        ignored_frx_sidecar,
+    })
+}
+
+fn adjacent_frx_sidecar(path: &Path) -> Option<PathBuf> {
+    let stem = path.file_stem()?.to_str()?;
+    let parent = path.parent().filter(|value| !value.as_os_str().is_empty());
+    let search_dir = parent.unwrap_or_else(|| Path::new("."));
+    let mut matches = fs::read_dir(search_dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|candidate| candidate.is_file())
+        .filter(|candidate| path_has_extension(candidate, "frx"))
+        .filter(|candidate| {
+            candidate
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| value.eq_ignore_ascii_case(stem))
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by(|left, right| {
+        left.to_string_lossy()
+            .to_ascii_lowercase()
+            .cmp(&right.to_string_lossy().to_ascii_lowercase())
+            .then_with(|| left.cmp(right))
+    });
+    matches.into_iter().next()
+}
+
+fn path_has_extension(path: &Path, extension: &str) -> bool {
+    path.extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case(extension))
+}
+
+fn userform_sidecar_key(path: &Path) -> Option<String> {
+    let stem = path.file_stem()?.to_str()?.to_ascii_lowercase();
+    let parent = path
+        .parent()
+        .filter(|value| !value.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+        .to_string_lossy()
+        .to_ascii_lowercase();
+    Some(format!("{parent}\0{stem}"))
+}
+
+fn decode_source_file_text<'a>(path: &str, data: &'a [u8]) -> CliResult<&'a str> {
+    let encoding = if data.starts_with(&[0xFF, 0xFE]) {
+        Some("UTF-16LE")
+    } else if data.starts_with(&[0xFE, 0xFF]) {
+        Some("UTF-16BE")
+    } else {
+        None
+    };
+    if let Some(encoding) = encoding {
+        return Err(CliError::invalid_args(format!(
+            "VBA source file uses {encoding} encoding: {path}; convert it to UTF-8 before authoring"
+        )));
+    }
+
+    let data = data.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(data);
+    if data.is_empty() {
+        return Err(CliError::invalid_args(format!(
+            "VBA source file is empty: {path}"
+        )));
+    }
+    if data.contains(&0) {
+        return Err(CliError::invalid_args(format!(
+            "VBA source file contains NUL bytes (possible BOM-less UTF-16 input): {path}; convert it to UTF-8 before authoring"
+        )));
+    }
+    std::str::from_utf8(data).map_err(|err| {
+        CliError::invalid_args(format!(
+            "VBA source file is not valid UTF-8: {path}: {err}; convert it to UTF-8 before authoring"
+        ))
     })
 }
 
@@ -811,19 +928,49 @@ fn ensure_userform_module_attributes(text: &str) -> String {
 }
 
 fn userform_caption_from_export(text: &str) -> Option<String> {
-    text.replace("\r\n", "\n")
-        .replace('\r', "\n")
-        .lines()
-        .find_map(|line| {
-            let trimmed = line.trim();
-            let lower = trimmed.to_ascii_lowercase();
-            if !lower.starts_with("caption") {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let lines = normalized.lines().collect::<Vec<_>>();
+    if !lines
+        .first()
+        .is_some_and(|line| line.trim().eq_ignore_ascii_case("VERSION 5.00"))
+    {
+        return None;
+    }
+
+    let mut depth = 0_usize;
+    for line in lines.iter().skip(1) {
+        let trimmed = line.trim();
+        if trimmed
+            .get(..6)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("begin "))
+        {
+            depth += 1;
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case("End") && depth > 0 {
+            depth -= 1;
+            if depth == 0 {
                 return None;
             }
-            let (_, value) = trimmed.split_once('=')?;
-            let value = value.trim().trim_matches('"').trim();
-            (!value.is_empty()).then(|| value.to_string())
-        })
+            continue;
+        }
+        if depth != 1 {
+            continue;
+        }
+        let Some((name, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if !name.trim().eq_ignore_ascii_case("Caption") {
+            continue;
+        }
+        let value = value.trim();
+        let value = value
+            .strip_prefix('"')
+            .and_then(|inner| inner.strip_suffix('"'))
+            .unwrap_or(value);
+        return Some(value.replace("\"\"", "\""));
+    }
+    None
 }
 
 fn has_attribute(lines: &[String], name: &str) -> bool {
@@ -871,6 +1018,18 @@ mod tests {
     use super::model::VbaModuleModel;
     use super::*;
 
+    fn temp_source_path(label: &str, file_name: &str) -> (PathBuf, PathBuf) {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_dir =
+            std::env::temp_dir().join(format!("ooxml-vba-{label}-{}-{suffix}", std::process::id()));
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let path = temp_dir.join(file_name);
+        (temp_dir, path)
+    }
+
     fn hello_project() -> VbaProjectModel {
         VbaProjectModel::xlsx(vec![VbaModuleModel::standard(
             "Module1",
@@ -903,6 +1062,91 @@ mod tests {
         let err = render_known_streams(&project).expect_err("invalid model");
         assert_eq!(err.kind, VbaAuthoringErrorKind::InvalidModel);
         assert!(err.message.contains("at least one"));
+    }
+
+    #[test]
+    fn utf8_bom_is_stripped_before_module_name_parsing_and_build() {
+        let (temp_dir, path) = temp_source_path("utf8-bom", "FallbackName.bas");
+        let mut source = vec![0xEF, 0xBB, 0xBF];
+        source.extend_from_slice(
+            b"Attribute VB_Name = \"Mod1\"\r\nPublic Sub Hello()\r\nEnd Sub\r\n",
+        );
+        fs::write(&path, source).expect("write BOM source");
+
+        let outcome = build_bin_from_sources(Some("xlsx"), &[path.to_string_lossy().to_string()])
+            .expect("build BOM source");
+
+        assert_eq!(outcome.source_modules[0].module.name, "Mod1");
+        assert!(!outcome.source_modules[0].inserted_vb_name);
+        assert!(outcome.bin.starts_with(&[0xD0, 0xCF, 0x11, 0xE0]));
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn utf16le_bom_source_is_refused_with_conversion_guidance() {
+        let (temp_dir, path) = temp_source_path("utf16le-bom", "Mod1.bas");
+        let mut source = vec![0xFF, 0xFE];
+        source.extend(
+            "Attribute VB_Name = \"Mod1\"\r\n"
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes),
+        );
+        fs::write(&path, source).expect("write UTF-16LE source");
+
+        let err = read_source_module(&path.to_string_lossy())
+            .err()
+            .expect("UTF-16LE refusal");
+
+        assert!(err.message.contains("UTF-16LE"), "{err:?}");
+        assert!(err.message.contains("convert it to UTF-8"), "{err:?}");
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn utf16be_bom_source_is_refused_with_conversion_guidance() {
+        let (temp_dir, path) = temp_source_path("utf16be-bom", "Mod1.bas");
+        fs::write(&path, [0xFE, 0xFF, 0x00, b'A']).expect("write UTF-16BE source");
+
+        let err = read_source_module(&path.to_string_lossy())
+            .err()
+            .expect("UTF-16BE refusal");
+
+        assert!(err.message.contains("UTF-16BE"), "{err:?}");
+        assert!(err.message.contains("convert it to UTF-8"), "{err:?}");
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn bomless_utf16_source_is_refused_as_nul_containing_input() {
+        let (temp_dir, path) = temp_source_path("utf16le-no-bom", "Mod1.bas");
+        let source = "Attribute VB_Name = \"Mod1\"\r\n"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<_>>();
+        fs::write(&path, source).expect("write BOM-less UTF-16LE source");
+
+        let err = read_source_module(&path.to_string_lossy())
+            .err()
+            .expect("NUL refusal");
+
+        assert!(err.message.contains("NUL bytes"), "{err:?}");
+        assert!(err.message.contains("BOM-less UTF-16"), "{err:?}");
+        assert!(err.message.contains("convert it to UTF-8"), "{err:?}");
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn invalid_utf8_source_is_refused_without_lossy_replacement() {
+        let (temp_dir, path) = temp_source_path("invalid-utf8", "Mod1.bas");
+        fs::write(&path, [b'S', b'u', b'b', b' ', 0xFF]).expect("write invalid UTF-8 source");
+
+        let err = read_source_module(&path.to_string_lossy())
+            .err()
+            .expect("UTF-8 refusal");
+
+        assert!(err.message.contains("not valid UTF-8"), "{err:?}");
+        assert!(err.message.contains("convert it to UTF-8"), "{err:?}");
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
@@ -953,7 +1197,7 @@ mod tests {
         let path = temp_dir.join("Dialog.frm");
         fs::write(
             &path,
-            "VERSION 5.00\r\nBegin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} Dialog \r\n   Caption         =   \"Agent Dialog\"\r\nEnd\r\nAttribute VB_Name = \"Dialog\"\r\nPrivate Sub UserForm_Initialize()\r\nEnd Sub\r\n",
+            "VERSION 5.00\r\nBegin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} Dialog \r\n   Begin MSForms.Label StatusLabel\r\n      Caption = \"Nested control caption\"\r\n   End\r\n   Caption         =   \"Agent Dialog\"\r\nEnd\r\nAttribute VB_Name = \"Dialog\"\r\nPrivate Sub UserForm_Initialize()\r\n    Caption = \"Runtime-only caption\"\r\nEnd Sub\r\n",
         )
         .expect("write form");
 
@@ -976,6 +1220,21 @@ mod tests {
     }
 
     #[test]
+    fn wrapperless_userform_code_caption_falls_back_to_module_name() {
+        let (temp_dir, path) = temp_source_path("wrapperless-userform", "Dialog.frm");
+        fs::write(
+            &path,
+            "Attribute VB_Name = \"Dialog\"\r\nPrivate Sub UserForm_Initialize()\r\n    Caption = \"Runtime-only caption\"\r\nEnd Sub\r\n",
+        )
+        .expect("write wrapperless form");
+
+        let input = read_source_module(&path.to_string_lossy()).expect("read userform module");
+
+        assert_eq!(input.module.user_form.as_ref().unwrap().caption, "Dialog");
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
     fn frx_sidecars_are_refused_by_pure_authoring() {
         let err = source_kind_from_path("Dialog.frx").expect_err("frx refusal");
         assert_eq!(err.code, "unsupported_type");
@@ -983,6 +1242,53 @@ mod tests {
             err.message.contains(".frx sidecars are not supported"),
             "unexpected .frx error: {err:?}"
         );
+    }
+
+    #[test]
+    fn adjacent_frx_sidecar_is_ignored_with_machine_readable_caveats() {
+        let (temp_dir, form_path) = temp_source_path("userform-sidecar", "Dialog.frm");
+        let sidecar_path = temp_dir.join("Dialog.frx");
+        fs::write(
+            &form_path,
+            "VERSION 5.00\r\nBegin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} Dialog\r\n   Caption = \"Agent Dialog\"\r\nEnd\r\nAttribute VB_Name = \"Dialog\"\r\n",
+        )
+        .expect("write form");
+        fs::write(&sidecar_path, [0x00, 0x01, 0x02]).expect("write sidecar");
+
+        let source_paths = collect_source_dir_sources(&temp_dir.to_string_lossy())
+            .expect("discover paired form source");
+        assert_eq!(source_paths, vec![form_path.to_string_lossy().to_string()]);
+
+        let outcome =
+            build_bin_from_sources(Some("xlsx"), &[form_path.to_string_lossy().to_string()])
+                .expect("build form while ignoring adjacent sidecar");
+        let warnings = authoring_warnings(&outcome);
+        assert!(warnings.iter().any(|warning| {
+            warning.contains("ignored adjacent UserForm .frx sidecar")
+                && warning.contains("Dialog.frx")
+        }));
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning == USERFORM_RUNTIME_WARNING)
+        );
+        assert_eq!(
+            authoring_summary_json(&outcome)["userFormsRuntimeLoadable"],
+            false
+        );
+
+        let explicit_sidecar_error = build_bin_from_sources(
+            Some("xlsx"),
+            &[
+                form_path.to_string_lossy().to_string(),
+                sidecar_path.to_string_lossy().to_string(),
+            ],
+        )
+        .err()
+        .expect("explicit sidecar remains unsupported");
+        assert_eq!(explicit_sidecar_error.code, "unsupported_type");
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
