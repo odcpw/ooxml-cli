@@ -319,13 +319,16 @@ pub(crate) use zip_io::{
 
 #[doc(hidden)]
 pub fn run_process(raw_args: &[String]) -> i32 {
-    if raw_args.first().map(String::as_str) == Some("serve") {
-        return run_serve_stdio();
+    let parsed = parse_global_flags(raw_args);
+    if let Ok((_, args)) = &parsed {
+        if args.first().map(String::as_str) == Some("serve") {
+            return run_serve_stdio();
+        }
+        if args.first().map(String::as_str) == Some("mcp") {
+            return run_mcp_stdio();
+        }
     }
-    if raw_args.first().map(String::as_str) == Some("mcp") {
-        return run_mcp_stdio();
-    }
-    match run(raw_args) {
+    match parsed.and_then(|(flags, args)| run(flags, args)) {
         Ok(output) => {
             match output.body {
                 DispatchBody::Json(value) => {
@@ -362,20 +365,15 @@ struct RunOutput {
     exit_code: i32,
 }
 
-fn run(raw_args: &[String]) -> CliResult<RunOutput> {
-    let (flags, args) = parse_global_flags(raw_args)?;
-    if !flags.json
-        && !has_local_json_request(&args)
+fn run(flags: GlobalFlags, args: Vec<String>) -> CliResult<RunOutput> {
+    if flags.format_text
         && !has_command_json_format_request(&args)
         && !is_validate_command(&args)
         && !is_text_utility_command(&args)
     {
-        let message = if flags.format_text {
-            "text output is not supported for this command; use --json or --format json"
-        } else {
-            "the Rust port currently supports the frozen --json contract slice only"
-        };
-        return Err(CliError::invalid_args(message));
+        return Err(CliError::invalid_args(
+            "text output is not supported for this command; use --json or --format json",
+        ));
     }
     if let [cmd, rest @ ..] = args.as_slice()
         && cmd == "validate"
@@ -388,19 +386,50 @@ fn run(raw_args: &[String]) -> CliResult<RunOutput> {
             exit_code,
         });
     }
-    dispatch(&flags, &args).map(|output| RunOutput {
-        body: output.body,
-        exit_code: output.exit_code,
-    })
+    dispatch(&flags, &args)
+        .map_err(|err| normalize_unknown_command_error(&args, err))
+        .map(|output| RunOutput {
+            body: output.body,
+            exit_code: output.exit_code,
+        })
+}
+
+fn normalize_unknown_command_error(args: &[String], err: CliError) -> CliError {
+    if !err
+        .message
+        .starts_with("unsupported Rust-port contract command:")
+    {
+        return err;
+    }
+    let guidance =
+        "run `ooxml help` for usage or `ooxml --json capabilities` for the command inventory";
+    if let Some(token) = command_manifest::first_unknown_command_token(args) {
+        CliError::invalid_args(format!("unknown command token '{token}'; {guidance}"))
+    } else {
+        CliError::invalid_args(format!(
+            "invalid command invocation '{}'; {guidance}",
+            args.join(" ")
+        ))
+    }
 }
 
 fn parse_global_flags(raw_args: &[String]) -> CliResult<(GlobalFlags, Vec<String>)> {
     let mut flags = GlobalFlags::default();
     let mut args = Vec::new();
+    let local_value_flags = command_manifest::local_value_flag_names_for_argv(raw_args);
     let mut i = 0;
     let mut seen_command = false;
     while i < raw_args.len() {
         match raw_args[i].as_str() {
+            local_flag if seen_command && local_value_flags.contains(&local_flag) => {
+                args.push(raw_args[i].clone());
+                if let Some(value) = raw_args.get(i + 1) {
+                    args.push(value.clone());
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
             "--json" => {
                 flags.json = true;
                 i += 1;
@@ -466,10 +495,6 @@ fn parse_global_flags(raw_args: &[String]) -> CliResult<(GlobalFlags, Vec<String
         }
     }
     Ok((flags, args))
-}
-
-fn has_local_json_request(args: &[String]) -> bool {
-    args.iter().any(|arg| arg == "--json")
 }
 
 fn has_command_json_format_request(args: &[String]) -> bool {

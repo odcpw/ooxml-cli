@@ -1,5 +1,104 @@
 use super::*;
 
+#[test]
+fn manifest_commands_run_without_global_json_for_scaffold_and_mutation() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-manifest-no-json-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let workbook = temp_dir.join("workbook.xlsx").to_string_lossy().to_string();
+    let edited = temp_dir.join("edited.xlsx").to_string_lossy().to_string();
+
+    let (scaffold_code, scaffold_stdout, scaffold_stderr) =
+        run_ooxml(&["xlsx", "scaffold", &workbook, "--out", &workbook]);
+    assert_eq!(scaffold_code, 0);
+    assert_eq!(scaffold_stderr, None);
+    assert_eq!(scaffold_stdout.expect("scaffold JSON")["output"], workbook);
+
+    let (mutation_code, mutation_stdout, mutation_stderr) = run_ooxml(&[
+        "xlsx", "cells", "set", &workbook, "--sheet", "Sheet1", "--cell", "A1", "--value",
+        "manifest", "--out", &edited,
+    ]);
+    assert_eq!(mutation_code, 0);
+    assert_eq!(mutation_stderr, None);
+    assert_eq!(mutation_stdout.expect("mutation JSON")["output"], edited);
+    assert!(Path::new(&edited).is_file());
+
+    let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn global_json_is_interleaved_or_trailing_without_reaching_local_handlers() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-manifest-json-placement-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let workbook = temp_dir.join("workbook.xlsx").to_string_lossy().to_string();
+    let edited = temp_dir.join("edited.xlsx").to_string_lossy().to_string();
+
+    let (scaffold_code, _, scaffold_stderr) = run_ooxml(&["xlsx", "--json", "scaffold", &workbook]);
+    assert_eq!(scaffold_code, 0);
+    assert_eq!(scaffold_stderr, None);
+
+    let (mutation_code, mutation_stdout, mutation_stderr) = run_ooxml(&[
+        "xlsx", "cells", "--json", "set", &workbook, "--sheet", "Sheet1", "--cell", "A1",
+        "--value", "placed", "--out", &edited, "--json",
+    ]);
+    assert_eq!(mutation_code, 0);
+    assert_eq!(mutation_stderr, None);
+    assert_eq!(mutation_stdout.expect("mutation JSON")["output"], edited);
+
+    let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn literal_json_local_flag_value_is_not_consumed_as_global() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-manifest-json-value-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let workbook = temp_dir.join("workbook.xlsx").to_string_lossy().to_string();
+    let edited = temp_dir.join("edited.xlsx").to_string_lossy().to_string();
+
+    assert_eq!(run_ooxml(&["xlsx", "scaffold", &workbook]).0, 0);
+    let (set_code, _, set_stderr) = run_ooxml(&[
+        "xlsx", "cells", "set", &workbook, "--sheet", "Sheet1", "--cell", "A1", "--value",
+        "--json", "--out", &edited,
+    ]);
+    assert_eq!(set_code, 0);
+    assert_eq!(set_stderr, None);
+
+    let (read_code, read_stdout, read_stderr) = run_ooxml(&[
+        "xlsx", "cells", "extract", &edited, "--sheet", "Sheet1", "--range", "A1:A1",
+    ]);
+    assert_eq!(read_code, 0);
+    assert_eq!(read_stderr, None);
+    assert_eq!(
+        read_stdout.expect("cell JSON")["sheet"]["rows"][0]["cells"][0]["value"],
+        "--json"
+    );
+
+    let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn unknown_command_error_names_token_and_discovery_commands() {
+    let (code, stdout, stderr) = run_ooxml(&["xlsx", "not-a-command"]);
+    assert_eq!(code, 2);
+    assert_eq!(stdout, None);
+    let message = stderr.expect("unknown command error")["error"]["message"]
+        .as_str()
+        .expect("message")
+        .to_string();
+    assert_eq!(
+        message,
+        "unknown command token 'not-a-command'; run `ooxml help` for usage or `ooxml --json capabilities` for the command inventory"
+    );
+    assert_eq!(message, message.trim_end());
+}
+
 const XLSX_PARENT_HELP_PATHS: &[&[&str]] = &[
     &["xlsx"],
     &["xlsx", "cells"],
@@ -608,12 +707,12 @@ fn pptx_parent_group_help_paths_share_rust_baseline_success_shape() {
         run_ooxml_baseline_raw(&["pptx", "diff"]);
     assert_eq!(baseline_code, 2);
     assert_eq!(baseline_stdout, "");
-    assert!(baseline_stderr.contains("frozen --json contract slice"));
+    assert!(baseline_stderr.contains("accepts 2 arg(s), received 0"));
 
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml_raw(&["pptx", "diff"]);
     assert_eq!(rust_code, 2);
     assert_eq!(rust_stdout, "");
-    assert!(rust_stderr.contains("frozen --json contract slice"));
+    assert!(rust_stderr.contains("accepts 2 arg(s), received 0"));
 }
 
 #[test]
