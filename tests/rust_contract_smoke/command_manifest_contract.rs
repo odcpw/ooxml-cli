@@ -415,7 +415,14 @@ fn raw_first_global_flag_and_output_contract_matrix_matches() {
         assert_process_case(case);
     }
 
-    for name in ["serve-eof", "serve-json-eof", "mcp-eof", "mcp-json-eof"] {
+    for name in [
+        "serve-eof",
+        "serve-json-eof",
+        "mcp-eof",
+        "mcp-json-eof",
+        "json-before-serve",
+        "json-before-mcp",
+    ] {
         let case = matrix
             .cases
             .iter()
@@ -441,13 +448,7 @@ fn raw_first_global_flag_and_output_contract_matrix_matches() {
         .expect("text success case");
     assert!(text.stdout.ends_with('\n'));
     assert_eq!(text.stderr, "");
-    for name in [
-        "json-before-serve",
-        "json-before-mcp",
-        "json-error-newline",
-        "json-typo-error",
-        "format-text-error",
-    ] {
+    for name in ["json-error-newline", "json-typo-error", "format-text-error"] {
         let case = matrix
             .cases
             .iter()

@@ -50,9 +50,9 @@
         "--json",
         "serve"
       ],
-      "status": 2,
+      "status": 0,
       "stdout": "",
-      "stderr": "{\"error\":{\"code\":\"invalid_args\",\"exitCode\":2,\"message\":\"unsupported Rust-port contract command: serve\"}}\n"
+      "stderr": ""
     },
     {
       "name": "json-before-mcp",
@@ -61,9 +61,9 @@
         "--json",
         "mcp"
       ],
-      "status": 2,
+      "status": 0,
       "stdout": "",
-      "stderr": "{\"error\":{\"code\":\"invalid_args\",\"exitCode\":2,\"message\":\"unsupported Rust-port contract command: mcp\"}}\n"
+      "stderr": ""
     },
     {
       "name": "json-leading",
@@ -109,7 +109,7 @@
       ],
       "status": 2,
       "stdout": "",
-      "stderr": "{\"error\":{\"code\":\"invalid_args\",\"exitCode\":2,\"message\":\"unsupported Rust-port contract command: version --format json\"}}\n"
+      "stderr": "{\"error\":{\"code\":\"invalid_args\",\"exitCode\":2,\"message\":\"invalid command invocation 'version --format json'; run `ooxml help` for usage or `ooxml --json capabilities` for the command inventory\"}}\n"
     },
     {
       "name": "strict-leading",
@@ -183,7 +183,7 @@
       ],
       "status": 2,
       "stdout": "",
-      "stderr": "{\"error\":{\"code\":\"invalid_args\",\"exitCode\":2,\"message\":\"unsupported Rust-port contract command: definitely-not-a-command\"}}\n"
+      "stderr": "{\"error\":{\"code\":\"invalid_args\",\"exitCode\":2,\"message\":\"unknown command token 'definitely-not-a-command'; run `ooxml help` for usage or `ooxml --json capabilities` for the command inventory\"}}\n"
     },
     {
       "name": "json-typo-error",

@@ -141,6 +141,67 @@ pub(crate) fn command_id_for_canonical_path(canonical_path: &[&str]) -> Option<C
         .map(|spec| spec.id)
 }
 
+pub(crate) fn local_value_flag_names_for_argv(raw_args: &[String]) -> Vec<&'static str> {
+    command_specs()
+        .into_iter()
+        .filter(|spec| command_path_matches_argv(spec.path, raw_args))
+        .max_by_key(|spec| spec.path.len())
+        .map(|spec| {
+            spec.local_flags
+                .into_iter()
+                .filter(|flag| flag.flag_type != "bool")
+                .map(|flag| flag.name)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn first_unknown_command_token(args: &[String]) -> Option<&str> {
+    let specs = command_specs();
+    let mut candidates = specs.iter().collect::<Vec<_>>();
+
+    for (index, arg) in args.iter().enumerate() {
+        if arg.starts_with('-') {
+            return None;
+        }
+        let next = candidates
+            .iter()
+            .copied()
+            .filter(|spec| spec.path.get(index).copied() == Some(arg.as_str()))
+            .collect::<Vec<_>>();
+        if next.is_empty() {
+            return Some(arg);
+        }
+        if next.iter().any(|spec| {
+            spec.path.len() == index + 1
+                && !matches!(spec.execution, ExecutionSupport::GroupOnly { .. })
+        }) {
+            return None;
+        }
+        candidates = next;
+    }
+    None
+}
+
+fn command_path_matches_argv(path: &[&str], raw_args: &[String]) -> bool {
+    let mut index = 0;
+    for segment in path {
+        while let Some(arg) = raw_args.get(index) {
+            match arg.as_str() {
+                "--json" | "--strict" => index += 1,
+                "--format" | "-f" if index + 1 < raw_args.len() => index += 2,
+                value if value.starts_with("--format=") || value.starts_with("-f=") => index += 1,
+                _ => break,
+            }
+        }
+        if raw_args.get(index).map(String::as_str) != Some(*segment) {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
 pub(crate) fn capability_command_for_id(command_id: CommandId) -> Option<Value> {
     command_specs()
         .into_iter()

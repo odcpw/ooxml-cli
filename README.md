@@ -50,6 +50,8 @@ cargo run -- --json capabilities --for vba
 cargo run -- doctor
 ```
 
+`doctor` exits `1` when it reports local health or optional proof-tool gaps; its JSON report remains the result to inspect.
+
 For agent use, start with live capabilities rather than memorized examples:
 
 ```powershell

@@ -1840,10 +1840,19 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
             )?;
             pptx_replace_images(file, rest)
         }
-        _ => Err(CliError::invalid_args(format!(
-            "unsupported Rust-port contract command: {}",
-            args.join(" ")
-        ))),
+        _ => {
+            let guidance = "run `ooxml help` for usage or `ooxml --json capabilities` for the command inventory";
+            if let Some(token) = crate::command_manifest::first_unknown_command_token(args) {
+                Err(CliError::invalid_args(format!(
+                    "unknown command token '{token}'; {guidance}"
+                )))
+            } else {
+                let invocation = args.join(" ");
+                Err(CliError::invalid_args(format!(
+                    "invalid command invocation '{invocation}'; {guidance}"
+                )))
+            }
+        }
     }
 }
 
