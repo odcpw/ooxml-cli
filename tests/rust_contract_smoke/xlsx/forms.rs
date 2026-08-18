@@ -160,3 +160,127 @@ fn xlsx_forms_entry_creates_macro_workbook_with_non_activex_button() {
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
+
+#[derive(Debug)]
+struct VmlControlAnchor {
+    object_type: String,
+    coordinates: [usize; 8],
+}
+
+fn parse_vml_control_anchors(vml: &str) -> Vec<VmlControlAnchor> {
+    use quick_xml::events::Event;
+
+    let mut reader = quick_xml::Reader::from_str(vml);
+    reader.config_mut().trim_text(true);
+    let mut object_type = None;
+    let mut anchors = Vec::new();
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(element)) if element.local_name().as_ref() == b"ClientData" => {
+                object_type = element.attributes().find_map(|attribute| {
+                    let attribute = attribute.expect("VML ClientData attribute");
+                    if attribute.key.as_ref() == b"ObjectType" {
+                        Some(
+                            String::from_utf8(attribute.value.into_owned())
+                                .expect("VML ObjectType UTF-8"),
+                        )
+                    } else {
+                        None
+                    }
+                });
+            }
+            Ok(Event::Start(element)) if element.local_name().as_ref() == b"Anchor" => {
+                let text = reader
+                    .read_text(element.name())
+                    .expect("read VML Anchor text");
+                let coordinates = text
+                    .split(',')
+                    .map(|value| value.trim().parse::<usize>().expect("VML anchor integer"))
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .expect("VML Anchor should have eight coordinates");
+                anchors.push(VmlControlAnchor {
+                    object_type: object_type
+                        .clone()
+                        .expect("VML Anchor should be inside ClientData"),
+                    coordinates,
+                });
+            }
+            Ok(Event::End(element)) if element.local_name().as_ref() == b"ClientData" => {
+                object_type = None;
+            }
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(err) => panic!("parse VML controls: {err}"),
+        }
+    }
+
+    anchors
+}
+
+#[test]
+fn xlsx_forms_entry_places_controls_below_eight_fields() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-xlsx-forms-eight-fields-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let out = temp_dir.join("eight-fields.xlsm");
+    let out_str = out.to_string_lossy().to_string();
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json", "xlsx", "forms", "entry", "--out", &out_str, "--field", "Field 1",
+        "--field", "Field 2", "--field", "Field 3", "--field", "Field 4", "--field",
+        "Field 5", "--field", "Field 6", "--field", "Field 7", "--field", "Field 8",
+    ]);
+    assert_eq!(code, 0, "eight-field forms entry exit");
+    assert_eq!(stderr, None, "eight-field forms entry stderr");
+    let created = stdout.expect("eight-field forms entry stdout");
+    assert_eq!(created["inputRange"], Value::String("B5:B12".to_string()));
+    assert_rust_emitted_ooxml_command_exits_zero(&created, "validateCommand");
+
+    let vml = read_zip_string(&out, "xl/drawings/vmlDrawing1.vml");
+    let anchors = parse_vml_control_anchors(&vml);
+    let button_anchors = anchors
+        .iter()
+        .filter(|anchor| anchor.object_type == "Button")
+        .collect::<Vec<_>>();
+    assert_eq!(button_anchors.len(), 3, "expected three button anchors");
+
+    const FIRST_INPUT_ANCHOR_ROW: usize = 4;
+    const LAST_INPUT_ANCHOR_ROW: usize = 11;
+    for button in &button_anchors {
+        let top_row = button.coordinates[2];
+        let bottom_row = button.coordinates[6];
+        assert!(
+            top_row > LAST_INPUT_ANCHOR_ROW,
+            "button should start below the last input row: {button:?}"
+        );
+        assert!(
+            bottom_row < FIRST_INPUT_ANCHOR_ROW || top_row > LAST_INPUT_ANCHOR_ROW,
+            "button anchor must not overlap input rows: {button:?}"
+        );
+    }
+
+    let group_box = anchors
+        .iter()
+        .find(|anchor| anchor.object_type == "GBox")
+        .expect("group box anchor");
+    let last_button_row = button_anchors
+        .iter()
+        .map(|anchor| anchor.coordinates[6])
+        .max()
+        .expect("button bottom row");
+    assert!(
+        group_box.coordinates[2] <= FIRST_INPUT_ANCHOR_ROW,
+        "group box should begin above the input rows: {group_box:?}"
+    );
+    assert!(
+        group_box.coordinates[6] >= last_button_row,
+        "group box should enclose every button: {group_box:?}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}

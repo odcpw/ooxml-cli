@@ -326,7 +326,7 @@ pub(super) fn forms_command_specs() -> Vec<CommandSpec> {
                 "--field",
                 "field",
                 "stringArray",
-                "repeatable field label; defaults to Name, Email, Notes",
+                "repeatable field label; each occurrence is one label (commas are preserved); defaults to Name, Email, Notes",
             ),
             flag(
                 "--sheet",
