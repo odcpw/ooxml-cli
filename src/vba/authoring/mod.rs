@@ -842,19 +842,49 @@ fn ensure_userform_module_attributes(text: &str) -> String {
 }
 
 fn userform_caption_from_export(text: &str) -> Option<String> {
-    text.replace("\r\n", "\n")
-        .replace('\r', "\n")
-        .lines()
-        .find_map(|line| {
-            let trimmed = line.trim();
-            let lower = trimmed.to_ascii_lowercase();
-            if !lower.starts_with("caption") {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let lines = normalized.lines().collect::<Vec<_>>();
+    if !lines
+        .first()
+        .is_some_and(|line| line.trim().eq_ignore_ascii_case("VERSION 5.00"))
+    {
+        return None;
+    }
+
+    let mut depth = 0_usize;
+    for line in lines.iter().skip(1) {
+        let trimmed = line.trim();
+        if trimmed
+            .get(..6)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("begin "))
+        {
+            depth += 1;
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case("End") && depth > 0 {
+            depth -= 1;
+            if depth == 0 {
                 return None;
             }
-            let (_, value) = trimmed.split_once('=')?;
-            let value = value.trim().trim_matches('"').trim();
-            (!value.is_empty()).then(|| value.to_string())
-        })
+            continue;
+        }
+        if depth != 1 {
+            continue;
+        }
+        let Some((name, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if !name.trim().eq_ignore_ascii_case("Caption") {
+            continue;
+        }
+        let value = value.trim();
+        let value = value
+            .strip_prefix('"')
+            .and_then(|inner| inner.strip_suffix('"'))
+            .unwrap_or(value);
+        return Some(value.replace("\"\"", "\""));
+    }
+    None
 }
 
 fn has_attribute(lines: &[String], name: &str) -> bool {
@@ -1081,7 +1111,7 @@ mod tests {
         let path = temp_dir.join("Dialog.frm");
         fs::write(
             &path,
-            "VERSION 5.00\r\nBegin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} Dialog \r\n   Caption         =   \"Agent Dialog\"\r\nEnd\r\nAttribute VB_Name = \"Dialog\"\r\nPrivate Sub UserForm_Initialize()\r\nEnd Sub\r\n",
+            "VERSION 5.00\r\nBegin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} Dialog \r\n   Begin MSForms.Label StatusLabel\r\n      Caption = \"Nested control caption\"\r\n   End\r\n   Caption         =   \"Agent Dialog\"\r\nEnd\r\nAttribute VB_Name = \"Dialog\"\r\nPrivate Sub UserForm_Initialize()\r\n    Caption = \"Runtime-only caption\"\r\nEnd Sub\r\n",
         )
         .expect("write form");
 
@@ -1100,6 +1130,21 @@ mod tests {
         assert!(source.contains("Attribute VB_Base = \"0{F8A47041-B2A6-11CE-8027-00AA00611080}\""));
         assert!(source.contains("Attribute VB_PredeclaredId = True"));
 
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn wrapperless_userform_code_caption_falls_back_to_module_name() {
+        let (temp_dir, path) = temp_source_path("wrapperless-userform", "Dialog.frm");
+        fs::write(
+            &path,
+            "Attribute VB_Name = \"Dialog\"\r\nPrivate Sub UserForm_Initialize()\r\n    Caption = \"Runtime-only caption\"\r\nEnd Sub\r\n",
+        )
+        .expect("write wrapperless form");
+
+        let input = read_source_module(&path.to_string_lossy()).expect("read userform module");
+
+        assert_eq!(input.module.user_form.as_ref().unwrap().caption, "Dialog");
         let _ = fs::remove_dir_all(&temp_dir);
     }
 

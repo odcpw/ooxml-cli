@@ -257,6 +257,7 @@ pub(super) fn add_module_source_in_project_data(
         primary_selector: format!("module:{name}"),
         selectors: Vec::new(),
         source: String::new(),
+        user_form_caption: None,
         warnings: Vec::new(),
     };
     added_module = with_source_module_selectors(added_module);

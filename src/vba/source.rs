@@ -40,6 +40,7 @@ use parser::{
 use selectors::{module_output_name, select_modules};
 
 const DIR_STREAM_PATH: &str = "VBA/dir";
+const USERFORM_CLSID: &str = "{C62A69F0-16DC-11CE-9E98-00AA00574A4F}";
 #[derive(Clone)]
 pub(super) struct SourceProject {
     family: String,
@@ -71,6 +72,7 @@ pub(super) struct SourceModule {
     primary_selector: String,
     selectors: Vec<String>,
     source: String,
+    user_form_caption: Option<String>,
     warnings: Vec<String>,
 }
 
@@ -240,13 +242,14 @@ pub(crate) fn vba_extract(file: &str, out_dir: &str, selector: Option<&str>) -> 
         }
         *used.entry(name.clone()).or_insert(0) += 1;
         let output_path = Path::new(out_dir).join(&name);
-        fs::write(&output_path, module.source.as_bytes()).map_err(|err| {
+        let export_source = module_export_source(module);
+        fs::write(&output_path, export_source.as_bytes()).map_err(|err| {
             CliError::unexpected(format!("failed to write VBA module {}: {err}", module.name))
         })?;
         extracted.push(module_extract_item_json(
             module,
             &output_path,
-            module.source.len(),
+            export_source.len(),
         ));
     }
 
@@ -277,6 +280,19 @@ pub(crate) fn vba_extract(file: &str, out_dir: &str, selector: Option<&str>) -> 
     );
     result.insert("listCommand".to_string(), json!(vba_list_command(file)));
     Ok(Value::Object(result))
+}
+
+fn module_export_source(module: &SourceModule) -> String {
+    if !module.kind.eq_ignore_ascii_case("userform") {
+        return module.source.clone();
+    }
+    let caption = module.user_form_caption.as_deref().unwrap_or(&module.name);
+    format!(
+        "VERSION 5.00\r\nBegin {USERFORM_CLSID} {}\r\n   Caption = \"{}\"\r\nEnd\r\n{}",
+        module.name,
+        caption.replace('"', "\"\""),
+        module.source
+    )
 }
 
 pub(crate) fn vba_add_module(file: &str, options: VbaAddModuleOptions<'_>) -> CliResult<Value> {
