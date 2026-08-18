@@ -587,12 +587,12 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
         )));
     }
     let kind = source_kind_from_path(path)?;
-    let raw_text = String::from_utf8_lossy(&data);
-    let normalized_raw_text = codec::normalize_vba_line_endings(&raw_text);
+    let raw_text = decode_source_file_text(path, &data)?;
+    let normalized_raw_text = codec::normalize_vba_line_endings(raw_text);
     let user_form_caption = (kind == VbaModuleKind::UserForm)
         .then(|| userform_caption_from_export(&normalized_raw_text))
         .flatten();
-    let text = normalized_source_text_for_kind(kind, &raw_text);
+    let text = normalized_source_text_for_kind(kind, raw_text);
     let attr_name = vb_name_attribute(&text);
     let name = attr_name.unwrap_or_else(|| {
         Path::new(path)
@@ -603,18 +603,17 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
     });
     let inserted_vb_name = vb_name_attribute(&text).is_none();
     let mut source_text = if inserted_vb_name {
-        format!("Attribute VB_Name = \"{name}\"\r\n{text}").into_bytes()
+        format!("Attribute VB_Name = \"{name}\"\r\n{text}")
     } else {
-        text.into_bytes()
+        text
     };
     if kind == VbaModuleKind::Class {
-        source_text =
-            ensure_class_module_attributes(&String::from_utf8_lossy(&source_text)).into_bytes();
+        source_text = ensure_class_module_attributes(&source_text);
     }
     if kind == VbaModuleKind::UserForm {
-        source_text =
-            ensure_userform_module_attributes(&String::from_utf8_lossy(&source_text)).into_bytes();
+        source_text = ensure_userform_module_attributes(&source_text);
     }
+    let source_text = source_text.into_bytes();
     let module = if kind == VbaModuleKind::UserForm {
         VbaModuleModel::user_form(
             name.clone(),
@@ -632,6 +631,38 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
         path: stable_path_display(path),
         module,
         inserted_vb_name,
+    })
+}
+
+fn decode_source_file_text<'a>(path: &str, data: &'a [u8]) -> CliResult<&'a str> {
+    let encoding = if data.starts_with(&[0xFF, 0xFE]) {
+        Some("UTF-16LE")
+    } else if data.starts_with(&[0xFE, 0xFF]) {
+        Some("UTF-16BE")
+    } else {
+        None
+    };
+    if let Some(encoding) = encoding {
+        return Err(CliError::invalid_args(format!(
+            "VBA source file uses {encoding} encoding: {path}; convert it to UTF-8 before authoring"
+        )));
+    }
+
+    let data = data.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(data);
+    if data.is_empty() {
+        return Err(CliError::invalid_args(format!(
+            "VBA source file is empty: {path}"
+        )));
+    }
+    if data.contains(&0) {
+        return Err(CliError::invalid_args(format!(
+            "VBA source file contains NUL bytes (possible BOM-less UTF-16 input): {path}; convert it to UTF-8 before authoring"
+        )));
+    }
+    std::str::from_utf8(data).map_err(|err| {
+        CliError::invalid_args(format!(
+            "VBA source file is not valid UTF-8: {path}: {err}; convert it to UTF-8 before authoring"
+        ))
     })
 }
 
@@ -871,6 +902,18 @@ mod tests {
     use super::model::VbaModuleModel;
     use super::*;
 
+    fn temp_source_path(label: &str, file_name: &str) -> (PathBuf, PathBuf) {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_dir =
+            std::env::temp_dir().join(format!("ooxml-vba-{label}-{}-{suffix}", std::process::id()));
+        fs::create_dir_all(&temp_dir).expect("temp dir");
+        let path = temp_dir.join(file_name);
+        (temp_dir, path)
+    }
+
     fn hello_project() -> VbaProjectModel {
         VbaProjectModel::xlsx(vec![VbaModuleModel::standard(
             "Module1",
@@ -903,6 +946,91 @@ mod tests {
         let err = render_known_streams(&project).expect_err("invalid model");
         assert_eq!(err.kind, VbaAuthoringErrorKind::InvalidModel);
         assert!(err.message.contains("at least one"));
+    }
+
+    #[test]
+    fn utf8_bom_is_stripped_before_module_name_parsing_and_build() {
+        let (temp_dir, path) = temp_source_path("utf8-bom", "FallbackName.bas");
+        let mut source = vec![0xEF, 0xBB, 0xBF];
+        source.extend_from_slice(
+            b"Attribute VB_Name = \"Mod1\"\r\nPublic Sub Hello()\r\nEnd Sub\r\n",
+        );
+        fs::write(&path, source).expect("write BOM source");
+
+        let outcome = build_bin_from_sources(Some("xlsx"), &[path.to_string_lossy().to_string()])
+            .expect("build BOM source");
+
+        assert_eq!(outcome.source_modules[0].module.name, "Mod1");
+        assert!(!outcome.source_modules[0].inserted_vb_name);
+        assert!(outcome.bin.starts_with(&[0xD0, 0xCF, 0x11, 0xE0]));
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn utf16le_bom_source_is_refused_with_conversion_guidance() {
+        let (temp_dir, path) = temp_source_path("utf16le-bom", "Mod1.bas");
+        let mut source = vec![0xFF, 0xFE];
+        source.extend(
+            "Attribute VB_Name = \"Mod1\"\r\n"
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes),
+        );
+        fs::write(&path, source).expect("write UTF-16LE source");
+
+        let err = read_source_module(&path.to_string_lossy())
+            .err()
+            .expect("UTF-16LE refusal");
+
+        assert!(err.message.contains("UTF-16LE"), "{err:?}");
+        assert!(err.message.contains("convert it to UTF-8"), "{err:?}");
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn utf16be_bom_source_is_refused_with_conversion_guidance() {
+        let (temp_dir, path) = temp_source_path("utf16be-bom", "Mod1.bas");
+        fs::write(&path, [0xFE, 0xFF, 0x00, b'A']).expect("write UTF-16BE source");
+
+        let err = read_source_module(&path.to_string_lossy())
+            .err()
+            .expect("UTF-16BE refusal");
+
+        assert!(err.message.contains("UTF-16BE"), "{err:?}");
+        assert!(err.message.contains("convert it to UTF-8"), "{err:?}");
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn bomless_utf16_source_is_refused_as_nul_containing_input() {
+        let (temp_dir, path) = temp_source_path("utf16le-no-bom", "Mod1.bas");
+        let source = "Attribute VB_Name = \"Mod1\"\r\n"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<_>>();
+        fs::write(&path, source).expect("write BOM-less UTF-16LE source");
+
+        let err = read_source_module(&path.to_string_lossy())
+            .err()
+            .expect("NUL refusal");
+
+        assert!(err.message.contains("NUL bytes"), "{err:?}");
+        assert!(err.message.contains("BOM-less UTF-16"), "{err:?}");
+        assert!(err.message.contains("convert it to UTF-8"), "{err:?}");
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn invalid_utf8_source_is_refused_without_lossy_replacement() {
+        let (temp_dir, path) = temp_source_path("invalid-utf8", "Mod1.bas");
+        fs::write(&path, [b'S', b'u', b'b', b' ', 0xFF]).expect("write invalid UTF-8 source");
+
+        let err = read_source_module(&path.to_string_lossy())
+            .err()
+            .expect("UTF-8 refusal");
+
+        assert!(err.message.contains("not valid UTF-8"), "{err:?}");
+        assert!(err.message.contains("convert it to UTF-8"), "{err:?}");
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
