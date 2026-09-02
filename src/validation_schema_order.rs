@@ -782,15 +782,14 @@ fn push_element(
             .and_then(|table| find_child_rule(table, &namespace, &local));
         let foreign = parent.namespace_family != namespace_family && rule.is_none();
         let ignored = ignored_by_parent || ignored_wrapper || foreign;
-        if !ignored {
-            if let Some(table) = parent.table {
-                match rule {
-                    Some(rule) => {
-                        if let Some(position) = rule.position {
-                            if let Some(required) = rule.required_predecessor
-                                && !parent.seen_children.contains(required)
-                            {
-                                diagnostics.push(json!({
+        if !ignored && let Some(table) = parent.table {
+            match rule {
+                Some(rule) => {
+                    if let Some(position) = rule.position {
+                        if let Some(required) = rule.required_predecessor
+                            && !parent.seen_children.contains(required)
+                        {
+                            diagnostics.push(json!({
                                     "code": "XML_CHILD_ORDER",
                                     "severity": rule.severity,
                                     "message": format!(
@@ -806,8 +805,8 @@ fn push_element(
                                     "expectedPosition": position,
                                     "expectedAfter": required,
                                 }));
-                            } else if position < parent.last_position {
-                                diagnostics.push(json!({
+                        } else if position < parent.last_position {
+                            diagnostics.push(json!({
                                     "code": "XML_CHILD_ORDER",
                                     "severity": rule.severity,
                                     "message": format!(
@@ -823,16 +822,16 @@ fn push_element(
                                     "position": parent.child_position,
                                     "expectedPosition": position,
                                 }));
-                            } else {
-                                parent.last_position = position;
-                                parent.last_name.clone_from(&local);
-                            }
+                        } else {
+                            parent.last_position = position;
+                            parent.last_name.clone_from(&local);
                         }
-                        parent.seen_children.insert(local.clone());
                     }
-                    None => {
-                        let expected = parent.last_position.saturating_add(1).max(1);
-                        diagnostics.push(json!({
+                    parent.seen_children.insert(local.clone());
+                }
+                None => {
+                    let expected = parent.last_position.saturating_add(1).max(1);
+                    diagnostics.push(json!({
                             "code": "XML_UNKNOWN_CHILD",
                             "severity": "error",
                             "message": format!(
@@ -846,7 +845,6 @@ fn push_element(
                             "position": parent.child_position,
                             "expectedPosition": expected,
                         }));
-                    }
                 }
             }
         }
