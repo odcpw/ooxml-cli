@@ -1,5 +1,63 @@
 use serde_json::{Value, json};
 
+pub(crate) struct InvalidArgsIntentHint {
+    pub(crate) did_you_mean: &'static [&'static str],
+    pub(crate) hint: &'static str,
+}
+
+const INVALID_ARGS_INTENT_HINTS: &[(&[&str], &str, InvalidArgsIntentHint)] = &[
+    (
+        &["xlsx", "colwidths", "set"],
+        "--col",
+        InvalidArgsIntentHint {
+            did_you_mean: &["--range"],
+            hint: "column spans use --range, for example --range A:E",
+        },
+    ),
+    (
+        &["xlsx", "freeze", "set"],
+        "--cell",
+        InvalidArgsIntentHint {
+            did_you_mean: &["--rows", "--cols"],
+            hint: "freeze panes are expressed as --rows N --cols M; --at A2 will be accepted by the shared-alias follow-up",
+        },
+    ),
+    (
+        &["xlsx", "charts", "create"],
+        "--values",
+        InvalidArgsIntentHint {
+            did_you_mean: &["--range", "--table"],
+            hint: "chart data is selected with --range or --table; write cell values with xlsx ranges set first",
+        },
+    ),
+    (
+        &["docx", "styles", "apply"],
+        "--block",
+        InvalidArgsIntentHint {
+            did_you_mean: &["--index"],
+            hint: "DOCX style targets use --index for a body block or --handle for a stable paragraph handle",
+        },
+    ),
+    (
+        &["pptx", "text", "set"],
+        "--text",
+        InvalidArgsIntentHint {
+            did_you_mean: &["ooxml pptx replace text"],
+            hint: "pptx text set changes run styling; use ooxml pptx replace text to change text content",
+        },
+    ),
+];
+
+pub(crate) fn invalid_args_intent_hint(
+    command_path: &[&str],
+    wrong_flag: &str,
+) -> Option<&'static InvalidArgsIntentHint> {
+    INVALID_ARGS_INTENT_HINTS
+        .iter()
+        .find(|(path, flag, _)| *path == command_path && *flag == wrong_flag)
+        .map(|(_, _, hint)| hint)
+}
+
 pub(crate) const CAPABILITY_OBJECT_KINDS: &[&str] = &[
     "package",
     "template",

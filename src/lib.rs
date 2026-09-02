@@ -89,8 +89,8 @@ mod zip_io;
 
 pub(crate) use apply::apply;
 pub(crate) use cli_args::{
-    has_flag, parse_i64_flag, parse_string_flag, parse_string_flags, parse_u32_flags,
-    parse_validate_args, reject_unknown_flags, validate_positive_i64,
+    enrich_invalid_args, has_flag, parse_i64_flag, parse_string_flag, parse_string_flags,
+    parse_u32_flags, parse_validate_args, reject_unknown_flags, validate_positive_i64,
 };
 pub(crate) use cli_core::{
     CliError, CliResult, EXIT_DIFF_THRESHOLD, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS,
@@ -320,6 +320,14 @@ pub(crate) use zip_io::{
 #[doc(hidden)]
 pub fn run_process(raw_args: &[String]) -> i32 {
     let parsed = parse_global_flags(raw_args);
+    let explicit_json = parsed
+        .as_ref()
+        .map(|(flags, _)| flags.json)
+        .unwrap_or_else(|_| raw_args.iter().any(|arg| arg == "--json"));
+    let explicit_text = parsed
+        .as_ref()
+        .map(|(flags, _)| flags.format_text)
+        .unwrap_or(false);
     if let Ok((_, args)) = &parsed {
         if args.first().map(String::as_str) == Some("serve") {
             return run_serve_stdio();
@@ -347,17 +355,61 @@ pub fn run_process(raw_args: &[String]) -> i32 {
             output.exit_code
         }
         Err(err) => {
-            let body = json!({
+            let err = enrich_invalid_args(raw_args, err);
+            let mut body = json!({
                 "error": {
-                    "code": err.code,
-                    "exitCode": err.exit_code,
-                    "message": err.message,
+                    "code": err.error.code,
+                    "exitCode": err.error.exit_code,
+                    "message": err.error.message,
                 }
             });
-            eprintln!("{}", serde_json::to_string(&body).expect("serialize error"));
-            err.exit_code
+            if let Some(details) = &err.details {
+                let fields = serde_json::to_value(details).expect("serialize invalid-args details");
+                body["error"]
+                    .as_object_mut()
+                    .expect("error envelope object")
+                    .extend(
+                        fields
+                            .as_object()
+                            .expect("invalid-args detail object")
+                            .clone(),
+                    );
+            }
+            if explicit_json && err.error.code == "invalid_args" {
+                println!("{}", serde_json::to_string(&body).expect("serialize error"));
+            } else if explicit_text && err.error.code == "invalid_args" {
+                eprintln!("{}", invalid_args_text(&err.error, err.details.as_ref()));
+            } else {
+                eprintln!("{}", serde_json::to_string(&body).expect("serialize error"));
+            }
+            err.error.exit_code
         }
     }
+}
+
+fn invalid_args_text(err: &CliError, details: Option<&cli_core::InvalidArgsDetails>) -> String {
+    let mut output = format!("error [{}]: {}", err.code, err.message);
+    let Some(details) = details else {
+        return output;
+    };
+    output.push_str(&format!("\nhint: {}", details.hint));
+    if !details.did_you_mean.is_empty() {
+        output.push_str(&format!(
+            "\ndid you mean: {}",
+            details.did_you_mean.join(", ")
+        ));
+    }
+    if !details.valid_flags.is_empty() {
+        output.push_str("\nvalid flags:");
+        for flag in &details.valid_flags {
+            output.push_str(&format!("\n  {}", flag.use_text));
+        }
+    }
+    output.push_str(&format!("\nhelp: {}", details.help_command));
+    if let Some(command) = &details.corrected_command {
+        output.push_str(&format!("\ncorrected command: {command}"));
+    }
+    output
 }
 
 struct RunOutput {
@@ -366,6 +418,9 @@ struct RunOutput {
 }
 
 fn run(flags: GlobalFlags, args: Vec<String>) -> CliResult<RunOutput> {
+    if let Some(flag) = command_manifest::first_manifest_unknown_flag(&args) {
+        return Err(CliError::invalid_args(format!("unknown flag: {flag}")));
+    }
     if flags.format_text
         && !has_command_json_format_request(&args)
         && !is_validate_command(&args)

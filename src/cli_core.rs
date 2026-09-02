@@ -1,3 +1,5 @@
+use serde::Serialize;
+
 pub(crate) const EXIT_SUCCESS: i32 = 0;
 pub(crate) const EXIT_UNEXPECTED: i32 = 1;
 pub(crate) const EXIT_INVALID_ARGS: i32 = 2;
@@ -14,6 +16,30 @@ pub(crate) struct CliError {
     pub(crate) code: &'static str,
     pub(crate) exit_code: i32,
     pub(crate) message: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct EnrichedCliError {
+    pub(crate) error: CliError,
+    pub(crate) details: Option<InvalidArgsDetails>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct InvalidArgsFlag {
+    pub(crate) flag: String,
+    #[serde(rename = "use")]
+    pub(crate) use_text: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct InvalidArgsDetails {
+    pub(crate) hint: String,
+    pub(crate) did_you_mean: Vec<String>,
+    pub(crate) valid_flags: Vec<InvalidArgsFlag>,
+    pub(crate) help_command: String,
+    pub(crate) corrected_command: Option<String>,
 }
 
 impl CliError {

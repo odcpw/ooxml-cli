@@ -1,4 +1,292 @@
-use crate::{CliError, CliResult};
+use crate::agent_aliases::invalid_args_intent_hint;
+use crate::cli_core::{EnrichedCliError, InvalidArgsDetails, InvalidArgsFlag};
+use crate::{CliError, CliResult, command_arg};
+
+const GLOBAL_ERROR_FLAGS: &[(&str, &str)] = &[
+    ("--format", "--format <json|text>"),
+    ("--json", "--json"),
+    ("--strict", "--strict"),
+];
+
+pub(crate) fn enrich_invalid_args(raw_args: &[String], err: CliError) -> EnrichedCliError {
+    if err.code != "invalid_args" {
+        return EnrichedCliError {
+            error: err,
+            details: None,
+        };
+    }
+    let projection = crate::command_manifest::error_projection_for_argv(raw_args);
+    let mut valid_flags = projection
+        .as_ref()
+        .map(|command| {
+            command
+                .local_flags
+                .iter()
+                .map(|flag| InvalidArgsFlag {
+                    flag: flag.name.to_string(),
+                    use_text: if flag.flag_type == "bool" {
+                        flag.name.to_string()
+                    } else {
+                        format!("{} <{}>", flag.name, flag.arg_name)
+                    },
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    valid_flags.extend(
+        GLOBAL_ERROR_FLAGS
+            .iter()
+            .map(|(flag, use_text)| InvalidArgsFlag {
+                flag: (*flag).to_string(),
+                use_text: (*use_text).to_string(),
+            }),
+    );
+    valid_flags.sort_by(|left, right| left.flag.cmp(&right.flag));
+    valid_flags.dedup_by(|left, right| left.flag == right.flag);
+
+    let unknown_flag = unknown_flag_from_message(&err.message);
+    let mut did_you_mean = Vec::new();
+    let mut hint = None;
+    if let (Some(command), Some(wrong_flag)) = (projection.as_ref(), unknown_flag.as_deref()) {
+        if let Some(intent) = invalid_args_intent_hint(&command.path, wrong_flag) {
+            did_you_mean.extend(intent.did_you_mean.iter().map(|value| (*value).to_string()));
+            hint = Some(intent.hint.to_string());
+        } else {
+            did_you_mean = nearest_flag_suggestions(wrong_flag, &valid_flags);
+        }
+    }
+
+    let mut corrected_command = unknown_flag.as_deref().and_then(|wrong_flag| {
+        if did_you_mean.len() != 1 || !did_you_mean[0].starts_with('-') {
+            return None;
+        }
+        Some(corrected_flag_command(
+            raw_args,
+            wrong_flag,
+            &did_you_mean[0],
+        ))
+    });
+
+    if err.message.starts_with("unknown command token") {
+        did_you_mean = crate::command_manifest::command_path_suggestions(raw_args);
+        if let Some(suggestion) = did_you_mean.first() {
+            hint = Some(format!(
+                "use the nearest supported command path: {suggestion}"
+            ));
+            corrected_command = corrected_command_path(raw_args, suggestion);
+        }
+    }
+
+    let help_command = projection
+        .as_ref()
+        .map(|command| command.help_command())
+        .unwrap_or_else(|| "ooxml help".to_string());
+    let hint = hint.unwrap_or_else(|| {
+        if let Some(command) = projection.as_ref() {
+            if missing_required_arguments(&err.message) {
+                let required = command.required_flags();
+                let requirement = if required.is_empty() {
+                    "the required arguments shown in the command usage".to_string()
+                } else {
+                    format!("required flags: {}", required.join(", "))
+                };
+                format!("{requirement}. Example: {}", command.example_command())
+            } else if did_you_mean.is_empty() {
+                format!(
+                    "review the accepted flags and usage. Example: {}",
+                    command.example_command()
+                )
+            } else {
+                format!("did you mean {}?", did_you_mean.join(" or "))
+            }
+        } else if did_you_mean.is_empty() {
+            "run ooxml help or ooxml --json capabilities to inspect the supported command contract"
+                .to_string()
+        } else {
+            format!("did you mean {}?", did_you_mean.join(" or "))
+        }
+    });
+
+    EnrichedCliError {
+        error: err,
+        details: Some(InvalidArgsDetails {
+            hint,
+            did_you_mean,
+            valid_flags,
+            help_command,
+            corrected_command,
+        }),
+    }
+}
+
+fn unknown_flag_from_message(message: &str) -> Option<String> {
+    let rest = message
+        .strip_prefix("unknown flag: ")
+        .or_else(|| message.strip_prefix("unknown global flag: "))?;
+    let token = rest
+        .split(|ch: char| ch.is_whitespace() || matches!(ch, ';' | ','))
+        .next()
+        .unwrap_or_default();
+    (!token.is_empty()).then(|| token.to_string())
+}
+
+fn nearest_flag_suggestions(wrong_flag: &str, valid_flags: &[InvalidArgsFlag]) -> Vec<String> {
+    let wrong = wrong_flag.trim_start_matches('-');
+    let mut candidates = valid_flags
+        .iter()
+        .filter_map(|flag| {
+            let candidate = flag.flag.trim_start_matches('-');
+            let distance = damerau_levenshtein(wrong, candidate);
+            (distance <= 2 || candidate.starts_with(wrong) || wrong.starts_with(candidate))
+                .then(|| (distance, flag.flag.clone()))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort();
+    candidates.dedup_by(|left, right| left.1 == right.1);
+    candidates
+        .into_iter()
+        .take(3)
+        .map(|(_, flag)| flag)
+        .collect()
+}
+
+fn corrected_flag_command(raw_args: &[String], wrong_flag: &str, replacement: &str) -> String {
+    let mut replaced = false;
+    let args = raw_args.iter().map(|arg| {
+        if replaced {
+            return arg.clone();
+        }
+        let (flag, inline_value) = arg
+            .split_once('=')
+            .map(|(flag, value)| (flag, Some(value)))
+            .unwrap_or((arg.as_str(), None));
+        if flag != wrong_flag {
+            return arg.clone();
+        }
+        replaced = true;
+        inline_value
+            .map(|value| format!("{replacement}={value}"))
+            .unwrap_or_else(|| replacement.to_string())
+    });
+    std::iter::once("ooxml".to_string())
+        .chain(args)
+        .map(|arg| command_arg(&arg))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn corrected_command_path(raw_args: &[String], suggestion: &str) -> Option<String> {
+    let suggested_tokens = suggestion
+        .split_whitespace()
+        .skip_while(|token| *token == "ooxml")
+        .collect::<Vec<_>>();
+    if suggested_tokens.is_empty() {
+        return None;
+    }
+    let mut globals = Vec::new();
+    let mut command_args = Vec::new();
+    let mut index = 0;
+    while index < raw_args.len() {
+        match raw_args[index].as_str() {
+            "--json" | "--strict" => {
+                globals.push(raw_args[index].clone());
+                index += 1;
+            }
+            "--format" | "-f" => {
+                globals.push(raw_args[index].clone());
+                if let Some(value) = raw_args.get(index + 1) {
+                    globals.push(value.clone());
+                    index += 2;
+                } else {
+                    index += 1;
+                }
+            }
+            value if value.starts_with("--format=") || value.starts_with("-f=") => {
+                globals.push(raw_args[index].clone());
+                index += 1;
+            }
+            _ => {
+                command_args.push(raw_args[index].clone());
+                index += 1;
+            }
+        }
+    }
+    let trailing = command_args.into_iter().skip(suggested_tokens.len());
+    Some(
+        std::iter::once("ooxml".to_string())
+            .chain(globals)
+            .chain(suggested_tokens.into_iter().map(str::to_string))
+            .chain(trailing)
+            .map(|arg| command_arg(&arg))
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
+}
+
+fn missing_required_arguments(message: &str) -> bool {
+    message.contains(" is required")
+        || message.contains(" requires ")
+        || message.contains("provide at least one")
+        || message.contains("must specify")
+        || message.contains("requires exactly")
+}
+
+pub(crate) fn damerau_levenshtein(left: &str, right: &str) -> usize {
+    let left = left.chars().collect::<Vec<_>>();
+    let right = right.chars().collect::<Vec<_>>();
+    let mut distances = vec![vec![0; right.len() + 1]; left.len() + 1];
+    for (index, row) in distances.iter_mut().enumerate() {
+        row[0] = index;
+    }
+    for index in 0..=right.len() {
+        distances[0][index] = index;
+    }
+    for left_index in 1..=left.len() {
+        for right_index in 1..=right.len() {
+            let substitution = usize::from(left[left_index - 1] != right[right_index - 1]);
+            let mut distance = (distances[left_index - 1][right_index] + 1)
+                .min(distances[left_index][right_index - 1] + 1)
+                .min(distances[left_index - 1][right_index - 1] + substitution);
+            if left_index > 1
+                && right_index > 1
+                && left[left_index - 1] == right[right_index - 2]
+                && left[left_index - 2] == right[right_index - 1]
+            {
+                distance = distance.min(distances[left_index - 2][right_index - 2] + 1);
+            }
+            distances[left_index][right_index] = distance;
+        }
+    }
+    distances[left.len()][right.len()]
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::*;
+
+    #[test]
+    fn damerau_levenshtein_handles_drop_insert_and_transposition() {
+        assert_eq!(damerau_levenshtein("range", "rnage"), 1);
+        assert_eq!(damerau_levenshtein("range", "rage"), 1);
+        assert_eq!(damerau_levenshtein("range", "ranges"), 1);
+        assert_eq!(damerau_levenshtein("range", "table"), 4);
+    }
+
+    #[test]
+    fn corrected_flag_commands_preserve_inline_values_and_shell_quote_arguments() {
+        let args = vec![
+            "xlsx".to_string(),
+            "colwidths".to_string(),
+            "set".to_string(),
+            "book with quote's.xlsx".to_string(),
+            "--rnage=A:E".to_string(),
+        ];
+        assert_eq!(
+            corrected_flag_command(&args, "--rnage", "--range"),
+            "ooxml xlsx colwidths set 'book with quote'\"'\"'s.xlsx' --range=A:E"
+        );
+    }
+}
 
 pub(crate) fn parse_validate_args(args: &[String], global_strict: bool) -> CliResult<(&str, bool)> {
     let mut strict = global_strict;

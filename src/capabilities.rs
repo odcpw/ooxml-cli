@@ -88,6 +88,21 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             {"code": EXIT_TARGET_NOT_FOUND, "name": "target_not_found", "description": "requested slide, sheet, table, shape, or macro part was not found"},
             {"code": EXIT_RENDER_FAILED, "name": "render_failed", "description": "rendering or local Office-compatible open check failed"}
         ],
+        "errorEnvelope": {
+            "code": "stable machine-readable error category",
+            "exitCode": "documented numeric exit code",
+            "message": "what failed",
+            "hint": "specific recovery guidance",
+            "didYouMean": ["ranked replacement flags or command paths"],
+            "validFlags": [{"flag": "--flag", "use": "--flag <value>"}],
+            "helpCommand": "copy-pasteable focused help command",
+            "correctedCommand": "copy-pasteable corrected invocation, or null when correction needs a user choice",
+            "channels": {
+                "explicitJson": "one JSON object on stdout; diagnostics remain empty",
+                "defaultJson": "one JSON object on stderr for backward compatibility",
+                "explicitText": "fixed-layout diagnostics on stderr"
+            }
+        },
         "workflows": [
             {
                 "name": "pptx inspect then edit",
@@ -120,7 +135,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             }
         ],
         "conventions": [
-            "stdout is data; diagnostics and errors go to stderr",
+            "stdout is data; explicit --json invalid-argument errors are structured result data on stdout, while text diagnostics go to stderr",
             "serve/MCP operation commands use op vocabulary without the leading ooxml",
             "mutations should be validated before handing files to users"
         ],

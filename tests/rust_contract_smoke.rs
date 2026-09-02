@@ -1156,6 +1156,9 @@ mod agent_surface;
 #[path = "rust_contract_smoke/capabilities.rs"]
 mod capabilities;
 
+#[path = "rust_contract_smoke/intent_corpus.rs"]
+mod intent_corpus;
+
 #[path = "rust_contract_smoke/utility.rs"]
 mod utility;
 

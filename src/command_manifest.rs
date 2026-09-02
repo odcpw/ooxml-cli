@@ -156,6 +156,189 @@ pub(crate) fn local_value_flag_names_for_argv(raw_args: &[String]) -> Vec<&'stat
         .unwrap_or_default()
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct ErrorFlagProjection {
+    pub(crate) name: &'static str,
+    pub(crate) arg_name: &'static str,
+    pub(crate) flag_type: &'static str,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ErrorCommandProjection {
+    pub(crate) path: Vec<&'static str>,
+    pub(crate) use_text: &'static str,
+    pub(crate) local_flags: Vec<ErrorFlagProjection>,
+}
+
+impl ErrorCommandProjection {
+    pub(crate) fn help_command(&self) -> String {
+        format!("ooxml help {}", self.path.join(" "))
+    }
+
+    pub(crate) fn example_command(&self) -> String {
+        let leaf = self.path.last().copied().unwrap_or_default();
+        let suffix = self
+            .use_text
+            .strip_prefix(leaf)
+            .map(str::trim_start)
+            .unwrap_or(self.use_text);
+        if suffix.is_empty() {
+            format!("ooxml {}", self.path.join(" "))
+        } else {
+            format!("ooxml {} {suffix}", self.path.join(" "))
+        }
+    }
+
+    pub(crate) fn required_flags(&self) -> Vec<&'static str> {
+        let mut optional_depth = 0_u32;
+        let mut required = Vec::new();
+        for token in self.use_text.split_whitespace() {
+            optional_depth += token.chars().take_while(|ch| *ch == '[').count() as u32;
+            let cleaned = token
+                .trim_matches(|ch: char| matches!(ch, '[' | ']' | '(' | ')' | ',' | '|' | ';'));
+            if optional_depth == 0
+                && cleaned.starts_with("--")
+                && let Some(flag) = self
+                    .local_flags
+                    .iter()
+                    .find(|flag| flag.name == cleaned)
+                    .map(|flag| flag.name)
+                && !required.contains(&flag)
+            {
+                required.push(flag);
+            }
+            optional_depth = optional_depth
+                .saturating_sub(token.chars().rev().take_while(|ch| *ch == ']').count() as u32);
+        }
+        required
+    }
+}
+
+pub(crate) fn error_projection_for_argv(raw_args: &[String]) -> Option<ErrorCommandProjection> {
+    command_specs()
+        .into_iter()
+        .filter(|spec| {
+            !matches!(spec.execution, ExecutionSupport::GroupOnly { .. })
+                && command_path_matches_argv(spec.path, raw_args)
+        })
+        .max_by_key(|spec| spec.path.len())
+        .map(|spec| ErrorCommandProjection {
+            path: spec.path.to_vec(),
+            use_text: spec.use_text,
+            local_flags: spec
+                .local_flags
+                .into_iter()
+                .map(|flag| ErrorFlagProjection {
+                    name: flag.name,
+                    arg_name: flag.arg_name,
+                    flag_type: flag.flag_type,
+                })
+                .collect(),
+        })
+}
+
+pub(crate) fn first_manifest_unknown_flag(args: &[String]) -> Option<String> {
+    let spec = command_specs()
+        .into_iter()
+        .filter_map(|spec| {
+            if matches!(spec.execution, ExecutionSupport::GroupOnly { .. }) {
+                return None;
+            }
+            matched_command_path_end(spec.path, args).map(|end| (spec, end))
+        })
+        .max_by_key(|(spec, _)| spec.path.len());
+    let (spec, mut index) = spec?;
+    while index < args.len() {
+        let arg = &args[index];
+        let flag_name = arg.split_once('=').map(|(name, _)| name).unwrap_or(arg);
+        let known = spec.local_flags.iter().find(|flag| flag.name == flag_name);
+        if let Some(flag) = known {
+            if flag.flag_type != "bool" && !arg.contains('=') {
+                index += usize::from(args.get(index + 1).is_some());
+            }
+            index += 1;
+            continue;
+        }
+        match flag_name {
+            "--json" | "--strict" => {
+                index += 1;
+                continue;
+            }
+            "--format" | "-f" => {
+                if !arg.contains('=') {
+                    index += usize::from(args.get(index + 1).is_some());
+                }
+                index += 1;
+                continue;
+            }
+            _ if arg.starts_with('-') => return Some(flag_name.to_string()),
+            _ => index += 1,
+        }
+    }
+    None
+}
+
+pub(crate) fn command_path_suggestions(args: &[String]) -> Vec<String> {
+    let command_args = args_without_global_flags(args);
+    let specs = command_specs();
+    let mut candidates = specs
+        .iter()
+        .filter(|spec| !matches!(spec.execution, ExecutionSupport::GroupOnly { .. }))
+        .collect::<Vec<_>>();
+    for (index, arg) in command_args.iter().enumerate() {
+        if arg.starts_with('-') {
+            break;
+        }
+        let exact = candidates
+            .iter()
+            .copied()
+            .filter(|spec| spec.path.get(index).copied() == Some(arg.as_str()))
+            .collect::<Vec<_>>();
+        if exact.is_empty() {
+            let mut ranked = candidates
+                .into_iter()
+                .filter_map(|spec| {
+                    spec.path.get(index).map(|segment| {
+                        (
+                            crate::cli_args::damerau_levenshtein(arg, segment),
+                            spec.path.join(" "),
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
+            ranked.sort();
+            ranked.dedup_by(|left, right| left.1 == right.1);
+            return ranked
+                .into_iter()
+                .take(3)
+                .map(|(_, path)| format!("ooxml {path}"))
+                .collect();
+        }
+        if exact.iter().any(|spec| spec.path.len() == index + 1) {
+            return Vec::new();
+        }
+        candidates = exact;
+    }
+    Vec::new()
+}
+
+fn args_without_global_flags(args: &[String]) -> Vec<String> {
+    let mut filtered = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" | "--strict" => index += 1,
+            "--format" | "-f" => index += if args.get(index + 1).is_some() { 2 } else { 1 },
+            value if value.starts_with("--format=") || value.starts_with("-f=") => index += 1,
+            _ => {
+                filtered.push(args[index].clone());
+                index += 1;
+            }
+        }
+    }
+    filtered
+}
+
 pub(crate) fn first_unknown_command_token(args: &[String]) -> Option<&str> {
     let specs = command_specs();
     let mut candidates = specs.iter().collect::<Vec<_>>();
@@ -184,6 +367,10 @@ pub(crate) fn first_unknown_command_token(args: &[String]) -> Option<&str> {
 }
 
 fn command_path_matches_argv(path: &[&str], raw_args: &[String]) -> bool {
+    matched_command_path_end(path, raw_args).is_some()
+}
+
+fn matched_command_path_end(path: &[&str], raw_args: &[String]) -> Option<usize> {
     let mut index = 0;
     for segment in path {
         while let Some(arg) = raw_args.get(index) {
@@ -195,11 +382,11 @@ fn command_path_matches_argv(path: &[&str], raw_args: &[String]) -> bool {
             }
         }
         if raw_args.get(index).map(String::as_str) != Some(*segment) {
-            return false;
+            return None;
         }
         index += 1;
     }
-    true
+    Some(index)
 }
 
 pub(crate) fn capability_command_for_id(command_id: CommandId) -> Option<Value> {
