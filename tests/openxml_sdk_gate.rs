@@ -83,6 +83,17 @@ fn normalized_pivot_fixture_is_openxml_sdk_schema_clean() {
         String::from_utf8_lossy(&repair.stderr)
     );
 
+    let strict_validation = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args(["--json", "validate", "--strict", path_str(&output_path)])
+        .output()
+        .expect("strict-validate normalized workbook");
+    assert!(
+        strict_validation.status.success(),
+        "strict validation failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&strict_validation.stdout),
+        String::from_utf8_lossy(&strict_validation.stderr)
+    );
+
     let (output, report) = run_conformance(&output_path);
     let schema = schema_check(&report);
     if schema_was_skipped(schema, &output_path) {
