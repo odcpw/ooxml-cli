@@ -239,7 +239,7 @@ fn doctor_contract_commands_are_machine_readable() {
     assert_eq!(cap_stderr, None);
     let caps = cap_stdout.expect("doctor capabilities");
     assert_eq!(caps["tool"], "ooxml");
-    assert_eq!(caps["doctorVersion"], "1.3.0");
+    assert_eq!(caps["doctorVersion"], "1.4.0");
     assert_eq!(caps["readOnly"], true);
     assert!(caps["checks"].as_array().expect("checks").len() >= 9);
     let doctor_contract = serde_json::to_string(&caps).expect("doctor capabilities JSON");
@@ -266,6 +266,53 @@ fn doctor_contract_commands_are_machine_readable() {
         assert!(
             doctor_contract.contains(gate),
             "doctor capabilities should advertise release gate {gate}"
+        );
+    }
+    assert!(
+        caps["notes"]
+            .as_array()
+            .expect("doctor notes")
+            .iter()
+            .any(|note| note
+                .as_str()
+                .is_some_and(|note| note.contains("schema proof is available only"))),
+        "doctor capabilities should state when SDK schema proof is available"
+    );
+
+    let (report_code, report_stdout, report_stderr) =
+        run_ooxml(&["--json", "doctor", "--only", "openxml-sdk-validator"]);
+    assert!(matches!(report_code, 0 | 1));
+    assert_eq!(report_stderr, None);
+    let report = report_stdout.expect("doctor report");
+    let check = &report["checks"][0];
+    assert_eq!(check["id"], "openxml-sdk-validator");
+    assert_eq!(check["proofLevel"], "schema");
+    assert_eq!(check["proofAvailable"], check["status"] == "ok");
+    if check["status"] == "ok" {
+        assert!(
+            check["sdkVersion"]
+                .as_str()
+                .is_some_and(|version| version.starts_with("8.")),
+            "ok SDK check must name the detected 8.x SDK: {check:?}"
+        );
+        assert!(
+            check["dotnetPath"]
+                .as_str()
+                .is_some_and(|path| !path.is_empty()),
+            "ok SDK check must report the dotnet executable: {check:?}"
+        );
+        assert!(
+            check["validatorDllPath"]
+                .as_str()
+                .is_some_and(|path| path.ends_with("openxml-validator.dll")),
+            "ok SDK check must report the built validator DLL: {check:?}"
+        );
+    } else {
+        assert!(
+            check["remediationCommand"]
+                .as_str()
+                .is_some_and(|command| !command.is_empty()),
+            "warning SDK check must provide a remediation command: {check:?}"
         );
     }
 
