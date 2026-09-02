@@ -50,6 +50,7 @@ fn shape_destination_from_entry(
     copy_json_field(entry, &mut out, "selectors");
     copy_json_field(entry, &mut out, "textPreview");
     copy_json_field(entry, &mut out, "bounds");
+    copy_json_field(entry, &mut out, "boundsSource");
     copy_json_field(entry, &mut out, "imageRef");
     Value::Object(out)
 }
@@ -134,15 +135,36 @@ pub(super) fn add_textbox_result_json(
     Value::Object(result)
 }
 
-pub(super) fn place_table_result_json(mutation: &TableMutation) -> Value {
-    json!({
-        "shapeId": mutation.shape_id,
-        "shapeName": mutation.shape_name,
-        "width": mutation.width,
-        "height": mutation.height,
-        "rows": mutation.rows,
-        "cols": mutation.cols,
-    })
+pub(super) fn place_table_result_json(
+    file: &str,
+    mutation: &TableMutation,
+    options: &PlacementMutationOptions,
+    output_path: Option<&str>,
+) -> Value {
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    if let Some(output_path) = output_path {
+        result.insert("output".to_string(), json!(output_path));
+    }
+    if options.dry_run {
+        result.insert("dryRun".to_string(), json!(true));
+    }
+    result.insert("shapeId".to_string(), json!(mutation.shape_id));
+    result.insert("shapeName".to_string(), json!(mutation.shape_name));
+    result.insert("width".to_string(), json!(mutation.width));
+    result.insert("height".to_string(), json!(mutation.height));
+    result.insert("rows".to_string(), json!(mutation.rows));
+    result.insert("cols".to_string(), json!(mutation.cols));
+    let target_file = output_path.unwrap_or("<out.pptx>");
+    let suffix = if options.dry_run { "Template" } else { "" };
+    result.insert(
+        format!("layoutCheckCommand{suffix}"),
+        json!(format!(
+            "ooxml --json pptx validate-layout {}",
+            command_arg(target_file)
+        )),
+    );
+    Value::Object(result)
 }
 
 pub(super) fn place_table_from_xlsx_result_json(
@@ -247,6 +269,13 @@ fn add_table_readback_commands(
         )),
     );
     result.insert(
+        format!("layoutCheckCommand{suffix}"),
+        json!(format!(
+            "ooxml --json pptx validate-layout {}",
+            command_arg(target_file)
+        )),
+    );
+    result.insert(
         format!("renderCommand{suffix}"),
         json!(format!(
             "ooxml pptx render {} --out render-check",
@@ -285,6 +314,13 @@ fn add_shape_readback_commands(
         format!("validateCommand{suffix}"),
         json!(format!(
             "ooxml validate --strict {}",
+            command_arg(target_file)
+        )),
+    );
+    result.insert(
+        format!("layoutCheckCommand{suffix}"),
+        json!(format!(
+            "ooxml --json pptx validate-layout {}",
             command_arg(target_file)
         )),
     );

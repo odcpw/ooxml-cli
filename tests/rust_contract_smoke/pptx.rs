@@ -130,6 +130,8 @@ include!("pptx/shapes.rs");
 
 include!("pptx/layouts.rs");
 
+include!("pptx/layout_qa.rs");
+
 include!("pptx/slides.rs");
 
 fn assert_baseline_rust_json_match(args: &[&str], label: &str) {

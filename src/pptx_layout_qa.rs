@@ -1,28 +1,25 @@
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Number, Value, json};
+use std::path::Path;
 
+use crate::pptx_readback::pptx_resolved_shape_models;
+use crate::pptx_readback::shape_model::{Bounds, BoundsSource, Shape};
 use crate::{
-    CliError, CliResult, append_xml_text_event, attr, attr_exact, is_xml_text_event, local_name,
-    package_type, relationships, resolve_relationship_target, zip_text,
+    CliError, CliResult, append_xml_text_event, attr, attr_exact, command_arg, is_xml_text_event,
+    local_name, package_type, relationships, resolve_relationship_target, zip_text,
 };
 
 const DEFAULT_SLIDE_WIDTH: i64 = 9_144_000;
 const DEFAULT_SLIDE_HEIGHT: i64 = 6_858_000;
-
-#[derive(Clone, Default)]
-struct Bounds {
-    x: i64,
-    y: i64,
-    cx: i64,
-    cy: i64,
-}
+const DEFAULT_SAFE_MARGIN: i64 = 228_600;
 
 #[derive(Default)]
 struct LayoutShape {
     id: i64,
     name: String,
     bounds: Option<Bounds>,
+    bounds_source: Option<BoundsSource>,
     text: Option<TextBlock>,
 }
 
@@ -38,6 +35,14 @@ struct TextBlock {
 struct Paragraph {
     text: String,
     font_sizes: Vec<f64>,
+}
+
+struct SlideContext<'a> {
+    file: &'a str,
+    slide: usize,
+    width: i64,
+    height: i64,
+    safe_margin: i64,
 }
 
 pub(crate) fn pptx_validate_layout(file: &str) -> CliResult<Value> {
@@ -61,11 +66,15 @@ pub(crate) fn pptx_validate_layout(file: &str) -> CliResult<Value> {
         };
         let part = resolve_relationship_target("/ppt/presentation.xml", target);
         let slide_xml = zip_text(file, part.trim_start_matches('/'))?;
+        let resolved_shapes = pptx_resolved_shape_models(file, &part, &slide_xml)?;
+        let shapes = layout_shapes_from_resolved(&slide_xml, &resolved_shapes);
         slide_reports.push(analyze_slide(
+            file,
             index,
-            &parse_layout_shapes(&slide_xml),
+            &shapes,
             slide_width,
             slide_height,
+            DEFAULT_SAFE_MARGIN,
         ));
     }
 
@@ -75,6 +84,8 @@ pub(crate) fn pptx_validate_layout(file: &str) -> CliResult<Value> {
     let mut total_density = 0.0_f64;
     let mut total_text_overflows = 0;
     let mut total_collisions = 0;
+    let mut total_off_slide = 0;
+    let mut total_safe_margin_violations = 0;
     for report in &slide_reports {
         if report
             .get("hasIssues")
@@ -106,6 +117,16 @@ pub(crate) fn pptx_validate_layout(file: &str) -> CliResult<Value> {
             .and_then(Value::as_array)
             .map(Vec::len)
             .unwrap_or(0);
+        total_off_slide += report
+            .get("offSlide")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0);
+        total_safe_margin_violations += report
+            .get("safeMarginViolations")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0);
     }
     let average_density = if total_slides == 0 {
         0.0
@@ -120,24 +141,50 @@ pub(crate) fn pptx_validate_layout(file: &str) -> CliResult<Value> {
         "slidesWithIssues": slides_with_issues,
         "slidesWithHighDensity": slides_with_high_density,
         "averageDensity": json_number(average_density),
+        "safeMargin": {
+            "emu": DEFAULT_SAFE_MARGIN,
+            "inches": 0.25,
+        },
         "totalTextOverflows": total_text_overflows,
         "totalCollisions": total_collisions,
+        "totalOffSlide": total_off_slide,
+        "totalSafeMarginViolations": total_safe_margin_violations,
         "hasIssues": slides_with_issues > 0,
     }))
 }
 
 fn analyze_slide(
+    file: &str,
     slide_index: usize,
     shapes: &[LayoutShape],
     slide_width: i64,
     slide_height: i64,
+    safe_margin: i64,
 ) -> Value {
+    let slide_number = slide_index + 1;
+    let context = SlideContext {
+        file,
+        slide: slide_number,
+        width: slide_width,
+        height: slide_height,
+        safe_margin,
+    };
     let text_overflows = shapes
         .iter()
-        .filter_map(text_overflow_json)
+        .filter_map(|shape| text_overflow_json(&context, shape))
         .collect::<Vec<_>>();
-    let collisions = shape_collisions_json(shapes);
-    let issue_count = text_overflows.len() + collisions.len();
+    let collisions = shape_collisions_json(&context, shapes);
+    let off_slide = shapes
+        .iter()
+        .filter_map(|shape| off_slide_json(&context, shape))
+        .collect::<Vec<_>>();
+    let safe_margin_violations = shapes
+        .iter()
+        .filter(|shape| !is_off_slide(shape, slide_width, slide_height))
+        .filter_map(|shape| safe_margin_json(&context, shape))
+        .collect::<Vec<_>>();
+    let issue_count =
+        text_overflows.len() + collisions.len() + off_slide.len() + safe_margin_violations.len();
     let mut report = Map::new();
     report.insert("slideIndex".to_string(), json!(slide_index));
     report.insert("slideNumber".to_string(), json!(slide_index + 1));
@@ -146,6 +193,15 @@ fn analyze_slide(
     }
     if !collisions.is_empty() {
         report.insert("collisions".to_string(), Value::Array(collisions));
+    }
+    if !off_slide.is_empty() {
+        report.insert("offSlide".to_string(), Value::Array(off_slide));
+    }
+    if !safe_margin_violations.is_empty() {
+        report.insert(
+            "safeMarginViolations".to_string(),
+            Value::Array(safe_margin_violations),
+        );
     }
     report.insert(
         "density".to_string(),
@@ -193,11 +249,11 @@ fn density_classification(density: f64) -> &'static str {
     }
 }
 
-fn shape_collisions_json(shapes: &[LayoutShape]) -> Vec<Value> {
+fn shape_collisions_json(context: &SlideContext<'_>, shapes: &[LayoutShape]) -> Vec<Value> {
     let mut collisions = Vec::new();
     for i in 0..shapes.len() {
         for j in i + 1..shapes.len() {
-            if let Some(collision) = collision_json(&shapes[i], &shapes[j]) {
+            if let Some(collision) = collision_json(context, shapes, i, j) {
                 collisions.push(collision);
             }
         }
@@ -205,7 +261,14 @@ fn shape_collisions_json(shapes: &[LayoutShape]) -> Vec<Value> {
     collisions
 }
 
-fn collision_json(shape1: &LayoutShape, shape2: &LayoutShape) -> Option<Value> {
+fn collision_json(
+    context: &SlideContext<'_>,
+    shapes: &[LayoutShape],
+    shape1_index: usize,
+    shape2_index: usize,
+) -> Option<Value> {
+    let shape1 = &shapes[shape1_index];
+    let shape2 = &shapes[shape2_index];
     let bounds1 = shape1.bounds.as_ref()?;
     let bounds2 = shape2.bounds.as_ref()?;
     let shape1_right = bounds1.x + bounds1.cx;
@@ -250,11 +313,21 @@ fn collision_json(shape1: &LayoutShape, shape2: &LayoutShape) -> Option<Value> {
     } else {
         "low"
     };
+    let suggested = suggested_non_overlapping_bounds(
+        shapes,
+        shape2_index,
+        bounds1,
+        context.width,
+        context.height,
+        context.safe_margin,
+    );
     Some(json!({
         "shapeId1": shape1.id,
         "shapeName1": shape1.name,
+        "boundsSource1": shape1.bounds_source.map(BoundsSource::as_str),
         "shapeId2": shape2.id,
         "shapeName2": shape2.name,
+        "boundsSource2": shape2.bounds_source.map(BoundsSource::as_str),
         "severity": severity,
         "overlapArea": overlap_area,
         "overlapPercentageOfSmaller": json_number(overlap_percentage),
@@ -262,10 +335,12 @@ fn collision_json(shape1: &LayoutShape, shape2: &LayoutShape) -> Option<Value> {
         "shape2Area": area2,
         "isIdenticalBounds": false,
         "reason": "Shapes have overlapping bounding boxes",
+        "suggestedBounds": bounds_value(&suggested),
+        "fixCommand": set_bounds_fix_command(context.file, context.slide, shape2.id, &suggested),
     }))
 }
 
-fn text_overflow_json(shape: &LayoutShape) -> Option<Value> {
+fn text_overflow_json(context: &SlideContext<'_>, shape: &LayoutShape) -> Option<Value> {
     let text = shape.text.as_ref()?;
     if text.paragraphs.is_empty() {
         return None;
@@ -302,9 +377,20 @@ fn text_overflow_json(shape: &LayoutShape) -> Option<Value> {
     } else {
         "medium"
     };
+    let mut suggested = bounds.clone();
+    suggested.cy = estimated_height
+        + text.top_inset.unwrap_or_default()
+        + text.bottom_inset.unwrap_or_default();
+    let suggested = fit_bounds_to_safe_area(
+        &suggested,
+        context.width,
+        context.height,
+        context.safe_margin,
+    );
     Some(json!({
         "shapeId": shape.id,
         "shapeName": shape.name,
+        "boundsSource": shape.bounds_source.map(BoundsSource::as_str),
         "severity": severity,
         "estimatedTextHeight": estimated_height,
         "availableHeight": available_height,
@@ -315,7 +401,203 @@ fn text_overflow_json(shape: &LayoutShape) -> Option<Value> {
         "reason": format!(
             "Text requires ~{estimated_height} EMU height but only {available_height} available ({overflow_amount} EMU overflow)"
         ),
+        "suggestedBounds": bounds_value(&suggested),
+        "fixCommand": set_bounds_fix_command(context.file, context.slide, shape.id, &suggested),
     }))
+}
+
+fn off_slide_json(context: &SlideContext<'_>, shape: &LayoutShape) -> Option<Value> {
+    let bounds = shape.bounds.as_ref()?;
+    let mut edges = Vec::new();
+    if bounds.x < 0 {
+        edges.push("left");
+    }
+    if bounds.y < 0 {
+        edges.push("top");
+    }
+    if bounds.x + bounds.cx > context.width {
+        edges.push("right");
+    }
+    if bounds.y + bounds.cy > context.height {
+        edges.push("bottom");
+    }
+    if edges.is_empty() {
+        return None;
+    }
+    let suggested =
+        fit_bounds_to_safe_area(bounds, context.width, context.height, context.safe_margin);
+    Some(json!({
+        "shapeId": shape.id,
+        "shapeName": shape.name,
+        "boundsSource": shape.bounds_source.map(BoundsSource::as_str),
+        "edges": edges,
+        "severity": "high",
+        "reason": "Shape extends beyond the slide canvas",
+        "suggestedBounds": bounds_value(&suggested),
+        "fixCommand": set_bounds_fix_command(context.file, context.slide, shape.id, &suggested),
+    }))
+}
+
+fn safe_margin_json(context: &SlideContext<'_>, shape: &LayoutShape) -> Option<Value> {
+    let bounds = shape.bounds.as_ref()?;
+    let mut edges = Vec::new();
+    if bounds.x < context.safe_margin {
+        edges.push("left");
+    }
+    if bounds.y < context.safe_margin {
+        edges.push("top");
+    }
+    if bounds.x + bounds.cx > context.width - context.safe_margin {
+        edges.push("right");
+    }
+    if bounds.y + bounds.cy > context.height - context.safe_margin {
+        edges.push("bottom");
+    }
+    if edges.is_empty() {
+        return None;
+    }
+    let suggested =
+        fit_bounds_to_safe_area(bounds, context.width, context.height, context.safe_margin);
+    Some(json!({
+        "shapeId": shape.id,
+        "shapeName": shape.name,
+        "boundsSource": shape.bounds_source.map(BoundsSource::as_str),
+        "edges": edges,
+        "marginEmu": context.safe_margin,
+        "marginInches": json_number(context.safe_margin as f64 / 914_400.0),
+        "severity": "medium",
+        "reason": "Shape enters the configured safe-margin area",
+        "suggestedBounds": bounds_value(&suggested),
+        "fixCommand": set_bounds_fix_command(context.file, context.slide, shape.id, &suggested),
+    }))
+}
+
+fn is_off_slide(shape: &LayoutShape, slide_width: i64, slide_height: i64) -> bool {
+    shape.bounds.as_ref().is_some_and(|bounds| {
+        bounds.x < 0
+            || bounds.y < 0
+            || bounds.x + bounds.cx > slide_width
+            || bounds.y + bounds.cy > slide_height
+    })
+}
+
+fn suggested_non_overlapping_bounds(
+    shapes: &[LayoutShape],
+    moving_index: usize,
+    anchor: &Bounds,
+    slide_width: i64,
+    slide_height: i64,
+    safe_margin: i64,
+) -> Bounds {
+    let moving = shapes[moving_index]
+        .bounds
+        .as_ref()
+        .expect("collision shape has bounds");
+    let right = slide_width - safe_margin;
+    let bottom = slide_height - safe_margin;
+    let (x, cx) = fit_axis(moving.x, moving.cx, safe_margin, right);
+    let (y, cy) = fit_axis(moving.y, moving.cy, safe_margin, bottom);
+    let gap = safe_margin;
+    let candidates = [
+        Bounds {
+            x,
+            y: safe_margin,
+            cx,
+            cy: moving.cy.min((anchor.y - gap - safe_margin).max(0)),
+        },
+        Bounds {
+            x,
+            y: (anchor.y + anchor.cy + gap).min(bottom),
+            cx,
+            cy: moving.cy.min((bottom - anchor.y - anchor.cy - gap).max(0)),
+        },
+        Bounds {
+            x: safe_margin,
+            y,
+            cx: moving.cx.min((anchor.x - gap - safe_margin).max(0)),
+            cy,
+        },
+        Bounds {
+            x: (anchor.x + anchor.cx + gap).min(right),
+            y,
+            cx: moving.cx.min((right - anchor.x - anchor.cx - gap).max(0)),
+            cy,
+        },
+    ];
+    candidates
+        .into_iter()
+        .filter(|candidate| candidate.cx > 0 && candidate.cy > 0)
+        .filter(|candidate| {
+            shapes.iter().enumerate().all(|(index, shape)| {
+                index == moving_index
+                    || shape
+                        .bounds
+                        .as_ref()
+                        .is_none_or(|bounds| !bounds_intersect(candidate, bounds))
+            })
+        })
+        .max_by_key(|candidate| candidate.cx.saturating_mul(candidate.cy))
+        .unwrap_or_else(|| fit_bounds_to_safe_area(moving, slide_width, slide_height, safe_margin))
+}
+
+fn fit_axis(start: i64, size: i64, minimum: i64, maximum: i64) -> (i64, i64) {
+    let available = (maximum - minimum).max(0);
+    let size = size.max(0).min(available);
+    (start.clamp(minimum, maximum - size), size)
+}
+
+fn fit_bounds_to_safe_area(
+    bounds: &Bounds,
+    slide_width: i64,
+    slide_height: i64,
+    safe_margin: i64,
+) -> Bounds {
+    let (x, cx) = fit_axis(bounds.x, bounds.cx, safe_margin, slide_width - safe_margin);
+    let (y, cy) = fit_axis(bounds.y, bounds.cy, safe_margin, slide_height - safe_margin);
+    Bounds { x, y, cx, cy }
+}
+
+fn bounds_intersect(left: &Bounds, right: &Bounds) -> bool {
+    left.x < right.x + right.cx
+        && right.x < left.x + left.cx
+        && left.y < right.y + right.cy
+        && right.y < left.y + left.cy
+}
+
+fn bounds_value(bounds: &Bounds) -> Value {
+    json!({
+        "x": bounds.x,
+        "y": bounds.y,
+        "cx": bounds.cx,
+        "cy": bounds.cy,
+    })
+}
+
+fn set_bounds_fix_command(file: &str, slide: usize, shape_id: i64, bounds: &Bounds) -> String {
+    format!(
+        "ooxml --json pptx shapes set-bounds {} --slide {slide} --target shape:{shape_id} --bounds {},{},{},{} --out {}",
+        command_arg(file),
+        bounds.x,
+        bounds.y,
+        bounds.cx,
+        bounds.cy,
+        command_arg(&layout_fixed_path(file)),
+    )
+}
+
+fn layout_fixed_path(file: &str) -> String {
+    let path = Path::new(file);
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("fixed");
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("pptx");
+    path.with_file_name(format!("{stem}.layout-fixed.{extension}"))
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn estimate_line_count(paragraphs: &[Paragraph]) -> usize {
@@ -327,6 +609,28 @@ fn estimate_line_count(paragraphs: &[Paragraph]) -> usize {
         total += 1 + paragraph.text.len() / 40;
     }
     total.max(1)
+}
+
+fn layout_shapes_from_resolved(xml: &str, resolved: &[Shape]) -> Vec<LayoutShape> {
+    let mut text_shapes = parse_layout_shapes(xml);
+    resolved
+        .iter()
+        .map(|shape| {
+            let text = text_shapes
+                .iter_mut()
+                .find(|candidate| {
+                    candidate.id == i64::from(shape.id) && candidate.name == shape.name
+                })
+                .and_then(|candidate| candidate.text.take());
+            LayoutShape {
+                id: i64::from(shape.id),
+                name: shape.name.clone(),
+                bounds: shape.bounds.clone(),
+                bounds_source: shape.bounds_source,
+                text,
+            }
+        })
+        .collect()
 }
 
 fn parse_layout_shapes(xml: &str) -> Vec<LayoutShape> {
@@ -443,8 +747,6 @@ fn parse_shape_start(
     if let Some(shape) = current.as_mut() {
         match name {
             "cNvPr" => apply_cnvpr(shape, e),
-            "off" => apply_off(shape, e),
-            "ext" => apply_ext(shape, e),
             "txBody" => {
                 *in_tx_body = true;
                 shape.text.get_or_insert_with(TextBlock::default);
@@ -476,8 +778,6 @@ fn parse_shape_empty(
 ) {
     match name {
         "cNvPr" => apply_cnvpr(shape, e),
-        "off" => apply_off(shape, e),
-        "ext" => apply_ext(shape, e),
         "txBody" => {
             *in_tx_body = false;
             shape.text.get_or_insert_with(TextBlock::default);
@@ -511,26 +811,6 @@ fn apply_cnvpr(shape: &mut LayoutShape, e: &BytesStart<'_>) {
     if shape.name.is_empty() {
         shape.name = attr(e, "name").unwrap_or_default();
     }
-}
-
-fn apply_off(shape: &mut LayoutShape, e: &BytesStart<'_>) {
-    let bounds = shape.bounds.get_or_insert_with(Bounds::default);
-    bounds.x = attr(e, "x")
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(bounds.x);
-    bounds.y = attr(e, "y")
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(bounds.y);
-}
-
-fn apply_ext(shape: &mut LayoutShape, e: &BytesStart<'_>) {
-    let bounds = shape.bounds.get_or_insert_with(Bounds::default);
-    bounds.cx = attr(e, "cx")
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(bounds.cx);
-    bounds.cy = attr(e, "cy")
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(bounds.cy);
 }
 
 fn apply_body_pr(shape: &mut LayoutShape, e: &BytesStart<'_>) {

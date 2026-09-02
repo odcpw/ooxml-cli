@@ -3,9 +3,10 @@ mod charts;
 mod comments;
 mod extract;
 mod fields;
+mod geometry;
 mod layouts;
 mod notes;
-mod shape_model;
+pub(crate) mod shape_model;
 mod slide_parts;
 mod tables;
 mod text;
@@ -15,14 +16,15 @@ pub(crate) use charts::{pptx_charts_list, pptx_charts_show};
 pub(crate) use comments::pptx_comments_list;
 pub(crate) use extract::{pptx_extract_images, pptx_extract_xml};
 pub(crate) use fields::pptx_fields_inspect;
+pub(crate) use geometry::pptx_resolved_shape_models;
 pub(crate) use layouts::{
     PptxLayoutInfo, pptx_find_layout, pptx_layout_shape_entries, pptx_layouts_list,
     pptx_layouts_show, pptx_masters_list, pptx_masters_show, pptx_presentation_layouts,
 };
 pub(crate) use notes::{pptx_extract_notes, pptx_notes_show};
 use shape_model::{
-    Shape, TableCell, TableInfo, bounds_json, pptx_selector_targets,
-    pptx_selector_targets_from_shapes, pptx_shape_models, pptx_slide_object_counts,
+    Shape, TableCell, TableInfo, bounds_json, pptx_selector_targets_from_shapes, pptx_shape_models,
+    pptx_slide_object_counts,
 };
 pub(crate) use tables::pptx_tables_show;
 use tables::table_info_json;
@@ -67,7 +69,7 @@ pub(crate) fn pptx_slide_show(file: &str, slide: u32) -> CliResult<Value> {
         .as_ref()
         .and_then(|part| trailing_number(part, "slideLayout"))
         .unwrap_or(1);
-    let shapes = pptx_shapes(&slide_xml);
+    let shapes = pptx_shapes(&pptx_resolved_shape_models(file, &part, &slide_xml)?);
     let part_uri = format!("/{}", part);
     let layout_part_uri = layout_part
         .as_ref()
@@ -245,9 +247,10 @@ pub(crate) fn pptx_slide_selectors(file: &str, slide: u32) -> CliResult<Value> {
     if let Some(layout_part_uri) = layout_part_uri {
         output.insert("layoutPartUri".to_string(), json!(layout_part_uri));
     }
+    let shapes = pptx_resolved_shape_models(file, &part, &slide_xml)?;
     output.insert(
         "targets".to_string(),
-        Value::Array(pptx_selector_targets(&slide_xml)),
+        Value::Array(pptx_selector_targets_from_shapes(&shapes)),
     );
     Ok(Value::Object(output))
 }
@@ -293,6 +296,7 @@ pub(crate) fn pptx_shapes_show(
         .map(|part| format!("/{part}"));
     let slide_id_unique =
         *slide_id != 0 && slide_id_counts.get(slide_id).copied().unwrap_or_default() == 1;
+    let shapes = pptx_resolved_shape_models(file, &part, &slide_xml)?;
 
     let mut output = Map::new();
     output.insert("file".to_string(), json!(file));
@@ -309,7 +313,7 @@ pub(crate) fn pptx_shapes_show(
         Value::Array(pptx_shape_show_entries(
             file,
             &part,
-            &slide_xml,
+            &shapes,
             *slide_id,
             slide_id_unique,
             include_text,
@@ -497,9 +501,9 @@ fn trailing_number(path: &str, stem: &str) -> Option<u32> {
     file_name.strip_prefix(stem)?.parse::<u32>().ok()
 }
 
-fn pptx_shapes(xml: &str) -> Vec<Value> {
-    pptx_shape_models(xml)
-        .into_iter()
+fn pptx_shapes(shapes: &[Shape]) -> Vec<Value> {
+    shapes
+        .iter()
         .map(|shape| {
             let mut map = Map::new();
             map.insert("id".to_string(), json!(shape.id));
@@ -507,6 +511,9 @@ fn pptx_shapes(xml: &str) -> Vec<Value> {
             map.insert("type".to_string(), json!(shape.kind));
             if let Some(bounds) = shape.bounds.as_ref() {
                 map.insert("bounds".to_string(), bounds_json(bounds));
+                if let Some(source) = shape.bounds_source {
+                    map.insert("boundsSource".to_string(), json!(source.as_str()));
+                }
             }
             map.insert("isPlaceholder".to_string(), json!(shape.is_placeholder));
             if !shape.text.is_empty() {
@@ -529,20 +536,19 @@ fn pptx_shapes(xml: &str) -> Vec<Value> {
 fn pptx_shape_show_entries(
     file: &str,
     slide_part: &str,
-    xml: &str,
+    shapes: &[Shape],
     slide_id: u32,
     slide_id_unique: bool,
     include_text: bool,
     include_bounds: bool,
 ) -> Vec<Value> {
-    let shapes = pptx_shape_models(xml);
     let mut id_counts = BTreeMap::<u32, usize>::new();
-    for shape in &shapes {
+    for shape in shapes {
         if shape.id != 0 {
             *id_counts.entry(shape.id).or_default() += 1;
         }
     }
-    let targets = pptx_selector_targets_from_shapes(&shapes);
+    let targets = pptx_selector_targets_from_shapes(shapes);
     let slide_relationships = slide_part_relationships(file, slide_part).unwrap_or_default();
     shapes
         .iter()
@@ -560,6 +566,9 @@ fn pptx_shape_show_entries(
             }
             if include_bounds && let Some(bounds) = shape.bounds.as_ref() {
                 entry.insert("bounds".to_string(), bounds_json(bounds));
+                if let Some(source) = shape.bounds_source {
+                    entry.insert("boundsSource".to_string(), json!(source.as_str()));
+                }
             }
             if let Some(table) = shape.table.as_ref() {
                 entry.insert("tableInfo".to_string(), table_info_json(table));

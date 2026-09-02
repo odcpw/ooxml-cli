@@ -251,7 +251,7 @@ pub(crate) fn pptx_place_table(file: &str, args: &[String]) -> CliResult<Value> 
         &options,
         "pptx-place-table",
     )?;
-    let result = place_table_result_json(&mutation);
+    let result = place_table_result_json(file, &mutation, &options, stage.output_path.as_deref());
     finish_placement_mutation(
         file,
         &stage.staged_path,

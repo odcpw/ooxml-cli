@@ -5,32 +5,52 @@ use std::collections::BTreeMap;
 
 use crate::{add_selector, append_xml_text_event, attr, is_xml_text_event, local_name};
 #[derive(Default)]
-pub(super) struct Shape {
-    pub(super) id: u32,
-    pub(super) name: String,
+pub(crate) struct Shape {
+    pub(crate) id: u32,
+    pub(crate) name: String,
     pub(super) kind: String,
     pub(super) is_placeholder: bool,
     pub(super) has_text_body: bool,
     pub(super) text: String,
     pub(super) paragraphs: Vec<Vec<String>>,
-    pub(super) bounds: Option<Bounds>,
+    pub(crate) bounds: Option<Bounds>,
+    pub(crate) bounds_source: Option<BoundsSource>,
     pub(super) placeholder: Option<Placeholder>,
     pub(super) image_rel_id: String,
     pub(super) table: Option<TableInfo>,
 }
 
 #[derive(Clone)]
-pub(super) struct Placeholder {
-    pub(super) literal_type: String,
-    pub(super) index: Option<u32>,
+pub(crate) struct Placeholder {
+    pub(crate) literal_type: String,
+    pub(crate) resolved_type: String,
+    pub(crate) type_source: Option<BoundsSource>,
+    pub(crate) index: Option<u32>,
 }
 
 #[derive(Clone)]
-pub(super) struct Bounds {
-    x: i64,
-    y: i64,
-    cx: i64,
-    cy: i64,
+pub(crate) struct Bounds {
+    pub(crate) x: i64,
+    pub(crate) y: i64,
+    pub(crate) cx: i64,
+    pub(crate) cy: i64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BoundsSource {
+    Slide,
+    Layout,
+    Master,
+}
+
+impl BoundsSource {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Slide => "slide",
+            Self::Layout => "layout",
+            Self::Master => "master",
+        }
+    }
 }
 
 #[derive(Default)]
@@ -127,11 +147,6 @@ pub(super) fn pptx_slide_object_counts(xml: &str) -> (usize, usize, usize) {
         }
     }
     (text_shapes, images, tables)
-}
-
-pub(super) fn pptx_selector_targets(xml: &str) -> Vec<Value> {
-    let shapes = pptx_shape_models(xml);
-    pptx_selector_targets_from_shapes(&shapes)
 }
 
 pub(super) fn pptx_selector_targets_from_shapes(shapes: &[Shape]) -> Vec<Value> {
@@ -270,7 +285,7 @@ pub(super) fn bounds_json(bounds: &Bounds) -> Value {
 }
 
 fn pptx_selector_placeholder(ph: &Placeholder) -> Option<Map<String, Value>> {
-    let role = placeholder_role(&ph.literal_type);
+    let role = placeholder_role(&ph.resolved_type);
     if role.is_empty() {
         return None;
     }
@@ -283,8 +298,12 @@ fn pptx_selector_placeholder(ph: &Placeholder) -> Option<Map<String, Value>> {
     }
     if !ph.literal_type.is_empty() {
         placeholder.insert("literalType".to_string(), json!(ph.literal_type));
-        placeholder.insert("resolvedType".to_string(), json!(ph.literal_type));
-        placeholder.insert("typeSource".to_string(), json!("slide"));
+    }
+    if !ph.resolved_type.is_empty() {
+        placeholder.insert("resolvedType".to_string(), json!(ph.resolved_type));
+    }
+    if let Some(source) = ph.type_source {
+        placeholder.insert("typeSource".to_string(), json!(source.as_str()));
     }
     Some(placeholder)
 }
@@ -380,6 +399,8 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
                     shape.is_placeholder = true;
                     shape.placeholder = Some(Placeholder {
                         literal_type: attr(&e, "type").unwrap_or_default(),
+                        resolved_type: attr(&e, "type").unwrap_or_default(),
+                        type_source: None,
                         index: attr(&e, "idx").and_then(|idx| idx.parse().ok()),
                     });
                 }
