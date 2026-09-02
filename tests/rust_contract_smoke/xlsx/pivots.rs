@@ -1016,10 +1016,7 @@ fn xlsx_pivots_legacy_fixture_is_diagnosed_and_repaired_by_both_paths() {
     assert_eq!(stderr, None, "legacy fixture validation stderr");
     let report = report.expect("legacy fixture validation report");
     println!("validation summary: {}", report["summary"]);
-    assert!(json_contains_diagnostic_code(
-        &report,
-        "WORKSHEET_UNKNOWN_CHILD"
-    ));
+    assert!(json_contains_diagnostic_code(&report, "XML_UNKNOWN_CHILD"));
     let diagnostic = &report["diagnostics"][0];
     assert_eq!(diagnostic["part"], "/xl/worksheets/sheet1.xml");
     assert_eq!(diagnostic["element"], "pivotTableParts");
@@ -1267,13 +1264,15 @@ fn path_str(path: &Path) -> &str {
 }
 
 fn assert_pivot_workbook_child_order_rejected(label: &str, file: &str) {
-    for (command, args) in [
+    for (command, expected_code, args) in [
         (
             "strict validate",
+            "XML_CHILD_ORDER",
             vec!["--json", "validate", "--strict", file],
         ),
         (
             "conformance check",
+            "XLSX_WORKBOOK_CHILD_ORDER",
             vec!["--json", "conformance", "check", file],
         ),
     ] {
@@ -1282,8 +1281,8 @@ fn assert_pivot_workbook_child_order_rejected(label: &str, file: &str) {
         assert_eq!(stderr, None, "{label} {command} stderr");
         let report = report.unwrap_or_else(|| panic!("{label} {command} should emit JSON"));
         assert!(
-            json_contains_diagnostic_code(&report, "XLSX_WORKBOOK_CHILD_ORDER"),
-            "{label} {command} did not report workbook child order:\n{report:#}"
+            json_contains_diagnostic_code(&report, expected_code),
+            "{label} {command} did not report {expected_code}:\n{report:#}"
         );
     }
 }

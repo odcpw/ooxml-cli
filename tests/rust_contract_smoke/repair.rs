@@ -179,17 +179,23 @@ fn assert_command_succeeds(label: &str, args: &[&str]) {
 }
 
 fn assert_workbook_child_order_rejected(label: &str, file: &str) {
-    for args in [
-        vec!["--json", "validate", "--strict", file],
-        vec!["--json", "conformance", "check", file],
+    for (expected_code, args) in [
+        (
+            "XML_CHILD_ORDER",
+            vec!["--json", "validate", "--strict", file],
+        ),
+        (
+            "XLSX_WORKBOOK_CHILD_ORDER",
+            vec!["--json", "conformance", "check", file],
+        ),
     ] {
         let (code, stdout, stderr) = run_ooxml(&args);
         assert_ne!(code, 0, "{label} {args:?} should reject bad order");
         assert_eq!(stderr, None, "{label} {args:?} stderr");
         let report = stdout.unwrap_or_else(|| panic!("{label} {args:?} stdout"));
         assert!(
-            json_contains_diagnostic_code(&report, "XLSX_WORKBOOK_CHILD_ORDER"),
-            "{label} {args:?} did not report workbook child order:\n{report:#}"
+            json_contains_diagnostic_code(&report, expected_code),
+            "{label} {args:?} did not report {expected_code}:\n{report:#}"
         );
     }
 }

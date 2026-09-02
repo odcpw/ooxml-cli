@@ -52,6 +52,7 @@ struct ChildRule {
     namespace: RuleNamespace,
     local_name: &'static str,
     position: Option<u16>,
+    required_predecessor: Option<&'static str>,
     severity: &'static str,
 }
 
@@ -68,6 +69,21 @@ const fn child(local_name: &'static str, position: u16) -> ChildRule {
         namespace: RuleNamespace::Parent,
         local_name,
         position: Some(position),
+        required_predecessor: None,
+        severity: "error",
+    }
+}
+
+const fn child_after(
+    local_name: &'static str,
+    position: u16,
+    required_predecessor: &'static str,
+) -> ChildRule {
+    ChildRule {
+        namespace: RuleNamespace::Parent,
+        local_name,
+        position: Some(position),
+        required_predecessor: Some(required_predecessor),
         severity: "error",
     }
 }
@@ -77,6 +93,7 @@ const fn drawing_child(local_name: &'static str, position: u16) -> ChildRule {
         namespace: RuleNamespace::Drawing,
         local_name,
         position: Some(position),
+        required_predecessor: None,
         severity: "error",
     }
 }
@@ -86,6 +103,7 @@ const fn unordered_child(local_name: &'static str) -> ChildRule {
         namespace: RuleNamespace::Parent,
         local_name,
         position: None,
+        required_predecessor: None,
         severity: "error",
     }
 }
@@ -361,18 +379,18 @@ const WORD_TABLE_CHILDREN: &[ChildRule] = &[
     unordered_child("customXmlMoveToRangeStart"),
     unordered_child("customXmlMoveToRangeEnd"),
     child("tblPr", 1),
-    child("tblGrid", 2),
-    child("tr", 3),
-    child("customXml", 3),
-    child("sdt", 3),
-    child("proofErr", 3),
-    child("permStart", 3),
-    child("permEnd", 3),
-    child("ins", 3),
-    child("del", 3),
-    child("moveFrom", 3),
-    child("moveTo", 3),
-    child("contentPart", 3),
+    child_after("tblGrid", 2, "tblPr"),
+    child_after("tr", 3, "tblGrid"),
+    child_after("customXml", 3, "tblGrid"),
+    child_after("sdt", 3, "tblGrid"),
+    child_after("proofErr", 3, "tblGrid"),
+    child_after("permStart", 3, "tblGrid"),
+    child_after("permEnd", 3, "tblGrid"),
+    child_after("ins", 3, "tblGrid"),
+    child_after("del", 3, "tblGrid"),
+    child_after("moveFrom", 3, "tblGrid"),
+    child_after("moveTo", 3, "tblGrid"),
+    child_after("contentPart", 3, "tblGrid"),
 ];
 
 const CHART_SPACE_CHILDREN: &[ChildRule] = &[
@@ -671,6 +689,7 @@ struct Frame {
     last_name: String,
     child_position: usize,
     child_counts: BTreeMap<(String, String), usize>,
+    seen_children: BTreeSet<String>,
     ignored: bool,
 }
 
@@ -768,7 +787,26 @@ fn push_element(
                 match rule {
                     Some(rule) => {
                         if let Some(position) = rule.position {
-                            if position < parent.last_position {
+                            if let Some(required) = rule.required_predecessor
+                                && !parent.seen_children.contains(required)
+                            {
+                                diagnostics.push(json!({
+                                    "code": "XML_CHILD_ORDER",
+                                    "severity": rule.severity,
+                                    "message": format!(
+                                        "{part_uri} {table_label} child <{local}> at child position {actual} appears before required <{required}>; expected schema sequence position {expected}",
+                                        table_label = table.label,
+                                        actual = parent.child_position,
+                                        expected = position,
+                                    ),
+                                    "part": part_uri,
+                                    "xpath": xpath,
+                                    "element": local,
+                                    "position": parent.child_position,
+                                    "expectedPosition": position,
+                                    "expectedAfter": required,
+                                }));
+                            } else if position < parent.last_position {
                                 diagnostics.push(json!({
                                     "code": "XML_CHILD_ORDER",
                                     "severity": rule.severity,
@@ -790,6 +828,7 @@ fn push_element(
                                 parent.last_name.clone_from(&local);
                             }
                         }
+                        parent.seen_children.insert(local.clone());
                     }
                     None => {
                         let expected = parent.last_position.saturating_add(1).max(1);
@@ -832,6 +871,7 @@ fn push_element(
         last_name: String::new(),
         child_position: 0,
         child_counts: BTreeMap::new(),
+        seen_children: BTreeSet::new(),
         ignored,
     });
 }
@@ -1003,11 +1043,16 @@ mod tests {
                 .iter()
                 .filter(|rule| rule.position.is_some() && rule.local_name != "extLst")
                 .collect::<Vec<_>>();
-            for pair in ordered.windows(2) {
+            for (index, pair) in ordered.windows(2).enumerate() {
                 if pair[0].position == pair[1].position {
                     continue;
                 }
-                let children = format!("{}{}", rule_xml(pair[1]), rule_xml(pair[0]));
+                let mut children = ordered[..index]
+                    .iter()
+                    .map(|rule| rule_xml(rule))
+                    .collect::<String>();
+                children.push_str(&rule_xml(pair[1]));
+                children.push_str(&rule_xml(pair[0]));
                 let diagnostics = validate_xml_part(
                     &format!("/{}.xml", table.label),
                     &table_xml(table, &children),
@@ -1015,10 +1060,15 @@ mod tests {
                 );
                 assert_eq!(diagnostics.len(), 1, "{} swapped pair", table.label);
                 assert_eq!(diagnostics[0]["code"], "XML_CHILD_ORDER");
-                assert_eq!(diagnostics[0]["element"], pair[0].local_name);
+                let offending = if pair[1].required_predecessor == Some(pair[0].local_name) {
+                    pair[1]
+                } else {
+                    pair[0]
+                };
+                assert_eq!(diagnostics[0]["element"], offending.local_name);
                 assert_eq!(
                     diagnostics[0]["expectedPosition"],
-                    pair[0].position.expect("ordered pair")
+                    offending.position.expect("ordered pair")
                 );
             }
         }
