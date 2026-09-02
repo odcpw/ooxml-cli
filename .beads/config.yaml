@@ -1,4 +1,2 @@
-# Beads Project Configuration
-# issue_prefix: ooxml
-# default_priority: 2
-# default_type: task
+inherited_context:
+  enabled: true

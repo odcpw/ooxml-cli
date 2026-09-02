@@ -82,3 +82,32 @@ __pycache__/
 
 # bv (beads viewer) local config and caches
 .bv/
+.env
+cursor.mcp.json
+gemini.mcp.json
+.omp/mcp.json
+opencode.json
+/..gitignore.*.tmp
+/..gitignore.*.bak
+/..gitignore.*.replaced
+/.omp/mcp.json
+/cursor.mcp.json
+/gemini.mcp.json
+/opencode.json
+/.cursor.mcp.json.*.tmp
+/.cursor.mcp.json.*.bak
+/.cursor.mcp.json.*.replaced
+/cursor.mcp.json.bak*
+/.gemini.mcp.json.*.tmp
+/.gemini.mcp.json.*.bak
+/.gemini.mcp.json.*.replaced
+/gemini.mcp.json.bak*
+/.omp/.mcp.json.*.tmp
+/.omp/.mcp.json.*.bak
+/.omp/.mcp.json.*.replaced
+/.omp/mcp.json.bak*
+/.opencode.json.*.tmp
+/.opencode.json.*.bak
+/.opencode.json.*.replaced
+/opencode.json.bak*
+.ntm/
