@@ -158,9 +158,9 @@ fn doctor_capabilities(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
             },
             {
                 "id": "openxml-sdk-schema",
-                "description": "Validate package schema with the Open XML SDK validator helper.",
+                "description": "Run package conformance with Microsoft Open XML SDK schema validation.",
                 "requiredChecks": ["openxml-sdk-validator"],
-                "command": "~/dotnet/dotnet tools/openxml-validator/bin/Release/net8.0/openxml-validator.dll <file>"
+                "command": "ooxml --json conformance check <file> --openxml-sdk"
             },
             {
                 "id": "libreoffice-open-render",
@@ -219,7 +219,7 @@ fn doctor_capabilities(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
             "Each finding includes remediation or remediationCommand when a deterministic next step is known.",
             "--online is reserved for compatibility and does not perform network access.",
             "Open XML SDK schema proof is available only when the openxml-sdk-validator check status is ok.",
-            "conformance check is promoted in Rust for package-open, repo-validation, repair-invariant, and optional local office-open proof.",
+            "conformance check is promoted in Rust for package-open, repo-validation, repair-invariant, optional Open XML SDK schema, and optional local office-open proof.",
             "Use check-release-fast before Office-dependent release gates."
         ]
     });
@@ -464,6 +464,10 @@ fn check_openxml_sdk_validator() -> CheckReport {
         validator_dll.is_file(),
         probe_dotnet_8_sdk(),
     )
+}
+
+pub(crate) fn openxml_sdk_validator_check() -> Value {
+    check_json(check_openxml_sdk_validator())
 }
 
 fn openxml_sdk_report(
@@ -990,7 +994,7 @@ Recommended agent flow:
 1. Run `ooxml --json doctor health`.
 2. If healthy is false, inspect `findings` and then `ooxml --json doctor`.
 3. Follow a finding's `remediationCommand` only when it is appropriate for the current task.
-4. For package proof without desktop Office, run `ooxml validate --strict <file>` and `ooxml --json conformance check <file>`.
+4. For package proof without desktop Office, run `ooxml validate --strict <file>` and `ooxml --json conformance check <file> --openxml-sdk`.
 5. Use Office COM or VBA smoke gates only on Windows hosts where the corresponding checks are ok.
 
 Exit codes:

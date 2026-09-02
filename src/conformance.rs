@@ -6,6 +6,8 @@ use crate::{
     reject_unknown_flags, zip_bytes, zip_entry_names,
 };
 
+mod openxml_sdk;
+
 pub(crate) fn conformance(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {
     match args {
         [sub, rest @ ..] if sub == "coverage" => coverage(flags, rest),
@@ -21,13 +23,14 @@ fn check(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {
     reject_unknown_flags(
         args,
         &["--format", "--office-check-out-dir"],
-        &["--json", "--office-check"],
+        &["--json", "--office-check", "--openxml-sdk"],
     )?;
     let file = conformance_check_file_arg(args)?;
     let report = check_report(
         file,
         has_flag(args, "--office-check"),
         optional_string_flag(args, "--office-check-out-dir")?,
+        has_flag(args, "--openxml-sdk"),
     )?;
     let exit_code = if report
         .get("status")
@@ -57,7 +60,7 @@ fn conformance_check_file_arg(args: &[String]) -> CliResult<&str> {
     while i < args.len() {
         let arg = args[i].as_str();
         match arg {
-            "--json" | "--office-check" => i += 1,
+            "--json" | "--office-check" | "--openxml-sdk" => i += 1,
             "--format" | "-f" | "--office-check-out-dir" => {
                 if args.get(i + 1).is_none() {
                     return Err(CliError::invalid_args(format!("{arg} requires a value")));
@@ -89,6 +92,7 @@ fn check_report(
     file: &str,
     run_office_check: bool,
     office_check_out_dir: Option<&str>,
+    run_openxml_sdk: bool,
 ) -> CliResult<Value> {
     let mut checks = Vec::new();
 
@@ -138,6 +142,10 @@ fn check_report(
                 err.message,
             ));
         }
+    }
+
+    if run_openxml_sdk {
+        checks.push(openxml_sdk::schema_check(file));
     }
 
     if run_office_check {
@@ -386,6 +394,7 @@ fn coverage_report() -> Value {
             {"name": "package-open", "status": "implemented", "evidence": ["pkg/conformance.CheckPackage", "pkg/conformance.TestConformanceGoldenSummary"]},
             {"name": "repo-validation", "status": "implemented", "evidence": ["pkg/validate.ValidatePackage", "pkg/conformance.TestConformanceGoldenSummary"]},
             {"name": "repair-invariants", "status": "implemented", "evidence": ["pkg/conformance.CheckRepairInvariants", "pkg/conformance.TestRepairInvariants*"]},
+            {"name": "openxml-sdk-schema", "status": "local-sdk-optional-ci-required", "evidence": ["tests/openxml_sdk_gate.rs", "tools/openxml-validator"]},
             {"name": "golden-summary", "status": "implemented", "evidence": ["testdata/golden/repair-conformance-summary.json", "testdata/golden/repair-conformance-office-open-summary.json", "testdata/golden/generated-repair-proof-bundle.json"]},
             {"name": "office-open", "status": "local-engine-optional", "evidence": ["pkg/officecheck", "pkg/conformance.TestConformanceOfficeOpenGoldenSummary", "pkg/conformance.TestCheckPackageOfficeCheckFailureFailsReport", "internal/cli.TestConformanceCheckOfficeCheckJSON", "internal/cli.TestGeneratedRepairConformanceOfficeOpenIfAvailable"]}
         ],
@@ -426,6 +435,7 @@ fn coverage_report() -> Value {
             "This is a repair-focused harness for practical generated DOCX/PPTX/XLSX files, not an exhaustive ISO/IEC 29500 conformance suite.",
             "Static repair and generated-output golden summaries remain PPTX/XLSX-only; DOCX coverage is targeted invariants plus Windows edit-smoke release gates.",
             "LibreOffice/soffice open checks are useful local evidence but are not proof that Microsoft Office will avoid a repair prompt.",
+            "Open XML SDK validation is schema proof only; it does not prove desktop Microsoft Office compatibility.",
             "Real Microsoft Office repair prompts on Windows/macOS remain the final external oracle for user-facing compatibility.",
             "Macro code is not executed or compiled by this harness."
         ]

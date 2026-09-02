@@ -313,11 +313,17 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
         spec(
             CoreCommandId::ConformanceCheck,
             &["conformance", "check"],
-            "conformance check <file> [--office-check] [--office-check-out-dir <dir>]",
-            "Run package-open, repo-validation, repair-invariant, and optional local office-open checks for one OOXML package.",
+            "conformance check <file> [--openxml-sdk] [--office-check] [--office-check-out-dir <dir>]",
+            "Run package-open, repo-validation, repair-invariant, optional Open XML SDK schema, and optional local office-open checks for one OOXML package.",
             &["package"],
             direct("read-only package conformance proof; not a mutation op"),
             vec![
+                flag(
+                    "--openxml-sdk",
+                    "openxml-sdk",
+                    "bool",
+                    "also run Microsoft Open XML SDK schema validation when the doctor check reports it available",
+                ),
                 flag(
                     "--office-check",
                     "office-check",
