@@ -38,7 +38,9 @@ param(
 
     [string]$ArtifactProofMatrixJson = "",
 
-    [string]$ArtifactProofMatrixMarkdown = ""
+    [string]$ArtifactProofMatrixMarkdown = "",
+
+    [switch]$TestFailureFormatter
 )
 
 Set-StrictMode -Version Latest
@@ -368,6 +370,173 @@ function New-StageResult {
         artifact  = $Artifact
         elapsedMs = $elapsedValue
     }
+}
+
+function ConvertTo-OneLine {
+    param([object]$Value)
+
+    if ($null -eq $Value) {
+        return ""
+    }
+    return ([regex]::Replace(([string]$Value).Trim(), '\s+', ' '))
+}
+
+function Get-SmokeFailureRows {
+    param(
+        [object]$Summary,
+        [string[]]$StageNames,
+        [string]$ArtifactProperty
+    )
+
+    foreach ($scenario in @($Summary.scenarios)) {
+        $failedStageName = ""
+        $failedStage = $null
+        foreach ($stageName in $StageNames) {
+            $property = $scenario.PSObject.Properties[$stageName]
+            if ($null -eq $property -or $null -eq $property.Value) {
+                continue
+            }
+            $statusProperty = $property.Value.PSObject.Properties["status"]
+            $status = if ($null -eq $statusProperty) { "" } else { [string]$statusProperty.Value }
+            if ($status -eq "failed" -or $status -eq "missing") {
+                $failedStageName = $stageName
+                $failedStage = $property.Value
+                break
+            }
+        }
+        if ($null -eq $failedStage) {
+            foreach ($stageName in $StageNames) {
+                $property = $scenario.PSObject.Properties[$stageName]
+                if ($null -eq $property -or $null -eq $property.Value) {
+                    continue
+                }
+                $statusProperty = $property.Value.PSObject.Properties["status"]
+                $status = if ($null -eq $statusProperty) { "" } else { [string]$statusProperty.Value }
+                if ($status -ne "passed" -and $status -ne "not-run") {
+                    $failedStageName = $stageName
+                    $failedStage = $property.Value
+                    break
+                }
+            }
+        }
+        if ($null -eq $failedStage) {
+            continue
+        }
+
+        $detailProperty = $failedStage.PSObject.Properties["detail"]
+        $detail = if ($null -eq $detailProperty) { "No failure detail was reported." } else { ConvertTo-OneLine $detailProperty.Value }
+        if ($detail -eq "") {
+            $detail = "No failure detail was reported."
+        }
+        $artifact = ""
+        $scenarioArtifact = $scenario.PSObject.Properties[$ArtifactProperty]
+        if ($null -ne $scenarioArtifact) {
+            $artifact = [string]$scenarioArtifact.Value
+        }
+        if ($artifact -eq "") {
+            $stageArtifact = $failedStage.PSObject.Properties["artifact"]
+            if ($null -ne $stageArtifact) {
+                $artifact = [string]$stageArtifact.Value
+            }
+        }
+
+        [pscustomobject][ordered]@{
+            name     = [string]$scenario.name
+            stage    = $failedStageName
+            detail   = $detail
+            artifact = $artifact
+        }
+    }
+}
+
+function Escape-SmokeMarkdownCell {
+    param([object]$Value)
+
+    return (ConvertTo-OneLine $Value).Replace("|", "\|")
+}
+
+function Format-SmokeFailureLine {
+    param([object]$Failure)
+
+    return "FAILED scenario={0}; stage={1}; detail={2}; artifact={3}" -f $Failure.name, $Failure.stage, $Failure.detail, $Failure.artifact
+}
+
+function Write-SmokeFailureReport {
+    param(
+        [object[]]$Failures,
+        [string]$Title
+    )
+
+    foreach ($failure in @($Failures)) {
+        Write-Output (Format-SmokeFailureLine -Failure $failure)
+    }
+    if (@($Failures).Count -eq 0 -or $null -eq $env:GITHUB_STEP_SUMMARY -or $env:GITHUB_STEP_SUMMARY -eq "") {
+        return
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    [void]$lines.Add("## $Title")
+    [void]$lines.Add("")
+    [void]$lines.Add("| scenario | stage | detail | artifact |")
+    [void]$lines.Add("| --- | --- | --- | --- |")
+    foreach ($failure in @($Failures)) {
+        [void]$lines.Add(("| {0} | {1} | {2} | {3} |" -f
+                (Escape-SmokeMarkdownCell $failure.name),
+                (Escape-SmokeMarkdownCell $failure.stage),
+                (Escape-SmokeMarkdownCell $failure.detail),
+                (Escape-SmokeMarkdownCell $failure.artifact)))
+    }
+    Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $lines -Encoding UTF8
+}
+
+function Assert-SmokeFailureFormatter {
+    $fixture = [pscustomobject]@{
+        scenarios = @(
+            [pscustomobject]@{
+                name       = "xlsx-broken-fixture"
+                output     = "C:\artifacts\broken.xlsx"
+                mutation   = [pscustomobject]@{ status = "passed"; detail = "ok" }
+                readback   = [pscustomobject]@{ status = "passed"; detail = "ok" }
+                validation = [pscustomobject]@{ status = "failed"; detail = "schema line one`r`nschema line two" }
+            }
+        )
+    }
+    $rows = @(Get-SmokeFailureRows -Summary $fixture -StageNames @("mutation", "readback", "validation") -ArtifactProperty "output")
+    if ($rows.Count -ne 1) {
+        throw "failure formatter self-test expected one row; got $($rows.Count)"
+    }
+    $actual = Format-SmokeFailureLine -Failure $rows[0]
+    $expected = "FAILED scenario=xlsx-broken-fixture; stage=validation; detail=schema line one schema line two; artifact=C:\artifacts\broken.xlsx"
+    if ($actual -ne $expected) {
+        throw "failure formatter self-test mismatch. Expected '$expected'; got '$actual'"
+    }
+    $markdownDetail = Escape-SmokeMarkdownCell "bad | schema"
+    if ($markdownDetail -ne "bad \| schema") {
+        throw "failure formatter self-test did not escape a Markdown table delimiter"
+    }
+    $oldStepSummary = $env:GITHUB_STEP_SUMMARY
+    $stepSummaryPath = [System.IO.Path]::GetTempFileName()
+    try {
+        $env:GITHUB_STEP_SUMMARY = $stepSummaryPath
+        $rendered = @(Write-SmokeFailureReport -Failures $rows -Title "Office edit smoke failures")
+        if ($rendered.Count -ne 1 -or [string]$rendered[0] -ne $expected) {
+            throw "failure formatter self-test did not emit the expected stdout line"
+        }
+        $stepSummary = Get-Content -LiteralPath $stepSummaryPath -Raw
+        if ($stepSummary -notmatch [regex]::Escape("| xlsx-broken-fixture | validation | schema line one schema line two | C:\artifacts\broken.xlsx |")) {
+            throw "failure formatter self-test did not emit the expected GitHub step summary row"
+        }
+    }
+    finally {
+        $env:GITHUB_STEP_SUMMARY = $oldStepSummary
+        Remove-Item -LiteralPath $stepSummaryPath -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host "windows-office-edit-smoke failure formatter self-test passed."
+}
+
+if ($TestFailureFormatter) {
+    Assert-SmokeFailureFormatter
+    exit 0
 }
 
 function New-SkippedScenarioResult {
@@ -1587,6 +1756,20 @@ if ($failed.Count -gt 0 -or $oracleExitCode -ne 0) {
     $overallProofLevel = "failed"
 }
 
+$failedOutputDir = Join-Path $outRoot "failed-outputs"
+if ($failed.Count -gt 0) {
+    New-Item -ItemType Directory -Force -Path $failedOutputDir | Out-Null
+    foreach ($failedScenario in $failed) {
+        $failedOutput = [string]$failedScenario.output
+        if ($failedOutput -eq "" -or -not (Test-Path -LiteralPath $failedOutput -PathType Leaf)) {
+            continue
+        }
+        $safeName = [regex]::Replace(([string]$failedScenario.name), '[^A-Za-z0-9_.-]', '_')
+        $extension = [System.IO.Path]::GetExtension($failedOutput)
+        Copy-Item -LiteralPath $failedOutput -Destination (Join-Path $failedOutputDir ($safeName + $extension)) -Force
+    }
+}
+
 $summary = [pscustomobject]@{
     timestampUtc         = [DateTime]::UtcNow.ToString("o")
     status               = $overallStatus
@@ -1598,6 +1781,7 @@ $summary = [pscustomobject]@{
     scenarioCount        = $results.Count
     passedCount          = ($results.Count - $failed.Count)
     failedCount          = $failed.Count
+    failedOutputDir      = $failedOutputDir
     proofLevels          = @(
         [pscustomobject]@{ id = "saved-readback"; description = "ooxml inspect reopened the edited package and reported the expected Office family." },
         [pscustomobject]@{ id = "strict-validation"; description = "ooxml validate --strict accepted the edited package." },
@@ -1614,6 +1798,11 @@ $summary = [pscustomobject]@{
 
 $summaryPath = Join-Path $outRoot "summary.json"
 $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
+$failureRows = @(Get-SmokeFailureRows `
+        -Summary ([pscustomobject]@{ scenarios = @($failed) }) `
+        -StageNames @("mutation", "readback", "validation", "conformance", "openXmlSdk", "microsoftOffice") `
+        -ArtifactProperty "output")
+Write-SmokeFailureReport -Failures $failureRows -Title "Office edit smoke failures"
 
 $artifactProofMatrix = [pscustomobject]@{
     enabled              = [bool]($WriteArtifactProofMatrix -or $FailOnArtifactProofGap)

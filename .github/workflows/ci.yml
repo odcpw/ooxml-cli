@@ -59,6 +59,19 @@ jobs:
       - name: Run CI gate
         run: make check-ci
 
+      - name: Upload release trace and from-scratch recipe outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release-proof-outputs
+          path: |
+            testdata/golden/release-real-file-traces.json
+            testdata/golden/release-real-file-traces.actual
+            target/ooxml-from-scratch-recipes/**
+            target/ooxml-recipe-e2e/**
+          if-no-files-found: warn
+          retention-days: 14
+
   rust-cross-platform:
     name: Rust compile (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -104,6 +117,12 @@ jobs:
       - name: Build Rust CLI
         run: cargo build --bin ooxml
 
+      - name: Test PowerShell failure formatters
+        shell: powershell
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -TestFailureFormatter
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -TestFailureFormatter
+
       - name: Run Office schema/conformance smoke
         shell: pwsh
         run: |
@@ -119,3 +138,16 @@ jobs:
             -RunConformance `
             -SkipOffice `
             -WriteArtifactProofMatrix
+
+      - name: Upload Office proof diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: office-schema-conformance-diagnostics
+          path: |
+            target/ooxml-office-edit-smoke/summary.json
+            target/ooxml-office-edit-smoke/artifact-proof-matrix.json
+            target/ooxml-office-edit-smoke/artifact-proof-matrix.md
+            target/ooxml-office-edit-smoke/failed-outputs/**
+          if-no-files-found: warn
+          retention-days: 14

@@ -1265,6 +1265,33 @@ function Write-MarkdownReport {
     Set-Content -LiteralPath $Path -Value $lines -Encoding UTF8
 }
 
+function Write-GitHubStepSummary {
+    param(
+        [object]$Matrix,
+        [string]$JsonPath,
+        [string]$MarkdownPath
+    )
+
+    if ($null -eq $env:GITHUB_STEP_SUMMARY -or $env:GITHUB_STEP_SUMMARY -eq "") {
+        return
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    [void]$lines.Add("## OOXML artifact proof matrix")
+    [void]$lines.Add("")
+    [void]$lines.Add(("- Mutating commands: {0}" -f $Matrix.summary.mutatingCommandCount))
+    [void]$lines.Add(("- Rows with required proof gaps: {0}" -f $Matrix.summary.rowsWithRequiredGaps))
+    [void]$lines.Add(('- JSON: `{0}`' -f $JsonPath))
+    [void]$lines.Add(('- Markdown: `{0}`' -f $MarkdownPath))
+    [void]$lines.Add("")
+    [void]$lines.Add("| tier | gaps |")
+    [void]$lines.Add("| --- | ---: |")
+    foreach ($tierName in $TierNames) {
+        [void]$lines.Add(("| {0} | {1} |" -f (Escape-MarkdownCell $tierName), $Matrix.summary.gapsByTier.$tierName))
+    }
+    Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $lines -Encoding UTF8
+}
+
 $resolvedRepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 if ($OutJson -eq "") {
     $OutJson = Join-Path $resolvedRepoRoot ".tmp\artifact-proof-matrix\matrix.json"
@@ -1501,6 +1528,7 @@ if ($jsonDirectory -ne "" -and -not (Test-Path -LiteralPath $jsonDirectory -Path
 }
 $matrix | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $OutJson -Encoding UTF8
 Write-MarkdownReport -Matrix $matrix -Path $OutMarkdown
+Write-GitHubStepSummary -Matrix $matrix -JsonPath $OutJson -MarkdownPath $OutMarkdown
 
 Write-Host ("Artifact proof matrix wrote JSON: {0}" -f $OutJson)
 Write-Host ("Artifact proof matrix wrote Markdown: {0}" -f $OutMarkdown)
