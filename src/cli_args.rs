@@ -72,6 +72,12 @@ pub(crate) fn enrich_invalid_args(raw_args: &[String], err: CliError) -> Enriche
             did_you_mean = nearest_flag_suggestions(wrong_flag, &valid_flags);
         }
     }
+    if unknown_flag.is_some() && did_you_mean.is_empty() && hint.is_none() {
+        return EnrichedCliError {
+            error: err,
+            details: None,
+        };
+    }
 
     let mut corrected_command = unknown_flag.as_deref().and_then(|wrong_flag| {
         if did_you_mean.len() != 1 || !did_you_mean[0].starts_with('-') {

@@ -393,14 +393,12 @@ fn global_json_flags_normalize_before_and_after_command() {
     assert_eq!(trailing_stdout, canonical_stdout);
 
     let (text_code, text_stdout, text_stderr) =
-        run_ooxml(&["--format", "text", "inspect", fixture]);
+        run_ooxml_raw(&["--format", "text", "inspect", fixture]);
     assert_eq!(text_code, 2);
-    assert_eq!(text_stdout, None);
-    assert!(
-        text_stderr.expect("format text stderr")["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("text output is not supported")
+    assert_eq!(text_stdout, "");
+    assert_eq!(
+        text_stderr,
+        "error [invalid_args]: text output is not supported for this command; use --json or --format json\n"
     );
 
     let (guide_code, guide_stdout, guide_stderr) =
@@ -424,10 +422,16 @@ fn pptx_slides_show_and_selectors_reject_unknown_flags() {
         "--bogus-flag",
     ]);
     assert_eq!(show_code, 2);
-    assert_eq!(show_stdout, None);
+    assert_eq!(show_stderr, None);
+    let show_error = show_stdout.expect("slides show explicit JSON error");
+    assert_eq!(show_error["error"]["message"], "unknown flag: --slid");
     assert_eq!(
-        show_stderr.expect("slides show stderr")["error"]["message"],
-        "unknown flag: --slid"
+        show_error["error"]["didYouMean"],
+        serde_json::json!(["--slide"])
+    );
+    assert_eq!(
+        show_error["error"]["correctedCommand"],
+        "ooxml --json pptx slides show testdata/pptx/title-content/presentation.pptx --slide 2 --bogus-flag"
     );
 
     let (selectors_code, selectors_stdout, selectors_stderr) = run_ooxml(&[
