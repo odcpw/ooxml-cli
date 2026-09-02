@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
     CliError, CliResult, RangeBounds, XmlNamedRange, attr, col_name, local_name, parse_cell_ref,
-    parse_range, render_xml_attrs, xml_attrs, xml_direct_child_ranges,
+    parse_range, render_xml_attrs, xml_attrs, xml_direct_child_ranges, zip_entry_names, zip_text,
 };
 #[derive(Clone)]
 pub(crate) struct XlsxSheetDataSpan {
@@ -113,6 +113,47 @@ pub(crate) fn xlsx_direct_worksheet_child_range(
             .into_iter()
             .find(|child| child.kind == kind),
     )
+}
+
+/// Remove the legacy `pivotTableParts` worksheet child emitted by old
+/// ooxml-cli releases.
+///
+/// SpreadsheetML links pivot tables exclusively through the worksheet
+/// relationships part. A `pivotTableParts` child is never valid under
+/// `CT_Worksheet`; `tableParts`, however, is valid and must remain untouched.
+pub(crate) fn strip_legacy_xlsx_pivot_table_parts(xml: &str) -> CliResult<(String, usize)> {
+    let root = xlsx_worksheet_root_bounds(xml)?;
+    if root.self_closing || root.open_end >= root.close_start {
+        return Ok((xml.to_string(), 0));
+    }
+
+    let mut ranges = xml_direct_child_ranges(xml, root.open_end, root.close_start)?
+        .into_iter()
+        .filter(|child| child.kind == "pivotTableParts")
+        .collect::<Vec<_>>();
+    if ranges.is_empty() {
+        return Ok((xml.to_string(), 0));
+    }
+
+    let count = ranges.len();
+    ranges.sort_by_key(|child| child.start);
+    let mut stripped = xml.to_string();
+    for child in ranges.into_iter().rev() {
+        stripped.replace_range(child.start..child.end, "");
+    }
+    Ok((stripped, count))
+}
+
+pub(crate) fn xlsx_package_has_legacy_pivot_table_parts(file: &str) -> CliResult<bool> {
+    for part in zip_entry_names(file)?.into_iter().filter(|entry| {
+        entry.starts_with("xl/worksheets/") && entry.ends_with(".xml") && !entry.contains("/_rels/")
+    }) {
+        let (_, removed) = strip_legacy_xlsx_pivot_table_parts(&zip_text(file, &part)?)?;
+        if removed > 0 {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 pub(crate) fn xlsx_sheet_data_span(xml: &str) -> CliResult<Option<XlsxSheetDataSpan>> {
@@ -479,7 +520,10 @@ pub(crate) fn xlsx_used_range_from_cell_refs(xml: &str) -> Option<String> {
 
 #[cfg(test)]
 mod worksheet_root_tests {
-    use super::{xlsx_worksheet_root_bounds, xlsx_worksheet_root_bounds_permissive};
+    use super::{
+        strip_legacy_xlsx_pivot_table_parts, xlsx_worksheet_root_bounds,
+        xlsx_worksheet_root_bounds_permissive,
+    };
 
     #[test]
     fn strict_root_parser_rejects_a_nested_worksheet() {
@@ -495,5 +539,35 @@ mod worksheet_root_tests {
             .expect("legacy permissive callers find a nested worksheet");
         assert!(bounds.self_closing);
         assert_eq!(bounds.start, 6);
+    }
+
+    #[test]
+    fn strips_only_legacy_pivot_table_parts_from_worksheet_children() {
+        let xml = concat!(
+            r#"<x:worksheet xmlns:x="urn:x" xmlns:r="urn:r">"#,
+            r#"<x:sheetData/>"#,
+            r#"<x:tableParts count="1"><x:tablePart r:id="rIdTable"/></x:tableParts>"#,
+            r#"<x:pivotTableParts count="1"><x:pivotTablePart r:id="rIdPivot"/></x:pivotTableParts>"#,
+            r#"<x:extLst/>"#,
+            r#"</x:worksheet>"#,
+        );
+
+        let (stripped, count) =
+            strip_legacy_xlsx_pivot_table_parts(xml).expect("strip legacy pivot child");
+
+        assert_eq!(count, 1);
+        assert!(!stripped.contains("pivotTableParts"));
+        assert!(stripped.contains("<x:tableParts count=\"1\">"));
+        assert!(stripped.contains("rIdTable"));
+        assert!(stripped.contains("<x:extLst/>"));
+    }
+
+    #[test]
+    fn strip_is_a_noop_for_valid_worksheet_xml() {
+        let xml = r#"<worksheet><sheetData/><tableParts count="1"><tablePart r:id="rId1"/></tableParts></worksheet>"#;
+        let (stripped, count) = strip_legacy_xlsx_pivot_table_parts(xml).expect("valid worksheet");
+
+        assert_eq!(count, 0);
+        assert_eq!(stripped, xml);
     }
 }

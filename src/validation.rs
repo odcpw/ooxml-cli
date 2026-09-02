@@ -341,6 +341,24 @@ fn validate_xlsx_required_parts(
                     sheet.position, sheet.name, target_uri
                 ),
             ));
+            continue;
+        }
+
+        let worksheet_part = target_uri.trim_start_matches('/');
+        let worksheet_xml = zip_text(file, worksheet_part)?;
+        let (_, legacy_pivot_parts) =
+            crate::xlsx_sheet_xml::strip_legacy_xlsx_pivot_table_parts(&worksheet_xml)?;
+        if legacy_pivot_parts > 0 {
+            diagnostics.push(json!({
+                "code": "WORKSHEET_UNKNOWN_CHILD",
+                "severity": "error",
+                "message": format!(
+                    "{target_uri} contains invalid worksheet child <pivotTableParts>; pivot tables must be linked only through worksheet relationships"
+                ),
+                "part": target_uri,
+                "element": "pivotTableParts",
+                "xpath": "/x:worksheet[1]/x:pivotTableParts[1]",
+            }));
         }
     }
     Ok(diagnostics)

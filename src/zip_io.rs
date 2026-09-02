@@ -320,10 +320,12 @@ fn copy_zip_with_text_and_binary_part_overrides_and_removals(
     removals: &BTreeSet<String>,
 ) -> CliResult<()> {
     ensure_zip_rewrite_paths_are_distinct(input, output)?;
+    let text_overrides =
+        xlsx_worksheet_repairs_for_zip_rewrite(input, text_overrides, binary_overrides, removals)?;
     let mut archive = open_zip_unchecked(input)?;
     preflight_zip_rewrite_with_limits(
         &mut archive,
-        text_overrides,
+        &text_overrides,
         binary_overrides,
         removals,
         MAX_ZIP_PART_UNCOMPRESSED_BYTES,
@@ -375,7 +377,7 @@ fn copy_zip_with_text_and_binary_part_overrides_and_removals(
         }
         written.insert(name);
     }
-    for (name, text) in text_overrides {
+    for (name, text) in &text_overrides {
         if binary_overrides.contains_key(name) {
             continue;
         }
@@ -410,6 +412,36 @@ fn copy_zip_with_text_and_binary_part_overrides_and_removals(
         .finish()
         .map_err(|err| CliError::unexpected(err.to_string()))?;
     Ok(())
+}
+
+fn xlsx_worksheet_repairs_for_zip_rewrite(
+    input: &str,
+    requested_overrides: &BTreeMap<String, String>,
+    binary_overrides: &BTreeMap<String, Vec<u8>>,
+    removals: &BTreeSet<String>,
+) -> CliResult<BTreeMap<String, String>> {
+    let entries = zip_entry_names(input)?;
+    let mut effective = requested_overrides.clone();
+    if !entries.iter().any(|entry| entry == "xl/workbook.xml") {
+        return Ok(effective);
+    }
+
+    for name in entries.iter().filter(|entry| {
+        entry.starts_with("xl/worksheets/") && entry.ends_with(".xml") && !entry.contains("/_rels/")
+    }) {
+        if removals.contains(name) || binary_overrides.contains_key(name) {
+            continue;
+        }
+        let xml = match effective.get(name) {
+            Some(xml) => xml.clone(),
+            None => zip_text(input, name)?,
+        };
+        let (stripped, removed) = crate::xlsx_sheet_xml::strip_legacy_xlsx_pivot_table_parts(&xml)?;
+        if removed > 0 {
+            effective.insert(name.clone(), stripped);
+        }
+    }
+    Ok(effective)
 }
 
 fn ensure_zip_rewrite_paths_are_distinct(input: &str, output: &str) -> CliResult<()> {

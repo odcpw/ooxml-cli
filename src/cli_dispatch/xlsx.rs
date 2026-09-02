@@ -16,6 +16,7 @@ mod tables;
 mod workbook;
 
 use serde_json::Value;
+use std::path::Path;
 
 use self::cells::dispatch_xlsx_cells;
 use self::charts::dispatch_xlsx_charts;
@@ -38,6 +39,31 @@ use crate::cli_core::{CliError, CliResult};
 use crate::{XlsxScaffoldOptions, xlsx_scaffold};
 
 pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
+    let repairs_legacy_pivot_parts = xlsx_mutation_source(args)
+        .map(crate::xlsx_sheet_xml::xlsx_package_has_legacy_pivot_table_parts)
+        .transpose()?
+        .unwrap_or(false);
+    let mut result = dispatch_xlsx_inner(args)?;
+    if repairs_legacy_pivot_parts {
+        let output = result
+            .get("output")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        if let Some(output) = output
+            && Path::new(&output).is_file()
+            && !crate::xlsx_sheet_xml::xlsx_package_has_legacy_pivot_table_parts(&output)?
+            && let Value::Object(fields) = &mut result
+        {
+            fields.insert(
+                "repairedLegacyPivotTableParts".to_string(),
+                Value::Bool(true),
+            );
+        }
+    }
+    Ok(result)
+}
+
+fn dispatch_xlsx_inner(args: &[String]) -> CliResult<Value> {
     match args {
         [family, verb, rest @ ..] if family == "xlsx" && verb == "scaffold" => {
             let value_flags = ["--out", "--sheet"];
@@ -121,4 +147,16 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
             args.join(" ")
         ))),
     }
+}
+
+fn xlsx_mutation_source(args: &[String]) -> Option<&str> {
+    if matches!(args.get(1).map(String::as_str), Some("scaffold" | "forms")) {
+        return None;
+    }
+    args.iter().skip(2).find_map(|arg| {
+        let path = Path::new(arg);
+        let extension = path.extension()?.to_str()?;
+        (path.is_file() && matches!(extension.to_ascii_lowercase().as_str(), "xlsx" | "xlsm"))
+            .then_some(arg.as_str())
+    })
 }

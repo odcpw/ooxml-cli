@@ -30,6 +30,32 @@ pub(crate) fn repair_normalize(file: &str, args: &[String]) -> CliResult<Value> 
     })?;
     let workbook_xml = zip_text(file, &workbook_part)?;
     let normalized = normalize_xlsx_workbook_child_order_xml(&workbook_xml, &workbook_part)?;
+    let mut changed = normalized.changed;
+    let mut repairs = normalized.repairs;
+    let mut overrides = BTreeMap::new();
+    if normalized.changed {
+        overrides.insert(workbook_part.clone(), normalized.xml);
+    }
+    let mut repaired_legacy_pivot_table_parts = false;
+    for worksheet_part in entries.iter().filter(|entry| {
+        entry.starts_with("xl/worksheets/") && entry.ends_with(".xml") && !entry.contains("/_rels/")
+    }) {
+        let worksheet_xml = zip_text(file, worksheet_part)?;
+        let (stripped, removed) =
+            crate::xlsx_sheet_xml::strip_legacy_xlsx_pivot_table_parts(&worksheet_xml)?;
+        if removed == 0 {
+            continue;
+        }
+        changed = true;
+        repaired_legacy_pivot_table_parts = true;
+        overrides.insert(worksheet_part.clone(), stripped);
+        repairs.push(json!({
+            "code": "WORKSHEET_LEGACY_PIVOT_TABLE_PARTS_REMOVED",
+            "part": format!("/{}", worksheet_part.trim_start_matches('/')),
+            "element": "pivotTableParts",
+            "elementsRemoved": removed,
+        }));
+    }
     let output_path = if in_place {
         file.to_string()
     } else {
@@ -37,13 +63,13 @@ pub(crate) fn repair_normalize(file: &str, args: &[String]) -> CliResult<Value> 
     };
 
     if !dry_run {
-        if normalized.changed || !in_place {
+        if changed || !in_place {
             let staged_path = crate::mutation_staging_path(
                 file,
                 out.as_deref().filter(|value| !value.trim().is_empty()),
                 "repair-normalize",
             );
-            stage_repair_output(file, &staged_path, &workbook_part, &normalized.xml)?;
+            stage_repair_output(file, &staged_path, &overrides)?;
             if !no_validate {
                 crate::validate_owned_mutation_output(&staged_path)?;
             }
@@ -66,8 +92,9 @@ pub(crate) fn repair_normalize(file: &str, args: &[String]) -> CliResult<Value> 
         "family": "xlsx",
         "operation": "repair normalize",
         "dryRun": dry_run,
-        "changed": normalized.changed,
-        "repairs": normalized.repairs,
+        "changed": changed,
+        "repairs": repairs,
+        "repairedLegacyPivotTableParts": repaired_legacy_pivot_table_parts,
         "workbookPart": workbook_part,
         "validateCommand": if dry_run {
             Value::Null
@@ -91,12 +118,9 @@ pub(crate) fn repair_normalize(file: &str, args: &[String]) -> CliResult<Value> 
 fn stage_repair_output(
     file: &str,
     output_path: &str,
-    workbook_part: &str,
-    workbook_xml: &str,
+    overrides: &BTreeMap<String, String>,
 ) -> CliResult<()> {
-    let mut overrides = BTreeMap::new();
-    overrides.insert(workbook_part.to_string(), workbook_xml.to_string());
-    copy_zip_with_part_overrides(file, output_path, &overrides)
+    copy_zip_with_part_overrides(file, output_path, overrides)
 }
 
 struct NormalizedWorkbook {
