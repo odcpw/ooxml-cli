@@ -33,7 +33,7 @@
         "conformance"
       ],
       "status": 0,
-      "stdout": "Rust exposes static conformance coverage and the promoted package `conformance check` proof command.\n\nUsage:\n  ooxml conformance [command]\n\nAvailable Commands:\n  check     Run package-open, repo-validation, repair-invariant, and optional local office-open checks for one OOXML package.\n  coverage  Show the static Office-repair conformance harness coverage report.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nShow Rust-supported conformance reports.\n",
+      "stdout": "Rust exposes static conformance coverage and the promoted package `conformance check` proof command.\n\nUsage:\n  ooxml conformance [command]\n\nAvailable Commands:\n  check     Run package-open, repo-validation, repair-invariant, optional Open XML SDK schema, and optional local office-open checks for one OOXML package.\n  coverage  Show the static Office-repair conformance harness coverage report.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nShow Rust-supported conformance reports.\n",
       "stderr": ""
     },
     {
@@ -920,7 +920,7 @@
         "check"
       ],
       "status": 0,
-      "stdout": "Run package-open, repo-validation, repair-invariant, and optional local office-open checks for one OOXML package.\n\nUsage:\n  ooxml conformance check <file> [--office-check] [--office-check-out-dir <dir>]\n\nFlags:\n  --office-check           also run the optional local LibreOffice/soffice open check\n  --office-check-out-dir   directory for optional local office-open conversion output\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Run package-open, repo-validation, repair-invariant, optional Open XML SDK schema, and optional local office-open checks for one OOXML package.\n\nUsage:\n  ooxml conformance check <file> [--openxml-sdk] [--office-check] [--office-check-out-dir <dir>]\n\nFlags:\n  --openxml-sdk            also run Microsoft Open XML SDK schema validation when the doctor check reports it available\n  --office-check           also run the optional local LibreOffice/soffice open check\n  --office-check-out-dir   directory for optional local office-open conversion output\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
