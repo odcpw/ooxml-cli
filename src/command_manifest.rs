@@ -260,7 +260,7 @@ pub(crate) fn first_manifest_unknown_flag(args: &[String]) -> Option<String> {
             continue;
         }
         match flag_name {
-            "--json" | "--strict" => {
+            "--help" | "-h" | "--json" | "--strict" => {
                 index += 1;
                 continue;
             }
@@ -310,6 +310,7 @@ pub(crate) fn command_path_suggestions(args: &[String]) -> Vec<String> {
             ranked.dedup_by(|left, right| left.1 == right.1);
             return ranked
                 .into_iter()
+                .filter(|(distance, _)| *distance <= 2)
                 .take(3)
                 .map(|(_, path)| format!("ooxml {path}"))
                 .collect();

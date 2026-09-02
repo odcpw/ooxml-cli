@@ -453,7 +453,7 @@ fn raw_first_global_flag_and_output_contract_matrix_matches() {
             .cases
             .iter()
             .find(|case| case.name == name)
-            .expect("JSON error case");
+            .expect("error case");
         assert_eq!(case.stdout, "", "{name} stdout");
         assert!(case.stderr.ends_with('\n'), "{name} stderr newline");
     }

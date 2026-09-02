@@ -1505,14 +1505,15 @@ fn capabilities_unknown_filter_returns_machine_guidance() {
 fn capabilities_unknown_for_flag_teaches_exact_flag() {
     let (code, stdout, stderr) = run_ooxml(&["--json", "capabilities", "--fr", "slides"]);
     assert_eq!(code, 2);
-    assert_eq!(stdout, None);
-    let error = stderr.expect("stderr JSON");
-    let message = error["error"]["message"].as_str().expect("message");
-    assert!(message.contains("did you mean --for"), "{message}");
-    assert!(
-        message.contains("ooxml --json capabilities --for <filter>"),
-        "{message}"
+    assert_eq!(stderr, None);
+    let error = stdout.expect("explicit JSON error on stdout");
+    assert_eq!(error["error"]["message"], "unknown flag: --fr");
+    assert_eq!(error["error"]["didYouMean"], serde_json::json!(["--for"]));
+    assert_eq!(
+        error["error"]["correctedCommand"],
+        "ooxml --json capabilities --for slides"
     );
+    assert_eq!(error["error"]["helpCommand"], "ooxml help capabilities");
 }
 
 #[test]

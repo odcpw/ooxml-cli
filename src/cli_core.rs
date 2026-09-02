@@ -36,9 +36,11 @@ pub(crate) struct InvalidArgsFlag {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct InvalidArgsDetails {
     pub(crate) hint: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) did_you_mean: Vec<String>,
     pub(crate) valid_flags: Vec<InvalidArgsFlag>,
     pub(crate) help_command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) corrected_command: Option<String>,
 }
 

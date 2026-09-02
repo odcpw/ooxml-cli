@@ -64,7 +64,7 @@ fn guide_json() -> Value {
         "version": env!("CARGO_PKG_VERSION"),
         "principles": [
             "Use --json for machine-readable output whenever a command supports it.",
-            "Invalid invocations return hint, didYouMean, validFlags, helpCommand, and correctedCommand; never execute correctedCommand without reviewing it.",
+            "Unknown flags, near-miss command tokens, and missing required flags return additive recovery fields; never execute correctedCommand without reviewing it.",
             "Inspect before mutating and keep readback commands from mutation output.",
             "Prefer stable selectors, handles, hashes, and generated command fields over positional guesses.",
             "Reuse generated command fields for validation and readback.",
@@ -72,6 +72,7 @@ fn guide_json() -> Value {
         ],
         "errorEnvelope": {
             "fields": ["code", "exitCode", "message", "hint", "didYouMean", "validFlags", "helpCommand", "correctedCommand"],
+            "optionalFields": "didYouMean is omitted when empty; correctedCommand is omitted when correction needs a user choice.",
             "jsonMode": "With explicit --json, stdout is one JSON object and exit code remains non-zero.",
             "textMode": "With explicit --format text, the same recovery fields are printed in a fixed layout on stderr.",
             "safety": "correctedCommand is a suggestion only and is never executed automatically."
@@ -214,7 +215,7 @@ fn guide_text(value: &Value) -> String {
             );
             out.push('\n');
         }
-        for key in ["jsonMode", "textMode", "safety"] {
+        for key in ["optionalFields", "jsonMode", "textMode", "safety"] {
             if let Some(description) = error_envelope.get(key).and_then(Value::as_str) {
                 out.push_str("- ");
                 out.push_str(description);

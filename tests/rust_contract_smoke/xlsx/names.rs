@@ -160,7 +160,8 @@ fn xlsx_names_mutations_match_rust_baseline_and_saved_readback() {
     fs::create_dir_all(&temp_dir).expect("temp dir");
     let baseline_in = temp_dir.join("baseline-input.xlsx");
     let rust_in = temp_dir.join("rust-input.xlsx");
-    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &baseline_in).expect("stage baseline input");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &baseline_in)
+        .expect("stage baseline input");
     fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &rust_in).expect("stage rust input");
     let baseline_add = temp_dir.join("baseline-add.xlsx");
     let rust_add = temp_dir.join("rust-add.xlsx");
@@ -286,7 +287,10 @@ fn xlsx_names_mutations_match_rust_baseline_and_saved_readback() {
                 "--out",
                 &rust_rename,
             ],
-            vec![(&baseline_update, "[UPDATE]"), (&baseline_rename, "[RENAME]")],
+            vec![
+                (&baseline_update, "[UPDATE]"),
+                (&baseline_rename, "[RENAME]"),
+            ],
             vec![(&rust_update, "[UPDATE]"), (&rust_rename, "[RENAME]")],
         ),
         (
@@ -317,7 +321,10 @@ fn xlsx_names_mutations_match_rust_baseline_and_saved_readback() {
                 "--out",
                 &rust_delete,
             ],
-            vec![(&baseline_rename, "[RENAME]"), (&baseline_delete, "[DELETE]")],
+            vec![
+                (&baseline_rename, "[RENAME]"),
+                (&baseline_delete, "[DELETE]"),
+            ],
             vec![(&rust_rename, "[RENAME]"), (&rust_delete, "[DELETE]")],
         ),
     ];
@@ -336,7 +343,10 @@ fn xlsx_names_mutations_match_rust_baseline_and_saved_readback() {
             .map(|(from, to)| (from.as_str(), *to))
             .collect::<Vec<_>>();
         let rust_raw = rust_stdout.expect("rust names mutation stdout");
-        let baseline_json = scrub_paths(baseline_stdout.expect("baseline names mutation stdout"), &baseline_path_refs);
+        let baseline_json = scrub_paths(
+            baseline_stdout.expect("baseline names mutation stdout"),
+            &baseline_path_refs,
+        );
         let rust_json = scrub_paths(rust_raw.clone(), &rust_path_refs);
         assert_eq!(rust_json, baseline_json, "{label} stdout");
         assert_rust_emitted_ooxml_command_exits_zero(&rust_raw, "validateCommand");
@@ -404,10 +414,7 @@ fn xlsx_names_add_places_defined_names_after_sheets_and_validators_catch_bad_ord
     ]);
     assert_eq!(code, 0, "names add exit");
     assert_eq!(stderr, None, "names add stderr");
-    assert!(
-        stdout.is_some(),
-        "names add should emit a success report"
-    );
+    assert!(stdout.is_some(), "names add should emit a success report");
 
     let workbook_xml = read_zip_string(&output_path, "xl/workbook.xml");
     let sheets_end = workbook_xml
@@ -473,9 +480,13 @@ fn xlsx_names_add_places_defined_names_after_sheets_and_validators_catch_bad_ord
     let function_groups = function_groups_workbook
         .find("<functionGroups")
         .unwrap_or_else(|| panic!("workbook missing functionGroups:\n{function_groups_workbook}"));
-    let defined_names = function_groups_workbook.find("<definedNames").unwrap_or_else(|| {
-        panic!("workbook missing definedNames after functionGroups:\n{function_groups_workbook}")
-    });
+    let defined_names = function_groups_workbook
+        .find("<definedNames")
+        .unwrap_or_else(|| {
+            panic!(
+                "workbook missing definedNames after functionGroups:\n{function_groups_workbook}"
+            )
+        });
     assert!(
         function_groups < defined_names,
         "definedNames must be after functionGroups:\n{function_groups_workbook}"
@@ -546,7 +557,11 @@ fn xlsx_names_dry_run_and_errors_match_rust_baseline() {
     fs::create_dir_all(&temp_dir).expect("temp dir");
     let baseline_in_path = temp_dir.join("baseline-input.xlsx");
     let rust_in_path = temp_dir.join("rust-input.xlsx");
-    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &baseline_in_path).expect("baseline input");
+    fs::copy(
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &baseline_in_path,
+    )
+    .expect("baseline input");
     fs::copy(
         "testdata/xlsx/minimal-workbook/workbook.xlsx",
         &rust_in_path,
@@ -589,7 +604,11 @@ fn xlsx_names_dry_run_and_errors_match_rust_baseline() {
     assert_eq!(rust_stderr, baseline_stderr, "dry-run stderr");
     assert_eq!(
         scrub_path(rust_stdout.expect("rust dry-run"), &rust_in, "[IN]"),
-        scrub_path(baseline_stdout.expect("baseline dry-run"), &baseline_in, "[IN]"),
+        scrub_path(
+            baseline_stdout.expect("baseline dry-run"),
+            &baseline_in,
+            "[IN]"
+        ),
         "dry-run stdout"
     );
     assert!(
@@ -669,16 +688,25 @@ fn xlsx_names_dry_run_and_errors_match_rust_baseline() {
         }
         let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
         let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
-        assert_eq!(rust_code, baseline_code, "bad args exit for {baseline_args:?}");
-        assert_eq!(rust_stdout, baseline_stdout, "bad args stdout for {baseline_args:?}");
         assert_eq!(
-            scrub_path(rust_stderr.expect("rust bad args stderr"), &rust_in, "[IN]"),
-            scrub_path(baseline_stderr.expect("baseline bad args stderr"), &baseline_in, "[IN]"),
+            rust_code, baseline_code,
+            "bad args exit for {baseline_args:?}"
+        );
+        assert_eq!(
+            rust_stdout, baseline_stdout,
+            "bad args stdout for {baseline_args:?}"
+        );
+        assert_eq!(
+            rust_stderr.map(|value| scrub_path(value, &rust_in, "[IN]")),
+            baseline_stderr.map(|value| scrub_path(value, &baseline_in, "[IN]")),
             "bad args stderr for {baseline_args:?}"
         );
     }
 
-    let baseline_add = temp_dir.join("baseline-add.xlsx").to_string_lossy().to_string();
+    let baseline_add = temp_dir
+        .join("baseline-add.xlsx")
+        .to_string_lossy()
+        .to_string();
     let rust_add = temp_dir.join("rust-add.xlsx").to_string_lossy().to_string();
     assert_eq!(
         run_ooxml_baseline(&[
@@ -750,10 +778,13 @@ fn xlsx_names_dry_run_and_errors_match_rust_baseline() {
     assert_eq!(rust_stdout, baseline_stdout, "stale guard stdout");
     assert_eq!(
         scrub_path(rust_stderr.expect("rust stale stderr"), &rust_add, "[ADD]"),
-        scrub_path(baseline_stderr.expect("baseline stale stderr"), &baseline_add, "[ADD]"),
+        scrub_path(
+            baseline_stderr.expect("baseline stale stderr"),
+            &baseline_add,
+            "[ADD]"
+        ),
         "stale guard stderr"
     );
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
-

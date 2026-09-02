@@ -37,11 +37,14 @@ fn guarded_xlsx_sheet_reads_preserve_direct_valid_and_invalid_contracts() {
     for args in [
         vec!["--json", "xlsx", "sheets", "list", fixture],
         vec!["--json", "xlsx", "sheets", "show", fixture],
+        vec!["--json", "xlsx", "sheets", "show", fixture, "--sheet", "1"],
         vec![
-            "--json", "xlsx", "sheets", "show", fixture, "--sheet", "1",
-        ],
-        vec![
-            "--json", "xlsx", "sheets", "show", fixture, "--unknown-sheet-flag",
+            "--json",
+            "xlsx",
+            "sheets",
+            "show",
+            fixture,
+            "--unknown-sheet-flag",
         ],
         vec!["--json", "xlsx", "sheets", "show", fixture, "--sheet"],
         vec!["--json", "xlsx", "sheets", "list", fixture, "--bogus"],
@@ -74,7 +77,15 @@ fn xlsx_sheets_add_matches_rust_baseline_shape_and_saved_output() {
     let rust_out = rust_out_path.to_string_lossy().to_string();
 
     let baseline_args = [
-        "--json", "xlsx", "sheets", "add", &baseline_in, "--name", "Added", "--out", &baseline_out,
+        "--json",
+        "xlsx",
+        "sheets",
+        "add",
+        &baseline_in,
+        "--name",
+        "Added",
+        "--out",
+        &baseline_out,
     ];
     let rust_args = [
         "--json", "xlsx", "sheets", "add", &rust_in, "--name", "Added", "--out", &rust_out,
@@ -202,8 +213,17 @@ fn xlsx_sheets_rename_move_delete_match_rust_baseline_and_saved_outputs() {
     let baseline_rename = baseline_rename_path.to_string_lossy().to_string();
     let rust_rename = rust_rename_path.to_string_lossy().to_string();
     let baseline_args = [
-        "--json", "xlsx", "sheets", "rename", &baseline_in, "--sheet", "Data", "--name", "Facts",
-        "--out", &baseline_rename,
+        "--json",
+        "xlsx",
+        "sheets",
+        "rename",
+        &baseline_in,
+        "--sheet",
+        "Data",
+        "--name",
+        "Facts",
+        "--out",
+        &baseline_rename,
     ];
     let rust_args = [
         "--json",
@@ -273,8 +293,17 @@ fn xlsx_sheets_rename_move_delete_match_rust_baseline_and_saved_outputs() {
     let baseline_move = baseline_move_path.to_string_lossy().to_string();
     let rust_move = rust_move_path.to_string_lossy().to_string();
     let baseline_args = [
-        "--json", "xlsx", "sheets", "move", &baseline_rename, "--sheet", "Facts", "--before", "Summary",
-        "--out", &baseline_move,
+        "--json",
+        "xlsx",
+        "sheets",
+        "move",
+        &baseline_rename,
+        "--sheet",
+        "Facts",
+        "--before",
+        "Summary",
+        "--out",
+        &baseline_move,
     ];
     let rust_args = [
         "--json",
@@ -340,14 +369,26 @@ fn xlsx_sheets_rename_move_delete_match_rust_baseline_and_saved_outputs() {
         "Tail",
         "--dry-run",
     ];
-    assert_xlsx_sheet_error_matches_rust_baseline("sheets move target guard", &bad_move_go, &bad_move_rust);
+    assert_xlsx_sheet_error_matches_rust_baseline(
+        "sheets move target guard",
+        &bad_move_go,
+        &bad_move_rust,
+    );
 
     let baseline_delete_path = temp_dir.join("baseline-delete.xlsx");
     let rust_delete_path = temp_dir.join("rust-delete.xlsx");
     let baseline_delete = baseline_delete_path.to_string_lossy().to_string();
     let rust_delete = rust_delete_path.to_string_lossy().to_string();
     let baseline_args = [
-        "--json", "xlsx", "sheets", "delete", &baseline_move, "--sheet", "Summary", "--out", &baseline_delete,
+        "--json",
+        "xlsx",
+        "sheets",
+        "delete",
+        &baseline_move,
+        "--sheet",
+        "Summary",
+        "--out",
+        &baseline_delete,
     ];
     let rust_args = [
         "--json",
@@ -1002,17 +1043,8 @@ fn xlsx_structure_mutation_errors_match_rust_baseline() {
         assert_eq!(rust_code, baseline_code, "{label} exit");
         assert_eq!(rust_stdout, baseline_stdout, "{label} stdout");
         assert_eq!(
-            scrub_path(
-                rust_stderr.unwrap_or_else(|| panic!("rust structure error stderr for {label}")),
-                &rust_clean,
-                "[IN]"
-            ),
-            scrub_path(
-                baseline_stderr
-                    .unwrap_or_else(|| panic!("baseline structure error stderr for {label}")),
-                &baseline_clean,
-                "[IN]"
-            ),
+            rust_stderr.map(|value| scrub_path(value, &rust_clean, "[IN]")),
+            baseline_stderr.map(|value| scrub_path(value, &baseline_clean, "[IN]")),
             "{label} stderr"
         );
     }
@@ -1405,16 +1437,8 @@ fn xlsx_dimension_setters_match_rust_baseline_saved_readback_dry_run_and_errors(
         assert_eq!(rust_code, baseline_code, "colwidths {label} exit");
         assert_eq!(rust_stdout, baseline_stdout, "colwidths {label} stdout");
         assert_eq!(
-            scrub_path(
-                rust_stderr.expect("rust colwidths bad stderr"),
-                &rust_cols_in,
-                "[IN]"
-            ),
-            scrub_path(
-                baseline_stderr.expect("baseline colwidths bad stderr"),
-                &baseline_cols_in,
-                "[IN]"
-            ),
+            rust_stderr.map(|value| scrub_path(value, &rust_cols_in, "[IN]")),
+            baseline_stderr.map(|value| scrub_path(value, &baseline_cols_in, "[IN]")),
             "colwidths {label} stderr"
         );
     }
@@ -1687,16 +1711,8 @@ fn xlsx_dimension_setters_match_rust_baseline_saved_readback_dry_run_and_errors(
         assert_eq!(rust_code, baseline_code, "rowheights {label} exit");
         assert_eq!(rust_stdout, baseline_stdout, "rowheights {label} stdout");
         assert_eq!(
-            scrub_path(
-                rust_stderr.expect("rust rowheights bad stderr"),
-                &rust_rows_in,
-                "[IN]"
-            ),
-            scrub_path(
-                baseline_stderr.expect("baseline rowheights bad stderr"),
-                &baseline_rows_in,
-                "[IN]"
-            ),
+            rust_stderr.map(|value| scrub_path(value, &rust_rows_in, "[IN]")),
+            baseline_stderr.map(|value| scrub_path(value, &baseline_rows_in, "[IN]")),
             "rowheights {label} stderr"
         );
     }

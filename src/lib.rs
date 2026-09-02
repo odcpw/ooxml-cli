@@ -320,10 +320,8 @@ pub(crate) use zip_io::{
 #[doc(hidden)]
 pub fn run_process(raw_args: &[String]) -> i32 {
     let parsed = parse_global_flags(raw_args);
-    let explicit_json = parsed
-        .as_ref()
-        .map(|(flags, _)| flags.json)
-        .unwrap_or_else(|_| raw_args.iter().any(|arg| arg == "--json"));
+    let explicit_json = parsed.as_ref().is_ok_and(|(flags, _)| flags.json)
+        || raw_args.iter().any(|arg| arg == "--json");
     let explicit_text = parsed
         .as_ref()
         .map(|(flags, _)| flags.format_text)
@@ -356,6 +354,7 @@ pub fn run_process(raw_args: &[String]) -> i32 {
         }
         Err(err) => {
             let err = enrich_invalid_args(raw_args, err);
+            let has_recovery_details = err.details.is_some();
             let mut body = json!({
                 "error": {
                     "code": err.error.code,
@@ -375,7 +374,7 @@ pub fn run_process(raw_args: &[String]) -> i32 {
                             .clone(),
                     );
             }
-            if explicit_json && err.error.code == "invalid_args" {
+            if explicit_json && err.error.code == "invalid_args" && has_recovery_details {
                 println!("{}", serde_json::to_string(&body).expect("serialize error"));
             } else if explicit_text && err.error.code == "invalid_args" {
                 eprintln!("{}", invalid_args_text(&err.error, err.details.as_ref()));

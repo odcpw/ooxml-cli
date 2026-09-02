@@ -10,10 +10,8 @@ fn xlsx_conditional_formats_list_show_match_rust_baseline() {
         "1",
     ]);
 
-    let temp_dir = std::env::temp_dir().join(format!(
-        "ooxml-rust-xlsx-cf-list-{}",
-        std::process::id()
-    ));
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-cf-list-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
     let workbook = temp_dir.join("cf.xlsx");
@@ -87,18 +85,16 @@ fn xlsx_conditional_formats_list_show_match_rust_baseline() {
 
 #[test]
 fn xlsx_conditional_formats_add_delete_saved_outputs_match_rust_baseline() {
-    let temp_dir = std::env::temp_dir().join(format!(
-        "ooxml-rust-xlsx-cf-mutate-{}",
-        std::process::id()
-    ));
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-cf-mutate-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
 
-    let baseline_add_out = temp_dir.join("baseline-add.xlsx").to_string_lossy().to_string();
-    let rust_add_out = temp_dir
-        .join("rust-add.xlsx")
+    let baseline_add_out = temp_dir
+        .join("baseline-add.xlsx")
         .to_string_lossy()
         .to_string();
+    let rust_add_out = temp_dir.join("rust-add.xlsx").to_string_lossy().to_string();
     let baseline_delete_out = temp_dir
         .join("baseline-delete.xlsx")
         .to_string_lossy()
@@ -136,14 +132,24 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_rust_baseline() {
     let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
     assert_eq!(rust_code, baseline_code, "conditional format add exit");
-    assert_eq!(rust_stderr, baseline_stderr, "conditional format add stderr");
+    assert_eq!(
+        rust_stderr, baseline_stderr,
+        "conditional format add stderr"
+    );
     let rust_add = rust_stdout.expect("rust add stdout");
     assert_eq!(
         scrub_path(rust_add.clone(), &rust_add_out, "[ADD_OUT]"),
-        scrub_path(baseline_stdout.expect("baseline add stdout"), &baseline_add_out, "[ADD_OUT]"),
+        scrub_path(
+            baseline_stdout.expect("baseline add stdout"),
+            &baseline_add_out,
+            "[ADD_OUT]"
+        ),
         "conditional format add stdout"
     );
-    assert_eq!(rust_add["rule"]["formula"], Value::String("A1>0".to_string()));
+    assert_eq!(
+        rust_add["rule"]["formula"],
+        Value::String("A1>0".to_string())
+    );
     assert_eq!(rust_add["rule"]["dxfId"], Value::Number(0.into()));
     assert_rust_emitted_ooxml_command_exits_zero(&rust_add, "validateCommand");
     assert_rust_emitted_ooxml_command_succeeds(&rust_add, "conditionalFormatsListCommand");
@@ -213,16 +219,25 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_rust_baseline() {
     let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
     assert_eq!(rust_code, baseline_code, "conditional format delete exit");
-    assert_eq!(rust_stderr, baseline_stderr, "conditional format delete stderr");
+    assert_eq!(
+        rust_stderr, baseline_stderr,
+        "conditional format delete stderr"
+    );
     let rust_delete = rust_stdout.expect("rust delete stdout");
     assert_eq!(
         scrub_paths(
             rust_delete.clone(),
-            &[(&rust_add_out, "[ADD_OUT]"), (&rust_delete_out, "[DELETE_OUT]")]
+            &[
+                (&rust_add_out, "[ADD_OUT]"),
+                (&rust_delete_out, "[DELETE_OUT]")
+            ]
         ),
         scrub_paths(
             baseline_stdout.expect("baseline delete stdout"),
-            &[(&baseline_add_out, "[ADD_OUT]"), (&baseline_delete_out, "[DELETE_OUT]")]
+            &[
+                (&baseline_add_out, "[ADD_OUT]"),
+                (&baseline_delete_out, "[DELETE_OUT]")
+            ]
         ),
         "conditional format delete stdout"
     );
@@ -257,7 +272,11 @@ fn xlsx_conditional_formats_add_delete_saved_outputs_match_rust_baseline() {
             &rust_delete_out,
             "[DELETE_OUT]"
         ),
-        scrub_path(baseline_list.expect("baseline deleted list"), &baseline_delete_out, "[DELETE_OUT]"),
+        scrub_path(
+            baseline_list.expect("baseline deleted list"),
+            &baseline_delete_out,
+            "[DELETE_OUT]"
+        ),
         "deleted list"
     );
 
@@ -278,7 +297,10 @@ fn xlsx_conditional_formats_reorder_saved_outputs_match_rust_baseline() {
     fs::create_dir_all(&temp_dir).expect("temp dir");
     let baseline_input = temp_dir.join("baseline-input.xlsx");
     let rust_input = temp_dir.join("rust-input.xlsx");
-    let baseline_out = temp_dir.join("baseline-reorder.xlsx").to_string_lossy().to_string();
+    let baseline_out = temp_dir
+        .join("baseline-reorder.xlsx")
+        .to_string_lossy()
+        .to_string();
     let rust_out = temp_dir
         .join("rust-reorder.xlsx")
         .to_string_lossy()
@@ -331,7 +353,10 @@ fn xlsx_conditional_formats_reorder_saved_outputs_match_rust_baseline() {
     let (baseline_code, baseline_stdout, baseline_stderr) = run_ooxml_baseline(&baseline_args);
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
     assert_eq!(rust_code, baseline_code, "conditional format reorder exit");
-    assert_eq!(rust_stderr, baseline_stderr, "conditional format reorder stderr");
+    assert_eq!(
+        rust_stderr, baseline_stderr,
+        "conditional format reorder stderr"
+    );
     let rust_reorder = rust_stdout.expect("rust reorder stdout");
     assert_eq!(
         scrub_paths(
@@ -349,10 +374,7 @@ fn xlsx_conditional_formats_reorder_saved_outputs_match_rust_baseline() {
     assert_eq!(rust_reorder["newPriority"], Value::from(1));
     assert_eq!(rust_reorder["rule"]["priority"], Value::from(1));
     assert_rust_emitted_ooxml_command_exits_zero(&rust_reorder, "validateCommand");
-    assert_rust_emitted_ooxml_command_succeeds(
-        &rust_reorder,
-        "conditionalFormatsShowCommand",
-    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_reorder, "conditionalFormatsShowCommand");
 
     let show_go = [
         "--json",
@@ -475,8 +497,7 @@ fn xlsx_conditional_formats_reorder_readback_and_validation() {
     assert_eq!(out_of_range_code, 2, "out-of-range priority exit");
     assert_eq!(out_of_range_stdout, None, "out-of-range priority stdout");
     assert!(
-        out_of_range_stderr
-            .expect("out-of-range priority stderr")["error"]["message"]
+        out_of_range_stderr.expect("out-of-range priority stderr")["error"]["message"]
             .as_str()
             .expect("out-of-range priority message")
             .contains("--priority must be between 1 and 2")
@@ -499,8 +520,7 @@ fn xlsx_conditional_formats_reorder_readback_and_validation() {
     assert_eq!(bad_priority_code, 2, "bad priority exit");
     assert_eq!(bad_priority_stdout, None, "bad priority stdout");
     assert!(
-        bad_priority_stderr
-            .expect("bad priority stderr")["error"]["message"]
+        bad_priority_stderr.expect("bad priority stderr")["error"]["message"]
             .as_str()
             .expect("bad priority message")
             .contains("--priority must be greater than zero")
@@ -519,13 +539,17 @@ fn xlsx_conditional_formats_reorder_readback_and_validation() {
         "--dry-run",
     ]);
     assert_eq!(missing_rule_code, 2, "missing rule exit");
-    assert_eq!(missing_rule_stdout, None, "missing rule stdout");
+    assert_eq!(missing_rule_stderr, None, "missing rule stderr");
+    let missing_rule = missing_rule_stdout.expect("missing rule JSON stdout");
     assert!(
-        missing_rule_stderr
-            .expect("missing rule stderr")["error"]["message"]
+        missing_rule["error"]["message"]
             .as_str()
             .expect("missing rule message")
             .contains("--rule is required")
+    );
+    assert_eq!(
+        missing_rule["error"]["helpCommand"],
+        "ooxml help xlsx conditional-formats reorder"
     );
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -533,10 +557,8 @@ fn xlsx_conditional_formats_reorder_readback_and_validation() {
 
 #[test]
 fn xlsx_conditional_formats_cell_is_saved_outputs_match_rust_baseline() {
-    let temp_dir = std::env::temp_dir().join(format!(
-        "ooxml-rust-xlsx-cf-cellis-{}",
-        std::process::id()
-    ));
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-cf-cellis-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
 
@@ -578,11 +600,7 @@ fn xlsx_conditional_formats_cell_is_saved_outputs_match_rust_baseline() {
     assert_eq!(rust_stderr, baseline_stderr, "single cellIs add stderr");
     let rust_single = rust_stdout.expect("rust single cellIs stdout");
     assert_eq!(
-        scrub_path(
-            rust_single.clone(),
-            &rust_single_out,
-            "[CELLIS_SINGLE_OUT]"
-        ),
+        scrub_path(rust_single.clone(), &rust_single_out, "[CELLIS_SINGLE_OUT]"),
         scrub_path(
             baseline_stdout.expect("baseline single cellIs stdout"),
             &baseline_single_out,
@@ -590,17 +608,20 @@ fn xlsx_conditional_formats_cell_is_saved_outputs_match_rust_baseline() {
         ),
         "single cellIs add stdout"
     );
-    assert_eq!(rust_single["rule"]["type"], Value::String("cellIs".to_string()));
+    assert_eq!(
+        rust_single["rule"]["type"],
+        Value::String("cellIs".to_string())
+    );
     assert_eq!(
         rust_single["rule"]["operator"],
         Value::String("greaterThanOrEqual".to_string())
     );
-    assert_eq!(rust_single["rule"]["formula"], Value::String("5".to_string()));
-    assert_rust_emitted_ooxml_command_exits_zero(&rust_single, "validateCommand");
-    assert_rust_emitted_ooxml_command_succeeds(
-        &rust_single,
-        "conditionalFormatsShowCommand",
+    assert_eq!(
+        rust_single["rule"]["formula"],
+        Value::String("5".to_string())
     );
+    assert_rust_emitted_ooxml_command_exits_zero(&rust_single, "validateCommand");
+    assert_rust_emitted_ooxml_command_succeeds(&rust_single, "conditionalFormatsShowCommand");
 
     let baseline_between_out = temp_dir
         .join("baseline-cellis-between.xlsx")
@@ -652,7 +673,10 @@ fn xlsx_conditional_formats_cell_is_saved_outputs_match_rust_baseline() {
         ),
         "between cellIs add stdout"
     );
-    assert_eq!(rust_between["rule"]["type"], Value::String("cellIs".to_string()));
+    assert_eq!(
+        rust_between["rule"]["type"],
+        Value::String("cellIs".to_string())
+    );
     assert_eq!(
         rust_between["rule"]["operator"],
         Value::String("between".to_string())
@@ -662,10 +686,7 @@ fn xlsx_conditional_formats_cell_is_saved_outputs_match_rust_baseline() {
         serde_json::json!(["1", "10"])
     );
     assert_rust_emitted_ooxml_command_exits_zero(&rust_between, "validateCommand");
-    assert_rust_emitted_ooxml_command_succeeds(
-        &rust_between,
-        "conditionalFormatsShowCommand",
-    );
+    assert_rust_emitted_ooxml_command_succeeds(&rust_between, "conditionalFormatsShowCommand");
 
     for output in [&rust_single_out, &rust_between_out] {
         assert_xlsx_strict_valid(output);
@@ -783,7 +804,10 @@ fn xlsx_conditional_formats_color_scale_saved_outputs_match_rust_baseline() {
     let (baseline_code, baseline_show, baseline_stderr) = run_ooxml_baseline(&show_go);
     let (rust_code, rust_show, rust_stderr) = run_ooxml(&show_rust);
     assert_eq!(rust_code, baseline_code, "saved color-scale show exit");
-    assert_eq!(rust_stderr, baseline_stderr, "saved color-scale show stderr");
+    assert_eq!(
+        rust_stderr, baseline_stderr,
+        "saved color-scale show stderr"
+    );
     assert_eq!(
         rust_show.expect("rust saved color-scale show"),
         baseline_show.expect("baseline saved color-scale show"),
@@ -796,10 +820,8 @@ fn xlsx_conditional_formats_color_scale_saved_outputs_match_rust_baseline() {
 
 #[test]
 fn xlsx_conditional_formats_data_bar_saved_outputs_match_rust_baseline() {
-    let temp_dir = std::env::temp_dir().join(format!(
-        "ooxml-rust-xlsx-cf-databar-{}",
-        std::process::id()
-    ));
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-cf-databar-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
 
@@ -899,10 +921,8 @@ fn xlsx_conditional_formats_data_bar_saved_outputs_match_rust_baseline() {
 
 #[test]
 fn xlsx_conditional_formats_icon_set_saved_readback() {
-    let temp_dir = std::env::temp_dir().join(format!(
-        "ooxml-rust-xlsx-cf-iconset-{}",
-        std::process::id()
-    ));
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-xlsx-cf-iconset-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("temp dir");
 
@@ -1455,9 +1475,8 @@ fn write_tiny_xlsm_with_opaque_vba_project(dest: &Path) {
 
 fn assert_vba_package_entries_present(content_types: &str, workbook_rels: &str) {
     assert!(
-        content_types.contains(
-            r#"ContentType="application/vnd.ms-excel.sheet.macroEnabled.main+xml""#
-        ),
+        content_types
+            .contains(r#"ContentType="application/vnd.ms-excel.sheet.macroEnabled.main+xml""#),
         "workbook content type is not macro-enabled:\n{content_types}"
     );
     assert!(
@@ -1465,9 +1484,9 @@ fn assert_vba_package_entries_present(content_types: &str, workbook_rels: &str) 
         "vbaProject.bin content type is missing:\n{content_types}"
     );
     assert!(
-        workbook_rels
-            .contains(r#"Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject""#)
-            && workbook_rels.contains(r#"Target="vbaProject.bin""#),
+        workbook_rels.contains(
+            r#"Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject""#
+        ) && workbook_rels.contains(r#"Target="vbaProject.bin""#),
         "workbook rels missing vbaProject relationship:\n{workbook_rels}"
     );
 }

@@ -16,6 +16,22 @@ pub(crate) fn enrich_invalid_args(raw_args: &[String], err: CliError) -> Enriche
         };
     }
     let projection = crate::command_manifest::error_projection_for_argv(raw_args);
+    let unknown_flag = unknown_flag_from_message(&err.message);
+    let unknown_command = err.message.starts_with("unknown command token");
+    let missing_required_flags = projection.as_ref().is_some_and(|command| {
+        missing_required_arguments(&err.message)
+            && command
+                .required_flags()
+                .iter()
+                .any(|flag| !argv_has_flag(raw_args, flag))
+    });
+    if unknown_flag.is_none() && !unknown_command && !missing_required_flags {
+        return EnrichedCliError {
+            error: err,
+            details: None,
+        };
+    }
+
     let mut valid_flags = projection
         .as_ref()
         .map(|command| {
@@ -44,11 +60,12 @@ pub(crate) fn enrich_invalid_args(raw_args: &[String], err: CliError) -> Enriche
     valid_flags.sort_by(|left, right| left.flag.cmp(&right.flag));
     valid_flags.dedup_by(|left, right| left.flag == right.flag);
 
-    let unknown_flag = unknown_flag_from_message(&err.message);
     let mut did_you_mean = Vec::new();
     let mut hint = None;
-    if let (Some(command), Some(wrong_flag)) = (projection.as_ref(), unknown_flag.as_deref()) {
-        if let Some(intent) = invalid_args_intent_hint(&command.path, wrong_flag) {
+    if let Some(wrong_flag) = unknown_flag.as_deref() {
+        if let Some(command) = projection.as_ref()
+            && let Some(intent) = invalid_args_intent_hint(&command.path, wrong_flag)
+        {
             did_you_mean.extend(intent.did_you_mean.iter().map(|value| (*value).to_string()));
             hint = Some(intent.hint.to_string());
         } else {
@@ -67,8 +84,14 @@ pub(crate) fn enrich_invalid_args(raw_args: &[String], err: CliError) -> Enriche
         ))
     });
 
-    if err.message.starts_with("unknown command token") {
+    if unknown_command {
         did_you_mean = crate::command_manifest::command_path_suggestions(raw_args);
+        if did_you_mean.is_empty() {
+            return EnrichedCliError {
+                error: err,
+                details: None,
+            };
+        }
         if let Some(suggestion) = did_you_mean.first() {
             hint = Some(format!(
                 "use the nearest supported command path: {suggestion}"
@@ -83,7 +106,7 @@ pub(crate) fn enrich_invalid_args(raw_args: &[String], err: CliError) -> Enriche
         .unwrap_or_else(|| "ooxml help".to_string());
     let hint = hint.unwrap_or_else(|| {
         if let Some(command) = projection.as_ref() {
-            if missing_required_arguments(&err.message) {
+            if missing_required_flags {
                 let required = command.required_flags();
                 let requirement = if required.is_empty() {
                     "the required arguments shown in the command usage".to_string()
@@ -231,6 +254,15 @@ fn missing_required_arguments(message: &str) -> bool {
         || message.contains("requires exactly")
 }
 
+fn argv_has_flag(args: &[String], name: &str) -> bool {
+    args.iter().any(|arg| {
+        arg == name
+            || arg
+                .strip_prefix(name)
+                .is_some_and(|rest| rest.starts_with('='))
+    })
+}
+
 pub(crate) fn damerau_levenshtein(left: &str, right: &str) -> usize {
     let left = left.chars().collect::<Vec<_>>();
     let right = right.chars().collect::<Vec<_>>();
@@ -238,8 +270,8 @@ pub(crate) fn damerau_levenshtein(left: &str, right: &str) -> usize {
     for (index, row) in distances.iter_mut().enumerate() {
         row[0] = index;
     }
-    for index in 0..=right.len() {
-        distances[0][index] = index;
+    for (index, distance) in distances[0].iter_mut().enumerate() {
+        *distance = index;
     }
     for left_index in 1..=left.len() {
         for right_index in 1..=right.len() {
@@ -258,34 +290,6 @@ pub(crate) fn damerau_levenshtein(left: &str, right: &str) -> usize {
         }
     }
     distances[left.len()][right.len()]
-}
-
-#[cfg(test)]
-mod error_tests {
-    use super::*;
-
-    #[test]
-    fn damerau_levenshtein_handles_drop_insert_and_transposition() {
-        assert_eq!(damerau_levenshtein("range", "rnage"), 1);
-        assert_eq!(damerau_levenshtein("range", "rage"), 1);
-        assert_eq!(damerau_levenshtein("range", "ranges"), 1);
-        assert_eq!(damerau_levenshtein("range", "table"), 4);
-    }
-
-    #[test]
-    fn corrected_flag_commands_preserve_inline_values_and_shell_quote_arguments() {
-        let args = vec![
-            "xlsx".to_string(),
-            "colwidths".to_string(),
-            "set".to_string(),
-            "book with quote's.xlsx".to_string(),
-            "--rnage=A:E".to_string(),
-        ];
-        assert_eq!(
-            corrected_flag_command(&args, "--rnage", "--range"),
-            "ooxml xlsx colwidths set 'book with quote'\"'\"'s.xlsx' --range=A:E"
-        );
-    }
 }
 
 pub(crate) fn parse_validate_args(args: &[String], global_strict: bool) -> CliResult<(&str, bool)> {
@@ -528,4 +532,32 @@ pub(crate) fn validate_positive_i64(value: i64, name: &str) -> CliResult<()> {
         return Err(CliError::invalid_args(format!("{name} must be >= 1")));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::*;
+
+    #[test]
+    fn damerau_levenshtein_handles_drop_insert_and_transposition() {
+        assert_eq!(damerau_levenshtein("range", "rnage"), 1);
+        assert_eq!(damerau_levenshtein("range", "rage"), 1);
+        assert_eq!(damerau_levenshtein("range", "ranges"), 1);
+        assert_eq!(damerau_levenshtein("range", "table"), 3);
+    }
+
+    #[test]
+    fn corrected_flag_commands_preserve_inline_values_and_shell_quote_arguments() {
+        let args = vec![
+            "xlsx".to_string(),
+            "colwidths".to_string(),
+            "set".to_string(),
+            "book with quote's.xlsx".to_string(),
+            "--rnage=A:E".to_string(),
+        ];
+        assert_eq!(
+            corrected_flag_command(&args, "--rnage", "--range"),
+            "ooxml xlsx colwidths set 'book with quote'\"'\"'s.xlsx' --range=A:E"
+        );
+    }
 }

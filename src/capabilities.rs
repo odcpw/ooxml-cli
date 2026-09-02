@@ -89,14 +89,15 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             {"code": EXIT_RENDER_FAILED, "name": "render_failed", "description": "rendering or local Office-compatible open check failed"}
         ],
         "errorEnvelope": {
+            "appliesTo": "unknown flags, near-miss command tokens, and missing required flags; other errors keep the base code/exitCode/message shape",
             "code": "stable machine-readable error category",
             "exitCode": "documented numeric exit code",
             "message": "what failed",
             "hint": "specific recovery guidance",
-            "didYouMean": ["ranked replacement flags or command paths"],
+            "didYouMean": ["ranked replacement flags or command paths; omitted when empty"],
             "validFlags": [{"flag": "--flag", "use": "--flag <value>"}],
             "helpCommand": "copy-pasteable focused help command",
-            "correctedCommand": "copy-pasteable corrected invocation, or null when correction needs a user choice",
+            "correctedCommand": "copy-pasteable corrected invocation; omitted when correction needs a user choice",
             "channels": {
                 "explicitJson": "one JSON object on stdout; diagnostics remain empty",
                 "defaultJson": "one JSON object on stderr for backward compatibility",
