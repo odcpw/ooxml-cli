@@ -417,7 +417,7 @@ struct RunOutput {
 }
 
 fn run(flags: GlobalFlags, args: Vec<String>) -> CliResult<RunOutput> {
-    if let Some(flag) = command_manifest::first_manifest_unknown_flag(&args) {
+    if let Some(flag) = command_manifest::first_registered_intent_mismatch(&args) {
         return Err(CliError::invalid_args(format!("unknown flag: {flag}")));
     }
     if flags.format_text
