@@ -37,14 +37,11 @@ fn guarded_xlsx_sheet_reads_preserve_direct_valid_and_invalid_contracts() {
     for args in [
         vec!["--json", "xlsx", "sheets", "list", fixture],
         vec!["--json", "xlsx", "sheets", "show", fixture],
-        vec!["--json", "xlsx", "sheets", "show", fixture, "--sheet", "1"],
         vec![
-            "--json",
-            "xlsx",
-            "sheets",
-            "show",
-            fixture,
-            "--unknown-sheet-flag",
+            "--json", "xlsx", "sheets", "show", fixture, "--sheet", "1",
+        ],
+        vec![
+            "--json", "xlsx", "sheets", "show", fixture, "--unknown-sheet-flag",
         ],
         vec!["--json", "xlsx", "sheets", "show", fixture, "--sheet"],
         vec!["--json", "xlsx", "sheets", "list", fixture, "--bogus"],
@@ -77,15 +74,7 @@ fn xlsx_sheets_add_matches_rust_baseline_shape_and_saved_output() {
     let rust_out = rust_out_path.to_string_lossy().to_string();
 
     let baseline_args = [
-        "--json",
-        "xlsx",
-        "sheets",
-        "add",
-        &baseline_in,
-        "--name",
-        "Added",
-        "--out",
-        &baseline_out,
+        "--json", "xlsx", "sheets", "add", &baseline_in, "--name", "Added", "--out", &baseline_out,
     ];
     let rust_args = [
         "--json", "xlsx", "sheets", "add", &rust_in, "--name", "Added", "--out", &rust_out,
@@ -213,17 +202,8 @@ fn xlsx_sheets_rename_move_delete_match_rust_baseline_and_saved_outputs() {
     let baseline_rename = baseline_rename_path.to_string_lossy().to_string();
     let rust_rename = rust_rename_path.to_string_lossy().to_string();
     let baseline_args = [
-        "--json",
-        "xlsx",
-        "sheets",
-        "rename",
-        &baseline_in,
-        "--sheet",
-        "Data",
-        "--name",
-        "Facts",
-        "--out",
-        &baseline_rename,
+        "--json", "xlsx", "sheets", "rename", &baseline_in, "--sheet", "Data", "--name", "Facts",
+        "--out", &baseline_rename,
     ];
     let rust_args = [
         "--json",
@@ -293,17 +273,8 @@ fn xlsx_sheets_rename_move_delete_match_rust_baseline_and_saved_outputs() {
     let baseline_move = baseline_move_path.to_string_lossy().to_string();
     let rust_move = rust_move_path.to_string_lossy().to_string();
     let baseline_args = [
-        "--json",
-        "xlsx",
-        "sheets",
-        "move",
-        &baseline_rename,
-        "--sheet",
-        "Facts",
-        "--before",
-        "Summary",
-        "--out",
-        &baseline_move,
+        "--json", "xlsx", "sheets", "move", &baseline_rename, "--sheet", "Facts", "--before", "Summary",
+        "--out", &baseline_move,
     ];
     let rust_args = [
         "--json",
@@ -369,26 +340,14 @@ fn xlsx_sheets_rename_move_delete_match_rust_baseline_and_saved_outputs() {
         "Tail",
         "--dry-run",
     ];
-    assert_xlsx_sheet_error_matches_rust_baseline(
-        "sheets move target guard",
-        &bad_move_go,
-        &bad_move_rust,
-    );
+    assert_xlsx_sheet_error_matches_rust_baseline("sheets move target guard", &bad_move_go, &bad_move_rust);
 
     let baseline_delete_path = temp_dir.join("baseline-delete.xlsx");
     let rust_delete_path = temp_dir.join("rust-delete.xlsx");
     let baseline_delete = baseline_delete_path.to_string_lossy().to_string();
     let rust_delete = rust_delete_path.to_string_lossy().to_string();
     let baseline_args = [
-        "--json",
-        "xlsx",
-        "sheets",
-        "delete",
-        &baseline_move,
-        "--sheet",
-        "Summary",
-        "--out",
-        &baseline_delete,
+        "--json", "xlsx", "sheets", "delete", &baseline_move, "--sheet", "Summary", "--out", &baseline_delete,
     ];
     let rust_args = [
         "--json",
