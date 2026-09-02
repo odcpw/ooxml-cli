@@ -1,6 +1,7 @@
 // VBA package-level contract tests live in a child module so the opaque macro
 // wiring surface can grow without bloating the parent harness.
 use super::*;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 const USERFORM_RUNTIME_WARNING: &str = "generated MSForms UserForms open as package content but are not runtime-loadable; treat as package/list/extract support";
@@ -2818,4 +2819,638 @@ fn le16(value: u16) -> [u8; 2] {
 
 fn le32(value: u32) -> [u8; 4] {
     value.to_le_bytes()
+}
+
+#[derive(Clone, Copy)]
+struct VbaRoundTripCase {
+    family: &'static str,
+    project_name: &'static str,
+    input_extension: &'static str,
+    output_extension: &'static str,
+    standard_source: &'static str,
+    class_source: &'static str,
+    standard_file: &'static str,
+    expected_modules: &'static [(&'static str, &'static str, bool)],
+    host_files: &'static [&'static str],
+}
+
+const VBA_ROUND_TRIP_CASES: &[VbaRoundTripCase] = &[
+    VbaRoundTripCase {
+        family: "xlsx",
+        project_name: "VBAProject",
+        input_extension: "xlsx",
+        output_extension: "xlsm",
+        standard_source: "testdata/golden/vba-authoring/xlsx-class/AgentSmoke.bas",
+        class_source: "testdata/golden/vba-authoring/xlsx-class/Worker.cls",
+        standard_file: "AgentSmoke.bas",
+        expected_modules: &[
+            ("ThisWorkbook", "document", true),
+            ("Sheet1", "document", true),
+            ("AgentSmoke", "standard", false),
+            ("Worker", "class", false),
+        ],
+        host_files: &["ThisWorkbook.cls", "Sheet1.cls"],
+    },
+    VbaRoundTripCase {
+        family: "pptx",
+        project_name: "VBAProject",
+        input_extension: "pptx",
+        output_extension: "pptm",
+        standard_source: "testdata/golden/vba-authoring/pptx-class/AgentSlide.bas",
+        class_source: "testdata/golden/vba-authoring/pptx-class/Worker.cls",
+        standard_file: "AgentSlide.bas",
+        expected_modules: &[
+            ("AgentSlide", "standard", false),
+            ("Worker", "class", false),
+        ],
+        host_files: &[],
+    },
+    VbaRoundTripCase {
+        family: "docx",
+        project_name: "Project",
+        input_extension: "docx",
+        output_extension: "docm",
+        standard_source: "testdata/golden/vba-authoring/docx-class/AgentDoc.bas",
+        class_source: "testdata/golden/vba-authoring/docx-class/Worker.cls",
+        standard_file: "AgentDoc.bas",
+        expected_modules: &[
+            ("ThisDocument", "document", true),
+            ("AgentDoc", "standard", false),
+            ("Worker", "class", false),
+        ],
+        host_files: &["ThisDocument.cls"],
+    },
+];
+
+#[test]
+fn vba_extract_rebuild_round_trips_xlsm_pptm_and_docm_with_manifest_fallback_and_edits() {
+    for case in VBA_ROUND_TRIP_CASES {
+        run_vba_round_trip_case(*case);
+    }
+}
+
+fn run_vba_round_trip_case(case: VbaRoundTripCase) {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-vba-round-trip-{}-{}-{suffix}",
+        case.family,
+        std::process::id()
+    ));
+    fs::create_dir_all(&temp_dir).expect("create VBA round-trip temp dir");
+
+    let input_path = temp_dir.join(format!("input.{}", case.input_extension));
+    let original_path = temp_dir.join(format!("original.{}", case.output_extension));
+    let rebuilt_path = temp_dir.join(format!("rebuilt.{}", case.output_extension));
+    let second_rebuilt_path = temp_dir.join(format!("rebuilt-second.{}", case.output_extension));
+    let fallback_path = temp_dir.join(format!("rebuilt-no-manifest.{}", case.output_extension));
+    let edited_path = temp_dir.join(format!("rebuilt-edited.{}", case.output_extension));
+    let extract_dir = temp_dir.join("sources");
+    let edited_extract_dir = temp_dir.join("edited-sources");
+
+    let input = input_path.to_string_lossy().to_string();
+    let original = original_path.to_string_lossy().to_string();
+    let rebuilt = rebuilt_path.to_string_lossy().to_string();
+    let second_rebuilt = second_rebuilt_path.to_string_lossy().to_string();
+    let fallback = fallback_path.to_string_lossy().to_string();
+    let edited = edited_path.to_string_lossy().to_string();
+    let sources = extract_dir.to_string_lossy().to_string();
+    let edited_sources = edited_extract_dir.to_string_lossy().to_string();
+
+    let scaffold_args = match case.family {
+        "xlsx" => vec!["--json", "xlsx", "scaffold", &input, "--force"],
+        "pptx" => vec![
+            "--json",
+            "pptx",
+            "scaffold",
+            &input,
+            "--title",
+            "VBA round trip",
+            "--force",
+        ],
+        "docx" => vec![
+            "--json",
+            "docx",
+            "scaffold",
+            &input,
+            "--text",
+            "VBA round trip",
+        ],
+        _ => unreachable!("covered VBA family"),
+    };
+    assert_vba_command_ok(case.family, "scaffold", run_ooxml(&scaffold_args));
+    assert_vba_strict_valid(case.family, "scaffold", &input);
+
+    assert_vba_command_ok(
+        case.family,
+        "create pure package",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "create",
+            &input,
+            "--pure",
+            "--family",
+            case.family,
+            "--source",
+            case.standard_source,
+            "--source",
+            case.class_source,
+            "--out",
+            &original,
+        ]),
+    );
+    assert_vba_strict_valid(case.family, "original", &original);
+    let original_list = assert_vba_command_ok(
+        case.family,
+        "list original",
+        run_ooxml(&["--json", "vba", "list", &original]),
+    );
+    println!(
+        "{} vba list before:\n{}",
+        case.family,
+        serde_json::to_string_pretty(&original_list).expect("format original list")
+    );
+
+    let extract = assert_vba_command_ok(
+        case.family,
+        "extract source set",
+        run_ooxml(&["--json", "vba", "extract", &original, "--out-dir", &sources]),
+    );
+    let manifest_path = extract_dir.join("vba-project.json");
+    assert_eq!(
+        extract["manifestPath"],
+        manifest_path.to_string_lossy().as_ref(),
+        "{} extract manifest path",
+        case.family
+    );
+    let manifest_text = fs::read_to_string(&manifest_path).expect("read vba-project.json");
+    println!(
+        "{} source directory:\n{}",
+        case.family,
+        source_dir_log(&extract_dir)
+    );
+    println!("{} manifest:\n{manifest_text}", case.family);
+    let manifest: Value = serde_json::from_str(&manifest_text).expect("parse vba-project.json");
+    assert_eq!(
+        manifest["schemaVersion"], 1,
+        "{} manifest schema",
+        case.family
+    );
+    assert_eq!(
+        manifest["family"], case.family,
+        "{} manifest family",
+        case.family
+    );
+    assert_eq!(
+        manifest["projectName"], case.project_name,
+        "{} manifest project name",
+        case.family
+    );
+    assert_eq!(
+        manifest["codePage"], 1252,
+        "{} manifest code page",
+        case.family
+    );
+    let manifest_modules = manifest["modules"].as_array().expect("manifest modules");
+    assert_eq!(
+        manifest_modules.len(),
+        case.expected_modules.len(),
+        "{} manifest module count",
+        case.family
+    );
+    for (actual, (name, kind, host_synthesized)) in
+        manifest_modules.iter().zip(case.expected_modules.iter())
+    {
+        assert_eq!(
+            actual["name"], *name,
+            "{} manifest module name",
+            case.family
+        );
+        assert_eq!(
+            actual["kind"], *kind,
+            "{} manifest module kind",
+            case.family
+        );
+        assert_eq!(
+            actual["hostSynthesized"], *host_synthesized,
+            "{} manifest host provenance for {name}",
+            case.family
+        );
+        assert_eq!(
+            actual["sourceSha256"]
+                .as_str()
+                .expect("manifest sourceSha256")
+                .len(),
+            64,
+            "{} source hash for {name}",
+            case.family
+        );
+        let source_file = actual["file"].as_str().expect("manifest source file");
+        let source_bytes = fs::read(extract_dir.join(source_file)).expect("read manifest source");
+        assert_eq!(
+            actual["sourceSha256"],
+            format!("{:x}", Sha256::digest(source_bytes)),
+            "{} source hash for {name} must describe the exported file",
+            case.family
+        );
+    }
+    let host_sources = case
+        .host_files
+        .iter()
+        .map(|file| {
+            (
+                *file,
+                fs::read(extract_dir.join(file)).expect("read extracted host module"),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let rebuild = assert_vba_command_ok(
+        case.family,
+        "rebuild with manifest",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "rebuild",
+            &original,
+            "--source-dir",
+            &sources,
+            "--out",
+            &rebuilt,
+        ]),
+    );
+    assert_eq!(
+        rebuild["manifestPath"],
+        manifest_path.to_string_lossy().as_ref()
+    );
+    assert_vba_strict_valid(case.family, "manifest rebuild", &rebuilt);
+    assert_vba_conformant(case.family, "manifest rebuild", &rebuilt);
+
+    assert_vba_command_ok(
+        case.family,
+        "second deterministic rebuild",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "rebuild",
+            &original,
+            "--source-dir",
+            &sources,
+            "--out",
+            &second_rebuilt,
+        ]),
+    );
+    assert_vba_strict_valid(case.family, "second rebuild", &second_rebuilt);
+    assert_eq!(
+        fs::read(&rebuilt_path).expect("read first rebuilt package"),
+        fs::read(&second_rebuilt_path).expect("read second rebuilt package"),
+        "{} rebuild must be byte deterministic",
+        case.family
+    );
+
+    let rebuilt_list = assert_vba_command_ok(
+        case.family,
+        "list rebuilt",
+        run_ooxml(&["--json", "vba", "list", &rebuilt]),
+    );
+    println!(
+        "{} vba list after:\n{}",
+        case.family,
+        serde_json::to_string_pretty(&rebuilt_list).expect("format rebuilt list")
+    );
+    assert_eq!(
+        vba_module_signature(&original_list),
+        vba_module_signature(&rebuilt_list),
+        "{} names, kinds, and line counts must survive rebuild",
+        case.family
+    );
+
+    fs::remove_file(&manifest_path).expect("remove manifest for fallback classification");
+    assert_vba_command_ok(
+        case.family,
+        "rebuild without manifest",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "rebuild",
+            &original,
+            "--source-dir",
+            &sources,
+            "--out",
+            &fallback,
+        ]),
+    );
+    assert_vba_strict_valid(case.family, "manifest-less rebuild", &fallback);
+    assert_vba_conformant(case.family, "manifest-less rebuild", &fallback);
+    let fallback_list = assert_vba_command_ok(
+        case.family,
+        "list manifest-less rebuild",
+        run_ooxml(&["--json", "vba", "list", &fallback]),
+    );
+    assert_eq!(
+        vba_module_signature(&original_list),
+        vba_module_signature(&fallback_list),
+        "{} attribute-aware fallback signature",
+        case.family
+    );
+    assert_eq!(
+        fs::read(&rebuilt_path).expect("read manifest rebuild"),
+        fs::read(&fallback_path).expect("read fallback rebuild"),
+        "{} manifest and attribute classification must produce identical packages",
+        case.family
+    );
+
+    fs::write(&manifest_path, &manifest_text).expect("restore manifest for edit rebuild");
+    let standard_path = extract_dir.join(case.standard_file);
+    let mut edited_source = fs::read_to_string(&standard_path).expect("read standard source");
+    edited_source.push_str("' ooxml round-trip source edit\r\n");
+    fs::write(&standard_path, edited_source).expect("edit extracted standard source");
+    assert_vba_command_ok(
+        case.family,
+        "rebuild edited source",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "rebuild",
+            &original,
+            "--source-dir",
+            &sources,
+            "--out",
+            &edited,
+        ]),
+    );
+    assert_vba_strict_valid(case.family, "edited rebuild", &edited);
+    assert_vba_conformant(case.family, "edited rebuild", &edited);
+    assert_vba_command_ok(
+        case.family,
+        "extract edited rebuild",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "extract",
+            &edited,
+            "--out-dir",
+            &edited_sources,
+        ]),
+    );
+    assert!(
+        fs::read_to_string(edited_extract_dir.join(case.standard_file))
+            .expect("read edited round-trip source")
+            .contains("ooxml round-trip source edit"),
+        "{} edited source must survive rebuild and extraction",
+        case.family
+    );
+    for (file, expected) in host_sources {
+        assert_eq!(
+            fs::read(edited_extract_dir.join(file)).expect("read rebuilt host module"),
+            expected,
+            "{} host module {file} changed while editing a user module",
+            case.family
+        );
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn vba_rebuild_refuses_user_docm_this_document_after_positive_user_module_rebuild() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-vba-docm-thisdocument-{}-{suffix}",
+        std::process::id()
+    ));
+    let source_dir = temp_dir.join("sources");
+    fs::create_dir_all(&source_dir).expect("create DOCM source dir");
+    let input = temp_dir.join("input.docx").to_string_lossy().to_string();
+    let original = temp_dir.join("original.docm").to_string_lossy().to_string();
+    let positive = temp_dir.join("positive.docm").to_string_lossy().to_string();
+    let refused = temp_dir.join("refused.docm").to_string_lossy().to_string();
+    let sources = source_dir.to_string_lossy().to_string();
+    let standard = "testdata/golden/vba-authoring/docx-class/AgentDoc.bas";
+    let class = "testdata/golden/vba-authoring/docx-class/Worker.cls";
+
+    assert_vba_command_ok(
+        "docx",
+        "scaffold DOCM guard fixture",
+        run_ooxml(&["--json", "docx", "scaffold", &input, "--text", "DOCM guard"]),
+    );
+    assert_vba_command_ok(
+        "docx",
+        "create DOCM guard fixture",
+        run_ooxml(&[
+            "--json", "vba", "create", &input, "--pure", "--family", "docx", "--source", standard,
+            "--source", class, "--out", &original,
+        ]),
+    );
+    fs::copy(standard, source_dir.join("AgentDoc.bas")).expect("copy positive standard source");
+    fs::copy(class, source_dir.join("Worker.cls")).expect("copy positive class source");
+    assert_vba_command_ok(
+        "docx",
+        "positive DOCM user-module rebuild",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "rebuild",
+            &original,
+            "--source-dir",
+            &sources,
+            "--out",
+            &positive,
+        ]),
+    );
+    assert_vba_strict_valid("docx", "positive DOCM rebuild", &positive);
+
+    let this_document = source_dir.join("ThisDocument.cls");
+    fs::write(
+        &this_document,
+        "Attribute VB_Name = \"ThisDocument\"\r\nAttribute VB_PredeclaredId = True\r\nAttribute VB_Exposed = True\r\nPrivate Sub Document_Open()\r\n    MsgBox \"not proven\"\r\nEnd Sub\r\n",
+    )
+    .expect("write user ThisDocument source");
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "rebuild",
+        &original,
+        "--source-dir",
+        &sources,
+        "--out",
+        &refused,
+    ]);
+    assert_eq!(code, 4, "DOCM user ThisDocument exit");
+    let error = stderr
+        .or(stdout)
+        .expect("DOCM user ThisDocument error JSON");
+    assert_eq!(error["error"]["code"], "unsupported_type");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .expect("DOCM refusal message")
+            .contains("user-supplied ThisDocument")
+    );
+    assert!(
+        !Path::new(&refused).exists(),
+        "refused DOCM must not be written"
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn vba_rebuild_duplicate_vb_name_error_names_both_source_paths() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-vba-duplicate-source-{}-{suffix}",
+        std::process::id()
+    ));
+    let source_dir = temp_dir.join("sources");
+    fs::create_dir_all(&source_dir).expect("create duplicate source dir");
+    let input = temp_dir.join("input.xlsx").to_string_lossy().to_string();
+    let original = temp_dir.join("original.xlsm").to_string_lossy().to_string();
+    let positive = temp_dir.join("positive.xlsm").to_string_lossy().to_string();
+    let duplicate = temp_dir
+        .join("duplicate.xlsm")
+        .to_string_lossy()
+        .to_string();
+    let sources = source_dir.to_string_lossy().to_string();
+    let first_path = source_dir.join("First.bas");
+    let second_path = source_dir.join("Second.bas");
+    let duplicated_source =
+        "Attribute VB_Name = \"Duplicated\"\r\nPublic Sub Hello()\r\nEnd Sub\r\n";
+
+    assert_vba_command_ok(
+        "xlsx",
+        "scaffold duplicate fixture",
+        run_ooxml(&["--json", "xlsx", "scaffold", &input, "--force"]),
+    );
+    assert_vba_command_ok(
+        "xlsx",
+        "create duplicate fixture",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "create",
+            &input,
+            "--pure",
+            "--source",
+            "testdata/golden/vba-authoring/xlsx-standard/AgentSmoke.bas",
+            "--out",
+            &original,
+        ]),
+    );
+    fs::write(&first_path, duplicated_source).expect("write first source");
+    assert_vba_command_ok(
+        "xlsx",
+        "positive single-source rebuild",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "rebuild",
+            &original,
+            "--source-dir",
+            &sources,
+            "--out",
+            &positive,
+        ]),
+    );
+    assert_vba_strict_valid("xlsx", "positive duplicate control", &positive);
+
+    fs::write(&second_path, duplicated_source).expect("write second duplicate source");
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "vba",
+        "rebuild",
+        &original,
+        "--source-dir",
+        &sources,
+        "--out",
+        &duplicate,
+    ]);
+    assert_eq!(code, 2, "duplicate module exit");
+    let error = stdout.or(stderr).expect("duplicate module error JSON");
+    assert_eq!(error["error"]["code"], "invalid_args");
+    let message = error["error"]["message"]
+        .as_str()
+        .expect("duplicate error message");
+    assert!(message.contains("duplicate VBA module name Duplicated"));
+    assert!(message.contains(first_path.to_string_lossy().as_ref()));
+    assert!(message.contains(second_path.to_string_lossy().as_ref()));
+    assert!(
+        !Path::new(&duplicate).exists(),
+        "duplicate output must not be written"
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn assert_vba_command_ok(
+    family: &str,
+    label: &str,
+    outcome: (i32, Option<Value>, Option<Value>),
+) -> Value {
+    let (code, stdout, stderr) = outcome;
+    assert_eq!(code, 0, "{family} {label} exit; stderr: {stderr:?}");
+    assert_eq!(stderr, None, "{family} {label} stderr");
+    stdout.unwrap_or_else(|| panic!("{family} {label} stdout"))
+}
+
+fn assert_vba_strict_valid(family: &str, label: &str, file: &str) {
+    let result = assert_vba_command_ok(
+        family,
+        &format!("strict validation for {label}"),
+        run_ooxml(&["--json", "validate", "--strict", file]),
+    );
+    assert_eq!(result["valid"], true, "{family} {label} strict validity");
+    assert_eq!(
+        result["summary"]["errors"], 0,
+        "{family} {label} strict errors"
+    );
+}
+
+fn assert_vba_conformant(family: &str, label: &str, file: &str) {
+    let result = assert_vba_command_ok(
+        family,
+        &format!("conformance for {label}"),
+        run_ooxml(&["--json", "conformance", "check", file]),
+    );
+    assert_eq!(result["status"], "passed", "{family} {label} conformance");
+    assert_eq!(result["summary"]["failed"], 0, "{family} {label} failures");
+}
+
+fn vba_module_signature(list: &Value) -> Vec<(String, String, u64)> {
+    list["project"]["modules"]
+        .as_array()
+        .expect("vba list modules")
+        .iter()
+        .map(|module| {
+            (
+                module["name"].as_str().expect("module name").to_string(),
+                module["kind"].as_str().expect("module kind").to_string(),
+                module["lineCount"].as_u64().expect("module line count"),
+            )
+        })
+        .collect()
+}
+
+fn source_dir_log(path: &Path) -> String {
+    let mut entries = fs::read_dir(path)
+        .expect("read source directory for log")
+        .map(|entry| {
+            let entry = entry.expect("source directory entry");
+            let metadata = entry.metadata().expect("source entry metadata");
+            format!(
+                "{}\t{} bytes",
+                entry.file_name().to_string_lossy(),
+                metadata.len()
+            )
+        })
+        .collect::<Vec<_>>();
+    entries.sort();
+    entries.join("\n")
 }

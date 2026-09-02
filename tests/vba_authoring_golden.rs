@@ -27,6 +27,15 @@ const USERFORM_GOLDEN_INSPECT_JSON: &str =
     include_str!("../testdata/golden/vba-authoring/xlsx-userform/inspect-bin.json");
 const USERFORM_GOLDEN_SHA256: &str =
     "2f2e8d21d1615bf57d7df66a257b6c8f1091109794138905c81ac4f7d5fce3c0";
+const REBUILT_FIXTURE_DIR: &str = "testdata/golden/vba-authoring/xlsx-rebuilt";
+const REBUILT_GOLDEN_PACKAGE: &[u8] =
+    include_bytes!("../testdata/golden/vba-authoring/xlsx-rebuilt/rebuilt.xlsm");
+const REBUILT_GOLDEN_MANIFEST: &str =
+    include_str!("../testdata/golden/vba-authoring/xlsx-rebuilt/vba-project.json");
+const REBUILT_GOLDEN_PROVENANCE: &str =
+    include_str!("../testdata/golden/vba-authoring/xlsx-rebuilt/PROVENANCE.md");
+const REBUILT_GOLDEN_SHA256: &str =
+    "a3101c5238f329dcfb6dde3dbdc385b8cdbce52418654e7f59c46d8f2a4d5114";
 const USERFORM_RUNTIME_WARNING: &str = "generated MSForms UserForms open as package content but are not runtime-loadable; treat as package/list/extract support";
 
 fn run_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
@@ -813,4 +822,144 @@ fn xlsx_userform_vba_build_bin_matches_golden_and_is_byte_deterministic() {
     );
 
     let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn xlsx_extract_rebuild_package_and_manifest_match_reviewed_goldens() {
+    let temp_dir = temp_dir("vba-xlsx-rebuilt-package-golden");
+    fs::create_dir_all(&temp_dir).expect("create rebuilt golden temp dir");
+    let input_path = temp_dir.join("workbook.xlsx");
+    let original_path = temp_dir.join("workbook.xlsm");
+    let rebuilt_path = temp_dir.join("rebuilt.xlsm");
+    let source_dir = temp_dir.join("sources");
+    let input = path_string(&input_path);
+    let original = path_string(&original_path);
+    let rebuilt = path_string(&rebuilt_path);
+    let sources = path_string(&source_dir);
+    let standard_source = format!("{CLASS_FIXTURE_DIR}/AgentSmoke.bas");
+    let class_source = format!("{CLASS_FIXTURE_DIR}/Worker.cls");
+
+    assert_ok(
+        "scaffold rebuilt-package golden workbook",
+        run_ooxml(&["--json", "xlsx", "scaffold", &input, "--force"]),
+    );
+    assert_ok(
+        "strict validate rebuilt-package golden scaffold",
+        run_ooxml(&["--json", "validate", "--strict", &input]),
+    );
+    assert_ok(
+        "create rebuilt-package golden XLSM",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "create",
+            &input,
+            "--pure",
+            "--family",
+            "xlsx",
+            "--source",
+            &standard_source,
+            "--source",
+            &class_source,
+            "--out",
+            &original,
+        ]),
+    );
+    assert_ok(
+        "strict validate rebuilt-package golden original",
+        run_ooxml(&["--json", "validate", "--strict", &original]),
+    );
+    let before = assert_ok(
+        "list rebuilt-package golden original",
+        run_ooxml(&["--json", "vba", "list", &original]),
+    );
+    let extract = assert_ok(
+        "extract rebuilt-package golden sources",
+        run_ooxml(&["--json", "vba", "extract", &original, "--out-dir", &sources]),
+    );
+    assert_eq!(
+        extract["manifestPath"],
+        source_dir
+            .join("vba-project.json")
+            .to_string_lossy()
+            .as_ref()
+    );
+    let generated_manifest =
+        fs::read_to_string(source_dir.join("vba-project.json")).expect("read generated manifest");
+    assert_eq!(
+        generated_manifest, REBUILT_GOLDEN_MANIFEST,
+        "extract manifest drifted from reviewed golden"
+    );
+
+    assert_ok(
+        "rebuild reviewed golden package",
+        run_ooxml(&[
+            "--json",
+            "vba",
+            "rebuild",
+            &original,
+            "--source-dir",
+            &sources,
+            "--out",
+            &rebuilt,
+        ]),
+    );
+    let validate = assert_ok(
+        "strict validate rebuilt golden package",
+        run_ooxml(&["--json", "validate", "--strict", &rebuilt]),
+    );
+    assert_eq!(validate["valid"], true);
+    assert_eq!(validate["summary"]["errors"], 0);
+    let conformance = assert_ok(
+        "conformance check rebuilt golden package",
+        run_ooxml(&["--json", "conformance", "check", &rebuilt]),
+    );
+    assert_eq!(conformance["status"], "passed");
+    assert_eq!(conformance["summary"]["failed"], 0);
+    let after = assert_ok(
+        "list rebuilt golden package",
+        run_ooxml(&["--json", "vba", "list", &rebuilt]),
+    );
+    assert_eq!(
+        golden_module_signature(&before),
+        golden_module_signature(&after),
+        "rebuilt package module name/kind/line-count drift"
+    );
+
+    let generated = fs::read(&rebuilt_path).expect("read generated rebuilt package");
+    assert_eq!(generated.len(), REBUILT_GOLDEN_PACKAGE.len());
+    assert_eq!(sha256_hex(&generated), REBUILT_GOLDEN_SHA256);
+    assert_eq!(
+        generated, REBUILT_GOLDEN_PACKAGE,
+        "rebuilt XLSM package golden drift"
+    );
+    let golden_validate = assert_ok(
+        "strict validate checked-in rebuilt package golden",
+        run_ooxml(&[
+            "--json",
+            "validate",
+            "--strict",
+            &format!("{REBUILT_FIXTURE_DIR}/rebuilt.xlsm"),
+        ]),
+    );
+    assert_eq!(golden_validate["valid"], true);
+    assert!(REBUILT_GOLDEN_PROVENANCE.contains(REBUILT_GOLDEN_SHA256));
+    assert!(REBUILT_GOLDEN_PROVENANCE.contains("not desktop Office proof"));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+fn golden_module_signature(list: &Value) -> Vec<(String, String, u64)> {
+    list["project"]["modules"]
+        .as_array()
+        .expect("golden vba list modules")
+        .iter()
+        .map(|module| {
+            (
+                module["name"].as_str().expect("module name").to_string(),
+                module["kind"].as_str().expect("module kind").to_string(),
+                module["lineCount"].as_u64().expect("module line count"),
+            )
+        })
+        .collect()
 }

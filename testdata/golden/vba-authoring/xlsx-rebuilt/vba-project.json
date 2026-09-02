@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "projectName": "VBAProject",
+  "codePage": 1252,
+  "family": "xlsx",
+  "modules": [
+    {
+      "name": "ThisWorkbook",
+      "file": "ThisWorkbook.cls",
+      "kind": "document",
+      "hostSynthesized": true,
+      "sourceSha256": "14de0425a62586687c3d59b7d3d7dc60268f989ab7e07a61403525064d98502a"
+    },
+    {
+      "name": "Sheet1",
+      "file": "Sheet1.cls",
+      "kind": "document",
+      "hostSynthesized": true,
+      "sourceSha256": "8e442a8e542ca01c7d87af7e9ad015863e0a19232a647712a6e31b3911beb372"
+    },
+    {
+      "name": "AgentSmoke",
+      "file": "AgentSmoke.bas",
+      "kind": "standard",
+      "hostSynthesized": false,
+      "sourceSha256": "98d14f6ebcfc1c3bc32aa5323b56183ba72621aa45644ff3be0e670926332644"
+    },
+    {
+      "name": "Worker",
+      "file": "Worker.cls",
+      "kind": "class",
+      "hostSynthesized": false,
+      "sourceSha256": "768fa34861e01b718ec1671a1f89e51e242e9984ddcc8f1a844d2018cede57e8"
+    }
+  ]
+}
