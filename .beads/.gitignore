@@ -38,3 +38,8 @@ redirect
 
 # bv (beads viewer) lock file
 .bv.lock
+
+# beads_rust 0.5.x local sidecars
+.br_recovery/
+beads.db-*
+beads.db.*
