@@ -17,6 +17,11 @@ use model::{VbaModuleKind, VbaModuleModel, VbaProjectModel, VbaUserFormModel};
 use super::cfb::build_streams_file;
 use super::model::VbaMutationOptions;
 use super::mutation::attach_vba_project_bytes;
+use super::source::is_canonical_synthesized_host_source;
+use super::source::manifest::{
+    VBA_PROJECT_MANIFEST_FILE, VbaProjectManifest, VbaProjectManifestModule,
+    manifest_relative_path, read_vba_project_manifest,
+};
 
 type VbaStreamMap = BTreeMap<String, Vec<u8>>;
 
@@ -149,11 +154,13 @@ pub(crate) struct VbaRebuildOptions<'a> {
     pub(crate) mutation: VbaMutationOptions<'a>,
 }
 
+#[derive(Clone)]
 struct SourceModuleInput {
     path: String,
     module: VbaModuleModel,
     inserted_vb_name: bool,
     ignored_frx_sidecar: Option<String>,
+    host_synthesized: bool,
 }
 
 struct BuildBinOutcome {
@@ -161,8 +168,15 @@ struct BuildBinOutcome {
     project: VbaProjectModel,
     source_modules: Vec<SourceModuleInput>,
     inserted_vb_names: Vec<String>,
+    host_synthesized_module_names: BTreeSet<String>,
     bin: Vec<u8>,
     sha256: String,
+}
+
+struct SourceDirBuildPlan {
+    source_paths: Vec<String>,
+    manifest: Option<VbaProjectManifest>,
+    source_dir: PathBuf,
 }
 
 pub(crate) fn vba_build_bin(options: VbaBuildBinOptions<'_>) -> CliResult<Value> {
@@ -199,7 +213,7 @@ pub(crate) fn vba_build_bin(options: VbaBuildBinOptions<'_>) -> CliResult<Value>
         json!(outcome.project.project_name.clone()),
     );
     result.insert("codePage".to_string(), json!(outcome.project.code_page));
-    result.insert("modules".to_string(), module_summary_json(&outcome.project));
+    result.insert("modules".to_string(), module_summary_json(&outcome));
     result.insert(
         "sources".to_string(),
         source_summary_json(&outcome.source_modules),
@@ -236,9 +250,15 @@ pub(crate) fn vba_create_pure(file: &str, options: VbaPureCreateOptions<'_>) -> 
 }
 
 pub(crate) fn vba_rebuild(file: &str, options: VbaRebuildOptions<'_>) -> CliResult<Value> {
-    let source_paths = collect_source_dir_sources(options.source_dir)?;
+    let plan = collect_source_dir_build_plan(options.source_dir)?;
     let family = pure_create_family_from_input(file, options.family)?;
-    let outcome = build_bin_from_sources(Some(&family), &source_paths)?;
+    let outcome = build_bin_from_sources_internal(
+        Some(&family),
+        &plan.source_paths,
+        plan.manifest.as_ref(),
+        Some(&plan.source_dir),
+        true,
+    )?;
     let mut result = attach_vba_project_bytes(file, outcome.bin.clone(), options.mutation)?;
     let Value::Object(ref mut map) = result else {
         return Ok(result);
@@ -246,10 +266,56 @@ pub(crate) fn vba_rebuild(file: &str, options: VbaRebuildOptions<'_>) -> CliResu
     map.insert("backend".to_string(), json!("pure-rust"));
     map.insert("rebuildMode".to_string(), json!("pure"));
     map.insert("sourceDir".to_string(), json!(options.source_dir));
-    map.insert("sourcesDiscovered".to_string(), json!(source_paths));
+    map.insert("sourcesDiscovered".to_string(), json!(plan.source_paths));
+    if plan.manifest.is_some() {
+        map.insert(
+            "manifestPath".to_string(),
+            json!(plan.source_dir.join(VBA_PROJECT_MANIFEST_FILE)),
+        );
+    }
     insert_userform_runtime_flag(map, &outcome);
     map.insert("authoring".to_string(), authoring_summary_json(&outcome));
     Ok(result)
+}
+
+fn collect_source_dir_build_plan(source_dir: &str) -> CliResult<SourceDirBuildPlan> {
+    let source_dir = source_dir.trim();
+    if source_dir.is_empty() {
+        return Err(CliError::invalid_args("--source-dir is required"));
+    }
+    let root = Path::new(source_dir);
+    let mut source_paths = collect_source_dir_sources(source_dir)?;
+    let manifest = read_vba_project_manifest(root)?;
+    if let Some(manifest) = &manifest {
+        let mut ordered = Vec::with_capacity(source_paths.len());
+        let mut consumed = BTreeSet::new();
+        for module in &manifest.modules {
+            let relative = manifest_relative_path(&module.file)?;
+            let path = root.join(relative);
+            if !path.is_file() {
+                return Err(CliError::file_not_found(format!(
+                    "VBA project manifest module {} source file not found: {}",
+                    module.name,
+                    path.display()
+                )));
+            }
+            let key = path.to_string_lossy().to_ascii_lowercase();
+            if consumed.insert(key) {
+                ordered.push(path.to_string_lossy().to_string());
+            }
+        }
+        for path in source_paths {
+            if consumed.insert(path.to_ascii_lowercase()) {
+                ordered.push(path);
+            }
+        }
+        source_paths = ordered;
+    }
+    Ok(SourceDirBuildPlan {
+        source_paths,
+        manifest,
+        source_dir: root.to_path_buf(),
+    })
 }
 
 fn pure_create_family_from_input(file: &str, family: Option<&str>) -> CliResult<String> {
@@ -370,35 +436,69 @@ fn is_vba_source_path(path: &Path) -> bool {
 }
 
 fn build_bin_from_sources(family: Option<&str>, sources: &[String]) -> CliResult<BuildBinOutcome> {
+    build_bin_from_sources_internal(family, sources, None, None, false)
+}
+
+fn build_bin_from_sources_internal(
+    family: Option<&str>,
+    sources: &[String],
+    manifest: Option<&VbaProjectManifest>,
+    manifest_root: Option<&Path>,
+    infer_canonical_synthesized_hosts: bool,
+) -> CliResult<BuildBinOutcome> {
     let family = normalize_build_family(family.unwrap_or_default())?;
+    if let Some(manifest) = manifest
+        && manifest.family != family
+    {
+        return Err(CliError::invalid_args(format!(
+            "VBA project manifest family {} does not match requested family {family}",
+            manifest.family
+        )));
+    }
     let source_paths = normalize_source_values(sources)?;
-    let source_modules = read_source_modules(&source_paths)?;
+    let source_modules = read_source_modules(
+        &family,
+        &source_paths,
+        manifest,
+        manifest_root,
+        infer_canonical_synthesized_hosts,
+    )?;
+    reject_duplicate_source_modules(&source_modules)?;
     reject_unsupported_userform_family(&family, &source_modules)?;
     let inserted_vb_names = source_modules
         .iter()
         .filter(|input| input.inserted_vb_name)
         .map(|input| input.module.name.clone())
         .collect::<Vec<_>>();
-    let mut user_modules = source_modules
+    let user_modules = source_modules
         .iter()
         .map(|input| input.module.clone())
         .collect::<Vec<_>>();
-    if family == "xlsx" && needs_excel_host_document_modules(&user_modules) {
-        user_modules = with_excel_host_document_modules(user_modules);
-    }
-    if family == "docx" {
-        user_modules = with_word_host_document_module(user_modules);
-    }
-    let project = match family.as_str() {
-        "xlsx" => VbaProjectModel::xlsx(user_modules),
-        "pptx" => VbaProjectModel::pptx(user_modules),
-        "docx" => VbaProjectModel::docx(user_modules),
+    let mut host_synthesized_module_names = source_modules
+        .iter()
+        .filter(|input| input.host_synthesized)
+        .map(|input| input.module.name.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    let modules = prepare_family_modules(
+        &family,
+        user_modules,
+        &source_modules,
+        &mut host_synthesized_module_names,
+    )?;
+    let mut project = match family.as_str() {
+        "xlsx" => VbaProjectModel::xlsx(modules),
+        "pptx" => VbaProjectModel::pptx(modules),
+        "docx" => VbaProjectModel::docx(modules),
         _ => {
             return Err(CliError::unsupported_type(
                 "pure VBA authoring supports only --family xlsx, pptx, or docx",
             ));
         }
     };
+    if let Some(manifest) = manifest {
+        project.project_name = manifest.project_name.clone();
+        project.code_page = manifest.code_page;
+    }
     let bin = build_vba_project_bin(&project).map_err(authoring_error_to_cli)?;
     let mut hasher = Sha256::new();
     hasher.update(&bin);
@@ -408,9 +508,81 @@ fn build_bin_from_sources(family: Option<&str>, sources: &[String]) -> CliResult
         project,
         source_modules,
         inserted_vb_names,
+        host_synthesized_module_names,
         bin,
         sha256,
     })
+}
+
+fn prepare_family_modules(
+    family: &str,
+    mut modules: Vec<VbaModuleModel>,
+    source_modules: &[SourceModuleInput],
+    host_synthesized_module_names: &mut BTreeSet<String>,
+) -> CliResult<Vec<VbaModuleModel>> {
+    if family == "docx" {
+        if let Some(input) = source_modules.iter().find(|input| {
+            input.module.kind == VbaModuleKind::Document
+                && input.module.name.eq_ignore_ascii_case("ThisDocument")
+                && !input.host_synthesized
+        }) {
+            return Err(CliError::unsupported_type(format!(
+                "DOCM pure authoring refuses user-supplied ThisDocument module source at {}; remove ThisDocument.cls and let ooxml synthesize it until Word host-module proof exists",
+                input.path
+            )));
+        }
+        if !modules
+            .iter()
+            .any(|module| module.name.eq_ignore_ascii_case("ThisDocument"))
+        {
+            modules.push(VbaModuleModel::word_document_document());
+            host_synthesized_module_names.insert("thisdocument".to_string());
+        }
+    }
+
+    if family == "xlsx" && needs_excel_host_document_modules(&modules) {
+        if !modules
+            .iter()
+            .any(|module| module.name.eq_ignore_ascii_case("ThisWorkbook"))
+        {
+            modules.push(VbaModuleModel::excel_workbook_document());
+            host_synthesized_module_names.insert("thisworkbook".to_string());
+        }
+        if !modules.iter().any(|module| {
+            module.kind == VbaModuleKind::Document
+                && !module.name.eq_ignore_ascii_case("ThisWorkbook")
+        }) {
+            modules.push(VbaModuleModel::excel_sheet_document("Sheet1"));
+            host_synthesized_module_names.insert("sheet1".to_string());
+        }
+    }
+
+    let mut indexed = modules.into_iter().enumerate().collect::<Vec<_>>();
+    indexed.sort_by_key(|(index, module)| {
+        let rank = if module.kind != VbaModuleKind::Document {
+            2
+        } else if family == "xlsx" && module.name.eq_ignore_ascii_case("ThisWorkbook") {
+            0
+        } else {
+            1
+        };
+        (rank, *index)
+    });
+    Ok(indexed.into_iter().map(|(_, module)| module).collect())
+}
+
+fn reject_duplicate_source_modules(source_modules: &[SourceModuleInput]) -> CliResult<()> {
+    let mut names = BTreeMap::<String, &SourceModuleInput>::new();
+    for input in source_modules {
+        let key = input.module.name.to_ascii_lowercase();
+        if let Some(previous) = names.insert(key, input) {
+            return Err(CliError::invalid_args(format!(
+                "duplicate VBA module name {} in {} and {}",
+                input.module.name, previous.path, input.path
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn reject_unsupported_userform_family(
@@ -429,9 +601,10 @@ fn reject_unsupported_userform_family(
     ))
 }
 
-fn module_summary_json(project: &VbaProjectModel) -> Value {
+fn module_summary_json(outcome: &BuildBinOutcome) -> Value {
     Value::Array(
-        project
+        outcome
+            .project
             .modules
             .iter()
             .map(|module| {
@@ -439,7 +612,9 @@ fn module_summary_json(project: &VbaProjectModel) -> Value {
                     "name": module.name.clone(),
                     "streamName": module.stream_name.clone(),
                     "kind": module.kind.as_str(),
-                    "hostSynthesized": module.kind == VbaModuleKind::Document,
+                    "hostSynthesized": outcome
+                        .host_synthesized_module_names
+                        .contains(&module.name.to_ascii_lowercase()),
                 })
             })
             .collect(),
@@ -456,7 +631,7 @@ fn authoring_summary_json(outcome: &BuildBinOutcome) -> Value {
     result.insert("codePage".to_string(), json!(outcome.project.code_page));
     result.insert("bytesGenerated".to_string(), json!(outcome.bin.len()));
     result.insert("sha256".to_string(), json!(outcome.sha256.clone()));
-    result.insert("modules".to_string(), module_summary_json(&outcome.project));
+    result.insert("modules".to_string(), module_summary_json(outcome));
     result.insert(
         "sources".to_string(),
         source_summary_json(&outcome.source_modules),
@@ -481,21 +656,6 @@ fn needs_excel_host_document_modules(modules: &[VbaModuleModel]) -> bool {
     modules
         .iter()
         .any(|module| matches!(module.kind, VbaModuleKind::Class | VbaModuleKind::UserForm))
-}
-
-fn with_excel_host_document_modules(mut user_modules: Vec<VbaModuleModel>) -> Vec<VbaModuleModel> {
-    let mut modules = vec![
-        VbaModuleModel::excel_workbook_document(),
-        VbaModuleModel::excel_sheet_document("Sheet1"),
-    ];
-    modules.append(&mut user_modules);
-    modules
-}
-
-fn with_word_host_document_module(mut user_modules: Vec<VbaModuleModel>) -> Vec<VbaModuleModel> {
-    let mut modules = vec![VbaModuleModel::word_document_document()];
-    modules.append(&mut user_modules);
-    modules
 }
 
 fn attach_command_template(family: &str, bin_path: &str) -> String {
@@ -528,6 +688,7 @@ fn source_summary_json(source_modules: &[SourceModuleInput]) -> Value {
                     "path": input.path.clone(),
                     "moduleName": input.module.name.clone(),
                     "kind": input.module.kind.as_str(),
+                    "hostSynthesized": input.host_synthesized,
                     "insertedVbNameAttribute": input.inserted_vb_name,
                 })
             })
@@ -604,14 +765,40 @@ fn normalize_source_values(values: &[String]) -> CliResult<Vec<String>> {
     Ok(out)
 }
 
-fn read_source_modules(paths: &[String]) -> CliResult<Vec<SourceModuleInput>> {
+fn read_source_modules(
+    family: &str,
+    paths: &[String],
+    manifest: Option<&VbaProjectManifest>,
+    manifest_root: Option<&Path>,
+    infer_canonical_synthesized_hosts: bool,
+) -> CliResult<Vec<SourceModuleInput>> {
     paths
         .iter()
-        .map(|path| read_source_module(path))
+        .map(|path| {
+            let manifest_module = manifest.and_then(|manifest| {
+                manifest_module_for_path(manifest, manifest_root, Path::new(path))
+            });
+            read_source_module_for_family(
+                path,
+                family,
+                manifest_module,
+                infer_canonical_synthesized_hosts,
+            )
+        })
         .collect::<CliResult<Vec<_>>>()
 }
 
+#[cfg(test)]
 fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
+    read_source_module_for_family(path, "xlsx", None, false)
+}
+
+fn read_source_module_for_family(
+    path: &str,
+    family: &str,
+    manifest_module: Option<&VbaProjectManifestModule>,
+    infer_canonical_synthesized_hosts: bool,
+) -> CliResult<SourceModuleInput> {
     let data = fs::read(path).map_err(|err| {
         if err.kind() == std::io::ErrorKind::NotFound {
             CliError::file_not_found(format!("VBA source file not found: {path}"))
@@ -624,17 +811,10 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
             "VBA source file is empty: {path}"
         )));
     }
-    let kind = source_kind_from_path(path)?;
-    let ignored_frx_sidecar = (kind == VbaModuleKind::UserForm)
-        .then(|| adjacent_frx_sidecar(Path::new(path)))
-        .flatten()
-        .map(|sidecar| stable_path_display(&sidecar.to_string_lossy()));
+    let path_kind = source_kind_from_path(path)?;
     let raw_text = decode_source_file_text(path, &data)?;
     let normalized_raw_text = codec::normalize_vba_line_endings(raw_text);
-    let user_form_caption = (kind == VbaModuleKind::UserForm)
-        .then(|| userform_caption_from_export(&normalized_raw_text))
-        .flatten();
-    let text = normalized_source_text_for_kind(kind, raw_text);
+    let text = normalized_source_text_for_kind(path_kind, raw_text);
     let attr_name = vb_name_attribute(&text);
     let name = attr_name.unwrap_or_else(|| {
         Path::new(path)
@@ -643,6 +823,30 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
             .unwrap_or("Module1")
             .to_string()
     });
+    if let Some(manifest_module) = manifest_module
+        && !manifest_module.name.eq_ignore_ascii_case(&name)
+    {
+        return Err(CliError::invalid_args(format!(
+            "VBA project manifest names module {} but {} declares Attribute VB_Name = {:?}",
+            manifest_module.name, path, name
+        )));
+    }
+    let kind = if let Some(manifest_module) = manifest_module {
+        module_kind_from_manifest(manifest_module)?
+    } else if path_kind == VbaModuleKind::Class
+        && (document_module_attributes(&text) || known_host_module_name(family, &name))
+    {
+        VbaModuleKind::Document
+    } else {
+        path_kind
+    };
+    let ignored_frx_sidecar = (kind == VbaModuleKind::UserForm)
+        .then(|| adjacent_frx_sidecar(Path::new(path)))
+        .flatten()
+        .map(|sidecar| stable_path_display(&sidecar.to_string_lossy()));
+    let user_form_caption = (kind == VbaModuleKind::UserForm)
+        .then(|| userform_caption_from_export(&normalized_raw_text))
+        .flatten();
     let inserted_vb_name = vb_name_attribute(&text).is_none();
     let mut source_text = if inserted_vb_name {
         format!("Attribute VB_Name = \"{name}\"\r\n{text}")
@@ -655,6 +859,13 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
     if kind == VbaModuleKind::UserForm {
         source_text = ensure_userform_module_attributes(&source_text);
     }
+    let source_sha256 = format!("{:x}", Sha256::digest(&data));
+    let host_synthesized = manifest_module.is_some_and(|module| {
+        module.host_synthesized && module.source_sha256.eq_ignore_ascii_case(&source_sha256)
+    }) || (manifest_module.is_none()
+        && infer_canonical_synthesized_hosts
+        && kind == VbaModuleKind::Document
+        && is_canonical_synthesized_host_source(family, &name, &source_text));
     let source_text = source_text.into_bytes();
     let module = if kind == VbaModuleKind::UserForm {
         VbaModuleModel::user_form(
@@ -674,7 +885,75 @@ fn read_source_module(path: &str) -> CliResult<SourceModuleInput> {
         module,
         inserted_vb_name,
         ignored_frx_sidecar,
+        host_synthesized,
     })
+}
+
+fn manifest_module_for_path<'a>(
+    manifest: &'a VbaProjectManifest,
+    manifest_root: Option<&Path>,
+    source_path: &Path,
+) -> Option<&'a VbaProjectManifestModule> {
+    let root = manifest_root?;
+    manifest.modules.iter().find(|module| {
+        manifest_relative_path(&module.file)
+            .ok()
+            .is_some_and(|relative| root.join(relative) == source_path)
+    })
+}
+
+fn module_kind_from_manifest(module: &VbaProjectManifestModule) -> CliResult<VbaModuleKind> {
+    match module.kind.as_str() {
+        "standard" => Ok(VbaModuleKind::Standard),
+        "class" => Ok(VbaModuleKind::Class),
+        "document" => Ok(VbaModuleKind::Document),
+        "userform" => Ok(VbaModuleKind::UserForm),
+        kind => Err(CliError::invalid_args(format!(
+            "VBA project manifest module {} has unsupported kind {kind:?}",
+            module.name
+        ))),
+    }
+}
+
+fn document_module_attributes(source: &str) -> bool {
+    has_attribute_value(source, "vb_predeclaredid", "true")
+        && has_attribute_value(source, "vb_exposed", "true")
+}
+
+fn has_attribute_value(source: &str, name: &str, expected: &str) -> bool {
+    source
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .lines()
+        .any(|line| {
+            let lower = line.trim().to_ascii_lowercase();
+            lower
+                .strip_prefix("attribute ")
+                .and_then(|rest| rest.split_once('='))
+                .is_some_and(|(candidate, value)| {
+                    candidate.trim() == name && value.trim() == expected
+                })
+        })
+}
+
+fn known_host_module_name(family: &str, name: &str) -> bool {
+    match family {
+        "xlsx" => {
+            name.eq_ignore_ascii_case("ThisWorkbook")
+                || name
+                    .get(5..)
+                    .filter(|_| {
+                        name.get(..5)
+                            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("Sheet"))
+                    })
+                    .is_some_and(|suffix| {
+                        !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+                    })
+        }
+        "pptx" => name.eq_ignore_ascii_case("ThisPresentation"),
+        "docx" => name.eq_ignore_ascii_case("ThisDocument"),
+        _ => false,
+    }
 }
 
 fn adjacent_frx_sidecar(path: &Path) -> Option<PathBuf> {
@@ -1383,6 +1662,167 @@ mod tests {
         assert_eq!(project.project.modules[0].kind, VbaModuleKind::Document);
         assert_eq!(project.project.modules[1].name, "AgentDoc");
         assert_eq!(project.project.modules[1].kind, VbaModuleKind::Standard);
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn xlsx_document_sources_are_classified_from_attributes_without_duplicates() {
+        let (temp_dir, workbook_path) =
+            temp_source_path("xlsx-document-classification", "ThisWorkbook.cls");
+        let sheet_path = temp_dir.join("Sheet1.cls");
+        let worker_path = temp_dir.join("Worker.cls");
+        fs::write(
+            &workbook_path,
+            VbaModuleModel::excel_workbook_document().source,
+        )
+        .expect("write workbook document source");
+        fs::write(
+            &sheet_path,
+            VbaModuleModel::excel_sheet_document("Sheet1").source,
+        )
+        .expect("write sheet document source");
+        fs::write(
+            &worker_path,
+            "Attribute VB_Name = \"Worker\"\r\nAttribute VB_PredeclaredId = False\r\nAttribute VB_Exposed = False\r\nPublic Function Answer()\r\nAnswer = 42\r\nEnd Function\r\n",
+        )
+        .expect("write class source");
+
+        let outcome = build_bin_from_sources_internal(
+            Some("xlsx"),
+            &[
+                worker_path.to_string_lossy().to_string(),
+                sheet_path.to_string_lossy().to_string(),
+                workbook_path.to_string_lossy().to_string(),
+            ],
+            None,
+            None,
+            true,
+        )
+        .expect("build extracted source set without manifest");
+
+        assert_eq!(outcome.project.modules.len(), 3);
+        assert_eq!(outcome.project.modules[0].name, "ThisWorkbook");
+        assert_eq!(outcome.project.modules[0].kind, VbaModuleKind::Document);
+        assert_eq!(outcome.project.modules[1].name, "Sheet1");
+        assert_eq!(outcome.project.modules[1].kind, VbaModuleKind::Document);
+        assert_eq!(outcome.project.modules[2].name, "Worker");
+        assert_eq!(outcome.project.modules[2].kind, VbaModuleKind::Class);
+        assert!(
+            outcome
+                .host_synthesized_module_names
+                .contains("thisworkbook")
+        );
+        assert!(outcome.host_synthesized_module_names.contains("sheet1"));
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn xlsx_user_document_source_is_kept_verbatim_and_not_marked_synthesized() {
+        let (temp_dir, sheet_path) = temp_source_path("xlsx-user-document", "CustomSheet.cls");
+        let worker_path = temp_dir.join("Worker.cls");
+        let sheet_source = "Attribute VB_Name = \"CustomSheet\"\r\nAttribute VB_PredeclaredId = True\r\nAttribute VB_Exposed = True\r\nPrivate Sub Worksheet_Activate()\r\n    Range(\"A1\").Value = \"kept\"\r\nEnd Sub\r\n";
+        fs::write(&sheet_path, sheet_source).expect("write user sheet document source");
+        fs::write(
+            &worker_path,
+            "Attribute VB_Name = \"Worker\"\r\nPublic Function Answer()\r\nAnswer = 42\r\nEnd Function\r\n",
+        )
+        .expect("write class source");
+
+        let outcome = build_bin_from_sources(
+            Some("xlsx"),
+            &[
+                sheet_path.to_string_lossy().to_string(),
+                worker_path.to_string_lossy().to_string(),
+            ],
+        )
+        .expect("build project with user document source");
+
+        let custom_sheet = outcome
+            .project
+            .modules
+            .iter()
+            .find(|module| module.name == "CustomSheet")
+            .expect("custom sheet module");
+        assert_eq!(custom_sheet.kind, VbaModuleKind::Document);
+        assert_eq!(
+            String::from_utf8(custom_sheet.source.clone()).expect("document source utf8"),
+            sheet_source
+        );
+        assert!(
+            !outcome
+                .host_synthesized_module_names
+                .contains("customsheet")
+        );
+        assert!(
+            outcome
+                .host_synthesized_module_names
+                .contains("thisworkbook")
+        );
+        assert_eq!(
+            outcome
+                .project
+                .modules
+                .iter()
+                .filter(|module| module.name == "CustomSheet")
+                .count(),
+            1
+        );
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn docx_user_supplied_this_document_is_refused_with_guidance() {
+        let (temp_dir, path) = temp_source_path("docx-user-thisdocument", "ThisDocument.cls");
+        fs::write(
+            &path,
+            "Attribute VB_Name = \"ThisDocument\"\r\nAttribute VB_PredeclaredId = True\r\nAttribute VB_Exposed = True\r\nPrivate Sub Document_Open()\r\nEnd Sub\r\n",
+        )
+        .expect("write user ThisDocument source");
+
+        let error = build_bin_from_sources(Some("docx"), &[path.to_string_lossy().to_string()])
+            .err()
+            .expect("user ThisDocument must remain unsupported");
+
+        assert_eq!(error.code, "unsupported_type");
+        assert!(error.message.contains("user-supplied ThisDocument"));
+        assert!(error.message.contains("let ooxml synthesize it"));
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn duplicate_source_names_report_both_paths() {
+        let (temp_dir, first_path) = temp_source_path("duplicate-paths", "First.bas");
+        let second_path = temp_dir.join("Second.bas");
+        let source = "Attribute VB_Name = \"Duplicated\"\r\nPublic Sub Hello()\r\nEnd Sub\r\n";
+        fs::write(&first_path, source).expect("write first duplicate");
+        fs::write(&second_path, source).expect("write second duplicate");
+
+        let error = build_bin_from_sources(
+            Some("xlsx"),
+            &[
+                first_path.to_string_lossy().to_string(),
+                second_path.to_string_lossy().to_string(),
+            ],
+        )
+        .err()
+        .expect("duplicate module names must fail");
+
+        assert_eq!(error.code, "invalid_args");
+        assert!(
+            error
+                .message
+                .contains("duplicate VBA module name Duplicated")
+        );
+        assert!(
+            error
+                .message
+                .contains(first_path.to_string_lossy().as_ref())
+        );
+        assert!(
+            error
+                .message
+                .contains(second_path.to_string_lossy().as_ref())
+        );
         let _ = fs::remove_dir_all(&temp_dir);
     }
 }

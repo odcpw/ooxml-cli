@@ -2,6 +2,7 @@ mod cfb_paths;
 mod codec;
 mod compatibility;
 mod dir;
+pub(crate) mod manifest;
 mod mutation;
 mod output_json;
 mod parser;
@@ -28,6 +29,10 @@ use super::output::{
 };
 use super::package_xml::package_part_name;
 
+use manifest::{
+    VBA_PROJECT_MANIFEST_SCHEMA_VERSION, VbaProjectManifest, VbaProjectManifestModule,
+    read_vba_project_manifest, write_vba_project_manifest,
+};
 use mutation::{
     AddModuleOptions, SourceMutationOptions, SourceMutationResult,
     add_module_source_in_project_data, remove_module_source_in_project_data,
@@ -223,6 +228,21 @@ pub(crate) fn vba_extract(file: &str, out_dir: &str, selector: Option<&str>) -> 
 
     let mut used = BTreeMap::<String, usize>::new();
     let mut extracted = Vec::new();
+    let mut manifest_modules = BTreeMap::<String, VbaProjectManifestModule>::new();
+    if let Some(existing) = read_vba_project_manifest(Path::new(out_dir))? {
+        if existing.family != project.family {
+            return Err(CliError::invalid_args(format!(
+                "existing VBA project manifest family {} does not match extracted project family {}",
+                existing.family, project.family
+            )));
+        }
+        manifest_modules.extend(
+            existing
+                .modules
+                .into_iter()
+                .map(|module| (module.name.to_ascii_lowercase(), module)),
+        );
+    }
     for module in &modules {
         let mut name = module_output_name(module);
         let count = used.entry(name.clone()).or_insert(0);
@@ -251,7 +271,46 @@ pub(crate) fn vba_extract(file: &str, out_dir: &str, selector: Option<&str>) -> 
             &output_path,
             export_source.len(),
         ));
+        let mut hasher = Sha256::new();
+        hasher.update(export_source.as_bytes());
+        let kind = manifest_module_kind(&project, module);
+        manifest_modules.insert(
+            module.name.to_ascii_lowercase(),
+            VbaProjectManifestModule {
+                name: module.name.clone(),
+                file: name,
+                kind: kind.clone(),
+                host_synthesized: kind == "document"
+                    && is_canonical_synthesized_host_source(
+                        &project.family,
+                        &module.name,
+                        &module.source,
+                    ),
+                source_sha256: format!("{:x}", hasher.finalize()),
+            },
+        );
     }
+
+    let mut ordered_modules = Vec::with_capacity(manifest_modules.len());
+    for module in &project.modules {
+        if let Some(module) = manifest_modules.remove(&module.name.to_ascii_lowercase()) {
+            ordered_modules.push(module);
+        }
+    }
+    ordered_modules.extend(manifest_modules.into_values());
+    let manifest = VbaProjectManifest {
+        schema_version: VBA_PROJECT_MANIFEST_SCHEMA_VERSION,
+        project_name: extracted_project_name(&project),
+        code_page: u16::try_from(project.code_page).map_err(|_| {
+            CliError::unsupported_type(format!(
+                "VBA project code page {} cannot be represented in vba-project.json",
+                project.code_page
+            ))
+        })?,
+        family: project.family.clone(),
+        modules: ordered_modules,
+    };
+    let manifest_path = write_vba_project_manifest(Path::new(out_dir), &manifest)?;
 
     let mut result = Map::new();
     result.insert("file".to_string(), json!(file));
@@ -259,6 +318,7 @@ pub(crate) fn vba_extract(file: &str, out_dir: &str, selector: Option<&str>) -> 
     result.insert("vba".to_string(), vba_info_json(&info));
     result.insert("project".to_string(), source_project_json(&project, false));
     result.insert("modules".to_string(), Value::Array(extracted));
+    result.insert("manifestPath".to_string(), json!(manifest_path));
     result.insert(
         "inspectCommand".to_string(),
         json!(vba_inspect_command(file)),
@@ -280,6 +340,58 @@ pub(crate) fn vba_extract(file: &str, out_dir: &str, selector: Option<&str>) -> 
     );
     result.insert("listCommand".to_string(), json!(vba_list_command(file)));
     Ok(Value::Object(result))
+}
+
+fn extracted_project_name(project: &SourceProject) -> String {
+    project
+        .project_metadata
+        .as_ref()
+        .map(|metadata| metadata.name.trim())
+        .filter(|name| !name.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| {
+            if project.family == "docx" {
+                "Project".to_string()
+            } else {
+                "VBAProject".to_string()
+            }
+        })
+}
+
+fn manifest_module_kind(project: &SourceProject, module: &SourceModule) -> String {
+    project
+        .project_metadata
+        .as_ref()
+        .and_then(|metadata| {
+            metadata.modules.iter().find(|declaration| {
+                declaration.name.eq_ignore_ascii_case(&module.name)
+                    || declaration.name.eq_ignore_ascii_case(&module.stream_name)
+            })
+        })
+        .map(|declaration| match declaration.kind.as_str() {
+            "module" => "standard",
+            "baseclass" => "userform",
+            kind => kind,
+        })
+        .unwrap_or(&module.kind)
+        .to_string()
+}
+
+pub(crate) fn is_canonical_synthesized_host_source(family: &str, name: &str, source: &str) -> bool {
+    let expected = match family {
+        "xlsx" if name.eq_ignore_ascii_case("ThisWorkbook") => {
+            "Attribute VB_Name = \"ThisWorkbook\"\r\nAttribute VB_Base = \"0{00020819-0000-0000-C000-000000000046}\"\r\nAttribute VB_GlobalNameSpace = False\r\nAttribute VB_Creatable = False\r\nAttribute VB_PredeclaredId = True\r\nAttribute VB_Exposed = True\r\nAttribute VB_TemplateDerived = False\r\nAttribute VB_Customizable = True\r\n".to_string()
+        }
+        "xlsx" => format!(
+            "Attribute VB_Name = \"{name}\"\r\nAttribute VB_Base = \"0{{00020820-0000-0000-C000-000000000046}}\"\r\nAttribute VB_GlobalNameSpace = False\r\nAttribute VB_Creatable = False\r\nAttribute VB_PredeclaredId = True\r\nAttribute VB_Exposed = True\r\nAttribute VB_TemplateDerived = False\r\nAttribute VB_Customizable = True\r\n"
+        ),
+        "docx" if name.eq_ignore_ascii_case("ThisDocument") => {
+            "Attribute VB_Name = \"ThisDocument\"\r\nAttribute VB_Base = \"1Normal.ThisDocument\"\r\nAttribute VB_GlobalNameSpace = False\r\nAttribute VB_Creatable = False\r\nAttribute VB_PredeclaredId = True\r\nAttribute VB_Exposed = True\r\nAttribute VB_TemplateDerived = True\r\nAttribute VB_Customizable = True\r\n".to_string()
+        }
+        _ => return false,
+    };
+    source.replace("\r\n", "\n").replace('\r', "\n")
+        == expected.replace("\r\n", "\n").replace('\r', "\n")
 }
 
 fn module_export_source(module: &SourceModule) -> String {

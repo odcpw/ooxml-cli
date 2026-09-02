@@ -170,6 +170,22 @@ ooxml --json validate --strict .\rebuilt.xlsm
 ooxml --json vba list .\rebuilt.xlsm
 ```
 
+`vba extract` writes `vba-project.json` beside the exported sources. The
+manifest records the project name, code page, family, stable module order,
+module kinds, synthesized-host provenance, and each exported source SHA-256.
+`vba rebuild --source-dir` consumes that manifest when present, while still
+including additional `.bas`, `.cls`, and `.frm` files found under the source
+directory.
+
+If the manifest is absent, `.cls` files with both
+`VB_PredeclaredId = True` and `VB_Exposed = True`, or a family host name such
+as `ThisWorkbook`, `Sheet1`, `ThisPresentation`, or `ThisDocument`, are
+classified as document modules. XLSM and PPTM document-module source is kept
+verbatim and is not synthesized a second time. DOCM rebuild accepts the
+unchanged `ThisDocument.cls` produced by `vba extract`, but refuses a
+user-authored or modified `ThisDocument` with an `unsupported_type` error;
+remove that file and let `ooxml` synthesize Word's host module.
+
 ## Office-Authored Creation Path
 
 When you specifically need an Office-authored XLSM/PPTM seed, use legacy `ooxml vba create` without `--pure`. It drives desktop Office to author the VBA project, then returns `ooxml` readback/validation commands:
