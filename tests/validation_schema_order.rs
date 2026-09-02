@@ -7,24 +7,11 @@ use std::process::{Command, Output};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
-const EXPECTED_INVALID: [(&str, &str); 10] = [
-    (
-        "testdata/docx/apply-styles/document.docx",
-        "XML_CHILD_ORDER",
-    ),
+const EXPECTED_INVALID: [(&str, &str); 6] = [
     (
         "testdata/docx/corrupted-missing-document/document.docx",
         "DOCX_MISSING_DOCUMENT",
     ),
-    (
-        "testdata/docx/merged-table/document.docx",
-        "XML_CHILD_ORDER",
-    ),
-    (
-        "testdata/docx/mixed-blocks/document.docx",
-        "XML_CHILD_ORDER",
-    ),
-    ("testdata/docx/table/document.docx", "XML_CHILD_ORDER"),
     (
         "testdata/pptx/animations-stale-media/presentation.pptx",
         "PPTX_MISSING_SLIDE_RELATIONSHIP",

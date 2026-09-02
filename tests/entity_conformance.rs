@@ -332,9 +332,9 @@ fn xlsx_entity_formulas_survive_list_and_unrelated_update() {
         let data = if name == "xl/worksheets/sheet1.xml" {
             let xml = String::from_utf8(data).expect("worksheet xml utf8");
             xml.replace(
-                "</worksheet>",
+                "<pageMargins",
                 &format!(
-                    r#"<dataValidations count="1"><dataValidation type="custom" sqref="A1:A5" prompt="Line1&#10;Line2"><formula1>{formula}</formula1></dataValidation></dataValidations></worksheet>"#
+                    r#"<dataValidations count="1"><dataValidation type="custom" sqref="A1:A5" prompt="Line1&#10;Line2"><formula1>{formula}</formula1></dataValidation></dataValidations><pageMargins"#
                 ),
             )
             .into_bytes()
