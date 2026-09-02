@@ -4,28 +4,7 @@ use quick_xml::events::Event;
 use crate::local_name;
 
 pub(crate) fn xlsx_workbook_child_order(local_name: &str) -> i32 {
-    match local_name {
-        "fileVersion" => 10,
-        "fileSharing" => 20,
-        "workbookPr" => 30,
-        "workbookProtection" => 40,
-        "bookViews" => 50,
-        "sheets" => 60,
-        "functionGroups" => 70,
-        "externalReferences" => 80,
-        "definedNames" => 90,
-        "calcPr" => 100,
-        "oleSize" => 110,
-        "customWorkbookViews" => 120,
-        "pivotCaches" => 130,
-        "smartTagPr" => 140,
-        "smartTagTypes" => 150,
-        "webPublishing" => 160,
-        "fileRecoveryPr" => 170,
-        "webPublishObjects" => 180,
-        "extLst" => 190,
-        _ => 10000,
-    }
+    crate::validation::validation_schema_order::xlsx_workbook_schema_child_order(local_name)
 }
 
 pub(crate) fn xlsx_workbook_ordered_insert_position(

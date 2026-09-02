@@ -1,5 +1,3 @@
-use quick_xml::Reader;
-use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeSet;
 use std::fs;
@@ -8,11 +6,14 @@ use std::io::ErrorKind;
 use crate::{
     CliError, CliResult, EXIT_PARTIAL_SUCCESS, EXIT_SUCCESS, EXIT_VALIDATION_FAILED,
     InspectPackageKind, detect_inspect_package_type, find_docx_document_part,
-    find_xlsx_workbook_part, local_name, opc_part_lookup_key, opc_part_lookup_set,
-    relationship_entries, relationship_source_uri, relationships, relationships_part_for,
-    resolve_relationship_target, resolve_relationship_target_part_uri, workbook_sheets,
-    xlsx_workbook_child_order, zip_entry_names, zip_entry_set, zip_text,
+    find_xlsx_workbook_part, opc_part_lookup_key, opc_part_lookup_set, relationship_entries,
+    relationship_source_uri, relationships, relationships_part_for, resolve_relationship_target,
+    resolve_relationship_target_part_uri, workbook_sheets, zip_entry_names, zip_entry_set,
+    zip_text,
 };
+
+#[path = "validation_schema_order.rs"]
+pub(crate) mod validation_schema_order;
 
 pub(crate) fn validate(file: &str, strict: bool) -> CliResult<Value> {
     let diagnostics = validate_diagnostics(file)?;
@@ -160,6 +161,11 @@ fn validate_diagnostics(file: &str) -> CliResult<Vec<Value>> {
         }
         InspectPackageKind::Unknown => {}
     }
+    diagnostics.extend(validation_schema_order::validate_package_schema_order(
+        file,
+        package_kind,
+        &entries,
+    )?);
     if matches!(
         package_kind,
         InspectPackageKind::Docx | InspectPackageKind::Xlsx | InspectPackageKind::Pptx
@@ -296,7 +302,6 @@ fn validate_xlsx_required_parts(
     }
 
     let workbook = zip_text(file, &workbook_part)?;
-    diagnostics.extend(validate_xlsx_workbook_child_order(&workbook_uri, &workbook));
     let sheets = match workbook_sheets(&workbook) {
         Ok(sheets) => sheets,
         Err(err) => {
@@ -343,101 +348,6 @@ fn validate_xlsx_required_parts(
             ));
             continue;
         }
-
-        let worksheet_part = target_uri.trim_start_matches('/');
-        let worksheet_xml = zip_text(file, worksheet_part)?;
-        let (_, legacy_pivot_parts) =
-            crate::xlsx_sheet_xml::strip_legacy_xlsx_pivot_table_parts(&worksheet_xml)?;
-        if legacy_pivot_parts > 0 {
-            diagnostics.push(json!({
-                "code": "WORKSHEET_UNKNOWN_CHILD",
-                "severity": "error",
-                "message": format!(
-                    "{target_uri} contains invalid worksheet child <pivotTableParts>; pivot tables must be linked only through worksheet relationships"
-                ),
-                "part": target_uri,
-                "element": "pivotTableParts",
-                "xpath": "/x:worksheet[1]/x:pivotTableParts[1]",
-            }));
-        }
     }
     Ok(diagnostics)
-}
-
-fn validate_xlsx_workbook_child_order(workbook_uri: &str, workbook_xml: &str) -> Vec<Value> {
-    let mut reader = Reader::from_str(workbook_xml);
-    reader.config_mut().trim_text(false);
-    let mut diagnostics = Vec::new();
-    let mut depth = 0_u32;
-    let mut last_order = 0i32;
-    let mut last_name = String::new();
-
-    loop {
-        match reader.read_event() {
-            Ok(Event::Start(e)) => {
-                let name = local_name(e.name().as_ref()).to_string();
-                if depth == 1 {
-                    push_xlsx_workbook_child_order_diagnostic(
-                        workbook_uri,
-                        &name,
-                        &last_name,
-                        &mut last_order,
-                        &mut diagnostics,
-                    );
-                    last_name = name;
-                }
-                depth += 1;
-            }
-            Ok(Event::Empty(e)) => {
-                let name = local_name(e.name().as_ref()).to_string();
-                if depth == 1 {
-                    push_xlsx_workbook_child_order_diagnostic(
-                        workbook_uri,
-                        &name,
-                        &last_name,
-                        &mut last_order,
-                        &mut diagnostics,
-                    );
-                    last_name = name;
-                }
-            }
-            Ok(Event::End(_)) => {
-                depth = depth.saturating_sub(1);
-            }
-            Ok(Event::Eof) => break,
-            Err(err) => {
-                diagnostics.push(validation_diagnostic(
-                    "XLSX_PARSE_ERROR",
-                    "error",
-                    format!("failed to parse workbook XML child order: {err}"),
-                ));
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    diagnostics
-}
-
-fn push_xlsx_workbook_child_order_diagnostic(
-    workbook_uri: &str,
-    name: &str,
-    last_name: &str,
-    last_order: &mut i32,
-    diagnostics: &mut Vec<Value>,
-) {
-    let current = xlsx_workbook_child_order(name);
-    if current >= 10000 {
-        return;
-    }
-    if *last_order > current {
-        diagnostics.push(validation_diagnostic(
-            "XLSX_WORKBOOK_CHILD_ORDER",
-            "error",
-            format!("{workbook_uri} has <{name}> after <{last_name}>; expected schema child order"),
-        ));
-        return;
-    }
-    *last_order = current;
 }
