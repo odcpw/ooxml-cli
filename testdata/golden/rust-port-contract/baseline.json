@@ -83,6 +83,13 @@
             "selectorsCommand": "ooxml --json pptx slides selectors testdata/pptx/minimal-title/presentation.pptx --slide 1",
             "shapes": [
               {
+                "bounds": {
+                  "cx": 7772400,
+                  "cy": 1470025,
+                  "x": 685800,
+                  "y": 2130425
+                },
+                "boundsSource": "layout",
                 "id": 2,
                 "isPlaceholder": true,
                 "shapeName": "Title 1",
@@ -90,6 +97,13 @@
                 "type": "sp"
               },
               {
+                "bounds": {
+                  "cx": 6400800,
+                  "cy": 1752600,
+                  "x": 1371600,
+                  "y": 3886200
+                },
+                "boundsSource": "layout",
                 "id": 3,
                 "isPlaceholder": true,
                 "shapeName": "Subtitle 2",
@@ -223,6 +237,12 @@
       "exitCode": 0,
       "stdoutJson": {
         "destination": {
+          "bounds": {
+            "cx": 7772400,
+            "cy": 1470025,
+            "x": 685800,
+            "y": 2130425
+          },
           "file": "[EDITED_PPTX]",
           "handle": "H:pptx/s:256/shape:n:2",
           "primarySelector": "title",

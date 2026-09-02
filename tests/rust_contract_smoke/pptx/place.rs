@@ -410,8 +410,16 @@ fn pptx_place_table_saved_dry_run_readback_and_errors_match_rust_baseline() {
     assert_eq!(rust_code, baseline_code, "place table saved exit");
     assert_eq!(rust_stderr, baseline_stderr, "place table saved stderr");
     assert_eq!(
-        rust_stdout.expect("rust place table stdout"),
-        baseline_stdout.expect("baseline place table stdout"),
+        scrub_path(
+            rust_stdout.expect("rust place table stdout"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            baseline_stdout.expect("baseline place table stdout"),
+            baseline_out_str,
+            "[OUT]"
+        ),
         "place table saved stdout"
     );
     assert!(
@@ -770,4 +778,3 @@ fn pptx_place_table_from_xlsx_saved_dry_run_and_errors_match_rust_baseline() {
         assert_baseline_rust_json_match(&args, "place table-from-xlsx representative error");
     }
 }
-
