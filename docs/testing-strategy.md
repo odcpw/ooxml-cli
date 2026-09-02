@@ -28,6 +28,13 @@ make check-ci
 
 `make check-ci` is the CI-equivalent Rust gate. It includes the full `cargo test --all-targets` suite, not a unit-only or one-smoke-test subset. CI also runs that full gate on Linux, macOS, and Windows.
 
+Normal CI follows the latest stable Rust toolchain, while release verification
+uses the minimum supported toolchain declared by `package.rust-version` in
+`Cargo.toml` (currently Rust 1.96). The CI workflow also runs a beta-toolchain
+Clippy job every Monday, and exposes that job through `workflow_dispatch`, so
+new lints are visible before they reach stable. Stable or beta lint drift is
+fixed within one week; lint failures are not hidden with broad allowances.
+
 Do not use legacy code as the normal product proof path. Historical code may still explain where an older contract fixture came from, but current gates should be Rust-native.
 
 Focused loop:

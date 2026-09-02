@@ -291,7 +291,7 @@ pub(super) fn decode_mbcs(data: &[u8], code_page: i32) -> String {
 
 pub(super) fn decode_utf16_le(data: &[u8]) -> String {
     let mut units = Vec::with_capacity(data.len() / 2);
-    for chunk in data.chunks_exact(2) {
+    for chunk in data.as_chunks::<2>().0 {
         let value = u16::from_le_bytes([chunk[0], chunk[1]]);
         if value == 0 {
             break;
