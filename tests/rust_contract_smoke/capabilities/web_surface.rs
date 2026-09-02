@@ -1507,14 +1507,7 @@ fn capabilities_unknown_for_flag_teaches_exact_flag() {
     assert_eq!(code, 2);
     assert_eq!(stderr, None);
     let error = stdout.expect("explicit JSON error on stdout");
-    assert!(
-        error["error"]["message"]
-            .as_str()
-            .expect("message")
-            .contains("unknown flag: --fr; did you mean --for"),
-        "{}",
-        error["error"]["message"]
-    );
+    assert_eq!(error["error"]["message"], "unknown flag: --fr");
     assert_eq!(error["error"]["didYouMean"], serde_json::json!(["--for"]));
     assert_eq!(
         error["error"]["correctedCommand"],

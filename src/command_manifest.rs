@@ -237,7 +237,7 @@ pub(crate) fn error_projection_for_argv(raw_args: &[String]) -> Option<ErrorComm
         })
 }
 
-pub(crate) fn first_registered_intent_mismatch(args: &[String]) -> Option<String> {
+pub(crate) fn first_manifest_unknown_flag(args: &[String]) -> Option<String> {
     let spec = command_specs()
         .into_iter()
         .filter_map(|spec| {
@@ -247,11 +247,32 @@ pub(crate) fn first_registered_intent_mismatch(args: &[String]) -> Option<String
             matched_command_path_end(spec.path, args).map(|end| (spec, end))
         })
         .max_by_key(|(spec, _)| spec.path.len());
-    let (spec, index) = spec?;
-    for arg in &args[index..] {
+    let (spec, mut index) = spec?;
+    while index < args.len() {
+        let arg = &args[index];
         let flag_name = arg.split_once('=').map(|(name, _)| name).unwrap_or(arg);
-        if crate::agent_aliases::invalid_args_intent_hint(spec.path, flag_name).is_some() {
-            return Some(flag_name.to_string());
+        let known = spec.local_flags.iter().find(|flag| flag.name == flag_name);
+        if let Some(flag) = known {
+            if flag.flag_type != "bool" && !arg.contains('=') {
+                index += usize::from(args.get(index + 1).is_some());
+            }
+            index += 1;
+            continue;
+        }
+        match flag_name {
+            "--help" | "-h" | "--json" | "--strict" => {
+                index += 1;
+                continue;
+            }
+            "--format" | "-f" => {
+                if !arg.contains('=') {
+                    index += usize::from(args.get(index + 1).is_some());
+                }
+                index += 1;
+                continue;
+            }
+            _ if arg.starts_with('-') => return Some(flag_name.to_string()),
+            _ => index += 1,
         }
     }
     None
