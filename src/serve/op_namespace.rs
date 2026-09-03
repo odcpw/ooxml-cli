@@ -389,6 +389,18 @@ const fn spec(
 }
 
 pub(super) fn resolve_serve_mutation_command(command: &str) -> Option<CommandId> {
+    let words = command
+        .split_whitespace()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let canonical = crate::agent_aliases::canonicalize_command_alias_path(&words);
+    let canonical_words = canonical.iter().map(String::as_str).collect::<Vec<_>>();
+    if let Some(id) = crate::command_manifest::command_id_for_canonical_path(&canonical_words)
+        && crate::command_manifest::manifest_serve_mutation_ids().contains(&id)
+    {
+        return Some(id);
+    }
+
     SERVE_MUTATION_SPECS
         .iter()
         .find(|spec| spec.canonical == command || spec.aliases.contains(&command))
@@ -425,10 +437,10 @@ mod tests {
             .collect::<BTreeSet<_>>();
 
         assert_eq!(SERVE_MUTATION_SPECS.len(), 73);
-        assert_eq!(manifest_ids.len(), 73);
+        assert_eq!(manifest_ids.len(), 156);
         assert_eq!(ids.len(), 73);
         assert_eq!(canonicals.len(), 73);
-        assert_eq!(ids, manifest_ids);
+        assert!(ids.is_subset(&manifest_ids));
         assert_eq!(aliases.len(), 14);
         assert_eq!(labels.len(), 87);
         assert_eq!(
@@ -458,6 +470,20 @@ mod tests {
             for alias in spec.aliases {
                 assert_eq!(resolve_serve_mutation_command(alias), Some(spec.id));
             }
+        }
+        for capability in crate::command_manifest::capability_commands()
+            .into_iter()
+            .filter(|capability| capability["opCompatible"] == true)
+        {
+            let command = capability["path"]
+                .as_str()
+                .expect("capability command path")
+                .strip_prefix("ooxml ")
+                .expect("canonical command prefix");
+            assert!(
+                resolve_serve_mutation_command(command).is_some(),
+                "opCompatible command is absent from the serve namespace: {command}"
+            );
         }
         for (family, expected) in [
             ("core", 2),

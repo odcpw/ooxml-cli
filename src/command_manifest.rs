@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 
 macro_rules! command_id_enum {
     ($visibility:vis enum $name:ident { $($variant:ident),+ $(,)? }) => {
@@ -75,6 +75,8 @@ struct CapabilityCommandDto<'a> {
     local_flags: Vec<CapabilityFlagDto<'a>>,
     op_compatible: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    op_args_schema: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     op_ineligible_reason: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     flag_constraints: Option<&'a Value>,
@@ -129,13 +131,17 @@ pub(crate) fn manifest_serve_inspect_prose_ids() -> Vec<CommandId> {
         .collect()
 }
 
-#[cfg(test)]
 pub(crate) fn manifest_serve_mutation_ids() -> Vec<CommandId> {
     command_specs()
         .into_iter()
-        .filter(|spec| matches!(spec.execution, ExecutionSupport::ServeMutation { .. }))
+        .filter(spec_is_op_compatible)
         .map(|spec| spec.id)
         .collect()
+}
+
+fn spec_is_op_compatible(spec: &CommandSpec) -> bool {
+    matches!(spec.execution, ExecutionSupport::ServeMutation { .. })
+        || crate::mutation_envelope::is_mutation_command_path(spec.path)
 }
 
 pub(crate) fn command_id_for_canonical_path(canonical_path: &[&str]) -> Option<CommandId> {
@@ -612,8 +618,10 @@ fn capability_value_from_parts<'a>(
     execution: &'a ExecutionSupport,
     flag_constraints: Option<&'a Value>,
 ) -> Value {
+    let inventory_mutation = crate::mutation_envelope::is_mutation_command_path(path);
     let (op_compatible, op_ineligible_reason) = match execution {
         ExecutionSupport::ServeMutation { reason } => (true, *reason),
+        _ if inventory_mutation => (true, None),
         ExecutionSupport::DirectOnly { reason }
         | ExecutionSupport::ServeInspect { reason }
         | ExecutionSupport::GroupOnly { reason } => (false, *reason),
@@ -635,10 +643,144 @@ fn capability_value_from_parts<'a>(
             })
             .collect(),
         op_compatible,
+        op_args_schema: op_compatible.then(|| op_args_schema(path, local_flags)),
         op_ineligible_reason,
         flag_constraints,
     };
     serde_json::to_value(&dto).expect("serialize capability command DTO")
+}
+
+fn op_args_schema(path: &[&str], local_flags: &[FlagSpec]) -> Value {
+    let mut properties = Map::new();
+    for flag in local_flags {
+        if is_session_owned_op_flag(flag.name) {
+            continue;
+        }
+        let schema = op_arg_value_schema(flag.flag_type, is_external_op_path_flag(path, flag));
+        let canonical = flag.name.trim_start_matches('-');
+        for key in std::iter::once(flag.arg_name)
+            .chain(std::iter::once(canonical))
+            .chain(
+                crate::agent_aliases::flag_aliases_for(path, flag.name)
+                    .into_iter()
+                    .map(|alias| alias.trim_start_matches('-')),
+            )
+        {
+            properties
+                .entry(key.to_string())
+                .or_insert_with(|| schema.clone());
+        }
+    }
+    let positionals = op_positional_arg_names(path);
+    for positional in positionals {
+        let schema = op_arg_value_schema("scalar", is_external_op_positional(path, positional));
+        properties.insert((*positional).to_string(), schema);
+    }
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": properties,
+        "required": positionals,
+    })
+}
+
+fn op_arg_value_schema(flag_type: &str, external_path: bool) -> Value {
+    let direct = match flag_type {
+        "bool" => json!({"type": "boolean"}),
+        "int" | "integer" => json!({"type": ["integer", "string"]}),
+        "number" => json!({"type": ["number", "string"]}),
+        "scalar" => json!({"type": ["string", "number", "boolean"]}),
+        "string[]" | "stringArray" => json!({
+            "oneOf": [
+                {"type": "string"},
+                {
+                    "type": "array",
+                    "items": {
+                        "oneOf": [
+                            {"type": "string"},
+                            op_ref_schema()
+                        ]
+                    }
+                }
+            ]
+        }),
+        _ => json!({"type": ["string", "number", "boolean", "array", "object", "null"]}),
+    };
+    let mut schema = json!({
+        "anyOf": [direct, op_ref_schema()],
+        "x-ooxml-ref": true,
+    });
+    if external_path {
+        schema["x-ooxml-path"] = json!(true);
+    }
+    schema
+}
+
+fn op_ref_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["$ref"],
+        "properties": {"$ref": {"type": "string", "minLength": 1}}
+    })
+}
+
+fn is_session_owned_op_flag(flag: &str) -> bool {
+    matches!(
+        flag,
+        "--out" | "--output" | "--backup" | "--in-place" | "--dry-run" | "--no-validate"
+    )
+}
+
+fn op_positional_arg_names(path: &[&str]) -> &'static [&'static str] {
+    match path {
+        ["find"] => &["query"],
+        ["pptx", "slides", "delete"] => &["slide-number"],
+        ["pptx", "slides", "move"] => &["from-position", "to-position"],
+        ["pptx", "slides", "reorder"] => &["order"],
+        ["pptx", "slides", "merge"] => &["source-file"],
+        ["pptx", "template", "compile"] => &["manifest", "spec"],
+        _ => &[],
+    }
+}
+
+fn is_external_op_positional(path: &[&str], positional: &str) -> bool {
+    matches!(
+        (path, positional),
+        (["pptx", "slides", "merge"], "source-file")
+            | (["pptx", "template", "compile"], "manifest" | "spec")
+    )
+}
+
+fn is_external_op_path_flag(path: &[&str], flag: &FlagSpec) -> bool {
+    let key = flag.name.trim_start_matches('-');
+    if path == ["docx", "images", "replace"] && key == "image" {
+        return false;
+    }
+    matches!(
+        key,
+        "archetype"
+            | "brand"
+            | "cells-file"
+            | "data"
+            | "file"
+            | "from"
+            | "image"
+            | "image-base-dir"
+            | "new-text-file"
+            | "ops"
+            | "paragraphs-file"
+            | "poster"
+            | "profile"
+            | "records-file"
+            | "source"
+            | "source-file"
+            | "template"
+            | "text-file"
+            | "tokens"
+            | "values-file"
+            | "workbook"
+    )
 }
 
 #[cfg(test)]
@@ -1003,7 +1145,7 @@ mod tests {
     }
 
     #[test]
-    fn xlsx_serve_mutations_match_frozen_contract_op_compatible_set() {
+    fn xlsx_op_compatible_mutations_match_frozen_contract() {
         let specs = xlsx::command_specs();
         let start = core::command_specs().len() + pptx::command_specs().len();
         let frozen = frozen_contract_commands();
@@ -1014,12 +1156,12 @@ mod tests {
             .collect::<BTreeSet<_>>();
         let actual = specs
             .iter()
-            .filter(|spec| matches!(&spec.execution, ExecutionSupport::ServeMutation { .. }))
+            .filter(|spec| spec_is_op_compatible(spec))
             .filter_map(|spec| capability_value(spec)["path"].as_str().map(str::to_owned))
             .collect::<BTreeSet<_>>();
 
         assert_eq!(actual, expected);
-        assert_eq!(actual.len(), 32);
+        assert_eq!(actual.len(), 60);
     }
 
     #[test]
@@ -1129,7 +1271,7 @@ mod tests {
     }
 
     #[test]
-    fn capability_dto_preserves_flags_constraints_and_exact_reason() {
+    fn mutation_inventory_promotes_direct_commands_and_preserves_constraints() {
         let constraint = json!({"requiresAny": ["--out", "--in-place"]});
         let actual = capability_value_from_parts(
             &["xlsx", "cells", "set"],
@@ -1148,8 +1290,9 @@ mod tests {
             Some(&constraint),
         );
         assert_eq!(actual["path"], "ooxml xlsx cells set");
-        assert_eq!(actual["opCompatible"], false);
-        assert_eq!(actual["opIneligibleReason"], "exact legacy reason");
+        assert_eq!(actual["opCompatible"], true);
+        assert!(actual.get("opIneligibleReason").is_none());
+        assert!(actual["opArgsSchema"].is_object());
         assert_eq!(actual["flagConstraints"], constraint);
         assert_eq!(
             actual["localFlags"],
@@ -1163,7 +1306,7 @@ mod tests {
     }
 
     #[test]
-    fn only_serve_mutation_is_operation_compatible() {
+    fn non_mutation_execution_modes_remain_operation_ineligible() {
         for execution in [
             ExecutionSupport::DirectOnly { reason: None },
             ExecutionSupport::ServeInspect { reason: None },
@@ -1402,7 +1545,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_mutation_set_matches_frozen_73_command_contract() {
+    fn complete_op_compatible_set_matches_frozen_156_command_contract() {
         let frozen: Value = serde_json::from_str(include_str!(
             "../testdata/golden/command-manifest-contract/capabilities.json"
         ))
@@ -1416,11 +1559,11 @@ mod tests {
             .collect::<BTreeSet<_>>();
         let actual = command_specs()
             .iter()
-            .filter(|spec| matches!(&spec.execution, ExecutionSupport::ServeMutation { .. }))
+            .filter(|spec| spec_is_op_compatible(spec))
             .filter_map(|spec| capability_value(spec)["path"].as_str().map(str::to_owned))
             .collect::<BTreeSet<_>>();
         assert_eq!(actual, expected);
-        assert_eq!(actual.len(), 73);
+        assert_eq!(actual.len(), 156);
     }
 
     #[test]
