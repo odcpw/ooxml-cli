@@ -347,17 +347,29 @@
       ],
       "exitCode": 0,
       "stdoutJson": {
+        "doctorChecks": [
+          "render-engine",
+          "fonts"
+        ],
         "dpi": 144,
+        "engine": "mock",
         "imageFormat": "png",
+        "limitations": [
+          "LibreOffice rendering can substitute unavailable fonts and may differ from Microsoft Office layout.",
+          "Static pages do not represent animations, transitions, audio, or video playback."
+        ],
         "outputDir": "[RENDER_DIR]",
         "pdfPath": "[RENDER_DIR]/edited.pdf",
+        "schemaVersion": "1.0",
         "slides": [
           {
             "imagePath": "[RENDER_DIR]/slide-1.png",
             "slide": 1
           }
         ],
-        "sourceFile": "[EDITED_PPTX]"
+        "sourceFile": "[EDITED_PPTX]",
+        "status": "ok",
+        "type": "pptx"
       }
     },
     "verify": {
