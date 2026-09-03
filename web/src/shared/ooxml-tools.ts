@@ -4,6 +4,8 @@ import { previewSupportedLabel } from './file-support.ts';
 import {
   applyOoxmlOpsToCurrent,
   applyTemplateToCurrentDocument,
+  buildCurrentWithTypedMcp,
+  checkCurrentWithTypedMcp,
   createTemplateFormSlideFromCurrent,
   getOoxmlCapabilities,
   getOoxmlCommandHelp,
@@ -67,6 +69,83 @@ export function createOoxmlTools(threadId: string) {
         command: v.optional(describedString('Optional command words. Omit for top-level ooxml help.')),
       }),
       execute: async ({ command }) => getOoxmlCommandHelp(typeof command === 'string' ? command : undefined),
+    }),
+    defineTool({
+      name: 'build_presentation',
+      description:
+        'Build and strictly validate a complete PPTX from the published pptx-build specification through the typed MCP tool, then publish it as a new immutable version of the selected PPTX.',
+      parameters: v.object({
+        specJson: describedString('JSON object conforming to resource://schema/pptx-build.'),
+        note: v.optional(describedString('Short version note for the published presentation.')),
+      }),
+      execute: async ({ specJson, note }) =>
+        JSON.stringify(
+          await buildCurrentWithTypedMcp({
+            threadId,
+            family: 'pptx',
+            specJson: String(specJson),
+            note: typeof note === 'string' ? note : undefined,
+          }),
+          null,
+          2,
+        ),
+    }),
+    defineTool({
+      name: 'build_workbook',
+      description:
+        'Build and strictly validate a complete XLSX from the published xlsx-build specification through the typed MCP tool, then publish it as a new immutable version of the selected XLSX.',
+      parameters: v.object({
+        specJson: describedString('JSON object conforming to resource://schema/xlsx-build.'),
+        note: v.optional(describedString('Short version note for the published workbook.')),
+      }),
+      execute: async ({ specJson, note }) =>
+        JSON.stringify(
+          await buildCurrentWithTypedMcp({
+            threadId,
+            family: 'xlsx',
+            specJson: String(specJson),
+            note: typeof note === 'string' ? note : undefined,
+          }),
+          null,
+          2,
+        ),
+    }),
+    defineTool({
+      name: 'build_document',
+      description:
+        'Build and strictly validate a complete DOCX from the published docx-build specification through the typed MCP tool, then publish it as a new immutable version of the selected DOCX.',
+      parameters: v.object({
+        specJson: describedString('JSON object conforming to resource://schema/docx-build.'),
+        note: v.optional(describedString('Short version note for the published document.')),
+      }),
+      execute: async ({ specJson, note }) =>
+        JSON.stringify(
+          await buildCurrentWithTypedMcp({
+            threadId,
+            family: 'docx',
+            specJson: String(specJson),
+            note: typeof note === 'string' ? note : undefined,
+          }),
+          null,
+          2,
+        ),
+    }),
+    defineTool({
+      name: 'check_package',
+      description:
+        'Run the typed MCP proof recipe on the selected package: structural, strict, schema, design, references, and optional visual render findings with executable fix commands.',
+      parameters: v.object({
+        openXmlSdk: v.optional(describedString('Schema policy: auto, require, or skip. Defaults to auto.')),
+        failOn: v.optional(describedString('Finding threshold: error or warning. Defaults to error.')),
+        render: v.optional(describedBoolean('Include the shared visual renderer proof pass.')),
+      }),
+      execute: async ({ openXmlSdk, failOn, render }) =>
+        checkCurrentWithTypedMcp({
+          threadId,
+          openXmlSdk: openXmlSdk === 'require' || openXmlSdk === 'skip' ? openXmlSdk : 'auto',
+          failOn: failOn === 'warning' ? 'warning' : 'error',
+          render: Boolean(render),
+        }),
     }),
     defineTool({
       name: 'inspect_current_with_ooxml',

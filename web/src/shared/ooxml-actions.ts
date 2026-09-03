@@ -93,6 +93,89 @@ async function runOoxmlJson<T>(args: string[], cwd: string): Promise<T> {
   return JSON.parse(result.stdout) as T;
 }
 
+type TypedMcpResult<T> = {
+  isError?: boolean;
+  structuredContent?: T & {
+    error?: {
+      code?: string;
+      message?: string;
+      hint?: string;
+      didYouMean?: string[];
+      validFields?: string[];
+    };
+  };
+};
+
+type TypedMcpResponse<T> = {
+  result?: TypedMcpResult<T>;
+  error?: { message?: string; data?: unknown };
+};
+
+async function runOoxmlTypedTool<T>(name: string, argumentsJson: Record<string, unknown>, cwd: string): Promise<T> {
+  const bin = resolveOoxmlBin();
+  const child = spawn(bin, ['mcp'], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+  const stdout: Buffer[] = [];
+  const stderr: Buffer[] = [];
+  let outputError: string | undefined;
+  let stdoutBytes = 0;
+  let stderrBytes = 0;
+  child.stdout.on('data', (chunk: Buffer) => {
+    stdoutBytes += chunk.length;
+    if (stdoutBytes > OOXML_DEFAULT_MAX_OUTPUT_BUFFER) {
+      outputError = `ooxml MCP stdout exceeded ${OOXML_DEFAULT_MAX_OUTPUT_BUFFER} bytes.`;
+      child.kill('SIGKILL');
+      return;
+    }
+    stdout.push(chunk);
+  });
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderrBytes += chunk.length;
+    if (stderrBytes > OOXML_DEFAULT_MAX_OUTPUT_BUFFER) {
+      outputError = `ooxml MCP stderr exceeded ${OOXML_DEFAULT_MAX_OUTPUT_BUFFER} bytes.`;
+      child.kill('SIGKILL');
+      return;
+    }
+    stderr.push(chunk);
+  });
+  const timeout = setTimeout(() => child.kill('SIGKILL'), OOXML_DEFAULT_TIMEOUT_MS);
+  child.stdin.end(
+    `${JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name, arguments: argumentsJson },
+    })}\n`,
+  );
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', resolve);
+  }).finally(() => clearTimeout(timeout));
+  const stderrText = Buffer.concat(stderr).toString().trim();
+  if (outputError) throw new Error(outputError);
+  if (code !== 0) {
+    throw new Error(`ooxml MCP exited with ${code}: ${scrubServerPaths(stderrText)}`);
+  }
+  const line = Buffer.concat(stdout)
+    .toString()
+    .split(/\r?\n/)
+    .find((candidate) => candidate.trim());
+  if (!line) throw new Error(`ooxml MCP returned no response${stderrText ? `: ${scrubServerPaths(stderrText)}` : ''}`);
+  const response = JSON.parse(line) as TypedMcpResponse<T>;
+  if (response.error) {
+    throw new Error(scrubServerPaths(response.error.message || `ooxml MCP ${name} failed`));
+  }
+  const result = response.result;
+  if (!result?.structuredContent) throw new Error(`ooxml MCP ${name} returned no structuredContent`);
+  if (result.isError) {
+    const error = result.structuredContent.error;
+    const details = [error?.message, error?.hint, error?.didYouMean?.length ? `Did you mean: ${error.didYouMean.join(', ')}` : '']
+      .filter(Boolean)
+      .join(' ');
+    throw new Error(scrubServerPaths(details || `ooxml MCP ${name} failed`));
+  }
+  return result.structuredContent;
+}
+
 type OoxmlCapabilityCommand = {
   path?: string;
   use?: string;
@@ -206,6 +289,79 @@ export async function validateCurrent(threadId: string): Promise<string> {
   const file = absoluteVersionPath(thread, version);
   const result = await runOoxml(['--json', '--strict', 'validate', file], threadDir(threadId));
   return result.stdout;
+}
+
+export async function checkCurrentWithTypedMcp(input: {
+  threadId: string;
+  openXmlSdk?: 'auto' | 'require' | 'skip';
+  failOn?: 'error' | 'warning';
+  render?: boolean;
+}): Promise<string> {
+  const { thread, version } = await currentSelection(input.threadId);
+  const file = absoluteVersionPath(thread, version);
+  const result = await runOoxmlTypedTool<Record<string, unknown>>(
+    'check_package',
+    {
+      file,
+      openXmlSdk: input.openXmlSdk ?? 'auto',
+      failOn: input.failOn ?? 'error',
+      render: Boolean(input.render),
+    },
+    threadDir(input.threadId),
+  );
+  return JSON.stringify(result, null, 2);
+}
+
+type TypedBuildFamily = 'pptx' | 'xlsx' | 'docx';
+
+export async function buildCurrentWithTypedMcp(input: {
+  threadId: string;
+  family: TypedBuildFamily;
+  specJson: string;
+  note?: string;
+}): Promise<Record<string, unknown>> {
+  const { thread, document, version } = await currentSelection(input.threadId);
+  const extension = extname(version.path).toLowerCase();
+  if (extension !== `.${input.family}`) {
+    throw new Error(
+      `The selected document is ${extension || 'extensionless'}; build_${typedBuildNoun(input.family)} requires a selected .${input.family} document.`,
+    );
+  }
+  let spec: unknown;
+  try {
+    spec = JSON.parse(input.specJson);
+  } catch (error) {
+    throw new Error(`specJson must be valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) {
+    throw new Error('specJson must encode one build-spec object.');
+  }
+  const dir = threadDir(input.threadId);
+  const versionId = nextVersionId(document);
+  const outPath = newVersionOutputPath(dir, document.id, versionId, `build-${input.family}`, extension);
+  await mkdir(join(dir, 'documents', document.id, 'versions'), { recursive: true });
+  const tool = `build_${typedBuildNoun(input.family)}`;
+  const built = await runOoxmlTypedTool<Record<string, unknown>>(
+    tool,
+    { spec, output: outPath },
+    dir,
+  );
+  return publishNewVersion({
+    thread,
+    document,
+    sourceVersion: version,
+    versionId,
+    outPath,
+    note: input.note?.trim() || `Built ${input.family.toUpperCase()} from a typed specification`,
+    apply: built,
+    extra: { typedTool: tool },
+  });
+}
+
+function typedBuildNoun(family: TypedBuildFamily): 'presentation' | 'workbook' | 'document' {
+  if (family === 'pptx') return 'presentation';
+  if (family === 'xlsx') return 'workbook';
+  return 'document';
 }
 
 export async function searchCurrent(input: {
