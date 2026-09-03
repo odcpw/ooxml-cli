@@ -1,6 +1,57 @@
 // DOCX command-family parity tests live here while Rust-baseline helpers remain in the parent integration test crate.
 use super::*;
 
+fn assert_docx_saved_mutation_outputs_match(
+    label: &str,
+    rust_stdout: &Option<Value>,
+    baseline_stdout: &Option<Value>,
+    rust_output: &str,
+    baseline_output: &str,
+) {
+    assert_docx_saved_mutation_outputs_match_with_inputs(
+        label,
+        rust_stdout,
+        baseline_stdout,
+        rust_output,
+        baseline_output,
+        &[],
+        &[],
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn assert_docx_saved_mutation_outputs_match_with_inputs(
+    label: &str,
+    rust_stdout: &Option<Value>,
+    baseline_stdout: &Option<Value>,
+    rust_output: &str,
+    baseline_output: &str,
+    rust_inputs: &[&str],
+    baseline_inputs: &[&str],
+) {
+    let rust = rust_stdout
+        .as_ref()
+        .unwrap_or_else(|| panic!("{label} Rust stdout"));
+    let baseline = baseline_stdout
+        .as_ref()
+        .unwrap_or_else(|| panic!("{label} baseline stdout"));
+    assert!(
+        rust["mutationEnvelope"].is_object(),
+        "{label} missing additive mutationEnvelope"
+    );
+    let rust_replacements = std::iter::once((rust_output, "[OUT]"))
+        .chain(rust_inputs.iter().copied().map(|input| (input, "[IN]")))
+        .collect::<Vec<_>>();
+    let baseline_replacements = std::iter::once((baseline_output, "[OUT]"))
+        .chain(baseline_inputs.iter().copied().map(|input| (input, "[IN]")))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        scrub_docx_dynamic_handles(scrub_paths(rust.clone(), &rust_replacements)),
+        scrub_docx_dynamic_handles(scrub_paths(baseline.clone(), &baseline_replacements)),
+        "{label} stdout"
+    );
+}
+
 include!("docx/scaffold.rs");
 
 #[test]
@@ -449,7 +500,13 @@ fn docx_replace_saved_output_readback_and_validate_match_rust_baseline() {
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
     assert_eq!(rust_code, baseline_code, "docx replace saved exit");
     assert_eq!(rust_stderr, baseline_stderr, "docx replace saved stderr");
-    assert_eq!(rust_stdout, baseline_stdout, "docx replace saved stdout");
+    assert_docx_saved_mutation_outputs_match(
+        "docx replace saved",
+        &rust_stdout,
+        &baseline_stdout,
+        &rust_out,
+        &baseline_out,
+    );
 
     let (validate_code, _validate_stdout, validate_stderr) =
         run_ooxml(&["--json", "--strict", "validate", &rust_out]);
@@ -551,9 +608,12 @@ fn docx_blocks_replace_delete_match_rust_baseline() {
         rust_replace_stderr, baseline_replace_stderr,
         "blocks replace stderr"
     );
-    assert_eq!(
-        rust_replace_stdout, baseline_replace_stdout,
-        "blocks replace stdout"
+    assert_docx_saved_mutation_outputs_match(
+        "blocks replace",
+        &rust_replace_stdout,
+        &baseline_replace_stdout,
+        &rust_replace_out,
+        &baseline_replace_out,
     );
 
     let (replace_validate_code, _replace_validate_stdout, replace_validate_stderr) =
@@ -660,9 +720,12 @@ fn docx_blocks_replace_delete_match_rust_baseline() {
         rust_delete_stderr, baseline_delete_stderr,
         "blocks delete stderr"
     );
-    assert_eq!(
-        rust_delete_stdout, baseline_delete_stdout,
-        "blocks delete stdout"
+    assert_docx_saved_mutation_outputs_match(
+        "blocks delete",
+        &rust_delete_stdout,
+        &baseline_delete_stdout,
+        &rust_delete_out,
+        &baseline_delete_out,
     );
 
     let (delete_validate_code, _delete_validate_stdout, delete_validate_stderr) =
@@ -963,7 +1026,13 @@ fn docx_blocks_insert_after_matches_rust_baseline() {
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
     assert_eq!(rust_code, baseline_code, "blocks insert-after exit");
     assert_eq!(rust_stderr, baseline_stderr, "blocks insert-after stderr");
-    assert_eq!(rust_stdout, baseline_stdout, "blocks insert-after stdout");
+    assert_docx_saved_mutation_outputs_match(
+        "blocks insert-after",
+        &rust_stdout,
+        &baseline_stdout,
+        &rust_out,
+        &baseline_out,
+    );
 
     let (validate_code, _validate_stdout, validate_stderr) =
         run_ooxml(&["--json", "--strict", "validate", &rust_out]);
@@ -1234,14 +1303,12 @@ fn docx_styles_apply_matches_rust_baseline() {
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_para_args);
     assert_eq!(rust_code, baseline_code, "paragraph apply exit");
     assert_eq!(rust_stderr, baseline_stderr, "paragraph apply stderr");
-    assert_eq!(
-        scrub_file_fields(scrub_docx_dynamic_handles(
-            rust_stdout.expect("Rust paragraph style apply stdout")
-        )),
-        scrub_file_fields(scrub_docx_dynamic_handles(
-            baseline_stdout.expect("Rust baseline paragraph style apply stdout")
-        )),
-        "paragraph apply stdout"
+    assert_docx_saved_mutation_outputs_match(
+        "paragraph apply",
+        &rust_stdout,
+        &baseline_stdout,
+        &rust_para_out,
+        &baseline_para_out,
     );
     let (validate_code, _validate_stdout, validate_stderr) =
         run_ooxml(&["--json", "--strict", "validate", &rust_para_out]);
@@ -1300,14 +1367,12 @@ fn docx_styles_apply_matches_rust_baseline() {
     let (rust_run_code, rust_run_stdout, rust_run_stderr) = run_ooxml(&rust_run_args);
     assert_eq!(rust_run_code, baseline_run_code, "run apply exit");
     assert_eq!(rust_run_stderr, baseline_run_stderr, "run apply stderr");
-    assert_eq!(
-        scrub_file_fields(scrub_docx_dynamic_handles(
-            rust_run_stdout.expect("Rust run style apply stdout")
-        )),
-        scrub_file_fields(scrub_docx_dynamic_handles(
-            baseline_run_stdout.expect("Rust baseline run style apply stdout")
-        )),
-        "run apply stdout"
+    assert_docx_saved_mutation_outputs_match(
+        "run apply",
+        &rust_run_stdout,
+        &baseline_run_stdout,
+        &rust_run_out,
+        &baseline_run_out,
     );
     assert!(
         read_zip_string(Path::new(&rust_run_out), "word/document.xml")
@@ -1361,10 +1426,12 @@ fn docx_styles_apply_matches_rust_baseline() {
         rust_table_stderr, baseline_table_stderr,
         "table apply stderr"
     );
-    assert_eq!(
-        scrub_file_fields(rust_table_stdout.expect("Rust table style apply stdout")),
-        scrub_file_fields(baseline_table_stdout.expect("Rust baseline table style apply stdout")),
-        "table apply stdout"
+    assert_docx_saved_mutation_outputs_match(
+        "table apply",
+        &rust_table_stdout,
+        &baseline_table_stdout,
+        &rust_table_out,
+        &baseline_table_out,
     );
     let table_xml = read_zip_string(Path::new(&rust_table_out), "word/document.xml");
     assert!(
@@ -2156,7 +2223,23 @@ fn assert_baseline_rust_outputs_match(label: &str, baseline_args: &[&str], rust_
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(rust_args);
     assert_eq!(rust_code, baseline_code, "{label} exit");
     assert_eq!(rust_stderr, baseline_stderr, "{label} stderr");
-    assert_eq!(rust_stdout, baseline_stdout, "{label} stdout");
+    let baseline_output = baseline_args
+        .windows(2)
+        .find(|pair| pair[0] == "--out")
+        .map(|pair| pair[1])
+        .expect("baseline image mutation --out");
+    let rust_output = rust_args
+        .windows(2)
+        .find(|pair| pair[0] == "--out")
+        .map(|pair| pair[1])
+        .expect("Rust image mutation --out");
+    assert_docx_saved_mutation_outputs_match(
+        label,
+        &rust_stdout,
+        &baseline_stdout,
+        rust_output,
+        baseline_output,
+    );
 }
 
 fn assert_strict_valid(path: &str) {

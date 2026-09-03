@@ -39,7 +39,13 @@ fn docx_paragraphs_append_matches_rust_baseline() {
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
     assert_eq!(rust_code, baseline_code, "append exit");
     assert_eq!(rust_stderr, baseline_stderr, "append stderr");
-    assert_eq!(rust_stdout, baseline_stdout, "append stdout");
+    assert_docx_saved_mutation_outputs_match(
+        "append",
+        &rust_stdout,
+        &baseline_stdout,
+        &rust_out,
+        &baseline_out,
+    );
     assert!(Path::new(&rust_out).exists(), "Rust append output missing");
 
     let (validate_code, validate_stdout, validate_stderr) =
@@ -53,7 +59,10 @@ fn docx_paragraphs_append_matches_rust_baseline() {
     let (rust_text_code, rust_text_stdout, rust_text_stderr) =
         run_ooxml(&["--json", "docx", "text", &rust_out]);
     assert_eq!(rust_text_code, baseline_text_code, "append readback exit");
-    assert_eq!(rust_text_stderr, baseline_text_stderr, "append readback stderr");
+    assert_eq!(
+        rust_text_stderr, baseline_text_stderr,
+        "append readback stderr"
+    );
     let baseline_text_result = baseline_text_stdout.expect("Rust baseline append readback JSON");
     let rust_text_result = rust_text_stdout.expect("Rust append readback JSON");
     assert_eq!(
@@ -266,7 +275,13 @@ fn docx_paragraphs_insert_matches_rust_baseline() {
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
     assert_eq!(rust_code, baseline_code, "insert start exit");
     assert_eq!(rust_stderr, baseline_stderr, "insert start stderr");
-    assert_eq!(rust_stdout, baseline_stdout, "insert start stdout");
+    assert_docx_saved_mutation_outputs_match(
+        "insert start",
+        &rust_stdout,
+        &baseline_stdout,
+        &rust_out,
+        &baseline_out,
+    );
 
     let (validate_code, _validate_stdout, validate_stderr) =
         run_ooxml(&["--json", "--strict", "validate", &rust_out]);
@@ -277,12 +292,16 @@ fn docx_paragraphs_insert_matches_rust_baseline() {
         run_ooxml_baseline(&["--json", "docx", "text", &baseline_out]);
     let (rust_text_code, rust_text_stdout, rust_text_stderr) =
         run_ooxml(&["--json", "docx", "text", &rust_out]);
-    assert_eq!(rust_text_code, baseline_text_code, "insert start readback exit");
+    assert_eq!(
+        rust_text_code, baseline_text_code,
+        "insert start readback exit"
+    );
     assert_eq!(
         rust_text_stderr, baseline_text_stderr,
         "insert start readback stderr"
     );
-    let baseline_text_result = baseline_text_stdout.expect("Rust baseline insert start readback JSON");
+    let baseline_text_result =
+        baseline_text_stdout.expect("Rust baseline insert start readback JSON");
     let rust_text_result = rust_text_stdout.expect("Rust insert start readback JSON");
     assert_eq!(
         rust_text_result["blocks"], baseline_text_result["blocks"],
@@ -330,11 +349,21 @@ fn docx_paragraphs_insert_matches_rust_baseline() {
         "--out",
         &rust_table_out,
     ];
-    let (baseline_table_code, baseline_table_stdout, baseline_table_stderr) = run_ooxml_baseline(&baseline_table_args);
+    let (baseline_table_code, baseline_table_stdout, baseline_table_stderr) =
+        run_ooxml_baseline(&baseline_table_args);
     let (rust_table_code, rust_table_stdout, rust_table_stderr) = run_ooxml(&rust_table_args);
     assert_eq!(rust_table_code, baseline_table_code, "insert table exit");
-    assert_eq!(rust_table_stderr, baseline_table_stderr, "insert table stderr");
-    assert_eq!(rust_table_stdout, baseline_table_stdout, "insert table stdout");
+    assert_eq!(
+        rust_table_stderr, baseline_table_stderr,
+        "insert table stderr"
+    );
+    assert_docx_saved_mutation_outputs_match(
+        "insert table",
+        &rust_table_stdout,
+        &baseline_table_stdout,
+        &rust_table_out,
+        &baseline_table_out,
+    );
     let (baseline_table_text_code, baseline_table_text_stdout, baseline_table_text_stderr) =
         run_ooxml_baseline(&["--json", "docx", "text", &baseline_table_out]);
     let (rust_table_text_code, rust_table_text_stdout, rust_table_text_stderr) =
@@ -347,7 +376,8 @@ fn docx_paragraphs_insert_matches_rust_baseline() {
         rust_table_text_stderr, baseline_table_text_stderr,
         "insert table readback stderr"
     );
-    let baseline_table_text = baseline_table_text_stdout.expect("Rust baseline insert table readback JSON");
+    let baseline_table_text =
+        baseline_table_text_stdout.expect("Rust baseline insert table readback JSON");
     let rust_table_text = rust_table_text_stdout.expect("Rust insert table readback JSON");
     assert_eq!(
         rust_table_text["blocks"], baseline_table_text["blocks"],
@@ -491,7 +521,10 @@ fn docx_paragraphs_set_clear_and_handles_match_rust_baseline() {
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("docx set/clear temp dir");
 
-    let baseline_set_out = temp_dir.join("set-baseline.docx").to_string_lossy().to_string();
+    let baseline_set_out = temp_dir
+        .join("set-baseline.docx")
+        .to_string_lossy()
+        .to_string();
     let rust_set_out = temp_dir.join("set-rust.docx").to_string_lossy().to_string();
     let baseline_set_args = [
         "--json",
@@ -519,14 +552,17 @@ fn docx_paragraphs_set_clear_and_handles_match_rust_baseline() {
         "--out",
         &rust_set_out,
     ];
-    let (baseline_set_code, baseline_set_stdout, baseline_set_stderr) = run_ooxml_baseline(&baseline_set_args);
+    let (baseline_set_code, baseline_set_stdout, baseline_set_stderr) =
+        run_ooxml_baseline(&baseline_set_args);
     let (rust_set_code, rust_set_stdout, rust_set_stderr) = run_ooxml(&rust_set_args);
     assert_eq!(rust_set_code, baseline_set_code, "set exit");
     assert_eq!(rust_set_stderr, baseline_set_stderr, "set stderr");
-    assert_eq!(
-        scrub_docx_dynamic_handles(rust_set_stdout.expect("Rust set stdout")),
-        scrub_docx_dynamic_handles(baseline_set_stdout.expect("Rust baseline set stdout")),
-        "set stdout"
+    assert_docx_saved_mutation_outputs_match(
+        "set",
+        &rust_set_stdout,
+        &baseline_set_stdout,
+        &rust_set_out,
+        &baseline_set_out,
     );
     let (validate_code, _validate_stdout, validate_stderr) =
         run_ooxml(&["--json", "--strict", "validate", &rust_set_out]);
@@ -538,7 +574,10 @@ fn docx_paragraphs_set_clear_and_handles_match_rust_baseline() {
     let (rust_text_code, rust_text_stdout, rust_text_stderr) =
         run_ooxml(&["--json", "docx", "text", &rust_set_out]);
     assert_eq!(rust_text_code, baseline_text_code, "set readback exit");
-    assert_eq!(rust_text_stderr, baseline_text_stderr, "set readback stderr");
+    assert_eq!(
+        rust_text_stderr, baseline_text_stderr,
+        "set readback stderr"
+    );
     let baseline_text = baseline_text_stdout.expect("Rust baseline set readback");
     let rust_text = rust_text_stdout.expect("Rust set readback");
     assert_eq!(
@@ -594,14 +633,17 @@ fn docx_paragraphs_set_clear_and_handles_match_rust_baseline() {
         "--out",
         &rust_run_out,
     ];
-    let (baseline_run_code, baseline_run_stdout, baseline_run_stderr) = run_ooxml_baseline(&baseline_run_args);
+    let (baseline_run_code, baseline_run_stdout, baseline_run_stderr) =
+        run_ooxml_baseline(&baseline_run_args);
     let (rust_run_code, rust_run_stdout, rust_run_stderr) = run_ooxml(&rust_run_args);
     assert_eq!(rust_run_code, baseline_run_code, "run-props set exit");
     assert_eq!(rust_run_stderr, baseline_run_stderr, "run-props set stderr");
-    assert_eq!(
-        scrub_docx_dynamic_handles(rust_run_stdout.expect("Rust run-props set stdout")),
-        scrub_docx_dynamic_handles(baseline_run_stdout.expect("Rust baseline run-props set stdout")),
-        "run-props set stdout"
+    assert_docx_saved_mutation_outputs_match(
+        "run-props set",
+        &rust_run_stdout,
+        &baseline_run_stdout,
+        &rust_run_out,
+        &baseline_run_out,
     );
     let (baseline_runs_code, baseline_runs_stdout, baseline_runs_stderr) = run_ooxml_baseline(&[
         "--json",
@@ -621,7 +663,10 @@ fn docx_paragraphs_set_clear_and_handles_match_rust_baseline() {
         "2",
         "--include-runs",
     ]);
-    assert_eq!(rust_runs_code, baseline_runs_code, "run-props readback exit");
+    assert_eq!(
+        rust_runs_code, baseline_runs_code,
+        "run-props readback exit"
+    );
     assert_eq!(
         rust_runs_stderr, baseline_runs_stderr,
         "run-props readback stderr"
@@ -677,14 +722,17 @@ fn docx_paragraphs_set_clear_and_handles_match_rust_baseline() {
         "--out",
         &rust_file_out,
     ];
-    let (baseline_file_code, baseline_file_stdout, baseline_file_stderr) = run_ooxml_baseline(&baseline_file_args);
+    let (baseline_file_code, baseline_file_stdout, baseline_file_stderr) =
+        run_ooxml_baseline(&baseline_file_args);
     let (rust_file_code, rust_file_stdout, rust_file_stderr) = run_ooxml(&rust_file_args);
     assert_eq!(rust_file_code, baseline_file_code, "set file exit");
     assert_eq!(rust_file_stderr, baseline_file_stderr, "set file stderr");
-    assert_eq!(
-        scrub_docx_dynamic_handles(rust_file_stdout.expect("Rust set file stdout")),
-        scrub_docx_dynamic_handles(baseline_file_stdout.expect("Rust baseline set file stdout")),
-        "set file stdout"
+    assert_docx_saved_mutation_outputs_match(
+        "set file",
+        &rust_file_stdout,
+        &baseline_file_stdout,
+        &rust_file_out,
+        &baseline_file_out,
     );
     let (file_text_code, file_text_stdout, file_text_stderr) =
         run_ooxml(&["--json", "docx", "text", &rust_file_out]);
@@ -701,7 +749,10 @@ fn docx_paragraphs_set_clear_and_handles_match_rust_baseline() {
         Value::String("line 1\tcol 2\nline 2".to_string())
     );
 
-    let baseline_clear_out = temp_dir.join("clear-baseline.docx").to_string_lossy().to_string();
+    let baseline_clear_out = temp_dir
+        .join("clear-baseline.docx")
+        .to_string_lossy()
+        .to_string();
     let rust_clear_out = temp_dir
         .join("clear-rust.docx")
         .to_string_lossy()
@@ -728,14 +779,17 @@ fn docx_paragraphs_set_clear_and_handles_match_rust_baseline() {
         "--out",
         &rust_clear_out,
     ];
-    let (baseline_clear_code, baseline_clear_stdout, baseline_clear_stderr) = run_ooxml_baseline(&baseline_clear_args);
+    let (baseline_clear_code, baseline_clear_stdout, baseline_clear_stderr) =
+        run_ooxml_baseline(&baseline_clear_args);
     let (rust_clear_code, rust_clear_stdout, rust_clear_stderr) = run_ooxml(&rust_clear_args);
     assert_eq!(rust_clear_code, baseline_clear_code, "clear exit");
     assert_eq!(rust_clear_stderr, baseline_clear_stderr, "clear stderr");
-    assert_eq!(
-        scrub_docx_dynamic_handles(rust_clear_stdout.expect("Rust clear stdout")),
-        scrub_docx_dynamic_handles(baseline_clear_stdout.expect("Rust baseline clear stdout")),
-        "clear stdout"
+    assert_docx_saved_mutation_outputs_match(
+        "clear",
+        &rust_clear_stdout,
+        &baseline_clear_stdout,
+        &rust_clear_out,
+        &baseline_clear_out,
     );
     let (baseline_clear_text_code, baseline_clear_text_stdout, baseline_clear_text_stderr) =
         run_ooxml_baseline(&["--json", "docx", "text", &baseline_clear_out]);
@@ -846,15 +900,23 @@ fn docx_paragraphs_set_clear_and_handles_match_rust_baseline() {
         "--out",
         &rust_prepended,
     ];
-    let (baseline_prepend_code, baseline_prepend_stdout, baseline_prepend_stderr) = run_ooxml_baseline(&baseline_prepend_args);
+    let (baseline_prepend_code, baseline_prepend_stdout, baseline_prepend_stderr) =
+        run_ooxml_baseline(&baseline_prepend_args);
     let (rust_prepend_code, rust_prepend_stdout, rust_prepend_stderr) =
         run_ooxml(&rust_prepend_args);
     assert_eq!(rust_prepend_code, baseline_prepend_code, "prepend exit");
-    assert_eq!(rust_prepend_stderr, baseline_prepend_stderr, "prepend stderr");
     assert_eq!(
-        scrub_file_fields(rust_prepend_stdout.expect("Rust prepend stdout")),
-        scrub_file_fields(baseline_prepend_stdout.expect("Rust baseline prepend stdout")),
-        "prepend stdout"
+        rust_prepend_stderr, baseline_prepend_stderr,
+        "prepend stderr"
+    );
+    assert_docx_saved_mutation_outputs_match_with_inputs(
+        "prepend",
+        &rust_prepend_stdout,
+        &baseline_prepend_stdout,
+        &rust_prepended,
+        &baseline_prepended,
+        &[&rust_stamped],
+        &[&baseline_stamped],
     );
 
     let baseline_resolved = temp_dir
@@ -891,21 +953,28 @@ fn docx_paragraphs_set_clear_and_handles_match_rust_baseline() {
         "--out",
         &rust_resolved,
     ];
-    let (baseline_resolve_code, baseline_resolve_stdout, baseline_resolve_stderr) = run_ooxml_baseline(&baseline_resolve_args);
+    let (baseline_resolve_code, baseline_resolve_stdout, baseline_resolve_stderr) =
+        run_ooxml_baseline(&baseline_resolve_args);
     let (rust_resolve_code, rust_resolve_stdout, rust_resolve_stderr) =
         run_ooxml(&rust_resolve_args);
-    assert_eq!(rust_resolve_code, baseline_resolve_code, "handle resolve exit");
+    assert_eq!(
+        rust_resolve_code, baseline_resolve_code,
+        "handle resolve exit"
+    );
     assert_eq!(
         rust_resolve_stderr, baseline_resolve_stderr,
         "handle resolve stderr"
     );
-    let rust_resolve_result = rust_resolve_stdout.expect("Rust handle resolve stdout");
-    let baseline_resolve_result = baseline_resolve_stdout.expect("Rust baseline handle resolve stdout");
-    assert_eq!(
-        scrub_file_fields(scrub_docx_dynamic_handles(rust_resolve_result.clone())),
-        scrub_file_fields(scrub_docx_dynamic_handles(baseline_resolve_result)),
-        "handle resolve stdout"
+    assert_docx_saved_mutation_outputs_match_with_inputs(
+        "handle resolve",
+        &rust_resolve_stdout,
+        &baseline_resolve_stdout,
+        &rust_resolved,
+        &baseline_resolved,
+        &[&rust_prepended],
+        &[&baseline_prepended],
     );
+    let rust_resolve_result = rust_resolve_stdout.expect("Rust handle resolve stdout");
     assert_eq!(rust_resolve_result["index"], Value::from(2));
     assert_eq!(
         rust_resolve_result["previousText"],

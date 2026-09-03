@@ -95,7 +95,13 @@ fn docx_comments_add_matches_rust_baseline() {
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
     assert_eq!(rust_code, baseline_code, "comments add exit");
     assert_eq!(rust_stderr, baseline_stderr, "comments add stderr");
-    assert_eq!(rust_stdout, baseline_stdout, "comments add stdout");
+    assert_docx_saved_mutation_outputs_match(
+        "comments add",
+        &rust_stdout,
+        &baseline_stdout,
+        &rust_out,
+        &baseline_out,
+    );
     assert!(
         Path::new(&rust_out).exists(),
         "Rust comments output missing"
@@ -111,7 +117,10 @@ fn docx_comments_add_matches_rust_baseline() {
         run_ooxml_baseline(&["--json", "docx", "comments", "list", &baseline_out]);
     let (rust_list_code, rust_list_stdout, rust_list_stderr) =
         run_ooxml(&["--json", "docx", "comments", "list", &rust_out]);
-    assert_eq!(rust_list_code, baseline_list_code, "comments list readback exit");
+    assert_eq!(
+        rust_list_code, baseline_list_code,
+        "comments list readback exit"
+    );
     assert_eq!(
         rust_list_stderr, baseline_list_stderr,
         "comments list readback stderr"
@@ -249,7 +258,13 @@ fn docx_comments_edit_matches_rust_baseline() {
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
     assert_eq!(rust_code, baseline_code, "comments edit exit");
     assert_eq!(rust_stderr, baseline_stderr, "comments edit stderr");
-    assert_eq!(rust_stdout, baseline_stdout, "comments edit stdout");
+    assert_docx_saved_mutation_outputs_match(
+        "comments edit",
+        &rust_stdout,
+        &baseline_stdout,
+        &rust_out,
+        &baseline_out,
+    );
     assert!(Path::new(&rust_out).exists(), "Rust edit output missing");
 
     let (validate_code, validate_stdout, validate_stderr) =
@@ -276,7 +291,10 @@ fn docx_comments_edit_matches_rust_baseline() {
         "--comment-id",
         "0",
     ]);
-    assert_eq!(rust_list_code, baseline_list_code, "comments edit readback exit");
+    assert_eq!(
+        rust_list_code, baseline_list_code,
+        "comments edit readback exit"
+    );
     assert_eq!(
         rust_list_stderr, baseline_list_stderr,
         "comments edit readback stderr"
@@ -410,7 +428,13 @@ fn docx_comments_remove_matches_rust_baseline() {
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&rust_args);
     assert_eq!(rust_code, baseline_code, "comments remove exit");
     assert_eq!(rust_stderr, baseline_stderr, "comments remove stderr");
-    assert_eq!(rust_stdout, baseline_stdout, "comments remove stdout");
+    assert_docx_saved_mutation_outputs_match(
+        "comments remove",
+        &rust_stdout,
+        &baseline_stdout,
+        &rust_out,
+        &baseline_out,
+    );
     assert!(Path::new(&rust_out).exists(), "Rust remove output missing");
 
     let remove_json = rust_stdout.expect("Rust remove JSON");
