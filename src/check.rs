@@ -562,21 +562,7 @@ fn wrapper_finding(
 }
 
 fn fixed_path(file: &str, suffix: &str) -> String {
-    let path = std::path::Path::new(file);
-    let stem = path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("fixed");
-    let extension = path.extension().and_then(|extension| extension.to_str());
-    let name = extension.map_or_else(
-        || format!("{stem}.{suffix}"),
-        |extension| format!("{stem}.{suffix}.{extension}"),
-    );
-    portable_command_path(&path.with_file_name(name).to_string_lossy())
-}
-
-fn portable_command_path(path: &str) -> String {
-    path.replace('\\', "/")
+    crate::design_check::fixed_output_path(file, suffix)
 }
 
 fn sort_and_dedup(findings: &mut Vec<CheckFinding>) {
@@ -741,10 +727,13 @@ mod tests {
     }
 
     #[test]
-    fn command_paths_are_platform_independent() {
+    fn generated_fix_paths_preserve_forward_slashes() {
         assert_eq!(
-            portable_command_path(r"testdata\xlsx\invalid\pivot.repaired.xlsx"),
-            "testdata/xlsx/invalid/pivot.repaired.xlsx"
+            fixed_path(
+                "testdata/xlsx/chart-source/missing-sheet.xlsx",
+                "chart-source-fixed"
+            ),
+            "testdata/xlsx/chart-source/missing-sheet.chart-source-fixed.xlsx"
         );
     }
 }

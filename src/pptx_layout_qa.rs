@@ -1,7 +1,6 @@
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use serde_json::{Map, Number, Value, json};
-use std::path::Path;
 
 use crate::pptx_readback::pptx_resolved_shape_models;
 use crate::pptx_readback::shape_model::{Bounds, BoundsSource, Shape};
@@ -639,18 +638,7 @@ fn set_bounds_fix_command(file: &str, slide: usize, shape_id: i64, bounds: &Boun
 }
 
 fn layout_fixed_path(file: &str) -> String {
-    let path = Path::new(file);
-    let stem = path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("fixed");
-    let extension = path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("pptx");
-    path.with_file_name(format!("{stem}.layout-fixed.{extension}"))
-        .to_string_lossy()
-        .into_owned()
+    crate::design_check::fixed_output_path(file, "layout-fixed")
 }
 
 fn layout_shapes_from_resolved(xml: &str, resolved: &[Shape]) -> Vec<LayoutShape> {
@@ -1031,5 +1019,20 @@ fn json_number(value: f64) -> Value {
         json!(value as i64)
     } else {
         Value::Number(Number::from_f64(value).unwrap_or_else(|| Number::from(0)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::layout_fixed_path;
+
+    #[test]
+    fn layout_fixed_path_preserves_forward_slashes() {
+        assert_eq!(
+            layout_fixed_path(
+                "testdata/pptx/layout-qa/inherited-title-chart-overlap/presentation.pptx"
+            ),
+            "testdata/pptx/layout-qa/inherited-title-chart-overlap/presentation.layout-fixed.pptx"
+        );
     }
 }
