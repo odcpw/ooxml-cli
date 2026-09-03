@@ -3,7 +3,7 @@ use ooxml_cli::text_metrics::{
     measure_text_box, measure_text_box_with_autofit, measure_text_width_emu,
     supported_font_families,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -31,6 +31,20 @@ fn committed_tables_cover_theme_fonts_and_pin_reference_advances() {
         let metrics = font_metrics(expected);
         assert_eq!(metrics.printable_advances(false).len(), 95);
         assert_eq!(metrics.printable_advances(true).len(), 95);
+        assert_eq!(metrics.latin1_advances(false).len(), 96);
+        assert_eq!(metrics.latin1_advances(true).len(), 96);
+        assert!(
+            metrics
+                .latin1_advances(false)
+                .iter()
+                .all(|advance| *advance > 0)
+        );
+        assert!(
+            metrics
+                .latin1_advances(true)
+                .iter()
+                .all(|advance| *advance > 0)
+        );
         assert!(metrics.average_advance_regular > 400);
         assert!(metrics.average_advance_bold >= metrics.average_advance_regular);
     }
@@ -39,6 +53,9 @@ fn committed_tables_cover_theme_fonts_and_pin_reference_advances() {
     assert_eq!(sans.advance('W', false), 944);
     assert_eq!(sans.advance('i', false), 222);
     assert_eq!(sans.advance('0', false), 556);
+    assert_eq!(sans.advance('À', false), 667);
+    assert_eq!(sans.advance('é', false), 556);
+    assert_eq!(sans.advance('×', false), 584);
     assert_eq!(sans.advance('W', true), 944);
     assert_eq!(sans.advance('i', true), 278);
 
@@ -68,11 +85,33 @@ fn unknown_fonts_use_the_documented_fallback_and_unicode_is_bounded() {
     let fallback = font_metrics("An Unknown Corporate Font");
     assert_eq!(fallback.family, "*");
     assert_eq!(fallback.source_family, "Noto Sans");
+    assert_eq!(fallback.latin1_advances(false).len(), 96);
+    assert_eq!(fallback.latin1_advances(true).len(), 96);
+    assert_eq!(fallback.advance('À', false), 639);
     assert_eq!(fallback.advance('\u{0301}', false), 0);
     assert_eq!(fallback.advance('界', false), 1_000);
     assert_eq!(
         fallback.advance('\t', false),
         fallback.advance(' ', false) * 4
+    );
+    let measured = measure_paragraph(
+        &ParagraphMeasure::plain("Fallback", "An Unknown Corporate Font", 18.0),
+        4 * EMU_PER_INCH,
+    );
+    assert_eq!(
+        measured.warning.as_deref(),
+        Some(
+            "Unknown font family \"An Unknown Corporate Font\"; using fallback metrics from Noto Sans."
+        )
+    );
+    assert_eq!(measured.metric_selection, "unknown-family fallback");
+    assert!(
+        measure_paragraph(
+            &ParagraphMeasure::plain("Known", "Liberation Sans", 18.0),
+            4 * EMU_PER_INCH,
+        )
+        .warning
+        .is_none()
     );
 }
 
@@ -188,8 +227,7 @@ fn excel_width_uses_character_advances_padding_and_number_formats() {
 
 #[test]
 fn libreoffice_render_calibration_is_within_one_line_for_all_50_paragraphs() {
-    if !Path::new("/usr/bin/soffice").is_file() || !command_available("pdftotext") {
-        eprintln!("SKIP LibreOffice text calibration: soffice or pdftotext is unavailable");
+    if !calibration_tools_available("text calibration") {
         return;
     }
     let samples = corpus();
@@ -236,15 +274,16 @@ fn libreoffice_render_calibration_is_within_one_line_for_all_50_paragraphs() {
         "LibreOffice calibration page count drifted: {pages:?}"
     );
     let mut failures = Vec::new();
-    for ((id, text), rendered_lines) in samples.iter().zip(pages) {
+    for (sample, rendered_lines) in samples.iter().zip(pages) {
         let estimated = measure_paragraph(
-            &ParagraphMeasure::plain(text, "Liberation Sans", 18.0),
-            4 * EMU_PER_INCH,
+            &ParagraphMeasure::plain(sample.text, "Liberation Sans", sample.size_points),
+            (sample.width_inches * EMU_PER_INCH as f64).round() as i64,
         )
         .line_count;
         if estimated.abs_diff(rendered_lines) > 1 {
             failures.push(format!(
-                "{id}: estimated {estimated}, rendered {rendered_lines}"
+                "{} at {}pt/{:.1}in: estimated {estimated}, rendered {rendered_lines}",
+                sample.id, sample.size_points, sample.width_inches
             ));
         }
     }
@@ -279,22 +318,69 @@ fn pptx_text_measure_debug_surface_reports_resolved_bounds_and_metric_source() {
         String::from_utf8_lossy(&output.stderr)
     );
     let report: Value = serde_json::from_slice(&output.stdout).expect("measure JSON");
-    assert_eq!(report["slide"], 1, "{report}");
-    assert_eq!(report["target"], "title", "{report}");
-    assert!(report["bounds"]["cx"].as_i64().unwrap_or_default() > 0);
-    assert!(report["lineCount"].as_u64().unwrap_or_default() >= 1);
-    assert!(
-        report["paragraphs"][0]["sourceFontFamily"]
-            .as_str()
-            .is_some_and(|family| !family.is_empty()),
-        "{report}"
+    assert_eq!(
+        report,
+        json!({
+            "file": "testdata/pptx/scaffold/eleven-layouts.pptx",
+            "slide": 1,
+            "target": "title",
+            "shapeId": 2,
+            "shapeName": "Title 1",
+            "primarySelector": "title",
+            "bounds": {
+                "x": 1_097_280,
+                "y": 1_851_660,
+                "cx": 9_997_440,
+                "cy": 960_120,
+                "inches": {
+                    "x": 1.2,
+                    "y": 2.025,
+                    "cx": 10.933333333333334_f64,
+                    "cy": 1.05,
+                },
+            },
+            "boundsSource": "layout",
+            "metricDataVersion": 1,
+            "fontFamily": "Aptos",
+            "fontSizePoints": 40.0,
+            "lineCount": 1,
+            "estimatedHeightEmu": 691_896,
+            "availableWidthEmu": 9_814_560,
+            "availableHeightEmu": 868_680,
+            "overflowsVertically": false,
+            "paragraphs": [{
+                "index": 0,
+                "text": "Scaffold QA",
+                "fontFamily": "Aptos",
+                "sourceFontFamily": "Noto Sans",
+                "metricSelection": "cross-platform calibration substitute",
+                "warning": null,
+                "fontSizePoints": 40.0,
+                "bold": false,
+                "bullet": false,
+                "leftIndentEmu": 0,
+                "firstLineIndentEmu": 0,
+                "lineCount": 1,
+                "lineHeightEmu": 691_896,
+                "estimatedHeightEmu": 691_896,
+                "maxLineWidthEmu": 2_761_488,
+                "unwrappedWidthEmu": 2_761_488,
+                "availableWidthEmu": 9_814_560,
+            }],
+            "warnings": [],
+            "limitations": [
+                "Uses resolved shape bounds and committed numeric font advances; it does not invoke a platform font renderer.",
+                "Run-level size, weight, and typeface inheritance that is absent from readback uses the built-in master defaults.",
+                "Complex-script shaping, ligatures, and kerning pairs use deterministic fallback advances.",
+            ],
+        }),
+        "pptx text measure JSON contract drifted"
     );
 }
 
 #[test]
 fn layout_overflow_finding_matches_libreoffice_rendered_text_bounds() {
-    if !Path::new("/usr/bin/soffice").is_file() || !command_available("pdftotext") {
-        eprintln!("SKIP LibreOffice overflow calibration: soffice or pdftotext is unavailable");
+    if !calibration_tools_available("overflow calibration") {
         return;
     }
     let file = "testdata/pptx/layout-qa-text-overflow/presentation.pptx";
@@ -351,25 +437,53 @@ fn layout_overflow_finding_matches_libreoffice_rendered_text_bounds() {
     );
 }
 
-fn corpus() -> Vec<(&'static str, &'static str)> {
+struct CalibrationSample {
+    id: &'static str,
+    text: &'static str,
+    size_points: f64,
+    width_inches: f64,
+}
+
+fn corpus() -> Vec<CalibrationSample> {
+    const SIZES: [f64; 3] = [12.0, 18.0, 24.0];
+    const WIDTHS: [f64; 3] = [3.0, 4.0, 5.0];
     CORPUS
         .lines()
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(|line| line.split_once('\t').expect("corpus row"))
+        .enumerate()
+        .map(|(index, line)| {
+            let (id, text) = line.split_once('\t').expect("corpus row");
+            CalibrationSample {
+                id,
+                text,
+                size_points: SIZES[index % SIZES.len()],
+                width_inches: WIDTHS[(index / SIZES.len()) % WIDTHS.len()],
+            }
+        })
         .collect()
 }
 
-fn calibration_fodt(samples: &[(&str, &str)]) -> String {
+fn calibration_fodt(samples: &[CalibrationSample]) -> String {
     let mut html = String::from(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\" xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" office:version=\"1.3\" office:mimetype=\"application/vnd.oasis.opendocument.text\"><office:font-face-decls><style:font-face style:name=\"Liberation Sans\" svg:font-family=\"Liberation Sans\"/></office:font-face-decls><office:automatic-styles><style:style style:name=\"First\" style:family=\"paragraph\"><style:paragraph-properties fo:margin=\"0in\"/><style:text-properties style:font-name=\"Liberation Sans\" fo:font-size=\"18pt\"/></style:style><style:style style:name=\"Next\" style:family=\"paragraph\"><style:paragraph-properties fo:break-before=\"page\" fo:margin=\"0in\"/><style:text-properties style:font-name=\"Liberation Sans\" fo:font-size=\"18pt\"/></style:style><style:page-layout style:name=\"PageLayout\"><style:page-layout-properties fo:page-width=\"6in\" fo:page-height=\"11in\" style:print-orientation=\"portrait\" fo:margin-top=\"1in\" fo:margin-bottom=\"1in\" fo:margin-left=\"1in\" fo:margin-right=\"1in\"/></style:page-layout></office:automatic-styles><office:master-styles><style:master-page style:name=\"Standard\" style:page-layout-name=\"PageLayout\"/></office:master-styles><office:body><office:text>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\" xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" office:version=\"1.3\" office:mimetype=\"application/vnd.oasis.opendocument.text\"><office:font-face-decls><style:font-face style:name=\"Liberation Sans\" svg:font-family=\"Liberation Sans\"/></office:font-face-decls><office:automatic-styles>",
     );
-    for (index, (_, text)) in samples.iter().enumerate() {
-        html.push_str(if index == 0 {
-            "<text:p text:style-name=\"First\">"
+    for (index, sample) in samples.iter().enumerate() {
+        let page_break = if index == 0 {
+            ""
         } else {
-            "<text:p text:style-name=\"Next\">"
-        });
-        html.push_str(text);
+            " fo:break-before=\"page\""
+        };
+        html.push_str(&format!(
+            "<style:style style:name=\"Sample{}\" style:family=\"paragraph\"><style:paragraph-properties{page_break} fo:margin=\"0in\" fo:margin-right=\"{:.1}in\"/><style:text-properties style:font-name=\"Liberation Sans\" fo:font-size=\"{}pt\"/></style:style>",
+            sample.id,
+            5.0 - sample.width_inches,
+            sample.size_points
+        ));
+    }
+    html.push_str("<style:page-layout style:name=\"PageLayout\"><style:page-layout-properties fo:page-width=\"7in\" fo:page-height=\"11in\" style:print-orientation=\"portrait\" fo:margin-top=\"1in\" fo:margin-bottom=\"1in\" fo:margin-left=\"1in\" fo:margin-right=\"1in\"/></style:page-layout></office:automatic-styles><office:master-styles><style:master-page style:name=\"Standard\" style:page-layout-name=\"PageLayout\"/></office:master-styles><office:body><office:text>");
+    for sample in samples {
+        html.push_str(&format!("<text:p text:style-name=\"Sample{}\">", sample.id));
+        html.push_str(sample.text);
         html.push_str("</text:p>");
     }
     html.push_str("</office:text></office:body></office:document>");
@@ -388,6 +502,36 @@ fn command_available(command: &str) -> bool {
         .arg("-v")
         .output()
         .is_ok_and(|output| output.status.success())
+}
+
+fn calibration_tools_available(label: &str) -> bool {
+    let missing = [
+        (!Path::new("/usr/bin/soffice").is_file()).then_some("/usr/bin/soffice"),
+        (!command_available("pdftotext")).then_some("pdftotext"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    if missing.is_empty() {
+        return true;
+    }
+    if render_is_required() {
+        panic!(
+            "render calibration is required but {label} is missing: {}",
+            missing.join(", ")
+        );
+    }
+    eprintln!("SKIP LibreOffice {label}: missing {}", missing.join(", "));
+    false
+}
+
+fn render_is_required() -> bool {
+    ["OOXML_REQUIRE_RENDER", "OOXML_REQUIRE_LIBREOFFICE"]
+        .into_iter()
+        .any(|name| {
+            std::env::var(name)
+                .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+        })
 }
 
 fn run_json(args: &[&str]) -> Value {

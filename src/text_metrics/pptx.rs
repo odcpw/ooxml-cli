@@ -1,6 +1,7 @@
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 
 use super::{ParagraphMeasure, measure_text_box};
 use crate::{
@@ -97,6 +98,7 @@ pub(crate) fn pptx_text_measure(file: &str, args: &[String]) -> CliResult<Value>
                 "fontFamily": measured.font_family,
                 "sourceFontFamily": measured.source_font_family,
                 "metricSelection": measured.metric_selection,
+                "warning": measured.warning,
                 "fontSizePoints": font_size,
                 "bold": paragraphs[index].bold,
                 "bullet": paragraphs[index].bullet,
@@ -110,6 +112,13 @@ pub(crate) fn pptx_text_measure(file: &str, args: &[String]) -> CliResult<Value>
                 "availableWidthEmu": measured.available_width_emu,
             })
         })
+        .collect::<Vec<_>>();
+    let warnings = measurement
+        .paragraphs
+        .iter()
+        .filter_map(|paragraph| paragraph.warning.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect::<Vec<_>>();
     Ok(json!({
         "file": file,
@@ -129,6 +138,7 @@ pub(crate) fn pptx_text_measure(file: &str, args: &[String]) -> CliResult<Value>
         "availableHeightEmu": measurement.available_height_emu,
         "overflowsVertically": measurement.overflows_vertically,
         "paragraphs": paragraph_reports,
+        "warnings": warnings,
         "limitations": [
             "Uses resolved shape bounds and committed numeric font advances; it does not invoke a platform font renderer.",
             "Run-level size, weight, and typeface inheritance that is absent from readback uses the built-in master defaults.",

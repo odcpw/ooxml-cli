@@ -15,7 +15,11 @@ const EMU_PER_POINT: f64 = 12_700.0;
 const FIRST_PRINTABLE: u32 = 0x20;
 const LAST_PRINTABLE: u32 = 0x7e;
 const PRINTABLE_COUNT: usize = (LAST_PRINTABLE - FIRST_PRINTABLE + 1) as usize;
+const FIRST_LATIN1: u32 = 0xa0;
+const LAST_LATIN1: u32 = 0xff;
+const LATIN1_COUNT: usize = (LAST_LATIN1 - FIRST_LATIN1 + 1) as usize;
 const PROFILE_DATA: &str = include_str!("../testdata/fonts/metrics-v1.tsv");
+const LATIN1_DATA: &str = include_str!("../testdata/fonts/latin1-v1.tsv");
 const FAMILY_DATA: &str = include_str!("../testdata/fonts/families-v1.tsv");
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,6 +32,8 @@ pub struct FontMetrics {
     pub line_height: u16,
     regular_advances: Vec<u16>,
     bold_advances: Vec<u16>,
+    regular_latin1_advances: Vec<u16>,
+    bold_latin1_advances: Vec<u16>,
 }
 
 impl FontMetrics {
@@ -55,6 +61,14 @@ impl FontMetrics {
                 self.regular_advances[index]
             };
         }
+        if (FIRST_LATIN1..=LAST_LATIN1).contains(&codepoint) {
+            let index = (codepoint - FIRST_LATIN1) as usize;
+            return if bold {
+                self.bold_latin1_advances[index]
+            } else {
+                self.regular_latin1_advances[index]
+            };
+        }
         if character.is_whitespace() {
             return self.advance(' ', bold);
         }
@@ -70,6 +84,23 @@ impl FontMetrics {
         } else {
             &self.regular_advances
         }
+    }
+
+    pub fn latin1_advances(&self, bold: bool) -> &[u16] {
+        if bold {
+            &self.bold_latin1_advances
+        } else {
+            &self.regular_latin1_advances
+        }
+    }
+
+    pub fn fallback_warning(&self, requested_family: &str) -> Option<String> {
+        (self.family == "*").then(|| {
+            format!(
+                "Unknown font family {requested_family:?}; using fallback metrics from {}.",
+                self.source_family
+            )
+        })
     }
 }
 
@@ -114,6 +145,7 @@ pub struct ParagraphMeasurement {
     pub font_family: String,
     pub source_font_family: String,
     pub metric_selection: String,
+    pub warning: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -157,6 +189,8 @@ struct MetricProfile {
     line_height: u16,
     regular_advances: Vec<u16>,
     bold_advances: Vec<u16>,
+    regular_latin1_advances: Vec<u16>,
+    bold_latin1_advances: Vec<u16>,
 }
 
 struct MetricDatabase {
@@ -271,6 +305,7 @@ pub fn measure_paragraph(
         font_family: metrics.family.clone(),
         source_font_family: metrics.source_family.clone(),
         metric_selection: metrics.selection.clone(),
+        warning: metrics.fallback_warning(paragraph.font_family),
     }
 }
 
@@ -549,8 +584,45 @@ fn parse_metric_database() -> Result<MetricDatabase, String> {
                 line_height: parse_number(fields[4], "line height")?,
                 regular_advances,
                 bold_advances,
+                regular_latin1_advances: Vec::new(),
+                bold_latin1_advances: Vec::new(),
             },
         );
+    }
+    for (index, line) in LATIN1_DATA.lines().enumerate() {
+        if line.trim().is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let fields = line.split('\t').collect::<Vec<_>>();
+        if fields.len() != 3 {
+            return Err(format!(
+                "latin1-v1.tsv line {} has {} fields",
+                index + 1,
+                fields.len()
+            ));
+        }
+        let profile = profiles.get_mut(fields[0]).ok_or_else(|| {
+            format!(
+                "latin1-v1.tsv line {} names missing profile {}",
+                index + 1,
+                fields[0]
+            )
+        })?;
+        if !profile.regular_latin1_advances.is_empty() {
+            return Err(format!(
+                "latin1-v1.tsv line {} duplicates profile {}",
+                index + 1,
+                fields[0]
+            ));
+        }
+        profile.regular_latin1_advances = parse_latin1_advances(fields[1], index + 1, "regular")?;
+        profile.bold_latin1_advances = parse_latin1_advances(fields[2], index + 1, "bold")?;
+    }
+    if let Some((name, _)) = profiles
+        .iter()
+        .find(|(_, profile)| profile.regular_latin1_advances.len() != LATIN1_COUNT)
+    {
+        return Err(format!("latin1-v1.tsv is missing profile {name}"));
     }
     let mut fonts = Vec::new();
     let mut fallback = None;
@@ -585,6 +657,8 @@ fn parse_metric_database() -> Result<MetricDatabase, String> {
             line_height: profile.line_height,
             regular_advances: profile.regular_advances.clone(),
             bold_advances: profile.bold_advances.clone(),
+            regular_latin1_advances: profile.regular_latin1_advances.clone(),
+            bold_latin1_advances: profile.bold_latin1_advances.clone(),
         });
     }
     let fallback =
@@ -604,6 +678,24 @@ fn parse_advances(value: &str, line: usize, weight: &str) -> Result<Vec<u16>, St
     if advances.len() != PRINTABLE_COUNT {
         return Err(format!(
             "metrics-v1.tsv line {line} has {} {weight} advances; expected {PRINTABLE_COUNT}",
+            advances.len()
+        ));
+    }
+    Ok(advances)
+}
+
+fn parse_latin1_advances(value: &str, line: usize, weight: &str) -> Result<Vec<u16>, String> {
+    let advances = value
+        .split(',')
+        .map(|item| {
+            item.parse::<u16>().map_err(|error| {
+                format!("latin1-v1.tsv line {line} invalid {weight} advance: {error}")
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if advances.len() != LATIN1_COUNT {
+        return Err(format!(
+            "latin1-v1.tsv line {line} has {} {weight} advances; expected {LATIN1_COUNT}",
             advances.len()
         ));
     }

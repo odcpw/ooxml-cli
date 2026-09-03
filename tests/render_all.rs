@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -15,12 +15,12 @@ const DOCX: &str = "testdata/docx/mixed-blocks/document.docx";
 fn render_mock_has_one_contract_for_pptx_xlsx_and_docx() {
     let root = temp_dir("mock-contract");
     let cases = [
-        ("pptx", PPTX, "slides", "slide", None),
-        ("xlsx", XLSX, "pages", "page", Some("Types")),
-        ("docx", DOCX, "pages", "page", None),
+        ("pptx", PPTX, "presentation", "slides", "slide", None),
+        ("xlsx", XLSX, "workbook", "pages", "page", Some("Types")),
+        ("docx", DOCX, "document", "pages", "page", None),
     ];
 
-    for (family, file, collection, number_key, sheet) in cases {
+    for (family, file, stem, collection, number_key, sheet) in cases {
         let out = root.join(family);
         let out_text = path_text(&out);
         let mut args = vec![
@@ -54,12 +54,91 @@ fn render_mock_has_one_contract_for_pptx_xlsx_and_docx() {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0][number_key], 1);
         assert!(Path::new(items[0]["imagePath"].as_str().expect("imagePath")).is_file());
+        let mut expected = json!({
+            "schemaVersion": "1.0",
+            "type": family,
+            "status": "ok",
+            "sourceFile": file,
+            "outputDir": out_text,
+            "dpi": 96,
+            "imageFormat": "png",
+            "doctorChecks": ["render-engine", "fonts"],
+            "warnings": [],
+            "limitations": render_limitations(family),
+            "pdfPath": out.join(format!("{stem}.pdf")).to_string_lossy().into_owned(),
+            "engine": "mock",
+        });
+        let mut expected_item = json!({
+            "imagePath": out
+                .join(format!("{number_key}-1.png"))
+                .to_string_lossy()
+                .into_owned(),
+        });
+        expected_item
+            .as_object_mut()
+            .expect("render item object")
+            .insert(number_key.to_string(), json!(1));
+        expected
+            .as_object_mut()
+            .expect("manifest object")
+            .insert(collection.to_string(), json!([expected_item]));
         if family == "xlsx" {
             assert_eq!(value["sheet"]["name"], "Types");
             assert_eq!(value["sheet"]["position"], 1);
+            expected.as_object_mut().expect("manifest object").insert(
+                "sheet".to_string(),
+                json!({"name": "Types", "position": 1, "sheetId": 1}),
+            );
         }
+        assert_eq!(value, expected, "{family} render JSON contract drifted");
     }
 
+    let _ = fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[test]
+fn render_surfaces_a_font_warning_when_doctor_reports_missing_fonts() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = temp_dir("font-warning");
+    let bin = root.join("bin");
+    fs::create_dir_all(&bin).expect("create fake tool directory");
+    let fc_list = bin.join("fc-list");
+    fs::write(&fc_list, "#!/bin/sh\nexit 0\n").expect("write empty font inventory");
+    fs::set_permissions(&fc_list, fs::Permissions::from_mode(0o755))
+        .expect("make fake fc-list executable");
+    let path = path_text(&bin);
+
+    let doctor = run_with_env(
+        &["--json", "doctor", "--only", "fonts"],
+        &[("PATH", &path), ("Path", &path)],
+    );
+    assert_eq!(doctor.status.code(), Some(1));
+    let doctor = stdout_json(&doctor);
+    assert_eq!(doctor["checks"][0]["id"], "fonts");
+    assert_eq!(doctor["checks"][0]["status"], "warn");
+
+    let out = path_text(&root.join("render"));
+    let render = run_with_env(
+        &["--json", "render", DOCX, "--out", &out],
+        &[
+            ("PATH", &path),
+            ("Path", &path),
+            ("OOXML_RUST_MOCK_RENDER", "1"),
+        ],
+    );
+    assert_success(&render, "mock render with missing font inventory");
+    assert_eq!(
+        stdout_json(&render)["warnings"],
+        json!([{
+            "code": "OOXML_RENDER_FONTS_UNAVAILABLE",
+            "severity": "warning",
+            "message": "fc-list returned no installed fonts",
+            "remediation": "Install common document fonts for reliable rendering.",
+            "doctorCommand": "ooxml --json doctor --only fonts",
+        }])
+    );
     let _ = fs::remove_dir_all(root);
 }
 
@@ -123,34 +202,34 @@ fn render_without_libreoffice_is_a_clean_skip_with_doctor_remediation() {
 
 #[test]
 fn real_libreoffice_pipeline_renders_all_three_families_when_available() {
-    if !command_exists("soffice") && !command_exists("libreoffice") {
-        eprintln!("skipping real render test: LibreOffice is not installed");
-        return;
-    }
-    if !command_exists("pdftoppm") {
-        eprintln!("skipping real render test: pdftoppm is not installed");
+    if !render_tools_available("all-family render", &["soffice|libreoffice", "pdftoppm"]) {
         return;
     }
 
     let root = temp_dir("real-pipeline");
-    for (family, file, collection) in [
-        ("pptx", PPTX, "slides"),
-        ("xlsx", XLSX, "pages"),
-        ("docx", DOCX, "pages"),
+    for (family, file, collection, expected_count) in [
+        (
+            "pptx",
+            "testdata/pptx/multi-layout/presentation.pptx",
+            "slides",
+            4,
+        ),
+        ("xlsx", XLSX, "pages", 1),
+        ("docx", DOCX, "pages", 2),
     ] {
         let out = root.join(family);
         let out_text = path_text(&out);
-        let output = run(&[
-            "--json", "render", file, "--out", &out_text, "--dpi", "24", "--pages", "1",
-        ]);
+        let output = run(&["--json", "render", file, "--out", &out_text, "--dpi", "24"]);
         assert_success(&output, family);
         let value = stdout_json(&output);
         assert_eq!(value["status"], "ok", "{family}: {value}");
         assert_eq!(value["engine"], "libreoffice");
         assert!(Path::new(value["pdfPath"].as_str().expect("pdfPath")).is_file());
         let items = value[collection].as_array().expect("rendered items");
-        assert_eq!(items.len(), 1);
-        assert!(Path::new(items[0]["imagePath"].as_str().expect("imagePath")).is_file());
+        assert_eq!(items.len(), expected_count, "{family}: {value}");
+        for item in items {
+            assert!(Path::new(item["imagePath"].as_str().expect("imagePath")).is_file());
+        }
     }
 
     let two_sheet = path_text(&root.join("two-sheet.xlsx"));
@@ -220,11 +299,10 @@ fn real_libreoffice_pipeline_renders_all_three_families_when_available() {
 
 #[test]
 fn real_render_diff_reports_pixel_ratio_and_structural_similarity_when_available() {
-    if (!command_exists("soffice") && !command_exists("libreoffice"))
-        || !command_exists("pdftoppm")
-        || (!command_exists("compare") && !command_exists("magick"))
-    {
-        eprintln!("skipping real visual diff test: local rendering tools are incomplete");
+    if !render_tools_available(
+        "visual render diff",
+        &["soffice|libreoffice", "pdftoppm", "compare|magick"],
+    ) {
         return;
     }
 
@@ -350,6 +428,51 @@ fn assert_success(output: &Output, label: &str) {
 
 fn command_exists(name: &str) -> bool {
     Command::new(name).arg("--version").output().is_ok()
+}
+
+fn render_tools_available(label: &str, requirements: &[&str]) -> bool {
+    let missing = requirements
+        .iter()
+        .filter(|requirement| !requirement.split('|').any(command_exists))
+        .copied()
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        return true;
+    }
+    if render_is_required() {
+        panic!(
+            "OOXML render proof is required but {label} is missing: {}",
+            missing.join(", ")
+        );
+    }
+    eprintln!("SKIP {label}: missing {}", missing.join(", "));
+    false
+}
+
+fn render_is_required() -> bool {
+    ["OOXML_REQUIRE_RENDER", "OOXML_REQUIRE_LIBREOFFICE"]
+        .into_iter()
+        .any(|name| {
+            std::env::var(name)
+                .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+        })
+}
+
+fn render_limitations(family: &str) -> Vec<&'static str> {
+    let mut limitations = vec![
+        "LibreOffice rendering can substitute unavailable fonts and may differ from Microsoft Office layout.",
+    ];
+    limitations.push(match family {
+        "pptx" => {
+            "Static pages do not represent animations, transitions, audio, or video playback."
+        }
+        "xlsx" => {
+            "Pagination follows LibreOffice Calc print areas, scaling, and page-break behavior."
+        }
+        "docx" => "Pagination can differ from Microsoft Word when fonts or layout engines differ.",
+        _ => unreachable!("render family"),
+    });
+    limitations
 }
 
 fn temp_dir(label: &str) -> PathBuf {

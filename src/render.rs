@@ -709,6 +709,10 @@ fn common_manifest(request: &RenderRequest<'_>, status: &str) -> Map<String, Val
         json!(["render-engine", "fonts"]),
     );
     result.insert(
+        "warnings".to_string(),
+        json!(crate::doctor::render_font_warnings()),
+    );
+    result.insert(
         "limitations".to_string(),
         json!(limitations(request.family)),
     );

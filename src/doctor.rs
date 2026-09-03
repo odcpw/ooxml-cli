@@ -416,6 +416,20 @@ fn check_fonts() -> CheckReport {
     }
 }
 
+pub(crate) fn render_font_warnings() -> Vec<Value> {
+    let check = check_fonts();
+    if check.status != "warn" {
+        return Vec::new();
+    }
+    vec![json!({
+        "code": "OOXML_RENDER_FONTS_UNAVAILABLE",
+        "severity": "warning",
+        "message": check.detail,
+        "remediation": check.remediation,
+        "doctorCommand": "ooxml --json doctor --only fonts",
+    })]
+}
+
 fn check_tempdir() -> CheckReport {
     let temp_dir = env::temp_dir();
     match probe_writable(&temp_dir, "ooxml-doctor-temp") {

@@ -21,10 +21,11 @@ then normalized to 1,000 units per em:
 | Carlito-Regular.ttf | `b4ff23ba370cc95a3c349336b73f9c28514a1371210f89832efc85c4b1ea7131` |
 | Carlito-Bold.ttf | `0f62ab34ad5d079a0a28fac01bcf7c7a724a4db4d6cb99cab9cabff382fbb80f` |
 
-Each advance vector has 95 entries in Unicode order, U+0020 through U+007E.
-The average is the arithmetic mean of A-Z, a-z, and 0-9. Line height is the
-font horizontal-header ascent minus descent plus line gap. Regular and bold
-are independent measurements.
+Each `metrics-v1.tsv` advance vector has 95 entries in Unicode order, U+0020
+through U+007E. `latin1-v1.tsv` adds 96 independently extracted advances per
+weight in Unicode order, U+00A0 through U+00FF. The average is the arithmetic
+mean of A-Z, a-z, and 0-9. Line height is the font horizontal-header ascent
+minus descent plus line gap. Regular and bold are independent measurements.
 
 `families-v1.tsv` makes substitution explicit and reviewable. Proprietary
 theme fonts are not installed or redistributed on the Linux calibration host.
