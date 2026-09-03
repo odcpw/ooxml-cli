@@ -215,6 +215,11 @@ mod tests {
             infer_axis_number_format(&["$#,##0.00".into(), "$#,##0.00".into(), "0%".into()], &[]),
             "$#,##0.00"
         );
+        assert_eq!(infer_axis_number_format(&["0%".into()], &[]), "0%");
+        assert_eq!(
+            infer_axis_number_format(&["yyyy-mm-dd".into()], &[]),
+            "yyyy-mm-dd"
+        );
         let style = resolve_chart_house_style(ChartHouseStyleInput {
             style: Some("minimal"),
             number_format: Some("0.0%"),
