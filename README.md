@@ -6,7 +6,9 @@
 
 Rust is the product and proof path. The legacy implementation is reference material only, not an oracle.
 
-The current release line is `0.1.x`; `v0.1.0` is the first formal Rust binary release. The 0.1.0 candidate integrates the audited CLI/serve/MCP, XML entity, OPC/relationship, DOCX diff, and VBA codec/CFB fixes recorded in [FIXNOTES.md](FIXNOTES.md).
+The Cargo version is `0.1.0`, but no `v0.1.0` tag or GitHub Release exists yet. This is a release candidate until the release bead verifies the tagged commit and its native assets. The candidate integrates the audited CLI/Serve/MCP, XML entity, OPC/relationship, DOCX diff, and VBA codec/CFB fixes recorded in [FIXNOTES.md](FIXNOTES.md).
+
+The current typed manifest publishes 329 command contracts. Use `ooxml --json capabilities` as the live authority: the development line includes declarative three-family builders, atomic batch and Serve workflows, Markdown output, and typed MCP intents. Markdown build input and final Office proof are still moving through the integration gates described in [Current Rust Product Status](docs/rust-port-status.md).
 
 ## What It Handles
 
@@ -16,7 +18,8 @@ The current release line is `0.1.x`; `v0.1.0` is the first formal Rust binary re
 | Excel | Sheets, ranges, cells, formulas, tables, pivots, names, comments, formatting |
 | Word | Blocks, paragraphs, tables, styles, comments, fields, headers, images, replacements |
 | VBA | Pure Rust `vbaProject.bin` authoring, attach/remove, list/extract, rebuild, Office proof |
-| Package | Inspect, diff, apply ops, strict validation, conformance checks, repair/normalize |
+| Package | Outline, inspect, diff, atomic batch apply, strict validation, unified check, repair/normalize |
+| Agents | Typed capabilities, Serve sessions, JSON-Schema MCP tools, readable Markdown output |
 
 ## Install From Source
 
@@ -60,6 +63,22 @@ ooxml --json capabilities --for range
 ooxml --json capabilities --for docx
 ooxml --json capabilities --for vba
 ```
+
+The one-call and agent-facing surfaces are discoverable without memorizing the
+full command tree:
+
+```powershell
+ooxml --json outline .\deck.pptx
+ooxml --json check .\deck.pptx --openxml-sdk auto --fail-on error
+ooxml --json capabilities --schema pptx-build > deck.schema.json
+ooxml --json pptx build --spec .\deck.json --out .\built.pptx
+ooxml --format markdown docx text .\report.docx
+ooxml mcp
+```
+
+`apply`, Serve, and typed MCP edits use the same staged mutation seam. MCP
+clients should call `tools/list` for the exact schemas; typed tools include
+build, edit, outline, check, validate, render, find, and replace intents.
 
 ## Common Workflows
 
@@ -212,7 +231,7 @@ cp -R skills/ooxml ~/.codex/skills/
 
 ## Releases
 
-Pushing a tag that exactly matches the Cargo version, such as `v0.1.0`, triggers `.github/workflows/release.yml`. The workflow reruns format, clippy, and the full Rust test gate, then builds GitHub Release assets for Linux x86_64, macOS arm64 and x86_64, and Windows x86_64. The release includes a combined `SHA256SUMS` file. Tags are created only after the candidate commit has passed the required local and Office-specific proof gates.
+No formal release has been published. Pushing a tag that exactly matches the Cargo version, such as `v0.1.0`, triggers `.github/workflows/release.yml`. The workflow reruns format, clippy, and the full Rust test gate, then builds GitHub Release assets for Linux x86_64, macOS arm64 and x86_64, and Windows x86_64. The release includes a combined `SHA256SUMS` file. Tags are created only after the candidate commit has passed the required local and Office-specific proof gates.
 
 ## Limits
 
@@ -226,6 +245,8 @@ Pushing a tag that exactly matches the Cargo version, such as `v0.1.0`, triggers
 
 ## Docs
 
+- [AGENTS.md](AGENTS.md): binding repository workflow and proof rules for agents
+- [docs/rust-port-status.md](docs/rust-port-status.md): current evidence and release-status boundary
 - [skills/ooxml/SKILL.md](skills/ooxml/SKILL.md): canonical agent-facing operating guide
 - [docs/vba-macro-support.md](docs/vba-macro-support.md): VBA support and limits
 - [docs/testing-strategy.md](docs/testing-strategy.md): proof gates and test strategy
