@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "slides": [
+    {
+      "imageCount": 0,
+      "layout": "Title Slide",
+      "notes": false,
+      "number": 1,
+      "shapeCount": 2,
+      "tableCount": 0,
+      "textPreview": null,
+      "title": "Q3 Review"
+    },
+    {
+      "imageCount": 0,
+      "layout": "Title and Content",
+      "notes": true,
+      "number": 2,
+      "shapeCount": 2,
+      "tableCount": 0,
+      "textPreview": null,
+      "title": "Performance"
+    },
+    {
+      "imageCount": 0,
+      "layout": "Title Only",
+      "notes": false,
+      "number": 3,
+      "shapeCount": 2,
+      "tableCount": 1,
+      "textPreview": null,
+      "title": "Quarterly Results"
+    },
+    {
+      "imageCount": 0,
+      "layout": "Title Only",
+      "notes": false,
+      "number": 4,
+      "shapeCount": 2,
+      "tableCount": 0,
+      "textPreview": null,
+      "title": "Revenue Trend"
+    },
+    {
+      "imageCount": 1,
+      "layout": "Title Only",
+      "notes": false,
+      "number": 5,
+      "shapeCount": 2,
+      "tableCount": 0,
+      "textPreview": null,
+      "title": "Product Detail"
+    }
+  ],
+  "summary": {
+    "customXmlParts": 0,
+    "handoutMasters": 0,
+    "layouts": 11,
+    "masters": 1,
+    "mediaAssets": 1,
+    "notesMasters": 1,
+    "slideSize": {
+      "cx": 12192000,
+      "cy": 6858000,
+      "unit": "emu"
+    },
+    "slides": 5,
+    "themes": 1
+  }
+}

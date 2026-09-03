@@ -1,0 +1,102 @@
+{
+  "blocks": [
+    {
+      "index": 1,
+      "kind": "paragraph",
+      "styleId": "Title",
+      "textPreview": "Q3 Quarterly Report"
+    },
+    {
+      "index": 2,
+      "kind": "paragraph",
+      "styleId": null,
+      "textPreview": "Table of contents — update field to refresh"
+    },
+    {
+      "index": 3,
+      "kind": "paragraph",
+      "styleId": "Heading1",
+      "textPreview": "Highlights"
+    },
+    {
+      "index": 4,
+      "kind": "paragraph",
+      "styleId": "Normal",
+      "textPreview": "Revenue grew 18 percent while the team reviewed forecast() in the dashboard."
+    },
+    {
+      "index": 5,
+      "kind": "paragraph",
+      "styleId": "ListBullet",
+      "textPreview": "Enterprise pipeline reached a record level"
+    },
+    {
+      "index": 6,
+      "kind": "paragraph",
+      "styleId": "ListBullet",
+      "textPreview": "Customer retention remained above plan"
+    },
+    {
+      "index": 7,
+      "kind": "paragraph",
+      "styleId": "ListNumber",
+      "textPreview": "Confirm the revised operating plan"
+    },
+    {
+      "index": 8,
+      "kind": "paragraph",
+      "styleId": "Heading2",
+      "textPreview": "Regional Metrics"
+    },
+    {
+      "index": 9,
+      "kind": "table",
+      "styleId": null,
+      "textPreview": "Region Revenue Growth North America $28m 21% Europe $17m 14%"
+    },
+    {
+      "index": 10,
+      "kind": "paragraph",
+      "styleId": null,
+      "textPreview": null
+    },
+    {
+      "index": 11,
+      "kind": "paragraph",
+      "styleId": null,
+      "textPreview": null
+    },
+    {
+      "index": 12,
+      "kind": "paragraph",
+      "styleId": "Heading1",
+      "textPreview": "Outlook"
+    },
+    {
+      "index": 13,
+      "kind": "paragraph",
+      "styleId": "Normal",
+      "textPreview": "focus = execution"
+    }
+  ],
+  "coreProperties": {
+    "creator": "Ada Lovelace",
+    "lastModifiedBy": "Ada Lovelace"
+  },
+  "schemaVersion": 1,
+  "summary": {
+    "comments": false,
+    "customXmlParts": 0,
+    "endnotes": false,
+    "footers": 1,
+    "footnotes": false,
+    "headers": 1,
+    "hyperlinks": 1,
+    "mediaAssets": 1,
+    "numbering": true,
+    "paragraphs": 12,
+    "sections": 1,
+    "styles": true,
+    "tables": 1
+  }
+}

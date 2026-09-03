@@ -1,0 +1,136 @@
+{
+  "blocks": [
+    {
+      "type": "toc"
+    },
+    {
+      "level": 1,
+      "text": "Highlights",
+      "type": "heading"
+    },
+    {
+      "runs": [
+        {
+          "bold": true,
+          "text": "Revenue grew 18 percent"
+        },
+        {
+          "text": " while the team reviewed "
+        },
+        {
+          "inlineCode": true,
+          "text": "forecast()"
+        },
+        {
+          "text": " in the "
+        },
+        {
+          "link": "https://example.test/q3-report",
+          "text": "dashboard"
+        },
+        {
+          "text": "."
+        }
+      ],
+      "text": "Revenue grew 18 percent while the team reviewed forecast() in the dashboard.",
+      "type": "paragraph"
+    },
+    {
+      "level": 0,
+      "text": "Enterprise pipeline reached a record level",
+      "type": "bullet"
+    },
+    {
+      "level": 1,
+      "text": "Customer retention remained above plan",
+      "type": "bullet"
+    },
+    {
+      "level": 0,
+      "text": "Confirm the revised operating plan",
+      "type": "numbered"
+    },
+    {
+      "level": 2,
+      "text": "Regional Metrics",
+      "type": "heading"
+    },
+    {
+      "table": {
+        "bandedRows": true,
+        "header": true,
+        "rows": [
+          [
+            "Region",
+            "Revenue",
+            "Growth"
+          ],
+          [
+            "North America",
+            "$28m",
+            "21%"
+          ],
+          [
+            "Europe",
+            "$17m",
+            "14%"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "image": {
+        "altText": "Product workflow",
+        "path": "../test_image.png",
+        "width": "2in"
+      },
+      "type": "image"
+    },
+    {
+      "type": "pageBreak"
+    },
+    {
+      "level": 1,
+      "text": "Outlook",
+      "type": "heading"
+    },
+    {
+      "runs": [
+        {
+          "inlineCode": true,
+          "text": "focus = execution"
+        }
+      ],
+      "text": "focus = execution",
+      "type": "paragraph"
+    }
+  ],
+  "family": "docx",
+  "footers": {
+    "default": "Internal",
+    "pageNumbers": true
+  },
+  "headers": {
+    "default": "Q3 Operating Review"
+  },
+  "metadata": {
+    "creator": "Ada Lovelace"
+  },
+  "schemaVersion": 1,
+  "sections": [
+    {
+      "margins": {
+        "bottom": "0.75in",
+        "left": "0.8in",
+        "right": "0.8in",
+        "top": "0.75in"
+      },
+      "orientation": "portrait",
+      "size": "Letter",
+      "startBlock": 0
+    }
+  ],
+  "theme": "corporate-blue",
+  "title": "Q3 Quarterly Report"
+}

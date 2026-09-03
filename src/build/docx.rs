@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use super::{
     BuildCompileError, BuildCompiler, BuildFamily, BuildLength, BuildOperation, BuildSpec,
-    CompiledBuildPlan, ImageRef, TableData,
+    CompiledBuildPlan, ImageRef, MarkdownConversion, MarkdownError, TableData, markdown_to_spec,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -125,24 +125,60 @@ pub fn compile_docx_spec(spec: &BuildSpec) -> Result<CompiledDocxBuild, BuildCom
 pub(crate) fn docx_build(args: &[String]) -> crate::CliResult<Value> {
     crate::reject_unknown_flags(
         args,
-        &["--spec", "--out"],
+        &["--spec", "--from-markdown", "--emit-spec", "--out"],
         &["--check", "--dry-run", "--force"],
     )?;
-    let spec_path = crate::parse_string_flag(args, "--spec")?
-        .ok_or_else(|| crate::CliError::invalid_args("--spec is required"))?;
+    let spec_path = crate::parse_string_flag(args, "--spec")?;
+    let markdown_path = crate::parse_string_flag(args, "--from-markdown")?;
+    let emit_spec_path = crate::parse_string_flag(args, "--emit-spec")?;
+    match (spec_path.as_deref(), markdown_path.as_deref()) {
+        (Some(_), Some(_)) => {
+            return Err(crate::CliError::invalid_args(
+                "--spec and --from-markdown are mutually exclusive",
+            ));
+        }
+        (None, None) => {
+            return Err(crate::CliError::invalid_args(
+                "exactly one of --spec or --from-markdown is required",
+            ));
+        }
+        _ => {}
+    }
+    if emit_spec_path.is_some() && markdown_path.is_none() {
+        return Err(crate::CliError::invalid_args(
+            "--emit-spec requires --from-markdown",
+        ));
+    }
     let output = crate::parse_string_flag(args, "--out")?
         .ok_or_else(|| crate::CliError::invalid_args("--out is required"))?;
     let dry_run = crate::has_flag(args, "--dry-run");
     let run_check = crate::has_flag(args, "--check");
+    let force = crate::has_flag(args, "--force");
     if run_check && dry_run {
         return Err(crate::CliError::invalid_args(
             "--check requires a published build; omit --dry-run",
         ));
     }
-    validate_output_path(&output, crate::has_flag(args, "--force"))?;
+    validate_output_path(&output, force)?;
+    if let Some(path) = emit_spec_path.as_deref() {
+        validate_emitted_spec_path(path, &output, force)?;
+    }
 
-    let (spec, spec_base) = load_docx_build_spec(&spec_path)?;
+    let (spec, spec_base, warnings) = if let Some(path) = spec_path.as_deref() {
+        let (spec, base) = load_docx_build_spec(path)?;
+        (spec, base, Vec::new())
+    } else {
+        let path = markdown_path
+            .as_deref()
+            .expect("source selection validated above");
+        let (spec, base, conversion) = load_docx_markdown(path)?;
+        (spec, base, conversion.warnings)
+    };
+
     let compiled = compile_docx_spec(&spec).map_err(build_compile_cli_error)?;
+    if let Some(path) = emit_spec_path.as_deref() {
+        write_emitted_spec(path, spec.document())?;
+    }
     let temp = DocxBuildTemp::create()?;
     let operations = materialize_operations(&compiled.plan.operations, &temp.path, &spec_base)?;
     let ops_path = temp.path.join("operations.json");
@@ -166,6 +202,9 @@ pub(crate) fn docx_build(args: &[String]) -> crate::CliResult<Value> {
         apply_args.push("--out".to_string());
         apply_args.push(output.clone());
     }
+    // Build sources are resolved against the reviewed spec/Markdown directory
+    // above, then passed through the same apply path guard as direct batches.
+    apply_args.push("--allow-absolute-paths".to_string());
     let mutation_envelope = crate::apply(&virtual_input.to_string_lossy(), &apply_args)?;
     let mutation_envelope = scrub_paths(mutation_envelope, &temp.path, &spec_base);
     let outline = if dry_run {
@@ -188,7 +227,7 @@ pub(crate) fn docx_build(args: &[String]) -> crate::CliResult<Value> {
         Value::Null
     };
     let node_map = resolved_node_map(&compiled.plan, &mutation_envelope);
-    Ok(json!({
+    let mut result = json!({
         "schemaVersion": "ooxml-cli.docx-build.v1",
         "spec": spec_path,
         "output": if dry_run { Value::Null } else { json!(output) },
@@ -199,7 +238,21 @@ pub(crate) fn docx_build(args: &[String]) -> crate::CliResult<Value> {
         "nodeMap": node_map,
         "outline": outline,
         "check": check,
-    }))
+    });
+    let result_object = result.as_object_mut().expect("DOCX build result object");
+    if let Some(path) = markdown_path {
+        result_object.insert("markdown".to_string(), json!(path));
+    }
+    if let Some(path) = emit_spec_path {
+        result_object.insert("emittedSpec".to_string(), json!(path));
+    }
+    if !warnings.is_empty() {
+        result_object.insert(
+            "warnings".to_string(),
+            serde_json::to_value(warnings).expect("Markdown warnings serialize"),
+        );
+    }
+    Ok(result)
 }
 
 fn scaffold_args(document: &Map<String, Value>) -> Result<Map<String, Value>, BuildCompileError> {
@@ -768,6 +821,37 @@ fn validate_output_path(output: &str, force: bool) -> crate::CliResult<()> {
     Ok(())
 }
 
+fn validate_emitted_spec_path(path: &str, output: &str, force: bool) -> crate::CliResult<()> {
+    if path == "-" {
+        return Err(crate::CliError::invalid_args(
+            "--emit-spec requires a file path because stdout is reserved for the build result",
+        ));
+    }
+    if Path::new(path) == Path::new(output) {
+        return Err(crate::CliError::invalid_args(
+            "--emit-spec and --out must name different files",
+        ));
+    }
+    if Path::new(path).exists() && !force {
+        return Err(crate::CliError::invalid_args(
+            "emitted spec already exists; pass --force to replace it",
+        ));
+    }
+    Ok(())
+}
+
+fn write_emitted_spec(path: &str, document: &Value) -> crate::CliResult<()> {
+    let mut encoded = serde_json::to_vec_pretty(document).map_err(|cause| {
+        crate::CliError::unexpected(format!("failed to encode emitted DOCX build spec: {cause}"))
+    })?;
+    encoded.push(b'\n');
+    fs::write(path, encoded).map_err(|cause| {
+        crate::CliError::unexpected(format!(
+            "failed to write emitted DOCX build spec {path}: {cause}"
+        ))
+    })
+}
+
 fn load_docx_build_spec(path: &str) -> crate::CliResult<(BuildSpec, PathBuf)> {
     if path == "-" {
         let mut source = Vec::new();
@@ -794,6 +878,44 @@ fn load_docx_build_spec(path: &str) -> crate::CliResult<(BuildSpec, PathBuf)> {
             ))
         })?;
     Ok((spec, base))
+}
+
+fn load_docx_markdown(path: &str) -> crate::CliResult<(BuildSpec, PathBuf, MarkdownConversion)> {
+    let (source, base, source_name) = if path == "-" {
+        let mut source = String::new();
+        std::io::stdin()
+            .read_to_string(&mut source)
+            .map_err(|cause| {
+                crate::CliError::unexpected(format!("failed to read Markdown stdin: {cause}"))
+            })?;
+        let base = std::env::current_dir().map_err(|cause| {
+            crate::CliError::unexpected(format!("failed to resolve current directory: {cause}"))
+        })?;
+        (source, base, "<stdin>".to_string())
+    } else {
+        let source = fs::read_to_string(path).map_err(|cause| {
+            crate::CliError::file_not_found(format!("cannot read Markdown input {path}: {cause}"))
+        })?;
+        let base = Path::new(path)
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .canonicalize()
+            .map_err(|cause| {
+                crate::CliError::unexpected(format!(
+                    "failed to resolve Markdown directory for {path}: {cause}"
+                ))
+            })?;
+        (source, base, path.to_string())
+    };
+    let conversion =
+        markdown_to_spec(BuildFamily::Docx, &source, &source_name).map_err(markdown_cli_error)?;
+    let encoded = serde_json::to_vec(&conversion.spec).map_err(|cause| {
+        crate::CliError::unexpected(format!(
+            "failed to encode generated DOCX build spec: {cause}"
+        ))
+    })?;
+    let spec = super::load_spec_bytes(BuildFamily::Docx, &encoded).map_err(build_spec_cli_error)?;
+    Ok((spec, base, conversion))
 }
 
 struct DocxBuildTemp {
@@ -919,6 +1041,12 @@ fn build_spec_cli_error(error: super::BuildSpecError) -> crate::CliError {
 }
 
 fn build_compile_cli_error(error: BuildCompileError) -> crate::CliError {
+    crate::CliError::invalid_args(
+        serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()),
+    )
+}
+
+fn markdown_cli_error(error: MarkdownError) -> crate::CliError {
     crate::CliError::invalid_args(
         serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()),
     )

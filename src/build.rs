@@ -7,6 +7,7 @@
 mod compiler;
 mod docx;
 mod loader;
+mod markdown;
 mod pptx;
 mod schema;
 mod types;
@@ -21,6 +22,7 @@ pub use docx::{CompiledDocxBuild, compile_docx_spec};
 pub use loader::{
     BuildSpec, BuildSpecDiagnostic, BuildSpecError, load_spec_bytes, load_spec_file, load_spec_str,
 };
+pub use markdown::{MarkdownConversion, MarkdownError, MarkdownWarning, markdown_to_spec};
 pub(crate) use pptx::pptx_build;
 pub use pptx::{CompiledPptxBuild, PptxBuildAsset, compile_pptx_spec, is_generated_asset_path};
 pub use schema::{BuildFamily, schema_by_name, schema_document, schema_text};

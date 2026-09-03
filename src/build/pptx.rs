@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use super::{
     Bounds, BuildCompileError, BuildCompiler, BuildFamily, BuildLength, BuildSpec, ChartData,
-    CompiledBuildPlan, ImageRef, TableData,
+    CompiledBuildPlan, ImageRef, MarkdownConversion, MarkdownError, TableData, markdown_to_spec,
 };
 
 const GENERATED_PREFIX: &str = "@generated/";
@@ -83,24 +83,59 @@ pub fn compile_pptx_spec(spec: &BuildSpec) -> Result<CompiledPptxBuild, BuildCom
 pub(crate) fn pptx_build(args: &[String]) -> crate::CliResult<Value> {
     crate::reject_unknown_flags(
         args,
-        &["--spec", "--out"],
+        &["--spec", "--from-markdown", "--emit-spec", "--out"],
         &["--check", "--dry-run", "--force"],
     )?;
-    let spec_path = crate::parse_string_flag(args, "--spec")?
-        .ok_or_else(|| crate::CliError::invalid_args("--spec is required"))?;
+    let spec_path = crate::parse_string_flag(args, "--spec")?;
+    let markdown_path = crate::parse_string_flag(args, "--from-markdown")?;
+    let emit_spec_path = crate::parse_string_flag(args, "--emit-spec")?;
+    match (spec_path.as_deref(), markdown_path.as_deref()) {
+        (Some(_), Some(_)) => {
+            return Err(crate::CliError::invalid_args(
+                "--spec and --from-markdown are mutually exclusive",
+            ));
+        }
+        (None, None) => {
+            return Err(crate::CliError::invalid_args(
+                "exactly one of --spec or --from-markdown is required",
+            ));
+        }
+        _ => {}
+    }
+    if emit_spec_path.is_some() && markdown_path.is_none() {
+        return Err(crate::CliError::invalid_args(
+            "--emit-spec requires --from-markdown",
+        ));
+    }
     let output = crate::parse_string_flag(args, "--out")?
         .ok_or_else(|| crate::CliError::invalid_args("--out is required"))?;
     let dry_run = crate::has_flag(args, "--dry-run");
     let run_check = crate::has_flag(args, "--check");
+    let force = crate::has_flag(args, "--force");
     if run_check && dry_run {
         return Err(crate::CliError::invalid_args(
             "--check requires a published build; omit --dry-run",
         ));
     }
-    validate_output_path(&output, crate::has_flag(args, "--force"))?;
+    validate_output_path(&output, force)?;
+    if let Some(path) = emit_spec_path.as_deref() {
+        validate_emitted_spec_path(path, &output, force)?;
+    }
+    let (spec, spec_base, warnings) = if let Some(path) = spec_path.as_deref() {
+        let (spec, base) = load_pptx_build_spec(path)?;
+        (spec, base, Vec::new())
+    } else {
+        let path = markdown_path
+            .as_deref()
+            .expect("source selection validated above");
+        let (spec, base, conversion) = load_pptx_markdown(path)?;
+        (spec, base, conversion.warnings)
+    };
 
-    let (spec, spec_base) = load_pptx_build_spec(&spec_path)?;
     let compiled = compile_pptx_spec(&spec).map_err(build_compile_cli_error)?;
+    if let Some(path) = emit_spec_path.as_deref() {
+        write_emitted_spec(path, spec.document())?;
+    }
     let temp = PptxBuildTemp::create()?;
     materialize_assets(&temp.path, &compiled.assets)?;
     let operations = materialize_operations(&compiled.plan.operations, &temp.path, &spec_base)?;
@@ -125,6 +160,9 @@ pub(crate) fn pptx_build(args: &[String]) -> crate::CliResult<Value> {
         apply_args.push("--out".to_string());
         apply_args.push(output.clone());
     }
+    // Build sources are resolved against the reviewed spec/Markdown directory
+    // above, then passed through the same apply path guard as direct batches.
+    apply_args.push("--allow-absolute-paths".to_string());
     let mutation_envelope = crate::apply(&virtual_input.to_string_lossy(), &apply_args)?;
     let mutation_envelope = scrub_generated_paths(mutation_envelope, &temp.path);
 
@@ -153,7 +191,7 @@ pub(crate) fn pptx_build(args: &[String]) -> crate::CliResult<Value> {
         Value::Null
     };
     let node_map = resolved_node_map(&compiled.plan, &mutation_envelope);
-    Ok(json!({
+    let mut result = json!({
         "schemaVersion": "ooxml-cli.pptx-build.v1",
         "spec": spec_path,
         "output": if dry_run { Value::Null } else { json!(output) },
@@ -165,7 +203,21 @@ pub(crate) fn pptx_build(args: &[String]) -> crate::CliResult<Value> {
         "outline": outline,
         "layoutQa": layout_qa,
         "check": check,
-    }))
+    });
+    let result_object = result.as_object_mut().expect("PPTX build result object");
+    if let Some(path) = markdown_path {
+        result_object.insert("markdown".to_string(), json!(path));
+    }
+    if let Some(path) = emit_spec_path {
+        result_object.insert("emittedSpec".to_string(), json!(path));
+    }
+    if !warnings.is_empty() {
+        result_object.insert(
+            "warnings".to_string(),
+            serde_json::to_value(warnings).expect("Markdown warnings serialize"),
+        );
+    }
+    Ok(result)
 }
 
 pub fn is_generated_asset_path(path: &str) -> bool {
@@ -185,6 +237,37 @@ fn validate_output_path(output: &str, force: bool) -> crate::CliResult<()> {
         ));
     }
     Ok(())
+}
+
+fn validate_emitted_spec_path(path: &str, output: &str, force: bool) -> crate::CliResult<()> {
+    if path == "-" {
+        return Err(crate::CliError::invalid_args(
+            "--emit-spec requires a file path because stdout is reserved for the build result",
+        ));
+    }
+    if Path::new(path) == Path::new(output) {
+        return Err(crate::CliError::invalid_args(
+            "--emit-spec and --out must name different files",
+        ));
+    }
+    if Path::new(path).exists() && !force {
+        return Err(crate::CliError::invalid_args(
+            "emitted spec already exists; pass --force to replace it",
+        ));
+    }
+    Ok(())
+}
+
+fn write_emitted_spec(path: &str, document: &Value) -> crate::CliResult<()> {
+    let mut encoded = serde_json::to_vec_pretty(document).map_err(|cause| {
+        crate::CliError::unexpected(format!("failed to encode emitted PPTX build spec: {cause}"))
+    })?;
+    encoded.push(b'\n');
+    fs::write(path, encoded).map_err(|cause| {
+        crate::CliError::unexpected(format!(
+            "failed to write emitted PPTX build spec {path}: {cause}"
+        ))
+    })
 }
 
 fn load_pptx_build_spec(path: &str) -> crate::CliResult<(BuildSpec, PathBuf)> {
@@ -215,6 +298,44 @@ fn load_pptx_build_spec(path: &str) -> crate::CliResult<(BuildSpec, PathBuf)> {
     Ok((spec, base))
 }
 
+fn load_pptx_markdown(path: &str) -> crate::CliResult<(BuildSpec, PathBuf, MarkdownConversion)> {
+    let (source, base, source_name) = if path == "-" {
+        let mut source = String::new();
+        std::io::stdin()
+            .read_to_string(&mut source)
+            .map_err(|cause| {
+                crate::CliError::unexpected(format!("failed to read Markdown stdin: {cause}"))
+            })?;
+        let base = std::env::current_dir().map_err(|cause| {
+            crate::CliError::unexpected(format!("failed to resolve current directory: {cause}"))
+        })?;
+        (source, base, "<stdin>".to_string())
+    } else {
+        let source = fs::read_to_string(path).map_err(|cause| {
+            crate::CliError::file_not_found(format!("cannot read Markdown input {path}: {cause}"))
+        })?;
+        let base = Path::new(path)
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .canonicalize()
+            .map_err(|cause| {
+                crate::CliError::unexpected(format!(
+                    "failed to resolve Markdown directory for {path}: {cause}"
+                ))
+            })?;
+        (source, base, path.to_string())
+    };
+    let conversion =
+        markdown_to_spec(BuildFamily::Pptx, &source, &source_name).map_err(markdown_cli_error)?;
+    let encoded = serde_json::to_vec(&conversion.spec).map_err(|cause| {
+        crate::CliError::unexpected(format!(
+            "failed to encode generated PPTX build spec: {cause}"
+        ))
+    })?;
+    let spec = super::load_spec_bytes(BuildFamily::Pptx, &encoded).map_err(build_spec_cli_error)?;
+    Ok((spec, base, conversion))
+}
+
 fn build_spec_cli_error(error: super::BuildSpecError) -> crate::CliError {
     crate::CliError::invalid_args(
         serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()),
@@ -222,6 +343,12 @@ fn build_spec_cli_error(error: super::BuildSpecError) -> crate::CliError {
 }
 
 fn build_compile_cli_error(error: BuildCompileError) -> crate::CliError {
+    crate::CliError::invalid_args(
+        serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()),
+    )
+}
+
+fn markdown_cli_error(error: MarkdownError) -> crate::CliError {
     crate::CliError::invalid_args(
         serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()),
     )
@@ -536,6 +663,7 @@ fn compile_slide_content(
 ) -> Result<(), BuildCompileError> {
     let slide_number = slide_index + 1;
     let slide_path = format!("/slides/{slide_index}");
+    compile_bullet_run_enrichments(slide_number, &slide_path, slide, compiler)?;
     compile_textboxes(slide_number, &slide_path, slide, compiler, assets)?;
     compile_images(slide_number, &slide_path, slide, compiler)?;
     compile_tables(slide_number, &slide_path, slide, compiler, assets)?;
@@ -552,6 +680,60 @@ fn compile_slide_content(
             ]),
             "destination",
         )?;
+    }
+    Ok(())
+}
+
+fn compile_bullet_run_enrichments(
+    slide_number: usize,
+    slide_path: &str,
+    slide: &Map<String, Value>,
+    compiler: &mut BuildCompiler,
+) -> Result<(), BuildCompileError> {
+    let Some(paragraphs) = slide.get("bullets").and_then(Value::as_array) else {
+        return Ok(());
+    };
+    let target = match slide.get("layout").and_then(Value::as_str) {
+        Some("Two Content" | "Comparison") => "body:1",
+        _ => "body",
+    };
+    for (paragraph_index, paragraph) in paragraphs.iter().enumerate() {
+        let Some(runs) = paragraph.get("runs").and_then(Value::as_array) else {
+            continue;
+        };
+        for (run_index, run) in runs.iter().enumerate() {
+            let link = run.get("link").and_then(Value::as_str);
+            let inline_code = run.get("inlineCode").and_then(Value::as_bool) == Some(true);
+            if link.is_none() && !inline_code {
+                continue;
+            }
+            let path = format!("{slide_path}/bullets/{paragraph_index}/runs/{run_index}");
+            let mut args = Map::from_iter([
+                ("slide".to_string(), json!(slide_number)),
+                ("target".to_string(), json!(target)),
+                ("paragraph".to_string(), json!(paragraph_index)),
+                ("runIndex".to_string(), json!(run_index)),
+            ]);
+            if let Some(link) = link {
+                args.insert("hyperlink".to_string(), json!(link));
+            }
+            if inline_code {
+                args.insert("fontFamily".to_string(), json!("Aptos Mono"));
+            }
+            compiler.push_operation(
+                &path,
+                None,
+                format!(
+                    "slide_{}_paragraph_{}_run_{}_style",
+                    slide_number,
+                    paragraph_index + 1,
+                    run_index + 1
+                ),
+                "pptx text set",
+                args,
+                "destination",
+            )?;
+        }
     }
     Ok(())
 }
@@ -987,7 +1169,7 @@ fn paragraph_values(
                 for (run_index, run) in runs.iter().enumerate() {
                     let run_path = format!("{paragraph_path}/runs/{run_index}");
                     let source = run.as_object().expect("validated paragraph run");
-                    for unsupported_field in ["underline", "link"] {
+                    for unsupported_field in ["underline"] {
                         if source.get(unsupported_field).is_some_and(|value| value != &Value::Null) {
                             return Err(unsupported(
                                 &format!("{run_path}/{unsupported_field}"),

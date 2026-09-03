@@ -1,0 +1,138 @@
+{
+  "family": "pptx",
+  "schemaVersion": 1,
+  "size": "16:9",
+  "slides": [
+    {
+      "id": "markdown-slide-1",
+      "layout": "Title Slide",
+      "subtitle": "Results, decisions, and next steps",
+      "title": "Q3 Review"
+    },
+    {
+      "bullets": [
+        {
+          "bullet": true,
+          "level": 0,
+          "runs": [
+            {
+              "bold": true,
+              "text": "Revenue"
+            },
+            {
+              "text": " grew 12 percent"
+            }
+          ],
+          "text": "Revenue grew 12 percent"
+        },
+        {
+          "bullet": true,
+          "level": 1,
+          "runs": [
+            {
+              "text": "Review "
+            },
+            {
+              "inlineCode": true,
+              "text": "margin"
+            },
+            {
+              "text": " in the "
+            },
+            {
+              "link": "https://example.test/q3",
+              "text": "dashboard"
+            }
+          ],
+          "text": "Review margin in the dashboard"
+        },
+        {
+          "bullet": true,
+          "level": 0,
+          "runs": [
+            {
+              "text": "Confirm the revised forecast"
+            }
+          ],
+          "text": "Confirm the revised forecast"
+        }
+      ],
+      "id": "markdown-slide-2",
+      "layout": "Title and Content",
+      "notes": "Explain the Q3 variance before discussing the forecast.",
+      "title": "Performance"
+    },
+    {
+      "id": "markdown-slide-3",
+      "layout": "Title Only",
+      "tables": [
+        {
+          "bandedRows": true,
+          "header": true,
+          "rows": [
+            [
+              "Quarter",
+              "Actual"
+            ],
+            [
+              "Q1",
+              "38"
+            ],
+            [
+              "Q2",
+              "41"
+            ],
+            [
+              "Q3",
+              "45"
+            ]
+          ],
+          "slot": "body",
+          "style": "Medium2"
+        }
+      ],
+      "title": "Quarterly Results"
+    },
+    {
+      "charts": [
+        {
+          "categories": [
+            "Q1",
+            "Q2",
+            "Q3"
+          ],
+          "series": [
+            {
+              "name": "Actual",
+              "values": [
+                38,
+                41,
+                45
+              ]
+            }
+          ],
+          "slot": "body",
+          "title": "Revenue",
+          "type": "column"
+        }
+      ],
+      "id": "markdown-slide-4",
+      "layout": "Title Only",
+      "title": "Revenue Trend"
+    },
+    {
+      "id": "markdown-slide-5",
+      "images": [
+        {
+          "altText": "Product detail",
+          "fit": "contain",
+          "path": "../test_image.png",
+          "slot": "body"
+        }
+      ],
+      "layout": "Title Only",
+      "title": "Product Detail"
+    }
+  ],
+  "theme": "corporate"
+}
