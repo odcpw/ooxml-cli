@@ -190,7 +190,7 @@ fn parse_docx_list_formats(xml: &str) -> BTreeMap<(u32, u32), bool> {
     let mut current_abstract = None;
     let mut current_level = None;
     let mut current_num = None;
-    let mut reader = Reader::from_str(&xml);
+    let mut reader = Reader::from_str(xml);
     loop {
         match reader.read_event() {
             Ok(Event::Start(element)) => {
