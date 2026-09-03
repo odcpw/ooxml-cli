@@ -1579,12 +1579,25 @@ where
             from_variants.push(json_escaped);
         }
         for variant in from_variants {
-            variants.push((variant.clone(), to.to_string()));
+            variants.push((format!("'{variant}.render'"), format!("{to}.render")));
             variants.push((format!("'{variant}'"), to.to_string()));
+            variants.push((variant, to.to_string()));
         }
     }
     variants.sort_by_key(|variant| std::cmp::Reverse(variant.0.len()));
     variants
+}
+
+#[test]
+fn scrub_path_removes_command_quotes_around_windows_render_destination() {
+    let path = r"C:\Users\RUNNER~1\AppData\Local\Temp\edited.pptx";
+    let value = Value::String(format!(
+        "ooxml --json render '{path}' --out '{path}.render'"
+    ));
+    assert_eq!(
+        scrub_path(value, path, "[EDITED_PPTX]"),
+        Value::String("ooxml --json render [EDITED_PPTX] --out [EDITED_PPTX].render".to_string())
+    );
 }
 
 fn scrub_string(mut text: String, replacements: Vec<(String, String)>) -> String {
