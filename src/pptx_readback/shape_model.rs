@@ -281,6 +281,12 @@ pub(super) fn bounds_json(bounds: &Bounds) -> Value {
         "y": bounds.y,
         "cx": bounds.cx,
         "cy": bounds.cy,
+        "inches": {
+            "x": crate::cli_dispatch::units::inches(bounds.x),
+            "y": crate::cli_dispatch::units::inches(bounds.y),
+            "cx": crate::cli_dispatch::units::inches(bounds.cx),
+            "cy": crate::cli_dispatch::units::inches(bounds.cy),
+        },
     })
 }
 

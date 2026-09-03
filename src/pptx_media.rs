@@ -183,7 +183,18 @@ pub(crate) fn pptx_media_add(file: &str, args: &[String]) -> CliResult<Value> {
         })?
         .clone();
     let slide_size = pptx_slide_size(file)?;
-    let bounds = resolve_media_geometry(args, slide_size)?;
+    let bounds = if let Some(bounds) =
+        crate::cli_dispatch::pptx_slots::resolve(file, slide as u32, args, None)?
+    {
+        Bounds {
+            x: bounds.x,
+            y: bounds.y,
+            cx: bounds.cx,
+            cy: bounds.cy,
+        }
+    } else {
+        resolve_media_geometry(args, slide_size)?
+    };
 
     let mut warnings = Vec::new();
     if !(0..=100).contains(&volume) {

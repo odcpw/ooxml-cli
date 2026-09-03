@@ -238,6 +238,18 @@ pub(super) fn resolve_chart_create_geometry(
     file: &str,
     args: &[String],
 ) -> CliResult<ChartGeometry> {
+    let slide = parse_i64_flag(args, "--slide")?.unwrap_or(0);
+    if slide > 0
+        && let Some(bounds) =
+            crate::cli_dispatch::pptx_slots::resolve(file, slide as u32, args, None)?
+    {
+        return Ok(ChartGeometry {
+            x: bounds.x,
+            y: bounds.y,
+            cx: bounds.cx,
+            cy: bounds.cy,
+        });
+    }
     let (slide_cx, slide_cy) = presentation_slide_size(file)?;
     let mut cx = parse_i64_flag(args, "--cx")?.unwrap_or(0);
     let mut cy = parse_i64_flag(args, "--cy")?.unwrap_or(0);

@@ -61,6 +61,15 @@ pub(in crate::pptx_mutation::charts) fn chart_create_result_json(
     result.insert("y".to_string(), json!(geometry.y));
     result.insert("cx".to_string(), json!(geometry.cx));
     result.insert("cy".to_string(), json!(geometry.cy));
+    result.insert(
+        "geometryInches".to_string(),
+        json!({
+            "x": crate::cli_dispatch::units::inches(geometry.x),
+            "y": crate::cli_dispatch::units::inches(geometry.y),
+            "cx": crate::cli_dispatch::units::inches(geometry.cx),
+            "cy": crate::cli_dispatch::units::inches(geometry.cy),
+        }),
+    );
     result.insert("sourceMode".to_string(), json!(source.mode));
     if source.mode == "external" {
         result.insert("sourceFile".to_string(), json!(source.source_file));

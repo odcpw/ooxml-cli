@@ -142,7 +142,7 @@ struct TableMutation {
 
 pub(crate) fn pptx_add_textbox(file: &str, args: &[String]) -> CliResult<Value> {
     ensure_pptx(file)?;
-    let request = parse_add_textbox_request(args)?;
+    let request = parse_add_textbox_request(file, args)?;
     let options = parse_placement_mutation_options(args)?;
     let mutation = build_textbox_mutation(file, &request)?;
     let mut text_overrides = BTreeMap::new();
@@ -182,7 +182,7 @@ pub(crate) fn pptx_add_textbox(file: &str, args: &[String]) -> CliResult<Value> 
 
 pub(crate) fn pptx_place_image(file: &str, args: &[String]) -> CliResult<Value> {
     ensure_pptx(file)?;
-    let request = parse_place_image_request(args)?;
+    let request = parse_place_image_request(file, args)?;
     let options = parse_placement_mutation_options(args)?;
     let mutation = build_image_mutation(file, &request)?;
     let mut text_overrides = BTreeMap::new();
@@ -236,7 +236,7 @@ pub(crate) fn pptx_place_image(file: &str, args: &[String]) -> CliResult<Value> 
 
 pub(crate) fn pptx_place_table(file: &str, args: &[String]) -> CliResult<Value> {
     ensure_pptx(file)?;
-    let request = parse_place_table_request(args)?;
+    let request = parse_place_table_request(file, args)?;
     let options = parse_placement_mutation_options(args)?;
     let mutation = build_table_mutation(file, &request)?;
     let mut text_overrides = BTreeMap::new();
@@ -263,7 +263,7 @@ pub(crate) fn pptx_place_table(file: &str, args: &[String]) -> CliResult<Value> 
 
 pub(crate) fn pptx_place_table_from_xlsx(file: &str, args: &[String]) -> CliResult<Value> {
     ensure_pptx(file)?;
-    let request = parse_place_table_from_xlsx_request(args)?;
+    let request = parse_place_table_from_xlsx_request(file, args)?;
     let options = parse_placement_mutation_options(args)?;
     let mutation = build_table_mutation(file, &request.table)?;
     let mut text_overrides = BTreeMap::new();
@@ -306,8 +306,9 @@ pub(crate) fn pptx_place_table_from_xlsx(file: &str, args: &[String]) -> CliResu
     Ok(result)
 }
 
-fn parse_add_textbox_request(args: &[String]) -> CliResult<TextboxRequest> {
-    require_value_flags(args, &["--slide", "--text", "--cx", "--cy"])?;
+fn parse_add_textbox_request(file: &str, args: &[String]) -> CliResult<TextboxRequest> {
+    require_value_flags(args, &["--slide", "--text"])?;
+    require_explicit_geometry_without_slot(args, &["--cx", "--cy"])?;
     let slide = parse_i64_flag(args, "--slide")?.unwrap_or(0);
     if slide < 1 {
         return Err(CliError::invalid_args("--slide must be >= 1"));
@@ -316,7 +317,7 @@ fn parse_add_textbox_request(args: &[String]) -> CliResult<TextboxRequest> {
     if text.is_empty() {
         return Err(CliError::invalid_args("--text is required"));
     }
-    let bounds = parse_required_bounds(args, true)?;
+    let bounds = resolve_placement_bounds(file, slide as u32, args, true, None)?;
     let font_size = parse_f64_flag(args, "--font-size")?.unwrap_or(18.0);
     let font_family = parse_string_flag(args, "--font")?
         .filter(|value| !value.trim().is_empty())
@@ -336,8 +337,9 @@ fn parse_add_textbox_request(args: &[String]) -> CliResult<TextboxRequest> {
     })
 }
 
-fn parse_place_image_request(args: &[String]) -> CliResult<ImageRequest> {
-    require_value_flags(args, &["--slide", "--image", "--x", "--y", "--cx", "--cy"])?;
+fn parse_place_image_request(file: &str, args: &[String]) -> CliResult<ImageRequest> {
+    require_value_flags(args, &["--slide", "--image"])?;
+    require_explicit_geometry_without_slot(args, &["--x", "--y", "--cx", "--cy"])?;
     let slide = parse_i64_flag(args, "--slide")?.unwrap_or(0);
     if slide < 1 {
         return Err(CliError::invalid_args("--slide must be >= 1"));
@@ -351,7 +353,8 @@ fn parse_place_image_request(args: &[String]) -> CliResult<ImageRequest> {
             "file not found: {image_path}"
         )));
     }
-    let bounds = parse_required_bounds(args, false)?;
+    let aspect = image_aspect_ratio(&image_path);
+    let bounds = resolve_placement_bounds(file, slide as u32, args, false, aspect)?;
     let fit_mode = normalize_fit_mode(
         parse_string_flag(args, "--fit-mode")?
             .as_deref()
@@ -366,8 +369,9 @@ fn parse_place_image_request(args: &[String]) -> CliResult<ImageRequest> {
     })
 }
 
-fn parse_place_table_request(args: &[String]) -> CliResult<TableRequest> {
-    require_value_flags(args, &["--slide", "--data", "--cx"])?;
+fn parse_place_table_request(file: &str, args: &[String]) -> CliResult<TableRequest> {
+    require_value_flags(args, &["--slide", "--data"])?;
+    require_explicit_geometry_without_slot(args, &["--cx"])?;
     let slide = parse_i64_flag(args, "--slide")?.unwrap_or(0);
     if slide < 1 {
         return Err(CliError::invalid_args("--slide must be >= 1"));
@@ -386,11 +390,15 @@ fn parse_place_table_request(args: &[String]) -> CliResult<TableRequest> {
     if data.is_empty() {
         return Err(CliError::invalid_args("table data is empty"));
     }
-    parse_table_request_from_data(args, slide as u32, data)
+    parse_table_request_from_data(file, args, slide as u32, data)
 }
 
-fn parse_place_table_from_xlsx_request(args: &[String]) -> CliResult<TableFromXlsxRequest> {
-    require_value_flags(args, &["--workbook", "--slide", "--cx"])?;
+fn parse_place_table_from_xlsx_request(
+    file: &str,
+    args: &[String],
+) -> CliResult<TableFromXlsxRequest> {
+    require_value_flags(args, &["--workbook", "--slide"])?;
+    require_explicit_geometry_without_slot(args, &["--cx"])?;
     let slide = parse_i64_flag(args, "--slide")?.unwrap_or(0);
     if slide < 1 {
         return Err(CliError::invalid_args("--slide must be >= 1"));
@@ -422,16 +430,27 @@ fn parse_place_table_from_xlsx_request(args: &[String]) -> CliResult<TableFromXl
     if source.data.is_empty() || source.data.first().is_none_or(Vec::is_empty) {
         return Err(CliError::invalid_args("source range is empty"));
     }
-    let table = parse_table_request_from_data(args, slide as u32, source.data.clone())?;
+    let table = parse_table_request_from_data(file, args, slide as u32, source.data.clone())?;
     Ok(TableFromXlsxRequest { table, source })
 }
 
 fn parse_table_request_from_data(
+    file: &str,
     args: &[String],
     slide: u32,
     data: Vec<Vec<String>>,
 ) -> CliResult<TableRequest> {
-    let bounds = parse_required_table_bounds(args)?;
+    let bounds =
+        if let Some(bounds) = crate::cli_dispatch::pptx_slots::resolve(file, slide, args, None)? {
+            Bounds {
+                x: bounds.x,
+                y: bounds.y,
+                cx: bounds.cx,
+                cy: bounds.cy,
+            }
+        } else {
+            parse_required_table_bounds(args)?
+        };
     Ok(TableRequest {
         slide,
         data,
@@ -482,6 +501,42 @@ fn parse_required_table_bounds(args: &[String]) -> CliResult<Bounds> {
         )));
     }
     Ok(Bounds { x, y, cx, cy })
+}
+
+fn resolve_placement_bounds(
+    file: &str,
+    slide: u32,
+    args: &[String],
+    textbox: bool,
+    aspect: Option<f64>,
+) -> CliResult<Bounds> {
+    if let Some(bounds) = crate::cli_dispatch::pptx_slots::resolve(file, slide, args, aspect)? {
+        return Ok(Bounds {
+            x: bounds.x,
+            y: bounds.y,
+            cx: bounds.cx,
+            cy: bounds.cy,
+        });
+    }
+    parse_required_bounds(args, textbox)
+}
+
+fn require_explicit_geometry_without_slot(args: &[String], flags: &[&str]) -> CliResult<()> {
+    if value_flag_present(args, "--slot") {
+        Ok(())
+    } else {
+        require_value_flags(args, flags)
+    }
+}
+
+fn image_aspect_ratio(path: &str) -> Option<f64> {
+    let data = fs::read(path).ok()?;
+    if data.starts_with(b"\x89PNG\r\n\x1a\n") && data.len() >= 24 {
+        let width = u32::from_be_bytes(data[16..20].try_into().ok()?);
+        let height = u32::from_be_bytes(data[20..24].try_into().ok()?);
+        return (height > 0).then_some(width as f64 / height as f64);
+    }
+    None
 }
 
 fn require_value_flags(args: &[String], flags: &[&str]) -> CliResult<()> {

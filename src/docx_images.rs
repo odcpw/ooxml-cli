@@ -84,6 +84,14 @@ pub(crate) fn docx_images_list(file: &str) -> CliResult<Value> {
         image.insert("contentType".to_string(), json!(content_type));
         image.insert("width".to_string(), json!(image_ref.width));
         image.insert("height".to_string(), json!(image_ref.height));
+        image.insert(
+            "widthInches".to_string(),
+            json!(crate::cli_dispatch::units::inches(image_ref.width)),
+        );
+        image.insert(
+            "heightInches".to_string(),
+            json!(crate::cli_dispatch::units::inches(image_ref.height)),
+        );
         images.push(Value::Object(image));
     }
 
@@ -225,6 +233,14 @@ pub(crate) fn docx_images_replace(
     result.insert("newContentType".to_string(), json!(new_content_type));
     result.insert("width".to_string(), json!(final_width));
     result.insert("height".to_string(), json!(final_height));
+    result.insert(
+        "widthInches".to_string(),
+        json!(crate::cli_dispatch::units::inches(final_width)),
+    );
+    result.insert(
+        "heightInches".to_string(),
+        json!(crate::cli_dispatch::units::inches(final_height)),
+    );
     Ok(Value::Object(result))
 }
 
@@ -332,6 +348,14 @@ pub(crate) fn docx_images_insert(
     result.insert("newContentType".to_string(), json!(new_content_type));
     result.insert("width".to_string(), json!(width));
     result.insert("height".to_string(), json!(height));
+    result.insert(
+        "widthInches".to_string(),
+        json!(crate::cli_dispatch::units::inches(width)),
+    );
+    result.insert(
+        "heightInches".to_string(),
+        json!(crate::cli_dispatch::units::inches(height)),
+    );
     Ok(Value::Object(result))
 }
 

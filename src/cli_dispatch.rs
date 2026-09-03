@@ -1,4 +1,8 @@
 mod docx;
+#[path = "pptx_slots.rs"]
+pub(crate) mod pptx_slots;
+#[path = "units.rs"]
+pub(crate) mod units;
 mod xlsx;
 
 use serde_json::{Value, json};
@@ -34,6 +38,8 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
     if crate::help::is_help_request(args) {
         return crate::help::help(args);
     }
+    let normalized_args = units::normalize_length_args(args)?;
+    let args = normalized_args.as_slice();
     if let [cmd, rest @ ..] = args
         && cmd == "doctor"
     {
@@ -577,6 +583,9 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                     "--y",
                     "--cx",
                     "--cy",
+                    "--slot",
+                    "--inset",
+                    "--aspect",
                     "--name",
                     "--mode",
                     "--font-size",
@@ -644,6 +653,9 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                     "--y",
                     "--cx",
                     "--cy",
+                    "--slot",
+                    "--inset",
+                    "--aspect",
                     "--name",
                     "--fit-mode",
                     "--out",
@@ -673,6 +685,9 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                     "--font-size",
                     "--border-color",
                     "--border-width",
+                    "--slot",
+                    "--inset",
+                    "--aspect",
                     "--out",
                     "--backup",
                 ],
@@ -711,6 +726,9 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                     "--font-size",
                     "--border-color",
                     "--border-width",
+                    "--slot",
+                    "--inset",
+                    "--aspect",
                     "--out",
                     "--backup",
                 ],
@@ -974,6 +992,9 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                     "--y",
                     "--cx",
                     "--cy",
+                    "--slot",
+                    "--inset",
+                    "--aspect",
                     "--play-trigger",
                     "--volume",
                     "--insert-after-shape",
@@ -1323,6 +1344,9 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                     "--y",
                     "--cx",
                     "--cy",
+                    "--slot",
+                    "--inset",
+                    "--aspect",
                     "--out",
                     "--backup",
                 ],
