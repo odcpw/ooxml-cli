@@ -16,6 +16,8 @@ use crate::{
 struct DocxParagraphState {
     text: String,
     style: Option<String>,
+    list_level: Option<u32>,
+    num_id: Option<u32>,
     para_id: Option<String>,
 }
 
@@ -163,6 +165,12 @@ fn docx_note_empty_or_start(
                 paragraph.style = Some(style);
             }
         }
+        "ilvl" => {
+            paragraph.list_level = attr(element, "val").and_then(|value| value.parse().ok());
+        }
+        "numId" => {
+            paragraph.num_id = attr(element, "val").and_then(|value| value.parse().ok());
+        }
         "tab" => paragraph.text.push('\t'),
         "br" | "cr" => paragraph.text.push('\n'),
         "noBreakHyphen" => paragraph.text.push('-'),
@@ -180,6 +188,13 @@ fn docx_paragraph_block(
     block.insert("kind".to_string(), json!("paragraph"));
     if let Some(style) = paragraph.style {
         block.insert("style".to_string(), json!(style));
+        block.insert("styleId".to_string(), json!(style));
+    }
+    if let Some(list_level) = paragraph.list_level {
+        block.insert("listLevel".to_string(), json!(list_level));
+    }
+    if let Some(num_id) = paragraph.num_id {
+        block.insert("numId".to_string(), json!(num_id));
     }
     block.insert("text".to_string(), json!(paragraph.text));
     if let Some(para_id) = paragraph.para_id.filter(|para_id| !para_id.is_empty()) {

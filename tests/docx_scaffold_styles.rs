@@ -24,6 +24,35 @@ const REQUIRED_STYLES: [(&str, &str); 14] = [
     ("TableLight", "Table Light"),
 ];
 
+const STYLE_LIST_GOLDEN: [(&str, &str, &str, Option<&str>); 16] = [
+    (
+        "DefaultParagraphFont",
+        "Default Paragraph Font",
+        "character",
+        None,
+    ),
+    ("TableNormal", "Normal Table", "table", None),
+    ("Normal", "Normal", "paragraph", None),
+    ("Title", "Title", "paragraph", Some("Normal")),
+    ("Subtitle", "Subtitle", "paragraph", Some("Normal")),
+    ("Heading1", "Heading 1", "paragraph", Some("Normal")),
+    ("Heading2", "Heading 2", "paragraph", Some("Normal")),
+    ("Heading3", "Heading 3", "paragraph", Some("Normal")),
+    ("Heading4", "Heading 4", "paragraph", Some("Normal")),
+    ("ListBullet", "List Bullet", "paragraph", Some("Normal")),
+    ("ListNumber", "List Number", "paragraph", Some("Normal")),
+    ("Quote", "Quote", "paragraph", Some("Normal")),
+    ("Caption", "Caption", "paragraph", Some("Normal")),
+    (
+        "Hyperlink",
+        "Hyperlink",
+        "character",
+        Some("DefaultParagraphFont"),
+    ),
+    ("TableGrid", "Table Grid", "table", Some("TableNormal")),
+    ("TableLight", "Table Light", "table", Some("TableNormal")),
+];
+
 #[test]
 fn scaffold_has_complete_deterministic_style_aware_package() {
     let temp = temp_dir("complete");
@@ -233,6 +262,394 @@ fn template_inherits_styles_theme_and_page_setup_deterministically() {
 }
 
 #[test]
+fn every_builtin_theme_is_proven_and_styles_list_matches_reviewable_golden() {
+    let temp = temp_dir("themes-and-style-golden");
+    for (theme, seed) in [
+        ("neutral", "5B6573"),
+        ("corporate-blue", "4472C4"),
+        ("warm", "C55A11"),
+        ("dark", "4F46E5"),
+    ] {
+        let output = temp.join(format!("{theme}.docx"));
+        let report = run_ooxml_ok(&[
+            "--json",
+            "docx",
+            "scaffold",
+            path_str(&output),
+            "--theme",
+            theme,
+            "--text",
+            theme,
+        ]);
+        assert_eq!(report["theme"], theme);
+        assert_eq!(report["themeSeed"], seed);
+        assert!(
+            zip_text(&output, "word/theme/theme1.xml")
+                .contains(&format!(r#"name="ooxml-cli {theme}""#))
+        );
+        assert_all_docx_proofs(&output);
+    }
+
+    let styled = temp.join("corporate-blue.docx");
+    let list = run_ooxml_ok(&["--json", "docx", "styles", "list", path_str(&styled)]);
+    let actual = list["styles"]
+        .as_array()
+        .expect("styles list array")
+        .iter()
+        .map(|style| {
+            (
+                style["styleId"].as_str().unwrap_or_default(),
+                style["name"].as_str().unwrap_or_default(),
+                style["type"].as_str().unwrap_or_default(),
+                style.get("basedOn").and_then(Value::as_str),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual,
+        STYLE_LIST_GOLDEN,
+        "styles list drifted:\n{}",
+        serde_json::to_string_pretty(&list).unwrap()
+    );
+
+    fs::remove_dir_all(temp).expect("remove themes/style golden temp dir");
+}
+
+#[test]
+fn every_public_builtin_style_round_trips_through_its_cli_mutation_path() {
+    let temp = temp_dir("every-public-style");
+    let source = temp.join("source.docx");
+    run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path_str(&source),
+        "--text",
+        "Style target",
+    ]);
+    assert_all_docx_proofs(&source);
+
+    let paragraph_styles = [
+        "Normal",
+        "Title",
+        "Subtitle",
+        "Heading1",
+        "Heading2",
+        "Heading3",
+        "Heading4",
+        "ListBullet",
+        "ListNumber",
+        "Quote",
+        "Caption",
+    ];
+    let mut current = source;
+    for (index, style) in paragraph_styles.iter().enumerate() {
+        let output = temp.join(format!("append-{index:02}-{style}.docx"));
+        let report = run_ooxml_ok(&[
+            "--json",
+            "docx",
+            "paragraphs",
+            "append",
+            path_str(&current),
+            "--text",
+            &format!("Applied {style}"),
+            "--style",
+            style,
+            "--out",
+            path_str(&output),
+        ]);
+        assert_eq!(report["style"], *style);
+        assert_all_docx_proofs(&output);
+        current = output;
+    }
+
+    for (index, style) in paragraph_styles.iter().enumerate() {
+        let output = temp.join(format!("apply-{index:02}-{style}.docx"));
+        let report = run_ooxml_ok(&[
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            path_str(&current),
+            "--index",
+            "1",
+            "--target",
+            "paragraph",
+            "--style",
+            style,
+            "--out",
+            path_str(&output),
+        ]);
+        assert_eq!(report["style"], *style);
+        assert_all_docx_proofs(&output);
+        current = output;
+    }
+
+    let hyperlink = temp.join("apply-hyperlink.docx");
+    let hyperlink_report = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "styles",
+        "apply",
+        path_str(&current),
+        "--index",
+        "1",
+        "--target",
+        "run",
+        "--style",
+        "Hyperlink",
+        "--out",
+        path_str(&hyperlink),
+    ]);
+    assert_eq!(hyperlink_report["style"], "Hyperlink");
+    assert_all_docx_proofs(&hyperlink);
+
+    let table = temp.join("table.docx");
+    run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "tables",
+        "create",
+        path_str(&hyperlink),
+        "--values",
+        r#"[["Heading","Value"],["One",1]]"#,
+        "--out",
+        path_str(&table),
+    ]);
+    assert_all_docx_proofs(&table);
+    current = table;
+    for style in ["TableGrid", "TableLight"] {
+        let output = temp.join(format!("apply-{style}.docx"));
+        let report = run_ooxml_ok(&[
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            path_str(&current),
+            "--index",
+            "1",
+            "--target",
+            "table",
+            "--style",
+            style,
+            "--out",
+            path_str(&output),
+        ]);
+        assert_eq!(report["style"], style);
+        assert_all_docx_proofs(&output);
+        current = output;
+    }
+
+    let final_styles = run_ooxml_ok(&["--json", "docx", "styles", "list", path_str(&current)]);
+    println!(
+        "final exhaustive style list:\n{}",
+        serde_json::to_string_pretty(&final_styles).unwrap()
+    );
+    assert_eq!(final_styles["count"], 16);
+
+    fs::remove_dir_all(temp).expect("remove exhaustive style temp dir");
+}
+
+#[test]
+fn dangling_numbering_fixture_fails_and_three_level_lists_round_trip_through_text() {
+    let temp = temp_dir("numbering-fixtures");
+    let source = temp.join("source.docx");
+    let invalid = temp.join("dangling-numbering.docx");
+    let lists = temp.join("three-level-lists.docx");
+    run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path_str(&source),
+        "--text",
+        "Numbering fixture seed",
+    ]);
+    rewrite_zip_part(
+        &source,
+        &invalid,
+        "word/document.xml",
+        &fs::read(repo_path(
+            "testdata/docx/scaffold-styles/dangling-numbering-document.xml",
+        ))
+        .unwrap(),
+    );
+    let (strict_output, strict) =
+        run_ooxml(&["--json", "validate", "--strict", path_str(&invalid)], &[]);
+    assert_eq!(strict_output.status.code(), Some(5), "strict: {strict}");
+    let findings = diagnostics_with_code(&strict, "DOCX_DANGLING_NUMBERING");
+    assert_eq!(findings.len(), 1, "strict diagnostics: {strict}");
+    assert_eq!(findings[0]["numId"], 77);
+    let (check_output, check) =
+        run_ooxml(&["--json", "conformance", "check", path_str(&invalid)], &[]);
+    assert_eq!(check_output.status.code(), Some(5), "check: {check}");
+    assert_eq!(
+        diagnostics_with_code(&check, "DOCX_DANGLING_NUMBERING").len(),
+        1,
+        "conformance diagnostics: {check}"
+    );
+
+    rewrite_zip_part(
+        &source,
+        &lists,
+        "word/document.xml",
+        &fs::read(repo_path(
+            "testdata/docx/scaffold-styles/three-level-lists-document.xml",
+        ))
+        .unwrap(),
+    );
+    assert_all_docx_proofs(&lists);
+    let text = run_ooxml_ok(&["--json", "docx", "text", path_str(&lists)]);
+    let actual = text["blocks"]
+        .as_array()
+        .expect("docx text blocks")
+        .iter()
+        .map(|block| {
+            (
+                block["styleId"].as_str().unwrap_or_default(),
+                block["listLevel"].as_u64().unwrap_or(u64::MAX),
+                block["numId"].as_u64().unwrap_or_default(),
+                block["text"].as_str().unwrap_or_default(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual,
+        vec![
+            ("ListBullet", 0, 1, "Bullet level 1"),
+            ("ListBullet", 1, 1, "Bullet level 2"),
+            ("ListBullet", 2, 1, "Bullet level 3"),
+            ("ListNumber", 0, 2, "Number level 1"),
+            ("ListNumber", 1, 2, "Number level 2"),
+            ("ListNumber", 2, 2, "Number level 3"),
+        ],
+        "docx text numbering readback:\n{}",
+        serde_json::to_string_pretty(&text).unwrap()
+    );
+
+    fs::remove_dir_all(temp).expect("remove numbering fixture temp dir");
+}
+
+#[test]
+fn libreoffice_render_preserves_heading_reading_order_and_page_count() {
+    if !Path::new("/usr/bin/soffice").is_file()
+        || !Path::new("/usr/bin/pdfinfo").is_file()
+        || !Path::new("/usr/bin/pdftotext").is_file()
+    {
+        println!("SKIP LibreOffice DOCX render: soffice, pdfinfo, or pdftotext is unavailable");
+        return;
+    }
+
+    let temp = temp_dir("libreoffice-render");
+    let source = temp.join("source.docx");
+    let heading_one = temp.join("heading-one.docx");
+    let heading_two = temp.join("heading-two.docx");
+    run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path_str(&source),
+        "--text",
+        "Quarterly report title",
+    ]);
+    run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "append",
+        path_str(&source),
+        "--text",
+        "First styled heading",
+        "--style",
+        "Heading1",
+        "--out",
+        path_str(&heading_one),
+    ]);
+    run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "append",
+        path_str(&heading_one),
+        "--text",
+        "Second styled heading",
+        "--style",
+        "Heading2",
+        "--out",
+        path_str(&heading_two),
+    ]);
+    for output in [&source, &heading_one, &heading_two] {
+        assert_all_docx_proofs(output);
+    }
+
+    let profile = temp.join("lo-profile");
+    let convert = Command::new("/usr/bin/soffice")
+        .arg("--headless")
+        .arg(format!(
+            "-env:UserInstallation=file://{}",
+            profile.display()
+        ))
+        .args(["--convert-to", "pdf", "--outdir"])
+        .arg(&temp)
+        .arg(&heading_two)
+        .output()
+        .expect("run LibreOffice DOCX render");
+    assert!(
+        convert.status.success(),
+        "LibreOffice render failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&convert.stdout),
+        String::from_utf8_lossy(&convert.stderr)
+    );
+    let pdf = temp.join("heading-two.pdf");
+    assert!(
+        pdf.is_file(),
+        "LibreOffice did not produce {}",
+        pdf.display()
+    );
+
+    let info = Command::new("/usr/bin/pdfinfo")
+        .arg(&pdf)
+        .output()
+        .expect("run pdfinfo");
+    assert!(info.status.success(), "pdfinfo failed");
+    let info = String::from_utf8_lossy(&info.stdout);
+    let pages = info
+        .lines()
+        .find_map(|line| line.strip_prefix("Pages:").map(str::trim))
+        .and_then(|value| value.parse::<usize>().ok())
+        .expect("PDF page count");
+    assert_eq!(pages, 1, "unexpected PDF page count:\n{info}");
+
+    let extracted = temp.join("rendered.txt");
+    let text_output = Command::new("/usr/bin/pdftotext")
+        .args(["-layout"])
+        .arg(&pdf)
+        .arg(&extracted)
+        .output()
+        .expect("run pdftotext");
+    assert!(
+        text_output.status.success(),
+        "pdftotext failed: {}",
+        String::from_utf8_lossy(&text_output.stderr)
+    );
+    let extracted = fs::read_to_string(&extracted).expect("read extracted PDF text");
+    let title = extracted
+        .find("Quarterly report title")
+        .expect("rendered title");
+    let first = extracted
+        .find("First styled heading")
+        .expect("rendered first heading");
+    let second = extracted
+        .find("Second styled heading")
+        .expect("rendered second heading");
+    assert!(
+        title < first && first < second,
+        "headings are not in reading order:\n{extracted}"
+    );
+
+    fs::remove_dir_all(temp).expect("remove LibreOffice render temp dir");
+}
+
+#[test]
 fn committed_dangling_style_fixture_fails_strict_and_check() {
     let fixture = repo_path("testdata/docx/scaffold-styles/dangling-style.docx");
     let (output, report) = run_ooxml(&["--json", "validate", "--strict", path_str(&fixture)], &[]);
@@ -436,6 +853,7 @@ fn create_style_repairs_the_original_minimal_case_atomically() {
     let temp = temp_dir("create-style");
     let source = repo_path("testdata/docx/scaffold-styles/dangling-style.docx");
     let output = temp.join("created.docx");
+    let repeated = temp.join("created-again.docx");
     let rejected_output = temp.join("rejected.docx");
     let (rejected, error) = run_ooxml(
         &[
@@ -504,6 +922,30 @@ fn create_style_repairs_the_original_minimal_case_atomically() {
     assert_eq!(document.matches(r#"w:val="Heading1""#).count(), 2);
     assert_strict_valid(&output);
     assert_sdk_valid_if_available(&output);
+
+    let repeated_report = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "append",
+        path_str(&output),
+        "--text",
+        "Reused heading style",
+        "--style",
+        "Heading1",
+        "--create-style",
+        "--out",
+        path_str(&repeated),
+    ]);
+    assert_eq!(repeated_report["createdStyle"], false);
+    assert_eq!(
+        zip_text(&repeated, "word/styles.xml")
+            .matches(r#"w:styleId="Heading1""#)
+            .count(),
+        1,
+        "--create-style must be idempotent"
+    );
+    assert_all_docx_proofs(&repeated);
 
     fs::remove_dir_all(temp).expect("remove create-style temp dir");
 }
@@ -733,6 +1175,18 @@ fn assert_strict_valid(package: &Path) {
         package.display()
     );
     assert_eq!(report["status"], "valid");
+}
+
+fn assert_all_docx_proofs(package: &Path) {
+    assert_strict_valid(package);
+    let (output, report) = run_ooxml(&["--json", "conformance", "check", path_str(package)], &[]);
+    assert!(
+        output.status.success(),
+        "conformance failed for {}: {report}",
+        package.display()
+    );
+    assert_eq!(report["status"], "passed");
+    assert_sdk_valid_if_available(package);
 }
 
 fn assert_sdk_valid_if_available(package: &Path) {
