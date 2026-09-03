@@ -1,0 +1,164 @@
+{
+  "pptx": {
+    "area": {
+      "categoryLabelsRotated": true,
+      "chartElement": "areaChart",
+      "dataLabels": false,
+      "legendPosition": "bottom",
+      "majorValueGridlines": 1,
+      "minorGridlines": 0,
+      "numberFormat": "#,##0",
+      "seriesColors": [
+        "accent1",
+        "accent2"
+      ],
+      "seriesCount": 2,
+      "title": "Revenue",
+      "twoDimensional": true
+    },
+    "bar": {
+      "categoryLabelsRotated": true,
+      "chartElement": "barChart",
+      "dataLabels": false,
+      "legendPosition": "bottom",
+      "majorValueGridlines": 1,
+      "minorGridlines": 0,
+      "numberFormat": "#,##0",
+      "seriesColors": [
+        "accent1",
+        "accent2"
+      ],
+      "seriesCount": 2,
+      "title": "Revenue",
+      "twoDimensional": true
+    },
+    "line": {
+      "categoryLabelsRotated": true,
+      "chartElement": "lineChart",
+      "dataLabels": false,
+      "legendPosition": "bottom",
+      "majorValueGridlines": 1,
+      "minorGridlines": 0,
+      "numberFormat": "#,##0",
+      "seriesColors": [
+        "accent1",
+        "accent2"
+      ],
+      "seriesCount": 2,
+      "title": "Revenue",
+      "twoDimensional": true
+    },
+    "pie": {
+      "categoryLabelsRotated": false,
+      "chartElement": "pieChart",
+      "dataLabels": false,
+      "legendPosition": null,
+      "majorValueGridlines": 0,
+      "minorGridlines": 0,
+      "numberFormat": "#,##0",
+      "seriesColors": [
+        "accent1"
+      ],
+      "seriesCount": 1,
+      "title": "Revenue",
+      "twoDimensional": true
+    },
+    "scatter": {
+      "categoryLabelsRotated": true,
+      "chartElement": "scatterChart",
+      "dataLabels": false,
+      "legendPosition": "bottom",
+      "majorValueGridlines": 1,
+      "minorGridlines": 0,
+      "numberFormat": "#,##0",
+      "seriesColors": [
+        "accent1",
+        "accent2"
+      ],
+      "seriesCount": 2,
+      "title": "Revenue",
+      "twoDimensional": true
+    }
+  },
+  "xlsx": {
+    "area": {
+      "categoryLabelsRotated": true,
+      "chartElement": "areaChart",
+      "dataLabels": false,
+      "legendPosition": "bottom",
+      "majorValueGridlines": 1,
+      "minorGridlines": 0,
+      "numberFormat": "\"$\"#,##0.00",
+      "seriesColors": [
+        "accent1",
+        "accent2"
+      ],
+      "seriesCount": 2,
+      "title": "Revenue",
+      "twoDimensional": true
+    },
+    "bar": {
+      "categoryLabelsRotated": true,
+      "chartElement": "barChart",
+      "dataLabels": false,
+      "legendPosition": "bottom",
+      "majorValueGridlines": 1,
+      "minorGridlines": 0,
+      "numberFormat": "\"$\"#,##0.00",
+      "seriesColors": [
+        "accent1",
+        "accent2"
+      ],
+      "seriesCount": 2,
+      "title": "Revenue",
+      "twoDimensional": true
+    },
+    "line": {
+      "categoryLabelsRotated": true,
+      "chartElement": "lineChart",
+      "dataLabels": false,
+      "legendPosition": "bottom",
+      "majorValueGridlines": 1,
+      "minorGridlines": 0,
+      "numberFormat": "\"$\"#,##0.00",
+      "seriesColors": [
+        "accent1",
+        "accent2"
+      ],
+      "seriesCount": 2,
+      "title": "Revenue",
+      "twoDimensional": true
+    },
+    "pie": {
+      "categoryLabelsRotated": false,
+      "chartElement": "pieChart",
+      "dataLabels": false,
+      "legendPosition": null,
+      "majorValueGridlines": 0,
+      "minorGridlines": 0,
+      "numberFormat": "\"$\"#,##0.00",
+      "seriesColors": [
+        "accent1"
+      ],
+      "seriesCount": 1,
+      "title": "Revenue",
+      "twoDimensional": true
+    },
+    "scatter": {
+      "categoryLabelsRotated": true,
+      "chartElement": "scatterChart",
+      "dataLabels": false,
+      "legendPosition": "bottom",
+      "majorValueGridlines": 1,
+      "minorGridlines": 0,
+      "numberFormat": "\"$\"#,##0.00",
+      "seriesColors": [
+        "accent1",
+        "accent2"
+      ],
+      "seriesCount": 2,
+      "title": "Revenue",
+      "twoDimensional": true
+    }
+  }
+}

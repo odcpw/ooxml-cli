@@ -925,7 +925,7 @@ pub(super) fn build_val_axis_xml(style: &crate::chart_style::ChartHouseStyle) ->
     };
     format!(
         r#"<c:valAx><c:axId val="222222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/>{gridlines}<c:numFmt formatCode="{}" sourceLinked="0"/><c:crossAx val="111111111"/></c:valAx>"#,
-        xml_escape(&style.value_number_format)
+        xml_attr_escape(&style.value_number_format)
     )
 }
 
