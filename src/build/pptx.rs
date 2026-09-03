@@ -483,7 +483,7 @@ fn materialize_path_string(
 fn scrub_generated_paths(value: Value, temp: &Path) -> Value {
     let prefix = temp.to_string_lossy();
     match value {
-        Value::String(text) => Value::String(text.replace(prefix.as_ref(), "<build-stage>")),
+        Value::String(text) => Value::String(scrub_build_stage_string(&text, prefix.as_ref())),
         Value::Array(values) => Value::Array(
             values
                 .into_iter()
@@ -498,6 +498,38 @@ fn scrub_generated_paths(value: Value, temp: &Path) -> Value {
         ),
         scalar => scalar,
     }
+}
+
+fn scrub_build_stage_string(text: &str, prefix: &str) -> String {
+    let native = prefix.replace('/', "\\");
+    let slashed = prefix.replace('\\', "/");
+    let mut path_variants = vec![prefix.to_string(), native.clone(), slashed.clone()];
+    if native.as_bytes().get(1) == Some(&b':') {
+        path_variants.push(format!(r"\\?\{native}"));
+        path_variants.push(format!("//?/{slashed}"));
+    }
+    path_variants.sort();
+    path_variants.dedup();
+
+    let mut replacements = Vec::new();
+    for variant in path_variants {
+        let escaped = variant.replace('\\', r"\\");
+        replacements.push(format!("'{escaped}'"));
+        replacements.push(format!("\"{escaped}\""));
+        replacements.push(escaped);
+        replacements.push(crate::command_arg(&variant));
+        replacements.push(format!("'{variant}'"));
+        replacements.push(format!("\"{variant}\""));
+        replacements.push(variant);
+    }
+    replacements.sort_by_key(|value| std::cmp::Reverse(value.len()));
+    replacements.dedup();
+
+    replacements
+        .into_iter()
+        .fold(text.to_string(), |text, from| {
+            text.replace(&from, "<build-stage>")
+        })
 }
 
 fn resolved_node_map(plan: &CompiledBuildPlan, envelope: &Value) -> Value {
@@ -1359,5 +1391,37 @@ fn error(
         path: path.to_string(),
         op_id: op_id.map(str::to_string),
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_stage_scrubber_handles_windows_native_quoted_and_verbatim_paths() {
+        let prefix = r"C:\Users\RUNNER~1\AppData\Local\Temp\ooxml-pptx-build-123";
+        let value = json!({
+            "nativeCommand": format!("ooxml validate --strict {prefix}\\new-presentation.pptx"),
+            "quoted": format!("\"{prefix}\""),
+            "verbatim": format!(r"\\?\{prefix}\operations.json"),
+            "forwardSlash": format!("{}/new-presentation.pptx", prefix.replace('\\', "/")),
+            "nestedJson": format!(r#"{{"file":"{}\\generated\\bullets.json"}}"#, prefix.replace('\\', r"\\")),
+        });
+
+        let scrubbed = scrub_generated_paths(value, Path::new(prefix));
+        let serialized = serde_json::to_string(&scrubbed).unwrap();
+        assert!(!serialized.contains("RUNNER~1"));
+        assert_eq!(serialized.matches("<build-stage>").count(), 5);
+        assert_eq!(
+            scrubbed["nativeCommand"],
+            "ooxml validate --strict <build-stage>\\new-presentation.pptx"
+        );
+        assert_eq!(scrubbed["quoted"], "<build-stage>");
+        assert_eq!(scrubbed["verbatim"], "<build-stage>\\operations.json");
+        assert_eq!(
+            scrubbed["forwardSlash"],
+            "<build-stage>/new-presentation.pptx"
+        );
     }
 }
