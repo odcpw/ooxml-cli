@@ -357,7 +357,7 @@ pub(crate) fn xlsx_colwidths_autofit(
         "max": dimension_json(options.max),
         "font": font_name,
         "fontSize": dimension_json(font_size),
-        "heuristic": "simple-average-glyph-width-v1",
+        "heuristic": "per-character-font-metrics-v1",
         "widths": widths,
         "dryRun": options.dry_run,
     }))
@@ -402,32 +402,13 @@ fn workbook_default_font(file: &str) -> (String, f64) {
 }
 
 fn estimated_cell_width(value: &crate::CellValue, font: &str, font_size: f64) -> f64 {
-    let chars = value
-        .display_value
-        .chars()
-        .map(|ch| if ch.is_ascii() { 1.0 } else { 1.8 })
-        .sum::<f64>();
-    let format_allowance = value.number_format_code.as_deref().map_or(0.0, |code| {
-        if code.contains('%') {
-            1.0
-        } else if code.contains('$')
-            || code.contains('€')
-            || code.contains('£')
-            || code.contains("yy")
-        {
-            2.0
-        } else {
-            0.0
-        }
-    });
-    let average_px = match font.to_ascii_lowercase().as_str() {
-        "calibri" => 7.0,
-        "arial" => 7.2,
-        "courier new" => 7.9,
-        "aptos display" => 7.3,
-        _ => 7.1,
-    };
-    (chars + format_allowance + 1.5) * (average_px / 7.0) * (font_size / 11.0)
+    crate::text_metrics::estimate_excel_column_width(
+        &value.display_value,
+        font,
+        font_size,
+        false,
+        value.number_format_code.as_deref(),
+    )
 }
 
 pub(crate) fn xlsx_rowheights_set(

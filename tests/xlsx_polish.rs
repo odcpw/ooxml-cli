@@ -123,7 +123,7 @@ fn autofit_and_theme_header_preset_are_schema_clean() {
         "--out",
         autofit.to_str().unwrap(),
     ]);
-    assert_eq!(report["heuristic"], "simple-average-glyph-width-v1");
+    assert_eq!(report["heuristic"], "per-character-font-metrics-v1");
     for column in ["A", "B"] {
         let width = report["widths"][column].as_f64().expect("width");
         assert!((8.0..=20.0).contains(&width), "{report}");

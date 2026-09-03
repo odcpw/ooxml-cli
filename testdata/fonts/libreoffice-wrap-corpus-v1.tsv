@@ -1,0 +1,51 @@
+# id<TAB>paragraph; each row is rendered alone in a 4 inch LibreOffice text block at 18 pt
+01	Short title
+02	Quarterly revenue summary
+03	The quick brown fox jumps over the lazy dog.
+04	A concise sentence should remain on one measured line.
+05	Revenue increased across every region during the quarter.
+06	Customer retention improved while acquisition costs remained stable.
+07	The project team completed the migration before the scheduled deadline.
+08	Design systems make repeated authoring choices predictable and reviewable.
+09	Reliable automation reports what it measured and names what remains unproven.
+10	The workbook includes regional revenue, product mix, and year over year growth.
+11	Agents should receive stable selectors, deterministic output, and useful diagnostics.
+12	Presentation layouts need enough room for readable text and balanced whitespace.
+13	A trustworthy estimator uses the actual advance width of every printable character.
+14	Bold headings are slightly wider than body copy and must be measured independently.
+15	Narrow letters like i and l consume less space than wide letters like W and M.
+16	Numbers 1234567890 and punctuation can materially change the width of a report label.
+17	Forecast accuracy improved after the planning model incorporated seasonal demand.
+18	Operational excellence depends on small repeatable checks at every mutation boundary.
+19	The sales organization expanded coverage without increasing average response time.
+20	Clear ownership and explicit evidence keep parallel engineering work from colliding.
+21	This paragraph contains enough words to wrap across several lines in a four inch box while remaining easy to inspect.
+22	The release candidate passed structural validation, schema validation, and a visual render inspection on Linux.
+23	Every generated artifact should carry a readback command and the strongest proof command available in the environment.
+24	When a platform font is unavailable the debug report names the calibrated substitute instead of pretending the native font was measured.
+25	Deterministic numeric tables make the layout calculation portable across developer laptops, CI runners, and headless agents.
+26	A body paragraph can include currency values such as USD 12,450.75 and percentages such as 18.4 percent without clipping.
+27	The executive summary explains the decision, the supporting evidence, the material risk, and the recommended next action.
+28	Good defaults reduce command count because the user does not need to repair avoidable spacing, color, or typography problems.
+29	The estimator respects paragraph indentation so bullets do not silently consume the horizontal space intended for their text.
+30	Line spacing contributes to vertical overflow even when the same words occupy an identical number of wrapped lines.
+31	A layout warning is actionable when it identifies the shape, reports the available bounds, and suggests a concrete correction.
+32	The measurement surface is read only and emits JSON so another agent can compare its estimate with a rendered presentation.
+33	Font metrics are factual numeric observations extracted from font tables; this repository does not redistribute the fonts themselves.
+34	The fallback profile covers unknown families conservatively and remains visible in the result for honest debugging.
+35	Wide uppercase sequences such as WWW MMM QQQ occupy more room than narrow sequences such as iii lll ttt.
+36	Mixed case labels like Gross Margin, Net Revenue, and Operating Expense appear throughout financial presentations.
+37	A long category label may need rotation on a chart while an ordinary body paragraph should wrap naturally within its placeholder.
+38	The visual calibration corpus contains fifty independent paragraphs and states that denominator in every failure report.
+39	The current estimate is acceptable when each rendered paragraph differs by no more than one visual line from LibreOffice.
+40	Regression tests pin representative character advances, fallback selection, bold behavior, wrapping, height, and Excel column width.
+41	Simple data is easier to audit than compressed generated source because a reviewer can inspect every stored number and mapping.
+42	Text measurement is an estimate rather than a full shaping engine, so complex scripts and ligatures remain an explicit limitation.
+43	The implementation handles explicit newlines, spaces, tabs, long tokens, bullet indents, and ordinary Unicode fallback widths.
+44	Autofit uses the same font table as slide overflow checks so both features agree about the width of identical text.
+45	The exact shape bounds can come from the slide, its layout, or its master, and the debug output preserves that provenance.
+46	A small amount of cell padding is added after measuring the displayed value because spreadsheet columns are not bare text boxes.
+47	Percentage, currency, date, and scientific number formats reserve additional width for glyphs introduced by formatting.
+48	Unknown font families resolve to a documented Noto Sans profile rather than depending on whatever fontconfig happens to choose.
+49	The measured source family is returned beside the requested family so substitutions are observable in automated diagnostics.
+50	This final calibration paragraph confirms that the complete fifty paragraph corpus renders, extracts, and compares deterministically.

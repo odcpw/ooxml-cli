@@ -5,6 +5,7 @@ use std::path::Path;
 
 use crate::pptx_readback::pptx_resolved_shape_models;
 use crate::pptx_readback::shape_model::{Bounds, BoundsSource, Shape};
+use crate::text_metrics::{ParagraphMeasure, TextAutofit, measure_text_box_with_autofit};
 use crate::{
     CliError, CliResult, append_xml_text_event, attr, attr_exact, command_arg, is_xml_text_event,
     local_name, package_type, relationships, resolve_relationship_target, zip_text,
@@ -27,14 +28,23 @@ struct LayoutShape {
 struct TextBlock {
     paragraphs: Vec<Paragraph>,
     plain_text: String,
+    left_inset: Option<i64>,
+    right_inset: Option<i64>,
     top_inset: Option<i64>,
     bottom_inset: Option<i64>,
+    autofit: TextAutofit,
 }
 
 #[derive(Default)]
 struct Paragraph {
     text: String,
     font_sizes: Vec<f64>,
+    font_family: String,
+    bold: bool,
+    left_indent: i64,
+    right_indent: i64,
+    first_line_indent: i64,
+    bullet: bool,
 }
 
 struct SlideContext<'a> {
@@ -350,22 +360,48 @@ fn text_overflow_json(context: &SlideContext<'_>, shape: &LayoutShape) -> Option
         return None;
     }
 
-    let mut available_height = bounds.cy;
-    if let Some(inset) = text.top_inset {
-        available_height -= inset;
-    }
-    if let Some(inset) = text.bottom_inset {
-        available_height -= inset;
-    }
-
-    let max_font_size = text
+    let paragraphs = text
         .paragraphs
         .iter()
-        .flat_map(|paragraph| paragraph.font_sizes.iter().copied())
-        .fold(18.0_f64, f64::max);
-    let line_height = (max_font_size * 12_700.0 * 1.3).round() as i64;
-    let total_lines = estimate_line_count(&text.paragraphs);
-    let estimated_height = line_height * total_lines as i64;
+        .map(|paragraph| ParagraphMeasure {
+            text: &paragraph.text,
+            font_family: if paragraph.font_family.is_empty() {
+                "Aptos"
+            } else {
+                &paragraph.font_family
+            },
+            font_size_points: paragraph
+                .font_sizes
+                .iter()
+                .copied()
+                .fold(18.0_f64, f64::max),
+            bold: paragraph.bold,
+            left_indent_emu: paragraph.left_indent,
+            right_indent_emu: paragraph.right_indent,
+            first_line_indent_emu: paragraph.first_line_indent,
+            bullet: paragraph.bullet,
+            line_spacing: 1.0,
+        })
+        .collect::<Vec<_>>();
+    let measurement = measure_text_box_with_autofit(
+        &paragraphs,
+        bounds.cx,
+        bounds.cy,
+        text.left_inset.unwrap_or(91_440),
+        text.right_inset.unwrap_or(91_440),
+        text.top_inset.unwrap_or(45_720),
+        text.bottom_inset.unwrap_or(45_720),
+        text.autofit,
+    );
+    let available_height = measurement.available_height_emu;
+    let estimated_height = measurement.height_emu;
+    let total_lines = measurement.line_count;
+    let line_height = measurement
+        .paragraphs
+        .iter()
+        .map(|paragraph| paragraph.line_height_emu)
+        .max()
+        .unwrap_or_default();
     let overflow_amount = estimated_height - available_height;
     if overflow_amount <= line_height / 2 {
         return None;
@@ -393,11 +429,17 @@ fn text_overflow_json(context: &SlideContext<'_>, shape: &LayoutShape) -> Option
         "boundsSource": shape.bounds_source.map(BoundsSource::as_str),
         "severity": severity,
         "estimatedTextHeight": estimated_height,
+        "estimatedLineCount": total_lines,
+        "availableTextWidth": measurement.available_width_emu,
         "availableHeight": available_height,
         "overflowAmount": overflow_amount,
         "textLength": text.plain_text.len(),
         "paragraphCount": text.paragraphs.len(),
         "averageLineHeight": line_height,
+        "metricDataVersion": 1,
+        "autofitMode": measurement.autofit_mode,
+        "effectiveFontScale": measurement.effective_font_scale,
+        "fontSources": measurement.paragraphs.iter().map(|paragraph| paragraph.source_font_family.as_str()).collect::<Vec<_>>(),
         "reason": format!(
             "Text requires ~{estimated_height} EMU height but only {available_height} available ({overflow_amount} EMU overflow)"
         ),
@@ -600,17 +642,6 @@ fn layout_fixed_path(file: &str) -> String {
         .into_owned()
 }
 
-fn estimate_line_count(paragraphs: &[Paragraph]) -> usize {
-    let mut total = 0_usize;
-    for paragraph in paragraphs {
-        if paragraph.text.is_empty() {
-            continue;
-        }
-        total += 1 + paragraph.text.len() / 40;
-    }
-    total.max(1)
-}
-
 fn layout_shapes_from_resolved(xml: &str, resolved: &[Shape]) -> Vec<LayoutShape> {
     let mut text_shapes = parse_layout_shapes(xml);
     resolved
@@ -752,7 +783,21 @@ fn parse_shape_start(
                 shape.text.get_or_insert_with(TextBlock::default);
             }
             "bodyPr" if *in_tx_body => apply_body_pr(shape, e),
+            "spAutoFit" if *in_tx_body => apply_autofit(shape, TextAutofit::ResizeShape),
+            "noAutofit" if *in_tx_body => apply_autofit(shape, TextAutofit::None),
+            "normAutofit" if *in_tx_body => apply_normal_autofit(shape, e),
             "p" if *in_tx_body => *current_paragraph = Some(Paragraph::default()),
+            "pPr" if *in_tx_body => apply_paragraph_properties(current_paragraph, e),
+            "buChar" | "buAutoNum" if *in_tx_body => {
+                if let Some(paragraph) = current_paragraph.as_mut() {
+                    paragraph.bullet = true;
+                }
+            }
+            "buNone" if *in_tx_body => {
+                if let Some(paragraph) = current_paragraph.as_mut() {
+                    paragraph.bullet = false;
+                }
+            }
             "br" if *in_tx_body => {
                 if let Some(paragraph) = current_paragraph.as_mut() {
                     paragraph.text.push('\n');
@@ -763,7 +808,8 @@ fn parse_shape_start(
                     paragraph.text.push('\t');
                 }
             }
-            "defRPr" | "rPr" if *in_tx_body => apply_font_size(current_paragraph, e),
+            "defRPr" | "rPr" if *in_tx_body => apply_run_properties(current_paragraph, e),
+            "latin" if *in_tx_body => apply_font_family(current_paragraph, e),
             _ => {}
         }
     }
@@ -783,9 +829,23 @@ fn parse_shape_empty(
             shape.text.get_or_insert_with(TextBlock::default);
         }
         "bodyPr" if *in_tx_body => apply_body_pr(shape, e),
+        "spAutoFit" if *in_tx_body => apply_autofit(shape, TextAutofit::ResizeShape),
+        "noAutofit" if *in_tx_body => apply_autofit(shape, TextAutofit::None),
+        "normAutofit" if *in_tx_body => apply_normal_autofit(shape, e),
         "p" if *in_tx_body => {
             let text = shape.text.get_or_insert_with(TextBlock::default);
             text.paragraphs.push(Paragraph::default());
+        }
+        "pPr" if *in_tx_body => apply_paragraph_properties(current_paragraph, e),
+        "buChar" | "buAutoNum" if *in_tx_body => {
+            if let Some(paragraph) = current_paragraph.as_mut() {
+                paragraph.bullet = true;
+            }
+        }
+        "buNone" if *in_tx_body => {
+            if let Some(paragraph) = current_paragraph.as_mut() {
+                paragraph.bullet = false;
+            }
         }
         "br" if *in_tx_body => {
             if let Some(paragraph) = current_paragraph.as_mut() {
@@ -797,7 +857,8 @@ fn parse_shape_empty(
                 paragraph.text.push('\t');
             }
         }
-        "defRPr" | "rPr" if *in_tx_body => apply_font_size(current_paragraph, e),
+        "defRPr" | "rPr" if *in_tx_body => apply_run_properties(current_paragraph, e),
+        "latin" if *in_tx_body => apply_font_family(current_paragraph, e),
         _ => {}
     }
 }
@@ -815,17 +876,75 @@ fn apply_cnvpr(shape: &mut LayoutShape, e: &BytesStart<'_>) {
 
 fn apply_body_pr(shape: &mut LayoutShape, e: &BytesStart<'_>) {
     let text = shape.text.get_or_insert_with(TextBlock::default);
+    text.left_inset = attr(e, "lIns").and_then(|value| value.parse().ok());
+    text.right_inset = attr(e, "rIns").and_then(|value| value.parse().ok());
     text.top_inset = attr(e, "tIns").and_then(|value| value.parse().ok());
     text.bottom_inset = attr(e, "bIns").and_then(|value| value.parse().ok());
 }
 
-fn apply_font_size(current_paragraph: &mut Option<Paragraph>, e: &BytesStart<'_>) {
+fn apply_autofit(shape: &mut LayoutShape, autofit: TextAutofit) {
+    shape.text.get_or_insert_with(TextBlock::default).autofit = autofit;
+}
+
+fn apply_normal_autofit(shape: &mut LayoutShape, e: &BytesStart<'_>) {
+    let font_scale = attr(e, "fontScale")
+        .and_then(|value| value.parse::<f64>().ok())
+        .map(|value| value / 100_000.0)
+        .unwrap_or(1.0);
+    let line_spacing_reduction = attr(e, "lnSpcReduction")
+        .and_then(|value| value.parse::<f64>().ok())
+        .map(|value| value / 100_000.0)
+        .unwrap_or(0.0);
+    apply_autofit(
+        shape,
+        TextAutofit::ShrinkText {
+            font_scale,
+            line_spacing_reduction,
+        },
+    );
+}
+
+fn apply_paragraph_properties(current_paragraph: &mut Option<Paragraph>, e: &BytesStart<'_>) {
+    let Some(paragraph) = current_paragraph.as_mut() else {
+        return;
+    };
+    paragraph.left_indent = attr(e, "marL")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(paragraph.left_indent);
+    paragraph.right_indent = attr(e, "marR")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(paragraph.right_indent);
+    paragraph.first_line_indent = attr(e, "indent")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(paragraph.first_line_indent);
+}
+
+fn apply_run_properties(current_paragraph: &mut Option<Paragraph>, e: &BytesStart<'_>) {
     let Some(paragraph) = current_paragraph.as_mut() else {
         return;
     };
     if let Some(size) = attr(e, "sz").and_then(|value| value.parse::<f64>().ok()) {
         paragraph.font_sizes.push(size / 100.0);
     }
+    if attr(e, "b").as_deref().is_some_and(is_true_xml_value) {
+        paragraph.bold = true;
+    }
+}
+
+fn apply_font_family(current_paragraph: &mut Option<Paragraph>, e: &BytesStart<'_>) {
+    let Some(paragraph) = current_paragraph.as_mut() else {
+        return;
+    };
+    if let Some(typeface) = attr(e, "typeface")
+        && !typeface.is_empty()
+        && !typeface.starts_with('+')
+    {
+        paragraph.font_family = typeface;
+    }
+}
+
+fn is_true_xml_value(value: &str) -> bool {
+    value == "1" || value.eq_ignore_ascii_case("true")
 }
 
 fn pptx_slide_refs(xml: &str) -> Vec<(u32, String)> {

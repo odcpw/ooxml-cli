@@ -1,0 +1,10 @@
+# requestedFamily<TAB>profile<TAB>selection
+Liberation Sans	liberation-sans	native
+Liberation Serif	liberation-serif	native
+Arial	liberation-sans	metric-compatible LibreOffice substitute
+Calibri	liberation-sans	LibreOffice calibration substitute
+Aptos	noto-sans	cross-platform calibration substitute
+Aptos Display	noto-sans	cross-platform calibration substitute
+Segoe UI	noto-sans	cross-platform calibration substitute
+DejaVu Sans	noto-sans	cross-platform calibration substitute
+*	noto-sans	unknown-family fallback
