@@ -205,11 +205,27 @@ fn compile_minimal_pptx(
     document: &Map<String, Value>,
     compiler: &mut BuildCompiler,
 ) -> Result<(), BuildCompileError> {
+    require_only_minimal_fields(
+        document,
+        &[
+            "schemaVersion",
+            "family",
+            "theme",
+            "themeSeed",
+            "template",
+            "brand",
+            "size",
+            "slides",
+        ],
+        "/",
+    )?;
     let slides = document["slides"]
         .as_array()
         .expect("validated slides array");
     require_one_minimal_node(slides.len(), "/slides")?;
     let slide = slides[0].as_object().expect("validated slide object");
+    require_only_minimal_fields(slide, &["id", "layout", "title", "subtitle"], "/slides/0")?;
+    require_minimal_variant(slide, "layout", "Title Slide", "/slides/0/layout")?;
     let mut args = Map::new();
     copy_string_arg(slide, "title", "title", &mut args);
     copy_string_arg(slide, "subtitle", "subtitle", &mut args);
@@ -231,11 +247,24 @@ fn compile_minimal_xlsx(
     document: &Map<String, Value>,
     compiler: &mut BuildCompiler,
 ) -> Result<(), BuildCompileError> {
+    require_only_minimal_fields(
+        document,
+        &[
+            "schemaVersion",
+            "family",
+            "theme",
+            "themeSeed",
+            "brand",
+            "sheets",
+        ],
+        "/",
+    )?;
     let sheets = document["sheets"]
         .as_array()
         .expect("validated sheets array");
     require_one_minimal_node(sheets.len(), "/sheets")?;
     let sheet = sheets[0].as_object().expect("validated sheet object");
+    require_only_minimal_fields(sheet, &["id", "name"], "/sheets/0")?;
     let mut args = Map::new();
     copy_string_arg(sheet, "name", "sheet", &mut args);
     for field in ["theme", "themeSeed"] {
@@ -256,11 +285,26 @@ fn compile_minimal_docx(
     document: &Map<String, Value>,
     compiler: &mut BuildCompiler,
 ) -> Result<(), BuildCompileError> {
+    require_only_minimal_fields(
+        document,
+        &[
+            "schemaVersion",
+            "family",
+            "theme",
+            "themeSeed",
+            "template",
+            "brand",
+            "blocks",
+        ],
+        "/",
+    )?;
     let blocks = document["blocks"]
         .as_array()
         .expect("validated blocks array");
     require_one_minimal_node(blocks.len(), "/blocks")?;
     let block = blocks[0].as_object().expect("validated block object");
+    require_only_minimal_fields(block, &["id", "type", "text"], "/blocks/0")?;
+    require_minimal_variant(block, "type", "paragraph", "/blocks/0/type")?;
     let mut args = Map::new();
     copy_string_arg(block, "text", "text", &mut args);
     for field in ["theme", "themeSeed", "template"] {
@@ -289,6 +333,58 @@ fn require_one_minimal_node(count: usize, path: &str) -> Result<(), BuildCompile
             "the shared core compiler accepts one minimal node; {count} nodes require the dedicated family build compiler"
         ),
     })
+}
+
+fn require_only_minimal_fields(
+    object: &Map<String, Value>,
+    allowed: &[&str],
+    path: &str,
+) -> Result<(), BuildCompileError> {
+    if let Some(field) = object
+        .keys()
+        .filter(|field| !allowed.contains(&field.as_str()))
+        .min()
+    {
+        let path = if path == "/" {
+            format!("/{field}")
+        } else {
+            format!("{path}/{field}")
+        };
+        return Err(family_compiler_required(
+            &path,
+            format!("field {field:?} requires the dedicated family build compiler"),
+        ));
+    }
+    Ok(())
+}
+
+fn require_minimal_variant(
+    object: &Map<String, Value>,
+    field: &str,
+    expected: &str,
+    path: &str,
+) -> Result<(), BuildCompileError> {
+    let actual = object[field]
+        .as_str()
+        .expect("validated minimal variant is a string");
+    if actual == expected {
+        return Ok(());
+    }
+    Err(family_compiler_required(
+        path,
+        format!(
+            "{field} {actual:?} requires the dedicated family build compiler; the shared minimal compiler supports {expected:?}"
+        ),
+    ))
+}
+
+fn family_compiler_required(path: &str, message: impl Into<String>) -> BuildCompileError {
+    BuildCompileError {
+        code: "BUILD_SPEC_FAMILY_COMPILER_REQUIRED".to_string(),
+        path: path.to_string(),
+        op_id: None,
+        message: message.into(),
+    }
 }
 
 fn copy_string_arg(

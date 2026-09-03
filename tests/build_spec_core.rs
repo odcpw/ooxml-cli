@@ -316,6 +316,36 @@ fn minimal_family_specs_compile_to_pinned_batch_plans() {
 }
 
 #[test]
+fn minimal_compiler_never_silently_drops_rich_family_fields() {
+    let pptx = load_spec_str(
+        BuildFamily::Pptx,
+        &json!({
+            "schemaVersion": 1,
+            "family": "pptx",
+            "slides": [{
+                "layout": "Title Slide",
+                "title": "Metrics",
+                "bullets": [{"text": "Revenue"}]
+            }]
+        })
+        .to_string(),
+    )
+    .expect("rich presentation spec loads");
+    let error = compile_minimal_spec(&pptx).expect_err("rich fields must not be dropped");
+    assert_eq!(error.code, "BUILD_SPEC_FAMILY_COMPILER_REQUIRED");
+    assert_eq!(error.path, "/slides/0/bullets");
+    assert_eq!(error.op_id, None);
+
+    let docx = load_spec_str(
+        BuildFamily::Docx,
+        r#"{"schemaVersion":1,"family":"docx","blocks":[{"type":"image","image":{"path":"hero.png"}}]}"#,
+    )
+    .expect("image document spec loads");
+    let error = compile_minimal_spec(&docx).expect_err("non-paragraph block needs family compiler");
+    assert_eq!(error.path, "/blocks/0/image");
+}
+
+#[test]
 fn compiler_preserves_recursive_refs_and_rejects_unsafe_or_unresolved_ops() {
     let mut compiler = BuildCompiler::new(BuildFamily::Pptx);
     compiler
