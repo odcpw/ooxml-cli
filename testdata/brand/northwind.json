@@ -1,0 +1,24 @@
+{
+  "$schema": "https://ooxml-cli.dev/schemas/brand.schema.json",
+  "name": "Northwind",
+  "colors": {
+    "seed": "#316F8A"
+  },
+  "fonts": {
+    "heading": "Arial",
+    "body": "Liberation Sans",
+    "mono": "Liberation Mono",
+    "fallbacks": [
+      "Aptos",
+      "Calibri"
+    ]
+  },
+  "footerText": "Northwind Confidential",
+  "slideNumberPolicy": "all",
+  "pageSetup": {
+    "orientation": "landscape",
+    "paperSize": "A4",
+    "slideSize": "screen16x9"
+  },
+  "tableStyle": "TableStyleMedium2"
+}

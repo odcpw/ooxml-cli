@@ -1,0 +1,23 @@
+{
+  "$schema": "ooxml-brand.schema.json",
+  "colors": {
+    "accent1": "316F8A",
+    "accent2": "6769A3",
+    "accent3": "824F70",
+    "accent4": "975A43",
+    "accent5": "696128",
+    "accent6": "35795A",
+    "dark1": "081115",
+    "dark2": "153543",
+    "followedHyperlink": "2F6B4F",
+    "hyperlink": "815B0B",
+    "light1": "FFFFFF",
+    "light2": "E8F2F7"
+  },
+  "fonts": {
+    "body": "Liberation Sans",
+    "heading": "Arial"
+  },
+  "name": "Northwind",
+  "slideNumberPolicy": "all"
+}

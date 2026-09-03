@@ -208,6 +208,7 @@ pub(crate) fn template_brand_extract(file: &str, args: &[String]) -> CliResult<V
                 .or_else(|| theme
                     .get("name")
                     .and_then(Value::as_str)
+                    .map(|name| name.strip_prefix("ooxml-cli ").unwrap_or(name))
                     .map(ToOwned::to_owned))
                 .unwrap_or_else(|| format!("{} brand", kind.to_ascii_uppercase()))
         ),
@@ -325,6 +326,7 @@ fn brand_overrides(
     let mut overrides = crate::template_workflow::brand_theme_overrides(
         file,
         family,
+        &kit.name,
         &kit.palette,
         &kit.fonts.heading,
         &kit.fonts.body,
@@ -384,6 +386,22 @@ fn add_xlsx_overrides(
         let worksheet = zip_text(file, &part)?;
         let updated = update_xlsx_worksheet(&worksheet, kit)?;
         if updated != worksheet {
+            overrides.insert(part, updated);
+        }
+    }
+    for part in zip_entry_names(file)?
+        .into_iter()
+        .filter(|part| part.starts_with("xl/tables/") && part.ends_with(".xml"))
+    {
+        let table = zip_text(file, &part)?;
+        let updated = if let Some(style) = kit.table_style.as_deref() {
+            rewrite_all_tags(&table, "tableStyleInfo", |tag| {
+                set_tag_attrs(tag, &[("name", style)])
+            })?
+        } else {
+            table.clone()
+        };
+        if updated != table {
             overrides.insert(part, updated);
         }
     }
@@ -563,15 +581,167 @@ fn update_xlsx_styles(xml: &str, kit: &BrandKit) -> CliResult<String> {
 }
 
 fn update_xlsx_worksheet(xml: &str, kit: &BrandKit) -> CliResult<String> {
-    let Some(setup) = kit.page_setup.as_ref().and_then(Value::as_object) else {
-        return Ok(xml.to_string());
+    let mut updated = xml.to_string();
+    if let Some(setup) = kit.page_setup.as_ref().and_then(Value::as_object) {
+        let orientation = setup.get("orientation").and_then(Value::as_str);
+        let paper_size = setup
+            .get("paperSize")
+            .and_then(Value::as_str)
+            .map(xlsx_paper_size)
+            .transpose()?;
+        if orientation.is_some() || paper_size.is_some() {
+            let paper_size = paper_size.map(|value| value.to_string());
+            if contains_local_tag(&updated, "pageSetup") {
+                updated = rewrite_all_tags(&updated, "pageSetup", |tag| {
+                    let mut changes = Vec::new();
+                    if let Some(orientation) = orientation {
+                        changes.push(("orientation", orientation));
+                    }
+                    if let Some(paper_size) = paper_size.as_deref() {
+                        changes.push(("paperSize", paper_size));
+                    }
+                    set_tag_attrs(tag, &changes)
+                })?;
+            } else {
+                let mut tag = "<pageSetup/>".to_string();
+                let mut changes = Vec::new();
+                if let Some(orientation) = orientation {
+                    changes.push(("orientation", orientation));
+                }
+                if let Some(paper_size) = paper_size.as_deref() {
+                    changes.push(("paperSize", paper_size));
+                }
+                tag = set_tag_attrs(&tag, &changes)?;
+                let insert_at = worksheet_insert_position(&updated, "pageSetup")?;
+                updated.insert_str(insert_at, &tag);
+            }
+        }
+    }
+    if let Some(footer) = kit.footer_text.as_deref() {
+        updated = update_xlsx_footer(&updated, footer)?;
+    }
+    Ok(updated)
+}
+
+fn update_xlsx_footer(xml: &str, footer: &str) -> CliResult<String> {
+    let text = crate::xml_escape(footer);
+    if let Some((start, open_end)) = find_start_tag(xml, "headerFooter", 0) {
+        let tag = &xml[start..open_end];
+        if tag.trim_end().ends_with("/>") {
+            let prefix = xml_tag_prefix(tag);
+            let replacement = format!(
+                "<{}headerFooter><{}oddFooter>{}</{}oddFooter></{}headerFooter>",
+                prefix, prefix, text, prefix, prefix
+            );
+            return Ok(replace_range(xml, start, open_end, &replacement));
+        }
+        let (close_start, _) = find_end_tag(xml, "headerFooter", open_end)
+            .ok_or_else(|| CliError::unexpected("unterminated XLSX headerFooter"))?;
+        if let Some((footer_start, footer_open_end)) = find_start_tag(xml, "oddFooter", open_end)
+            && footer_start < close_start
+        {
+            let (footer_close, footer_end) = find_end_tag(xml, "oddFooter", footer_open_end)
+                .ok_or_else(|| CliError::unexpected("unterminated XLSX oddFooter"))?;
+            let replacement = format!(
+                "{}{}{}",
+                &xml[footer_start..footer_open_end],
+                text,
+                &xml[footer_close..footer_end]
+            );
+            return Ok(replace_range(xml, footer_start, footer_end, &replacement));
+        }
+        let prefix = xml_tag_prefix(tag);
+        let odd_footer = format!("<{prefix}oddFooter>{text}</{prefix}oddFooter>");
+        let mut updated = xml.to_string();
+        updated.insert_str(close_start, &odd_footer);
+        return Ok(updated);
+    }
+    let prefix = xml_tag_prefix(xml);
+    let header_footer = format!(
+        "<{prefix}headerFooter><{prefix}oddFooter>{text}</{prefix}oddFooter></{prefix}headerFooter>"
+    );
+    let insert_at = worksheet_insert_position(xml, "headerFooter")?;
+    let mut updated = xml.to_string();
+    updated.insert_str(insert_at, &header_footer);
+    Ok(updated)
+}
+
+fn worksheet_insert_position(xml: &str, child: &str) -> CliResult<usize> {
+    const ORDER: &[&str] = &[
+        "sheetPr",
+        "dimension",
+        "sheetViews",
+        "sheetFormatPr",
+        "cols",
+        "sheetData",
+        "sheetCalcPr",
+        "sheetProtection",
+        "protectedRanges",
+        "scenarios",
+        "autoFilter",
+        "sortState",
+        "dataConsolidate",
+        "customSheetViews",
+        "mergeCells",
+        "phoneticPr",
+        "conditionalFormatting",
+        "dataValidations",
+        "hyperlinks",
+        "printOptions",
+        "pageMargins",
+        "pageSetup",
+        "headerFooter",
+        "rowBreaks",
+        "colBreaks",
+        "customProperties",
+        "cellWatches",
+        "ignoredErrors",
+        "smartTags",
+        "drawing",
+        "legacyDrawing",
+        "legacyDrawingHF",
+        "picture",
+        "oleObjects",
+        "controls",
+        "webPublishItems",
+        "tableParts",
+        "extLst",
+    ];
+    let rank = ORDER
+        .iter()
+        .position(|name| *name == child)
+        .ok_or_else(|| {
+            CliError::unexpected(format!("unknown worksheet child order entry {child}"))
+        })?;
+    let root_open = find_start_tag(xml, "worksheet", 0)
+        .ok_or_else(|| CliError::unexpected("worksheet root not found"))?
+        .1;
+    let root_close = find_end_tag(xml, "worksheet", root_open)
+        .ok_or_else(|| CliError::unexpected("unterminated worksheet root"))?
+        .0;
+    for candidate in ORDER.iter().skip(rank + 1) {
+        if let Some((start, _)) = find_start_tag(xml, candidate, root_open)
+            && start < root_close
+        {
+            return Ok(start);
+        }
+    }
+    Ok(root_close)
+}
+
+fn xml_tag_prefix(tag: &str) -> String {
+    let Some(start) = tag.find('<') else {
+        return String::new();
     };
-    let Some(orientation) = setup.get("orientation").and_then(Value::as_str) else {
-        return Ok(xml.to_string());
-    };
-    rewrite_all_tags(xml, "pageSetup", |tag| {
-        set_tag_attrs(tag, &[("orientation", orientation)])
-    })
+    let token = tag[start + 1..]
+        .trim_start()
+        .split(|ch: char| ch.is_whitespace() || ch == '/' || ch == '>')
+        .next()
+        .unwrap_or_default();
+    token
+        .split_once(':')
+        .map(|(prefix, _)| format!("{prefix}:"))
+        .unwrap_or_default()
 }
 
 fn update_pptx_page_setup(xml: &str, setup: &Value) -> CliResult<String> {
@@ -1040,6 +1210,16 @@ fn docx_paper_twips(name: &str) -> CliResult<(i64, i64)> {
     match name {
         "letter" => Ok((12_240, 15_840)),
         "A4" => Ok((11_906, 16_838)),
+        _ => Err(CliError::invalid_args(
+            "brand pageSetup.paperSize must be letter or A4",
+        )),
+    }
+}
+
+fn xlsx_paper_size(name: &str) -> CliResult<i64> {
+    match name {
+        "letter" => Ok(1),
+        "A4" => Ok(9),
         _ => Err(CliError::invalid_args(
             "brand pageSetup.paperSize must be letter or A4",
         )),

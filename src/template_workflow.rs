@@ -1168,6 +1168,7 @@ pub(crate) fn package_theme(file: &str, target_kind: &str) -> CliResult<Value> {
 pub(crate) fn brand_theme_overrides(
     file: &str,
     target_kind: &str,
+    brand_name: &str,
     palette: &crate::palette::ThemePalette,
     heading_font: &str,
     body_font: &str,
@@ -1210,11 +1211,27 @@ pub(crate) fn brand_theme_overrides(
             &colors,
             &fonts,
         )?;
-        if applied.updated_xml != xml {
-            overrides.insert(part, applied.updated_xml);
+        let updated = update_theme_names(&applied.updated_xml, brand_name)?;
+        if updated != xml {
+            overrides.insert(part, updated);
         }
     }
     Ok(overrides)
+}
+
+fn update_theme_names(xml: &str, brand_name: &str) -> CliResult<String> {
+    let name = format!("ooxml-cli {brand_name}");
+    let theme = first_element_span(xml, "theme", 0, xml.len())
+        .ok_or_else(|| CliError::unexpected("theme root not found"))?;
+    let mut updated = set_attr_on_element(xml, theme.0, "name", &name)?;
+    for child in ["clrScheme", "fontScheme"] {
+        let elements = first_element_span(&updated, "themeElements", 0, updated.len())
+            .ok_or_else(|| CliError::unexpected("themeElements not found"))?;
+        if let Some(span) = first_element_span(&updated, child, elements.0, elements.1) {
+            updated = set_attr_on_element(&updated, span.0, "name", &name)?;
+        }
+    }
+    Ok(updated)
 }
 
 fn template_theme_parts(file: &str, target_kind: &str) -> CliResult<Vec<String>> {
