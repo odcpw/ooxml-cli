@@ -392,16 +392,28 @@ fn pptx_run_layout_fix(command: &str, source: &Path) -> std::path::PathBuf {
 }
 
 fn pptx_run_emitted_command(command: &str) {
-    let command = command.replacen("ooxml ", &format!("{} ", env!("CARGO_BIN_EXE_ooxml")), 1);
-    let output = std::process::Command::new("bash")
-        .args(["-c", &command])
+    let args = emitted_ooxml_args(command);
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args(&args)
         .output()
         .expect("run emitted layout command");
     assert!(
         output.status.success(),
-        "emitted command failed: {command}\nstdout={}\nstderr={}",
+        "emitted command failed: {command}\nargv={args:?}\nstdout={}\nstderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+#[test]
+fn pptx_layout_qa_emitted_command_parser_preserves_windows_paths() {
+    let args = emitted_ooxml_args(
+        r#"ooxml --json pptx shapes set-bounds 'C:\Users\Runner Admin\source deck.pptx' --slide 2 --target shape:4 --bounds 1,2,3,4 --out 'C:\Users\Runner Admin\source deck.layout-fixed.pptx'"#,
+    );
+    assert_eq!(args[4], r#"C:\Users\Runner Admin\source deck.pptx"#);
+    assert_eq!(
+        args.last().map(String::as_str),
+        Some(r#"C:\Users\Runner Admin\source deck.layout-fixed.pptx"#)
     );
 }
 
