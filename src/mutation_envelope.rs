@@ -1046,11 +1046,13 @@ fn mutation_destination(
     response: &Value,
     args: &[String],
 ) -> MutationDestination {
+    let addressable = first_addressable_response(response);
     let part_uri = response
         .get("destination")
         .and_then(|value| value.get("partUri"))
         .and_then(nonempty_string)
         .or_else(|| response.get("partUri").and_then(nonempty_string))
+        .or_else(|| addressable.and_then(|value| value.get("partUri").and_then(nonempty_string)))
         .or_else(|| destination_part_selector(response))
         .unwrap_or_else(|| spec.default_part_uri.to_string());
     let primary_selector = response
@@ -1058,12 +1060,16 @@ fn mutation_destination(
         .and_then(|value| value.get("primarySelector"))
         .and_then(nonempty_string)
         .or_else(|| response.get("selector").and_then(nonempty_string))
+        .or_else(|| {
+            addressable.and_then(|value| value.get("primarySelector").and_then(nonempty_string))
+        })
         .unwrap_or_else(|| selector_from_response(spec, response, args));
     let handle = response
         .get("destination")
         .and_then(|value| value.get("handle"))
         .and_then(nonempty_string)
         .or_else(|| response.get("handle").and_then(nonempty_string))
+        .or_else(|| addressable.and_then(|value| value.get("handle").and_then(nonempty_string)))
         .unwrap_or_else(|| {
             format!(
                 "H:{}/{}:{}",
@@ -1090,10 +1096,18 @@ fn mutation_destination(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    let addressable_candidates = addressable
+        .and_then(|value| value.get("selectors"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(nonempty_string)
+        .collect::<Vec<_>>();
     for candidate in direct_candidates
         .into_iter()
         .flatten()
         .chain(nested_candidates)
+        .chain(addressable_candidates)
     {
         if !selectors.contains(&candidate) {
             selectors.push(candidate);
@@ -1110,6 +1124,64 @@ fn mutation_destination(
 }
 
 fn selector_from_response(spec: &MutationCommandSpec, response: &Value, args: &[String]) -> String {
+    if matches!(spec.destination_kind, "package" | "template" | "style") {
+        return "package".to_string();
+    }
+    if spec.path == ["pptx", "slides", "merge"]
+        && let (Some(total), Some(merged)) = (
+            response.get("totalSlideCount").and_then(Value::as_u64),
+            response.get("mergedSlideCount").and_then(Value::as_u64),
+        )
+    {
+        return format!("slide:{}", total.saturating_sub(merged) + 1);
+    }
+    if spec.path == ["pptx", "slides", "move"]
+        && let Some(position) = response.get("toPosition").and_then(selector_value)
+    {
+        return format!("slide:{position}");
+    }
+    if spec.path == ["pptx", "slides", "reorder"]
+        && let Some(first) = args
+            .get(spec.path.len() + 1)
+            .and_then(|order| order.split(',').next())
+    {
+        return format!("slide:{first}");
+    }
+    if spec.destination_kind == "slide" {
+        if let Some(slide) = response
+            .get("newSlideNumber")
+            .and_then(selector_value)
+            .or_else(|| nested_destination_value(response, "number"))
+            .or_else(|| flag_value(args, "--slide"))
+        {
+            return format!("slide:{slide}");
+        }
+        return "slide:1".to_string();
+    }
+    if spec.destination_kind == "field" {
+        return "slide:1".to_string();
+    }
+    if spec.destination_kind == "master"
+        && let Some(master) = flag_value(args, "--master")
+    {
+        return format!("master:{master}");
+    }
+    if spec.destination_kind == "layout"
+        && let Some(layout) = response
+            .get("newLayout")
+            .and_then(selector_value)
+            .or_else(|| response.get("newName").and_then(selector_value))
+            .or_else(|| flag_value(args, "--name"))
+            .or_else(|| flag_value(args, "--layout"))
+    {
+        return format!("layout:{layout}");
+    }
+    if matches!(spec.destination_kind, "shape" | "image")
+        && let Some(target) =
+            flag_value(args, "--target").or_else(|| flag_value(args, "--for-shape"))
+    {
+        return target;
+    }
     if spec.destination_kind == "cell"
         && let Some(cell) = response
             .get("ref")
@@ -1180,6 +1252,17 @@ fn selector_from_response(spec: &MutationCommandSpec, response: &Value, args: &[
         "footer" => "footer:1".to_string(),
         other => format!("{other}:document"),
     }
+}
+
+fn first_addressable_response(response: &Value) -> Option<&Value> {
+    let item = first_response_item(response)?;
+    Some(item.get("destination").unwrap_or(item))
+}
+
+fn first_response_item(response: &Value) -> Option<&Value> {
+    ["matches", "replacements"]
+        .iter()
+        .find_map(|key| response.get(*key)?.as_array()?.first())
 }
 
 fn nested_destination_value(response: &Value, key: &str) -> Option<String> {
@@ -1332,6 +1415,11 @@ fn response_readback_command(spec: &MutationCommandSpec, response: &Value) -> Op
     candidates
         .iter()
         .find_map(|key| response.get(*key).and_then(nonempty_string))
+        .or_else(|| {
+            first_response_item(response)
+                .and_then(|value| value.get("readbackCommand"))
+                .and_then(nonempty_string)
+        })
 }
 
 fn inferred_readback_command(

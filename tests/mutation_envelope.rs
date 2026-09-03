@@ -1883,6 +1883,907 @@ fn xlsx_mutation_commands_satisfy_the_envelope_contract() {
     fs::remove_dir_all(dir).expect("remove XLSX contract directory");
 }
 
+fn pptx_contract_cases(dir: &Path) -> Vec<ContractCase> {
+    let title = "testdata/pptx/title-content/presentation.pptx";
+    let multi = "testdata/pptx/slide-assembly-multi/presentation.pptx";
+    let chart = "testdata/pptx/chart-simple/presentation.pptx";
+    let table = "testdata/pptx/table-slide/presentation.pptx";
+    let animation = "testdata/pptx/animations-synthetic/presentation.pptx";
+    let workbook = "testdata/xlsx/outline-table/workbook.xlsx";
+
+    let compose_items = dir.join("compose-items.json");
+    fs::write(
+        &compose_items,
+        r#"[{"kind":"text","text":"Envelope compose","fontSize":18}]"#,
+    )
+    .expect("write compose items");
+    let table_data = dir.join("table-data.json");
+    fs::write(&table_data, r#"[["Region","Amount"],["North",42]]"#).expect("write table data");
+    let media = dir.join("contract.mp4");
+    let replacement_media = dir.join("contract-replacement.mp4");
+    fs::write(&media, b"opaque contract media").expect("write media");
+    fs::write(&replacement_media, b"opaque replacement media").expect("write replacement media");
+
+    let animation_json = run_json(&["--json", "pptx", "animations", "list", animation]);
+    let effects = animation_json["slides"][0]["effects"]
+        .as_array()
+        .expect("animation effects");
+    let effect_id = effects[0]["effectId"]
+        .as_i64()
+        .expect("effect id")
+        .to_string();
+    let animation_order = effects
+        .iter()
+        .rev()
+        .map(|effect| {
+            effect["clickStepId"]
+                .as_i64()
+                .expect("click step")
+                .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let comment_source = setup_with_out(
+        dir,
+        "pptx-comment",
+        "pptx",
+        owned_args(&[
+            "--json",
+            "pptx",
+            "comments",
+            "add",
+            title,
+            "--slide",
+            "1",
+            "--author",
+            "Contract",
+            "--text",
+            "Envelope comment",
+            "--date",
+            "2026-09-03T12:00:00Z",
+        ]),
+    );
+    let comment_json = run_json(&[
+        "--json",
+        "pptx",
+        "comments",
+        "list",
+        &comment_source,
+        "--slide",
+        "1",
+    ]);
+    let comment_handle = comment_json["slides"][0]["comments"][0]["handle"]
+        .as_str()
+        .expect("comment handle")
+        .to_string();
+    let media_source = setup_with_out(
+        dir,
+        "pptx-media",
+        "pptx",
+        vec![
+            "--json".into(),
+            "pptx".into(),
+            "media".into(),
+            "add".into(),
+            title.into(),
+            "--slide".into(),
+            "1".into(),
+            "--file".into(),
+            media.to_string_lossy().to_string(),
+            "--name".into(),
+            "ContractMedia".into(),
+        ],
+    );
+    let media_json = run_json(&["--json", "pptx", "media", "list", &media_source]);
+    let media_shape = media_json["slides"][0]["clips"][0]["shapeId"]
+        .as_i64()
+        .expect("media shape id")
+        .to_string();
+
+    let custom =
+        |path: &'static str, kind: &'static str, args: Vec<String>, removes_destination: bool| {
+            let leaf = path.strip_prefix("ooxml ").unwrap().replace(' ', "-");
+            ContractCase {
+                path,
+                destination_kind: kind,
+                args: with_out(args, &dir.join(format!("{leaf}.pptx"))),
+                removes_destination,
+            }
+        };
+    let c = |path, kind, input, tail: &[&str]| {
+        contract_case_with_out(dir, path, kind, Some(input), tail, false)
+    };
+    let remove = |path, kind, input, tail: &[&str]| {
+        contract_case_with_out(dir, path, kind, Some(input), tail, true)
+    };
+
+    let mut cases = vec![
+        custom(
+            "ooxml pptx slides compose",
+            "slide",
+            vec![
+                "--json".into(),
+                "pptx".into(),
+                "slides".into(),
+                "compose".into(),
+                title.into(),
+                "--slide".into(),
+                "1".into(),
+                "--items".into(),
+                compose_items.to_string_lossy().to_string(),
+            ],
+            false,
+        ),
+        remove("ooxml pptx slides delete", "slide", multi, &["2"]),
+        c("ooxml pptx slides move", "slide", multi, &["1", "3"]),
+        c("ooxml pptx slides reorder", "slide", multi, &["3,1,2,4,5"]),
+        c(
+            "ooxml pptx slides import-slide",
+            "slide",
+            title,
+            &[
+                "--source",
+                multi,
+                "--slide",
+                "1",
+                "--layout-policy",
+                "import",
+                "--theme-policy",
+                "import",
+            ],
+        ),
+        custom(
+            "ooxml pptx slides merge",
+            "slide",
+            owned_args(&[
+                "--json",
+                "pptx",
+                "slides",
+                "merge",
+                title,
+                multi,
+                "--layout-policy",
+                "import",
+                "--theme-policy",
+                "import",
+            ]),
+            false,
+        ),
+        c("ooxml pptx clone-slide", "slide", title, &["--slide", "1"]),
+        c(
+            "ooxml pptx new-slide-from-layout",
+            "slide",
+            title,
+            &["--layout", "1", "--set-text", "title=Envelope"],
+        ),
+        custom(
+            "ooxml pptx template compile",
+            "template",
+            owned_args(&[
+                "--json",
+                "pptx",
+                "template",
+                "compile",
+                "testdata/pptx/template-branded/manifest.json",
+                "testdata/pptx/template-branded/spec-simple.yaml",
+                "--archetype",
+                "testdata/pptx/template-branded/presentation.pptx",
+            ]),
+            false,
+        ),
+        c(
+            "ooxml pptx scaffold",
+            "package",
+            "--title",
+            &["Envelope scaffold"],
+        ),
+        c(
+            "ooxml pptx add-textbox",
+            "shape",
+            title,
+            &[
+                "--slide",
+                "1",
+                "--text",
+                "Envelope textbox",
+                "--x",
+                "100000",
+                "--y",
+                "100000",
+                "--cx",
+                "1000000",
+                "--cy",
+                "500000",
+            ],
+        ),
+        c(
+            "ooxml pptx text set",
+            "shape",
+            title,
+            &[
+                "--slide",
+                "1",
+                "--target",
+                "title",
+                "--text",
+                "Envelope text",
+            ],
+        ),
+        c(
+            "ooxml pptx fields set",
+            "field",
+            title,
+            &[
+                "--footer",
+                "Envelope footer",
+                "--show-footer",
+                "true",
+                "--show-slide-number",
+                "true",
+            ],
+        ),
+        c(
+            "ooxml pptx theme update",
+            "style",
+            title,
+            &[
+                "--color",
+                "accent1=336699",
+                "--major-font",
+                "Aptos Display",
+                "--minor-font",
+                "Aptos",
+            ],
+        ),
+        c(
+            "ooxml pptx place image",
+            "image",
+            title,
+            &[
+                "--slide",
+                "1",
+                "--image",
+                "testdata/test_image.png",
+                "--x",
+                "0",
+                "--y",
+                "0",
+                "--cx",
+                "1000000",
+                "--cy",
+                "1000000",
+            ],
+        ),
+        custom(
+            "ooxml pptx place table",
+            "table",
+            vec![
+                "--json".into(),
+                "pptx".into(),
+                "place".into(),
+                "table".into(),
+                title.into(),
+                "--slide".into(),
+                "1".into(),
+                "--data".into(),
+                table_data.to_string_lossy().to_string(),
+                "--format".into(),
+                "json".into(),
+                "--x".into(),
+                "0".into(),
+                "--y".into(),
+                "0".into(),
+                "--cx".into(),
+                "3000000".into(),
+                "--cy".into(),
+                "1500000".into(),
+            ],
+            false,
+        ),
+        c(
+            "ooxml pptx place table-from-xlsx",
+            "table",
+            title,
+            &[
+                "--slide",
+                "1",
+                "--workbook",
+                workbook,
+                "--sheet",
+                "Data",
+                "--range",
+                "A1:C3",
+                "--x",
+                "0",
+                "--y",
+                "0",
+                "--cx",
+                "3000000",
+                "--cy",
+                "1500000",
+            ],
+        ),
+        c(
+            "ooxml pptx shapes set-bounds",
+            "shape",
+            title,
+            &[
+                "--slide",
+                "1",
+                "--target",
+                "title",
+                "--bounds",
+                "100000,100000,3000000,1000000",
+            ],
+        ),
+        remove(
+            "ooxml pptx shapes delete",
+            "shape",
+            title,
+            &["--slide", "1", "--target", "title"],
+        ),
+        c(
+            "ooxml pptx animations add",
+            "animation",
+            title,
+            &["--slide", "1", "--shape", "shape:2", "--effect", "fade"],
+        ),
+        remove(
+            "ooxml pptx animations remove",
+            "animation",
+            animation,
+            &["--slide", "1", "--effect-id", &effect_id],
+        ),
+        c(
+            "ooxml pptx animations reorder",
+            "animation",
+            animation,
+            &["--slide", "1", "--order", &animation_order],
+        ),
+        remove(
+            "ooxml pptx animations prune-stale",
+            "animation",
+            animation,
+            &["--slide", "4"],
+        ),
+        c(
+            "ooxml pptx masters add-placeholder",
+            "master",
+            title,
+            &[
+                "--master",
+                "1",
+                "--type",
+                "text",
+                "--bounds",
+                "100000,100000,1000000,500000",
+            ],
+        ),
+        c(
+            "ooxml pptx masters import",
+            "master",
+            title,
+            &[
+                "--source",
+                multi,
+                "--master",
+                "1",
+                "--theme-policy",
+                "import",
+            ],
+        ),
+        c(
+            "ooxml pptx layouts clone",
+            "layout",
+            title,
+            &["--layout", "1", "--name", "EnvelopeClone"],
+        ),
+        c(
+            "ooxml pptx layouts import",
+            "layout",
+            title,
+            &[
+                "--source",
+                multi,
+                "--layout",
+                "1",
+                "--theme-policy",
+                "import",
+            ],
+        ),
+        c(
+            "ooxml pptx layouts rename",
+            "layout",
+            title,
+            &["--layout", "2", "--name", "EnvelopeRenamed"],
+        ),
+        c(
+            "ooxml pptx layouts set-bounds",
+            "layout",
+            title,
+            &[
+                "--layout",
+                "2",
+                "--target",
+                "shape:3",
+                "--bounds",
+                "111111,222222,333333,444444",
+            ],
+        ),
+        remove(
+            "ooxml pptx layouts delete-shape",
+            "layout",
+            title,
+            &["--layout", "2", "--target", "shape:3"],
+        ),
+        c(
+            "ooxml pptx layouts add-placeholder",
+            "layout",
+            title,
+            &[
+                "--layout",
+                "7",
+                "--type",
+                "pic",
+                "--idx",
+                "0",
+                "--bounds",
+                "1000,2000,3000,4000",
+            ],
+        ),
+        c(
+            "ooxml pptx charts create",
+            "chart",
+            multi,
+            &[
+                "--slide",
+                "1",
+                "--type",
+                "bar",
+                "--title",
+                "Envelope Chart",
+                "--values-json",
+                r#"[["","North","South"],["Q1",10,20],["Q2",15,25]]"#,
+            ],
+        ),
+        c(
+            "ooxml pptx charts update-data",
+            "chart",
+            chart,
+            &[
+                "--slide",
+                "1",
+                "--chart",
+                "chart:1",
+                "--series",
+                "1",
+                "--values-json",
+                r#"["12","24","36"]"#,
+                "--categories-json",
+                r#"["East","West","Central"]"#,
+            ],
+        ),
+        c(
+            "ooxml pptx charts set-title",
+            "chart",
+            chart,
+            &[
+                "--slide",
+                "1",
+                "--chart",
+                "chart:1",
+                "--title",
+                "Envelope Title",
+            ],
+        ),
+        c(
+            "ooxml pptx charts set-legend",
+            "chart",
+            chart,
+            &["--slide", "1", "--chart", "chart:1", "--position", "bottom"],
+        ),
+        c(
+            "ooxml pptx charts set-chart-area-fill",
+            "chart",
+            chart,
+            &[
+                "--slide",
+                "1",
+                "--chart",
+                "chart:1",
+                "--fill-color",
+                "FFEEDD",
+            ],
+        ),
+        c(
+            "ooxml pptx charts set-plot-area-fill",
+            "chart",
+            chart,
+            &[
+                "--slide",
+                "1",
+                "--chart",
+                "chart:1",
+                "--fill-color",
+                "DDEEFF",
+            ],
+        ),
+        c(
+            "ooxml pptx charts set-series-style",
+            "chart",
+            chart,
+            &[
+                "--slide",
+                "1",
+                "--chart",
+                "chart:1",
+                "--series",
+                "1",
+                "--fill-color",
+                "FF8800",
+            ],
+        ),
+        c(
+            "ooxml pptx charts set-axis",
+            "chart",
+            chart,
+            &[
+                "--slide",
+                "1",
+                "--chart",
+                "chart:1",
+                "--axis",
+                "value",
+                "--title",
+                "Envelope Axis",
+            ],
+        ),
+        c(
+            "ooxml pptx charts convert-type",
+            "chart",
+            chart,
+            &["--slide", "1", "--chart", "chart:1", "--to", "line"],
+        ),
+        c(
+            "ooxml pptx charts copy-style",
+            "chart",
+            chart,
+            &[
+                "--chart",
+                "chart:2",
+                "--from",
+                chart,
+                "--from-slide",
+                "1",
+                "--from-chart",
+                "chart:1",
+            ],
+        ),
+        c(
+            "ooxml pptx tables set-cell",
+            "table",
+            table,
+            &[
+                "--slide",
+                "2",
+                "--target",
+                "table:1",
+                "--row",
+                "2",
+                "--col",
+                "2",
+                "--text",
+                "Envelope cell",
+            ],
+        ),
+        remove(
+            "ooxml pptx tables delete-row",
+            "table",
+            table,
+            &["--slide", "2", "--target", "table:1", "--row", "2"],
+        ),
+        c(
+            "ooxml pptx tables insert-row",
+            "table",
+            table,
+            &["--slide", "2", "--target", "table:1", "--at", "2"],
+        ),
+        remove(
+            "ooxml pptx tables delete-col",
+            "table",
+            table,
+            &["--slide", "2", "--target", "table:1", "--col", "2"],
+        ),
+        c(
+            "ooxml pptx tables insert-col",
+            "table",
+            table,
+            &[
+                "--slide",
+                "2",
+                "--target",
+                "table:1",
+                "--at",
+                "1",
+                "--width-emu",
+                "1234567",
+            ],
+        ),
+        c(
+            "ooxml pptx tables update-from-xlsx",
+            "table",
+            table,
+            &[
+                "--slide",
+                "2",
+                "--target",
+                "table:1",
+                "--workbook",
+                workbook,
+                "--sheet",
+                "Data",
+                "--range",
+                "A1:C3",
+            ],
+        ),
+        custom(
+            "ooxml pptx media add",
+            "media",
+            vec![
+                "--json".into(),
+                "pptx".into(),
+                "media".into(),
+                "add".into(),
+                title.into(),
+                "--slide".into(),
+                "1".into(),
+                "--file".into(),
+                media.to_string_lossy().to_string(),
+                "--name".into(),
+                "EnvelopeMedia".into(),
+            ],
+            false,
+        ),
+        custom(
+            "ooxml pptx media replace",
+            "media",
+            vec![
+                "--json".into(),
+                "pptx".into(),
+                "media".into(),
+                "replace".into(),
+                media_source,
+                "--slide".into(),
+                "1".into(),
+                "--shape".into(),
+                media_shape,
+                "--file".into(),
+                replacement_media.to_string_lossy().to_string(),
+            ],
+            false,
+        ),
+        c(
+            "ooxml pptx notes set",
+            "slide",
+            title,
+            &["--slide", "1", "--text", "Envelope notes"],
+        ),
+        remove(
+            "ooxml pptx notes clear",
+            "slide",
+            "testdata/pptx/notes-slide/presentation.pptx",
+            &["--slide", "1"],
+        ),
+        c(
+            "ooxml pptx comments add",
+            "comment",
+            title,
+            &[
+                "--slide",
+                "1",
+                "--author",
+                "Contract",
+                "--text",
+                "Envelope add",
+                "--date",
+                "2026-09-03T12:00:00Z",
+            ],
+        ),
+        c(
+            "ooxml pptx comments edit",
+            "comment",
+            &comment_source,
+            &["--handle", &comment_handle, "--text", "Envelope edited"],
+        ),
+        remove(
+            "ooxml pptx comments remove",
+            "comment",
+            &comment_source,
+            &["--handle", &comment_handle],
+        ),
+        c(
+            "ooxml pptx replace text",
+            "shape",
+            title,
+            &[
+                "--slide",
+                "1",
+                "--target",
+                "title",
+                "--text",
+                "Envelope replacement",
+            ],
+        ),
+        c(
+            "ooxml pptx replace text-occurrences",
+            "shape",
+            title,
+            &[
+                "--match-text",
+                "Title",
+                "--new-text",
+                "Envelope occurrence",
+                "--expect-count",
+                "1",
+            ],
+        ),
+        c(
+            "ooxml pptx replace text-from-xlsx",
+            "shape",
+            title,
+            &[
+                "--slide",
+                "1",
+                "--target",
+                "title",
+                "--workbook",
+                workbook,
+                "--sheet",
+                "Data",
+                "--range",
+                "A1:B2",
+            ],
+        ),
+        c(
+            "ooxml pptx replace images",
+            "image",
+            "testdata/pptx/slide-assembly-notes-media/presentation.pptx",
+            &[
+                "--slide",
+                "2",
+                "--target",
+                "shape:4",
+                "--image",
+                "testdata/test_image.png",
+            ],
+        ),
+    ];
+
+    let binding_workbook = setup_with_out(
+        dir,
+        "pptx-binding-workbook",
+        "xlsx",
+        owned_args(&["--json", "xlsx", "scaffold", "--sheet", "Sheet1"]),
+    );
+    let binding_workbook = setup_with_out(
+        dir,
+        "pptx-binding-data",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "ranges",
+            "set",
+            &binding_workbook,
+            "--sheet",
+            "Sheet1",
+            "--range",
+            "A1:H2",
+            "--values",
+            r#"[["id","op","slide","target","sourceSheet","sourceRange","mode","text"],["title","replace-text",1,"title","Sheet1","J1","preserve-format",""]]"#,
+        ]),
+    );
+    let binding_workbook = setup_with_out(
+        dir,
+        "pptx-binding-value",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "cells",
+            "set",
+            &binding_workbook,
+            "--sheet",
+            "Sheet1",
+            "--cell",
+            "J1",
+            "--value",
+            "Bound envelope",
+        ]),
+    );
+    cases.insert(
+        10,
+        c(
+            "ooxml pptx xlsx-bindings apply",
+            "slide",
+            title,
+            &[
+                "--workbook",
+                &binding_workbook,
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A1:H2",
+            ],
+        ),
+    );
+
+    let map_workbook = setup_with_out(
+        dir,
+        "pptx-map-workbook",
+        "xlsx",
+        owned_args(&["--json", "xlsx", "scaffold", "--sheet", "Map"]),
+    );
+    let map_workbook = setup_with_out(
+        dir,
+        "pptx-map-data",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "ranges",
+            "set",
+            &map_workbook,
+            "--sheet",
+            "Map",
+            "--range",
+            "A1:C2",
+            "--values",
+            r#"[["slide","target","text"],[1,"title","Mapped envelope"]]"#,
+        ]),
+    );
+    cases.insert(
+        cases.len() - 1,
+        c(
+            "ooxml pptx replace text-map-from-xlsx",
+            "shape",
+            title,
+            &[
+                "--workbook",
+                &map_workbook,
+                "--sheet",
+                "Map",
+                "--range",
+                "A1:C2",
+            ],
+        ),
+    );
+    cases
+}
+
+#[test]
+fn pptx_mutation_commands_satisfy_the_envelope_contract() {
+    let dir = temp_dir("pptx-contract-matrix");
+    let schema_response = run_json(&["--json", "capabilities", "--schema", "mutation-envelope"]);
+    let cases = pptx_contract_cases(&dir);
+    assert_eq!(cases.len(), 60, "reviewed PPTX mutation denominator");
+    let mut paths = cases.iter().map(|case| case.path).collect::<Vec<_>>();
+    paths.sort_unstable();
+    paths.dedup();
+    assert_eq!(
+        paths.len(),
+        cases.len(),
+        "PPTX command paths must be unique"
+    );
+    let rows = cases
+        .iter()
+        .map(|case| run_contract_case(case, &schema_response["document"]))
+        .collect::<Vec<_>>();
+    assert_contract_matrix(&rows);
+    fs::remove_dir_all(dir).expect("remove PPTX contract directory");
+}
+
 #[test]
 fn docx_scaffold_and_paragraph_append_emit_additive_envelopes() {
     let dir = temp_dir("docx");
