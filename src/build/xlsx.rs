@@ -111,7 +111,11 @@ pub(crate) fn xlsx_build(args: &[String]) -> crate::CliResult<Value> {
         apply_args.push("--out".to_string());
         apply_args.push(output.clone());
     }
-    let mutation_envelope = crate::apply(&virtual_input.to_string_lossy(), &apply_args)?;
+    // The compiler resolves reviewed spec-relative sources into staged absolute
+    // paths before the shared apply path-safety gate sees them.
+    apply_args.push("--allow-absolute-paths".to_string());
+    let mutation_envelope = crate::apply(&virtual_input.to_string_lossy(), &apply_args)
+        .map_err(|error| super::compiler::execution_error_with_spec_path(&compiled.plan, error))?;
     let mutation_envelope = scrub_build_paths(mutation_envelope, &temp.path, &spec_base);
 
     let outline = if dry_run {

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "family": "pptx",
+  "slides": [
+    {
+      "layout": "Title Only",
+      "tables": [
+        {
+          "rows": [["Metric"], ["Revenue"]],
+          "style": "Fancy",
+          "slot": "body"
+        }
+      ]
+    }
+  ]
+}

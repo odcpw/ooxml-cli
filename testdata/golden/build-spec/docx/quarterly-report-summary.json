@@ -29,7 +29,8 @@
     "highlight-two",
     "metrics-heading",
     "regional-table",
-    "product-image"
+    "product-image",
+    "main"
   ],
   "operations": [
     "docx scaffold",

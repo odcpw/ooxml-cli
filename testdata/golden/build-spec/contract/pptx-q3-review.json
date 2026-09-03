@@ -1,0 +1,1028 @@
+{
+  "compiledPlan": {
+    "family": "pptx",
+    "nodeMap": {
+      "/": {
+        "opId": "document",
+        "resultRef": {
+          "$ref": "document.destination"
+        }
+      },
+      "/slides/0": {
+        "opId": "slide_1",
+        "resultRef": {
+          "$ref": "slide_1.destination"
+        },
+        "specId": "cover"
+      },
+      "/slides/0/subtitle": {
+        "opId": "slide_1",
+        "resultRef": {
+          "$ref": "slide_1.destination.primarySelector"
+        }
+      },
+      "/slides/0/title": {
+        "opId": "slide_1",
+        "resultRef": {
+          "$ref": "slide_1.destination.primarySelector"
+        }
+      },
+      "/slides/1": {
+        "opId": "slide_2",
+        "resultRef": {
+          "$ref": "slide_2.destination"
+        },
+        "specId": "results"
+      },
+      "/slides/1/bullets": {
+        "opId": "slide_2",
+        "resultRef": {
+          "$ref": "slide_2.destination.primarySelector"
+        }
+      },
+      "/slides/1/charts/0": {
+        "opId": "slide_2_chart_1",
+        "resultRef": {
+          "$ref": "slide_2_chart_1.destination.primarySelector"
+        },
+        "specId": "revenue-chart"
+      },
+      "/slides/1/notes": {
+        "opId": "slide_2_notes",
+        "resultRef": {
+          "$ref": "slide_2_notes.destination"
+        }
+      },
+      "/slides/1/title": {
+        "opId": "slide_2",
+        "resultRef": {
+          "$ref": "slide_2.destination.primarySelector"
+        }
+      },
+      "/slides/2": {
+        "opId": "slide_3",
+        "resultRef": {
+          "$ref": "slide_3.destination"
+        },
+        "specId": "regional-table"
+      },
+      "/slides/2/tables/0": {
+        "opId": "slide_3_table_1",
+        "resultRef": {
+          "$ref": "slide_3_table_1.destination.primarySelector"
+        },
+        "specId": "regional-performance"
+      },
+      "/slides/2/title": {
+        "opId": "slide_3",
+        "resultRef": {
+          "$ref": "slide_3.destination.primarySelector"
+        }
+      },
+      "/slides/3": {
+        "opId": "slide_4",
+        "resultRef": {
+          "$ref": "slide_4.destination"
+        },
+        "specId": "product"
+      },
+      "/slides/3/images/0": {
+        "opId": "slide_4_image_1",
+        "resultRef": {
+          "$ref": "slide_4_image_1.destination.primarySelector"
+        },
+        "specId": "product-image"
+      },
+      "/slides/3/images/0/caption": {
+        "opId": "slide_4_image_1_caption",
+        "resultRef": {
+          "$ref": "slide_4_image_1_caption.destination.primarySelector"
+        }
+      },
+      "/slides/3/title": {
+        "opId": "slide_4",
+        "resultRef": {
+          "$ref": "slide_4.destination.primarySelector"
+        }
+      },
+      "/slides/4": {
+        "opId": "slide_5",
+        "resultRef": {
+          "$ref": "slide_5.destination"
+        },
+        "specId": "outlook"
+      },
+      "/slides/4/subtitle": {
+        "opId": "slide_5",
+        "resultRef": {
+          "$ref": "slide_5.destination.primarySelector"
+        }
+      },
+      "/slides/4/title": {
+        "opId": "slide_5",
+        "resultRef": {
+          "$ref": "slide_5.destination.primarySelector"
+        }
+      }
+    },
+    "operations": [
+      {
+        "args": {
+          "size": "16:9",
+          "theme": "corporate"
+        },
+        "command": "pptx scaffold",
+        "id": "document"
+      },
+      {
+        "args": {
+          "layout": "Title Slide",
+          "setText": [
+            "title=Q3 review",
+            "subtitle=Board update"
+          ]
+        },
+        "command": "pptx new-slide-from-layout",
+        "id": "slide_1"
+      },
+      {
+        "args": {
+          "slide-number": 1
+        },
+        "command": "pptx slides delete",
+        "id": "remove_seed_slide"
+      },
+      {
+        "args": {
+          "layout": "Two Content",
+          "paragraphsFile": "body:1=@generated/slide-002-bullets-000.json",
+          "setText": [
+            "title=Quarterly results"
+          ]
+        },
+        "command": "pptx new-slide-from-layout",
+        "id": "slide_2"
+      },
+      {
+        "args": {
+          "layout": "Title Only",
+          "setText": [
+            "title=Regional performance"
+          ]
+        },
+        "command": "pptx new-slide-from-layout",
+        "id": "slide_3"
+      },
+      {
+        "args": {
+          "layout": "Title Only",
+          "setText": [
+            "title=Product momentum"
+          ]
+        },
+        "command": "pptx new-slide-from-layout",
+        "id": "slide_4"
+      },
+      {
+        "args": {
+          "layout": "Section Header",
+          "setText": [
+            "title=Outlook",
+            "body=Focused execution in Q4"
+          ]
+        },
+        "command": "pptx new-slide-from-layout",
+        "id": "slide_5"
+      },
+      {
+        "args": {
+          "cx": "5364480",
+          "cy": "5383530",
+          "slide": 2,
+          "style": "minimal",
+          "title": "Revenue ($m)",
+          "type": "bar",
+          "valuesJson": "[[\"\",\"Actual\"],[\"Q1\",38.0],[\"Q2\",41.0],[\"Q3\",45.0]]",
+          "x": "6339840",
+          "y": "1200150"
+        },
+        "command": "pptx charts create",
+        "id": "slide_2_chart_1"
+      },
+      {
+        "args": {
+          "slide": 2,
+          "text": "Lead with growth, then explain the margin improvement."
+        },
+        "command": "pptx notes set",
+        "id": "slide_2_notes"
+      },
+      {
+        "args": {
+          "band1Color": "D9E1F2",
+          "bandedRows": true,
+          "data": "@generated/slide-003-table-001.json",
+          "format": "json",
+          "header": true,
+          "headerColor": "4472C4",
+          "name": "regional-performance",
+          "slide": 3,
+          "slot": "body"
+        },
+        "command": "pptx place table",
+        "id": "slide_3_table_1"
+      },
+      {
+        "args": {
+          "alt": "Product illustration",
+          "cx": "10.6in",
+          "cy": "3.8in",
+          "fit": "contain",
+          "image": "../../test_image.png",
+          "keepOriginal": true,
+          "name": "product-image",
+          "slide": 4,
+          "x": "1.35in",
+          "y": "1.55in"
+        },
+        "command": "pptx place image",
+        "id": "slide_4_image_1"
+      },
+      {
+        "args": {
+          "align": "center",
+          "fontSize": 14,
+          "slide": 4,
+          "slot": "caption",
+          "text": "New workflow adoption accelerated throughout Q3"
+        },
+        "command": "pptx add-textbox",
+        "id": "slide_4_image_1_caption"
+      }
+    ],
+    "schemaVersion": "ooxml-cli.build-plan.v1"
+  },
+  "family": "pptx",
+  "nodeMap": {
+    "/": {
+      "opId": "document",
+      "selector": "package",
+      "slide": null,
+      "specId": null
+    },
+    "/slides/0": {
+      "opId": "slide_1",
+      "selector": "slide:2",
+      "slide": 1,
+      "specId": "cover"
+    },
+    "/slides/0/subtitle": {
+      "opId": "slide_1",
+      "selector": "slide:2",
+      "slide": 1,
+      "specId": null
+    },
+    "/slides/0/title": {
+      "opId": "slide_1",
+      "selector": "slide:2",
+      "slide": 1,
+      "specId": null
+    },
+    "/slides/1": {
+      "opId": "slide_2",
+      "selector": "slide:2",
+      "slide": 2,
+      "specId": "results"
+    },
+    "/slides/1/bullets": {
+      "opId": "slide_2",
+      "selector": "slide:2",
+      "slide": 2,
+      "specId": null
+    },
+    "/slides/1/charts/0": {
+      "opId": "slide_2_chart_1",
+      "selector": "slide:2",
+      "slide": 2,
+      "specId": "revenue-chart"
+    },
+    "/slides/1/notes": {
+      "opId": "slide_2_notes",
+      "selector": "slide:2",
+      "slide": 2,
+      "specId": null
+    },
+    "/slides/1/title": {
+      "opId": "slide_2",
+      "selector": "slide:2",
+      "slide": 2,
+      "specId": null
+    },
+    "/slides/2": {
+      "opId": "slide_3",
+      "selector": "slide:3",
+      "slide": 3,
+      "specId": "regional-table"
+    },
+    "/slides/2/tables/0": {
+      "opId": "slide_3_table_1",
+      "selector": "shape:3",
+      "slide": 3,
+      "specId": "regional-performance"
+    },
+    "/slides/2/title": {
+      "opId": "slide_3",
+      "selector": "slide:3",
+      "slide": 3,
+      "specId": null
+    },
+    "/slides/3": {
+      "opId": "slide_4",
+      "selector": "slide:4",
+      "slide": 4,
+      "specId": "product"
+    },
+    "/slides/3/images/0": {
+      "opId": "slide_4_image_1",
+      "selector": "shape:3",
+      "slide": 4,
+      "specId": "product-image"
+    },
+    "/slides/3/images/0/caption": {
+      "opId": "slide_4_image_1_caption",
+      "selector": "shape:4",
+      "slide": 4,
+      "specId": null
+    },
+    "/slides/3/title": {
+      "opId": "slide_4",
+      "selector": "slide:4",
+      "slide": 4,
+      "specId": null
+    },
+    "/slides/4": {
+      "opId": "slide_5",
+      "selector": "slide:5",
+      "slide": 5,
+      "specId": "outlook"
+    },
+    "/slides/4/subtitle": {
+      "opId": "slide_5",
+      "selector": "slide:5",
+      "slide": 5,
+      "specId": null
+    },
+    "/slides/4/title": {
+      "opId": "slide_5",
+      "selector": "slide:5",
+      "slide": 5,
+      "specId": null
+    }
+  },
+  "outline": {
+    "depth": 2,
+    "layouts": [
+      {
+        "id": "layout-1",
+        "masterId": "master-1",
+        "name": "Title Slide",
+        "number": 1,
+        "partUri": "/ppt/slideLayouts/slideLayout1.xml",
+        "placeholderCount": 2,
+        "placeholders": [
+          "ctrTitle",
+          "subTitle:1"
+        ],
+        "primarySelector": "1"
+      },
+      {
+        "id": "layout-2",
+        "masterId": "master-1",
+        "name": "Title and Content",
+        "number": 2,
+        "partUri": "/ppt/slideLayouts/slideLayout2.xml",
+        "placeholderCount": 2,
+        "placeholders": [
+          "title",
+          "body:1"
+        ],
+        "primarySelector": "2"
+      },
+      {
+        "id": "layout-3",
+        "masterId": "master-1",
+        "name": "Section Header",
+        "number": 3,
+        "partUri": "/ppt/slideLayouts/slideLayout3.xml",
+        "placeholderCount": 2,
+        "placeholders": [
+          "title",
+          "body:1"
+        ],
+        "primarySelector": "3"
+      },
+      {
+        "id": "layout-4",
+        "masterId": "master-1",
+        "name": "Two Content",
+        "number": 4,
+        "partUri": "/ppt/slideLayouts/slideLayout4.xml",
+        "placeholderCount": 3,
+        "placeholders": [
+          "title",
+          "body:1",
+          "body:2"
+        ],
+        "primarySelector": "4"
+      },
+      {
+        "id": "layout-5",
+        "masterId": "master-1",
+        "name": "Comparison",
+        "number": 5,
+        "partUri": "/ppt/slideLayouts/slideLayout5.xml",
+        "placeholderCount": 5,
+        "placeholders": [
+          "title",
+          "body:1",
+          "body:2",
+          "body:3",
+          "body:4"
+        ],
+        "primarySelector": "5"
+      },
+      {
+        "id": "layout-6",
+        "masterId": "master-1",
+        "name": "Title Only",
+        "number": 6,
+        "partUri": "/ppt/slideLayouts/slideLayout6.xml",
+        "placeholderCount": 1,
+        "placeholders": [
+          "title"
+        ],
+        "primarySelector": "6"
+      },
+      {
+        "id": "layout-7",
+        "masterId": "master-1",
+        "name": "Blank",
+        "number": 7,
+        "partUri": "/ppt/slideLayouts/slideLayout7.xml",
+        "placeholderCount": 0,
+        "placeholders": [],
+        "primarySelector": "7"
+      },
+      {
+        "id": "layout-8",
+        "masterId": "master-1",
+        "name": "Content with Caption",
+        "number": 8,
+        "partUri": "/ppt/slideLayouts/slideLayout8.xml",
+        "placeholderCount": 3,
+        "placeholders": [
+          "body:1",
+          "title",
+          "body:2"
+        ],
+        "primarySelector": "8"
+      },
+      {
+        "id": "layout-9",
+        "masterId": "master-1",
+        "name": "Picture with Caption",
+        "number": 9,
+        "partUri": "/ppt/slideLayouts/slideLayout9.xml",
+        "placeholderCount": 3,
+        "placeholders": [
+          "pic:1",
+          "title",
+          "body:2"
+        ],
+        "primarySelector": "9"
+      },
+      {
+        "id": "layout-10",
+        "masterId": "master-1",
+        "name": "Title and Vertical Text",
+        "number": 10,
+        "partUri": "/ppt/slideLayouts/slideLayout10.xml",
+        "placeholderCount": 2,
+        "placeholders": [
+          "title",
+          "body:1"
+        ],
+        "primarySelector": "10"
+      },
+      {
+        "id": "layout-11",
+        "masterId": "master-1",
+        "name": "Vertical Title and Text",
+        "number": 11,
+        "partUri": "/ppt/slideLayouts/slideLayout11.xml",
+        "placeholderCount": 2,
+        "placeholders": [
+          "title",
+          "body:1"
+        ],
+        "primarySelector": "11"
+      }
+    ],
+    "masters": [
+      {
+        "index": 1,
+        "layouts": 11,
+        "primarySelector": "1",
+        "theme": "/ppt/theme/theme1.xml",
+        "uri": "/ppt/slideMasters/slideMaster1.xml"
+      }
+    ],
+    "schemaVersion": 1,
+    "slideSize": {
+      "emu": {
+        "height": 6858000,
+        "width": 12192000
+      },
+      "inches": {
+        "height": 7.5,
+        "width": 13.333333333333334
+      }
+    },
+    "slides": [
+      {
+        "chartCount": 0,
+        "imageCount": 0,
+        "layout": "Title Slide",
+        "layoutNumber": 1,
+        "layoutPartUri": "/ppt/slideLayouts/slideLayout1.xml",
+        "notes": false,
+        "number": 1,
+        "partUri": "/ppt/slides/slide2.xml",
+        "primarySelector": "1",
+        "shapeCount": 2,
+        "shapes": [
+          {
+            "bounds": {
+              "cx": 9997440,
+              "cy": 960120,
+              "inches": {
+                "cx": 10.933333333333334,
+                "cy": 1.05,
+                "x": 1.2,
+                "y": 2.025
+              },
+              "x": 1097280,
+              "y": 1851660
+            },
+            "boundsSource": "layout",
+            "kind": "title",
+            "placeholder": {
+              "key": "title",
+              "literalType": "ctrTitle",
+              "resolvedType": "ctrTitle",
+              "role": "title",
+              "typeSource": "slide"
+            },
+            "selector": "title",
+            "shapeId": 2,
+            "shapeName": "Title 1",
+            "shapeType": "sp",
+            "targetKind": "title",
+            "textPreview": "Q3 review"
+          },
+          {
+            "bounds": {
+              "cx": 8290560,
+              "cy": 617220,
+              "inches": {
+                "cx": 9.066666666666666,
+                "cy": 0.675,
+                "x": 2.1333333333333333,
+                "y": 3.45
+              },
+              "x": 1950720,
+              "y": 3154680
+            },
+            "boundsSource": "layout",
+            "kind": "subtitle",
+            "placeholder": {
+              "index": 1,
+              "key": "subtitle",
+              "literalType": "subTitle",
+              "resolvedType": "subTitle",
+              "role": "subtitle",
+              "typeSource": "slide"
+            },
+            "selector": "subtitle",
+            "shapeId": 3,
+            "shapeName": "Subtitle 2",
+            "shapeType": "sp",
+            "targetKind": "subtitle",
+            "textPreview": "Board update"
+          }
+        ],
+        "slideId": 257,
+        "tableCount": 0,
+        "title": "Q3 review"
+      },
+      {
+        "chartCount": 0,
+        "imageCount": 0,
+        "layout": "Two Content",
+        "layoutNumber": 4,
+        "layoutPartUri": "/ppt/slideLayouts/slideLayout4.xml",
+        "notes": true,
+        "number": 2,
+        "partUri": "/ppt/slides/slide3.xml",
+        "primarySelector": "2",
+        "shapeCount": 4,
+        "shapes": [
+          {
+            "bounds": {
+              "cx": 11216640,
+              "cy": 685800,
+              "inches": {
+                "cx": 12.266666666666667,
+                "cy": 0.75,
+                "x": 0.5333333333333333,
+                "y": 0.3
+              },
+              "x": 487680,
+              "y": 274320
+            },
+            "boundsSource": "slide",
+            "kind": "title",
+            "placeholder": {
+              "key": "title",
+              "literalType": "title",
+              "resolvedType": "title",
+              "role": "title",
+              "typeSource": "slide"
+            },
+            "selector": "title",
+            "shapeId": 2,
+            "shapeName": "Title 1",
+            "shapeType": "sp",
+            "targetKind": "title",
+            "textPreview": "Quarterly results"
+          },
+          {
+            "bounds": {
+              "cx": 5364480,
+              "cy": 5383530,
+              "inches": {
+                "cx": 5.866666666666666,
+                "cy": 5.8875,
+                "x": 0.5333333333333333,
+                "y": 1.3125
+              },
+              "x": 487680,
+              "y": 1200150
+            },
+            "boundsSource": "slide",
+            "kind": "body",
+            "placeholder": {
+              "index": 1,
+              "key": "body",
+              "literalType": "body",
+              "resolvedType": "body",
+              "role": "body",
+              "typeSource": "slide"
+            },
+            "selector": "body",
+            "shapeId": 3,
+            "shapeName": "Content Placeholder 2",
+            "shapeType": "sp",
+            "targetKind": "body",
+            "textPreview": "Revenue grew 18% year over year Gross margin expanded by 220 basis points Enterprise pipeline remains healthy"
+          },
+          {
+            "bounds": {
+              "cx": 5364480,
+              "cy": 5383530,
+              "inches": {
+                "cx": 5.866666666666666,
+                "cy": 5.8875,
+                "x": 6.933333333333334,
+                "y": 1.3125
+              },
+              "x": 6339840,
+              "y": 1200150
+            },
+            "boundsSource": "slide",
+            "kind": "body",
+            "placeholder": {
+              "index": 2,
+              "key": "body",
+              "literalType": "body",
+              "resolvedType": "body",
+              "role": "body",
+              "typeSource": "slide"
+            },
+            "selector": "body",
+            "shapeId": 4,
+            "shapeName": "Content Placeholder 3",
+            "shapeType": "sp",
+            "targetKind": "body"
+          },
+          {
+            "bounds": {
+              "cx": 5364480,
+              "cy": 5383530,
+              "inches": {
+                "cx": 5.866666666666666,
+                "cy": 5.8875,
+                "x": 6.933333333333334,
+                "y": 1.3125
+              },
+              "x": 6339840,
+              "y": 1200150
+            },
+            "boundsSource": "slide",
+            "kind": "shape",
+            "selector": "shape:5",
+            "shapeId": 5,
+            "shapeName": "Chart 5",
+            "shapeType": "graphicFrame",
+            "targetKind": "shape"
+          }
+        ],
+        "slideId": 258,
+        "tableCount": 0,
+        "title": "Quarterly results"
+      },
+      {
+        "chartCount": 0,
+        "imageCount": 0,
+        "layout": "Title Only",
+        "layoutNumber": 6,
+        "layoutPartUri": "/ppt/slideLayouts/slideLayout6.xml",
+        "notes": false,
+        "number": 3,
+        "partUri": "/ppt/slides/slide4.xml",
+        "primarySelector": "3",
+        "shapeCount": 2,
+        "shapes": [
+          {
+            "bounds": {
+              "cx": 11216640,
+              "cy": 685800,
+              "inches": {
+                "cx": 12.266666666666667,
+                "cy": 0.75,
+                "x": 0.5333333333333333,
+                "y": 0.3
+              },
+              "x": 487680,
+              "y": 274320
+            },
+            "boundsSource": "slide",
+            "kind": "title",
+            "placeholder": {
+              "key": "title",
+              "literalType": "title",
+              "resolvedType": "title",
+              "role": "title",
+              "typeSource": "slide"
+            },
+            "selector": "title",
+            "shapeId": 2,
+            "shapeName": "Title 1",
+            "shapeType": "sp",
+            "targetKind": "title",
+            "textPreview": "Regional performance"
+          },
+          {
+            "bounds": {
+              "cx": 10972800,
+              "cy": 4800600,
+              "inches": {
+                "cx": 12.0,
+                "cy": 5.25,
+                "x": 0.6666666666666666,
+                "y": 1.5
+              },
+              "x": 609600,
+              "y": 1371600
+            },
+            "boundsSource": "slide",
+            "kind": "table",
+            "selector": "table:1",
+            "shapeId": 3,
+            "shapeName": "regional-performance",
+            "shapeType": "graphicFrame",
+            "targetKind": "table"
+          }
+        ],
+        "slideId": 259,
+        "tableCount": 1,
+        "title": "Regional performance"
+      },
+      {
+        "chartCount": 0,
+        "imageCount": 1,
+        "layout": "Title Only",
+        "layoutNumber": 6,
+        "layoutPartUri": "/ppt/slideLayouts/slideLayout6.xml",
+        "notes": false,
+        "number": 4,
+        "partUri": "/ppt/slides/slide5.xml",
+        "primarySelector": "4",
+        "shapeCount": 3,
+        "shapes": [
+          {
+            "bounds": {
+              "cx": 11216640,
+              "cy": 685800,
+              "inches": {
+                "cx": 12.266666666666667,
+                "cy": 0.75,
+                "x": 0.5333333333333333,
+                "y": 0.3
+              },
+              "x": 487680,
+              "y": 274320
+            },
+            "boundsSource": "slide",
+            "kind": "title",
+            "placeholder": {
+              "key": "title",
+              "literalType": "title",
+              "resolvedType": "title",
+              "role": "title",
+              "typeSource": "slide"
+            },
+            "selector": "title",
+            "shapeId": 2,
+            "shapeName": "Title 1",
+            "shapeType": "sp",
+            "targetKind": "title",
+            "textPreview": "Product momentum"
+          },
+          {
+            "bounds": {
+              "cx": 3474720,
+              "cy": 3474720,
+              "inches": {
+                "cx": 3.8,
+                "cy": 3.8,
+                "x": 4.75,
+                "y": 1.55
+              },
+              "x": 4343400,
+              "y": 1417320
+            },
+            "boundsSource": "slide",
+            "kind": "picture",
+            "selector": "shape:3",
+            "shapeId": 3,
+            "shapeName": "product-image",
+            "shapeType": "pic",
+            "targetKind": "picture"
+          },
+          {
+            "bounds": {
+              "cx": 10972800,
+              "cy": 960120,
+              "inches": {
+                "cx": 12.0,
+                "cy": 1.05,
+                "x": 0.6666666666666666,
+                "y": 5.7
+              },
+              "x": 609600,
+              "y": 5212080
+            },
+            "boundsSource": "slide",
+            "kind": "textbox",
+            "selector": "shape:4",
+            "shapeId": 4,
+            "shapeName": "TextBox 4",
+            "shapeType": "sp",
+            "targetKind": "textbox",
+            "textPreview": "New workflow adoption accelerated throughout Q3"
+          }
+        ],
+        "slideId": 260,
+        "tableCount": 0,
+        "title": "Product momentum"
+      },
+      {
+        "chartCount": 0,
+        "imageCount": 0,
+        "layout": "Section Header",
+        "layoutNumber": 3,
+        "layoutPartUri": "/ppt/slideLayouts/slideLayout3.xml",
+        "notes": false,
+        "number": 5,
+        "partUri": "/ppt/slides/slide6.xml",
+        "primarySelector": "5",
+        "shapeCount": 2,
+        "shapes": [
+          {
+            "bounds": {
+              "cx": 10241280,
+              "cy": 685800,
+              "inches": {
+                "cx": 11.2,
+                "cy": 0.75,
+                "x": 1.0666666666666669,
+                "y": 1.875
+              },
+              "x": 975360,
+              "y": 1714500
+            },
+            "boundsSource": "slide",
+            "kind": "title",
+            "placeholder": {
+              "key": "title",
+              "literalType": "title",
+              "resolvedType": "title",
+              "role": "title",
+              "typeSource": "slide"
+            },
+            "selector": "title",
+            "shapeId": 2,
+            "shapeName": "Title 1",
+            "shapeType": "sp",
+            "targetKind": "title",
+            "textPreview": "Outlook"
+          },
+          {
+            "bounds": {
+              "cx": 8290560,
+              "cy": 754380,
+              "inches": {
+                "cx": 9.066666666666666,
+                "cy": 0.825,
+                "x": 2.1333333333333333,
+                "y": 2.925
+              },
+              "x": 1950720,
+              "y": 2674620
+            },
+            "boundsSource": "slide",
+            "kind": "body",
+            "placeholder": {
+              "index": 1,
+              "key": "body",
+              "literalType": "body",
+              "resolvedType": "body",
+              "role": "body",
+              "typeSource": "slide"
+            },
+            "selector": "body",
+            "shapeId": 3,
+            "shapeName": "Text Placeholder 2",
+            "shapeType": "sp",
+            "targetKind": "body",
+            "textPreview": "Focused execution in Q4"
+          }
+        ],
+        "slideId": 261,
+        "tableCount": 0,
+        "title": "Outlook"
+      }
+    ],
+    "summary": {
+      "customXmlParts": 0,
+      "handoutMasters": 0,
+      "layouts": 11,
+      "masters": 1,
+      "mediaAssets": 1,
+      "notesMasters": 1,
+      "slideSize": {
+        "cx": 12192000,
+        "cy": 6858000,
+        "unit": "emu"
+      },
+      "slides": 5,
+      "themes": 1
+    },
+    "textPreviewChars": 240,
+    "theme": {
+      "colorScheme": {
+        "accent1": "4472C4",
+        "accent2": "9765B1",
+        "accent3": "A7525D",
+        "accent4": "A56D0A",
+        "accent5": "547A35",
+        "accent6": "008987",
+        "dark1": "0A0F19",
+        "dark2": "1E304F",
+        "folLink": "006C6A",
+        "hypLink": "666800",
+        "light1": "FFFFFF",
+        "light2": "E9F1FD",
+        "name": "ooxml-cli corporate"
+      },
+      "fontScheme": {
+        "majorFont": "Aptos Display",
+        "minorFont": "Aptos",
+        "name": "ooxml-cli"
+      },
+      "name": "ooxml-cli corporate"
+    },
+    "type": "pptx"
+  }
+}

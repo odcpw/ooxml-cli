@@ -41,6 +41,68 @@ impl CompiledBuildPlan {
     }
 }
 
+pub(super) fn execution_error_with_spec_path(
+    plan: &CompiledBuildPlan,
+    mut error: crate::CliError,
+) -> crate::CliError {
+    let Some(operation_index) = operation_index_from_apply_error(&error.message) else {
+        return error;
+    };
+    let Some(operation) = plan.operations.get(operation_index) else {
+        return error;
+    };
+    let Some(op_id) = operation.id.as_deref() else {
+        return error;
+    };
+    let Some(base_path) = plan
+        .node_map
+        .iter()
+        .filter(|(_, node)| node.op_id == op_id)
+        .map(|(path, _)| path.as_str())
+        .min_by_key(|path| path.matches('/').count())
+    else {
+        return error;
+    };
+
+    let (code, path, suggestion) = match (operation.command.as_str(), error.code) {
+        ("pptx new-slide-from-layout", _) => (
+            "BUILD_SPEC_VALUE_INVALID",
+            format!("{base_path}/layout"),
+            "use a layout name reported by `ooxml pptx layouts list <template.pptx>`; built-in layouts include \"Title Slide\" and \"Title Only\"",
+        ),
+        ("pptx place image", "file_not_found") => (
+            "BUILD_SPEC_FILE_READ_FAILED",
+            format!("{base_path}/path"),
+            "use an existing image path relative to the build spec file",
+        ),
+        ("xlsx ranges set", "file_not_found") => (
+            "BUILD_SPEC_FILE_READ_FAILED",
+            format!("{base_path}/dataFile/path"),
+            "use an existing data-file path relative to the build spec file",
+        ),
+        ("docx images insert", "file_not_found") => (
+            "BUILD_SPEC_FILE_READ_FAILED",
+            format!("{base_path}/image/path"),
+            "use an existing image path relative to the build spec file",
+        ),
+        _ => return error,
+    };
+    let diagnostic = BuildCompileError {
+        code: code.to_string(),
+        path,
+        op_id: Some(op_id.to_string()),
+        message: format!("{}; suggestion: {suggestion}", error.message),
+    };
+    error.message = serde_json::to_string(&diagnostic).unwrap_or_else(|_| diagnostic.to_string());
+    error
+}
+
+fn operation_index_from_apply_error(message: &str) -> Option<usize> {
+    let remainder = message.strip_prefix("op ")?;
+    let (index, _) = remainder.split_once(' ')?;
+    index.parse().ok()
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildCompileError {

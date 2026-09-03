@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "family": "pptx",
+  "slides": [
+    {
+      "layout": "Almost Title",
+      "title": "This must not publish"
+    }
+  ]
+}

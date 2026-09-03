@@ -205,7 +205,8 @@ pub(crate) fn docx_build(args: &[String]) -> crate::CliResult<Value> {
     // Build sources are resolved against the reviewed spec/Markdown directory
     // above, then passed through the same apply path guard as direct batches.
     apply_args.push("--allow-absolute-paths".to_string());
-    let mutation_envelope = crate::apply(&virtual_input.to_string_lossy(), &apply_args)?;
+    let mutation_envelope = crate::apply(&virtual_input.to_string_lossy(), &apply_args)
+        .map_err(|error| super::compiler::execution_error_with_spec_path(&compiled.plan, error))?;
     let mutation_envelope = scrub_paths(mutation_envelope, &temp.path, &spec_base);
     let outline = if dry_run {
         Value::Null
@@ -606,10 +607,13 @@ fn compile_section_setup(
             .collect::<Vec<_>>()
             .join(",");
         args.insert("margins".to_string(), json!(margins));
-        compiler.push_internal_operation(
+        compiler.push_operation(
+            format!("/sections/{index}"),
+            section.get("id").and_then(Value::as_str),
             format!("section_setup_{:03}", index + 1),
             "docx sections set",
             args,
+            "destination",
         )?;
     }
     Ok(())
@@ -962,6 +966,7 @@ fn resolved_node_map(plan: &CompiledBuildPlan, envelope: &Value) -> Value {
                 .and_then(|item| item.pointer("/mutationEnvelope/destination/primarySelector"))
                 .cloned()
                 .unwrap_or(Value::Null);
+            let selector = final_docx_selector(path, selector);
             (
                 path.clone(),
                 json!({"opId": node.op_id, "specId": node.spec_id, "selector": selector}),
@@ -969,6 +974,20 @@ fn resolved_node_map(plan: &CompiledBuildPlan, envelope: &Value) -> Value {
         })
         .collect::<BTreeMap<_, _>>();
     serde_json::to_value(map).expect("resolved DOCX build node map is serializable")
+}
+
+fn final_docx_selector(path: &str, selector: Value) -> Value {
+    if !path.starts_with("/blocks/") {
+        return selector;
+    }
+    let Some(index) = selector
+        .as_str()
+        .and_then(|value| value.strip_prefix("block:"))
+        .and_then(|value| value.parse::<usize>().ok())
+    else {
+        return selector;
+    };
+    Value::String(format!("block:{}", index.saturating_sub(1)))
 }
 
 fn scrub_paths(value: Value, temp: &Path, spec_base: &Path) -> Value {

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "family": "pptx",
+  "slides": [
+    {
+      "layout": "Title Only",
+      "images": [
+        {
+          "path": "missing-image.png",
+          "slot": "body"
+        }
+      ]
+    }
+  ]
+}

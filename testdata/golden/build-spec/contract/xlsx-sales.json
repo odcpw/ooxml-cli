@@ -1,0 +1,800 @@
+{
+  "compiledPlan": {
+    "family": "xlsx",
+    "nodeMap": {
+      "/": {
+        "opId": "document",
+        "resultRef": {
+          "$ref": "document.destination"
+        }
+      },
+      "/metadata": {
+        "opId": "workbook-metadata",
+        "resultRef": {
+          "$ref": "workbook-metadata.destination.primarySelector"
+        }
+      },
+      "/sheets/0": {
+        "opId": "sheet-1-data",
+        "resultRef": {
+          "$ref": "sheet-1-data.destination.range"
+        },
+        "specId": "sales"
+      },
+      "/sheets/0/charts/0": {
+        "opId": "sheet-1-chart-1",
+        "resultRef": {
+          "$ref": "sheet-1-chart-1.destination.primarySelector"
+        },
+        "specId": "units-chart"
+      },
+      "/sheets/0/columns/0": {
+        "opId": "sheet-1-column-1-width",
+        "resultRef": {
+          "$ref": "sheet-1-column-1-width.destination.primarySelector"
+        }
+      },
+      "/sheets/0/columns/1": {
+        "opId": "sheet-1-column-2-width",
+        "resultRef": {
+          "$ref": "sheet-1-column-2-width.destination.primarySelector"
+        }
+      },
+      "/sheets/0/columns/2": {
+        "opId": "sheet-1-column-3-width",
+        "resultRef": {
+          "$ref": "sheet-1-column-3-width.destination.primarySelector"
+        }
+      },
+      "/sheets/0/columns/3": {
+        "opId": "sheet-1-column-4-width",
+        "resultRef": {
+          "$ref": "sheet-1-column-4-width.destination.primarySelector"
+        }
+      },
+      "/sheets/0/columns/4": {
+        "opId": "sheet-1-column-5-width",
+        "resultRef": {
+          "$ref": "sheet-1-column-5-width.destination.primarySelector"
+        }
+      },
+      "/sheets/0/comments/0": {
+        "opId": "sheet-1-comment-1",
+        "resultRef": {
+          "$ref": "sheet-1-comment-1.destination.primarySelector"
+        }
+      },
+      "/sheets/0/conditionalFormats/0": {
+        "opId": "sheet-1-conditional-format-1",
+        "resultRef": {
+          "$ref": "sheet-1-conditional-format-1.destination.primarySelector"
+        }
+      },
+      "/sheets/0/dataValidations/0": {
+        "opId": "sheet-1-data-validation-1",
+        "resultRef": {
+          "$ref": "sheet-1-data-validation-1.destination.primarySelector"
+        }
+      },
+      "/sheets/0/freeze": {
+        "opId": "sheet-1-freeze",
+        "resultRef": {
+          "$ref": "sheet-1-freeze.destination.primarySelector"
+        }
+      },
+      "/sheets/0/headerStyle": {
+        "opId": "sheet-1-header-style",
+        "resultRef": {
+          "$ref": "sheet-1-header-style.destination.primarySelector"
+        }
+      },
+      "/sheets/0/hyperlinks/0": {
+        "opId": "sheet-1-hyperlink-1",
+        "resultRef": {
+          "$ref": "sheet-1-hyperlink-1.destination.primarySelector"
+        }
+      },
+      "/sheets/0/names/0": {
+        "opId": "sheet-1-name-1",
+        "resultRef": {
+          "$ref": "sheet-1-name-1.destination.primarySelector"
+        }
+      },
+      "/sheets/0/printSetup": {
+        "opId": "sheet-1-print",
+        "resultRef": {
+          "$ref": "sheet-1-print.destination.primarySelector"
+        }
+      },
+      "/sheets/0/tabColor": {
+        "opId": "sheet-1-tab-color",
+        "resultRef": {
+          "$ref": "sheet-1-tab-color.destination.primarySelector"
+        }
+      },
+      "/sheets/0/tables/0": {
+        "opId": "sheet-1-table-1",
+        "resultRef": {
+          "$ref": "sheet-1-table-1.destination.primarySelector"
+        },
+        "specId": "sales-table"
+      },
+      "/sheets/1": {
+        "opId": "sheet-2-data",
+        "resultRef": {
+          "$ref": "sheet-2-data.destination.range"
+        },
+        "specId": "targets"
+      },
+      "/sheets/1/columns/0": {
+        "opId": "sheet-2-column-1-autofit",
+        "resultRef": {
+          "$ref": "sheet-2-column-1-autofit.destination.primarySelector"
+        }
+      },
+      "/sheets/1/columns/1": {
+        "opId": "sheet-2-column-2-autofit",
+        "resultRef": {
+          "$ref": "sheet-2-column-2-autofit.destination.primarySelector"
+        }
+      },
+      "/sheets/1/columns/2": {
+        "opId": "sheet-2-column-3-width",
+        "resultRef": {
+          "$ref": "sheet-2-column-3-width.destination.primarySelector"
+        }
+      },
+      "/sheets/1/columns/3": {
+        "opId": "sheet-2-column-4-width",
+        "resultRef": {
+          "$ref": "sheet-2-column-4-width.destination.primarySelector"
+        }
+      },
+      "/sheets/1/columns/4": {
+        "opId": "sheet-2-column-5-width",
+        "resultRef": {
+          "$ref": "sheet-2-column-5-width.destination.primarySelector"
+        }
+      },
+      "/sheets/1/columns/5": {
+        "opId": "sheet-2-column-6-width",
+        "resultRef": {
+          "$ref": "sheet-2-column-6-width.destination.primarySelector"
+        }
+      },
+      "/sheets/1/freeze": {
+        "opId": "sheet-2-freeze",
+        "resultRef": {
+          "$ref": "sheet-2-freeze.destination.primarySelector"
+        }
+      },
+      "/sheets/1/headerStyle": {
+        "opId": "sheet-2-header-style",
+        "resultRef": {
+          "$ref": "sheet-2-header-style.destination.primarySelector"
+        }
+      },
+      "/sheets/1/tabColor": {
+        "opId": "sheet-2-tab-color",
+        "resultRef": {
+          "$ref": "sheet-2-tab-color.destination.primarySelector"
+        }
+      },
+      "/sheets/1/tables/0": {
+        "opId": "sheet-2-table-1",
+        "resultRef": {
+          "$ref": "sheet-2-table-1.destination.primarySelector"
+        },
+        "specId": "targets-table"
+      }
+    },
+    "operations": [
+      {
+        "args": {
+          "sheet": [
+            "Sales",
+            "Targets"
+          ],
+          "themeSeed": "2563EB"
+        },
+        "command": "xlsx scaffold",
+        "id": "document"
+      },
+      {
+        "args": {
+          "anchor": "A1",
+          "dataFormat": "json",
+          "sheet": "Sales",
+          "values": "[[\"Region\",\"Units\",\"Unit Price\",\"Revenue\",\"Margin\"],[\"North\",12.0,125.5,{\"formula\":\"B2*C2\"},0.25],[\"Central\",9.0,140.0,{\"formula\":\"B3*C3\"},0.2],[\"South\",15.0,118.75,{\"formula\":\"B4*C4\"},0.3],[\"West\",11.0,132.0,{\"formula\":\"B5*C5\"},0.22]]"
+        },
+        "command": "xlsx ranges set",
+        "id": "sheet-1-data"
+      },
+      {
+        "args": {
+          "color": "2563EB",
+          "sheet": "Sales"
+        },
+        "command": "xlsx sheets set-tab-color",
+        "id": "sheet-1-tab-color"
+      },
+      {
+        "args": {
+          "rows": 1,
+          "sheet": "Sales"
+        },
+        "command": "xlsx freeze set",
+        "id": "sheet-1-freeze"
+      },
+      {
+        "args": {
+          "preset": "header",
+          "range": "A1:E1",
+          "sheet": "Sales"
+        },
+        "command": "xlsx ranges set-style",
+        "id": "sheet-1-header-style"
+      },
+      {
+        "args": {
+          "range": "A:A",
+          "sheet": "Sales",
+          "width": 18.0
+        },
+        "command": "xlsx colwidths set",
+        "id": "sheet-1-column-1-width"
+      },
+      {
+        "args": {
+          "range": "B:B",
+          "sheet": "Sales",
+          "width": 10.0
+        },
+        "command": "xlsx colwidths set",
+        "id": "sheet-1-column-2-width"
+      },
+      {
+        "args": {
+          "range": "C:C",
+          "sheet": "Sales",
+          "width": 14.0
+        },
+        "command": "xlsx colwidths set",
+        "id": "sheet-1-column-3-width"
+      },
+      {
+        "args": {
+          "formatCode": "$#,##0.00",
+          "range": "C1:C5",
+          "sheet": "Sales"
+        },
+        "command": "xlsx ranges set-format",
+        "id": "sheet-1-column-3-format"
+      },
+      {
+        "args": {
+          "range": "D:D",
+          "sheet": "Sales",
+          "width": 14.0
+        },
+        "command": "xlsx colwidths set",
+        "id": "sheet-1-column-4-width"
+      },
+      {
+        "args": {
+          "formatCode": "$#,##0.00",
+          "range": "D1:D5",
+          "sheet": "Sales"
+        },
+        "command": "xlsx ranges set-format",
+        "id": "sheet-1-column-4-format"
+      },
+      {
+        "args": {
+          "range": "E:E",
+          "sheet": "Sales",
+          "width": 12.0
+        },
+        "command": "xlsx colwidths set",
+        "id": "sheet-1-column-5-width"
+      },
+      {
+        "args": {
+          "formatCode": "0.0%",
+          "range": "E1:E5",
+          "sheet": "Sales"
+        },
+        "command": "xlsx ranges set-format",
+        "id": "sheet-1-column-5-format"
+      },
+      {
+        "args": {
+          "range": {
+            "$ref": "sheet-1-data.destination.range"
+          },
+          "sheet": "Sales",
+          "style": "TableStyleMedium2",
+          "table": "SalesTable",
+          "totalRow": true,
+          "totals": "Revenue:sum"
+        },
+        "command": "xlsx tables create",
+        "id": "sheet-1-table-1"
+      },
+      {
+        "args": {
+          "cfvo": [
+            "min",
+            "percentile:50",
+            "max"
+          ],
+          "color": [
+            "F8696B",
+            "FFEB84",
+            "63BE7B"
+          ],
+          "priority": 1,
+          "range": "E2:E5",
+          "sheet": "Sales",
+          "type": "color-scale"
+        },
+        "command": "xlsx conditional-formats add",
+        "id": "sheet-1-conditional-format-1"
+      },
+      {
+        "args": {
+          "allowBlank": false,
+          "inputMessage": "Choose a sales region",
+          "inputTitle": "Region",
+          "listValues": "North,Central,South,West",
+          "range": "A2:A5",
+          "sheet": "Sales",
+          "showInputMessage": true,
+          "type": "list"
+        },
+        "command": "xlsx data-validations create",
+        "id": "sheet-1-data-validation-1"
+      },
+      {
+        "args": {
+          "name": "RevenueData",
+          "range": "D2:D5",
+          "sheet": "Sales"
+        },
+        "command": "xlsx names add",
+        "id": "sheet-1-name-1"
+      },
+      {
+        "args": {
+          "anchor": "G2",
+          "range": "A1:B5",
+          "sheet": "Sales",
+          "style": "default",
+          "title": "Units by Region",
+          "type": "bar"
+        },
+        "command": "xlsx charts create",
+        "id": "sheet-1-chart-1"
+      },
+      {
+        "args": {
+          "cell": "A7",
+          "display": "Sales portal",
+          "sheet": "Sales",
+          "tooltip": "Open the sales portal",
+          "url": "https://example.com/sales"
+        },
+        "command": "xlsx hyperlinks add",
+        "id": "sheet-1-hyperlink-1"
+      },
+      {
+        "args": {
+          "author": "Finance",
+          "cell": "D1",
+          "sheet": "Sales",
+          "text": "Calculated revenue"
+        },
+        "command": "xlsx comments add",
+        "id": "sheet-1-comment-1"
+      },
+      {
+        "args": {
+          "fitToWidth": 1,
+          "gridlines": "off",
+          "landscape": true,
+          "repeatHeaderRows": 1,
+          "sheet": "Sales"
+        },
+        "command": "xlsx sheets set-print",
+        "id": "sheet-1-print"
+      },
+      {
+        "args": {
+          "anchor": "A1",
+          "dataFormat": "csv",
+          "sheet": "Targets",
+          "valuesFile": "targets.csv"
+        },
+        "command": "xlsx ranges set",
+        "id": "sheet-2-data"
+      },
+      {
+        "args": {
+          "color": "16A34A",
+          "sheet": "Targets"
+        },
+        "command": "xlsx sheets set-tab-color",
+        "id": "sheet-2-tab-color"
+      },
+      {
+        "args": {
+          "rows": 1,
+          "sheet": "Targets"
+        },
+        "command": "xlsx freeze set",
+        "id": "sheet-2-freeze"
+      },
+      {
+        "args": {
+          "preset": "muted",
+          "range": "A1:F1",
+          "sheet": "Targets"
+        },
+        "command": "xlsx ranges set-style",
+        "id": "sheet-2-header-style"
+      },
+      {
+        "args": {
+          "range": "A:A",
+          "sheet": "Targets"
+        },
+        "command": "xlsx colwidths autofit",
+        "id": "sheet-2-column-1-autofit"
+      },
+      {
+        "args": {
+          "range": "B:B",
+          "sheet": "Targets"
+        },
+        "command": "xlsx colwidths autofit",
+        "id": "sheet-2-column-2-autofit"
+      },
+      {
+        "args": {
+          "range": "C:C",
+          "sheet": "Targets",
+          "width": 14.0
+        },
+        "command": "xlsx colwidths set",
+        "id": "sheet-2-column-3-width"
+      },
+      {
+        "args": {
+          "formatCode": "$#,##0",
+          "range": "C:C",
+          "sheet": "Targets"
+        },
+        "command": "xlsx ranges set-format",
+        "id": "sheet-2-column-3-format"
+      },
+      {
+        "args": {
+          "range": "D:D",
+          "sheet": "Targets",
+          "width": 10.0
+        },
+        "command": "xlsx colwidths set",
+        "id": "sheet-2-column-4-width"
+      },
+      {
+        "args": {
+          "range": "E:E",
+          "sheet": "Targets",
+          "width": 13.0
+        },
+        "command": "xlsx colwidths set",
+        "id": "sheet-2-column-5-width"
+      },
+      {
+        "args": {
+          "formatCode": "yyyy-mm-dd",
+          "range": "E:E",
+          "sheet": "Targets"
+        },
+        "command": "xlsx ranges set-format",
+        "id": "sheet-2-column-5-format"
+      },
+      {
+        "args": {
+          "range": "F:F",
+          "sheet": "Targets",
+          "width": 12.0
+        },
+        "command": "xlsx colwidths set",
+        "id": "sheet-2-column-6-width"
+      },
+      {
+        "args": {
+          "formatCode": "0%",
+          "range": "F:F",
+          "sheet": "Targets"
+        },
+        "command": "xlsx ranges set-format",
+        "id": "sheet-2-column-6-format"
+      },
+      {
+        "args": {
+          "range": {
+            "$ref": "sheet-2-data.destination.range"
+          },
+          "sheet": "Targets",
+          "style": "TableStyleMedium4",
+          "table": "TargetsTable"
+        },
+        "command": "xlsx tables create",
+        "id": "sheet-2-table-1"
+      },
+      {
+        "args": {
+          "creator": "ooxml-cli",
+          "description": "Deterministic XLSX build-spec acceptance workbook",
+          "fullCalcOnLoad": true,
+          "keywords": "sales,quarterly,regional",
+          "subject": "Regional sales performance",
+          "title": "Quarterly Sales Workbook"
+        },
+        "command": "xlsx workbook metadata update",
+        "id": "workbook-metadata"
+      }
+    ],
+    "schemaVersion": "ooxml-cli.build-plan.v1"
+  },
+  "family": "xlsx",
+  "nodeMap": {
+    "/": {
+      "opId": "document",
+      "selector": "package",
+      "specId": null
+    },
+    "/metadata": {
+      "opId": "workbook-metadata",
+      "selector": "package",
+      "specId": null
+    },
+    "/sheets/0": {
+      "opId": "sheet-1-data",
+      "selector": "range:A1:E5",
+      "specId": "sales"
+    },
+    "/sheets/0/charts/0": {
+      "opId": "sheet-1-chart-1",
+      "selector": "sheet:Sales",
+      "specId": "units-chart"
+    },
+    "/sheets/0/columns/0": {
+      "opId": "sheet-1-column-1-width",
+      "selector": "range:A:A",
+      "specId": null
+    },
+    "/sheets/0/columns/1": {
+      "opId": "sheet-1-column-2-width",
+      "selector": "range:B:B",
+      "specId": null
+    },
+    "/sheets/0/columns/2": {
+      "opId": "sheet-1-column-3-width",
+      "selector": "range:C:C",
+      "specId": null
+    },
+    "/sheets/0/columns/3": {
+      "opId": "sheet-1-column-4-width",
+      "selector": "range:D:D",
+      "specId": null
+    },
+    "/sheets/0/columns/4": {
+      "opId": "sheet-1-column-5-width",
+      "selector": "range:E:E",
+      "specId": null
+    },
+    "/sheets/0/comments/0": {
+      "opId": "sheet-1-comment-1",
+      "selector": "comment:0",
+      "specId": null
+    },
+    "/sheets/0/conditionalFormats/0": {
+      "opId": "sheet-1-conditional-format-1",
+      "selector": "sheet:Sales",
+      "specId": null
+    },
+    "/sheets/0/dataValidations/0": {
+      "opId": "sheet-1-data-validation-1",
+      "selector": "sheet:Sales",
+      "specId": null
+    },
+    "/sheets/0/freeze": {
+      "opId": "sheet-1-freeze",
+      "selector": "sheet:Sales",
+      "specId": null
+    },
+    "/sheets/0/headerStyle": {
+      "opId": "sheet-1-header-style",
+      "selector": "range:A1:E1",
+      "specId": null
+    },
+    "/sheets/0/hyperlinks/0": {
+      "opId": "sheet-1-hyperlink-1",
+      "selector": "sheet:Sales",
+      "specId": null
+    },
+    "/sheets/0/names/0": {
+      "opId": "sheet-1-name-1",
+      "selector": "name:RevenueData",
+      "specId": null
+    },
+    "/sheets/0/printSetup": {
+      "opId": "sheet-1-print",
+      "selector": "sheet:Sales",
+      "specId": null
+    },
+    "/sheets/0/tabColor": {
+      "opId": "sheet-1-tab-color",
+      "selector": "sheet:Sales",
+      "specId": null
+    },
+    "/sheets/0/tables/0": {
+      "opId": "sheet-1-table-1",
+      "selector": "table:SalesTable",
+      "specId": "sales-table"
+    },
+    "/sheets/1": {
+      "opId": "sheet-2-data",
+      "selector": "range:A1:F5",
+      "specId": "targets"
+    },
+    "/sheets/1/columns/0": {
+      "opId": "sheet-2-column-1-autofit",
+      "selector": "range:A:A",
+      "specId": null
+    },
+    "/sheets/1/columns/1": {
+      "opId": "sheet-2-column-2-autofit",
+      "selector": "range:B:B",
+      "specId": null
+    },
+    "/sheets/1/columns/2": {
+      "opId": "sheet-2-column-3-width",
+      "selector": "range:C:C",
+      "specId": null
+    },
+    "/sheets/1/columns/3": {
+      "opId": "sheet-2-column-4-width",
+      "selector": "range:D:D",
+      "specId": null
+    },
+    "/sheets/1/columns/4": {
+      "opId": "sheet-2-column-5-width",
+      "selector": "range:E:E",
+      "specId": null
+    },
+    "/sheets/1/columns/5": {
+      "opId": "sheet-2-column-6-width",
+      "selector": "range:F:F",
+      "specId": null
+    },
+    "/sheets/1/freeze": {
+      "opId": "sheet-2-freeze",
+      "selector": "sheet:Targets",
+      "specId": null
+    },
+    "/sheets/1/headerStyle": {
+      "opId": "sheet-2-header-style",
+      "selector": "range:A1:F1",
+      "specId": null
+    },
+    "/sheets/1/tabColor": {
+      "opId": "sheet-2-tab-color",
+      "selector": "sheet:Targets",
+      "specId": null
+    },
+    "/sheets/1/tables/0": {
+      "opId": "sheet-2-table-1",
+      "selector": "table:TargetsTable",
+      "specId": "targets-table"
+    }
+  },
+  "outline": {
+    "depth": 2,
+    "names": [
+      {
+        "name": "RevenueData",
+        "primarySelector": "name:RevenueData",
+        "ref": "'Sales'!$D$2:$D$5",
+        "scope": "workbook"
+      },
+      {
+        "name": "_xlnm.Print_Titles",
+        "primarySelector": "sheet:1/name:_xlnm.Print_Titles",
+        "ref": "'Sales'!$1:$1",
+        "scope": "sheet"
+      }
+    ],
+    "schemaVersion": 1,
+    "sheets": [
+      {
+        "cellCount": 27,
+        "commentCount": 1,
+        "conditionalFormatCount": 1,
+        "dimensionDeclared": "A1:E6",
+        "freeze": {
+          "cols": 0,
+          "frozen": true,
+          "rows": 1,
+          "topLeftCell": "A2"
+        },
+        "name": "Sales",
+        "number": 1,
+        "partUri": "/xl/worksheets/sheet1.xml",
+        "primarySelector": "sheetId:1",
+        "rowCount": 6,
+        "sheetId": "1",
+        "state": "visible",
+        "usedRange": {
+          "cols": 5,
+          "empty": false,
+          "maxCol": 5,
+          "maxRow": 6,
+          "minCol": 1,
+          "minRow": 1,
+          "ref": "A1:E6",
+          "rows": 6
+        },
+        "validationCount": 1
+      },
+      {
+        "cellCount": 30,
+        "commentCount": 0,
+        "conditionalFormatCount": 0,
+        "dimensionDeclared": "A1:F5",
+        "freeze": {
+          "cols": 0,
+          "frozen": true,
+          "rows": 1,
+          "topLeftCell": "A2"
+        },
+        "name": "Targets",
+        "number": 2,
+        "partUri": "/xl/worksheets/sheet2.xml",
+        "primarySelector": "sheetId:2",
+        "rowCount": 5,
+        "sheetId": "2",
+        "state": "visible",
+        "usedRange": {
+          "cols": 6,
+          "empty": false,
+          "maxCol": 6,
+          "maxRow": 5,
+          "minCol": 1,
+          "minRow": 1,
+          "ref": "A1:F5",
+          "rows": 5
+        },
+        "validationCount": 0
+      }
+    ],
+    "summary": {
+      "charts": 1,
+      "customXmlParts": 0,
+      "mediaAssets": 0,
+      "pivotCaches": 0,
+      "pivots": 0,
+      "sharedStrings": false,
+      "sheets": 2,
+      "styles": true,
+      "tables": 2,
+      "themes": 1,
+      "worksheets": 2
+    },
+    "textPreviewChars": 240,
+    "type": "xlsx"
+  }
+}

@@ -1,0 +1,773 @@
+{
+  "compiledPlan": {
+    "family": "docx",
+    "nodeMap": {
+      "/": {
+        "opId": "document",
+        "resultRef": {
+          "$ref": "document.destination"
+        }
+      },
+      "/blocks/0": {
+        "opId": "block_001",
+        "resultRef": {
+          "$ref": "block_001.destination.primarySelector"
+        },
+        "specId": "report-title"
+      },
+      "/blocks/1": {
+        "opId": "block_002",
+        "resultRef": {
+          "$ref": "block_002.destination.primarySelector"
+        },
+        "specId": "report-subtitle"
+      },
+      "/blocks/10": {
+        "opId": "block_011",
+        "resultRef": {
+          "$ref": "block_011.destination.primarySelector"
+        },
+        "specId": "outlook-break"
+      },
+      "/blocks/11": {
+        "opId": "block_012",
+        "resultRef": {
+          "$ref": "block_012.destination.primarySelector"
+        },
+        "specId": "outlook-heading"
+      },
+      "/blocks/12": {
+        "opId": "block_013",
+        "resultRef": {
+          "$ref": "block_013.destination.primarySelector"
+        },
+        "specId": "outlook-copy"
+      },
+      "/blocks/13": {
+        "opId": "block_014",
+        "resultRef": {
+          "$ref": "block_014.destination.primarySelector"
+        },
+        "specId": "priority-one"
+      },
+      "/blocks/14": {
+        "opId": "block_015",
+        "resultRef": {
+          "$ref": "block_015.destination.primarySelector"
+        },
+        "specId": "priority-two"
+      },
+      "/blocks/2": {
+        "opId": "block_003",
+        "resultRef": {
+          "$ref": "block_003.destination.primarySelector"
+        },
+        "specId": "contents"
+      },
+      "/blocks/3": {
+        "opId": "block_004",
+        "resultRef": {
+          "$ref": "block_004.destination.primarySelector"
+        },
+        "specId": "highlights-heading"
+      },
+      "/blocks/4": {
+        "opId": "block_005",
+        "resultRef": {
+          "$ref": "block_005.destination.primarySelector"
+        },
+        "specId": "summary"
+      },
+      "/blocks/5": {
+        "opId": "block_006",
+        "resultRef": {
+          "$ref": "block_006.destination.primarySelector"
+        },
+        "specId": "highlight-one"
+      },
+      "/blocks/6": {
+        "opId": "block_007",
+        "resultRef": {
+          "$ref": "block_007.destination.primarySelector"
+        },
+        "specId": "highlight-two"
+      },
+      "/blocks/7": {
+        "opId": "block_008",
+        "resultRef": {
+          "$ref": "block_008.destination.primarySelector"
+        },
+        "specId": "metrics-heading"
+      },
+      "/blocks/8": {
+        "opId": "block_009",
+        "resultRef": {
+          "$ref": "block_009.destination.primarySelector"
+        },
+        "specId": "regional-table"
+      },
+      "/blocks/9": {
+        "opId": "block_010",
+        "resultRef": {
+          "$ref": "block_010.destination.primarySelector"
+        },
+        "specId": "product-image"
+      },
+      "/sections/0": {
+        "opId": "section_setup_001",
+        "resultRef": {
+          "$ref": "section_setup_001.destination"
+        },
+        "specId": "main"
+      }
+    },
+    "operations": [
+      {
+        "args": {
+          "creator": "ooxml-cli",
+          "description": "Deterministic DOCX build-spec fixture",
+          "keywords": "quarterly,operations",
+          "subject": "Quarterly operating review",
+          "theme": "corporate-blue",
+          "title": "Q3 quarterly report"
+        },
+        "command": "docx scaffold",
+        "id": "document"
+      },
+      {
+        "args": {
+          "style": "Title",
+          "text": "Q3 quarterly report"
+        },
+        "command": "docx paragraphs append",
+        "id": "block_001"
+      },
+      {
+        "args": {
+          "style": "Subtitle",
+          "text": "Operating review and outlook"
+        },
+        "command": "docx paragraphs append",
+        "id": "block_002"
+      },
+      {
+        "args": {
+          "levels": "1-4",
+          "toc": true
+        },
+        "command": "docx fields insert",
+        "id": "block_003"
+      },
+      {
+        "args": {
+          "style": "Heading1",
+          "text": "Highlights"
+        },
+        "command": "docx paragraphs append",
+        "id": "block_004"
+      },
+      {
+        "args": {
+          "runs": [
+            {
+              "bold": true,
+              "text": "Revenue grew 18%"
+            },
+            {
+              "italic": true,
+              "text": " while the team maintained disciplined execution."
+            },
+            {
+              "color": "44546A",
+              "inlineCode": true,
+              "size": "10pt",
+              "text": " forecast()",
+              "underline": true
+            },
+            {
+              "link": "https://example.com/q3",
+              "text": " Review the operating dashboard."
+            }
+          ],
+          "style": "Normal"
+        },
+        "command": "docx paragraphs append",
+        "id": "block_005"
+      },
+      {
+        "args": {
+          "level": 0,
+          "list": "bullet",
+          "style": "ListBullet",
+          "text": "Enterprise pipeline reached a record level"
+        },
+        "command": "docx paragraphs append",
+        "id": "block_006"
+      },
+      {
+        "args": {
+          "level": 1,
+          "list": "bullet",
+          "style": "ListBullet",
+          "text": "Customer retention remained above plan"
+        },
+        "command": "docx paragraphs append",
+        "id": "block_007"
+      },
+      {
+        "args": {
+          "style": "Heading2",
+          "text": "Regional metrics"
+        },
+        "command": "docx paragraphs append",
+        "id": "block_008"
+      },
+      {
+        "args": {
+          "caption": "Regional performance",
+          "headerRow": true,
+          "style": "TableLight",
+          "values": "[[\"Region\",\"Revenue\",\"Growth\"],[\"North America\",\"$28m\",\"21%\"],[\"Europe\",\"$17m\",\"14%\"],[\"Asia Pacific\",\"$11m\",\"19%\"]]",
+          "widths": "2.3in,1.2in,1in"
+        },
+        "command": "docx tables create",
+        "id": "block_009"
+      },
+      {
+        "args": {
+          "after": 10,
+          "align": "center",
+          "alt": "Illustration of the Q3 product workflow",
+          "caption": "Product adoption accelerated throughout Q3",
+          "height": 2468880,
+          "image": "../../test_image.png",
+          "keepOriginal": true,
+          "width": 4114800
+        },
+        "command": "docx images insert",
+        "id": "block_010"
+      },
+      {
+        "args": {
+          "page": true
+        },
+        "command": "docx breaks insert",
+        "id": "block_011"
+      },
+      {
+        "args": {
+          "style": "Heading1",
+          "text": "Outlook"
+        },
+        "command": "docx paragraphs append",
+        "id": "block_012"
+      },
+      {
+        "args": {
+          "style": "Normal",
+          "text": "The company enters Q4 with a focused roadmap and strong customer demand."
+        },
+        "command": "docx paragraphs append",
+        "id": "block_013"
+      },
+      {
+        "args": {
+          "level": 0,
+          "list": "number",
+          "style": "ListNumber",
+          "text": "Scale the enterprise rollout"
+        },
+        "command": "docx paragraphs append",
+        "id": "block_014"
+      },
+      {
+        "args": {
+          "level": 0,
+          "list": "number",
+          "style": "ListNumber",
+          "text": "Expand the partner channel"
+        },
+        "command": "docx paragraphs append",
+        "id": "block_015"
+      },
+      {
+        "args": {
+          "block": 1,
+          "expectHash": {
+            "$ref": "document.readback.blockHashes.0.contentHash"
+          }
+        },
+        "command": "docx blocks delete",
+        "id": "remove_seed"
+      },
+      {
+        "args": {
+          "margins": "0.75in,0.8in,0.75in,0.8in",
+          "orientation": "portrait",
+          "section": 1,
+          "size": "Letter"
+        },
+        "command": "docx sections set",
+        "id": "section_setup_001"
+      },
+      {
+        "args": {
+          "section": 1,
+          "text": "Q3 quarterly report",
+          "type": "default"
+        },
+        "command": "docx headers set-text",
+        "id": "header_default"
+      },
+      {
+        "args": {
+          "pageNumbers": true,
+          "section": 1,
+          "type": "default"
+        },
+        "command": "docx footers set-text",
+        "id": "footer_page_numbers"
+      }
+    ],
+    "schemaVersion": "ooxml-cli.build-plan.v1"
+  },
+  "family": "docx",
+  "nodeMap": {
+    "/": {
+      "opId": "document",
+      "selector": "package",
+      "specId": null
+    },
+    "/blocks/0": {
+      "opId": "block_001",
+      "selector": "block:1",
+      "specId": "report-title"
+    },
+    "/blocks/1": {
+      "opId": "block_002",
+      "selector": "block:2",
+      "specId": "report-subtitle"
+    },
+    "/blocks/10": {
+      "opId": "block_011",
+      "selector": "section:document",
+      "specId": "outlook-break"
+    },
+    "/blocks/11": {
+      "opId": "block_012",
+      "selector": "block:13",
+      "specId": "outlook-heading"
+    },
+    "/blocks/12": {
+      "opId": "block_013",
+      "selector": "block:14",
+      "specId": "outlook-copy"
+    },
+    "/blocks/13": {
+      "opId": "block_014",
+      "selector": "block:15",
+      "specId": "priority-one"
+    },
+    "/blocks/14": {
+      "opId": "block_015",
+      "selector": "block:16",
+      "specId": "priority-two"
+    },
+    "/blocks/2": {
+      "opId": "block_003",
+      "selector": "slide:1",
+      "specId": "contents"
+    },
+    "/blocks/3": {
+      "opId": "block_004",
+      "selector": "block:4",
+      "specId": "highlights-heading"
+    },
+    "/blocks/4": {
+      "opId": "block_005",
+      "selector": "block:5",
+      "specId": "summary"
+    },
+    "/blocks/5": {
+      "opId": "block_006",
+      "selector": "block:6",
+      "specId": "highlight-one"
+    },
+    "/blocks/6": {
+      "opId": "block_007",
+      "selector": "block:7",
+      "specId": "highlight-two"
+    },
+    "/blocks/7": {
+      "opId": "block_008",
+      "selector": "block:8",
+      "specId": "metrics-heading"
+    },
+    "/blocks/8": {
+      "opId": "block_009",
+      "selector": "table:1",
+      "specId": "regional-table"
+    },
+    "/blocks/9": {
+      "opId": "block_010",
+      "selector": "image:11",
+      "specId": "product-image"
+    },
+    "/sections/0": {
+      "opId": "section_setup_001",
+      "selector": "section:1",
+      "specId": "main"
+    }
+  },
+  "outline": {
+    "blocks": [
+      {
+        "contentHash": "sha256:5fcaf5a30475ba22a91c88c1265f3e984d8f0c45bf8ac8a799a6d3a0756f8553",
+        "id": "body.b1",
+        "index": 1,
+        "kind": "paragraph",
+        "primarySelector": "1",
+        "section": 1,
+        "styleId": "Title",
+        "textPreview": "Q3 quarterly report"
+      },
+      {
+        "contentHash": "sha256:453e2a90d81f7d41ce7568eade5ff01b5565d629f4531c6e383a7533cf91ce26",
+        "id": "body.b2",
+        "index": 2,
+        "kind": "paragraph",
+        "primarySelector": "2",
+        "section": 1,
+        "styleId": "Subtitle",
+        "textPreview": "Operating review and outlook"
+      },
+      {
+        "contentHash": "sha256:f328aa583ebe1d13f406706ef58f87db5300fe42ce859d572c891f32db6a9a9e",
+        "id": "body.b3",
+        "index": 3,
+        "kind": "paragraph",
+        "primarySelector": "3",
+        "section": 1,
+        "textPreview": "Table of contents — update field to refresh"
+      },
+      {
+        "contentHash": "sha256:73d8f26d69dd6067fa48d9830f35cc5c93991a6657f6a75891a1a0e6d0e23332",
+        "id": "body.b4",
+        "index": 4,
+        "kind": "paragraph",
+        "primarySelector": "4",
+        "section": 1,
+        "styleId": "Heading1",
+        "textPreview": "Highlights"
+      },
+      {
+        "contentHash": "sha256:bb5f2ac68ee74ad4b793820d311c1c99a3dc4c20ac56e254fbe957fc0617c40d",
+        "id": "body.b5",
+        "index": 5,
+        "kind": "paragraph",
+        "primarySelector": "5",
+        "section": 1,
+        "styleId": "Normal",
+        "textPreview": "Revenue grew 18% while the team maintained disciplined execution. forecast() Review the operating dashboard."
+      },
+      {
+        "contentHash": "sha256:f7f54875cc04e3b134c21abe69e62a37d4709cdf7b12cfc78252e02f5ea835d3",
+        "id": "body.b6",
+        "index": 6,
+        "kind": "paragraph",
+        "listLevel": 0,
+        "numId": 1,
+        "primarySelector": "6",
+        "section": 1,
+        "styleId": "ListBullet",
+        "textPreview": "Enterprise pipeline reached a record level"
+      },
+      {
+        "contentHash": "sha256:4a3d353afd7420030d4ea7d96c726482dc7ec8aad2466302157a79b46a309628",
+        "id": "body.b7",
+        "index": 7,
+        "kind": "paragraph",
+        "listLevel": 1,
+        "numId": 1,
+        "primarySelector": "7",
+        "section": 1,
+        "styleId": "ListBullet",
+        "textPreview": "Customer retention remained above plan"
+      },
+      {
+        "contentHash": "sha256:af03bb1b1c0613c2286061db3c5151cbae68f9e33d9c2e0fad83cc3b2e289801",
+        "id": "body.b8",
+        "index": 8,
+        "kind": "paragraph",
+        "primarySelector": "8",
+        "section": 1,
+        "styleId": "Heading2",
+        "textPreview": "Regional metrics"
+      },
+      {
+        "contentHash": "sha256:24574f36210071e3dd95c0235cad077c74c74ddcfa1146506244f0fcacec3774",
+        "id": "body.b9",
+        "index": 9,
+        "kind": "table",
+        "primarySelector": "9",
+        "section": 1,
+        "textPreview": "Region Revenue Growth North America $28m 21% Europe $17m 14% Asia Pacific $11m 19%"
+      },
+      {
+        "contentHash": "sha256:a6cd446a4bd7d7661a1048d57c7cf52f8702143ad430b0aba83997e51475b09f",
+        "id": "body.b10",
+        "index": 10,
+        "kind": "paragraph",
+        "primarySelector": "10",
+        "section": 1
+      },
+      {
+        "contentHash": "sha256:f3401dcf6345ebd5e8da9ace59eb526764e22afefadaf905d93d3aae7efcf67f",
+        "id": "body.b11",
+        "index": 11,
+        "kind": "paragraph",
+        "primarySelector": "11",
+        "section": 1,
+        "styleId": "Caption",
+        "textPreview": "Figure 1: Product adoption accelerated throughout Q3"
+      },
+      {
+        "contentHash": "sha256:3716b385aff5884475289ce676d34fa369ba7d0a2833fbde4ea79792f27e6e12",
+        "id": "body.b12",
+        "index": 12,
+        "kind": "paragraph",
+        "primarySelector": "12",
+        "section": 1
+      },
+      {
+        "contentHash": "sha256:dbc620dbce9f6e7070e33036e7b304c6dfdc334f7c8157673061d37254ad40d5",
+        "id": "body.b13",
+        "index": 13,
+        "kind": "paragraph",
+        "primarySelector": "13",
+        "section": 1,
+        "styleId": "Heading1",
+        "textPreview": "Outlook"
+      },
+      {
+        "contentHash": "sha256:d3305ee4843963bb6f8471b925612aea0ac930f604e34c0a122cf3f4e5b15aad",
+        "id": "body.b14",
+        "index": 14,
+        "kind": "paragraph",
+        "primarySelector": "14",
+        "section": 1,
+        "styleId": "Normal",
+        "textPreview": "The company enters Q4 with a focused roadmap and strong customer demand."
+      },
+      {
+        "contentHash": "sha256:99dfb3cba3787af78fa77ff7474650dae85d5005aff19ba38e3b6f7b1840a52a",
+        "id": "body.b15",
+        "index": 15,
+        "kind": "paragraph",
+        "listLevel": 0,
+        "numId": 2,
+        "primarySelector": "15",
+        "section": 1,
+        "styleId": "ListNumber",
+        "textPreview": "Scale the enterprise rollout"
+      },
+      {
+        "contentHash": "sha256:3b691d99066e0ffc54445445bdee5f18036e2159fca30e6de643a61e5a7a4c66",
+        "id": "body.b16",
+        "index": 16,
+        "kind": "paragraph",
+        "listLevel": 0,
+        "numId": 2,
+        "primarySelector": "16",
+        "section": 1,
+        "styleId": "ListNumber",
+        "textPreview": "Expand the partner channel"
+      }
+    ],
+    "coreProperties": {
+      "created": "2000-01-01T00:00:00Z",
+      "creator": "ooxml-cli",
+      "description": "Deterministic DOCX build-spec fixture",
+      "keywords": "quarterly,operations",
+      "lastModifiedBy": "ooxml-cli",
+      "modified": "2000-01-01T00:00:00Z",
+      "subject": "Quarterly operating review",
+      "title": "Q3 quarterly report"
+    },
+    "depth": 3,
+    "fields": [
+      {
+        "blockIndex": 3,
+        "cachedResult": "Table of contents — update field to refresh",
+        "fieldType": "simple",
+        "index": 0,
+        "instruction": "TOC \\o \"1-4\" \\h \\z \\u",
+        "location": "body:3",
+        "partUri": "/word/document.xml"
+      },
+      {
+        "blockIndex": 11,
+        "cachedResult": "Figure 1",
+        "fieldType": "simple",
+        "index": 1,
+        "instruction": "SEQ Figure \\* ARABIC",
+        "location": "body:11",
+        "partUri": "/word/document.xml"
+      },
+      {
+        "blockIndex": 1,
+        "cachedResult": "1",
+        "fieldType": "simple",
+        "index": 2,
+        "instruction": "PAGE",
+        "location": "footer1:1",
+        "partUri": "/word/footer1.xml"
+      },
+      {
+        "blockIndex": 1,
+        "cachedResult": "1",
+        "fieldType": "simple",
+        "index": 3,
+        "instruction": "NUMPAGES",
+        "location": "footer1:1",
+        "partUri": "/word/footer1.xml"
+      }
+    ],
+    "footers": [
+      {
+        "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
+        "id": "rId9",
+        "kind": "footer",
+        "partUri": "/word/footer1.xml",
+        "primarySelector": "footer:1:default",
+        "section": 1,
+        "selectors": [
+          "footer:1:default",
+          "id:rId9",
+          "rId9",
+          "part:/word/footer1.xml",
+          "/word/footer1.xml"
+        ],
+        "type": "default"
+      }
+    ],
+    "headers": [
+      {
+        "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+        "id": "rId8",
+        "kind": "header",
+        "partUri": "/word/header1.xml",
+        "primarySelector": "header:1:default",
+        "section": 1,
+        "selectors": [
+          "header:1:default",
+          "id:rId8",
+          "rId8",
+          "part:/word/header1.xml",
+          "/word/header1.xml"
+        ],
+        "type": "default"
+      }
+    ],
+    "images": [
+      {
+        "blockIndex": 10,
+        "contentType": "image/png",
+        "height": 2468880,
+        "heightInches": 2.7,
+        "index": 1,
+        "mediaUri": "/word/media/image1.png",
+        "primarySelector": "1",
+        "width": 4114800,
+        "widthInches": 4.5
+      }
+    ],
+    "schemaVersion": 1,
+    "sections": [
+      {
+        "footers": [
+          {
+            "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
+            "id": "rId9",
+            "kind": "footer",
+            "partUri": "/word/footer1.xml",
+            "primarySelector": "footer:1:default",
+            "section": 1,
+            "selectors": [
+              "footer:1:default",
+              "id:rId9",
+              "rId9",
+              "part:/word/footer1.xml",
+              "/word/footer1.xml"
+            ],
+            "type": "default"
+          }
+        ],
+        "headers": [
+          {
+            "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+            "id": "rId8",
+            "kind": "header",
+            "partUri": "/word/header1.xml",
+            "primarySelector": "header:1:default",
+            "section": 1,
+            "selectors": [
+              "header:1:default",
+              "id:rId8",
+              "rId8",
+              "part:/word/header1.xml",
+              "/word/header1.xml"
+            ],
+            "type": "default"
+          }
+        ],
+        "number": 1,
+        "pageSetup": {
+          "margins": {
+            "bottomInches": 0.75,
+            "bottomTwips": 1080,
+            "leftInches": 0.8,
+            "leftTwips": 1152,
+            "rightInches": 0.8,
+            "rightTwips": 1152,
+            "topInches": 0.75,
+            "topTwips": 1080
+          },
+          "pageSize": {
+            "heightInches": 11.0,
+            "heightTwips": 15840,
+            "widthInches": 8.5,
+            "widthTwips": 12240
+          }
+        }
+      }
+    ],
+    "summary": {
+      "comments": false,
+      "customXmlParts": 0,
+      "endnotes": false,
+      "footers": 1,
+      "footnotes": false,
+      "headers": 1,
+      "hyperlinks": 1,
+      "mediaAssets": 1,
+      "numbering": true,
+      "paragraphs": 15,
+      "sections": 1,
+      "styles": true,
+      "tables": 1
+    },
+    "tables": [
+      {
+        "block": 9,
+        "cols": 3,
+        "contentHash": "sha256:24574f36210071e3dd95c0235cad077c74c74ddcfa1146506244f0fcacec3774",
+        "primarySelector": "1",
+        "rows": 4,
+        "table": 1
+      }
+    ],
+    "textPreviewChars": 240,
+    "type": "docx"
+  }
+}

@@ -163,7 +163,8 @@ pub(crate) fn pptx_build(args: &[String]) -> crate::CliResult<Value> {
     // Build sources are resolved against the reviewed spec/Markdown directory
     // above, then passed through the same apply path guard as direct batches.
     apply_args.push("--allow-absolute-paths".to_string());
-    let mutation_envelope = crate::apply(&virtual_input.to_string_lossy(), &apply_args)?;
+    let mutation_envelope = crate::apply(&virtual_input.to_string_lossy(), &apply_args)
+        .map_err(|error| super::compiler::execution_error_with_spec_path(&compiled.plan, error))?;
     let mutation_envelope = scrub_generated_paths(mutation_envelope, &temp.path);
 
     let outline = if dry_run {
