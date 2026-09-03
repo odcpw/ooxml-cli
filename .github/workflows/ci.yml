@@ -59,6 +59,9 @@ jobs:
       - name: Run CI gate
         run: make check-ci
 
+      - name: Require zero Linux mutation proof gaps
+        run: cargo test --lib linux_proof_matrix_has_zero_gaps_for_all_152_mutations -- --nocapture
+
       - name: Upload release trace and from-scratch recipe outputs
         if: always()
         uses: actions/upload-artifact@v4
@@ -159,21 +162,32 @@ jobs:
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-edit-smoke.ps1 -TestFailureFormatter
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\windows-office-vba-smoke.ps1 -TestFailureFormatter
 
+      - name: Generate all-command mutation proof artifacts
+        shell: pwsh
+        run: |
+          $targetDir = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).target_directory
+          $env:OOXML_CONTRACT_PROOF_DIR = Join-Path $targetDir "ooxml-mutation-contract-proof"
+          cargo test --test mutation_envelope -- --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run Office schema/conformance smoke
         shell: pwsh
         run: |
           $targetDir = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).target_directory
           $debugBin = Join-Path $targetDir "debug\ooxml.exe"
+          $proofEvidenceDir = Join-Path $targetDir "ooxml-mutation-contract-proof\evidence"
           powershell.exe -NoProfile -ExecutionPolicy Bypass `
             -File .\tools\windows-office-edit-smoke.ps1 `
             -RepoRoot . `
             -BinaryPath $debugBin `
             -SkipBuild `
             -MutationParallelism 4 `
+            -ContractEvidenceDir $proofEvidenceDir `
             -RequireOpenXmlSdk `
             -RunConformance `
             -SkipOffice `
-            -WriteArtifactProofMatrix
+            -WriteArtifactProofMatrix `
+            -FailOnArtifactProofGap
 
       - name: Upload Office proof diagnostics
         if: always()

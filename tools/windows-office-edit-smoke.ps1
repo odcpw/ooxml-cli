@@ -18,6 +18,8 @@ param(
 
     [string[]]$ScenarioName = @(),
 
+    [string]$ContractEvidenceDir = "",
+
     [int]$OfficeOracleTimeoutSeconds = 120,
 
     [switch]$SkipBuild,
@@ -343,7 +345,97 @@ function New-Scenario {
         output           = $Output
         commandPath      = (Get-ScenarioCommandPath -Arguments $Arguments)
         arguments        = $Arguments
+        prebuilt         = $false
     }
+}
+
+function New-ContractEvidenceScenario {
+    param(
+        [string]$Name,
+        [string]$Family,
+        [string]$Output,
+        [string]$CommandPath,
+        [string]$InputFixtureType
+    )
+
+    [pscustomobject]@{
+        index            = -1
+        name             = $Name
+        family           = $Family
+        input            = $Output
+        inputFixtureType = $InputFixtureType
+        output           = $Output
+        commandPath      = $CommandPath
+        arguments        = @()
+        prebuilt         = $true
+    }
+}
+
+function Import-ContractEvidenceScenarios {
+    param(
+        [string]$Directory,
+        [object[]]$ExistingScenarios
+    )
+
+    if ($Directory -eq "") {
+        return @()
+    }
+    if (-not (Test-Path -LiteralPath $Directory -PathType Container)) {
+        throw "ContractEvidenceDir does not exist: $Directory"
+    }
+    $files = @(Get-ChildItem -LiteralPath $Directory -Filter "*-contract-evidence.json" -File)
+    if ($files.Count -ne 4) {
+        throw "ContractEvidenceDir must contain exactly four family evidence files; found $($files.Count): $Directory"
+    }
+
+    $known = @{}
+    foreach ($scenario in @($ExistingScenarios)) {
+        $known[[string]$scenario.commandPath] = $true
+    }
+    $contractPaths = @{}
+    $additional = New-Object System.Collections.Generic.List[object]
+    foreach ($file in $files) {
+        $document = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+        if ([string]$document.schemaVersion -ne "ooxml-cli.mutation-contract-evidence.v1") {
+            throw "Unsupported contract evidence schema in $($file.FullName)"
+        }
+        foreach ($proof in @($document.proofs)) {
+            $path = [string]$proof.commandPath
+            if ($path -eq "" -or $contractPaths.ContainsKey($path)) {
+                throw "Missing or duplicate contract mutation path in $($file.FullName): $path"
+            }
+            $contractPaths[$path] = $true
+            foreach ($tier in @("structural", "readback", "validate", "conformance")) {
+                if ([string]$proof.tiers.$tier.status -ne "passed") {
+                    throw "Contract evidence is not passing for $path at tier $tier"
+                }
+            }
+            $output = [string]$proof.generatedOutputPath
+            if (-not (Test-Path -LiteralPath $output -PathType Leaf)) {
+                throw "Contract evidence artifact does not exist for $path: $output"
+            }
+            if ($known.ContainsKey($path)) {
+                continue
+            }
+            $slug = [regex]::Replace(($path -replace '^ooxml\s+', ''), '[^A-Za-z0-9]+', '-').Trim('-').ToLowerInvariant()
+            $additional.Add((New-ContractEvidenceScenario `
+                    -Name ("contract-" + $slug) `
+                    -Family ([string]$proof.family) `
+                    -Output $output `
+                    -CommandPath $path `
+                    -InputFixtureType ([string]$proof.inputFixtureType)))
+            $known[$path] = $true
+        }
+    }
+    if ($contractPaths.Count -ne 152) {
+        throw "Contract evidence must contain exactly 152 mutation paths; found $($contractPaths.Count)"
+    }
+    $missing = @($contractPaths.Keys | Where-Object { -not $known.ContainsKey([string]$_) })
+    if ($missing.Count -gt 0) {
+        throw "Windows smoke is missing contract mutation scenarios: $($missing -join ', ')"
+    }
+    Write-Host ("[contract-evidence] contract mutation paths: 152; added {0} prebuilt scenarios" -f $additional.Count)
+    return @($additional)
 }
 
 function New-StageResult {
@@ -666,22 +758,37 @@ function Invoke-ScenarioWorker {
         microsoftOffice = (New-WorkerStageResult -Status "pending" -Detail "Waiting for desktop Office COM oracle.")
     }
 
-    $mutation = Invoke-WorkerProcess -FilePath $BinaryPath -Arguments $Scenario.arguments
-    if ($mutation.exitCode -ne 0) {
-        $result.proofLevel = "failed"
-        $detail = "Mutation command failed with exit code {0}." -f $mutation.exitCode
-        if ($mutation.output -ne "") {
-            $detail = "{0} {1}" -f $detail, $mutation.output
+    if ([bool]$Scenario.prebuilt) {
+        if (-not (Test-Path -LiteralPath $Scenario.output -PathType Leaf)) {
+            $result.proofLevel = "failed"
+            $result.mutation = (New-WorkerStageResult -Status "failed" -Detail "Retained contract mutation output does not exist." -Artifact $Scenario.output)
+            $result.readback = (New-WorkerStageResult -Status "skipped" -Detail "Mutation evidence was missing.")
+            $result.validation = (New-WorkerStageResult -Status "skipped" -Detail "Mutation evidence was missing.")
+            $result.conformance = (New-WorkerStageResult -Status "skipped" -Detail "Mutation evidence was missing.")
+            $result.openXmlSdk = (New-WorkerStageResult -Status "skipped" -Detail "Mutation evidence was missing.")
+            $result.microsoftOffice = (New-WorkerStageResult -Status "skipped" -Detail "Mutation evidence was missing.")
+            return $result
         }
-        $result.mutation = (New-WorkerStageResult -Status "failed" -Detail $detail -Command $mutation.command -ElapsedMs $mutation.elapsedMs)
-        $result.readback = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
-        $result.validation = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
-        $result.conformance = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
-        $result.openXmlSdk = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
-        $result.microsoftOffice = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
-        return $result
+        $result.mutation = (New-WorkerStageResult -Status "passed" -Detail "Mutation completed in the Rust envelope contract lane." -Artifact $Scenario.output)
     }
-    $result.mutation = (New-WorkerStageResult -Status "passed" -Detail "Mutation command completed." -Command $mutation.command -ElapsedMs $mutation.elapsedMs)
+    else {
+        $mutation = Invoke-WorkerProcess -FilePath $BinaryPath -Arguments $Scenario.arguments
+        if ($mutation.exitCode -ne 0) {
+            $result.proofLevel = "failed"
+            $detail = "Mutation command failed with exit code {0}." -f $mutation.exitCode
+            if ($mutation.output -ne "") {
+                $detail = "{0} {1}" -f $detail, $mutation.output
+            }
+            $result.mutation = (New-WorkerStageResult -Status "failed" -Detail $detail -Command $mutation.command -ElapsedMs $mutation.elapsedMs)
+            $result.readback = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
+            $result.validation = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
+            $result.conformance = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
+            $result.openXmlSdk = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
+            $result.microsoftOffice = (New-WorkerStageResult -Status "skipped" -Detail "Mutation failed.")
+            return $result
+        }
+        $result.mutation = (New-WorkerStageResult -Status "passed" -Detail "Mutation command completed." -Command $mutation.command -ElapsedMs $mutation.elapsedMs)
+    }
 
     $readbackArgs = @("--json", "inspect", $Scenario.output)
     $readback = Invoke-WorkerProcess -FilePath $BinaryPath -Arguments $readbackArgs
@@ -1613,6 +1720,15 @@ $scenarios = @(
         -Arguments @("--json", "docx", "images", "replace", $docxWithImage, "--image", "1", "--file", $imageFixture, "--out", (Join-Path $caseDir "docx-image-replace.docx")))
 )
 
+$contractMutationPathCount = 0
+$contractPrebuiltScenarioCount = 0
+if ($ContractEvidenceDir -ne "") {
+    $contractScenarios = @(Import-ContractEvidenceScenarios -Directory $ContractEvidenceDir -ExistingScenarios $scenarios)
+    $scenarios = @($scenarios) + $contractScenarios
+    $contractMutationPathCount = 152
+    $contractPrebuiltScenarioCount = $contractScenarios.Count
+}
+
 if ($ScenarioName.Count -gt 0) {
     $requestedScenarioNames = @($ScenarioName | ForEach-Object {
             if ($null -ne $_) {
@@ -1777,6 +1893,8 @@ $summary = [pscustomobject]@{
     binary               = $BinaryPath
     outputDir            = $outRoot
     mutationParallelism  = $MutationParallelism
+    contractMutationPathCount = $contractMutationPathCount
+    contractPrebuiltScenarioCount = $contractPrebuiltScenarioCount
     scenarioNameFilter   = @($ScenarioName)
     scenarioCount        = $results.Count
     passedCount          = ($results.Count - $failed.Count)
@@ -1845,6 +1963,12 @@ if ($WriteArtifactProofMatrix -or $FailOnArtifactProofGap) {
         "-OutMarkdown",
         $ArtifactProofMatrixMarkdown
     )
+    if ($ContractEvidenceDir -ne "") {
+        $matrixArgs += @("-ContractEvidenceDir", $ContractEvidenceDir)
+    }
+    if ($SkipOffice) {
+        $matrixArgs += "-SkipOfficeRequirement"
+    }
     if ($FailOnArtifactProofGap) {
         $matrixArgs += "-FailOnGap"
     }

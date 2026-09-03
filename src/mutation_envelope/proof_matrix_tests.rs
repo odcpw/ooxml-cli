@@ -119,3 +119,17 @@ fn linux_proof_matrix_has_zero_gaps_for_all_152_mutations() {
         LINUX_TIERS.len()
     );
 }
+
+#[test]
+fn ci_runs_the_zero_gap_linux_and_windows_contract_lanes() {
+    let ci = include_str!("../../.github/workflows/ci.yml");
+    assert!(ci.contains("linux_proof_matrix_has_zero_gaps_for_all_152_mutations"));
+    assert!(ci.contains("OOXML_CONTRACT_PROOF_DIR"));
+    assert!(ci.contains("cargo test --test mutation_envelope"));
+    assert!(ci.contains("-ContractEvidenceDir $proofEvidenceDir"));
+    assert!(ci.contains("-FailOnArtifactProofGap"));
+
+    let smoke = include_str!("../../tools/windows-office-edit-smoke.ps1");
+    assert!(smoke.contains("contract mutation paths: 152"));
+    assert!(smoke.contains("-SkipOfficeRequirement"));
+}

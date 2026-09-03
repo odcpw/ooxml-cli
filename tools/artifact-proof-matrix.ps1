@@ -8,6 +8,8 @@ param(
 
     [string]$EvidencePath = "",
 
+    [string]$ContractEvidenceDir = "",
+
     [string[]]$OfficeEditSmokeSummaryPath = @(),
 
     [string[]]$OfficeOracleSummaryPath = @(),
@@ -18,7 +20,9 @@ param(
 
     [string]$OutMarkdown = "",
 
-    [switch]$FailOnGap
+    [switch]$FailOnGap,
+
+    [switch]$SkipOfficeRequirement
 )
 
 Set-StrictMode -Version Latest
@@ -26,6 +30,12 @@ $ErrorActionPreference = "Stop"
 
 $SchemaVersion = "ooxml-cli.artifact-proof-matrix.v2"
 $TierNames = @("structural", "readback", "validate", "conformance", "office")
+$RequiredTierNames = if ($SkipOfficeRequirement) {
+    @($TierNames | Where-Object { $_ -ne "office" })
+}
+else {
+    @($TierNames)
+}
 $StrictProofTierNames = @("validate", "conformance", "office")
 $ProofCoverageClasses = @(
     "office-proven",
@@ -688,6 +698,42 @@ function Import-Evidence {
     return $map
 }
 
+function Import-ContractEvidence {
+    param([string]$Directory)
+
+    $map = @{}
+    if ($Directory -eq "") {
+        return $map
+    }
+    if (-not (Test-Path -LiteralPath $Directory -PathType Container)) {
+        throw "ContractEvidenceDir does not exist: $Directory"
+    }
+    $files = @(Get-ChildItem -LiteralPath $Directory -Filter "*-contract-evidence.json" -File)
+    if ($files.Count -ne 4) {
+        throw "ContractEvidenceDir must contain exactly four family evidence files; found $($files.Count): $Directory"
+    }
+    foreach ($file in $files) {
+        $doc = Get-JsonObject -JsonText (Get-Content -LiteralPath $file.FullName -Raw)
+        if ([string](Get-PropertyValue -Object $doc -Name "schemaVersion") -ne "ooxml-cli.mutation-contract-evidence.v1") {
+            throw "Unsupported contract evidence schema in $($file.FullName)"
+        }
+        foreach ($item in @((Get-PropertyValue -Object $doc -Name "proofs"))) {
+            $commandPath = [string](Get-PropertyValue -Object $item -Name "commandPath")
+            if ($commandPath -eq "") {
+                throw "Contract evidence row in $($file.FullName) has no commandPath"
+            }
+            if ($map.ContainsKey($commandPath)) {
+                throw "Duplicate contract evidence commandPath: $commandPath"
+            }
+            $map[$commandPath] = $item
+        }
+    }
+    if ($map.Count -ne 152) {
+        throw "Contract evidence must contain exactly 152 mutation commands; found $($map.Count)"
+    }
+    return $map
+}
+
 function ConvertTo-OrderedPropertyMap {
     param([object]$Object)
 
@@ -1305,6 +1351,8 @@ $capabilitiesResult = Get-Capabilities -Root $resolvedRepoRoot -Binary $resolved
 $capabilities = $capabilitiesResult.Object
 $capabilityCommandPaths = @($capabilities.commands | ForEach-Object { [string](Get-PropertyValue -Object $_ -Name "path") })
 $evidenceMap = Import-Evidence -Path $EvidencePath
+$contractEvidence = Import-ContractEvidence -Directory $ContractEvidenceDir
+Merge-EvidenceMaps -Target $evidenceMap -Incoming $contractEvidence
 $officeEditSmokeEvidence = Import-OfficeEditSmokeEvidence -Paths $OfficeEditSmokeSummaryPath -CommandPaths $capabilityCommandPaths
 Merge-EvidenceMaps -Target $evidenceMap -Incoming $officeEditSmokeEvidence
 $officeOracleEvidence = Import-OfficeOracleEvidence -Paths $OfficeOracleSummaryPath -MappingPath $OfficeOracleEvidencePath -Root $resolvedRepoRoot
@@ -1315,11 +1363,14 @@ $resolvedOfficeOracleEvidencePath = if ($OfficeOracleEvidencePath -ne "") { (Res
 
 $rows = New-Object System.Collections.Generic.List[object]
 foreach ($command in @($capabilities.commands)) {
-    if (-not (Test-PublicPackageMutator -Command $command)) {
+    $commandPath = [string](Get-PropertyValue -Object $command -Name "path")
+    $inContractInventory = $contractEvidence.ContainsKey($commandPath)
+    if (($contractEvidence.Count -gt 0 -and -not $inContractInventory) -or
+        ($contractEvidence.Count -eq 0 -and -not (Test-PublicPackageMutator -Command $command))) {
         continue
     }
 
-    $path = [string](Get-PropertyValue -Object $command -Name "path")
+    $path = $commandPath
     $family = Get-OutputFamily -Command $command
     $slug = ConvertTo-Slug -Path $path
     $extension = Get-ArtifactExtension -Family $family -Path $path
@@ -1343,11 +1394,11 @@ foreach ($command in @($capabilities.commands)) {
     }
 
     $tiers = @{}
-    $tiers.structural = New-TierStatus -Name "structural" -Required $true -DefaultStatus "missing" -Detail "OOXML part assertions are required for every package write."
-    $tiers.readback = New-TierStatus -Name "readback" -Required $true -DefaultStatus "missing" -Detail "Saved output should be read back through the CLI."
-    $tiers.validate = New-TierStatus -Name "validate" -Required $true -DefaultStatus "missing" -Detail "Run ooxml validate --strict on the generated package."
-    $tiers.conformance = New-TierStatus -Name "conformance" -Required $true -DefaultStatus "missing" -Detail "Run ooxml --json conformance check on the generated package."
-    $tiers.office = New-TierStatus -Name "office" -Required $true -DefaultStatus "missing" -Detail "Representative rows need desktop Office open proof on Windows."
+    $tiers.structural = New-TierStatus -Name "structural" -Required ($RequiredTierNames -contains "structural") -DefaultStatus "missing" -Detail "OOXML part assertions are required for every package write."
+    $tiers.readback = New-TierStatus -Name "readback" -Required ($RequiredTierNames -contains "readback") -DefaultStatus "missing" -Detail "Saved output should be read back through the CLI."
+    $tiers.validate = New-TierStatus -Name "validate" -Required ($RequiredTierNames -contains "validate") -DefaultStatus "missing" -Detail "Run ooxml validate --strict on the generated package."
+    $tiers.conformance = New-TierStatus -Name "conformance" -Required ($RequiredTierNames -contains "conformance") -DefaultStatus "missing" -Detail "Run ooxml --json conformance check on the generated package."
+    $tiers.office = New-TierStatus -Name "office" -Required ($RequiredTierNames -contains "office") -DefaultStatus "missing" -Detail "Representative rows need desktop Office open proof on Windows."
 
     $evidenceTiers = Get-PropertyValue -Object $evidence -Name "tiers"
     if ($null -eq $evidenceTiers) {
@@ -1462,13 +1513,14 @@ $matrix = [pscustomobject][ordered]@{
         capabilitiesSource = $capabilitiesResult.Source
         capabilitiesCommand = $capabilitiesResult.Command
         evidencePath = if ($EvidencePath -ne "") { (Resolve-Path -LiteralPath $EvidencePath).Path } else { "" }
+        contractEvidenceDir = if ($ContractEvidenceDir -ne "") { (Resolve-Path -LiteralPath $ContractEvidenceDir).Path } else { "" }
         officeEditSmokeSummaryPaths = $resolvedOfficeEditSmokeSummaryPaths
         officeOracleSummaryPaths = $resolvedOfficeOracleSummaryPaths
         officeOracleEvidencePath = $resolvedOfficeOracleEvidencePath
     }
     policy = [ordered]@{
-        rowSource = "Public package-creating and package-mutating commands inferred from ooxml --json capabilities."
-        requiredTiers = $TierNames
+        rowSource = if ($contractEvidence.Count -gt 0) { "Canonical 152-command mutation contract evidence, joined to ooxml --json capabilities." } else { "Public package-creating and package-mutating commands inferred from ooxml --json capabilities." }
+        requiredTiers = $RequiredTierNames
         strictProofTiers = $StrictProofTierNames
         proofCoverageClasses = $ProofCoverageClasses
         officeProofGapClasses = $OfficeProofGapClasses
