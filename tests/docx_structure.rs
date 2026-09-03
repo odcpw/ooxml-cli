@@ -43,6 +43,66 @@ fn paragraph_lists_support_three_levels_restart_insert_and_determinism() {
     fs::remove_dir_all(temp).unwrap();
 }
 
+#[test]
+fn page_and_section_breaks_are_schema_clean_and_hash_visible() {
+    let temp = temp_dir("breaks");
+    let source = temp.join("source.docx");
+    let page = temp.join("page.docx");
+    let section = temp.join("section.docx");
+    run_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path(&source),
+        "--text",
+        "First page",
+    ]);
+    let page_report = run_ok(&[
+        "--json",
+        "docx",
+        "breaks",
+        "insert",
+        path(&source),
+        "--page",
+        "--out",
+        path(&page),
+    ]);
+    assert_eq!(page_report["break"], "page");
+    assert!(
+        page_report["documentHash"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:")
+    );
+    let section_report = run_ok(&[
+        "--json",
+        "docx",
+        "breaks",
+        "insert",
+        path(&page),
+        "--section",
+        "--out",
+        path(&section),
+    ]);
+    assert_eq!(section_report["break"], "section");
+    assert_eq!(
+        zip_text(&page, "word/document.xml")
+            .matches(r#"w:type="page""#)
+            .count(),
+        1
+    );
+    assert_eq!(
+        zip_text(&section, "word/document.xml")
+            .matches("<w:sectPr")
+            .count(),
+        2
+    );
+    for package in [&source, &page, &section] {
+        assert_all_proofs(package);
+    }
+    fs::remove_dir_all(temp).unwrap();
+}
+
 fn build_list_document(temp: &Path, label: &str) -> PathBuf {
     let mut current = temp.join(format!("{label}-0.docx"));
     run_ok(&[

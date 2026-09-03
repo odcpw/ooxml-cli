@@ -80,10 +80,10 @@ struct DocxHeaderFooterEnsureContext<'a> {
 }
 
 #[derive(Clone, Copy)]
-struct DocxSectionRange {
-    index: i64,
-    start: usize,
-    end: usize,
+pub(crate) struct DocxSectionRange {
+    pub(crate) index: i64,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
 }
 
 pub(crate) fn docx_headers_footers_set_text(
@@ -438,7 +438,7 @@ fn select_or_create_docx_section_range(
     ))
 }
 
-fn docx_section_ranges(xml: &str) -> CliResult<Vec<DocxSectionRange>> {
+pub(crate) fn docx_section_ranges(xml: &str) -> CliResult<Vec<DocxSectionRange>> {
     let body_tag = docx_body_tag(xml)?;
     let (content_start, content_end) = docx_body_content_bounds(xml, &body_tag)?;
     let mut sections = Vec::new();

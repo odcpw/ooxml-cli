@@ -1,6 +1,7 @@
 pub(crate) mod numbering;
 mod properties;
 mod settings;
+pub(crate) mod structure;
 pub(crate) mod styles;
 mod theme;
 
@@ -20,6 +21,8 @@ use crate::{
     resolve_optional_docx_paragraph_text, resolve_relationship_target, xml_direct_child_ranges,
     zip_entry_names, zip_text,
 };
+
+pub(crate) use structure::docx_break_insert;
 
 const DOCUMENT_PART: &str = "word/document.xml";
 const DOCUMENT_RELS_PART: &str = "word/_rels/document.xml.rels";

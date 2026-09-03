@@ -658,6 +658,38 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                 },
             )
         }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "breaks" && verb == "insert" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--out", "--backup"],
+                &[
+                    "--page",
+                    "--section",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
+            )?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            docx_break_insert(
+                file,
+                has_flag(rest, "--page"),
+                has_flag(rest, "--section"),
+                DocxParagraphMutationOptions {
+                    text: None,
+                    text_file: None,
+                    style: "",
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    in_place: has_flag(rest, "--in-place"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                },
+            )
+        }
         [cmd, group, ..] if cmd == "docx" && group == "tables" => dispatch_docx_tables(args),
         [cmd, group, ..] if cmd == "docx" && group == "paragraphs" => {
             dispatch_docx_paragraphs(args)
@@ -867,6 +899,7 @@ fn docx_is_mutation(args: &[String]) -> bool {
         [family, group, verb, ..] if family == "docx" => match group.as_str() {
             "blocks" => matches!(verb.as_str(), "replace" | "delete" | "insert-after"),
             "paragraphs" => matches!(verb.as_str(), "append" | "insert" | "set" | "clear"),
+            "breaks" => verb == "insert",
             "styles" => verb == "apply",
             "comments" => matches!(verb.as_str(), "add" | "edit" | "remove"),
             "fields" => matches!(verb.as_str(), "insert" | "set-result"),
