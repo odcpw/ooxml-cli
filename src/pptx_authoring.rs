@@ -21,6 +21,7 @@ pub(crate) struct PptxScaffoldOptions<'a> {
     pub(crate) subtitle: Option<&'a str>,
     pub(crate) theme: Option<&'a str>,
     pub(crate) theme_seed: Option<&'a str>,
+    pub(crate) brand: Option<&'a str>,
     pub(crate) template: Option<&'a str>,
     pub(crate) size: Option<&'a str>,
     pub(crate) force: bool,
@@ -48,6 +49,11 @@ struct TemplateStages<'a> {
 
 pub(crate) fn pptx_scaffold(output: &str, options: PptxScaffoldOptions<'_>) -> CliResult<Value> {
     validate_output(output, options.force)?;
+    if options.brand.is_some() && (options.theme.is_some() || options.theme_seed.is_some()) {
+        return Err(CliError::invalid_args(
+            "--brand cannot be combined with --theme or --theme-seed",
+        ));
+    }
     if options.template.is_some()
         && (options.theme.is_some() || options.theme_seed.is_some() || options.size.is_some())
     {
@@ -78,6 +84,10 @@ pub(crate) fn pptx_scaffold(output: &str, options: PptxScaffoldOptions<'_>) -> C
             template: None,
         }
     };
+
+    if let Some(brand) = options.brand {
+        crate::brand::apply_to_staged_package(&temp_path, brand)?;
+    }
 
     if !options.no_validate {
         crate::validate_owned_mutation_output(&temp_path)?;

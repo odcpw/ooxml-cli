@@ -48,6 +48,7 @@ pub(crate) struct DocxScaffoldOptions<'a> {
     pub(crate) text_file: Option<&'a str>,
     pub(crate) theme: Option<&'a str>,
     pub(crate) theme_seed: Option<&'a str>,
+    pub(crate) brand: Option<&'a str>,
     pub(crate) template: Option<&'a str>,
     pub(crate) force: bool,
     pub(crate) no_validate: bool,
@@ -55,6 +56,11 @@ pub(crate) struct DocxScaffoldOptions<'a> {
 
 pub(crate) fn docx_scaffold(output: &str, options: DocxScaffoldOptions<'_>) -> CliResult<Value> {
     validate_scaffold_output(output, options.force)?;
+    if options.brand.is_some() && (options.theme.is_some() || options.theme_seed.is_some()) {
+        return Err(CliError::invalid_args(
+            "--brand cannot be combined with --theme or --theme-seed",
+        ));
+    }
     if options.template.is_some() && (options.theme.is_some() || options.theme_seed.is_some()) {
         return Err(CliError::invalid_args(
             "--template cannot be combined with --theme or --theme-seed; the template theme is inherited",
@@ -71,6 +77,10 @@ pub(crate) fn docx_scaffold(output: &str, options: DocxScaffoldOptions<'_>) -> C
         write_docx_scaffold_package(&temp_path, &text, &theme_name, &theme_seed)?;
         (Some(theme_name), Some(theme_seed))
     };
+
+    if let Some(brand) = options.brand {
+        crate::brand::apply_to_staged_package(&temp_path, brand)?;
+    }
 
     if !options.no_validate {
         crate::validate_owned_mutation_output(&temp_path)?;

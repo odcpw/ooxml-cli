@@ -47,6 +47,9 @@ pub(crate) fn xlsx_scaffold(output: &str, options: XlsxScaffoldOptions<'_>) -> C
     let theme = resolve_xlsx_scaffold_theme(options.theme, options.theme_seed, options.brand)?;
     let temp_path = package_mutation_temp_path(output, "xlsx-scaffold");
     write_xlsx_scaffold_package(&temp_path, &sheet_names, &theme)?;
+    if let Some(brand) = options.brand {
+        crate::brand::apply_to_staged_package(&temp_path, brand)?;
+    }
 
     if !options.no_validate {
         crate::validate_owned_mutation_output(&temp_path)?;
@@ -266,33 +269,13 @@ fn resolve_xlsx_scaffold_theme(
         ));
     }
     if let Some(path) = brand {
-        let body = fs::read_to_string(path).map_err(|err| {
-            CliError::invalid_args(format!("cannot read --brand {path:?}: {err}"))
-        })?;
-        let value: Value = serde_json::from_str(&body)
-            .map_err(|err| CliError::invalid_args(format!("invalid --brand JSON: {err}")))?;
-        let seed = value
-            .get("themeSeed")
-            .or_else(|| value.get("seed"))
-            .or_else(|| value.pointer("/colors/accent1"))
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                CliError::invalid_args("--brand JSON requires themeSeed, seed, or colors.accent1")
-            })?;
-        let name = value
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or("brand")
-            .trim();
-        let major_font = value
-            .pointer("/fonts/major")
-            .and_then(Value::as_str)
-            .unwrap_or("Aptos Display");
-        let minor_font = value
-            .pointer("/fonts/minor")
-            .and_then(Value::as_str)
-            .unwrap_or("Aptos");
-        return build_xlsx_scaffold_theme(name, seed, major_font, minor_font);
+        let kit = crate::brand::BrandKit::load(path)?;
+        return build_xlsx_scaffold_theme(
+            &kit.name,
+            &kit.theme_seed(),
+            &kit.fonts.heading,
+            &kit.fonts.body,
+        );
     }
     if let Some(seed) = theme_seed {
         return build_xlsx_scaffold_theme("custom", seed, "Aptos Display", "Aptos");
