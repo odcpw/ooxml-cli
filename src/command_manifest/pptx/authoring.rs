@@ -837,7 +837,8 @@ mod tests {
                 .iter()
                 .filter(|spec| matches!(&spec.execution, ExecutionSupport::DirectOnly { .. }))
                 .count(),
-            14
+            15,
+            "authoring direct-only denominator after adding `pptx build`"
         );
     }
 }

@@ -565,7 +565,37 @@ fn frozen_mcp_discovery_and_flow_match_legacy_baseline() {
             .unwrap()
             .contains(&serde_json::json!("args"))
     );
+    let additive_typed_tool_names = BTreeSet::from([
+        "build_document",
+        "build_presentation",
+        "build_workbook",
+        "check_package",
+        "edit_package",
+        "find_text",
+        "outline_package",
+        "render_preview",
+        "replace_text",
+    ]);
+    let discovered_typed_tool_names = discovery["tools"]
+        .as_array()
+        .expect("MCP tools")
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .filter(|name| additive_typed_tool_names.contains(name))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        discovered_typed_tool_names, additive_typed_tool_names,
+        "all 9 typed intent tools are additive to the frozen 7-tool legacy denominator"
+    );
     let mut legacy_discovery = discovery.clone();
+    legacy_discovery["tools"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|tool| {
+            tool["name"]
+                .as_str()
+                .is_none_or(|name| !additive_typed_tool_names.contains(name))
+        });
     legacy_discovery["resources"]
         .as_array_mut()
         .unwrap()

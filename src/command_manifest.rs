@@ -946,7 +946,11 @@ mod tests {
     #[test]
     fn complete_pptx_shadow_has_expected_execution_inventory() {
         let specs = pptx::command_specs();
-        assert_eq!(specs.len(), 111);
+        assert_eq!(
+            specs.len(),
+            112,
+            "PPTX command denominator after adding `pptx build`"
+        );
         let inventory = specs.iter().fold(
             (0, 0, 0, 0),
             |(groups, direct, inspect, mutation), spec| match &spec.execution {
@@ -956,7 +960,11 @@ mod tests {
                 ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
             },
         );
-        assert_eq!(inventory, (20, 66, 14, 11));
+        assert_eq!(
+            inventory,
+            (20, 67, 14, 11),
+            "112-command PPTX denominator: groups, direct-only, serve-inspect, serve-mutation"
+        );
         assert_eq!(
             specs
                 .iter()
@@ -978,12 +986,15 @@ mod tests {
         let front = xlsx::front_command_specs();
         let forms = xlsx::forms_command_specs();
 
-        assert_eq!(xlsx_start, 153);
+        assert_eq!(
+            xlsx_start, 154,
+            "XLSX starts after the 42 core + 112 PPTX command denominator"
+        );
         assert_eq!(front.len(), xlsx::FRONT_COMMAND_COUNT);
         assert_eq!(xlsx::FRONT_COMMAND_COUNT, 22);
-        assert_segment_matches_frozen_contract(&front, &frozen[xlsx_start..175]);
+        assert_segment_matches_frozen_contract(&front, &frozen[xlsx_start..176]);
         assert_eq!(forms.len(), 1);
-        assert_segment_matches_frozen_contract(&forms, &frozen[230..231]);
+        assert_segment_matches_frozen_contract(&forms, &frozen[231..232]);
     }
 
     #[test]
@@ -1401,7 +1412,11 @@ mod tests {
         let first = command_specs();
         let second = command_specs();
         let frozen = frozen_contract_commands();
-        assert_eq!(first.len(), 326);
+        assert_eq!(
+            first.len(),
+            327,
+            "complete command denominator after adding `pptx build`"
+        );
         assert_segment_matches_frozen_contract(&first, &frozen);
         assert_eq!(
             first.iter().map(capability_value).collect::<Vec<_>>(),
@@ -1413,7 +1428,11 @@ mod tests {
     fn complete_shadow_family_counts_and_order_are_exact() {
         let specs = command_specs();
         assert_eq!(core::CoreCommandId::ALL.len(), 42);
-        assert_eq!(pptx::PptxCommandId::ALL.len(), 111);
+        assert_eq!(
+            pptx::PptxCommandId::ALL.len(),
+            112,
+            "PPTX family denominator after adding `pptx build`"
+        );
         assert_eq!(xlsx::XlsxCommandId::ALL.len(), 107);
         assert_eq!(docx::DocxCommandId::ALL.len(), 50);
         assert_eq!(vba::VbaCommandId::ALL.len(), 16);
@@ -1423,24 +1442,28 @@ mod tests {
                 .all(|spec| matches!(spec.id, CommandId::Core(_)))
         );
         assert!(
-            specs[42..153]
+            specs[42..154]
                 .iter()
-                .all(|spec| matches!(spec.id, CommandId::Pptx(_)))
+                .all(|spec| matches!(spec.id, CommandId::Pptx(_))),
+            "PPTX occupies [42, 154) in the 327-command denominator"
         );
         assert!(
-            specs[153..260]
+            specs[154..261]
                 .iter()
-                .all(|spec| matches!(spec.id, CommandId::Xlsx(_)))
+                .all(|spec| matches!(spec.id, CommandId::Xlsx(_))),
+            "XLSX occupies [154, 261) in the 327-command denominator"
         );
         assert!(
-            specs[260..310]
+            specs[261..311]
                 .iter()
-                .all(|spec| matches!(spec.id, CommandId::Docx(_)))
+                .all(|spec| matches!(spec.id, CommandId::Docx(_))),
+            "DOCX occupies [261, 311) in the 327-command denominator"
         );
         assert!(
-            specs[310..326]
+            specs[311..327]
                 .iter()
-                .all(|spec| matches!(spec.id, CommandId::Vba(_)))
+                .all(|spec| matches!(spec.id, CommandId::Vba(_))),
+            "VBA occupies [311, 327) in the 327-command denominator"
         );
     }
 
@@ -1452,7 +1475,11 @@ mod tests {
         let spec_ids = specs.iter().map(|spec| spec.id).collect::<Vec<_>>();
         let spec_id_set = spec_ids.iter().copied().collect::<BTreeSet<_>>();
         let path_set = specs.iter().map(|spec| spec.path).collect::<BTreeSet<_>>();
-        assert_eq!(declared.len(), 326);
+        assert_eq!(
+            declared.len(),
+            327,
+            "declared command denominator after adding `pptx build`"
+        );
         assert_eq!(declared_set.len(), declared.len());
         assert_eq!(spec_id_set, declared_set);
         assert_eq!(spec_ids.len(), spec_id_set.len());
@@ -1466,7 +1493,11 @@ mod tests {
         let mut resolved_ids = BTreeSet::new();
         let mut resolved_paths = BTreeSet::new();
 
-        assert_eq!(specs.len(), 326);
+        assert_eq!(
+            specs.len(),
+            327,
+            "canonical command denominator after adding `pptx build`"
+        );
         for spec in &specs {
             let resolved = command_id_for_canonical_path(spec.path);
             assert_eq!(
@@ -1500,7 +1531,11 @@ mod tests {
         }
 
         assert_eq!(resolved_ids, declared);
-        assert_eq!(resolved_paths.len(), 326);
+        assert_eq!(
+            resolved_paths.len(),
+            327,
+            "resolved canonical-path denominator after adding `pptx build`"
+        );
     }
 
     #[test]
@@ -1515,7 +1550,11 @@ mod tests {
                 ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
             },
         );
-        assert_eq!(inventory, (58, 150, 45, 73));
+        assert_eq!(
+            inventory,
+            (58, 151, 45, 73),
+            "327-command execution denominator: groups, direct-only, serve-inspect, serve-mutation"
+        );
         assert_eq!(
             specs
                 .iter()

@@ -1,7 +1,7 @@
 use super::{ExecutionSupport, XlsxCommandId, flag, spec};
 
 pub(super) const COMMAND_COUNT: usize = 5;
-pub(super) const LEGACY_START: usize = 213;
+pub(super) const LEGACY_START: usize = 214;
 
 pub(super) fn command_specs() -> Vec<super::CommandSpec> {
     vec![
@@ -462,6 +462,11 @@ mod tests {
     fn data_validations_segment_matches_frozen_contract_slice() {
         let specs = command_specs();
         let frozen = frozen_contract_commands();
+        assert_eq!(
+            frozen.len(),
+            327,
+            "data-validations offset 214 is pinned to the 327-command denominator"
+        );
         assert_eq!(specs.len(), COMMAND_COUNT);
         assert_segment_matches_frozen_contract(
             &specs,
