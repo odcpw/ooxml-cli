@@ -69,7 +69,18 @@
         "orientation": { "enum": ["portrait", "landscape"] },
         "paperSize": { "enum": ["letter", "A4"] },
         "slideSize": { "enum": ["screen16x9", "screen4x3", "A4"] },
-        "margins": { "type": "object" }
+        "margins": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "top": { "type": "number", "minimum": 0 },
+            "bottom": { "type": "number", "minimum": 0 },
+            "left": { "type": "number", "minimum": 0 },
+            "right": { "type": "number", "minimum": 0 },
+            "header": { "type": "number", "minimum": 0 },
+            "footer": { "type": "number", "minimum": 0 }
+          }
+        }
       }
     },
     "tableStyle": { "type": "string", "minLength": 1 }

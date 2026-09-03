@@ -148,15 +148,16 @@ impl BrandKit {
         out.insert("colors".to_string(), Value::Object(colors));
         out.insert("fonts".to_string(), Value::Object(fonts));
         if let Some(logo) = &self.logo {
-            out.insert(
-                "logo".to_string(),
-                json!({
-                    "path": logo.path,
-                    "placement": logo.placement,
-                    "widthEmu": logo.width_emu,
-                    "heightEmu": logo.height_emu,
-                }),
-            );
+            let mut logo_json = Map::new();
+            logo_json.insert("path".to_string(), json!(logo.path));
+            logo_json.insert("placement".to_string(), json!(logo.placement));
+            if let Some(width) = logo.width_emu {
+                logo_json.insert("widthEmu".to_string(), json!(width));
+            }
+            if let Some(height) = logo.height_emu {
+                logo_json.insert("heightEmu".to_string(), json!(height));
+            }
+            out.insert("logo".to_string(), Value::Object(logo_json));
         }
         if let Some(footer_text) = self.footer_text.as_deref() {
             out.insert("footerText".to_string(), json!(footer_text));
@@ -273,22 +274,23 @@ pub(crate) fn template_apply_brand(
     ensure_brand_family(family)?;
     let overrides = brand_overrides(file, family, &kit)?;
     let changed_parts = overrides.keys().cloned().collect::<Vec<_>>();
-    if !options.dry_run {
-        let stage = crate::mutation_staging_path(file, options.out, "brand-apply");
-        copy_zip_with_part_overrides(file, &stage, &overrides)?;
-        apply_post_rewrite_features(&stage, family, &kit)?;
-        if !options.no_validate {
-            crate::validate_owned_mutation_output(&stage)?;
-        }
-        crate::finish_mutation_output(
-            file,
-            &stage,
-            options.out,
-            options.in_place,
-            options.backup,
-            false,
-        )?;
+    let stage = crate::mutation_staging_path(file, options.out, "brand-apply");
+    copy_zip_with_part_overrides(file, &stage, &overrides)?;
+    if let Err(err) = apply_post_rewrite_features(&stage, family, &kit) {
+        let _ = fs::remove_file(&stage);
+        return Err(err);
     }
+    if !options.no_validate {
+        crate::validate_owned_mutation_output(&stage)?;
+    }
+    crate::finish_mutation_output(
+        file,
+        &stage,
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
     Ok(json!({
         "file": file,
         "output": if options.dry_run { Value::Null } else if options.in_place { json!(file) } else { json!(options.out) },
@@ -420,7 +422,47 @@ fn add_pptx_overrides(
             overrides.insert("ppt/presentation.xml".to_string(), updated);
         }
     }
+    if kit.slide_number_policy == "except-title" {
+        for part in zip_entry_names(file)?.into_iter().filter(|part| {
+            part.starts_with("ppt/slideLayouts/slideLayout") && part.ends_with(".xml")
+        }) {
+            let layout = zip_text(file, &part)?;
+            let updated = update_pptx_title_layout_slide_numbers(&layout)?;
+            if updated != layout {
+                overrides.insert(part, updated);
+            }
+        }
+    }
     Ok(())
+}
+
+fn update_pptx_title_layout_slide_numbers(xml: &str) -> CliResult<String> {
+    let Some((root_start, root_open_end)) = find_start_tag(xml, "sldLayout", 0) else {
+        return Err(CliError::unexpected("PPTX slide layout root not found"));
+    };
+    let root_tag = &xml[root_start..root_open_end];
+    if !matches!(
+        tag_attr(root_tag, "type").as_deref(),
+        Some("title" | "ctrTitle")
+    ) {
+        return Ok(xml.to_string());
+    }
+    if contains_local_tag(xml, "hf") {
+        return rewrite_all_tags(xml, "hf", |tag| set_tag_attrs(tag, &[("sldNum", "0")]));
+    }
+    let root_close = find_end_tag(xml, "sldLayout", root_open_end)
+        .ok_or_else(|| CliError::unexpected("unterminated PPTX slide layout root"))?
+        .0;
+    let insert_at = ["timing", "transition", "extLst"]
+        .into_iter()
+        .filter_map(|child| find_start_tag(xml, child, root_open_end).map(|(start, _)| start))
+        .filter(|start| *start < root_close)
+        .min()
+        .unwrap_or(root_close);
+    let prefix = xml_tag_prefix(root_tag);
+    let mut updated = xml.to_string();
+    updated.insert_str(insert_at, &format!("<{prefix}hf sldNum=\"0\"/>"));
+    Ok(updated)
 }
 
 fn apply_post_rewrite_features(file: &str, family: &str, kit: &BrandKit) -> CliResult<()> {
@@ -539,15 +581,30 @@ fn update_docx_document(xml: &str, kit: &BrandKit) -> CliResult<String> {
     let Some(setup) = kit.page_setup.as_ref().and_then(Value::as_object) else {
         return Ok(updated);
     };
-    if let Some(page) = setup.get("paperSize").and_then(Value::as_str) {
-        let (width, height) = docx_paper_twips(page)?;
+    let page_size = setup
+        .get("paperSize")
+        .and_then(Value::as_str)
+        .map(docx_paper_twips)
+        .transpose()?;
+    let orientation = setup.get("orientation").and_then(Value::as_str);
+    if page_size.is_some() || orientation.is_some() {
         updated = rewrite_all_tags(&updated, "pgSz", |tag| {
-            let orientation = setup.get("orientation").and_then(Value::as_str);
-            let (width, height) = if orientation == Some("landscape") {
-                (height, width)
-            } else {
-                (width, height)
-            };
+            let mut dimensions = page_size.unwrap_or_else(|| {
+                (
+                    tag_attr(tag, "w")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(12_240),
+                    tag_attr(tag, "h")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(15_840),
+                )
+            });
+            if (orientation == Some("landscape") && dimensions.0 < dimensions.1)
+                || (orientation == Some("portrait") && dimensions.0 > dimensions.1)
+            {
+                dimensions = (dimensions.1, dimensions.0);
+            }
+            let (width, height) = dimensions;
             let width = width.to_string();
             let height = height.to_string();
             let mut changes = vec![("w", width.as_str()), ("h", height.as_str())];
@@ -555,6 +612,16 @@ fn update_docx_document(xml: &str, kit: &BrandKit) -> CliResult<String> {
                 changes.push(("orient", orientation));
             }
             set_tag_attrs(tag, &changes)
+        })?;
+    }
+    if let Some(margins) = setup.get("margins").and_then(Value::as_object) {
+        let changes = margin_changes(margins, |value| (value * 1440.0).round().to_string())?;
+        updated = rewrite_all_tags(&updated, "pgMar", |tag| {
+            let borrowed = changes
+                .iter()
+                .map(|(key, value)| (key.as_str(), value.as_str()))
+                .collect::<Vec<_>>();
+            set_tag_attrs(tag, &borrowed)
         })?;
     }
     Ok(updated)
@@ -613,6 +680,27 @@ fn update_xlsx_worksheet(xml: &str, kit: &BrandKit) -> CliResult<String> {
                 }
                 tag = set_tag_attrs(&tag, &changes)?;
                 let insert_at = worksheet_insert_position(&updated, "pageSetup")?;
+                updated.insert_str(insert_at, &tag);
+            }
+        }
+        if let Some(margins) = setup.get("margins").and_then(Value::as_object) {
+            let changes = margin_changes(margins, format_decimal)?;
+            if contains_local_tag(&updated, "pageMargins") {
+                updated = rewrite_all_tags(&updated, "pageMargins", |tag| {
+                    let borrowed = changes
+                        .iter()
+                        .map(|(key, value)| (key.as_str(), value.as_str()))
+                        .collect::<Vec<_>>();
+                    set_tag_attrs(tag, &borrowed)
+                })?;
+            } else {
+                let mut tag = "<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>".to_string();
+                let borrowed = changes
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), value.as_str()))
+                    .collect::<Vec<_>>();
+                tag = set_tag_attrs(&tag, &borrowed)?;
+                let insert_at = worksheet_insert_position(&updated, "pageMargins")?;
                 updated.insert_str(insert_at, &tag);
             }
         }
@@ -947,6 +1035,29 @@ fn validate_page_setup(value: Option<&Value>) -> CliResult<()> {
             ));
         }
     }
+    if let Some(margins) = setup.get("margins") {
+        let margins = margins
+            .as_object()
+            .ok_or_else(|| CliError::invalid_args("brand pageSetup.margins must be an object"))?;
+        for (key, value) in margins {
+            if !matches!(
+                key.as_str(),
+                "top" | "bottom" | "left" | "right" | "header" | "footer"
+            ) {
+                return Err(CliError::invalid_args(format!(
+                    "unknown brand pageSetup.margins property {key:?}"
+                )));
+            }
+            if value
+                .as_f64()
+                .is_none_or(|value| !value.is_finite() || value < 0.0)
+            {
+                return Err(CliError::invalid_args(format!(
+                    "brand pageSetup.margins.{key} must be a non-negative number of inches"
+                )));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1224,6 +1335,32 @@ fn xlsx_paper_size(name: &str) -> CliResult<i64> {
             "brand pageSetup.paperSize must be letter or A4",
         )),
     }
+}
+
+fn margin_changes<F>(margins: &Map<String, Value>, format: F) -> CliResult<Vec<(String, String)>>
+where
+    F: Fn(f64) -> String,
+{
+    let mut changes = Vec::new();
+    for key in ["top", "bottom", "left", "right", "header", "footer"] {
+        if let Some(value) = margins.get(key) {
+            let value = value.as_f64().ok_or_else(|| {
+                CliError::invalid_args(format!(
+                    "brand pageSetup.margins.{key} must be a number of inches"
+                ))
+            })?;
+            changes.push((key.to_string(), format(value)));
+        }
+    }
+    Ok(changes)
+}
+
+fn format_decimal(value: f64) -> String {
+    let formatted = format!("{value:.6}");
+    formatted
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_string()
 }
 
 #[allow(dead_code)]

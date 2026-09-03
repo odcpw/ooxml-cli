@@ -78,6 +78,10 @@ fn one_brand_scaffolds_three_schema_clean_matching_families_deterministically() 
     assert!(docx_styles.contains(r#"w:val="316F8A" w:themeColor="accent1""#));
     let docx_footer = zip_text(&first[1].1, "word/footer1.xml");
     assert!(docx_footer.contains("Northwind Confidential"));
+    let docx_document = zip_text(&first[1].1, "word/document.xml");
+    assert!(docx_document.contains(r#"w:orient="landscape""#));
+    assert!(docx_document.contains(r#"w:top="864""#));
+    assert!(docx_document.contains(r#"w:left="1152""#));
 
     let xlsx_styles = zip_text(&first[2].1, "xl/styles.xml");
     assert!(xlsx_styles.contains(r#"name val="Liberation Sans""#));
@@ -85,12 +89,16 @@ fn one_brand_scaffolds_three_schema_clean_matching_families_deterministically() 
     let sheet = zip_text(&first[2].1, "xl/worksheets/sheet1.xml");
     assert!(sheet.contains(r#"orientation="landscape""#));
     assert!(sheet.contains(r#"paperSize="9""#));
+    assert!(sheet.contains(r#"top="0.6""#));
+    assert!(sheet.contains(r#"left="0.8""#));
     assert!(sheet.contains("<oddFooter>Northwind Confidential</oddFooter>"));
 
     let master = zip_text(&first[0].1, "ppt/slideMasters/slideMaster1.xml");
     assert!(master.contains(r#"sldNum="1""#));
     let slide = zip_text(&first[0].1, "ppt/slides/slide1.xml");
     assert!(slide.contains("Northwind Confidential"));
+    let presentation = zip_text(&first[0].1, "ppt/presentation.xml");
+    assert!(presentation.contains(r#"cx="12192000" cy="6858000""#));
     fs::remove_dir_all(temp).unwrap();
 }
 
@@ -197,6 +205,48 @@ fn invalid_brand_is_actionable_and_never_publishes_output() {
     assert_eq!(error["code"], "invalid_args");
     assert!(error["message"].as_str().unwrap().contains("colors.dark1"));
     assert!(!output.exists());
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn dry_run_validates_without_publishing_and_title_layout_can_hide_slide_numbers() {
+    let temp = temp_dir("policy-dry-run");
+    let source = temp.join("source.pptx");
+    let output = temp.join("must-not-exist.pptx");
+    let brand = temp.join("brand.json");
+    fs::write(
+        &brand,
+        r#"{"name":"Policy","colors":{"seed":"4472C4"},"fonts":{"heading":"Arial","body":"Arial"},"slideNumberPolicy":"except-title"}"#,
+    )
+    .unwrap();
+    run_ok(&["--json", "pptx", "scaffold", path(&source)]);
+    let before = fs::read(&source).unwrap();
+    let report = run_ok(&[
+        "--json",
+        "template",
+        "apply",
+        path(&source),
+        "--brand",
+        path(&brand),
+        "--dry-run",
+    ]);
+    assert_eq!(report["dryRun"], true);
+    assert_eq!(fs::read(&source).unwrap(), before);
+    assert!(!output.exists());
+
+    let branded = temp.join("branded.pptx");
+    run_ok(&[
+        "--json",
+        "pptx",
+        "scaffold",
+        path(&branded),
+        "--brand",
+        path(&brand),
+    ]);
+    let title_layout = zip_text(&branded, "ppt/slideLayouts/slideLayout1.xml");
+    assert!(title_layout.contains(r#"<p:hf sldNum="0"/>"#));
+    assert_strict_valid(&branded);
+    assert_sdk_valid_if_available(&branded);
     fs::remove_dir_all(temp).unwrap();
 }
 

@@ -18,7 +18,15 @@
   "pageSetup": {
     "orientation": "landscape",
     "paperSize": "A4",
-    "slideSize": "screen16x9"
+    "slideSize": "screen16x9",
+    "margins": {
+      "top": 0.6,
+      "bottom": 0.6,
+      "left": 0.8,
+      "right": 0.8,
+      "header": 0.3,
+      "footer": 0.3
+    }
   },
   "tableStyle": "TableStyleMedium2"
 }
