@@ -1,5 +1,7 @@
 use serde_json::{Map, Value, json};
 use std::fs;
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::build::{BuildFamily, compile_minimal_spec, load_spec_str};
 use crate::cli_dispatch::{DispatchBody, DispatchOutput};
@@ -171,6 +173,9 @@ fn call_build(
             serde_json::to_string(&error.diagnostics).expect("serialize build diagnostics")
         ))
     })?;
+    if family == BuildFamily::Pptx && json_optional_string(arguments, "session").is_none() {
+        return call_pptx_build(&spec_source, arguments);
+    }
     let plan = compile_minimal_spec(&spec).map_err(|error| {
         CliError::invalid_args(format!(
             "build spec compilation failed: {}",
@@ -235,6 +240,44 @@ fn call_build(
         let _ = engine.handle_method("abort", &json!({"session": session}));
     }
     result
+}
+
+fn call_pptx_build(spec_source: &str, arguments: &Value) -> CliResult<Value> {
+    let spec_path = temporary_spec_path("pptx")?;
+    fs::write(&spec_path, spec_source).map_err(|error| {
+        CliError::unexpected(format!(
+            "failed to stage typed PPTX build spec {}: {error}",
+            spec_path.display()
+        ))
+    })?;
+    let mut args = vec![
+        "--spec".to_string(),
+        spec_path.to_string_lossy().to_string(),
+        "--out".to_string(),
+        json_string(arguments, "output")?,
+    ];
+    push_bool_flag(arguments, "dryRun", "--dry-run", &mut args);
+    push_bool_flag(arguments, "force", "--force", &mut args);
+    let result = crate::build::pptx_build(&args).map(|mut result| {
+        result["spec"] = json!("inline");
+        result
+    });
+    let _ = fs::remove_file(spec_path);
+    result
+}
+
+fn temporary_spec_path(family: &str) -> CliResult<PathBuf> {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| CliError::unexpected(format!("system clock before epoch: {error}")))?
+        .as_nanos();
+    let directory = std::env::current_dir().map_err(|error| {
+        CliError::unexpected(format!("failed to resolve MCP working directory: {error}"))
+    })?;
+    Ok(directory.join(format!(
+        ".ooxml-mcp-{family}-build-{}-{nanos}.json",
+        std::process::id()
+    )))
 }
 
 fn call_edit(engine: &mut ServeState, arguments: &Value) -> CliResult<Value> {
@@ -496,11 +539,11 @@ fn build_tool(name: &str, family: BuildFamily) -> Value {
             json!({"type": "string", "minLength": 1}),
         ),
         (
-            "noValidate".to_string(),
+            "dryRun".to_string(),
             json!({"type": "boolean", "default": false}),
         ),
         (
-            "dryRun".to_string(),
+            "force".to_string(),
             json!({"type": "boolean", "default": false}),
         ),
     ]);
@@ -705,14 +748,9 @@ fn schema_resource(tool: &str) -> Option<&'static str> {
 
 fn valid_fields(tool: &str) -> &'static [&'static str] {
     match tool {
-        "build_presentation" | "build_workbook" | "build_document" => &[
-            "spec",
-            "markdown",
-            "output",
-            "session",
-            "noValidate",
-            "dryRun",
-        ],
+        "build_presentation" | "build_workbook" | "build_document" => {
+            &["spec", "markdown", "output", "session", "dryRun", "force"]
+        }
         "edit_package" => &[
             "file",
             "output",

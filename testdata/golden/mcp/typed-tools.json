@@ -30,14 +30,14 @@
           "default": false,
           "type": "boolean"
         },
+        "force": {
+          "default": false,
+          "type": "boolean"
+        },
         "markdown": {
           "description": "Reserved for the shared Markdown-to-build-spec converter; unsupported builds return a teaching error until that converter is available.",
           "minLength": 1,
           "type": "string"
-        },
-        "noValidate": {
-          "default": false,
-          "type": "boolean"
         },
         "output": {
           "minLength": 1,
@@ -669,14 +669,14 @@
           "default": false,
           "type": "boolean"
         },
+        "force": {
+          "default": false,
+          "type": "boolean"
+        },
         "markdown": {
           "description": "Reserved for the shared Markdown-to-build-spec converter; unsupported builds return a teaching error until that converter is available.",
           "minLength": 1,
           "type": "string"
-        },
-        "noValidate": {
-          "default": false,
-          "type": "boolean"
         },
         "output": {
           "minLength": 1,
@@ -1328,14 +1328,14 @@
           "default": false,
           "type": "boolean"
         },
+        "force": {
+          "default": false,
+          "type": "boolean"
+        },
         "markdown": {
           "description": "Reserved for the shared Markdown-to-build-spec converter; unsupported builds return a teaching error until that converter is available.",
           "minLength": 1,
           "type": "string"
-        },
-        "noValidate": {
-          "default": false,
-          "type": "boolean"
         },
         "output": {
           "minLength": 1,

@@ -163,13 +163,20 @@ fn typed_build_tools_create_three_strictly_valid_recipe_outputs() {
     ]) {
         assert!(response.get("error").is_none(), "{response:#}");
         let result = &response["result"]["structuredContent"];
-        assert_eq!(result["family"], family);
-        assert_eq!(
-            result["commit"]["output"],
-            output.to_string_lossy().as_ref()
-        );
-        assert_eq!(result["outline"]["type"], family);
-        assert_eq!(result["commit"]["validated"], true);
+        if family == "pptx" {
+            assert_eq!(result["schemaVersion"], "ooxml-cli.pptx-build.v1");
+            assert_eq!(result["output"], output.to_string_lossy().as_ref());
+            assert_eq!(result["outline"]["type"], family);
+            assert_eq!(result["validated"], true);
+        } else {
+            assert_eq!(result["family"], family);
+            assert_eq!(
+                result["commit"]["output"],
+                output.to_string_lossy().as_ref()
+            );
+            assert_eq!(result["outline"]["type"], family);
+            assert_eq!(result["commit"]["validated"], true);
+        }
         assert!(output.is_file(), "missing built {family} output");
         let validation = run_cli_json(
             &vec![
@@ -183,6 +190,73 @@ fn typed_build_tools_create_three_strictly_valid_recipe_outputs() {
         assert_eq!(validation["valid"], true, "{validation:#}");
         assert_eq!(validation["summary"]["errors"], 0);
     }
+}
+
+#[test]
+fn typed_presentation_build_matches_the_family_cli_contract() {
+    let dir = temp_dir("build-parity");
+    let mcp_output = dir.join("typed.pptx");
+    let cli_output = dir.join("cli.pptx");
+    let spec_path = dir.join("deck.json");
+    let spec = json!({
+        "schemaVersion": 1,
+        "family": "pptx",
+        "slides": [{
+            "layout": "Title Slide",
+            "title": "Typed parity",
+            "subtitle": "One schema and one builder",
+        }],
+    });
+    std::fs::write(
+        &spec_path,
+        format!("{}\n", serde_json::to_string_pretty(&spec).unwrap()),
+    )
+    .unwrap();
+
+    let response = mcp(
+        &[tool_call(
+            1,
+            "build_presentation",
+            json!({"output": mcp_output, "spec": spec}),
+        )],
+        &[],
+    )
+    .remove(0);
+    assert!(response.get("error").is_none(), "{response:#}");
+    let mut actual = response["result"]["structuredContent"].clone();
+    actual.as_object_mut().unwrap().remove("next_actions");
+    normalize_strings(
+        &mut actual,
+        &[
+            (mcp_output.to_string_lossy().as_ref(), "<output>"),
+            ("inline", "<spec>"),
+        ],
+    );
+
+    let mut expected = run_cli_json(
+        &vec![
+            "--json".to_string(),
+            "pptx".to_string(),
+            "build".to_string(),
+            "--spec".to_string(),
+            spec_path.to_string_lossy().into_owned(),
+            "--out".to_string(),
+            cli_output.to_string_lossy().into_owned(),
+        ],
+        &[],
+    );
+    normalize_strings(
+        &mut expected,
+        &[
+            (cli_output.to_string_lossy().as_ref(), "<output>"),
+            (spec_path.to_string_lossy().as_ref(), "<spec>"),
+        ],
+    );
+    assert_eq!(actual, expected);
+    assert_eq!(
+        std::fs::read(mcp_output).unwrap(),
+        std::fs::read(cli_output).unwrap()
+    );
 }
 
 #[test]
@@ -329,10 +403,9 @@ fn typed_edit_replace_and_errors_are_one_call_and_teaching() {
                 4,
                 "build_presentation",
                 json!({
-                    "output": dir.join("unsupported-rich.pptx"),
+                    "output": dir.join("invalid-spec.pptx"),
                     "spec": {"schemaVersion": 1, "family": "pptx", "slides": [
-                        {"layout": "Title Slide", "title": "One"},
-                        {"layout": "Title Slide", "title": "Two"}
+                        {"layout": "Title Slide", "titel": "Misspelled title"}
                     ]},
                 }),
             ),
@@ -362,14 +435,18 @@ fn typed_edit_replace_and_errors_are_one_call_and_teaching() {
             .contains(&json!("file"))
     );
 
-    let rich = &responses[3]["result"];
-    assert_eq!(rich["isError"], true);
+    let invalid_spec = &responses[3]["result"];
+    assert_eq!(invalid_spec["isError"], true);
     assert_eq!(
-        rich["structuredContent"]["error"]["diagnostics"]["code"],
-        "BUILD_SPEC_FAMILY_COMPILER_REQUIRED"
+        invalid_spec["structuredContent"]["error"]["diagnostics"][0]["code"],
+        "BUILD_SPEC_UNKNOWN_FIELD"
     );
     assert_eq!(
-        rich["structuredContent"]["error"]["schemaResource"],
+        invalid_spec["structuredContent"]["error"]["diagnostics"][0]["didYouMean"],
+        json!(["title"])
+    );
+    assert_eq!(
+        invalid_spec["structuredContent"]["error"]["schemaResource"],
         "resource://schema/pptx-build"
     );
 }
@@ -457,6 +534,27 @@ fn run_cli_json(args: &[String], env: &[(&str, &str)]) -> Value {
 
 fn strings(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_string()).collect()
+}
+
+fn normalize_strings(value: &mut Value, replacements: &[(&str, &str)]) {
+    match value {
+        Value::String(text) => {
+            for (from, to) in replacements {
+                *text = text.replace(from, to);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                normalize_strings(value, replacements);
+            }
+        }
+        Value::Object(fields) => {
+            for value in fields.values_mut() {
+                normalize_strings(value, replacements);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) => {}
+    }
 }
 
 fn temp_dir(label: &str) -> PathBuf {
