@@ -1252,6 +1252,22 @@ fn parse_inlines(source: &str) -> InlineContent {
     let mut cursor = 0usize;
     while cursor < source.len() {
         let rest = &source[cursor..];
+        if let Some(after) = rest.strip_prefix('\\')
+            && let Some(escaped) = after.chars().next()
+            && escaped.is_ascii_punctuation()
+        {
+            let mut text = [0; 4];
+            push_inline_run(
+                &mut runs,
+                escaped.encode_utf8(&mut text),
+                false,
+                false,
+                false,
+                None,
+            );
+            cursor += 1 + escaped.len_utf8();
+            continue;
+        }
         if let Some(after) = rest.strip_prefix("**")
             && let Some(end) = after.find("**")
         {
@@ -1303,7 +1319,7 @@ fn parse_inlines(source: &str) -> InlineContent {
         let next = rest
             .char_indices()
             .skip(1)
-            .find_map(|(index, ch)| matches!(ch, '*' | '_' | '`' | '[').then_some(index))
+            .find_map(|(index, ch)| matches!(ch, '\\' | '*' | '_' | '`' | '[').then_some(index))
             .unwrap_or(rest.len());
         push_inline_run(&mut runs, &rest[..next], false, false, false, None);
         cursor += next;
