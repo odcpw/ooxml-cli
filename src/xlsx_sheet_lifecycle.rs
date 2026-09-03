@@ -4,13 +4,17 @@ use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+use crate::xlsx_sheet_xml::{
+    XlsxWorksheetRootBounds, xlsx_direct_worksheet_child_range, xlsx_worksheet_root_bounds,
+};
 use crate::{
     CliError, CliResult, RelationshipEntry, WorkbookSheet, add_relationship_to_xml,
     allocate_relationship_id, command_arg, copy_zip_with_part_overrides_and_removals,
     ensure_content_type_override, local_name, normalize_xl_target, relationships,
     relationships_part_for, render_xml_attrs, replace_xml_span, resolve_relationship_target,
     resolve_sheet, validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_sheet_selectors,
-    xml_attr_escape, xml_attrs_map, zip_text,
+    xml_attr_escape, xml_attrs_map, xml_direct_child_ranges, xml_open_tag_from_start,
+    xml_tag_prefix, zip_text,
 };
 
 const REL_WORKSHEET: &str =
@@ -58,6 +62,29 @@ pub(crate) struct XlsxSheetsMoveOptions<'a> {
 
 pub(crate) struct XlsxSheetsDeleteOptions<'a> {
     pub(crate) sheet: Option<&'a str>,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+}
+
+pub(crate) struct XlsxSheetsSetTabColorOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) color: Option<&'a str>,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+}
+
+pub(crate) struct XlsxSheetsSetPrintOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) landscape: bool,
+    pub(crate) fit_to_width: Option<i64>,
+    pub(crate) repeat_header_rows: Option<i64>,
+    pub(crate) gridlines: Option<&'a str>,
     pub(crate) out: Option<&'a str>,
     pub(crate) backup: Option<&'a str>,
     pub(crate) dry_run: bool,
@@ -409,6 +436,643 @@ pub(crate) fn xlsx_sheets_delete(
     result.insert("destination".to_string(), destination);
     add_xlsx_sheets_mutation_readback_commands(&mut result, package.commit_path.as_deref(), None);
     Ok(Value::Object(result))
+}
+
+pub(crate) fn xlsx_sheets_set_tab_color(
+    file: &str,
+    options: XlsxSheetsSetTabColorOptions<'_>,
+) -> CliResult<Value> {
+    require_existing_file(file)?;
+    let color = options
+        .color
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| CliError::invalid_args("--color is required"))?;
+    let color = crate::palette::Srgb::from_hex(color)
+        .map_err(|err| CliError::invalid_args(err.to_string()))?
+        .to_hex();
+    let write = sheet_mutation_write(
+        options.out,
+        options.backup,
+        options.dry_run,
+        options.no_validate,
+        options.in_place,
+    )?;
+    let ctx = load_sheet_lifecycle_context(file)?;
+    let sheet = resolve_required_worksheet(&ctx, options.sheet)?;
+    let part_uri = sheet_part_uri(&sheet, &ctx.rel_targets)?;
+    let part = part_uri.trim_start_matches('/');
+    let sheet_xml = zip_text(file, part)?;
+    let updated_sheet = set_worksheet_tab_color(&sheet_xml, &color)?;
+
+    let mut overrides = BTreeMap::new();
+    overrides.insert(part.to_string(), updated_sheet);
+    let package = write_sheet_mutation_package(file, &write, overrides, BTreeSet::new())?;
+    let destination = collect_xlsx_sheets_mutation_destination(
+        &package.readback_path,
+        package.commit_path.as_deref(),
+        Some(&sheet.rel_id),
+        Some(&part_uri),
+    )?;
+    finish_sheet_mutation_package(file, &write, &package)?;
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("sheet".to_string(), json!(sheet.name));
+    result.insert("sheetNumber".to_string(), json!(sheet.position));
+    result.insert("tabColor".to_string(), json!(color));
+    if let Some(commit_path) = package.commit_path.as_deref() {
+        result.insert("output".to_string(), json!(commit_path));
+    }
+    result.insert("dryRun".to_string(), json!(write.dry_run));
+    result.insert("destination".to_string(), destination);
+    add_xlsx_sheets_mutation_readback_commands(
+        &mut result,
+        package.commit_path.as_deref(),
+        Some(sheet.sheet_id),
+    );
+    Ok(Value::Object(result))
+}
+
+pub(crate) fn xlsx_sheets_set_print(
+    file: &str,
+    options: XlsxSheetsSetPrintOptions<'_>,
+) -> CliResult<Value> {
+    require_existing_file(file)?;
+    if !options.landscape
+        && options.fit_to_width.is_none()
+        && options.repeat_header_rows.is_none()
+        && options.gridlines.is_none()
+    {
+        return Err(CliError::invalid_args(
+            "set-print requires --landscape, --fit-to-width, --repeat-header-rows, or --gridlines",
+        ));
+    }
+    let fit_to_width = validate_print_u32(options.fit_to_width, "--fit-to-width", 32_767)?;
+    let repeat_header_rows = validate_print_u32(
+        options.repeat_header_rows,
+        "--repeat-header-rows",
+        1_048_576,
+    )?;
+    let gridlines = options.gridlines.map(parse_gridlines).transpose()?;
+    let write = sheet_mutation_write(
+        options.out,
+        options.backup,
+        options.dry_run,
+        options.no_validate,
+        options.in_place,
+    )?;
+    let ctx = load_sheet_lifecycle_context(file)?;
+    let sheet = resolve_required_worksheet(&ctx, options.sheet)?;
+    let part_uri = sheet_part_uri(&sheet, &ctx.rel_targets)?;
+    let part = part_uri.trim_start_matches('/');
+    let sheet_xml = zip_text(file, part)?;
+    let updated_sheet =
+        set_worksheet_print_options(&sheet_xml, options.landscape, fit_to_width, gridlines)?;
+
+    let mut overrides = BTreeMap::new();
+    overrides.insert(part.to_string(), updated_sheet);
+    if let Some(rows) = repeat_header_rows {
+        overrides.insert(
+            "xl/workbook.xml".to_string(),
+            set_print_titles(&ctx.workbook_xml, &sheet, rows)?,
+        );
+    }
+    let package = write_sheet_mutation_package(file, &write, overrides, BTreeSet::new())?;
+    let destination = collect_xlsx_sheets_mutation_destination(
+        &package.readback_path,
+        package.commit_path.as_deref(),
+        Some(&sheet.rel_id),
+        Some(&part_uri),
+    )?;
+    finish_sheet_mutation_package(file, &write, &package)?;
+
+    let mut result = Map::new();
+    result.insert("file".to_string(), json!(file));
+    result.insert("sheet".to_string(), json!(sheet.name));
+    result.insert("sheetNumber".to_string(), json!(sheet.position));
+    result.insert("landscape".to_string(), json!(options.landscape));
+    result.insert("fitToWidth".to_string(), json!(fit_to_width));
+    result.insert("repeatHeaderRows".to_string(), json!(repeat_header_rows));
+    result.insert(
+        "gridlines".to_string(),
+        json!(gridlines.map(|show| if show { "on" } else { "off" })),
+    );
+    if let Some(commit_path) = package.commit_path.as_deref() {
+        result.insert("output".to_string(), json!(commit_path));
+    }
+    result.insert("dryRun".to_string(), json!(write.dry_run));
+    result.insert("destination".to_string(), destination);
+    add_xlsx_sheets_mutation_readback_commands(
+        &mut result,
+        package.commit_path.as_deref(),
+        Some(sheet.sheet_id),
+    );
+    Ok(Value::Object(result))
+}
+
+fn sheet_mutation_write<'a>(
+    out: Option<&'a str>,
+    backup: Option<&'a str>,
+    dry_run: bool,
+    no_validate: bool,
+    in_place: bool,
+) -> CliResult<XlsxSheetMutationWrite<'a>> {
+    validate_xlsx_mutation_output_flags(out, in_place, backup, dry_run)?;
+    Ok(XlsxSheetMutationWrite {
+        out,
+        backup,
+        dry_run,
+        no_validate,
+        in_place,
+    })
+}
+
+fn resolve_required_worksheet(
+    ctx: &XlsxSheetLifecycleContext,
+    selector: Option<&str>,
+) -> CliResult<WorkbookSheet> {
+    let selector = selector
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| CliError::invalid_args("--sheet is required"))?;
+    let sheet = resolve_sheet(&ctx.sheets, selector)?;
+    let part_uri = sheet_part_uri(&sheet, &ctx.rel_targets)?;
+    if !part_uri.starts_with("/xl/worksheets/") {
+        return Err(CliError::invalid_args(format!(
+            "sheet {:?} is not a worksheet",
+            sheet.name
+        )));
+    }
+    Ok(sheet)
+}
+
+fn validate_print_u32(value: Option<i64>, flag: &str, max: u32) -> CliResult<Option<u32>> {
+    value
+        .map(|value| {
+            u32::try_from(value)
+                .ok()
+                .filter(|value| *value <= max)
+                .ok_or_else(|| {
+                    CliError::invalid_args(format!("{flag} must be between 0 and {max}"))
+                })
+        })
+        .transpose()
+}
+
+fn parse_gridlines(value: &str) -> CliResult<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "on" | "true" | "1" => Ok(true),
+        "off" | "false" | "0" => Ok(false),
+        _ => Err(CliError::invalid_args("--gridlines must be on or off")),
+    }
+}
+
+fn set_worksheet_tab_color(xml: &str, color: &str) -> CliResult<String> {
+    let root = xlsx_worksheet_root_bounds(xml)?;
+    let prefix = xml_tag_prefix(&root.tag_name);
+    let tab_color = format!(
+        r#"<{} rgb="FF{}"/>"#,
+        qualified_name(Some(&prefix), "tabColor"),
+        xml_attr_escape(color)
+    );
+    if let Some(sheet_pr) = xlsx_direct_worksheet_child_range(xml, &root, "sheetPr")? {
+        return upsert_direct_element_child(
+            xml,
+            sheet_pr.start,
+            sheet_pr.end,
+            "tabColor",
+            &tab_color,
+        );
+    }
+    let sheet_pr = format!(
+        "<{}>{tab_color}</{}>",
+        qualified_name(Some(&prefix), "sheetPr"),
+        qualified_name(Some(&prefix), "sheetPr")
+    );
+    insert_worksheet_child_ordered(xml, &root, "sheetPr", &sheet_pr)
+}
+
+fn set_worksheet_print_options(
+    xml: &str,
+    landscape: bool,
+    fit_to_width: Option<u32>,
+    gridlines: Option<bool>,
+) -> CliResult<String> {
+    let mut updated = xml.to_string();
+    if fit_to_width.is_some() {
+        updated = ensure_worksheet_nested_child(&updated, "sheetPr", "pageSetUpPr")?;
+        updated = set_first_element_attrs(&updated, "pageSetUpPr", &[("fitToPage", "1")])?;
+    }
+    if let Some(show) = gridlines {
+        updated = ensure_sheet_view(&updated)?;
+        updated = set_first_element_attrs(
+            &updated,
+            "sheetView",
+            &[("showGridLines", if show { "1" } else { "0" })],
+        )?;
+        updated = ensure_worksheet_child(&updated, "printOptions")?;
+        updated = set_first_element_attrs(
+            &updated,
+            "printOptions",
+            &[
+                ("gridLines", if show { "1" } else { "0" }),
+                ("gridLinesSet", "1"),
+            ],
+        )?;
+    }
+    if landscape || fit_to_width.is_some() {
+        updated = ensure_worksheet_child(&updated, "pageSetup")?;
+        let mut attrs = Vec::new();
+        if landscape {
+            attrs.push(("orientation", "landscape".to_string()));
+        }
+        if let Some(width) = fit_to_width {
+            attrs.push(("fitToWidth", width.to_string()));
+        }
+        let borrowed = attrs
+            .iter()
+            .map(|(name, value)| (*name, value.as_str()))
+            .collect::<Vec<_>>();
+        updated = set_first_element_attrs(&updated, "pageSetup", &borrowed)?;
+    }
+    Ok(updated)
+}
+
+fn ensure_sheet_view(xml: &str) -> CliResult<String> {
+    if contains_element(xml, "sheetView")? {
+        return Ok(xml.to_string());
+    }
+    let root = xlsx_worksheet_root_bounds(xml)?;
+    let prefix = xml_tag_prefix(&root.tag_name);
+    let container = format!(
+        r#"<{}><{} workbookViewId="0"/></{}>"#,
+        qualified_name(Some(&prefix), "sheetViews"),
+        qualified_name(Some(&prefix), "sheetView"),
+        qualified_name(Some(&prefix), "sheetViews")
+    );
+    if let Some(existing) = xlsx_direct_worksheet_child_range(xml, &root, "sheetViews")? {
+        return Ok(replace_xml_span(
+            xml,
+            existing.start,
+            existing.end,
+            &container,
+        ));
+    }
+    insert_worksheet_child_ordered(xml, &root, "sheetViews", &container)
+}
+
+fn ensure_worksheet_nested_child(xml: &str, parent: &str, child: &str) -> CliResult<String> {
+    if contains_element(xml, child)? {
+        return Ok(xml.to_string());
+    }
+    let root = xlsx_worksheet_root_bounds(xml)?;
+    let prefix = xml_tag_prefix(&root.tag_name);
+    let child_xml = format!("<{} />", qualified_name(Some(&prefix), child));
+    if let Some(parent_range) = xlsx_direct_worksheet_child_range(xml, &root, parent)? {
+        return upsert_direct_element_child(
+            xml,
+            parent_range.start,
+            parent_range.end,
+            child,
+            &child_xml,
+        );
+    }
+    let parent_xml = format!(
+        "<{}>{child_xml}</{}>",
+        qualified_name(Some(&prefix), parent),
+        qualified_name(Some(&prefix), parent)
+    );
+    insert_worksheet_child_ordered(xml, &root, parent, &parent_xml)
+}
+
+fn ensure_worksheet_child(xml: &str, child: &str) -> CliResult<String> {
+    let root = xlsx_worksheet_root_bounds(xml)?;
+    if xlsx_direct_worksheet_child_range(xml, &root, child)?.is_some() {
+        return Ok(xml.to_string());
+    }
+    let prefix = xml_tag_prefix(&root.tag_name);
+    let child_xml = format!("<{} />", qualified_name(Some(&prefix), child));
+    insert_worksheet_child_ordered(xml, &root, child, &child_xml)
+}
+
+fn upsert_direct_element_child(
+    xml: &str,
+    start: usize,
+    end: usize,
+    child: &str,
+    child_xml: &str,
+) -> CliResult<String> {
+    let fragment = &xml[start..end];
+    let bounds = xml_element_bounds(fragment)?;
+    let updated_fragment = if bounds.self_closing {
+        let open = xml_open_tag_from_start(fragment);
+        format!("{open}{child_xml}</{}>", bounds.tag_name)
+    } else if let Some(existing) =
+        xml_direct_child_ranges(fragment, bounds.open_end, bounds.close_start)?
+            .into_iter()
+            .find(|range| range.kind == child)
+    {
+        replace_xml_span(fragment, existing.start, existing.end, child_xml)
+    } else {
+        replace_xml_span(fragment, bounds.close_start, bounds.close_start, child_xml)
+    };
+    Ok(replace_xml_span(xml, start, end, &updated_fragment))
+}
+
+fn set_first_element_attrs(xml: &str, local: &str, changes: &[(&str, &str)]) -> CliResult<String> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        let start = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(element)) | Ok(Event::Empty(element))
+                if local_name(element.name().as_ref()) == local =>
+            {
+                let end = reader.buffer_position() as usize;
+                let name = String::from_utf8_lossy(element.name().as_ref()).to_string();
+                let mut attrs = xml_attrs_map(&element);
+                for (key, value) in changes {
+                    attrs.insert((*key).to_string(), (*value).to_string());
+                }
+                let empty = xml[start..end].trim_end().ends_with("/>");
+                let replacement = format!(
+                    "<{name}{}{}",
+                    render_xml_attrs(&attrs),
+                    if empty { "/>" } else { ">" }
+                );
+                return Ok(replace_xml_span(xml, start, end, &replacement));
+            }
+            Ok(Event::Eof) => {
+                return Err(CliError::unexpected(format!(
+                    "could not find {local} element"
+                )));
+            }
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+}
+
+fn contains_element(xml: &str, local: &str) -> CliResult<bool> {
+    let mut reader = Reader::from_str(xml);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(element)) | Ok(Event::Empty(element))
+                if local_name(element.name().as_ref()) == local =>
+            {
+                return Ok(true);
+            }
+            Ok(Event::Eof) => return Ok(false),
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+}
+
+struct XmlElementBounds {
+    open_end: usize,
+    close_start: usize,
+    tag_name: String,
+    self_closing: bool,
+}
+
+fn xml_element_bounds(xml: &str) -> CliResult<XmlElementBounds> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(element)) => {
+                let open_end = reader.buffer_position() as usize;
+                let tag_name = String::from_utf8_lossy(element.name().as_ref()).to_string();
+                let close_start = xml
+                    .rfind(&format!("</{tag_name}>"))
+                    .ok_or_else(|| CliError::unexpected(format!("{tag_name} has no close tag")))?;
+                return Ok(XmlElementBounds {
+                    open_end,
+                    close_start,
+                    tag_name,
+                    self_closing: false,
+                });
+            }
+            Ok(Event::Empty(element)) => {
+                let end = reader.buffer_position() as usize;
+                return Ok(XmlElementBounds {
+                    open_end: end,
+                    close_start: end,
+                    tag_name: String::from_utf8_lossy(element.name().as_ref()).to_string(),
+                    self_closing: true,
+                });
+            }
+            Ok(Event::Eof) => return Err(CliError::unexpected("XML element not found")),
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+}
+
+fn insert_worksheet_child_ordered(
+    xml: &str,
+    root: &XlsxWorksheetRootBounds,
+    local: &str,
+    child_xml: &str,
+) -> CliResult<String> {
+    if root.self_closing {
+        let open = xml_open_tag_from_start(&xml[root.start..root.open_end]);
+        return Ok(format!(
+            "{}{open}{child_xml}</{}>{}",
+            &xml[..root.start],
+            root.tag_name,
+            &xml[root.end..]
+        ));
+    }
+    let order = worksheet_child_order(local);
+    let insert_at = xml_direct_child_ranges(xml, root.open_end, root.close_start)?
+        .into_iter()
+        .find(|range| worksheet_child_order(&range.kind) > order)
+        .map(|range| range.start)
+        .unwrap_or(root.close_start);
+    Ok(replace_xml_span(xml, insert_at, insert_at, child_xml))
+}
+
+fn worksheet_child_order(local: &str) -> usize {
+    [
+        "sheetPr",
+        "dimension",
+        "sheetViews",
+        "sheetFormatPr",
+        "cols",
+        "sheetData",
+        "sheetCalcPr",
+        "sheetProtection",
+        "protectedRanges",
+        "scenarios",
+        "autoFilter",
+        "sortState",
+        "dataConsolidate",
+        "customSheetViews",
+        "mergeCells",
+        "phoneticPr",
+        "conditionalFormatting",
+        "dataValidations",
+        "hyperlinks",
+        "printOptions",
+        "pageMargins",
+        "pageSetup",
+        "headerFooter",
+        "rowBreaks",
+        "colBreaks",
+        "customProperties",
+        "cellWatches",
+        "ignoredErrors",
+        "smartTags",
+        "drawing",
+        "legacyDrawing",
+        "legacyDrawingHF",
+        "drawingHF",
+        "picture",
+        "oleObjects",
+        "controls",
+        "webPublishItems",
+        "tableParts",
+        "extLst",
+    ]
+    .iter()
+    .position(|name| *name == local)
+    .unwrap_or(usize::MAX)
+}
+
+fn set_print_titles(workbook_xml: &str, sheet: &WorkbookSheet, rows: u32) -> CliResult<String> {
+    let bounds = xml_element_bounds(workbook_xml)?;
+    let prefix = xml_tag_prefix(&bounds.tag_name);
+    let formula_sheet = sheet.name.replace('\'', "''");
+    let defined_name = format!(
+        r#"<{} name="_xlnm.Print_Titles" localSheetId="{}">'{}'!$1:${}</{}>"#,
+        qualified_name(Some(&prefix), "definedName"),
+        sheet.position - 1,
+        xml_escape_text(&formula_sheet),
+        rows,
+        qualified_name(Some(&prefix), "definedName")
+    );
+    let defined_names = xml_direct_child_ranges(workbook_xml, bounds.open_end, bounds.close_start)?
+        .into_iter()
+        .find(|range| range.kind == "definedNames");
+
+    if let Some(range) = defined_names {
+        let fragment = &workbook_xml[range.start..range.end];
+        let container = xml_element_bounds(fragment)?;
+        let mut clean = fragment.to_string();
+        if !container.self_closing {
+            let mut matches =
+                xml_direct_child_ranges(fragment, container.open_end, container.close_start)?
+                    .into_iter()
+                    .filter(|child| {
+                        child.kind == "definedName"
+                            && defined_name_is_print_titles(
+                                &fragment[child.start..child.end],
+                                sheet.position - 1,
+                            )
+                    })
+                    .collect::<Vec<_>>();
+            matches.sort_by_key(|child| child.start);
+            for child in matches.into_iter().rev() {
+                clean = replace_xml_span(&clean, child.start, child.end, "");
+            }
+        }
+        let clean_bounds = xml_element_bounds(&clean)?;
+        let updated = if clean_bounds.self_closing {
+            let open = xml_open_tag_from_start(&clean);
+            format!("{open}{defined_name}</{}>", clean_bounds.tag_name)
+        } else {
+            replace_xml_span(
+                &clean,
+                clean_bounds.close_start,
+                clean_bounds.close_start,
+                &defined_name,
+            )
+        };
+        return Ok(replace_xml_span(
+            workbook_xml,
+            range.start,
+            range.end,
+            &updated,
+        ));
+    }
+
+    let container = format!(
+        "<{}>{defined_name}</{}>",
+        qualified_name(Some(&prefix), "definedNames"),
+        qualified_name(Some(&prefix), "definedNames")
+    );
+    insert_workbook_child_ordered(workbook_xml, &bounds, "definedNames", &container)
+}
+
+fn defined_name_is_print_titles(xml: &str, local_sheet_id: u32) -> bool {
+    let mut reader = Reader::from_str(xml);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(element)) | Ok(Event::Empty(element))
+                if local_name(element.name().as_ref()) == "definedName" =>
+            {
+                let attrs = xml_attrs_map(&element);
+                return attrs
+                    .get("name")
+                    .is_some_and(|value| value == "_xlnm.Print_Titles")
+                    && attrs
+                        .get("localSheetId")
+                        .is_some_and(|value| value == &local_sheet_id.to_string());
+            }
+            Ok(Event::Eof) | Err(_) => return false,
+            _ => {}
+        }
+    }
+}
+
+fn insert_workbook_child_ordered(
+    xml: &str,
+    root: &XmlElementBounds,
+    local: &str,
+    child_xml: &str,
+) -> CliResult<String> {
+    let order = workbook_child_order(local);
+    let insert_at = xml_direct_child_ranges(xml, root.open_end, root.close_start)?
+        .into_iter()
+        .find(|range| workbook_child_order(&range.kind) > order)
+        .map(|range| range.start)
+        .unwrap_or(root.close_start);
+    Ok(replace_xml_span(xml, insert_at, insert_at, child_xml))
+}
+
+fn workbook_child_order(local: &str) -> usize {
+    [
+        "fileVersion",
+        "fileSharing",
+        "workbookPr",
+        "workbookProtection",
+        "bookViews",
+        "sheets",
+        "functionGroups",
+        "externalReferences",
+        "definedNames",
+        "calcPr",
+        "oleSize",
+        "customWorkbookViews",
+        "pivotCaches",
+        "smartTagPr",
+        "smartTagTypes",
+        "webPublishing",
+        "fileRecoveryPr",
+        "webPublishObjects",
+        "extLst",
+    ]
+    .iter()
+    .position(|name| *name == local)
+    .unwrap_or(usize::MAX)
+}
+
+fn xml_escape_text(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn require_existing_file(file: &str) -> CliResult<()> {

@@ -34,7 +34,9 @@ use self::ranges::dispatch_xlsx_ranges;
 use self::sheets::dispatch_xlsx_sheets;
 use self::tables::dispatch_xlsx_tables;
 use self::workbook::dispatch_xlsx_workbook;
-use crate::cli_args::{has_flag, output_path_arg, parse_string_flag, reject_unknown_flags};
+use crate::cli_args::{
+    has_flag, output_path_arg, parse_string_flag, parse_string_flags, reject_unknown_flags,
+};
 use crate::cli_core::{CliError, CliResult};
 use crate::{XlsxScaffoldOptions, xlsx_scaffold};
 
@@ -66,15 +68,21 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
 fn dispatch_xlsx_inner(args: &[String]) -> CliResult<Value> {
     match args {
         [family, verb, rest @ ..] if family == "xlsx" && verb == "scaffold" => {
-            let value_flags = ["--out", "--sheet"];
+            let value_flags = ["--out", "--sheet", "--theme", "--theme-seed", "--brand"];
             let bool_flags = ["--force", "--no-validate"];
             reject_unknown_flags(rest, &value_flags, &bool_flags)?;
             let output = output_path_arg(rest, &value_flags, &bool_flags, "xlsx scaffold")?;
-            let sheet = parse_string_flag(rest, "--sheet")?;
+            let sheets = parse_string_flags(rest, "--sheet")?;
+            let theme = parse_string_flag(rest, "--theme")?;
+            let theme_seed = parse_string_flag(rest, "--theme-seed")?;
+            let brand = parse_string_flag(rest, "--brand")?;
             xlsx_scaffold(
                 &output,
                 XlsxScaffoldOptions {
-                    sheet: sheet.as_deref(),
+                    sheets,
+                    theme: theme.as_deref(),
+                    theme_seed: theme_seed.as_deref(),
+                    brand: brand.as_deref(),
                     force: has_flag(rest, "--force"),
                     no_validate: has_flag(rest, "--no-validate"),
                 },

@@ -64,14 +64,23 @@ pub(super) fn dispatch_xlsx_tables(args: &[String]) -> CliResult<Value> {
             reject_unknown_flags(
                 rest,
                 &[
-                    "--sheet", "--range", "--table", "--style", "--out", "--backup",
+                    "--sheet",
+                    "--range",
+                    "--table",
+                    "--style",
+                    "--header-style",
+                    "--totals",
+                    "--out",
+                    "--backup",
                 ],
-                &["--dry-run", "--no-validate", "--in-place"],
+                &["--total-row", "--dry-run", "--no-validate", "--in-place"],
             )?;
             let sheet = parse_string_flag(rest, "--sheet")?;
             let range = parse_string_flag(rest, "--range")?;
             let table = parse_string_flag(rest, "--table")?;
             let style = parse_string_flag(rest, "--style")?;
+            let header_style = parse_string_flag(rest, "--header-style")?;
+            let totals = parse_string_flag(rest, "--totals")?;
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             xlsx_tables_create(
@@ -81,6 +90,9 @@ pub(super) fn dispatch_xlsx_tables(args: &[String]) -> CliResult<Value> {
                     range: range.as_deref(),
                     table: table.as_deref(),
                     style: style.as_deref(),
+                    header_style: header_style.as_deref(),
+                    total_row: has_flag(rest, "--total-row"),
+                    totals: totals.as_deref(),
                     out: out.as_deref(),
                     backup: backup.as_deref(),
                     dry_run: has_flag(rest, "--dry-run"),

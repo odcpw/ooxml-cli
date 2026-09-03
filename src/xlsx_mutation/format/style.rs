@@ -14,7 +14,7 @@ use super::styles_xml::{
     element_span_by_local_name, ensure_xlsx_style_defaults, set_collection_count,
 };
 use crate::{
-    CliError, CliResult, RangeBounds, check_range_max_cells, col_name,
+    CliError, CliResult, RangeBounds, attr, check_range_max_cells, col_name,
     copy_zip_with_part_overrides, ensure_content_type_override, local_name, parse_cli_range,
     parse_xlsx_row_spans, range_bounds_ref, rebuild_xlsx_sheet_data, render_xlsx_row,
     render_xml_attrs, xlsx_sheet_data_span, xlsx_used_range_from_cell_refs, xml_attrs, zip_text,
@@ -23,6 +23,7 @@ use crate::{
 pub(crate) struct XlsxRangesSetStyleOptions<'a> {
     pub(crate) sheet: &'a str,
     pub(crate) range: &'a str,
+    pub(crate) preset: Option<&'a str>,
     pub(crate) font_name: Option<&'a str>,
     pub(crate) font_size: Option<f64>,
     pub(crate) font_bold: Option<bool>,
@@ -118,7 +119,7 @@ pub(crate) fn xlsx_ranges_set_style(
         options.backup,
         options.dry_run,
     )?;
-    let spec = build_xlsx_cell_style_spec(&options)?;
+    let spec = build_xlsx_cell_style_spec(file, &options)?;
 
     let (sheet, sheet_part) = resolve_xlsx_sheet_context(file, options.sheet)?;
     let sheet_xml = zip_text(file, &sheet_part)?;
@@ -174,6 +175,9 @@ pub(crate) fn xlsx_ranges_set_style(
     result.insert("updated".to_string(), json!(stats.updated));
     result.insert("created".to_string(), json!(stats.created));
     result.insert("createdStyles".to_string(), json!(stats.created_styles));
+    if let Some(preset) = options.preset {
+        result.insert("preset".to_string(), json!(preset.to_ascii_lowercase()));
+    }
     if !stats.style_indexes.is_empty() {
         result.insert(
             "styleIndexes".to_string(),
@@ -194,7 +198,10 @@ pub(crate) fn xlsx_ranges_set_style(
     Ok(Value::Object(result))
 }
 
-fn build_xlsx_cell_style_spec(options: &XlsxRangesSetStyleOptions<'_>) -> CliResult<CellStyleSpec> {
+fn build_xlsx_cell_style_spec(
+    file: &str,
+    options: &XlsxRangesSetStyleOptions<'_>,
+) -> CliResult<CellStyleSpec> {
     let font = if options.font_name.is_some()
         || options.font_size.is_some()
         || options.font_bold.is_some()
@@ -272,19 +279,189 @@ fn build_xlsx_cell_style_spec(options: &XlsxRangesSetStyleOptions<'_>) -> CliRes
     } else {
         None
     };
-    if font.is_none() && fill.is_none() && border.is_none() && alignment.is_none() {
-        return Err(CliError::invalid_args(
-            "specify at least one style flag (font/fill/border/alignment)",
-        ));
-    }
-    let spec = CellStyleSpec {
+    let custom = CellStyleSpec {
         font,
         fill,
         border,
         alignment,
     };
+    let mut spec = if let Some(preset) = options.preset {
+        preset_style_spec(file, preset)?
+    } else {
+        CellStyleSpec {
+            font: None,
+            fill: None,
+            border: None,
+            alignment: None,
+        }
+    };
+    if custom.font.is_some() {
+        spec.font = custom.font;
+    }
+    if custom.fill.is_some() {
+        spec.fill = custom.fill;
+    }
+    if custom.border.is_some() {
+        spec.border = custom.border;
+    }
+    if custom.alignment.is_some() {
+        spec.alignment = custom.alignment;
+    }
+    if spec.font.is_none()
+        && spec.fill.is_none()
+        && spec.border.is_none()
+        && spec.alignment.is_none()
+    {
+        return Err(CliError::invalid_args(
+            "specify --preset or at least one style flag (font/fill/border/alignment)",
+        ));
+    }
     validate_xlsx_cell_style_spec(&spec)?;
     Ok(spec)
+}
+
+fn preset_style_spec(file: &str, value: &str) -> CliResult<CellStyleSpec> {
+    let palette = workbook_theme_palette(file);
+    let font = |bold, italic, color: String| {
+        Some(FontStyleSpec {
+            name: Some(palette.minor_font.clone()),
+            size: None,
+            bold: Some(bold),
+            italic: Some(italic),
+            underline: None,
+            color: Some(color),
+        })
+    };
+    let fill = |color: String| Some(FillStyleSpec { color });
+    let border = |color: String, top: bool, bottom: bool, left: bool, right: bool| {
+        Some(BorderStyleSpec {
+            style: "thin".to_string(),
+            color: Some(color),
+            top,
+            bottom,
+            left,
+            right,
+        })
+    };
+    let alignment = |horizontal: Option<&str>| {
+        Some(AlignmentStyleSpec {
+            horizontal: horizontal.map(ToString::to_string),
+            vertical: Some("center".to_string()),
+            wrap_text: None,
+        })
+    };
+    let spec = match value.trim().to_ascii_lowercase().as_str() {
+        "header" => CellStyleSpec {
+            font: font(true, false, palette.lt1.clone()),
+            fill: fill(palette.accent1.clone()),
+            border: border(palette.dk2.clone(), true, true, false, false),
+            alignment: alignment(Some("center")),
+        },
+        "total" => CellStyleSpec {
+            font: font(true, false, palette.dk1.clone()),
+            fill: fill(palette.lt2.clone()),
+            border: border(palette.accent1.clone(), true, false, false, false),
+            alignment: alignment(None),
+        },
+        "band" => CellStyleSpec {
+            font: None,
+            fill: fill(palette.lt2.clone()),
+            border: None,
+            alignment: None,
+        },
+        "input" => CellStyleSpec {
+            font: font(false, false, palette.dk1.clone()),
+            fill: fill(palette.lt1.clone()),
+            border: border(palette.accent1.clone(), true, true, true, true),
+            alignment: None,
+        },
+        "muted" => CellStyleSpec {
+            font: font(false, true, palette.dk2.clone()),
+            fill: fill(palette.lt2.clone()),
+            border: None,
+            alignment: None,
+        },
+        _ => {
+            return Err(CliError::invalid_args(
+                "--preset must be header, total, band, input, or muted",
+            ));
+        }
+    };
+    Ok(spec)
+}
+
+struct PresetPalette {
+    dk1: String,
+    lt1: String,
+    dk2: String,
+    lt2: String,
+    accent1: String,
+    minor_font: String,
+}
+
+fn workbook_theme_palette(file: &str) -> PresetPalette {
+    let fallback = crate::palette::ThemePalette::derive("#4472C4").expect("built-in palette seed");
+    let mut colors = BTreeMap::new();
+    let mut minor_font = None;
+    if let Ok(xml) = zip_text(file, "xl/theme/theme1.xml") {
+        let mut reader = Reader::from_str(&xml);
+        let mut current = None;
+        let mut in_minor_font = false;
+        loop {
+            match reader.read_event() {
+                Ok(Event::Start(e))
+                    if matches!(
+                        local_name(e.name().as_ref()),
+                        "dk1" | "lt1" | "dk2" | "lt2" | "accent1"
+                    ) =>
+                {
+                    current = Some(local_name(e.name().as_ref()).to_string())
+                }
+                Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "minorFont" => {
+                    in_minor_font = true
+                }
+                Ok(Event::Empty(e))
+                    if in_minor_font && local_name(e.name().as_ref()) == "latin" =>
+                {
+                    minor_font = attr(&e, "typeface").filter(|value| !value.trim().is_empty())
+                }
+                Ok(Event::Empty(e))
+                    if current.is_some()
+                        && matches!(local_name(e.name().as_ref()), "srgbClr" | "sysClr") =>
+                {
+                    if let Some(value) = attr(&e, "val").or_else(|| attr(&e, "lastClr")) {
+                        colors.insert(current.clone().unwrap(), value);
+                    }
+                }
+                Ok(Event::End(e)) if current.as_deref() == Some(local_name(e.name().as_ref())) => {
+                    current = None
+                }
+                Ok(Event::End(e)) if local_name(e.name().as_ref()) == "minorFont" => {
+                    in_minor_font = false
+                }
+                Ok(Event::Eof) | Err(_) => break,
+                _ => {}
+            }
+        }
+    }
+    PresetPalette {
+        dk1: colors
+            .remove("dk1")
+            .unwrap_or_else(|| fallback.dk1.to_hex()),
+        lt1: colors
+            .remove("lt1")
+            .unwrap_or_else(|| fallback.lt1.to_hex()),
+        dk2: colors
+            .remove("dk2")
+            .unwrap_or_else(|| fallback.dk2.to_hex()),
+        lt2: colors
+            .remove("lt2")
+            .unwrap_or_else(|| fallback.lt2.to_hex()),
+        accent1: colors
+            .remove("accent1")
+            .unwrap_or_else(|| fallback.accent1.to_hex()),
+        minor_font: minor_font.unwrap_or_else(|| "Aptos".to_string()),
+    }
 }
 
 fn validate_xlsx_cell_style_spec(spec: &CellStyleSpec) -> CliResult<()> {
@@ -401,11 +578,50 @@ fn set_xlsx_range_style_xml(
     let updated =
         rebuild_xlsx_sheet_data(sheet_xml, sheet_data.as_ref(), &row_spans, &changed_rows)?;
     let used_range = xlsx_used_range_from_cell_refs(&updated);
-    Ok((
-        replace_xlsx_dimension(&updated, used_range.as_deref()),
-        styles_xml,
-        stats,
-    ))
+    let updated = replace_xlsx_dimension(&updated, used_range.as_deref());
+    Ok((move_dimension_before_columns(updated), styles_xml, stats))
+}
+
+fn move_dimension_before_columns(xml: String) -> String {
+    let Some(dimension_start) = xml_element_start(&xml, "dimension") else {
+        return xml;
+    };
+    let Some(columns_start) = xml_element_start(&xml, "cols") else {
+        return xml;
+    };
+    if dimension_start < columns_start {
+        return xml;
+    }
+    let Some(dimension_end) = xml[dimension_start..]
+        .find("/>")
+        .map(|offset| dimension_start + offset + 2)
+    else {
+        return xml;
+    };
+    let dimension = xml[dimension_start..dimension_end].to_string();
+    let mut without = String::with_capacity(xml.len());
+    without.push_str(&xml[..dimension_start]);
+    without.push_str(&xml[dimension_end..]);
+    let columns_start = xml_element_start(&without, "cols").unwrap_or(columns_start);
+    without.insert_str(columns_start, &dimension);
+    without
+}
+
+fn xml_element_start(xml: &str, wanted: &str) -> Option<usize> {
+    xml.match_indices('<').find_map(|(index, _)| {
+        let tail = &xml[index + 1..];
+        if tail.starts_with('/') || tail.starts_with('?') || tail.starts_with('!') {
+            return None;
+        }
+        let end = tail
+            .find(|ch: char| ch.is_ascii_whitespace() || ch == '>' || ch == '/')
+            .unwrap_or(tail.len());
+        let name = &tail[..end];
+        name.rsplit(':')
+            .next()
+            .is_some_and(|local| local == wanted)
+            .then_some(index)
+    })
 }
 
 fn apply_xlsx_style_to_styles_xml(

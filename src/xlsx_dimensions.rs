@@ -12,9 +12,10 @@ use crate::xlsx_sheet_xml::{
 use crate::{
     CliError, CliResult, WorkbookSheet, attr, col_name, command_arg, copy_zip_with_part_override,
     local_name, normalize_xl_target, parse_xlsx_row_spans, relationships, render_xml_attrs,
-    replace_xml_span, resolve_sheet, validate_xlsx_mutation_output_flags, workbook_sheets,
-    xlsx_sheet_data_span, xml_attrs, xml_direct_child_ranges, xml_fragment_bounds,
-    xml_open_tag_from_start, xml_tag_prefix, zip_text,
+    replace_xml_span, resolve_sheet, shared_strings, sheet_cells,
+    validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_sheet_data_span, xlsx_styles,
+    xml_attrs, xml_direct_child_ranges, xml_fragment_bounds, xml_open_tag_from_start,
+    xml_tag_prefix, zip_text,
 };
 
 const DEFAULT_COL_WIDTH: f64 = 8.43;
@@ -41,6 +42,18 @@ pub(crate) struct XlsxRowHeightsSetOptions<'a> {
     pub(crate) range: &'a str,
     pub(crate) height: Option<f64>,
     pub(crate) expect_height: Option<f64>,
+    pub(crate) out: Option<&'a str>,
+    pub(crate) backup: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) no_validate: bool,
+    pub(crate) in_place: bool,
+}
+
+pub(crate) struct XlsxColWidthsAutofitOptions<'a> {
+    pub(crate) sheet: Option<&'a str>,
+    pub(crate) range: Option<&'a str>,
+    pub(crate) min: f64,
+    pub(crate) max: f64,
     pub(crate) out: Option<&'a str>,
     pub(crate) backup: Option<&'a str>,
     pub(crate) dry_run: bool,
@@ -269,6 +282,152 @@ pub(crate) fn xlsx_colwidths_set(
         );
     }
     Ok(Value::Object(result))
+}
+
+pub(crate) fn xlsx_colwidths_autofit(
+    file: &str,
+    options: XlsxColWidthsAutofitOptions<'_>,
+) -> CliResult<Value> {
+    if !options.min.is_finite()
+        || !options.max.is_finite()
+        || options.min < 0.0
+        || options.max > MAX_COLUMN_WIDTH
+        || options.min > options.max
+    {
+        return Err(CliError::invalid_args(
+            "--min and --max must satisfy 0 <= min <= max <= 255",
+        ));
+    }
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let (sheet, sheet_part, sheet_xml) = resolve_dimension_sheet(file, options.sheet)?;
+    let strings = shared_strings(file).unwrap_or_default();
+    let styles = xlsx_styles(file).unwrap_or_default();
+    let cells = sheet_cells(&sheet_xml, &strings, &styles);
+    let parsed_cells = cells
+        .iter()
+        .filter_map(|(reference, value)| {
+            parse_cell_reference(reference).map(|(col, _)| (col, value))
+        })
+        .collect::<Vec<_>>();
+    let (min_col, max_col) = if let Some(range) = options.range {
+        parse_column_span(range)?
+    } else {
+        let min_col = parsed_cells.iter().map(|(col, _)| *col).min().unwrap_or(1);
+        let max_col = parsed_cells.iter().map(|(col, _)| *col).max().unwrap_or(1);
+        (min_col, max_col)
+    };
+    let (font_name, font_size) = workbook_default_font(file);
+    let mut widths = BTreeMap::new();
+    let mut updated_xml = sheet_xml;
+    for col in min_col..=max_col {
+        let width = parsed_cells
+            .iter()
+            .filter(|(cell_col, _)| *cell_col == col)
+            .map(|(_, value)| estimated_cell_width(value, &font_name, font_size))
+            .fold(options.min, f64::max)
+            .clamp(options.min, options.max);
+        updated_xml = set_column_widths_xml(&updated_xml, col, col, width)?;
+        widths.insert(col_name(col), dimension_json(width));
+    }
+    let output_path = write_dimension_mutation_output(
+        file,
+        &sheet_part,
+        &updated_xml,
+        DimensionMutationWriteOptions {
+            out: options.out,
+            backup: options.backup,
+            dry_run: options.dry_run,
+            no_validate: options.no_validate,
+            in_place: options.in_place,
+        },
+    )?;
+    let normalized_range = format!("{}:{}", col_name(min_col), col_name(max_col));
+    Ok(json!({
+        "file": file,
+        "output": output_path,
+        "sheet": sheet.name,
+        "sheetNumber": sheet.position,
+        "range": normalized_range,
+        "min": dimension_json(options.min),
+        "max": dimension_json(options.max),
+        "font": font_name,
+        "fontSize": dimension_json(font_size),
+        "heuristic": "simple-average-glyph-width-v1",
+        "widths": widths,
+        "dryRun": options.dry_run,
+    }))
+}
+
+fn parse_cell_reference(reference: &str) -> Option<(u32, u32)> {
+    let split = reference.find(|ch: char| ch.is_ascii_digit())?;
+    Some((
+        parse_column(&reference[..split]).ok()?,
+        reference[split..].parse().ok()?,
+    ))
+}
+
+fn workbook_default_font(file: &str) -> (String, f64) {
+    let Ok(xml) = zip_text(file, "xl/styles.xml") else {
+        return ("Aptos".to_string(), 11.0);
+    };
+    let mut reader = Reader::from_str(&xml);
+    let mut in_first_font = false;
+    let mut name = None;
+    let mut size = None;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "font" && name.is_none() => {
+                in_first_font = true
+            }
+            Ok(Event::Empty(e)) if in_first_font && local_name(e.name().as_ref()) == "name" => {
+                name = attr(&e, "val")
+            }
+            Ok(Event::Empty(e)) if in_first_font && local_name(e.name().as_ref()) == "sz" => {
+                size = attr(&e, "val").and_then(|v| v.parse().ok())
+            }
+            Ok(Event::End(e)) if in_first_font && local_name(e.name().as_ref()) == "font" => break,
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    (
+        name.unwrap_or_else(|| "Aptos".to_string()),
+        size.unwrap_or(11.0),
+    )
+}
+
+fn estimated_cell_width(value: &crate::CellValue, font: &str, font_size: f64) -> f64 {
+    let chars = value
+        .display_value
+        .chars()
+        .map(|ch| if ch.is_ascii() { 1.0 } else { 1.8 })
+        .sum::<f64>();
+    let format_allowance = value.number_format_code.as_deref().map_or(0.0, |code| {
+        if code.contains('%') {
+            1.0
+        } else if code.contains('$')
+            || code.contains('€')
+            || code.contains('£')
+            || code.contains("yy")
+        {
+            2.0
+        } else {
+            0.0
+        }
+    });
+    let average_px = match font.to_ascii_lowercase().as_str() {
+        "calibri" => 7.0,
+        "arial" => 7.2,
+        "courier new" => 7.9,
+        "aptos display" => 7.3,
+        _ => 7.1,
+    };
+    (chars + format_allowance + 1.5) * (average_px / 7.0) * (font_size / 11.0)
 }
 
 pub(crate) fn xlsx_rowheights_set(

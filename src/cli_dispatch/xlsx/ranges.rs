@@ -164,6 +164,7 @@ pub(super) fn dispatch_xlsx_ranges(args: &[String]) -> CliResult<Value> {
                 &[
                     "--sheet",
                     "--range",
+                    "--preset",
                     "--font-name",
                     "--font-size",
                     "--font-color",
@@ -194,6 +195,7 @@ pub(super) fn dispatch_xlsx_ranges(args: &[String]) -> CliResult<Value> {
                 .ok_or_else(|| CliError::invalid_args("--sheet is required for range commands"))?;
             let range = parse_string_flag(rest, "--range")?
                 .ok_or_else(|| CliError::invalid_args("--range is required"))?;
+            let preset = parse_string_flag(rest, "--preset")?;
             let font_name = parse_string_flag(rest, "--font-name")?;
             let font_size = parse_string_flag(rest, "--font-size")?
                 .map(|value| {
@@ -216,6 +218,7 @@ pub(super) fn dispatch_xlsx_ranges(args: &[String]) -> CliResult<Value> {
                 XlsxRangesSetStyleOptions {
                     sheet: &sheet,
                     range: &range,
+                    preset: preset.as_deref(),
                     font_name: font_name.as_deref(),
                     font_size,
                     font_bold: parse_bool_flag(rest, "--font-bold")?,

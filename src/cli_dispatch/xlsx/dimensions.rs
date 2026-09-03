@@ -2,6 +2,7 @@ use serde_json::Value;
 
 use crate::cli_args::*;
 use crate::cli_core::{CliError, CliResult};
+use crate::xlsx_dimensions::{XlsxColWidthsAutofitOptions, xlsx_colwidths_autofit};
 use crate::{
     XlsxColWidthsSetOptions, XlsxColsDeleteOptions, XlsxColsInsertOptions,
     XlsxRowHeightsSetOptions, XlsxRowsDeleteOptions, XlsxRowsInsertOptions, xlsx_cols_delete,
@@ -49,6 +50,33 @@ pub(super) fn dispatch_xlsx_dimensions(args: &[String]) -> CliResult<Value> {
                     range: &range,
                     width,
                     expect_width,
+                    out: out.as_deref(),
+                    backup: backup.as_deref(),
+                    dry_run: has_flag(rest, "--dry-run"),
+                    no_validate: has_flag(rest, "--no-validate"),
+                    in_place: has_flag(rest, "--in-place"),
+                },
+            )
+        }
+        [family, group, verb, file, rest @ ..]
+            if family == "xlsx" && group == "colwidths" && verb == "autofit" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--sheet", "--range", "--min", "--max", "--out", "--backup"],
+                &["--dry-run", "--no-validate", "--in-place"],
+            )?;
+            let sheet = parse_string_flag(rest, "--sheet")?;
+            let range = parse_string_flag(rest, "--range")?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            xlsx_colwidths_autofit(
+                file,
+                XlsxColWidthsAutofitOptions {
+                    sheet: sheet.as_deref(),
+                    range: range.as_deref(),
+                    min: parse_f64_flag(rest, "--min")?.unwrap_or(8.0),
+                    max: parse_f64_flag(rest, "--max")?.unwrap_or(60.0),
                     out: out.as_deref(),
                     backup: backup.as_deref(),
                     dry_run: has_flag(rest, "--dry-run"),
