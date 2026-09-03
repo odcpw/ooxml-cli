@@ -281,6 +281,8 @@ fn payload_detection_supports_required_formats_and_ignores_extension() {
         );
         assert_eq!(report["imageFormat"], expected_format, "{path:?}");
         assert_eq!(report["contentType"], expected_type, "{path:?}");
+        assert_eq!(report["maxDpi"], 220.0, "default max DPI for {path:?}");
+        assert_eq!(report["keepOriginal"], true, "{path:?}");
         assert_eq!(report["bytesSaved"], 0, "{path:?}");
         strict_validate(&output);
     }
