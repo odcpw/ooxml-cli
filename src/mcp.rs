@@ -99,7 +99,7 @@ impl McpState {
             })),
             "tools/list" => Ok(json!({"tools": mcp_tools()})),
             "tools/call" => self.handle_tools_call(params),
-            "resources/list" => Ok(json!({"resources": mcp_resources()})),
+            "resources/list" => Ok(json!({"resources": mcp_resources_with_build_schemas()})),
             "resources/templates/list" => {
                 Ok(json!({"resourceTemplates": [mcp_command_resource_template()]}))
             }
@@ -178,6 +178,11 @@ impl McpState {
 
     fn handle_resource_read(&self, params: &Value) -> CliResult<Value> {
         let uri = json_string(params, "uri")?;
+        let mime_type = if uri.starts_with("resource://schema/") {
+            "application/schema+json"
+        } else {
+            "application/json"
+        };
         let text = match uri.as_str() {
             "resource://capabilities" => serde_json::to_string(&mcp_capabilities_resource())
                 .expect("serialize capabilities resource"),
@@ -190,6 +195,13 @@ impl McpState {
                 &mcp_command_resource_for_uri(&uri)?,
             )
             .expect("serialize command resource"),
+            _ if uri.starts_with("resource://schema/") => {
+                let name = uri.trim_start_matches("resource://schema/");
+                let schema = crate::build::schema_by_name(name).map_err(|_| {
+                    CliError::file_not_found(format!("unknown MCP schema resource: {uri}"))
+                })?;
+                serde_json::to_string(&schema).expect("serialize build schema resource")
+            }
             _ => {
                 return Err(CliError::file_not_found(format!(
                     "unknown MCP resource: {uri}"
@@ -198,12 +210,26 @@ impl McpState {
         };
         Ok(json!({
             "contents": [{
-                "mimeType": "application/json",
+                "mimeType": mime_type,
                 "text": text,
                 "uri": uri,
             }]
         }))
     }
+}
+
+fn mcp_resources_with_build_schemas() -> Value {
+    let mut resources = mcp_resources().as_array().cloned().unwrap_or_default();
+    resources.extend(crate::build::BuildFamily::ALL.map(|family| {
+        let name = family.schema_name();
+        json!({
+            "uri": format!("resource://schema/{name}"),
+            "name": name,
+            "description": format!("Pinned ooxml-cli {family} build specification schema."),
+            "mimeType": "application/schema+json",
+        })
+    }));
+    Value::Array(resources)
 }
 
 fn json_rpc_parse_error(message: String) -> Value {

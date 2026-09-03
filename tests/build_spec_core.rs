@@ -4,7 +4,8 @@ use ooxml_cli::build::{
 };
 use serde_json::{Map, Value, json};
 use std::collections::BTreeSet;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 const SCHEMA_INDEX: &str = include_str!("../testdata/golden/build-spec/schema-index.json");
 
@@ -86,6 +87,68 @@ fn capabilities_publishes_each_pinned_build_schema() {
             schema_flag["description"].as_str().unwrap().contains(name),
             "schema flag must document {name}"
         );
+    }
+}
+
+#[test]
+fn mcp_lists_and_reads_each_pinned_build_schema() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn MCP server");
+    let mut stdin = child.stdin.take().expect("MCP stdin");
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc":"2.0","id":1,"method":"resources/list","params":{}})
+    )
+    .expect("write resources/list request");
+    for (index, family) in BuildFamily::ALL.into_iter().enumerate() {
+        writeln!(
+            stdin,
+            "{}",
+            json!({
+                "jsonrpc": "2.0",
+                "id": index + 2,
+                "method": "resources/read",
+                "params": {"uri": format!("resource://schema/{}", family.schema_name())}
+            })
+        )
+        .expect("write schema read request");
+    }
+    drop(stdin);
+    let output = child.wait_with_output().expect("wait for MCP server");
+    assert!(
+        output.status.success(),
+        "MCP stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let responses = String::from_utf8(output.stdout)
+        .expect("MCP UTF-8")
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("MCP JSON response"))
+        .collect::<Vec<_>>();
+    assert_eq!(responses.len(), 4);
+    let resources = responses[0]["result"]["resources"]
+        .as_array()
+        .expect("MCP resources array");
+    for (index, family) in BuildFamily::ALL.into_iter().enumerate() {
+        let uri = format!("resource://schema/{}", family.schema_name());
+        assert!(
+            resources.iter().any(|resource| {
+                resource["uri"] == uri && resource["mimeType"] == "application/schema+json"
+            }),
+            "MCP must list {uri}"
+        );
+        let content = &responses[index + 1]["result"]["contents"][0];
+        assert_eq!(content["uri"], uri);
+        assert_eq!(content["mimeType"], "application/schema+json");
+        let actual: Value = serde_json::from_str(content["text"].as_str().unwrap())
+            .expect("MCP schema resource JSON");
+        assert_eq!(actual, schema_by_name(family.schema_name()).unwrap());
     }
 }
 
