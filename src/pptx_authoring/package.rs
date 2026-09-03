@@ -595,7 +595,10 @@ fn table_styles_xml() -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{SlideSize, ThemeChoice, layout_specs, master_text_styles, scaled_rect};
+    use super::{
+        SlideSize, ThemeChoice, format_unix_timestamp, layout_specs, master_text_styles,
+        scaled_rect, write_package,
+    };
 
     #[test]
     fn reviewed_data_has_standard_layout_order_and_typographic_scale() {
@@ -623,5 +626,42 @@ mod tests {
             "corporate"
         );
         assert!(ThemeChoice::resolve(Some("warm"), Some("C55A11")).is_err());
+    }
+
+    #[test]
+    fn package_bytes_and_source_date_epoch_format_are_deterministic() {
+        let temp = std::env::temp_dir().join(format!(
+            "ooxml-pptx-authoring-package-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        std::fs::create_dir_all(&temp).expect("create package test directory");
+        let first = temp.join("first.pptx");
+        let second = temp.join("second.pptx");
+        let size = SlideSize::parse(None).expect("default size");
+        let theme = ThemeChoice::resolve(Some("dark"), None).expect("dark theme");
+        write_package(
+            first.to_str().expect("first path"),
+            "Deterministic",
+            "Bytes",
+            &size,
+            &theme,
+        )
+        .expect("write first package");
+        write_package(
+            second.to_str().expect("second path"),
+            "Deterministic",
+            "Bytes",
+            &size,
+            &theme,
+        )
+        .expect("write second package");
+        assert_eq!(
+            std::fs::read(&first).expect("read first package"),
+            std::fs::read(&second).expect("read second package")
+        );
+        assert_eq!(format_unix_timestamp(0), "1970-01-01T00:00:00Z");
+        assert_eq!(format_unix_timestamp(946_684_800), "2000-01-01T00:00:00Z");
+        std::fs::remove_dir_all(temp).expect("remove package test directory");
     }
 }
