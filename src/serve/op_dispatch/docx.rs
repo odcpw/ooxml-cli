@@ -9,8 +9,8 @@ mod styles;
 mod tables;
 
 use super::super::op::ServeOp;
+use crate::CliResult;
 use crate::command_manifest::DocxCommandId;
-use crate::{CliError, CliResult};
 
 pub(super) fn serve_docx_op(
     working: &str,
@@ -50,11 +50,7 @@ pub(super) fn serve_docx_op(
         | DocxCommandId::TablesDeleteRow => {
             tables::serve_docx_tables_op(working, command_id, command, args)?
         }
-        _ => {
-            return Err(CliError::invalid_args(format!(
-                "unsupported serve op command: {command}"
-            )));
-        }
+        _ => super::serve_generic_mutation_op(working, command, args)?,
     };
     Ok(op)
 }

@@ -177,11 +177,7 @@ pub(super) fn serve_pptx_op(
 
             finish_pptx_text_occurrences_op(working, command, plan_args)?
         }
-        _ => {
-            return Err(CliError::invalid_args(format!(
-                "unsupported serve op command: {command}"
-            )));
-        }
+        _ => super::serve_generic_mutation_op(working, command, args)?,
     };
     Ok(op)
 }

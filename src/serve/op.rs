@@ -674,21 +674,7 @@ impl ServeOp {
                 command,
                 plan_flags,
                 ..
-            } => {
-                let mut argv = command
-                    .split_whitespace()
-                    .map(|part| json!(part))
-                    .collect::<Vec<_>>();
-                argv.push(json!(source_file));
-                argv.extend(plan_flags.iter().cloned());
-                argv.extend([
-                    json!("--out"),
-                    json!("<temp.0>"),
-                    json!("--json"),
-                    json!("--no-validate"),
-                ]);
-                Value::Array(argv)
-            }
+            } => generic_plan_argv(command, source_file, plan_flags),
         }
     }
 
@@ -801,6 +787,51 @@ impl ServeOp {
             } => replace_json_string(readback.clone(), readback_file, file),
         }
     }
+}
+
+fn generic_plan_argv(command: &str, source_file: &str, plan_parts: &[Value]) -> Value {
+    let mut argv = command
+        .split_whitespace()
+        .map(|part| json!(part))
+        .collect::<Vec<_>>();
+    match command {
+        "find" => {
+            if let Some(query) = plan_parts.first() {
+                argv.push(query.clone());
+            }
+            argv.push(json!(source_file));
+            argv.extend(plan_parts.iter().skip(1).cloned());
+            if !argv.iter().any(|arg| arg.as_str() == Some("--apply")) {
+                argv.push(json!("--apply"));
+            }
+        }
+        "docx scaffold" | "pptx scaffold" | "xlsx scaffold" => {
+            argv.push(json!(source_file));
+            argv.extend(plan_parts.iter().cloned());
+            if !argv.iter().any(|arg| arg.as_str() == Some("--force")) {
+                argv.push(json!("--force"));
+            }
+            argv.extend([json!("--json"), json!("--no-validate")]);
+            return Value::Array(argv);
+        }
+        "pptx template compile" => {
+            argv.extend(plan_parts.iter().take(2).cloned());
+            argv.extend(plan_parts.iter().skip(2).cloned());
+            argv.extend([json!("--out"), json!("<temp.0>"), json!("--json")]);
+            return Value::Array(argv);
+        }
+        _ => {
+            argv.push(json!(source_file));
+            argv.extend(plan_parts.iter().cloned());
+        }
+    }
+    argv.extend([
+        json!("--out"),
+        json!("<temp.0>"),
+        json!("--json"),
+        json!("--no-validate"),
+    ]);
+    Value::Array(argv)
 }
 
 fn replace_json_string(value: Value, from: &str, to: &str) -> Value {

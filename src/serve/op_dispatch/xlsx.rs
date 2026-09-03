@@ -862,11 +862,7 @@ pub(super) fn serve_xlsx_op(
                 readback,
             }
         }
-        _ => {
-            return Err(CliError::invalid_args(format!(
-                "unsupported serve op command: {command}"
-            )));
-        }
+        _ => super::serve_generic_mutation_op(working, command, args)?,
     };
     Ok(op)
 }
