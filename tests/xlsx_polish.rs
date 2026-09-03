@@ -41,18 +41,48 @@ fn assert_all_schema_proofs(path: &Path) {
     );
     let conformance = run_json(&["--json", "conformance", "check", file, "--openxml-sdk"]);
     assert_eq!(conformance["status"], "passed", "{conformance}");
-    for name in ["repair-invariants", "schema"] {
-        let check = conformance["checks"]
-            .as_array()
-            .expect("checks")
-            .iter()
-            .find(|check| check["name"] == name)
-            .unwrap_or_else(|| panic!("missing {name}: {conformance}"));
-        assert_eq!(check["status"], "passed", "{check}");
-        if name == "schema" {
-            assert_eq!(check["schemaCheck"]["validator"], "openxml-sdk", "{check}");
+    let checks = conformance["checks"].as_array().expect("checks");
+    let invariants = checks
+        .iter()
+        .find(|check| check["name"] == "repair-invariants")
+        .unwrap_or_else(|| panic!("missing repair-invariants: {conformance}"));
+    assert_eq!(invariants["status"], "passed", "{invariants}");
+    let schema = checks
+        .iter()
+        .find(|check| check["name"] == "schema")
+        .unwrap_or_else(|| panic!("missing schema: {conformance}"));
+    if schema["status"] == "skipped" {
+        assert_eq!(schema["schemaCheck"]["checked"], false, "{schema}");
+        assert_eq!(
+            schema["diagnostics"][0]["code"], "OOXML_OPENXML_SDK_SKIPPED",
+            "{schema}"
+        );
+        if openxml_sdk_is_required() {
+            panic!(
+                "OOXML_REQUIRE_OPENXML_SDK is set but schema proof was skipped for {}: {}",
+                path.display(),
+                schema
+            );
         }
+        eprintln!(
+            "SKIP Open XML SDK schema proof for {}: {}",
+            path.display(),
+            schema["diagnostics"][0]
+                .get("remediation")
+                .unwrap_or(&schema["diagnostics"][0]["message"])
+        );
+        return;
     }
+    assert_eq!(schema["status"], "passed", "{schema}");
+    assert_eq!(
+        schema["schemaCheck"]["validator"], "openxml-sdk",
+        "{schema}"
+    );
+}
+
+fn openxml_sdk_is_required() -> bool {
+    std::env::var("OOXML_REQUIRE_OPENXML_SDK")
+        .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
 }
 
 fn zip_text(path: &Path, part: &str) -> String {

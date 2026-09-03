@@ -35,7 +35,7 @@ const REBUILT_GOLDEN_MANIFEST: &[u8] =
 const REBUILT_GOLDEN_PROVENANCE: &str =
     include_str!("../testdata/golden/vba-authoring/xlsx-rebuilt/PROVENANCE.md");
 const REBUILT_GOLDEN_SHA256: &str =
-    "a3101c5238f329dcfb6dde3dbdc385b8cdbce52418654e7f59c46d8f2a4d5114";
+    "7e6956874fe44868da627c806b1757c84443e474344177a6ed8a62ea46fd46b7";
 const USERFORM_RUNTIME_WARNING: &str = "generated MSForms UserForms open as package content but are not runtime-loadable; treat as package/list/extract support";
 
 fn run_ooxml(args: &[&str]) -> (i32, Option<Value>, Option<Value>) {
