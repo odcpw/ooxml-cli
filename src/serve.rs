@@ -10,6 +10,7 @@ use crate::{
 };
 mod inspect;
 mod inspect_namespace;
+mod inspect_table;
 mod op;
 mod op_dispatch;
 mod op_namespace;

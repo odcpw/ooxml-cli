@@ -20,10 +20,28 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                 flag("--title", "title", "string", "initial title text"),
                 flag("--subtitle", "subtitle", "string", "initial subtitle text"),
                 flag(
+                    "--theme",
+                    "theme",
+                    "string",
+                    "built-in presentation theme: neutral, corporate, warm, or dark",
+                ),
+                flag(
                     "--theme-seed",
                     "themeSeed",
                     "string",
                     "derive the generated presentation theme from a six-digit sRGB seed color",
+                ),
+                flag(
+                    "--template",
+                    "template",
+                    "string",
+                    "import the first master, its layouts, and its theme from a PPTX template",
+                ),
+                flag(
+                    "--size",
+                    "size",
+                    "string",
+                    "slide size: 16:9 (default), 4:3, or A4",
                 ),
                 flag(
                     "--force",

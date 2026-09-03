@@ -517,6 +517,10 @@ const COMPLETION_SPECS: &[CompletionSpec] = &[
         command: Some(CommandId::Core(core::CoreCommandId::Mcp)),
     },
     CompletionSpec {
+        token: "outline",
+        command: Some(CommandId::Core(core::CoreCommandId::Outline)),
+    },
+    CompletionSpec {
         token: "pptx",
         command: Some(CommandId::Pptx(pptx::PptxCommandId::Pptx)),
     },
@@ -653,7 +657,7 @@ mod tests {
         let root = command_specs();
         let frozen = frozen_contract_commands();
 
-        assert_eq!(core.len(), 37);
+        assert_eq!(core.len(), 38);
         assert_eq!(
             root[..core.len()]
                 .iter()
@@ -792,12 +796,12 @@ mod tests {
         let front = xlsx::front_command_specs();
         let forms = xlsx::forms_command_specs();
 
-        assert_eq!(xlsx_start, 146);
+        assert_eq!(xlsx_start, 147);
         assert_eq!(front.len(), xlsx::FRONT_COMMAND_COUNT);
         assert_eq!(xlsx::FRONT_COMMAND_COUNT, 22);
-        assert_segment_matches_frozen_contract(&front, &frozen[xlsx_start..168]);
+        assert_segment_matches_frozen_contract(&front, &frozen[xlsx_start..169]);
         assert_eq!(forms.len(), 1);
-        assert_segment_matches_frozen_contract(&forms, &frozen[220..221]);
+        assert_segment_matches_frozen_contract(&forms, &frozen[221..222]);
     }
 
     #[test]
@@ -998,7 +1002,7 @@ mod tests {
     fn core_ids_paths_and_repeated_builds_are_unique_and_stable() {
         let first = core::command_specs();
         let second = core::command_specs();
-        assert_eq!(first.len(), 37);
+        assert_eq!(first.len(), 38);
         assert_eq!(
             first
                 .iter()
@@ -1022,7 +1026,7 @@ mod tests {
     }
 
     #[test]
-    fn core_execution_support_has_two_mutations_and_only_semantic_groups() {
+    fn core_execution_support_has_two_mutations_semantic_groups_and_outline_inspect() {
         let specs = core::command_specs();
         let mutations = specs
             .iter()
@@ -1058,10 +1062,15 @@ mod tests {
                 CommandId::Core(core::CoreCommandId::TemplateProfile),
             ])
         );
-        assert!(
+        assert_eq!(
             specs
                 .iter()
-                .all(|spec| !matches!(&spec.execution, ExecutionSupport::ServeInspect { .. }))
+                .filter_map(|spec| match &spec.execution {
+                    ExecutionSupport::ServeInspect { .. } => Some(spec.id),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+            vec![CommandId::Core(core::CoreCommandId::Outline)]
         );
     }
 
@@ -1205,7 +1214,7 @@ mod tests {
         let first = command_specs();
         let second = command_specs();
         let frozen = frozen_contract_commands();
-        assert_eq!(first.len(), 311);
+        assert_eq!(first.len(), 312);
         assert_segment_matches_frozen_contract(&first, &frozen);
         assert_eq!(
             first.iter().map(capability_value).collect::<Vec<_>>(),
@@ -1216,33 +1225,33 @@ mod tests {
     #[test]
     fn complete_shadow_family_counts_and_order_are_exact() {
         let specs = command_specs();
-        assert_eq!(core::CoreCommandId::ALL.len(), 37);
+        assert_eq!(core::CoreCommandId::ALL.len(), 38);
         assert_eq!(pptx::PptxCommandId::ALL.len(), 109);
         assert_eq!(xlsx::XlsxCommandId::ALL.len(), 104);
         assert_eq!(docx::DocxCommandId::ALL.len(), 45);
         assert_eq!(vba::VbaCommandId::ALL.len(), 16);
         assert!(
-            specs[..37]
+            specs[..38]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Core(_)))
         );
         assert!(
-            specs[37..146]
+            specs[38..147]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Pptx(_)))
         );
         assert!(
-            specs[146..250]
+            specs[147..251]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Xlsx(_)))
         );
         assert!(
-            specs[250..295]
+            specs[251..296]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Docx(_)))
         );
         assert!(
-            specs[295..311]
+            specs[296..312]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Vba(_)))
         );
@@ -1256,7 +1265,7 @@ mod tests {
         let spec_ids = specs.iter().map(|spec| spec.id).collect::<Vec<_>>();
         let spec_id_set = spec_ids.iter().copied().collect::<BTreeSet<_>>();
         let path_set = specs.iter().map(|spec| spec.path).collect::<BTreeSet<_>>();
-        assert_eq!(declared.len(), 311);
+        assert_eq!(declared.len(), 312);
         assert_eq!(declared_set.len(), declared.len());
         assert_eq!(spec_id_set, declared_set);
         assert_eq!(spec_ids.len(), spec_id_set.len());
@@ -1270,7 +1279,7 @@ mod tests {
         let mut resolved_ids = BTreeSet::new();
         let mut resolved_paths = BTreeSet::new();
 
-        assert_eq!(specs.len(), 311);
+        assert_eq!(specs.len(), 312);
         for spec in &specs {
             let resolved = command_id_for_canonical_path(spec.path);
             assert_eq!(
@@ -1304,7 +1313,7 @@ mod tests {
         }
 
         assert_eq!(resolved_ids, declared);
-        assert_eq!(resolved_paths.len(), 311);
+        assert_eq!(resolved_paths.len(), 312);
     }
 
     #[test]
@@ -1319,7 +1328,7 @@ mod tests {
                 ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
             },
         );
-        assert_eq!(inventory, (55, 144, 42, 70));
+        assert_eq!(inventory, (55, 144, 43, 70));
         assert_eq!(
             specs
                 .iter()
@@ -1445,6 +1454,7 @@ mod tests {
             "help",
             "inspect",
             "mcp",
+            "outline",
             "pptx",
             "repair",
             "robot-docs",
@@ -1459,13 +1469,13 @@ mod tests {
         let specs = command_specs();
         let tokens = completion_tokens();
         assert_eq!(tokens, EXPECTED);
-        assert_eq!(COMPLETION_SPECS.len(), 24);
+        assert_eq!(COMPLETION_SPECS.len(), 25);
         assert_eq!(
             COMPLETION_SPECS
                 .iter()
                 .filter(|row| row.command.is_some())
                 .count(),
-            23
+            24
         );
         assert_eq!(
             COMPLETION_SPECS

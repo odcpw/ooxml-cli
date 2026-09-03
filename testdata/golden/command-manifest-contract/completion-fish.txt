@@ -13,6 +13,7 @@ complete -c ooxml -n '__fish_use_subcommand' -a find
 complete -c ooxml -n '__fish_use_subcommand' -a help
 complete -c ooxml -n '__fish_use_subcommand' -a inspect
 complete -c ooxml -n '__fish_use_subcommand' -a mcp
+complete -c ooxml -n '__fish_use_subcommand' -a outline
 complete -c ooxml -n '__fish_use_subcommand' -a pptx
 complete -c ooxml -n '__fish_use_subcommand' -a repair
 complete -c ooxml -n '__fish_use_subcommand' -a robot-docs

@@ -145,7 +145,7 @@
         "bash"
       ],
       "status": 0,
-      "stdout": "# bash completion for ooxml\n_ooxml()\n{\n    local cur=\"${COMP_WORDS[COMP_CWORD]}\"\n    local commands=\"apply agent agent-triage capabilities completion conformance convert diff doctor docx find help inspect mcp pptx repair robot-docs serve template validate vba verify version xlsx\"\n    if [[ $COMP_CWORD -eq 1 ]]; then\n        COMPREPLY=( $(compgen -W \"$commands\" -- \"$cur\") )\n    else\n        COMPREPLY=()\n    fi\n}\ncomplete -F _ooxml ooxml\n",
+      "stdout": "# bash completion for ooxml\n_ooxml()\n{\n    local cur=\"${COMP_WORDS[COMP_CWORD]}\"\n    local commands=\"apply agent agent-triage capabilities completion conformance convert diff doctor docx find help inspect mcp outline pptx repair robot-docs serve template validate vba verify version xlsx\"\n    if [[ $COMP_CWORD -eq 1 ]]; then\n        COMPREPLY=( $(compgen -W \"$commands\" -- \"$cur\") )\n    else\n        COMPREPLY=()\n    fi\n}\ncomplete -F _ooxml ooxml\n",
       "stderr": ""
     },
     {

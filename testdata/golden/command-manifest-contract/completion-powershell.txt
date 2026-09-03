@@ -1,7 +1,7 @@
 # PowerShell completion for ooxml
 Register-ArgumentCompleter -Native -CommandName ooxml -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
-    $commands = @('apply', 'agent', 'agent-triage', 'capabilities', 'completion', 'conformance', 'convert', 'diff', 'doctor', 'docx', 'find', 'help', 'inspect', 'mcp', 'pptx', 'repair', 'robot-docs', 'serve', 'template', 'validate', 'vba', 'verify', 'version', 'xlsx')
+    $commands = @('apply', 'agent', 'agent-triage', 'capabilities', 'completion', 'conformance', 'convert', 'diff', 'doctor', 'docx', 'find', 'help', 'inspect', 'mcp', 'outline', 'pptx', 'repair', 'robot-docs', 'serve', 'template', 'validate', 'vba', 'verify', 'version', 'xlsx')
     $commands |
         Where-Object { $_ -like "$wordToComplete*" } |
         ForEach-Object {

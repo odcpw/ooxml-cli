@@ -17,12 +17,12 @@ use crate::pptx_render::pptx_render;
 use crate::vba::*;
 use crate::verify::verify;
 use crate::{
-    PptxScaffoldOptions, apply, command_arg, diff_command, pptx_diff_command, pptx_diff_dispatch,
-    pptx_media_add, pptx_media_list, pptx_media_replace, pptx_scaffold, pptx_template_capture,
-    pptx_template_compile, pptx_template_inspect, pptx_translate_apply, pptx_translate_export,
-    pptx_validate_layout, pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan,
-    render::render_command, repair_normalize, template_apply, template_profile_inspect,
-    template_profile_save, template_tokens,
+    OutlineOptions, PptxScaffoldOptions, apply, command_arg, diff_command, outline,
+    pptx_diff_command, pptx_diff_dispatch, pptx_media_add, pptx_media_list, pptx_media_replace,
+    pptx_scaffold, pptx_template_capture, pptx_template_compile, pptx_template_inspect,
+    pptx_translate_apply, pptx_translate_export, pptx_validate_layout, pptx_xlsx_bindings_apply,
+    pptx_xlsx_bindings_plan, render::render_command, repair_normalize, template_apply,
+    template_profile_inspect, template_profile_save, template_tokens,
 };
 
 pub(crate) enum DispatchBody {
@@ -208,6 +208,29 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
             template_profile_inspect(file)
         }
         [cmd, file] if cmd == "inspect" => inspect(file),
+        [cmd, file, rest @ ..] if cmd == "outline" => {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--depth",
+                    "--text-preview",
+                    "--slide",
+                    "--sheet",
+                    "--section",
+                ],
+                &[],
+            )?;
+            outline(
+                file,
+                OutlineOptions {
+                    depth: parse_u32_flag(rest, "--depth")?.unwrap_or(3),
+                    text_preview: parse_u32_flag(rest, "--text-preview")?.unwrap_or(80) as usize,
+                    slide: parse_u32_flag(rest, "--slide")?,
+                    sheet: parse_string_flag(rest, "--sheet")?.as_deref(),
+                    section: parse_u32_flag(rest, "--section")?,
+                },
+            )
+        }
         [cmd, file, rest @ ..] if cmd == "verify" => verify(file, rest),
         [family, verb, file] if family == "vba" && verb == "inspect" => vba_inspect(file),
         [family, verb, rest @ ..] if family == "vba" && verb == "build-bin" => {
@@ -541,17 +564,33 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
         [family, ..] if family == "docx" => docx::dispatch_docx(args),
         [family, ..] if family == "xlsx" => xlsx::dispatch_xlsx(args),
         [family, verb, rest @ ..] if family == "pptx" && verb == "scaffold" => {
-            let value_flags = ["--out", "--title", "--subtitle"];
+            let value_flags = [
+                "--out",
+                "--title",
+                "--subtitle",
+                "--theme",
+                "--theme-seed",
+                "--template",
+                "--size",
+            ];
             let bool_flags = ["--force", "--no-validate"];
             reject_unknown_flags(rest, &value_flags, &bool_flags)?;
             let output = output_path_arg(rest, &value_flags, &bool_flags, "pptx scaffold")?;
             let title = parse_string_flag(rest, "--title")?;
             let subtitle = parse_string_flag(rest, "--subtitle")?;
+            let theme = parse_string_flag(rest, "--theme")?;
+            let theme_seed = parse_string_flag(rest, "--theme-seed")?;
+            let template = parse_string_flag(rest, "--template")?;
+            let size = parse_string_flag(rest, "--size")?;
             pptx_scaffold(
                 &output,
                 PptxScaffoldOptions {
                     title: title.as_deref(),
                     subtitle: subtitle.as_deref(),
+                    theme: theme.as_deref(),
+                    theme_seed: theme_seed.as_deref(),
+                    template: template.as_deref(),
+                    size: size.as_deref(),
                     force: has_flag(rest, "--force"),
                     no_validate: has_flag(rest, "--no-validate"),
                 },

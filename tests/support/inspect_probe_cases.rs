@@ -14,6 +14,24 @@ pub(crate) fn inspect_probe_cases<I>(
     vec![
         probe(
             &mut resolve,
+            "outline",
+            "outline",
+            &[],
+            "pptx-title-content",
+            serde_json::json!({"depth": 1, "slide": 1, "textPreview": 24}),
+            &[
+                "outline",
+                "{file}",
+                "--depth",
+                "1",
+                "--slide",
+                "1",
+                "--text-preview",
+                "24",
+            ],
+        ),
+        probe(
+            &mut resolve,
             "xlsx",
             "xlsx ranges export",
             &[],

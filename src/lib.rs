@@ -38,6 +38,7 @@ mod json_util;
 mod mcp;
 mod mcp_support;
 mod opc;
+mod outline;
 mod package_discovery;
 pub mod palette;
 mod pptx_authoring;
@@ -169,6 +170,7 @@ pub(crate) use opc::{
     relationship_source_uri, relationship_target_from_source_to_target, relationships,
     relationships_part_for, resolve_relationship_target, resolve_relationship_target_part_uri,
 };
+pub(crate) use outline::{OutlineOptions, outline};
 pub(crate) use package_discovery::{
     InspectPackageKind, detect_inspect_package_type, find_docx_document_part,
     find_xlsx_workbook_part, is_custom_xml_part, is_docx_comments_part, is_docx_endnotes_part,

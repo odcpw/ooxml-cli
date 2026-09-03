@@ -35,6 +35,7 @@ pub(crate) enum CoreCommandId {
     Serve,
     Mcp,
     Inspect,
+    Outline,
     Validate,
     Render,
     Diff,
@@ -608,6 +609,53 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
             &["package"],
             direct("read-only command; use inspect_current_with_ooxml through serve"),
             vec![],
+        ),
+        spec(
+            CoreCommandId::Outline,
+            &["outline"],
+            "outline <file> [--depth <0..3>] [--text-preview <chars>] [--slide <n>|--sheet <selector>|--section <n>]",
+            "Return one compact, deterministic, family-aware orientation tree for a PPTX, XLSX, or DOCX package.",
+            &[
+                "package", "slide", "shape", "sheet", "table", "chart", "pivot", "block", "field",
+                "header", "footer", "image",
+            ],
+            ExecutionSupport::ServeInspect {
+                reason: Some(
+                    "read-only package orientation command exposed through serve/MCP inspect",
+                ),
+            },
+            vec![
+                flag(
+                    "--depth",
+                    "depth",
+                    "integer",
+                    "tree depth from 0 (summary) through 3 (full object inventory); defaults to 3",
+                ),
+                flag(
+                    "--text-preview",
+                    "textPreview",
+                    "integer",
+                    "maximum Unicode characters per normalized text preview; 0 omits previews; defaults to 80",
+                ),
+                flag(
+                    "--slide",
+                    "slide",
+                    "integer",
+                    "limit a PPTX outline to one 1-based slide number",
+                ),
+                flag(
+                    "--sheet",
+                    "sheet",
+                    "string",
+                    "limit an XLSX outline to one stable sheet selector or name",
+                ),
+                flag(
+                    "--section",
+                    "section",
+                    "integer",
+                    "limit a DOCX outline to one 1-based section number",
+                ),
+            ],
         ),
         spec(
             CoreCommandId::Validate,

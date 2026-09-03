@@ -1,7 +1,10 @@
 use serde_json::Value;
 
-use crate::command_manifest::{CommandId, DocxCommandId, PptxCommandId, XlsxCommandId};
+use crate::command_manifest::{
+    CommandId, CoreCommandId, DocxCommandId, PptxCommandId, XlsxCommandId,
+};
 use crate::serve::inspect_namespace::resolve_serve_inspect_command;
+use crate::serve::inspect_table::serve_outline;
 use crate::xlsx_freeze::xlsx_freeze_show;
 use crate::{
     CliError, CliResult, XlsxRangeExportOptions, XlsxTableExportOptions, docx_blocks_show,
@@ -30,6 +33,7 @@ pub(super) fn serve_inspect_command(
         )));
     };
     let mut result = match command_id {
+        CommandId::Core(CoreCommandId::Outline) => serve_outline(working, args),
         CommandId::Xlsx(XlsxCommandId::RangesExport) => {
             let sheet = json_string(args, "sheet")?;
             let range = json_string(args, "range")?;

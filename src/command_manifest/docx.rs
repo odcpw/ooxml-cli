@@ -3,7 +3,7 @@ use serde_json::Value;
 use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 
 pub(super) const COMMAND_COUNT: usize = 45;
-pub(super) const LEGACY_START: usize = 250;
+pub(super) const LEGACY_START: usize = 251;
 
 command_id_enum! {
 pub(crate) enum DocxCommandId {

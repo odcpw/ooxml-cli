@@ -39,7 +39,12 @@ fn serve_and_mcp_cover_the_full_canonical_inspect_contract() {
     let mut mcp_sessions = BTreeMap::new();
     let originals = fixtures
         .iter()
-        .map(|(name, path)| (*name, fs::read(path).expect("read inspect contract fixture")))
+        .map(|(name, path)| {
+            (
+                *name,
+                fs::read(path).expect("read inspect contract fixture"),
+            )
+        })
         .collect::<BTreeMap<_, _>>();
 
     for (fixture, path) in &fixtures {
@@ -99,10 +104,7 @@ fn serve_and_mcp_cover_the_full_canonical_inspect_contract() {
         );
         request_id += 1;
         remember_working_path(case.fixture, &serve_result, &mut serve_working);
-        let direct_serve = run_direct_inspect_contract_call(
-            case,
-            &serve_working[case.fixture],
-        );
+        let direct_serve = run_direct_inspect_contract_call(case, &serve_working[case.fixture]);
         assert_eq!(
             serve_result, direct_serve,
             "Serve result must equal direct CLI JSON for {}",
@@ -251,7 +253,7 @@ fn serve_and_mcp_cover_the_full_canonical_inspect_contract() {
 }
 
 fn assert_inspect_contract_inventory(cases: &[InspectProbeCase<&'static str>]) {
-    assert_eq!(cases.len(), 42);
+    assert_eq!(cases.len(), 43);
     let commands = cases
         .iter()
         .map(|case| case.canonical)
@@ -259,14 +261,17 @@ fn assert_inspect_contract_inventory(cases: &[InspectProbeCase<&'static str>]) {
     assert_eq!(commands.len(), cases.len());
     for case in cases {
         assert_eq!(
-            case.direct_argv.iter().filter(|arg| **arg == "{file}").count(),
+            case.direct_argv
+                .iter()
+                .filter(|arg| **arg == "{file}")
+                .count(),
             1,
             "direct argv must contain one explicit file slot for {}",
             case.canonical
         );
         assert_eq!(case.direct_argv.first().copied(), Some(case.family));
     }
-    for (family, expected) in [("xlsx", 17), ("docx", 12), ("pptx", 13)] {
+    for (family, expected) in [("outline", 1), ("xlsx", 17), ("docx", 12), ("pptx", 13)] {
         assert_eq!(
             cases.iter().filter(|case| case.family == family).count(),
             expected,
@@ -277,9 +282,12 @@ fn assert_inspect_contract_inventory(cases: &[InspectProbeCase<&'static str>]) {
         .iter()
         .flat_map(|case| case.aliases.iter().copied())
         .collect::<BTreeSet<_>>();
-    assert_eq!(cases.iter().map(|case| case.aliases.len()).sum::<usize>(), 6);
+    assert_eq!(
+        cases.iter().map(|case| case.aliases.len()).sum::<usize>(),
+        6
+    );
     assert_eq!(alias_set.len(), 6);
-    assert_eq!(commands.len() + alias_set.len(), 48);
+    assert_eq!(commands.len() + alias_set.len(), 49);
     assert_eq!(
         cases
             .iter()
@@ -302,7 +310,6 @@ fn assert_inspect_contract_inventory(cases: &[InspectProbeCase<&'static str>]) {
             "xlsx cf show",
         ])
     );
-
 }
 
 fn run_serve_inspect_contract_call(
@@ -356,7 +363,9 @@ fn run_direct_inspect_contract_call(case: &InspectProbeCase<&'static str>, worki
     for arg in case.direct_argv {
         command.arg(if *arg == "{file}" { working } else { arg });
     }
-    let output = command.output().expect("run direct inspect contract command");
+    let output = command
+        .output()
+        .expect("run direct inspect contract command");
     assert!(
         output.status.success(),
         "direct CLI failed for {} with argv {:?}: {}",
@@ -450,10 +459,7 @@ fn prepare_inspect_contract_fixtures(temp_dir: &Path) -> BTreeMap<&'static str, 
     fixtures.insert("xlsx-cf", cf.to_string_lossy().to_string());
     let hyperlinks = temp_dir.join("xlsx-hyperlinks.xlsx");
     write_freeze_hyperlink_inspect_xlsx(&hyperlinks);
-    fixtures.insert(
-        "xlsx-hyperlinks",
-        hyperlinks.to_string_lossy().to_string(),
-    );
+    fixtures.insert("xlsx-hyperlinks", hyperlinks.to_string_lossy().to_string());
     let names = temp_dir.join("xlsx-names.xlsx");
     write_defined_names_xlsx(&names);
     fixtures.insert("xlsx-names", names.to_string_lossy().to_string());
@@ -468,10 +474,7 @@ fn prepare_inspect_contract_fixtures(temp_dir: &Path) -> BTreeMap<&'static str, 
             "docx-mixed-blocks",
             "testdata/docx/mixed-blocks/document.docx",
         ),
-        (
-            "docx-styles",
-            "testdata/docx/styles-catalog/document.docx",
-        ),
+        ("docx-styles", "testdata/docx/styles-catalog/document.docx"),
         ("docx-tables", "testdata/docx/table/document.docx"),
     ] {
         stage_inspect_fixture(temp_dir, name, "docx", source, &mut fixtures);
