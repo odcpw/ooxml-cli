@@ -135,6 +135,7 @@ fn capabilities_schema_shape_is_stable_for_typed_builder() {
     }
 
     let allowed_command_keys = BTreeSet::from([
+        "aliases".to_string(),
         "flagConstraints".to_string(),
         "localFlags".to_string(),
         "opCompatible".to_string(),
@@ -152,12 +153,21 @@ fn capabilities_schema_shape_is_stable_for_typed_builder() {
         "targetObjectKinds".to_string(),
         "use".to_string(),
     ]);
-    let expected_flag_keys = BTreeSet::from([
+    let allowed_flag_keys = BTreeSet::from([
+        "aliases".to_string(),
         "argName".to_string(),
         "description".to_string(),
         "name".to_string(),
         "type".to_string(),
     ]);
+    let required_flag_keys = BTreeSet::from([
+        "argName".to_string(),
+        "description".to_string(),
+        "name".to_string(),
+        "type".to_string(),
+    ]);
+    let mut saw_command_aliases = false;
+    let mut saw_flag_aliases = false;
 
     for command in all_caps["commands"].as_array().expect("commands array") {
         let path = command["path"].as_str().expect("command path");
@@ -193,11 +203,26 @@ fn capabilities_schema_shape_is_stable_for_typed_builder() {
                 "flagConstraints should be omitted or object for {path}"
             );
         }
+        if let Some(aliases) = command.get("aliases") {
+            saw_command_aliases = true;
+            let aliases = aliases
+                .as_array()
+                .expect("command aliases should be an array");
+            assert!(!aliases.is_empty(), "command aliases for {path}");
+            assert!(
+                aliases.iter().all(Value::is_string),
+                "command aliases should be strings for {path}"
+            );
+        }
         for flag in command["localFlags"].as_array().expect("localFlags array") {
-            assert_eq!(
-                json_object_keys(flag),
-                expected_flag_keys,
-                "flag keys for {path}"
+            let flag_keys = json_object_keys(flag);
+            assert!(
+                flag_keys.is_subset(&allowed_flag_keys),
+                "unexpected flag keys for {path}: {flag_keys:?}"
+            );
+            assert!(
+                required_flag_keys.is_subset(&flag_keys),
+                "missing required flag keys for {path}: {flag_keys:?}"
             );
             for field in ["argName", "description", "name", "type"] {
                 assert!(
@@ -205,8 +230,22 @@ fn capabilities_schema_shape_is_stable_for_typed_builder() {
                     "{field} should be string for {path}"
                 );
             }
+            if let Some(aliases) = flag.get("aliases") {
+                saw_flag_aliases = true;
+                let aliases = aliases.as_array().expect("flag aliases should be an array");
+                assert!(!aliases.is_empty(), "flag aliases for {path}");
+                assert!(
+                    aliases.iter().all(Value::is_string),
+                    "flag aliases should be strings for {path}"
+                );
+            }
         }
     }
+    assert!(
+        saw_command_aliases,
+        "command alias schema should be exercised"
+    );
+    assert!(saw_flag_aliases, "flag alias schema should be exercised");
 }
 
 #[test]
