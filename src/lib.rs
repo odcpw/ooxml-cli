@@ -38,6 +38,8 @@ mod docx_tables;
 mod docx_xml;
 mod env_conventions;
 mod find;
+#[doc(hidden)]
+pub mod fuzzing;
 mod help;
 mod image_pipeline;
 mod inspect;
