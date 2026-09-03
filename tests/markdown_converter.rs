@@ -368,7 +368,7 @@ fn generated_markdown(family: BuildFamily, seed: u64) -> String {
         2 => format!("`{word} code`"),
         _ => format!("[{word} link](https://example.test/{seed})"),
     };
-    let bullet_marker = if seed % 2 == 0 { "-" } else { "*" };
+    let bullet_marker = if seed.is_multiple_of(2) { "-" } else { "*" };
     match family {
         BuildFamily::Pptx => format!(
             "---\nthemeSeed: \"#2457A6\"\nsplit: rule\n---\n# Generated {seed}\nParagraph {emphasis}.\n{bullet_marker} item {seed}\n  - nested {word}\n\n---\n# Data {seed}\n| Key | Value |\n| --- | ---: |\n| {word} | {} |\n",
