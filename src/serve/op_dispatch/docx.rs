@@ -4,6 +4,7 @@ mod blocks;
 mod comments;
 mod fields;
 mod headers_footers;
+mod images;
 mod paragraphs;
 mod styles;
 mod tables;
@@ -24,6 +25,9 @@ pub(super) fn serve_docx_op(
         }
         DocxCommandId::FieldsInsert | DocxCommandId::FieldsSetResult => {
             fields::serve_docx_fields_op(working, command_id, command, args)?
+        }
+        DocxCommandId::ImagesInsert => {
+            images::serve_docx_images_op(working, command_id, command, args)?
         }
         DocxCommandId::ParagraphsAppend
         | DocxCommandId::ParagraphsInsert

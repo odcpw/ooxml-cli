@@ -1418,8 +1418,8 @@ mod tests {
         let frozen = frozen_contract_commands();
         assert_eq!(
             first.len(),
-            328,
-            "complete command denominator after adding `xlsx build`"
+            329,
+            "complete command denominator after adding `docx build`"
         );
         assert_segment_matches_frozen_contract(&first, &frozen);
         assert_eq!(
@@ -1438,7 +1438,7 @@ mod tests {
             "PPTX family denominator after adding `pptx build`"
         );
         assert_eq!(xlsx::XlsxCommandId::ALL.len(), 108);
-        assert_eq!(docx::DocxCommandId::ALL.len(), 50);
+        assert_eq!(docx::DocxCommandId::ALL.len(), 51);
         assert_eq!(vba::VbaCommandId::ALL.len(), 16);
         assert!(
             specs[..42]
@@ -1449,25 +1449,25 @@ mod tests {
             specs[42..154]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Pptx(_))),
-            "PPTX occupies [42, 154) in the 328-command denominator"
+            "PPTX occupies [42, 154) in the 329-command denominator"
         );
         assert!(
             specs[154..262]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Xlsx(_))),
-            "XLSX occupies [154, 262) in the 328-command denominator"
+            "XLSX occupies [154, 262) in the 329-command denominator"
         );
         assert!(
-            specs[262..312]
+            specs[262..313]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Docx(_))),
-            "DOCX occupies [262, 312) in the 328-command denominator"
+            "DOCX occupies [262, 313) in the 329-command denominator"
         );
         assert!(
-            specs[312..328]
+            specs[313..329]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Vba(_))),
-            "VBA occupies [312, 328) in the 328-command denominator"
+            "VBA occupies [313, 329) in the 329-command denominator"
         );
     }
 
@@ -1481,8 +1481,8 @@ mod tests {
         let path_set = specs.iter().map(|spec| spec.path).collect::<BTreeSet<_>>();
         assert_eq!(
             declared.len(),
-            328,
-            "declared command denominator after adding `xlsx build`"
+            329,
+            "declared command denominator after adding `docx build`"
         );
         assert_eq!(declared_set.len(), declared.len());
         assert_eq!(spec_id_set, declared_set);
@@ -1499,8 +1499,8 @@ mod tests {
 
         assert_eq!(
             specs.len(),
-            328,
-            "canonical command denominator after adding `xlsx build`"
+            329,
+            "canonical command denominator after adding `docx build`"
         );
         for spec in &specs {
             let resolved = command_id_for_canonical_path(spec.path);
@@ -1537,8 +1537,8 @@ mod tests {
         assert_eq!(resolved_ids, declared);
         assert_eq!(
             resolved_paths.len(),
-            328,
-            "resolved canonical-path denominator after adding `xlsx build`"
+            329,
+            "resolved canonical-path denominator after adding `docx build`"
         );
     }
 
@@ -1556,8 +1556,8 @@ mod tests {
         );
         assert_eq!(
             inventory,
-            (58, 152, 45, 73),
-            "328-command execution denominator: groups, direct-only, serve-inspect, serve-mutation"
+            (58, 152, 45, 74),
+            "329-command execution denominator: groups, direct-only, serve-inspect, serve-mutation"
         );
         assert_eq!(
             specs

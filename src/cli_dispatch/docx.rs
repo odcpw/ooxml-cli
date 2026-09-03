@@ -32,6 +32,9 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
 
 fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
     match args {
+        [cmd, verb, rest @ ..] if cmd == "docx" && verb == "build" => {
+            crate::build::docx_build(rest)
+        }
         [cmd, verb, rest @ ..] if cmd == "docx" && verb == "scaffold" => {
             let value_flags = [
                 "--out",
@@ -41,6 +44,11 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                 "--theme-seed",
                 "--template",
                 "--brand",
+                "--title",
+                "--subject",
+                "--creator",
+                "--keywords",
+                "--description",
             ];
             let bool_flags = ["--force", "--no-validate"];
             reject_unknown_flags(rest, &value_flags, &bool_flags)?;
@@ -51,6 +59,11 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
             let theme_seed = parse_string_flag(rest, "--theme-seed")?;
             let template = parse_string_flag(rest, "--template")?;
             let brand = parse_string_flag(rest, "--brand")?;
+            let title = parse_string_flag(rest, "--title")?;
+            let subject = parse_string_flag(rest, "--subject")?;
+            let creator = parse_string_flag(rest, "--creator")?;
+            let keywords = parse_string_flag(rest, "--keywords")?;
+            let description = parse_string_flag(rest, "--description")?;
             docx_scaffold(
                 &output,
                 DocxScaffoldOptions {
@@ -60,6 +73,11 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                     theme_seed: theme_seed.as_deref(),
                     template: template.as_deref(),
                     brand: brand.as_deref(),
+                    title: title.as_deref(),
+                    subject: subject.as_deref(),
+                    creator: creator.as_deref(),
+                    keywords: keywords.as_deref(),
+                    description: description.as_deref(),
                     force: has_flag(rest, "--force"),
                     no_validate: has_flag(rest, "--no-validate"),
                 },
@@ -985,6 +1003,7 @@ fn require_docx_document_hash(value: &str) -> CliResult<()> {
 
 fn docx_source_path(args: &[String]) -> Option<&str> {
     match args {
+        [family, command, ..] if family == "docx" && command == "build" => None,
         [family, command, file, ..]
             if family == "docx" && matches!(command.as_str(), "text" | "replace") =>
         {

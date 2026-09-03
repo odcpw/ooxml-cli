@@ -109,6 +109,24 @@ pub(crate) fn append_docx_body_paragraph_xml_with_numbering(
     Ok(working)
 }
 
+pub(crate) fn append_docx_body_fragment_xml(xml: &str, fragment: &str) -> CliResult<String> {
+    let body_tag = docx_body_tag(xml)?;
+    let close_tag = format!("</{body_tag}>");
+    let body_close = xml
+        .rfind(&close_tag)
+        .ok_or_else(|| CliError::unexpected("document body element not found"))?;
+    let prefix = body_tag
+        .split_once(':')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or_default();
+    let insert_at = docx_body_sectpr_start(&xml[..body_close], prefix).unwrap_or(body_close);
+    let mut working = String::with_capacity(xml.len() + fragment.len());
+    working.push_str(&xml[..insert_at]);
+    working.push_str(fragment);
+    working.push_str(&xml[insert_at..]);
+    Ok(working)
+}
+
 pub(crate) fn insert_docx_body_paragraph_xml(
     xml: &str,
     insert_after: usize,

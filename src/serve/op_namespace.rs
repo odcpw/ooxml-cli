@@ -131,6 +131,11 @@ const SERVE_MUTATION_SPECS: &[ServeMutationSpec] = &[
         &[],
     ),
     spec(
+        CommandId::Docx(DocxCommandId::ImagesInsert),
+        "docx images insert",
+        &[],
+    ),
+    spec(
         CommandId::Docx(DocxCommandId::TablesSetStyle),
         "docx tables set-style",
         &[],

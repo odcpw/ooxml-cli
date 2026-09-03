@@ -113,6 +113,225 @@ pub(crate) fn docx_paragraphs_append(
     Ok(Value::Object(result))
 }
 
+pub(crate) fn docx_paragraphs_append_rich(
+    file: &str,
+    runs: &[Value],
+    style: &str,
+) -> CliResult<Value> {
+    if runs.is_empty() {
+        return Err(CliError::invalid_args(
+            "runs must contain at least one text run",
+        ));
+    }
+    let entries = zip_entry_names(file)?;
+    ensure_docx_package_kind(file, &entries)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let mut document_xml = zip_text(file, &document_part)?;
+    let body_tag = crate::docx_body_tag(&document_xml)?;
+    let prefix = crate::docx_body_prefix(&body_tag);
+    let block_count = docx_rich_block_reports(&document_xml, false)?.len();
+    let prepared = crate::docx_styles::prepare_docx_style_for_mutation(
+        file,
+        style,
+        DocxStyleTarget::Paragraph,
+        false,
+    )?;
+    let rels_part = crate::relationships_part_for(&document_part);
+    let mut rels_xml = zip_text(file, &rels_part)?;
+    let mut relationships = crate::relationship_entries(file, &rels_part)?;
+    let mut rendered_runs = String::new();
+    let mut flattened = String::new();
+    let mut added_link = false;
+    for (index, run) in runs.iter().enumerate() {
+        let run = run
+            .as_object()
+            .ok_or_else(|| CliError::invalid_args(format!("runs[{index}] must be an object")))?;
+        let text = run.get("text").and_then(Value::as_str).ok_or_else(|| {
+            CliError::invalid_args(format!("runs[{index}].text must be a string"))
+        })?;
+        flattened.push_str(text);
+        let relationship_id = if let Some(link) = run.get("link").and_then(Value::as_str) {
+            let id = crate::allocate_relationship_id(&relationships);
+            rels_xml = add_external_hyperlink_relationship(&rels_xml, &id, link)?;
+            relationships.push(crate::RelationshipEntry {
+                id: id.clone(),
+                rel_type: DOCX_HYPERLINK_REL.to_string(),
+                target: link.to_string(),
+                target_mode: "External".to_string(),
+            });
+            added_link = true;
+            Some(id)
+        } else {
+            None
+        };
+        rendered_runs.push_str(&render_docx_build_run(
+            &prefix,
+            run,
+            text,
+            relationship_id.as_deref(),
+        )?);
+    }
+    if added_link {
+        document_xml = ensure_docx_relationship_namespace(&document_xml)?;
+    }
+    let paragraph = render_docx_build_paragraph(&prefix, &prepared.style_id, &rendered_runs);
+    let updated_xml = crate::docx_xml::append_docx_body_fragment_xml(&document_xml, &paragraph)?;
+    let mut overrides = prepared.overrides;
+    overrides.insert(document_part, updated_xml);
+    if added_link {
+        overrides.insert(rels_part, rels_xml);
+    }
+    let readback_path = crate::mutation_staging_path(file, None, "docx-rich-paragraph");
+    copy_zip_with_part_overrides(file, &readback_path, &overrides)?;
+    crate::finish_mutation_output(file, &readback_path, None, true, None, false)?;
+    Ok(json!({
+        "file": file,
+        "index": block_count + 1,
+        "style": prepared.style_id,
+        "text": flattened,
+        "runs": runs,
+    }))
+}
+
+const DOCX_HYPERLINK_REL: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
+
+fn render_docx_build_paragraph(prefix: &str, style: &str, runs: &str) -> String {
+    let p = crate::word_xml_tag(prefix, "p");
+    let p_pr = crate::word_xml_tag(prefix, "pPr");
+    let p_style = crate::word_xml_tag(prefix, "pStyle");
+    let val = crate::word_xml_tag(prefix, "val");
+    format!(
+        "<{p}><{p_pr}><{p_style} {val}=\"{}\"/></{p_pr}>{runs}</{p}>",
+        crate::xml_attr_escape(style)
+    )
+}
+
+fn render_docx_build_run(
+    prefix: &str,
+    run: &Map<String, Value>,
+    text: &str,
+    relationship_id: Option<&str>,
+) -> CliResult<String> {
+    let r = crate::word_xml_tag(prefix, "r");
+    let r_pr = crate::word_xml_tag(prefix, "rPr");
+    let val = crate::word_xml_tag(prefix, "val");
+    let mut properties = String::new();
+    if relationship_id.is_some() {
+        let r_style = crate::word_xml_tag(prefix, "rStyle");
+        properties.push_str(&format!("<{r_style} {val}=\"Hyperlink\"/>"));
+    }
+    let inline_code = run.get("inlineCode").and_then(Value::as_bool) == Some(true);
+    if inline_code {
+        let fonts = crate::word_xml_tag(prefix, "rFonts");
+        let ascii = crate::word_xml_tag(prefix, "ascii");
+        let h_ansi = crate::word_xml_tag(prefix, "hAnsi");
+        properties.push_str(&format!(
+            "<{fonts} {ascii}=\"Consolas\" {h_ansi}=\"Consolas\"/>"
+        ));
+    }
+    for (field, tag) in [("bold", "b"), ("italic", "i")] {
+        if run.get(field).and_then(Value::as_bool) == Some(true) {
+            let tag = crate::word_xml_tag(prefix, tag);
+            properties.push_str(&format!("<{tag}/>"));
+        }
+    }
+    if let Some(color) = run.get("color").and_then(Value::as_str) {
+        let color_tag = crate::word_xml_tag(prefix, "color");
+        properties.push_str(&format!(
+            "<{color_tag} {val}=\"{}\"/>",
+            crate::xml_attr_escape(color.trim_start_matches('#'))
+        ));
+    }
+    if let Some(size) = run.get("size") {
+        let half_points = docx_run_half_points(size)?;
+        let sz = crate::word_xml_tag(prefix, "sz");
+        let sz_cs = crate::word_xml_tag(prefix, "szCs");
+        properties.push_str(&format!(
+            "<{sz} {val}=\"{half_points}\"/><{sz_cs} {val}=\"{half_points}\"/>"
+        ));
+    }
+    if run.get("underline").and_then(Value::as_bool) == Some(true) {
+        let underline = crate::word_xml_tag(prefix, "u");
+        properties.push_str(&format!("<{underline} {val}=\"single\"/>"));
+    }
+    if inline_code {
+        let shading = crate::word_xml_tag(prefix, "shd");
+        let fill = crate::word_xml_tag(prefix, "fill");
+        properties.push_str(&format!("<{shading} {val}=\"clear\" {fill}=\"F2F2F2\"/>"));
+    }
+    let mut rendered = format!("<{r}>");
+    if !properties.is_empty() {
+        rendered.push_str(&format!("<{r_pr}>{properties}</{r_pr}>"));
+    }
+    crate::append_docx_text_children(&mut rendered, prefix, text);
+    rendered.push_str(&format!("</{r}>"));
+    if let Some(id) = relationship_id {
+        let hyperlink = crate::word_xml_tag(prefix, "hyperlink");
+        rendered = format!(
+            "<{hyperlink} r:id=\"{}\">{rendered}</{hyperlink}>",
+            crate::xml_attr_escape(id)
+        );
+    }
+    Ok(rendered)
+}
+
+fn docx_run_half_points(value: &Value) -> CliResult<i64> {
+    let emu = if let Some(value) = value.as_i64() {
+        value
+    } else if let Some(value) = value.as_str() {
+        crate::cli_dispatch::units::parse_length(value, None)?
+    } else {
+        return Err(CliError::invalid_args("run size must be a length"));
+    };
+    let half_points = emu / 6_350;
+    if half_points < 2 {
+        return Err(CliError::invalid_args("run size must be at least 1pt"));
+    }
+    Ok(half_points)
+}
+
+fn add_external_hyperlink_relationship(
+    relationships: &str,
+    id: &str,
+    target: &str,
+) -> CliResult<String> {
+    let insert_at = relationships
+        .rfind("</Relationships>")
+        .ok_or_else(|| CliError::unexpected("invalid document relationships XML"))?;
+    let relationship = format!(
+        "<Relationship Id=\"{}\" Type=\"{DOCX_HYPERLINK_REL}\" Target=\"{}\" TargetMode=\"External\"/>",
+        crate::xml_attr_escape(id),
+        crate::xml_attr_escape(target)
+    );
+    let mut updated = String::with_capacity(relationships.len() + relationship.len());
+    updated.push_str(&relationships[..insert_at]);
+    updated.push_str(&relationship);
+    updated.push_str(&relationships[insert_at..]);
+    Ok(updated)
+}
+
+fn ensure_docx_relationship_namespace(xml: &str) -> CliResult<String> {
+    if xml.contains("xmlns:r=") {
+        return Ok(xml.to_string());
+    }
+    let start = xml
+        .find("<w:document")
+        .or_else(|| xml.find("<document"))
+        .ok_or_else(|| CliError::unexpected("document root element not found"))?;
+    let end = xml[start..]
+        .find('>')
+        .map(|offset| start + offset)
+        .ok_or_else(|| CliError::unexpected("document root element not found"))?;
+    let attribute =
+        " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"";
+    let mut updated = String::with_capacity(xml.len() + attribute.len());
+    updated.push_str(&xml[..end]);
+    updated.push_str(attribute);
+    updated.push_str(&xml[end..]);
+    Ok(updated)
+}
+
 pub(crate) struct DocxParagraphInsertOptions<'a> {
     pub(crate) insert_after: i64,
     pub(crate) expected_hash: &'a str,

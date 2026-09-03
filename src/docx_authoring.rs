@@ -43,6 +43,7 @@ const CORE_PROPERTIES_CONTENT_TYPE: &str =
 const APP_PROPERTIES_CONTENT_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.extended-properties+xml";
 
+#[derive(Clone, Copy)]
 pub(crate) struct DocxScaffoldOptions<'a> {
     pub(crate) text: Option<&'a str>,
     pub(crate) text_file: Option<&'a str>,
@@ -50,6 +51,11 @@ pub(crate) struct DocxScaffoldOptions<'a> {
     pub(crate) theme_seed: Option<&'a str>,
     pub(crate) brand: Option<&'a str>,
     pub(crate) template: Option<&'a str>,
+    pub(crate) title: Option<&'a str>,
+    pub(crate) subject: Option<&'a str>,
+    pub(crate) creator: Option<&'a str>,
+    pub(crate) keywords: Option<&'a str>,
+    pub(crate) description: Option<&'a str>,
     pub(crate) force: bool,
     pub(crate) no_validate: bool,
 }
@@ -70,11 +76,11 @@ pub(crate) fn docx_scaffold(output: &str, options: DocxScaffoldOptions<'_>) -> C
     let text = resolve_optional_docx_paragraph_text(options.text, options.text_file)?;
     let temp_path = package_mutation_temp_path(output, "docx-scaffold");
     let (theme_name, theme_seed) = if let Some(template) = options.template {
-        write_docx_template_scaffold_package(template, &temp_path, &text)?;
+        write_docx_template_scaffold_package(template, &temp_path, &text, options)?;
         (None, None)
     } else {
         let (theme_name, theme_seed) = theme::theme_seed(options.theme, options.theme_seed)?;
-        write_docx_scaffold_package(&temp_path, &text, &theme_name, &theme_seed)?;
+        write_docx_scaffold_package(&temp_path, &text, &theme_name, &theme_seed, options)?;
         (Some(theme_name), Some(theme_seed))
     };
 
@@ -119,6 +125,7 @@ fn write_docx_scaffold_package(
     text: &str,
     theme_name: &str,
     theme_seed: &str,
+    scaffold: DocxScaffoldOptions<'_>,
 ) -> CliResult<()> {
     if let Some(parent) = Path::new(path)
         .parent()
@@ -132,7 +139,10 @@ fn write_docx_scaffold_package(
     let parts = [
         ("[Content_Types].xml", content_types_xml().to_string()),
         ("_rels/.rels", package_relationships_xml().to_string()),
-        (CORE_PROPERTIES_PART, properties::core_properties_xml()?),
+        (
+            CORE_PROPERTIES_PART,
+            properties::core_properties_xml(scaffold_core_properties(scaffold))?,
+        ),
         (APP_PROPERTIES_PART, properties::app_properties_xml(text)),
         (DOCUMENT_PART, main_document_xml(text)),
         (DOCUMENT_RELS_PART, document_relationships_xml().to_string()),
@@ -151,7 +161,12 @@ fn write_docx_scaffold_package(
     Ok(())
 }
 
-fn write_docx_template_scaffold_package(template: &str, path: &str, text: &str) -> CliResult<()> {
+fn write_docx_template_scaffold_package(
+    template: &str,
+    path: &str,
+    text: &str,
+    scaffold: DocxScaffoldOptions<'_>,
+) -> CliResult<()> {
     let template_path = Path::new(template);
     if !template_path.is_file() {
         return Err(CliError::invalid_args(format!(
@@ -191,9 +206,22 @@ fn write_docx_template_scaffold_package(template: &str, path: &str, text: &str) 
     );
     overrides.insert("_rels/.rels".to_string(), root_relationships);
     overrides.insert("[Content_Types].xml".to_string(), content_types);
-    overrides.insert(core_part, properties::core_properties_xml()?);
+    overrides.insert(
+        core_part,
+        properties::core_properties_xml(scaffold_core_properties(scaffold))?,
+    );
     overrides.insert(app_part, properties::app_properties_xml(text));
     copy_zip_with_part_overrides(template, path, &overrides)
+}
+
+fn scaffold_core_properties(options: DocxScaffoldOptions<'_>) -> properties::CoreProperties<'_> {
+    properties::CoreProperties {
+        title: options.title,
+        subject: options.subject,
+        creator: options.creator,
+        keywords: options.keywords,
+        description: options.description,
+    }
 }
 
 fn related_root_part(root_relationships: &str, relationship_type: &str) -> Option<String> {

@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "family": "docx",
+  "theme": "corporate-blue",
+  "metadata": {
+    "title": "Q3 quarterly report",
+    "subject": "Quarterly operating review",
+    "creator": "ooxml-cli",
+    "keywords": "quarterly,operations",
+    "description": "Deterministic DOCX build-spec fixture"
+  },
+  "headers": {
+    "default": "Q3 quarterly report"
+  },
+  "footers": {
+    "pageNumbers": true
+  },
+  "sections": [
+    {
+      "id": "main",
+      "startBlock": 0,
+      "size": "Letter",
+      "orientation": "portrait",
+      "margins": {
+        "top": "0.75in",
+        "right": "0.8in",
+        "bottom": "0.75in",
+        "left": "0.8in"
+      }
+    }
+  ],
+  "blocks": [
+    {
+      "id": "report-title",
+      "type": "title",
+      "text": "Q3 quarterly report"
+    },
+    {
+      "id": "report-subtitle",
+      "type": "subtitle",
+      "text": "Operating review and outlook"
+    },
+    {
+      "id": "contents",
+      "type": "toc"
+    },
+    {
+      "id": "highlights-heading",
+      "type": "heading",
+      "level": 1,
+      "text": "Highlights"
+    },
+    {
+      "id": "summary",
+      "type": "paragraph",
+      "runs": [
+        {
+          "text": "Revenue grew 18%",
+          "bold": true
+        },
+        {
+          "text": " while the team maintained disciplined execution.",
+          "italic": true
+        },
+        {
+          "text": " forecast()",
+          "underline": true,
+          "inlineCode": true,
+          "size": "10pt",
+          "color": "44546A"
+        },
+        {
+          "text": " Review the operating dashboard.",
+          "link": "https://example.com/q3"
+        }
+      ]
+    },
+    {
+      "id": "highlight-one",
+      "type": "bullet",
+      "level": 0,
+      "text": "Enterprise pipeline reached a record level"
+    },
+    {
+      "id": "highlight-two",
+      "type": "bullet",
+      "level": 1,
+      "text": "Customer retention remained above plan"
+    },
+    {
+      "id": "metrics-heading",
+      "type": "heading",
+      "level": 2,
+      "text": "Regional metrics"
+    },
+    {
+      "id": "regional-table",
+      "type": "table",
+      "style": "TableLight",
+      "columnWidths": ["2.3in", "1.2in", "1in"],
+      "rows": [
+        [
+          "Region",
+          "Revenue",
+          "Growth"
+        ],
+        [
+          "North America",
+          "$28m",
+          "21%"
+        ],
+        [
+          "Europe",
+          "$17m",
+          "14%"
+        ],
+        [
+          "Asia Pacific",
+          "$11m",
+          "19%"
+        ]
+      ],
+      "caption": "Regional performance"
+    },
+    {
+      "id": "product-image",
+      "type": "image",
+      "image": {
+        "path": "../../test_image.png",
+        "width": "4.5in",
+        "height": "2.7in",
+        "align": "center",
+        "altText": "Illustration of the Q3 product workflow",
+        "caption": "Product adoption accelerated throughout Q3",
+        "keepOriginal": true
+      }
+    },
+    {
+      "id": "outlook-break",
+      "type": "pageBreak"
+    },
+    {
+      "id": "outlook-heading",
+      "type": "heading",
+      "level": 1,
+      "text": "Outlook"
+    },
+    {
+      "id": "outlook-copy",
+      "type": "paragraph",
+      "text": "The company enters Q4 with a focused roadmap and strong customer demand."
+    },
+    {
+      "id": "priority-one",
+      "type": "numbered",
+      "level": 0,
+      "text": "Scale the enterprise rollout"
+    },
+    {
+      "id": "priority-two",
+      "type": "numbered",
+      "level": 0,
+      "text": "Expand the partner channel"
+    }
+  ]
+}

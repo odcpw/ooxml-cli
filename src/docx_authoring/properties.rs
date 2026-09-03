@@ -1,15 +1,45 @@
-use crate::{CliError, CliResult};
+use crate::{CliError, CliResult, xml_escape};
 
-pub(super) fn core_properties_xml() -> CliResult<String> {
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct CoreProperties<'a> {
+    pub title: Option<&'a str>,
+    pub subject: Option<&'a str>,
+    pub creator: Option<&'a str>,
+    pub keywords: Option<&'a str>,
+    pub description: Option<&'a str>,
+}
+
+pub(super) fn core_properties_xml(properties: CoreProperties<'_>) -> CliResult<String> {
     let timestamp = source_date_epoch_timestamp()?;
     let dates = timestamp.map_or_else(String::new, |timestamp| {
         format!(
             r#"<dcterms:created xsi:type="dcterms:W3CDTF">{timestamp}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">{timestamp}</dcterms:modified>"#
         )
     });
+    let creator = properties.creator.unwrap_or("ooxml-cli");
+    let mut body = String::new();
+    push_property(&mut body, "dc:title", properties.title);
+    push_property(&mut body, "dc:subject", properties.subject);
+    push_property(&mut body, "dc:creator", Some(creator));
+    push_property(&mut body, "cp:keywords", properties.keywords);
+    push_property(&mut body, "dc:description", properties.description);
+    push_property(&mut body, "cp:lastModifiedBy", Some(creator));
     Ok(format!(
-        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:creator>ooxml-cli</dc:creator><cp:lastModifiedBy>ooxml-cli</cp:lastModifiedBy>{dates}</cp:coreProperties>"#
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">{body}{dates}</cp:coreProperties>"#
     ))
+}
+
+fn push_property(body: &mut String, tag: &str, value: Option<&str>) {
+    let Some(value) = value else {
+        return;
+    };
+    body.push('<');
+    body.push_str(tag);
+    body.push('>');
+    body.push_str(&xml_escape(value));
+    body.push_str("</");
+    body.push_str(tag);
+    body.push('>');
 }
 
 pub(super) fn app_properties_xml(text: &str) -> String {

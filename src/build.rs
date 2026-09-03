@@ -5,6 +5,7 @@
 //! model consumed by `apply`, serve, and MCP.
 
 mod compiler;
+mod docx;
 mod loader;
 mod pptx;
 mod schema;
@@ -15,6 +16,8 @@ pub use compiler::{
     BuildCompileError, BuildCompiler, BuildOperation, CompiledBuildPlan, PlanNode,
     compile_minimal_spec, operation_reference,
 };
+pub(crate) use docx::docx_build;
+pub use docx::{CompiledDocxBuild, compile_docx_spec};
 pub use loader::{
     BuildSpec, BuildSpecDiagnostic, BuildSpecError, load_spec_bytes, load_spec_file, load_spec_str,
 };

@@ -29,23 +29,33 @@ pub(super) fn serve_docx_paragraphs_op(
             let create_style = json_bool(args, "create-style")
                 .or_else(|| json_bool(args, "createStyle"))
                 .unwrap_or(false);
-            let readback = docx_paragraphs_append(
-                working,
-                list.as_deref(),
-                level,
-                restart,
-                DocxParagraphMutationOptions {
-                    text: text.as_deref(),
-                    text_file: text_file.as_deref(),
-                    style: &style,
-                    out: None,
-                    backup: None,
-                    dry_run: false,
-                    in_place: true,
-                    no_validate: true,
-                },
-                create_style,
-            )?;
+            let runs = args.get("runs").and_then(Value::as_array);
+            if runs.is_some() && (text.is_some() || text_file.is_some() || list.is_some()) {
+                return Err(CliError::invalid_args(
+                    "runs cannot be combined with text, text-file, or list",
+                ));
+            }
+            let readback = if let Some(runs) = runs {
+                crate::docx_paragraph_commands::docx_paragraphs_append_rich(working, runs, &style)?
+            } else {
+                docx_paragraphs_append(
+                    working,
+                    list.as_deref(),
+                    level,
+                    restart,
+                    DocxParagraphMutationOptions {
+                        text: text.as_deref(),
+                        text_file: text_file.as_deref(),
+                        style: &style,
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                    create_style,
+                )?
+            };
             let mut plan_flags = Vec::new();
             push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
             push_serve_plan_string_flag(&mut plan_flags, "--text-file", text_file.as_deref());

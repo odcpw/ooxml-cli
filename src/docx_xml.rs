@@ -7,9 +7,10 @@ mod table_scaffold;
 mod text_read;
 
 pub(crate) use body_paragraphs::{
-    append_docx_body_paragraph_xml, append_docx_body_paragraph_xml_with_numbering,
-    insert_docx_body_paragraph_xml, insert_docx_body_paragraph_xml_with_numbering,
-    render_docx_paragraph, set_or_clear_docx_body_paragraph_xml,
+    append_docx_body_fragment_xml, append_docx_body_paragraph_xml,
+    append_docx_body_paragraph_xml_with_numbering, insert_docx_body_paragraph_xml,
+    insert_docx_body_paragraph_xml_with_numbering, render_docx_paragraph,
+    set_or_clear_docx_body_paragraph_xml,
 };
 pub(crate) use paragraph_ids::{
     docx_all_para_ids, docx_open_tag_with_para_id, ensure_docx_w14_namespace, mint_docx_para_id,

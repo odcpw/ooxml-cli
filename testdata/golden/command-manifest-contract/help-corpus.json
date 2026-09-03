@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "groupCount": 64,
-  "leafCount": 266,
+  "leafCount": 267,
   "groupTopicRows": 52,
   "aliasOwnerRecords": 37,
   "aliasArgvCount": 35,
@@ -66,7 +66,7 @@
         "docx"
       ],
       "status": 0,
-      "stdout": "Commands for inspecting and mutating Word DOCX documents where Rust parity has been proven.\n\nUsage:\n  ooxml docx [command]\n\nAvailable Commands:\n  blocks      Show stable DOCX body blocks with hashes, selectors, paragraph metadata, table cells, and optional runs.\n  breaks      Insert DOCX page and section breaks.\n  comments    Inspect and mutate DOCX comments.\n  fields      Inspect and edit DOCX fields.\n  footers     Inspect and edit DOCX footers.\n  headers     Inspect and edit DOCX headers.\n  images      Inspect and mutate DOCX inline images.\n  paragraphs  Mutate DOCX body paragraphs.\n  replace     Find and replace text across DOCX body text.\n  scaffold    Create a minimal DOCX package from scratch and validate it by default.\n  sections    Mutate DOCX section page setup.\n  styles      Inspect and apply DOCX styles.\n  tables      Inspect and mutate DOCX tables.\n  text        Extract DOCX content as structured JSON or readable CommonMark.\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nWork with Rust-supported DOCX document commands.\n",
+      "stdout": "Commands for inspecting and mutating Word DOCX documents where Rust parity has been proven.\n\nUsage:\n  ooxml docx [command]\n\nAvailable Commands:\n  blocks      Show stable DOCX body blocks with hashes, selectors, paragraph metadata, table cells, and optional runs.\n  breaks      Insert DOCX page and section breaks.\n  build       Build a complete document from a published DOCX build specification in one atomic batch.\n  comments    Inspect and mutate DOCX comments.\n  fields      Inspect and edit DOCX fields.\n  footers     Inspect and edit DOCX footers.\n  headers     Inspect and edit DOCX headers.\n  images      Inspect and mutate DOCX inline images.\n  paragraphs  Mutate DOCX body paragraphs.\n  replace     Find and replace text across DOCX body text.\n  scaffold    Create a minimal DOCX package from scratch and validate it by default.\n  sections    Mutate DOCX section page setup.\n  styles      Inspect and apply DOCX styles.\n  tables      Inspect and mutate DOCX tables.\n  text        Extract DOCX content as structured JSON or readable CommonMark.\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nWork with Rust-supported DOCX document commands.\n",
       "stderr": ""
     },
     {
@@ -3336,7 +3336,7 @@
         "scaffold"
       ],
       "status": 0,
-      "stdout": "Create a minimal DOCX package from scratch and validate it by default.\n\nUsage:\n  ooxml docx scaffold <output.docx> (or --out <output.docx>) [--brand <brand.json>]\n\nFlags:\n  --out                    output document path; accepted as an alternative to positional <output.docx>\n  --text                   optional initial paragraph text\n  --text-file              path to optional initial paragraph text\n  --theme                  built-in theme name: neutral, corporate-blue, warm, or dark\n  --theme-seed             RRGGBB or #RRGGBB brand color used to derive the document theme\n  --template               DOCX template whose styles, supporting parts, headers, footers, and page setup are inherited\n  --brand                  cross-family brand kit JSON; may be combined with --template\n  --force                  replace an existing output file\n  --no-validate            skip post-write strict validation\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Create a minimal DOCX package from scratch and validate it by default.\n\nUsage:\n  ooxml docx scaffold <output.docx> (or --out <output.docx>) [--brand <brand.json>]\n\nFlags:\n  --out                    output document path; accepted as an alternative to positional <output.docx>\n  --text                   optional initial paragraph text\n  --text-file              path to optional initial paragraph text\n  --theme                  built-in theme name: neutral, corporate-blue, warm, or dark\n  --theme-seed             RRGGBB or #RRGGBB brand color used to derive the document theme\n  --template               DOCX template whose styles, supporting parts, headers, footers, and page setup are inherited\n  --brand                  cross-family brand kit JSON; may be combined with --template\n  --title                  core-properties document title\n  --subject                core-properties document subject\n  --creator                core-properties document creator\n  --keywords               core-properties document keywords\n  --description            core-properties document description\n  --force                  replace an existing output file\n  --no-validate            skip post-write strict validation\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
@@ -4155,6 +4155,18 @@
       ],
       "status": 0,
       "stdout": "Build a complete workbook from a published XLSX build specification in one atomic batch.\n\nUsage:\n  ooxml xlsx build --spec <book.json|-> --out <book.xlsx>\n\nFlags:\n  --spec                   XLSX build-spec JSON path, or - to read JSON from stdin\n  --out                    output workbook path\n  --check                  run check after publishing and embed its findings\n  --dry-run                compile, execute, and strictly validate the staged batch without publishing\n  --force                  replace an existing output after the staged build validates\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stderr": ""
+    },
+    {
+      "name": "leaf:docx build",
+      "category": "canonical-leaf",
+      "argv": [
+        "help",
+        "docx",
+        "build"
+      ],
+      "status": 0,
+      "stdout": "Build a complete document from a published DOCX build specification in one atomic batch.\n\nUsage:\n  ooxml docx build --spec <document.json|-> --out <document.docx>\n\nFlags:\n  --spec                   DOCX build-spec JSON path, or - to read JSON from stdin\n  --out                    output document path\n  --check                  run check after publishing and embed its findings\n  --dry-run                compile, execute, and strictly validate the staged batch without publishing\n  --force                  replace an existing output after the staged build validates\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {

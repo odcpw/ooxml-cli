@@ -46,6 +46,8 @@ pub struct TextRun {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub underline: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline_code: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<BuildLength>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,

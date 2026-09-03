@@ -15,8 +15,8 @@
     "title": { "type": "string" },
     "subtitle": { "type": "string" },
     "metadata": { "$ref": "#/$defs/metadata" },
-    "headers": { "type": "object" },
-    "footers": { "type": "object" },
+    "headers": { "$ref": "#/$defs/docxHeaders" },
+    "footers": { "$ref": "#/$defs/docxFooters" },
     "sections": {
       "type": "array",
       "items": { "$ref": "#/$defs/docxSection" }
@@ -28,6 +28,25 @@
     }
   },
   "$defs": {
+    "docxHeaders": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default": { "type": "string" },
+        "first": { "type": "string" },
+        "even": { "type": "string" }
+      }
+    },
+    "docxFooters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default": { "type": "string" },
+        "first": { "type": "string" },
+        "even": { "type": "string" },
+        "pageNumbers": { "type": "boolean" }
+      }
+    },
     "docxSection": {
       "type": "object",
       "additionalProperties": false,
@@ -71,6 +90,11 @@
             "type": "array",
             "items": { "type": ["string", "number", "boolean", "null"] }
           }
+        },
+        "header": { "type": "boolean" },
+        "columnWidths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/length" }
         },
         "table": { "$ref": "#/$defs/tableData" },
         "image": { "$ref": "#/$defs/imageRef" },
