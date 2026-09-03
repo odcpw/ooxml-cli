@@ -920,6 +920,15 @@ const PACKAGE_MUTATION_COMMANDS: &[MutationCommandSpec] = &[
     package_spec!("package", ["template", "apply"], "package", "/"),
 ];
 
+pub(crate) fn is_mutation_command_path(path: &[&str]) -> bool {
+    DOCX_MUTATION_COMMANDS
+        .iter()
+        .chain(XLSX_MUTATION_COMMANDS)
+        .chain(PPTX_MUTATION_COMMANDS)
+        .chain(PACKAGE_MUTATION_COMMANDS)
+        .any(|spec| spec.path == path)
+}
+
 pub(crate) fn attach_cli_mutation_envelope(
     args: &[String],
     aliases_applied: Vec<Value>,
@@ -966,7 +975,7 @@ pub(crate) fn attach_cli_mutation_envelope(
 }
 
 fn mutation_spec_for_args(args: &[String]) -> Option<&'static MutationCommandSpec> {
-    DOCX_MUTATION_COMMANDS
+    let spec = DOCX_MUTATION_COMMANDS
         .iter()
         .chain(XLSX_MUTATION_COMMANDS)
         .chain(PPTX_MUTATION_COMMANDS)
@@ -981,7 +990,9 @@ fn mutation_spec_for_args(args: &[String]) -> Option<&'static MutationCommandSpe
                     .zip(spec.path)
                     .all(|(actual, expected)| actual == expected)
         })
-        .max_by_key(|spec| spec.path.len())
+        .max_by_key(|spec| spec.path.len());
+    debug_assert!(spec.is_none_or(|spec| is_mutation_command_path(spec.path)));
+    spec
 }
 
 fn family_for_file(default_family: &str, file: &str) -> String {
@@ -1255,8 +1266,21 @@ fn selector_from_response(spec: &MutationCommandSpec, response: &Value, args: &[
 }
 
 fn first_addressable_response(response: &Value) -> Option<&Value> {
+    if let Some(destination) =
+        first_nested_envelope(response).and_then(|value| value.get("destination"))
+    {
+        return Some(destination);
+    }
     let item = first_response_item(response)?;
     Some(item.get("destination").unwrap_or(item))
+}
+
+fn first_nested_envelope(response: &Value) -> Option<&Value> {
+    response
+        .get("applied")?
+        .as_array()?
+        .first()?
+        .get("mutationEnvelope")
 }
 
 fn first_response_item(response: &Value) -> Option<&Value> {
@@ -1415,6 +1439,11 @@ fn response_readback_command(spec: &MutationCommandSpec, response: &Value) -> Op
     candidates
         .iter()
         .find_map(|key| response.get(*key).and_then(nonempty_string))
+        .or_else(|| {
+            first_nested_envelope(response)
+                .and_then(|value| value.get("readbackCommand"))
+                .and_then(nonempty_string)
+        })
         .or_else(|| {
             first_response_item(response)
                 .and_then(|value| value.get("readbackCommand"))

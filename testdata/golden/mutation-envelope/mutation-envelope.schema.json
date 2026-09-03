@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ooxml-cli.dev/schemas/mutation-envelope.schema.json",
+  "title": "OOXML Mutation Envelope",
+  "description": "Stable proof and destination metadata added to every successful package mutation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "file",
+    "family",
+    "command",
+    "destination",
+    "changed",
+    "readbackCommand",
+    "validateCommand",
+    "conformanceCommand",
+    "checkCommand",
+    "warnings",
+    "aliasesApplied",
+    "validated"
+  ],
+  "properties": {
+    "file": { "type": "string", "minLength": 1 },
+    "family": { "enum": ["docx", "xlsx", "pptx", "vba", "package"] },
+    "command": { "type": "string", "pattern": "^ooxml " },
+    "destination": { "$ref": "#/$defs/destination" },
+    "changed": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/change" }
+    },
+    "readbackCommand": { "type": "string", "pattern": "^ooxml " },
+    "validateCommand": { "type": "string", "pattern": "^ooxml " },
+    "conformanceCommand": { "type": "string", "pattern": "^ooxml " },
+    "checkCommand": { "type": "string", "pattern": "^ooxml --json check " },
+    "renderCommand": { "type": "string", "pattern": "^ooxml " },
+    "layoutCheckCommand": { "type": "string", "pattern": "^ooxml " },
+    "warnings": { "type": "array", "items": {} },
+    "aliasesApplied": { "type": "array", "items": { "type": "object" } },
+    "validated": { "type": "boolean" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "family": { "enum": ["docx", "xlsx", "pptx"] } } },
+      "then": { "required": ["renderCommand"] }
+    },
+    {
+      "if": { "properties": { "family": { "const": "pptx" } } },
+      "then": { "required": ["layoutCheckCommand"] }
+    }
+  ],
+  "$defs": {
+    "destination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partUri", "primarySelector", "selectors", "handle", "kind", "summary"],
+      "properties": {
+        "partUri": { "type": "string", "minLength": 1 },
+        "primarySelector": { "type": "string", "minLength": 1 },
+        "selectors": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "handle": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "summary": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "change": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "selector", "handle"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "selector": { "type": "string", "minLength": 1 },
+        "handle": { "type": "string", "minLength": 1 },
+        "beforeHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "afterHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

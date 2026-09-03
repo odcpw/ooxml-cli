@@ -1,6 +1,7 @@
 use std::fs;
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
@@ -19,6 +20,13 @@ fn run_json(args: &[&str]) -> Value {
         String::from_utf8_lossy(&output.stderr)
     );
     serde_json::from_slice(&output.stdout).expect("parse ooxml JSON")
+}
+
+fn pinned_mutation_envelope_schema() -> Value {
+    serde_json::from_str(include_str!(
+        "../testdata/golden/mutation-envelope/mutation-envelope.schema.json"
+    ))
+    .expect("parse pinned mutation envelope schema")
 }
 
 fn temp_dir(label: &str) -> std::path::PathBuf {
@@ -78,6 +86,15 @@ fn run_owned(args: &[String]) -> Output {
         .args(args)
         .output()
         .expect("run ooxml")
+}
+
+fn rpc_roundtrip(stdin: &mut impl Write, reader: &mut impl BufRead, request: &Value) -> Value {
+    serde_json::to_writer(&mut *stdin, request).expect("write JSON-RPC request");
+    stdin.write_all(b"\n").expect("terminate JSON-RPC request");
+    stdin.flush().expect("flush JSON-RPC request");
+    let mut line = String::new();
+    reader.read_line(&mut line).expect("read JSON-RPC response");
+    serde_json::from_str(&line).expect("parse JSON-RPC response")
 }
 
 fn emitted_ooxml_args(command: &str) -> Result<Vec<String>, String> {
@@ -219,6 +236,13 @@ fn required_envelope_fields_present(envelope: &Value) -> bool {
 }
 
 fn validates_pinned_schema(envelope: &Value, schema: &Value) -> bool {
+    let Some(object) = envelope.as_object() else {
+        return false;
+    };
+    let allowed = schema["properties"].as_object().expect("schema properties");
+    if object.keys().any(|key| !allowed.contains_key(key)) {
+        return false;
+    }
     let required = schema["required"].as_array().is_some_and(|fields| {
         fields.iter().all(|field| {
             field
@@ -264,21 +288,99 @@ fn validates_pinned_schema(envelope: &Value, schema: &Value) -> bool {
         envelope["destination"]["selectors"]
             .as_array()
             .is_some_and(|selectors| {
+                let unique = selectors
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<std::collections::BTreeSet<_>>();
                 !selectors.is_empty()
+                    && unique.len() == selectors.len()
                     && selectors
                         .iter()
                         .all(|selector| selector.as_str().is_some_and(|value| !value.is_empty()))
             });
+    let destination_properties = schema["$defs"]["destination"]["properties"]
+        .as_object()
+        .expect("destination schema properties");
+    let destination_has_only_known_fields =
+        envelope["destination"]
+            .as_object()
+            .is_some_and(|destination| {
+                destination
+                    .keys()
+                    .all(|key| destination_properties.contains_key(key))
+            });
+    let changes_valid = envelope["changed"].as_array().is_some_and(|changes| {
+        let change_properties = schema["$defs"]["change"]["properties"]
+            .as_object()
+            .expect("change schema properties");
+        changes.iter().all(|change| {
+            let Some(change) = change.as_object() else {
+                return false;
+            };
+            change.keys().all(|key| change_properties.contains_key(key))
+                && ["kind", "selector", "handle"].iter().all(|field| {
+                    change
+                        .get(*field)
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| !value.is_empty())
+                })
+                && ["beforeHash", "afterHash"].iter().all(|field| {
+                    change
+                        .get(*field)
+                        .is_none_or(|value| value.as_str().is_some_and(is_sha256))
+                })
+        })
+    });
+    let family = envelope["family"].as_str().unwrap_or_default();
+    let family_valid = ["docx", "xlsx", "pptx", "vba", "package"].contains(&family);
+    let emitted_commands_valid = [
+        "command",
+        "readbackCommand",
+        "validateCommand",
+        "conformanceCommand",
+    ]
+    .iter()
+    .all(|field| {
+        envelope[*field]
+            .as_str()
+            .is_some_and(|value| value.starts_with("ooxml "))
+    }) && envelope["checkCommand"]
+        .as_str()
+        .is_some_and(|value| value.starts_with("ooxml --json check "))
+        && ["renderCommand", "layoutCheckCommand"].iter().all(|field| {
+            envelope.get(*field).is_none_or(|value| {
+                value
+                    .as_str()
+                    .is_some_and(|value| value.starts_with("ooxml "))
+            })
+        });
+    let conditional_commands_valid = (!matches!(family, "docx" | "xlsx" | "pptx")
+        || envelope.get("renderCommand").is_some())
+        && (family != "pptx" || envelope.get("layoutCheckCommand").is_some());
     required
         && destination_required
         && strings_nonempty
         && destination_strings_nonempty
         && selectors_valid
-        && envelope["changed"].is_array()
+        && destination_has_only_known_fields
+        && changes_valid
+        && family_valid
+        && emitted_commands_valid
+        && conditional_commands_valid
         && envelope["warnings"].is_array()
-        && envelope["aliasesApplied"].is_array()
+        && envelope["aliasesApplied"]
+            .as_array()
+            .is_some_and(|aliases| aliases.iter().all(Value::is_object))
         && envelope["validated"].is_boolean()
         && envelope["destination"]["summary"].is_object()
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 71
+        && value.starts_with("sha256:")
+        && value[7..]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn run_contract_case(case: &ContractCase, schema: &Value) -> ContractRow {
@@ -989,7 +1091,7 @@ fn docx_mutation_commands_satisfy_the_envelope_contract() {
         "--text",
         "Contract source",
     ]);
-    let schema_response = run_json(&["--json", "capabilities", "--schema", "mutation-envelope"]);
+    let schema = pinned_mutation_envelope_schema();
     let cases = docx_contract_cases(&dir, &scaffold_source);
     assert_eq!(cases.len(), 27, "reviewed DOCX mutation denominator");
     let mut paths = cases.iter().map(|case| case.path).collect::<Vec<_>>();
@@ -1002,7 +1104,7 @@ fn docx_mutation_commands_satisfy_the_envelope_contract() {
     );
     let rows = cases
         .iter()
-        .map(|case| run_contract_case(case, &schema_response["document"]))
+        .map(|case| run_contract_case(case, &schema))
         .collect::<Vec<_>>();
     assert_contract_matrix(&rows);
     fs::remove_dir_all(dir).expect("remove DOCX contract directory");
@@ -1864,7 +1966,7 @@ fn xlsx_contract_cases(dir: &Path) -> Vec<ContractCase> {
 #[test]
 fn xlsx_mutation_commands_satisfy_the_envelope_contract() {
     let dir = temp_dir("xlsx-contract-matrix");
-    let schema_response = run_json(&["--json", "capabilities", "--schema", "mutation-envelope"]);
+    let schema = pinned_mutation_envelope_schema();
     let cases = xlsx_contract_cases(&dir);
     assert_eq!(cases.len(), 60, "reviewed XLSX mutation denominator");
     let mut paths = cases.iter().map(|case| case.path).collect::<Vec<_>>();
@@ -1877,7 +1979,7 @@ fn xlsx_mutation_commands_satisfy_the_envelope_contract() {
     );
     let rows = cases
         .iter()
-        .map(|case| run_contract_case(case, &schema_response["document"]))
+        .map(|case| run_contract_case(case, &schema))
         .collect::<Vec<_>>();
     assert_contract_matrix(&rows);
     fs::remove_dir_all(dir).expect("remove XLSX contract directory");
@@ -2765,7 +2867,7 @@ fn pptx_contract_cases(dir: &Path) -> Vec<ContractCase> {
 #[test]
 fn pptx_mutation_commands_satisfy_the_envelope_contract() {
     let dir = temp_dir("pptx-contract-matrix");
-    let schema_response = run_json(&["--json", "capabilities", "--schema", "mutation-envelope"]);
+    let schema = pinned_mutation_envelope_schema();
     let cases = pptx_contract_cases(&dir);
     assert_eq!(cases.len(), 60, "reviewed PPTX mutation denominator");
     let mut paths = cases.iter().map(|case| case.path).collect::<Vec<_>>();
@@ -2778,10 +2880,235 @@ fn pptx_mutation_commands_satisfy_the_envelope_contract() {
     );
     let rows = cases
         .iter()
-        .map(|case| run_contract_case(case, &schema_response["document"]))
+        .map(|case| run_contract_case(case, &schema))
         .collect::<Vec<_>>();
     assert_contract_matrix(&rows);
     fs::remove_dir_all(dir).expect("remove PPTX contract directory");
+}
+
+fn package_contract_cases(dir: &Path) -> Vec<ContractCase> {
+    let ops = dir.join("apply-ops.json");
+    fs::write(
+        &ops,
+        r#"[{"command":"xlsx cells set","args":{"sheet":"Sheet1","cell":"A1","value":"Envelope batch"}}]"#,
+    )
+    .expect("write apply operations");
+    let tokens = dir.join("template-tokens.json");
+    fs::write(
+        &tokens,
+        r#"{"schemaVersion":"1.0","type":"pptx","source":"envelope-contract","pptx":{"theme":{"colorScheme":{"dark1":"101010","light1":"FAFAFA","dark2":"202020","light2":"EEEEEE","accent1":"123456","accent2":"234567","accent3":"345678","accent4":"456789","accent5":"56789A","accent6":"6789AB","hypLink":"789ABC","folLink":"89ABCD"},"fontScheme":{"majorFont":"Aptos Display","minorFont":"Aptos"}}}}"#,
+    )
+    .expect("write template tokens");
+    let out = |name: &str, extension: &str| dir.join(format!("package-{name}.{extension}"));
+    vec![
+        case(
+            "ooxml apply",
+            "batch",
+            with_out(
+                vec![
+                    "--json".into(),
+                    "apply".into(),
+                    "testdata/xlsx/minimal-workbook/workbook.xlsx".into(),
+                    "--ops".into(),
+                    ops.to_string_lossy().to_string(),
+                ],
+                &out("apply", "xlsx"),
+            ),
+        ),
+        case(
+            "ooxml convert xlsm-to-xlsx",
+            "package",
+            with_out(
+                owned_args(&[
+                    "--json",
+                    "convert",
+                    "xlsm-to-xlsx",
+                    "testdata/golden/vba-authoring/xlsx-rebuilt/rebuilt.xlsm",
+                ]),
+                &out("converted", "xlsx"),
+            ),
+        ),
+        case(
+            "ooxml find",
+            "text-match",
+            with_out(
+                owned_args(&[
+                    "--json",
+                    "find",
+                    "Revenue",
+                    "testdata/xlsx/types-and-formulas/workbook.xlsx",
+                    "--replace",
+                    "Income",
+                    "--apply",
+                ]),
+                &out("find", "xlsx"),
+            ),
+        ),
+        case(
+            "ooxml repair normalize",
+            "package",
+            with_out(
+                owned_args(&[
+                    "--json",
+                    "repair",
+                    "normalize",
+                    "testdata/xlsx/minimal-workbook/workbook.xlsx",
+                ]),
+                &out("normalized", "xlsx"),
+            ),
+        ),
+        case(
+            "ooxml template apply",
+            "package",
+            with_out(
+                vec![
+                    "--json".into(),
+                    "template".into(),
+                    "apply".into(),
+                    "testdata/pptx/minimal-title/presentation.pptx".into(),
+                    "--tokens".into(),
+                    tokens.to_string_lossy().to_string(),
+                ],
+                &out("template", "pptx"),
+            ),
+        ),
+    ]
+}
+
+#[test]
+fn package_mutation_commands_satisfy_the_envelope_contract() {
+    let dir = temp_dir("package-contract-matrix");
+    let schema = pinned_mutation_envelope_schema();
+    let cases = package_contract_cases(&dir);
+    assert_eq!(cases.len(), 5, "reviewed package mutation denominator");
+    let mut paths = cases.iter().map(|case| case.path).collect::<Vec<_>>();
+    paths.sort_unstable();
+    paths.dedup();
+    assert_eq!(
+        paths.len(),
+        cases.len(),
+        "package command paths must be unique"
+    );
+    let rows = cases
+        .iter()
+        .map(|case| run_contract_case(case, &schema))
+        .collect::<Vec<_>>();
+    assert_contract_matrix(&rows);
+    fs::remove_dir_all(dir).expect("remove package contract directory");
+}
+
+#[test]
+fn serve_and_mcp_op_return_the_pinned_mutation_envelope() {
+    let dir = temp_dir("serve-mcp-contract");
+    let cases = [
+        (
+            "xlsx",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "xlsx cells set",
+            serde_json::json!({"sheet": "Sheet1", "cell": "A1", "value": "Envelope surface"}),
+            "cell",
+        ),
+        (
+            "docx",
+            "testdata/docx/styled-headings/document.docx",
+            "docx paragraphs set",
+            serde_json::json!({"index": 1, "text": "Envelope surface"}),
+            "paragraph",
+        ),
+        (
+            "pptx",
+            "testdata/pptx/title-content/presentation.pptx",
+            "pptx replace text",
+            serde_json::json!({"slide": 1, "target": "title", "text": "Envelope surface"}),
+            "shape",
+        ),
+    ];
+    let schema = pinned_mutation_envelope_schema();
+    let mut surface_envelopes = Vec::new();
+
+    for surface in ["serve", "mcp"] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+            .arg(surface)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap_or_else(|err| panic!("spawn {surface}: {err}"));
+        let mut stdin = child.stdin.take().expect("surface stdin");
+        let mut reader = BufReader::new(child.stdout.take().expect("surface stdout"));
+        for (index, (family, fixture, command, args, kind)) in cases.iter().enumerate() {
+            let input = dir.join(format!("{surface}-{index}.{family}"));
+            fs::copy(fixture, &input).expect("stage surface fixture");
+            let open_params = serde_json::json!({"file": input});
+            let open = if surface == "mcp" {
+                serde_json::json!({"jsonrpc":"2.0","id":index * 2 + 1,"method":"tools/call","params":{"name":"open","arguments":open_params}})
+            } else {
+                serde_json::json!({"jsonrpc":"2.0","id":index * 2 + 1,"method":"open","params":open_params})
+            };
+            let opened = rpc_roundtrip(&mut stdin, &mut reader, &open);
+            assert!(opened.get("error").is_none(), "{surface} open: {opened}");
+            let open_result = if surface == "mcp" {
+                &opened["result"]["structuredContent"]
+            } else {
+                &opened["result"]
+            };
+            let session = open_result["sessionId"].as_str().expect("session id");
+            let op_args = serde_json::json!({"session":session,"command":command,"args":args});
+            let op = if surface == "mcp" {
+                serde_json::json!({"jsonrpc":"2.0","id":index * 2 + 2,"method":"tools/call","params":{"name":"op","arguments":op_args}})
+            } else {
+                serde_json::json!({"jsonrpc":"2.0","id":index * 2 + 2,"method":"op","params":op_args})
+            };
+            let mutated = rpc_roundtrip(&mut stdin, &mut reader, &op);
+            assert!(
+                mutated.get("error").is_none(),
+                "{surface} {command}: {mutated}"
+            );
+            let result = if surface == "mcp" {
+                &mutated["result"]["structuredContent"]
+            } else {
+                &mutated["result"]
+            };
+            let envelope = &result["mutationEnvelope"];
+            assert!(
+                validates_pinned_schema(envelope, &schema),
+                "{surface} {command}: {envelope}"
+            );
+            assert_eq!(envelope["family"], *family, "{surface} {command}");
+            assert_eq!(
+                envelope["destination"]["kind"], *kind,
+                "{surface} {command}"
+            );
+            surface_envelopes.push((surface, *command, envelope.clone()));
+        }
+        drop(stdin);
+        assert!(
+            child.wait().expect("wait for surface").success(),
+            "{surface}"
+        );
+    }
+
+    for (_, command, serve_envelope) in surface_envelopes.iter().filter(|row| row.0 == "serve") {
+        let mcp_envelope = surface_envelopes
+            .iter()
+            .find(|row| row.0 == "mcp" && row.1 == *command)
+            .map(|row| &row.2)
+            .expect("matching MCP envelope");
+        for pointer in [
+            "/family",
+            "/destination/kind",
+            "/destination/primarySelector",
+            "/changed/0/kind",
+            "/changed/0/selector",
+            "/validated",
+        ] {
+            assert_eq!(
+                serve_envelope.pointer(pointer),
+                mcp_envelope.pointer(pointer),
+                "surface mismatch for {command} at {pointer}"
+            );
+        }
+    }
+    fs::remove_dir_all(dir).expect("remove serve/MCP directory");
 }
 
 #[test]
@@ -2859,6 +3186,7 @@ fn capabilities_serves_the_pinned_mutation_envelope_schema() {
     let response = run_json(&["--json", "capabilities", "--schema", "mutation-envelope"]);
     assert_eq!(response["schema"], "mutation-envelope");
     let schema = &response["document"];
+    assert_eq!(schema, &pinned_mutation_envelope_schema());
     assert_eq!(
         schema["$id"],
         "https://ooxml-cli.dev/schemas/mutation-envelope.schema.json"
