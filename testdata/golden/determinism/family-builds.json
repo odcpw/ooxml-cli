@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "families": {
+    "docx": {
+      "bytes": 5585,
+      "corePropertiesSha256": "672d7e95157df999bc8282fdb8da9799f77e6fc2318ed2d1e701dda43da57c95",
+      "packageSha256": "b38e6975936a48aff5f9369fb0954d50d3991104220d47bdddefa56d3094ba93",
+      "sourceDateEpoch": "946684800",
+      "sourceDateTimestamp": "2000-01-01T00:00:00Z",
+      "timestampsPresentWithoutSourceDateEpoch": false
+    },
+    "pptx": {
+      "bytes": 17548,
+      "corePropertiesSha256": "672d7e95157df999bc8282fdb8da9799f77e6fc2318ed2d1e701dda43da57c95",
+      "packageSha256": "5bd1b631a8c5226e922f1fea340dbb3f3223dcc4e6e9a74c9949030bc734b9d9",
+      "sourceDateEpoch": "946684800",
+      "sourceDateTimestamp": "2000-01-01T00:00:00Z",
+      "timestampsPresentWithoutSourceDateEpoch": false
+    },
+    "xlsx": {
+      "bytes": 4132,
+      "corePropertiesSha256": "672d7e95157df999bc8282fdb8da9799f77e6fc2318ed2d1e701dda43da57c95",
+      "packageSha256": "401546c92131387a227c02ef89e7f146fa0fe24d6957700f6016ce4bbe783786",
+      "sourceDateEpoch": "946684800",
+      "sourceDateTimestamp": "2000-01-01T00:00:00Z",
+      "timestampsPresentWithoutSourceDateEpoch": false
+    }
+  }
+}

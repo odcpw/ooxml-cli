@@ -141,7 +141,9 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
         "conventions": [
             "stdout is data; explicit --json invalid-argument errors are structured result data on stdout, while text diagnostics go to stderr",
             "serve/MCP operation commands use op vocabulary without the leading ooxml",
-            "mutations should be validated before handing files to users"
+            "mutations should be validated before handing files to users",
+            "package outputs are byte-deterministic for identical inputs; SOURCE_DATE_EPOCH sets created and modified core-property timestamps, and timestamps are omitted when it is unset",
+            "text styling is suppressed when NO_COLOR or CI is set, TERM=dumb, or stdout is not a TTY"
         ],
         "notes": notes,
     });
