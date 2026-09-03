@@ -177,6 +177,12 @@ pub(super) fn new_slide_from_layout_result_json(
     );
     result.insert("newSlideId".to_string(), json!(mutation.new_slide_id));
     result.insert("newSlideUri".to_string(), json!(mutation.new_slide_uri));
+    if !mutation.image_pipeline.is_empty() {
+        result.insert(
+            "imagePipeline".to_string(),
+            Value::Array(mutation.image_pipeline.clone()),
+        );
+    }
     result.insert("destination".to_string(), destination);
     if let Some(output_path) = output_path {
         result.insert(

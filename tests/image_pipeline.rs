@@ -359,3 +359,55 @@ fn docx_replace_applies_cover_crop_alt_and_reports_dual_units() {
 
     fs::remove_dir_all(dir).expect("remove DOCX replace temp directory");
 }
+
+#[test]
+fn new_slide_picture_placeholder_uses_the_shared_pipeline() {
+    let dir = temp_dir("picture-placeholder");
+    let output = dir.join("picture-placeholder.pptx");
+    let report = run(&[
+        "--json".to_string(),
+        "pptx".to_string(),
+        "new-slide-from-layout".to_string(),
+        "testdata/pptx/picture-placeholder/presentation.pptx".to_string(),
+        "--layout".to_string(),
+        "9".to_string(),
+        "--set-image-slot".to_string(),
+        "pic:1=testdata/images/orientation-6-4000x3000.jpg".to_string(),
+        "--image-fit".to_string(),
+        "contain".to_string(),
+        "--max-dpi".to_string(),
+        "100".to_string(),
+        "--alt".to_string(),
+        "Portrait placeholder".to_string(),
+        "--out".to_string(),
+        output.to_string_lossy().to_string(),
+    ]);
+    let pipeline = &report["imagePipeline"][0];
+    assert_eq!(pipeline["target"], "pic:1");
+    assert_eq!(pipeline["nativeWidthPx"], 4_000);
+    assert_eq!(pipeline["nativeHeightPx"], 3_000);
+    assert_eq!(pipeline["exifOrientation"], 6);
+    assert_eq!(pipeline["orientationApplied"], true);
+    assert_eq!(pipeline["maxDpi"], 100.0);
+    assert_eq!(pipeline["fit"], "contain");
+    assert_eq!(pipeline["altText"], "Portrait placeholder");
+    assert!(pipeline["encodedWidthPx"].as_u64().unwrap() < 3_000);
+    assert!(
+        pipeline["encodedHeightPx"].as_u64().unwrap()
+            > pipeline["encodedWidthPx"].as_u64().unwrap()
+    );
+    strict_validate(&output);
+    let slide_uri = report["newSlideUri"]
+        .as_str()
+        .expect("new slide URI")
+        .trim_start_matches('/');
+    let slide = zip_text(&output, slide_uri);
+    assert!(slide.contains(r#"descr="Portrait placeholder""#));
+    let image_uri = pipeline["imagePartUri"]
+        .as_str()
+        .expect("image part URI")
+        .trim_start_matches('/');
+    assert!(zip_bytes(&output, image_uri).len() < 400_000);
+
+    fs::remove_dir_all(dir).expect("remove picture placeholder temp directory");
+}

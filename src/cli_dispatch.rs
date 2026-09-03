@@ -752,6 +752,8 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                     "--set-image-coords",
                     "--set-image-slot",
                     "--image-fit",
+                    "--max-dpi",
+                    "--alt",
                     "--insert-after",
                     "--level",
                     "--align",
@@ -764,7 +766,12 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                     "--out",
                     "--backup",
                 ],
-                &["--dry-run", "--in-place", "--no-validate"],
+                &[
+                    "--keep-original",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
             )?;
             pptx_new_slide_from_layout(file, rest)
         }
