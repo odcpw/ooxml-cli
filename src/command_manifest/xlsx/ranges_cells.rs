@@ -1,7 +1,7 @@
 use super::{ExecutionSupport, XlsxCommandId, flag, spec};
 
 pub(super) const COMMAND_COUNT: usize = 8;
-pub(super) const LEGACY_START: usize = 240;
+pub(super) const LEGACY_START: usize = 243;
 
 pub(super) fn command_specs() -> Vec<super::CommandSpec> {
     vec![
@@ -178,6 +178,12 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
             vec![
                 flag("--sheet", "sheet", "string", "sheet selector"),
                 flag("--range", "range", "string", "A1 range"),
+                flag(
+                    "--preset",
+                    "preset",
+                    "string",
+                    "theme-derived preset: header, total, band, input, or muted",
+                ),
                 flag("--font-name", "fontName", "string", "font family name"),
                 flag("--font-size", "fontSize", "number", "font size in points"),
                 flag("--font-bold", "fontBold", "bool", "toggle bold text"),

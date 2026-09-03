@@ -801,7 +801,7 @@ mod tests {
         assert_eq!(xlsx::FRONT_COMMAND_COUNT, 22);
         assert_segment_matches_frozen_contract(&front, &frozen[xlsx_start..169]);
         assert_eq!(forms.len(), 1);
-        assert_segment_matches_frozen_contract(&forms, &frozen[221..222]);
+        assert_segment_matches_frozen_contract(&forms, &frozen[224..225]);
     }
 
     #[test]
@@ -918,7 +918,7 @@ mod tests {
     #[test]
     fn complete_xlsx_shadow_has_expected_execution_inventory() {
         let specs = xlsx::command_specs();
-        assert_eq!(specs.len(), 104);
+        assert_eq!(specs.len(), 107);
         let inventory = specs.iter().fold(
             (0, 0, 0, 0),
             |(groups, direct, inspect, mutation), spec| match &spec.execution {
@@ -928,7 +928,7 @@ mod tests {
                 ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
             },
         );
-        assert_eq!(inventory, (21, 34, 17, 32));
+        assert_eq!(inventory, (21, 37, 17, 32));
         assert_eq!(
             specs
                 .iter()
@@ -1214,7 +1214,7 @@ mod tests {
         let first = command_specs();
         let second = command_specs();
         let frozen = frozen_contract_commands();
-        assert_eq!(first.len(), 312);
+        assert_eq!(first.len(), 320);
         assert_segment_matches_frozen_contract(&first, &frozen);
         assert_eq!(
             first.iter().map(capability_value).collect::<Vec<_>>(),
@@ -1227,8 +1227,8 @@ mod tests {
         let specs = command_specs();
         assert_eq!(core::CoreCommandId::ALL.len(), 38);
         assert_eq!(pptx::PptxCommandId::ALL.len(), 109);
-        assert_eq!(xlsx::XlsxCommandId::ALL.len(), 104);
-        assert_eq!(docx::DocxCommandId::ALL.len(), 45);
+        assert_eq!(xlsx::XlsxCommandId::ALL.len(), 107);
+        assert_eq!(docx::DocxCommandId::ALL.len(), 50);
         assert_eq!(vba::VbaCommandId::ALL.len(), 16);
         assert!(
             specs[..38]
@@ -1241,17 +1241,17 @@ mod tests {
                 .all(|spec| matches!(spec.id, CommandId::Pptx(_)))
         );
         assert!(
-            specs[147..251]
+            specs[147..254]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Xlsx(_)))
         );
         assert!(
-            specs[251..296]
+            specs[254..304]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Docx(_)))
         );
         assert!(
-            specs[296..312]
+            specs[304..320]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Vba(_)))
         );
@@ -1265,7 +1265,7 @@ mod tests {
         let spec_ids = specs.iter().map(|spec| spec.id).collect::<Vec<_>>();
         let spec_id_set = spec_ids.iter().copied().collect::<BTreeSet<_>>();
         let path_set = specs.iter().map(|spec| spec.path).collect::<BTreeSet<_>>();
-        assert_eq!(declared.len(), 312);
+        assert_eq!(declared.len(), 320);
         assert_eq!(declared_set.len(), declared.len());
         assert_eq!(spec_id_set, declared_set);
         assert_eq!(spec_ids.len(), spec_id_set.len());
@@ -1279,7 +1279,7 @@ mod tests {
         let mut resolved_ids = BTreeSet::new();
         let mut resolved_paths = BTreeSet::new();
 
-        assert_eq!(specs.len(), 312);
+        assert_eq!(specs.len(), 320);
         for spec in &specs {
             let resolved = command_id_for_canonical_path(spec.path);
             assert_eq!(
@@ -1313,7 +1313,7 @@ mod tests {
         }
 
         assert_eq!(resolved_ids, declared);
-        assert_eq!(resolved_paths.len(), 312);
+        assert_eq!(resolved_paths.len(), 320);
     }
 
     #[test]
@@ -1328,7 +1328,7 @@ mod tests {
                 ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
             },
         );
-        assert_eq!(inventory, (55, 144, 43, 70));
+        assert_eq!(inventory, (57, 147, 43, 73));
         assert_eq!(
             specs
                 .iter()
@@ -1374,7 +1374,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_mutation_set_matches_frozen_70_command_contract() {
+    fn complete_mutation_set_matches_frozen_73_command_contract() {
         let frozen: Value = serde_json::from_str(include_str!(
             "../testdata/golden/command-manifest-contract/capabilities.json"
         ))
@@ -1392,7 +1392,7 @@ mod tests {
             .filter_map(|spec| capability_value(spec)["path"].as_str().map(str::to_owned))
             .collect::<BTreeSet<_>>();
         assert_eq!(actual, expected);
-        assert_eq!(actual.len(), 70);
+        assert_eq!(actual.len(), 73);
     }
 
     #[test]

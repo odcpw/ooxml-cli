@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "groupCount": 61,
-  "leafCount": 253,
-  "groupTopicRows": 50,
+  "groupCount": 63,
+  "leafCount": 259,
+  "groupTopicRows": 52,
   "aliasOwnerRecords": 37,
   "aliasArgvCount": 35,
   "cases": [
@@ -66,7 +66,7 @@
         "docx"
       ],
       "status": 0,
-      "stdout": "Commands for inspecting and mutating Word DOCX documents where Rust parity has been proven.\n\nUsage:\n  ooxml docx [command]\n\nAvailable Commands:\n  blocks      Show stable DOCX body blocks with hashes, selectors, paragraph metadata, table cells, and optional runs.\n  comments    Inspect and mutate DOCX comments.\n  fields      Inspect and edit DOCX fields.\n  footers     Inspect and edit DOCX footers.\n  headers     Inspect and edit DOCX headers.\n  images      Inspect and mutate DOCX inline images.\n  paragraphs  Mutate DOCX body paragraphs.\n  replace     Find and replace text across DOCX body text.\n  scaffold    Create a minimal DOCX package from scratch and validate it by default.\n  styles      Inspect and apply DOCX styles.\n  tables      Inspect and mutate DOCX tables.\n  text        Extract DOCX paragraph text.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nWork with Rust-supported DOCX document commands.\n",
+      "stdout": "Commands for inspecting and mutating Word DOCX documents where Rust parity has been proven.\n\nUsage:\n  ooxml docx [command]\n\nAvailable Commands:\n  blocks      Show stable DOCX body blocks with hashes, selectors, paragraph metadata, table cells, and optional runs.\n  breaks      Insert DOCX page and section breaks.\n  comments    Inspect and mutate DOCX comments.\n  fields      Inspect and edit DOCX fields.\n  footers     Inspect and edit DOCX footers.\n  headers     Inspect and edit DOCX headers.\n  images      Inspect and mutate DOCX inline images.\n  paragraphs  Mutate DOCX body paragraphs.\n  replace     Find and replace text across DOCX body text.\n  scaffold    Create a minimal DOCX package from scratch and validate it by default.\n  sections    Mutate DOCX section page setup.\n  styles      Inspect and apply DOCX styles.\n  tables      Inspect and mutate DOCX tables.\n  text        Extract DOCX paragraph text.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nWork with Rust-supported DOCX document commands.\n",
       "stderr": ""
     },
     {
@@ -174,7 +174,7 @@
         "tables"
       ],
       "status": 0,
-      "stdout": "Commands for table readback and hash-guarded table mutations.\n\nUsage:\n  ooxml docx tables [command]\n\nAliases:\n  tables, table\n\nAvailable Commands:\n  clear-cell  Clear one main-document DOCX table cell's text.\n  create      Append one rectangular main-document DOCX table before section properties.\n  delete-row  Delete one main-document DOCX table row.\n  insert-row  Insert one empty main-document DOCX table row.\n  set-cell    Set one main-document DOCX table cell's plain text.\n  show        Show DOCX tables by table index, body block index, dimensions, merged-cell flag, and cell text.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and mutate DOCX tables.\n",
+      "stdout": "Commands for table readback and hash-guarded table mutations.\n\nUsage:\n  ooxml docx tables [command]\n\nAliases:\n  tables, table\n\nAvailable Commands:\n  clear-cell  Clear one main-document DOCX table cell's text.\n  create      Append one rectangular main-document DOCX table before section properties.\n  delete-row  Delete one main-document DOCX table row.\n  insert-row  Insert one empty main-document DOCX table row.\n  set-cell    Set one main-document DOCX table cell's plain text.\n  set-style   Apply a table style to one DOCX table.\n  show        Show DOCX tables by table index, body block index, dimensions, merged-cell flag, and cell text.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and mutate DOCX tables.\n",
       "stderr": ""
     },
     {
@@ -539,7 +539,7 @@
         "colwidths"
       ],
       "status": 0,
-      "stdout": "Commands for column-width readback and mutation.\n\nUsage:\n  ooxml xlsx colwidths [command]\n\nAliases:\n  colwidths, column-width\n\nAvailable Commands:\n  set   Set a uniform worksheet column width for a column range.\n  show  Show resolved worksheet column widths for a column range.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and set worksheet column widths.\n",
+      "stdout": "Commands for column-width readback and mutation.\n\nUsage:\n  ooxml xlsx colwidths [command]\n\nAliases:\n  colwidths, column-width\n\nAvailable Commands:\n  autofit  Autofit worksheet columns with the deterministic built-in font/number-format width heuristic.\n  set      Set a uniform worksheet column width for a column range.\n  show     Show resolved worksheet column widths for a column range.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and set worksheet column widths.\n",
       "stderr": ""
     },
     {
@@ -695,7 +695,7 @@
         "sheets"
       ],
       "status": 0,
-      "stdout": "Commands for sheet readback and sheet lifecycle mutations.\n\nUsage:\n  ooxml xlsx sheets [command]\n\nAliases:\n  sheets, sheet\n\nAvailable Commands:\n  add     Add an empty worksheet and wire workbook.xml, workbook relationships, and content types.\n  delete  Delete one worksheet and remove its workbook relationship, worksheet part, worksheet relationships, and calcChain.\n  list    List workbook sheets and selectors.\n  move    Move a workbook sheet in tab order while preserving its part, sheetId, and relationship ID.\n  rename  Rename a workbook worksheet by sheet selector.\n  show    Show worksheet metadata, used ranges, and generated readback commands.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and mutate workbook sheets.\n",
+      "stdout": "Commands for sheet readback and sheet lifecycle mutations.\n\nUsage:\n  ooxml xlsx sheets [command]\n\nAliases:\n  sheets, sheet\n\nAvailable Commands:\n  add            Add an empty worksheet and wire workbook.xml, workbook relationships, and content types.\n  delete         Delete one worksheet and remove its workbook relationship, worksheet part, worksheet relationships, and calcChain.\n  list           List workbook sheets and selectors.\n  move           Move a workbook sheet in tab order while preserving its part, sheetId, and relationship ID.\n  rename         Rename a workbook worksheet by sheet selector.\n  set-print      Set worksheet print orientation, fit width, repeated header rows, and gridline visibility.\n  set-tab-color  Set a worksheet tab color.\n  show           Show worksheet metadata, used ranges, and generated readback commands.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and mutate workbook sheets.\n",
       "stderr": ""
     },
     {
@@ -733,6 +733,30 @@
       ],
       "status": 0,
       "stdout": "Commands for workbook core/app properties and calculation settings.\n\nUsage:\n  ooxml xlsx workbook metadata [command]\n\nAvailable Commands:\n  inspect  Inspect workbook core/app properties and calc settings.\n  update   Update workbook metadata fields and calc settings.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and update workbook metadata and calc settings.\n",
+      "stderr": ""
+    },
+    {
+      "name": "group:docx breaks",
+      "category": "canonical-group",
+      "argv": [
+        "help",
+        "docx",
+        "breaks"
+      ],
+      "status": 0,
+      "stdout": "Commands for inserting explicit page and section breaks.\n\nUsage:\n  ooxml docx breaks [command]\n\nAvailable Commands:\n  insert  Insert a page or section break before final section properties.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInsert DOCX page and section breaks.\n",
+      "stderr": ""
+    },
+    {
+      "name": "group:docx sections",
+      "category": "canonical-group",
+      "argv": [
+        "help",
+        "docx",
+        "sections"
+      ],
+      "status": 0,
+      "stdout": "Commands for setting section page size, orientation, and margins.\n\nUsage:\n  ooxml docx sections [command]\n\nAvailable Commands:\n  set   Set page size, orientation, and margins for one DOCX section.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nMutate DOCX section page setup.\n",
       "stderr": ""
     },
     {
@@ -2220,7 +2244,7 @@
         "scaffold"
       ],
       "status": 0,
-      "stdout": "Create a minimal XLSX workbook from scratch and validate it by default.\n\nUsage:\n  ooxml xlsx scaffold <output.xlsx> (or --out <output.xlsx>)\n\nFlags:\n  --out                    output workbook path; accepted as an alternative to positional <output.xlsx>\n  --sheet                  initial worksheet name\n  --force                  replace an existing output file\n  --no-validate            skip post-write strict validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Create a minimal XLSX workbook from scratch and validate it by default.\n\nUsage:\n  ooxml xlsx scaffold <output.xlsx> (or --out <output.xlsx>) [--sheet <name>]... [--theme <preset>|--theme-seed <RRGGBB>|--brand <brand.json>]\n\nFlags:\n  --out                    output workbook path; accepted as an alternative to positional <output.xlsx>\n  --sheet                  repeatable worksheet name\n  --theme                  built-in workbook theme preset\n  --theme-seed             RRGGBB or #RRGGBB brand color used to derive the workbook theme\n  --brand                  brand JSON file used to derive the workbook theme\n  --force                  replace an existing output file\n  --no-validate            skip post-write strict validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
@@ -3039,7 +3063,7 @@
         "create"
       ],
       "status": 0,
-      "stdout": "Create a workbook table over an existing worksheet range.\n\nUsage:\n  ooxml xlsx tables create <file>\n\nFlags:\n  --backup                 backup file path for --in-place\n  --dry-run                validate mutation without writing\n  --in-place               edit the workbook in place\n  --no-validate            skip strict validation\n  --out                    write edited workbook\n  --range                  table range including header row\n  --sheet                  sheet number (1-based), sheetId, handle, or exact sheet name\n  --style                  table style name, or none\n  --table                  new table display name\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Create a workbook table over an existing worksheet range.\n\nUsage:\n  ooxml xlsx tables create <file>\n\nFlags:\n  --backup                 backup file path for --in-place\n  --dry-run                validate mutation without writing\n  --in-place               edit the workbook in place\n  --no-validate            skip strict validation\n  --out                    write edited workbook\n  --range                  table range including header row\n  --sheet                  sheet number (1-based), sheetId, handle, or exact sheet name\n  --style                  table style name, or none\n  --header-style           theme-derived header preset\n  --total-row              add a table totals row\n  --totals                 comma-separated Column:function assignments\n  --table                  new table display name\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
@@ -3197,7 +3221,7 @@
         "set-style"
       ],
       "status": 0,
-      "stdout": "Apply font, fill, border, and alignment styling to a worksheet range.\n\nUsage:\n  ooxml xlsx ranges set-style <file>\n\nFlags:\n  --sheet                  sheet selector\n  --range                  A1 range\n  --font-name              font family name\n  --font-size              font size in points\n  --font-bold              toggle bold text\n  --font-italic            toggle italic text\n  --font-underline         toggle underline text\n  --font-color             font color as hex RGB\n  --fill-color             cell fill color as hex RGB\n  --border-style           border line style\n  --border-color           border color as hex RGB\n  --border-top             apply top border\n  --border-bottom          apply bottom border\n  --border-left            apply left border\n  --border-right           apply right border\n  --alignment-horizontal   horizontal alignment\n  --alignment-vertical     vertical alignment\n  --alignment-wrap-text    toggle text wrapping\n  --max-cells              maximum cells to style\n  --out                    output file path\n  --in-place               write the input file in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            accepted for CLI compatibility\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Apply font, fill, border, and alignment styling to a worksheet range.\n\nUsage:\n  ooxml xlsx ranges set-style <file>\n\nFlags:\n  --sheet                  sheet selector\n  --range                  A1 range\n  --preset                 theme-derived preset: header, total, band, input, or muted\n  --font-name              font family name\n  --font-size              font size in points\n  --font-bold              toggle bold text\n  --font-italic            toggle italic text\n  --font-underline         toggle underline text\n  --font-color             font color as hex RGB\n  --fill-color             cell fill color as hex RGB\n  --border-style           border line style\n  --border-color           border color as hex RGB\n  --border-top             apply top border\n  --border-bottom          apply bottom border\n  --border-left            apply left border\n  --border-right           apply right border\n  --alignment-horizontal   horizontal alignment\n  --alignment-vertical     vertical alignment\n  --alignment-wrap-text    toggle text wrapping\n  --max-cells              maximum cells to style\n  --out                    output file path\n  --in-place               write the input file in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            accepted for CLI compatibility\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
@@ -3364,7 +3388,7 @@
         "append"
       ],
       "status": 0,
-      "stdout": "Append a main document body paragraph, preserving trailing section properties.\n\nUsage:\n  ooxml docx paragraphs append <file>\n\nFlags:\n  --text                   paragraph text\n  --text-file              path to paragraph text\n  --style                  optional paragraph style ID\n  --create-style           add the requested built-in style definition when it is not present\n  --out                    output file path\n  --in-place               write the input file in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Append a main document body paragraph, preserving trailing section properties.\n\nUsage:\n  ooxml docx paragraphs append <file>\n\nFlags:\n  --text                   paragraph text\n  --text-file              path to paragraph text\n  --style                  optional paragraph style ID\n  --create-style           add the requested built-in style definition when it is not present\n  --list                   list kind: bullet or number\n  --level                  zero-based list level 0 to 2\n  --restart                start a new numbering instance at 1\n  --out                    output file path\n  --in-place               write the input file in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
@@ -3377,7 +3401,7 @@
         "insert"
       ],
       "status": 0,
-      "stdout": "Insert a main document body paragraph after a body block index.\n\nUsage:\n  ooxml docx paragraphs insert <file>\n\nFlags:\n  --insert-after (aliases: --after, --after-block) 0 to prepend, or a 1-based body block index\n  --text                   paragraph text\n  --text-file              path to paragraph text\n  --style                  optional paragraph style ID\n  --create-style           add the requested built-in style definition when it is not present\n  --out                    output file path\n  --in-place               write the input file in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Insert a main document body paragraph after a body block index.\n\nUsage:\n  ooxml docx paragraphs insert <file>\n\nFlags:\n  --insert-after (aliases: --after, --after-block) 0 to prepend, or a 1-based body block index\n  --text                   paragraph text\n  --text-file              path to paragraph text\n  --style                  optional paragraph style ID\n  --create-style           add the requested built-in style definition when it is not present\n  --list                   list kind: bullet or number\n  --level                  zero-based list level 0 to 2\n  --restart                start a new numbering instance at 1\n  --out                    output file path\n  --in-place               write the input file in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
@@ -3520,7 +3544,7 @@
         "insert"
       ],
       "status": 0,
-      "stdout": "Insert a simple DOCX field into a body, header, or footer paragraph.\n\nUsage:\n  ooxml docx fields insert <file>\n\nFlags:\n  --location               target part:block location, e.g. body:2 or header1:1\n  --field-code             field instruction, e.g. PAGE\n  --result                 initial cached result text\n  --out                    output file path\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --in-place               write in place\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Insert a simple DOCX field into a body, header, or footer paragraph.\n\nUsage:\n  ooxml docx fields insert <file>\n\nFlags:\n  --location               target part:block location, e.g. body:2 or header1:1\n  --field-code             field instruction, e.g. PAGE\n  --result                 initial cached result text\n  --toc                    insert a table-of-contents field and placeholder\n  --levels                 included heading-level range such as 1-3\n  --out                    output file path\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --in-place               write in place\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
@@ -3611,7 +3635,7 @@
         "set-text"
       ],
       "status": 0,
-      "stdout": "Set footer paragraph text by index.\n\nUsage:\n  ooxml docx footers set-text <file>\n\nFlags:\n  --id                     relationship id to resolve directly\n  --type                   default, first, or even\n  --section                1-based section index; 0 means the last section\n  --index                  1-based paragraph index within the part\n  --selector               selector from headers/footers list\n  --text                   replacement text\n  --text-file              path to replacement text\n  --out                    output file path\n  --in-place               write the input file in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Set footer paragraph text by index.\n\nUsage:\n  ooxml docx footers set-text <file>\n\nFlags:\n  --id                     relationship id to resolve directly\n  --type                   default, first, or even\n  --section                1-based section index; 0 means the last section\n  --index                  1-based paragraph index within the part\n  --selector               selector from headers/footers list\n  --text                   replacement text\n  --text-file              path to replacement text\n  --page-numbers           write Page PAGE of NUMPAGES fields\n  --out                    output file path\n  --in-place               write the input file in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
@@ -3650,7 +3674,7 @@
         "insert"
       ],
       "status": 0,
-      "stdout": "Insert a new inline image paragraph into the DOCX main document body.\n\nUsage:\n  ooxml docx images insert <file>\n\nFlags:\n  --after (aliases: --after-block, --insert-after) body block index to insert after; 0 inserts before the first block\n  --file (aliases: --image) image file path to insert\n  --expect-hash            required expected sha256: block hash when --after is greater than 0\n  --width                  image width in EMUs\n  --height                 image height in EMUs\n  --out                    output file path\n  --in-place               write the input file in place\n  --backup                 backup path for --in-place\n  --dry-run                validate without writing\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Insert a new inline image paragraph into the DOCX main document body.\n\nUsage:\n  ooxml docx images insert <file>\n\nFlags:\n  --after (aliases: --after-block, --insert-after) body block index to insert after; 0 inserts before the first block\n  --file (aliases: --image) image file path to insert\n  --expect-hash            required expected sha256: block hash when --after is greater than 0\n  --width                  image width in EMUs\n  --height                 image height in EMUs\n  --caption                Caption-styled text with an automatic SEQ Figure field\n  --align                  image and caption alignment: left, center, or right\n  --out                    output file path\n  --in-place               write the input file in place\n  --backup                 backup path for --in-place\n  --dry-run                validate without writing\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
@@ -3688,7 +3712,7 @@
         "create"
       ],
       "status": 0,
-      "stdout": "Append one rectangular main-document DOCX table before section properties.\n\nUsage:\n  ooxml docx tables create <file>\n\nFlags:\n  --values                 rectangular JSON matrix of strings, numbers, booleans, or nulls\n  --values-file            path to a rectangular JSON matrix\n  --out                    output file path\n  --in-place               write the input file in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Append one rectangular main-document DOCX table before section properties.\n\nUsage:\n  ooxml docx tables create <file>\n\nFlags:\n  --values                 rectangular JSON matrix of strings, numbers, booleans, or nulls\n  --values-file            path to a rectangular JSON matrix\n  --style                  table style ID such as TableGrid or TableLight\n  --header-row             repeat the first row as a header\n  --widths                 comma-separated column widths or auto\n  --align                  table alignment: left, center, or right\n  --caption                table caption metadata\n  --out                    output file path\n  --in-place               write the input file in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
@@ -3959,6 +3983,84 @@
       "stderr": ""
     },
     {
+      "name": "leaf:xlsx sheets set-tab-color",
+      "category": "canonical-leaf",
+      "argv": [
+        "help",
+        "xlsx",
+        "sheets",
+        "set-tab-color"
+      ],
+      "status": 0,
+      "stdout": "Set a worksheet tab color.\n\nUsage:\n  ooxml xlsx sheets set-tab-color <file> --sheet <sheet> --color <#RRGGBB>\n\nFlags:\n  --sheet                  sheet selector\n  --color                  tab color as #RRGGBB\n  --out                    write edited workbook\n  --in-place               edit the workbook in place\n  --backup                 backup path for --in-place\n  --dry-run                validate mutation without writing\n  --no-validate            skip strict validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stderr": ""
+    },
+    {
+      "name": "leaf:xlsx sheets set-print",
+      "category": "canonical-leaf",
+      "argv": [
+        "help",
+        "xlsx",
+        "sheets",
+        "set-print"
+      ],
+      "status": 0,
+      "stdout": "Set worksheet print orientation, fit width, repeated header rows, and gridline visibility.\n\nUsage:\n  ooxml xlsx sheets set-print <file> --sheet <sheet> [--landscape] [--fit-to-width <n>] [--repeat-header-rows <n>] [--gridlines <on|off>]\n\nFlags:\n  --sheet                  sheet selector\n  --landscape              use landscape orientation\n  --fit-to-width           fit printed pages to this width\n  --repeat-header-rows     repeat this many leading rows on every printed page\n  --gridlines              printed gridline visibility: on or off\n  --out                    write edited workbook\n  --in-place               edit the workbook in place\n  --backup                 backup path for --in-place\n  --dry-run                validate mutation without writing\n  --no-validate            skip strict validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stderr": ""
+    },
+    {
+      "name": "leaf:xlsx colwidths autofit",
+      "category": "canonical-leaf",
+      "argv": [
+        "help",
+        "xlsx",
+        "colwidths",
+        "autofit"
+      ],
+      "status": 0,
+      "stdout": "Autofit worksheet columns with the deterministic built-in font/number-format width heuristic.\n\nUsage:\n  ooxml xlsx colwidths autofit <file> --sheet <sheet> [--range <columns>] [--min <width>] [--max <width>]\n\nFlags:\n  --sheet                  sheet selector\n  --range                  optional column span such as B or B:D\n  --min                    minimum column width in character units\n  --max                    maximum column width in character units\n  --out                    output file path\n  --in-place               write in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            skip post-write validation\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stderr": ""
+    },
+    {
+      "name": "leaf:docx breaks insert",
+      "category": "canonical-leaf",
+      "argv": [
+        "help",
+        "docx",
+        "breaks",
+        "insert"
+      ],
+      "status": 0,
+      "stdout": "Insert a page or section break before final section properties.\n\nUsage:\n  ooxml docx breaks insert <file>\n\nFlags:\n  --page                   insert a page break\n  --section                insert a section break\n  --out                    output file path\n  --in-place               write in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            skip post-write validation\n  --expect-document-hash   expected sha256: document-part hash from any DOCX readback\n  --require-guard          refuse the mutation unless --expect-hash or --expect-document-hash is supplied\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stderr": ""
+    },
+    {
+      "name": "leaf:docx sections set",
+      "category": "canonical-leaf",
+      "argv": [
+        "help",
+        "docx",
+        "sections",
+        "set"
+      ],
+      "status": 0,
+      "stdout": "Set page size, orientation, and margins for one DOCX section.\n\nUsage:\n  ooxml docx sections set <file>\n\nFlags:\n  --section                one-based section index\n  --orientation            page orientation: portrait or landscape\n  --size                   page size: A4 or Letter\n  --margins                top,right,bottom,left lengths\n  --out                    output file path\n  --in-place               write in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            skip post-write validation\n  --expect-document-hash   expected sha256: document-part hash from any DOCX readback\n  --require-guard          refuse the mutation unless --expect-hash or --expect-document-hash is supplied\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stderr": ""
+    },
+    {
+      "name": "leaf:docx tables set-style",
+      "category": "canonical-leaf",
+      "argv": [
+        "help",
+        "docx",
+        "tables",
+        "set-style"
+      ],
+      "status": 0,
+      "stdout": "Apply a table style to one DOCX table.\n\nUsage:\n  ooxml docx tables set-style <file>\n\nFlags:\n  --table                  one-based table number\n  --expect-hash            expected table block hash\n  --style                  table style ID\n  --out                    output file path\n  --in-place               write in place\n  --backup                 backup path for --in-place\n  --dry-run                plan without writing\n  --no-validate            skip post-write validation\n  --expect-document-hash   expected sha256: document-part hash from any DOCX readback\n  --require-guard          refuse the mutation unless --expect-hash or --expect-document-hash is supplied\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stderr": ""
+    },
+    {
       "name": "alias:package",
       "category": "alias",
       "argv": [
@@ -4062,7 +4164,7 @@
         "table"
       ],
       "status": 0,
-      "stdout": "Commands for table readback and hash-guarded table mutations.\n\nUsage:\n  ooxml docx tables [command]\n\nAliases:\n  tables, table\n\nAvailable Commands:\n  clear-cell  Clear one main-document DOCX table cell's text.\n  create      Append one rectangular main-document DOCX table before section properties.\n  delete-row  Delete one main-document DOCX table row.\n  insert-row  Insert one empty main-document DOCX table row.\n  set-cell    Set one main-document DOCX table cell's plain text.\n  show        Show DOCX tables by table index, body block index, dimensions, merged-cell flag, and cell text.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and mutate DOCX tables.\n",
+      "stdout": "Commands for table readback and hash-guarded table mutations.\n\nUsage:\n  ooxml docx tables [command]\n\nAliases:\n  tables, table\n\nAvailable Commands:\n  clear-cell  Clear one main-document DOCX table cell's text.\n  create      Append one rectangular main-document DOCX table before section properties.\n  delete-row  Delete one main-document DOCX table row.\n  insert-row  Insert one empty main-document DOCX table row.\n  set-cell    Set one main-document DOCX table cell's plain text.\n  set-style   Apply a table style to one DOCX table.\n  show        Show DOCX tables by table index, body block index, dimensions, merged-cell flag, and cell text.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and mutate DOCX tables.\n",
       "stderr": ""
     },
     {
@@ -4206,7 +4308,7 @@
         "column-width"
       ],
       "status": 0,
-      "stdout": "Commands for column-width readback and mutation.\n\nUsage:\n  ooxml xlsx colwidths [command]\n\nAliases:\n  colwidths, column-width\n\nAvailable Commands:\n  set   Set a uniform worksheet column width for a column range.\n  show  Show resolved worksheet column widths for a column range.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and set worksheet column widths.\n",
+      "stdout": "Commands for column-width readback and mutation.\n\nUsage:\n  ooxml xlsx colwidths [command]\n\nAliases:\n  colwidths, column-width\n\nAvailable Commands:\n  autofit  Autofit worksheet columns with the deterministic built-in font/number-format width heuristic.\n  set      Set a uniform worksheet column width for a column range.\n  show     Show resolved worksheet column widths for a column range.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and set worksheet column widths.\n",
       "stderr": ""
     },
     {
@@ -4362,7 +4464,7 @@
         "sheet"
       ],
       "status": 0,
-      "stdout": "Commands for sheet readback and sheet lifecycle mutations.\n\nUsage:\n  ooxml xlsx sheets [command]\n\nAliases:\n  sheets, sheet\n\nAvailable Commands:\n  add     Add an empty worksheet and wire workbook.xml, workbook relationships, and content types.\n  delete  Delete one worksheet and remove its workbook relationship, worksheet part, worksheet relationships, and calcChain.\n  list    List workbook sheets and selectors.\n  move    Move a workbook sheet in tab order while preserving its part, sheetId, and relationship ID.\n  rename  Rename a workbook worksheet by sheet selector.\n  show    Show worksheet metadata, used ranges, and generated readback commands.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and mutate workbook sheets.\n",
+      "stdout": "Commands for sheet readback and sheet lifecycle mutations.\n\nUsage:\n  ooxml xlsx sheets [command]\n\nAliases:\n  sheets, sheet\n\nAvailable Commands:\n  add            Add an empty worksheet and wire workbook.xml, workbook relationships, and content types.\n  delete         Delete one worksheet and remove its workbook relationship, worksheet part, worksheet relationships, and calcChain.\n  list           List workbook sheets and selectors.\n  move           Move a workbook sheet in tab order while preserving its part, sheetId, and relationship ID.\n  rename         Rename a workbook worksheet by sheet selector.\n  set-print      Set worksheet print orientation, fit width, repeated header rows, and gridline visibility.\n  set-tab-color  Set a worksheet tab color.\n  show           Show worksheet metadata, used ranges, and generated readback commands.\n\nGlobal Flags:\n  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nInspect and mutate workbook sheets.\n",
       "stderr": ""
     },
     {

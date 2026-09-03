@@ -1,7 +1,7 @@
 use super::{ExecutionSupport, XlsxCommandId, flag, spec};
 
 pub(super) const COMMAND_COUNT: usize = 6;
-pub(super) const LEGACY_START: usize = 222;
+pub(super) const LEGACY_START: usize = 225;
 
 pub(super) fn command_specs() -> Vec<super::CommandSpec> {
     vec![

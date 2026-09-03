@@ -1,6 +1,6 @@
 use super::{ExecutionSupport, XlsxCommandId, flag, spec};
 
-pub(super) const COMMAND_COUNT: usize = 14;
+pub(super) const COMMAND_COUNT: usize = 17;
 pub(super) const LEGACY_START: usize = 169;
 
 pub(super) fn command_specs() -> Vec<super::CommandSpec> {
@@ -178,6 +178,103 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
             None,
         ),
         spec(
+            XlsxCommandId::SheetsSetTabColor,
+            &["xlsx", "sheets", "set-tab-color"],
+            "set-tab-color <file> --sheet <sheet> --color <#RRGGBB>",
+            "Set a worksheet tab color.",
+            &["sheet", "style"],
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag("--color", "color", "string", "tab color as #RRGGBB"),
+                flag("--out", "out", "string", "write edited workbook"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "edit the workbook in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "validate mutation without writing",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict validation",
+                ),
+            ],
+            ExecutionSupport::DirectOnly {
+                reason: Some(
+                    "deterministic worksheet presentation mutation; serve/MCP op support is not wired yet",
+                ),
+            },
+            None,
+        ),
+        spec(
+            XlsxCommandId::SheetsSetPrint,
+            &["xlsx", "sheets", "set-print"],
+            "set-print <file> --sheet <sheet> [--landscape] [--fit-to-width <n>] [--repeat-header-rows <n>] [--gridlines <on|off>]",
+            "Set worksheet print orientation, fit width, repeated header rows, and gridline visibility.",
+            &["sheet"],
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag(
+                    "--landscape",
+                    "landscape",
+                    "bool",
+                    "use landscape orientation",
+                ),
+                flag(
+                    "--fit-to-width",
+                    "fitToWidth",
+                    "int",
+                    "fit printed pages to this width",
+                ),
+                flag(
+                    "--repeat-header-rows",
+                    "repeatHeaderRows",
+                    "int",
+                    "repeat this many leading rows on every printed page",
+                ),
+                flag(
+                    "--gridlines",
+                    "gridlines",
+                    "string",
+                    "printed gridline visibility: on or off",
+                ),
+                flag("--out", "out", "string", "write edited workbook"),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "edit the workbook in place",
+                ),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "validate mutation without writing",
+                ),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip strict validation",
+                ),
+            ],
+            ExecutionSupport::DirectOnly {
+                reason: Some(
+                    "deterministic worksheet presentation mutation; serve/MCP op support is not wired yet",
+                ),
+            },
+            None,
+        ),
+        spec(
             XlsxCommandId::ColwidthsShow,
             &["xlsx", "colwidths", "show"],
             "show <file> --sheet <sheet> --range <columns>",
@@ -225,6 +322,50 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                 ),
             ],
             ExecutionSupport::ServeMutation { reason: None },
+            None,
+        ),
+        spec(
+            XlsxCommandId::ColwidthsAutofit,
+            &["xlsx", "colwidths", "autofit"],
+            "autofit <file> --sheet <sheet> [--range <columns>] [--min <width>] [--max <width>]",
+            "Autofit worksheet columns with the deterministic built-in font/number-format width heuristic.",
+            &["sheet", "range"],
+            vec![
+                flag("--sheet", "sheet", "string", "sheet selector"),
+                flag(
+                    "--range",
+                    "range",
+                    "string",
+                    "optional column span such as B or B:D",
+                ),
+                flag(
+                    "--min",
+                    "min",
+                    "number",
+                    "minimum column width in character units",
+                ),
+                flag(
+                    "--max",
+                    "max",
+                    "number",
+                    "maximum column width in character units",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag("--in-place", "inPlace", "bool", "write in place"),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+            ],
+            ExecutionSupport::DirectOnly {
+                reason: Some(
+                    "deterministic content-width mutation; serve/MCP op support is not wired yet",
+                ),
+            },
             None,
         ),
         spec(
@@ -439,6 +580,6 @@ mod tests {
                 ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
             },
         );
-        assert_eq!(inventory, (0, 6, 2, 6));
+        assert_eq!(inventory, (0, 9, 2, 6));
     }
 }

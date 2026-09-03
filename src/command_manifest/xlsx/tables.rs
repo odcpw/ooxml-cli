@@ -1,7 +1,7 @@
 use super::{ExecutionSupport, XlsxCommandId, flag, spec};
 
 pub(super) const COMMAND_COUNT: usize = 7;
-pub(super) const LEGACY_START: usize = 228;
+pub(super) const LEGACY_START: usize = 231;
 
 pub(super) fn command_specs() -> Vec<super::CommandSpec> {
     vec![
@@ -141,6 +141,19 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                     "sheet number (1-based), sheetId, handle, or exact sheet name",
                 ),
                 flag("--style", "style", "string", "table style name, or none"),
+                flag(
+                    "--header-style",
+                    "headerStyle",
+                    "string",
+                    "theme-derived header preset",
+                ),
+                flag("--total-row", "totalRow", "bool", "add a table totals row"),
+                flag(
+                    "--totals",
+                    "totals",
+                    "string",
+                    "comma-separated Column:function assignments",
+                ),
                 flag("--table", "table", "string", "new table display name"),
             ],
             ExecutionSupport::ServeMutation { reason: None },

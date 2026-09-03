@@ -48,8 +48,11 @@ pub(crate) enum XlsxCommandId {
     SheetsRename,
     SheetsMove,
     SheetsDelete,
+    SheetsSetTabColor,
+    SheetsSetPrint,
     ColwidthsShow,
     ColwidthsSet,
+    ColwidthsAutofit,
     RowheightsShow,
     RowheightsSet,
     RowsInsert,
@@ -147,7 +150,7 @@ pub(super) fn front_command_specs() -> Vec<CommandSpec> {
     specs.push(spec(
         XlsxCommandId::Scaffold,
         &["xlsx", "scaffold"],
-        "scaffold <output.xlsx> (or --out <output.xlsx>)",
+        "scaffold <output.xlsx> (or --out <output.xlsx>) [--sheet <name>]... [--theme <preset>|--theme-seed <RRGGBB>|--brand <brand.json>]",
         "Create a minimal XLSX workbook from scratch and validate it by default.",
         &["package", "sheet"],
         vec![
@@ -157,7 +160,25 @@ pub(super) fn front_command_specs() -> Vec<CommandSpec> {
                 "string",
                 "output workbook path; accepted as an alternative to positional <output.xlsx>",
             ),
-            flag("--sheet", "sheet", "string", "initial worksheet name"),
+            flag("--sheet", "sheet", "string", "repeatable worksheet name"),
+            flag(
+                "--theme",
+                "theme",
+                "string",
+                "built-in workbook theme preset",
+            ),
+            flag(
+                "--theme-seed",
+                "themeSeed",
+                "string",
+                "RRGGBB or #RRGGBB brand color used to derive the workbook theme",
+            ),
+            flag(
+                "--brand",
+                "brand",
+                "string",
+                "brand JSON file used to derive the workbook theme",
+            ),
             flag(
                 "--force",
                 "force",

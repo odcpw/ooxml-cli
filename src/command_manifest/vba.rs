@@ -3,7 +3,7 @@ use serde_json::Value;
 use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 
 pub(super) const COMMAND_COUNT: usize = 16;
-pub(super) const LEGACY_START: usize = 296;
+pub(super) const LEGACY_START: usize = 304;
 
 command_id_enum! {
 pub(crate) enum VbaCommandId {
@@ -751,7 +751,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             specs.iter().map(|spec| spec.id).collect::<Vec<_>>()
         );
-        assert_eq!(start + COMMAND_COUNT, 312);
+        assert_eq!(start + COMMAND_COUNT, 320);
     }
 
     #[test]

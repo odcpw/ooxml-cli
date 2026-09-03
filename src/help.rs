@@ -62,6 +62,12 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
         &["comment"],
     ),
     (
+        &["docx", "breaks"],
+        "Insert DOCX page and section breaks.",
+        "Commands for inserting explicit page and section breaks.",
+        &[],
+    ),
+    (
         &["docx", "fields"],
         "Inspect and edit DOCX fields.",
         "Commands for listing fields and mutating cached field results.",
@@ -90,6 +96,12 @@ const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
         "Mutate DOCX body paragraphs.",
         "Commands for appending, inserting, setting, and clearing body paragraphs.",
         &["paragraph"],
+    ),
+    (
+        &["docx", "sections"],
+        "Mutate DOCX section page setup.",
+        "Commands for setting section page size, orientation, and margins.",
+        &[],
     ),
     (
         &["docx", "styles"],

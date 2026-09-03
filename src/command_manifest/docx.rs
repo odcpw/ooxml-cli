@@ -2,8 +2,8 @@ use serde_json::Value;
 
 use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 
-pub(super) const COMMAND_COUNT: usize = 45;
-pub(super) const LEGACY_START: usize = 251;
+pub(super) const COMMAND_COUNT: usize = 50;
+pub(super) const LEGACY_START: usize = 254;
 
 command_id_enum! {
 pub(crate) enum DocxCommandId {
@@ -16,12 +16,16 @@ pub(crate) enum DocxCommandId {
     Paragraphs,
     Styles,
     Tables,
+    Breaks,
+    Sections,
     Scaffold,
     Text,
     Blocks,
     BlocksReplace,
     BlocksDelete,
     BlocksInsertAfter,
+    BreaksInsert,
+    SectionsSet,
     ParagraphsAppend,
     ParagraphsInsert,
     ParagraphsSet,
@@ -48,6 +52,7 @@ pub(crate) enum DocxCommandId {
     Replace,
     TablesShow,
     TablesCreate,
+    TablesSetStyle,
     TablesSetCell,
     TablesClearCell,
     TablesInsertRow,
@@ -157,6 +162,30 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
             &["docx", "tables"],
             "tables",
             "Inspect and mutate DOCX tables",
+            &[],
+            vec![],
+            ExecutionSupport::GroupOnly {
+                reason: Some("it is a command group, not a leaf mutation command"),
+            },
+            None,
+        ),
+        spec(
+            DocxCommandId::Breaks,
+            &["docx", "breaks"],
+            "breaks",
+            "Insert DOCX page and section breaks",
+            &[],
+            vec![],
+            ExecutionSupport::GroupOnly {
+                reason: Some("it is a command group, not a leaf mutation command"),
+            },
+            None,
+        ),
+        spec(
+            DocxCommandId::Sections,
+            &["docx", "sections"],
+            "sections",
+            "Mutate DOCX section page setup",
             &[],
             vec![],
             ExecutionSupport::GroupOnly {
@@ -397,6 +426,88 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
             None,
         ),
         spec(
+            DocxCommandId::BreaksInsert,
+            &["docx", "breaks", "insert"],
+            "insert <file>",
+            "Insert a page or section break before final section properties.",
+            &["paragraph", "section"],
+            vec![
+                flag("--page", "page", "bool", "insert a page break"),
+                flag("--section", "section", "bool", "insert a section break"),
+                flag("--out", "out", "string", "output file path"),
+                flag("--in-place", "inPlace", "bool", "write in place"),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+                flag(
+                    "--expect-document-hash",
+                    "expectDocumentHash",
+                    "string",
+                    "expected sha256: document-part hash from any DOCX readback",
+                ),
+                flag(
+                    "--require-guard",
+                    "requireGuard",
+                    "bool",
+                    "refuse the mutation unless --expect-hash or --expect-document-hash is supplied",
+                ),
+            ],
+            ExecutionSupport::ServeMutation { reason: None },
+            None,
+        ),
+        spec(
+            DocxCommandId::SectionsSet,
+            &["docx", "sections", "set"],
+            "set <file>",
+            "Set page size, orientation, and margins for one DOCX section.",
+            &["section"],
+            vec![
+                flag("--section", "section", "int", "one-based section index"),
+                flag(
+                    "--orientation",
+                    "orientation",
+                    "string",
+                    "page orientation: portrait or landscape",
+                ),
+                flag("--size", "size", "string", "page size: A4 or Letter"),
+                flag(
+                    "--margins",
+                    "margins",
+                    "string",
+                    "top,right,bottom,left lengths",
+                ),
+                flag("--out", "out", "string", "output file path"),
+                flag("--in-place", "inPlace", "bool", "write in place"),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+                flag(
+                    "--expect-document-hash",
+                    "expectDocumentHash",
+                    "string",
+                    "expected sha256: document-part hash from any DOCX readback",
+                ),
+                flag(
+                    "--require-guard",
+                    "requireGuard",
+                    "bool",
+                    "refuse the mutation unless --expect-hash or --expect-document-hash is supplied",
+                ),
+            ],
+            ExecutionSupport::ServeMutation { reason: None },
+            None,
+        ),
+        spec(
             DocxCommandId::ParagraphsAppend,
             &["docx", "paragraphs", "append"],
             "append <file>",
@@ -416,6 +527,14 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "createStyle",
                     "bool",
                     "add the requested built-in style definition when it is not present",
+                ),
+                flag("--list", "list", "string", "list kind: bullet or number"),
+                flag("--level", "level", "int", "zero-based list level 0 to 2"),
+                flag(
+                    "--restart",
+                    "restart",
+                    "bool",
+                    "start a new numbering instance at 1",
                 ),
                 flag("--out", "out", "string", "output file path"),
                 flag(
@@ -462,6 +581,14 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "createStyle",
                     "bool",
                     "add the requested built-in style definition when it is not present",
+                ),
+                flag("--list", "list", "string", "list kind: bullet or number"),
+                flag("--level", "level", "int", "zero-based list level 0 to 2"),
+                flag(
+                    "--restart",
+                    "restart",
+                    "bool",
+                    "start a new numbering instance at 1",
                 ),
                 flag("--out", "out", "string", "output file path"),
                 flag(
@@ -842,6 +969,18 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "field instruction, e.g. PAGE",
                 ),
                 flag("--result", "result", "string", "initial cached result text"),
+                flag(
+                    "--toc",
+                    "toc",
+                    "bool",
+                    "insert a table-of-contents field and placeholder",
+                ),
+                flag(
+                    "--levels",
+                    "levels",
+                    "string",
+                    "included heading-level range such as 1-3",
+                ),
                 flag("--out", "out", "string", "output file path"),
                 flag("--backup", "backup", "string", "backup path for --in-place"),
                 flag("--dry-run", "dryRun", "bool", "plan without writing"),
@@ -1079,6 +1218,12 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "string",
                     "path to replacement text",
                 ),
+                flag(
+                    "--page-numbers",
+                    "pageNumbers",
+                    "bool",
+                    "write Page PAGE of NUMPAGES fields",
+                ),
                 flag("--out", "out", "string", "output file path"),
                 flag(
                     "--in-place",
@@ -1189,6 +1334,18 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                 ),
                 flag("--width", "width", "int", "image width in EMUs"),
                 flag("--height", "height", "int", "image height in EMUs"),
+                flag(
+                    "--caption",
+                    "caption",
+                    "string",
+                    "Caption-styled text with an automatic SEQ Figure field",
+                ),
+                flag(
+                    "--align",
+                    "align",
+                    "string",
+                    "image and caption alignment: left, center, or right",
+                ),
                 flag("--out", "out", "string", "output file path"),
                 flag(
                     "--in-place",
@@ -1315,6 +1472,31 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "string",
                     "path to a rectangular JSON matrix",
                 ),
+                flag(
+                    "--style",
+                    "style",
+                    "string",
+                    "table style ID such as TableGrid or TableLight",
+                ),
+                flag(
+                    "--header-row",
+                    "headerRow",
+                    "bool",
+                    "repeat the first row as a header",
+                ),
+                flag(
+                    "--widths",
+                    "widths",
+                    "string",
+                    "comma-separated column widths or auto",
+                ),
+                flag(
+                    "--align",
+                    "align",
+                    "string",
+                    "table alignment: left, center, or right",
+                ),
+                flag("--caption", "caption", "string", "table caption metadata"),
                 flag("--out", "out", "string", "output file path"),
                 flag(
                     "--in-place",
@@ -1336,6 +1518,47 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "append-only first-class authoring; values must be a rectangular JSON matrix",
                 ),
             },
+            None,
+        ),
+        spec(
+            DocxCommandId::TablesSetStyle,
+            &["docx", "tables", "set-style"],
+            "set-style <file>",
+            "Apply a table style to one DOCX table.",
+            &["table", "style"],
+            vec![
+                flag("--table", "table", "int", "one-based table number"),
+                flag(
+                    "--expect-hash",
+                    "expectHash",
+                    "string",
+                    "expected table block hash",
+                ),
+                flag("--style", "style", "string", "table style ID"),
+                flag("--out", "out", "string", "output file path"),
+                flag("--in-place", "inPlace", "bool", "write in place"),
+                flag("--backup", "backup", "string", "backup path for --in-place"),
+                flag("--dry-run", "dryRun", "bool", "plan without writing"),
+                flag(
+                    "--no-validate",
+                    "noValidate",
+                    "bool",
+                    "skip post-write validation",
+                ),
+                flag(
+                    "--expect-document-hash",
+                    "expectDocumentHash",
+                    "string",
+                    "expected sha256: document-part hash from any DOCX readback",
+                ),
+                flag(
+                    "--require-guard",
+                    "requireGuard",
+                    "bool",
+                    "refuse the mutation unless --expect-hash or --expect-document-hash is supplied",
+                ),
+            ],
+            ExecutionSupport::ServeMutation { reason: None },
             None,
         ),
         spec(
@@ -1551,6 +1774,8 @@ mod tests {
         "ooxml docx blocks replace",
         "ooxml docx blocks delete",
         "ooxml docx blocks insert-after",
+        "ooxml docx breaks insert",
+        "ooxml docx sections set",
         "ooxml docx paragraphs append",
         "ooxml docx paragraphs insert",
         "ooxml docx paragraphs set",
@@ -1565,6 +1790,7 @@ mod tests {
         "ooxml docx footers set-text",
         "ooxml docx replace",
         "ooxml docx tables create",
+        "ooxml docx tables set-style",
         "ooxml docx tables set-cell",
         "ooxml docx tables clear-cell",
         "ooxml docx tables insert-row",
@@ -1632,7 +1858,7 @@ mod tests {
                 ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
             },
         );
-        assert_eq!(inventory, (9, 3, 12, 21));
+        assert_eq!(inventory, (11, 3, 12, 24));
         assert_eq!(
             specs
                 .iter()
@@ -1682,7 +1908,7 @@ mod tests {
             .collect::<BTreeSet<_>>();
         assert_eq!(actual, expected);
         assert_eq!(actual, dispatch_oracle);
-        assert_eq!(actual.len(), 21);
+        assert_eq!(actual.len(), 24);
         let advisories = specs
             .iter()
             .filter_map(|spec| match &spec.execution {

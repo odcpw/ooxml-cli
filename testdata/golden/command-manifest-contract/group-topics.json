@@ -60,6 +60,13 @@
     {
       "path": [
         "docx",
+        "breaks"
+      ],
+      "aliases": []
+    },
+    {
+      "path": [
+        "docx",
         "fields"
       ],
       "aliases": [
@@ -101,6 +108,13 @@
       "aliases": [
         "paragraph"
       ]
+    },
+    {
+      "path": [
+        "docx",
+        "sections"
+      ],
+      "aliases": []
     },
     {
       "path": [

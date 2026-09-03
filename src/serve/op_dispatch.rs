@@ -41,7 +41,13 @@ pub(super) fn serve_op_command(working: &str, command: &str, args: &Value) -> Cl
             | XlsxCommandId::FreezeSet
             | XlsxCommandId::FreezeClear,
         )
-        | CommandId::Docx(DocxCommandId::Replace | DocxCommandId::TablesCreate)
+        | CommandId::Docx(
+            DocxCommandId::Replace
+            | DocxCommandId::TablesCreate
+            | DocxCommandId::TablesSetStyle
+            | DocxCommandId::BreaksInsert
+            | DocxCommandId::SectionsSet,
+        )
         | CommandId::Vba(
             VbaCommandId::Create
             | VbaCommandId::Rebuild

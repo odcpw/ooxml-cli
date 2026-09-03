@@ -69,7 +69,7 @@ fn capabilities_match_exact_raw_bytes_and_frozen_contract_shapes() {
     let commands = document["commands"]
         .as_array()
         .expect("capability commands");
-    assert_eq!(commands.len(), 312);
+    assert_eq!(commands.len(), 320);
     let paths = commands
         .iter()
         .map(|command| {
@@ -89,7 +89,7 @@ fn capabilities_match_exact_raw_bytes_and_frozen_contract_shapes() {
             .iter()
             .filter(|command| command["opCompatible"] == true)
             .count(),
-        70
+        73
     );
     let compatible_advisories = commands
         .iter()
@@ -200,9 +200,9 @@ fn capabilities_match_exact_raw_bytes_and_frozen_contract_shapes() {
 fn exhaustive_help_discovery_corpus_matches_raw_process_bytes() {
     let corpus: HelpCorpus = serde_json::from_str(HELP_CORPUS_JSON).expect("help corpus JSON");
     assert_eq!(corpus.schema_version, 1);
-    assert_eq!(corpus.group_count, 61);
-    assert_eq!(corpus.leaf_count, 253);
-    assert_eq!(corpus.group_topic_rows, 50);
+    assert_eq!(corpus.group_count, 63);
+    assert_eq!(corpus.leaf_count, 259);
+    assert_eq!(corpus.group_topic_rows, 52);
     assert_eq!(corpus.alias_owner_records, 37);
     assert_eq!(corpus.alias_argv_count, 35);
     let inventory: GroupTopicInventory =
