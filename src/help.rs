@@ -8,8 +8,8 @@ use crate::cli_dispatch::{DispatchBody, DispatchOutput};
 use crate::command_manifest::{HelpProjection, help_projection};
 use crate::{CliError, CliResult, EXIT_SUCCESS};
 
-const ROOT_SUMMARY: &str = "ooxml is the Rust port of ooxml-cli for proven OOXML automation.";
-const ROOT_LONG: &str = "It exposes only the command surface implemented in Rust. Use `ooxml --json capabilities` for the machine-readable inventory.";
+const ROOT_SUMMARY: &str =
+    "ooxml inspects, edits, validates, and proves Office Open XML packages for agents and scripts.";
 const EMPTY_ALIASES: &[&str] = &[];
 
 const GROUP_TOPICS: &[(&[&str], &str, &str, &[&str])] = &[
@@ -452,8 +452,9 @@ fn group_for_topic(
 
 fn root_help() -> String {
     let commands = available_children(&[]);
+    let command_count = capability_commands().len();
     let mut out = format!(
-        "{ROOT_SUMMARY}\n\n{ROOT_LONG}\n\nUsage:\n  ooxml [flags]\n  ooxml [command]\n\nAvailable Commands:\n"
+        "{ROOT_SUMMARY}\n\nIts typed manifest currently exposes {command_count} command contracts across direct CLI, build, batch/Serve, Markdown, and typed MCP surfaces. Use `ooxml --json capabilities` for the live machine-readable inventory.\n\nUsage:\n  ooxml [flags]\n  ooxml [command]\n\nAvailable Commands:\n"
     );
     out.push_str(&render_children(&commands));
     out.push_str("\nGlobal Flags:\n");

@@ -653,9 +653,21 @@ fn root_and_parent_help_text_surfaces_are_useful() {
     let cases: &[(&[&str], &[&str])] = &[
         (
             &[],
-            &["Rust port", "Usage:", "Available Commands", "capabilities"],
+            &[
+                "inspects, edits, validates, and proves",
+                "Usage:",
+                "Available Commands",
+                "capabilities",
+            ],
         ),
-        (&["help"], &["Rust port", "Usage:", "Available Commands"]),
+        (
+            &["help"],
+            &[
+                "inspects, edits, validates, and proves",
+                "Usage:",
+                "Available Commands",
+            ],
+        ),
         (
             &["completion"],
             &["Generate shell completion scripts", "bash", "powershell"],
