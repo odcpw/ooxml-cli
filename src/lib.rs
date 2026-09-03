@@ -35,6 +35,7 @@ mod docx_replace;
 mod docx_styles;
 mod docx_tables;
 mod docx_xml;
+mod env_conventions;
 mod find;
 mod help;
 mod image_pipeline;
@@ -379,6 +380,7 @@ pub fn run_process(raw_args: &[String]) -> i32 {
                     );
                 }
                 DispatchBody::Text(text) => {
+                    let text = env_conventions::text_for_stdout(text);
                     print!("{text}");
                     if !text.ends_with('\n') {
                         println!();
