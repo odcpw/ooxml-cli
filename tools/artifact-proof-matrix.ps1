@@ -874,7 +874,7 @@ function ConvertFrom-OfficeOracleMappingObject {
     foreach ($property in @($Object.PSObject.Properties)) {
         [void]$items.Add((New-OfficeOracleMappingItemFromPair -CommandPath $property.Name -Value $property.Value))
     }
-    return @($items.ToArray())
+    return [object[]]$items.ToArray()
 }
 
 function Get-OfficeOracleMappingItems {
@@ -997,7 +997,7 @@ function New-OfficeOracleTierEvidence {
     return [pscustomobject][ordered]@{
         status = $status
         detail = $detail
-        evidence = @($evidence)
+        evidence = [string[]]$evidence.ToArray()
     }
 }
 
@@ -1130,7 +1130,7 @@ function New-SmokeTierEvidence {
     return [pscustomobject][ordered]@{
         status = $status
         detail = $detail
-        evidence = @($evidence)
+        evidence = [string[]]$evidence.ToArray()
     }
 }
 

@@ -435,7 +435,8 @@ function Import-ContractEvidenceScenarios {
         throw "Windows smoke is missing contract mutation scenarios: $($missing -join ', ')"
     }
     Write-Host ("[contract-evidence] contract mutation paths: 152; added {0} prebuilt scenarios" -f $additional.Count)
-    return @($additional)
+    [object[]]$additionalScenarios = $additional.ToArray()
+    return $additionalScenarios
 }
 
 function New-StageResult {
@@ -1723,8 +1724,8 @@ $scenarios = @(
 $contractMutationPathCount = 0
 $contractPrebuiltScenarioCount = 0
 if ($ContractEvidenceDir -ne "") {
-    $contractScenarios = @(Import-ContractEvidenceScenarios -Directory $ContractEvidenceDir -ExistingScenarios $scenarios)
-    $scenarios = @($scenarios) + $contractScenarios
+    [object[]]$contractScenarios = @(Import-ContractEvidenceScenarios -Directory $ContractEvidenceDir -ExistingScenarios ([object[]]$scenarios))
+    $scenarios = [object[]](@([object[]]$scenarios) + $contractScenarios)
     $contractMutationPathCount = 152
     $contractPrebuiltScenarioCount = $contractScenarios.Count
 }

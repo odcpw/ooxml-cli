@@ -177,6 +177,24 @@ Write-Host 'literal $other: value'
     );
 }
 
+#[test]
+fn powershell_generic_lists_are_materialized_before_array_binding() {
+    let smoke = include_str!("../../tools/windows-office-edit-smoke.ps1");
+    assert!(smoke.contains("[object[]]$additionalScenarios = $additional.ToArray()"));
+    assert!(smoke.contains("[object[]]$contractScenarios = @(Import-ContractEvidenceScenarios"));
+    assert!(!smoke.contains("return @($additional)"));
+
+    let matrix = include_str!("../../tools/artifact-proof-matrix.ps1");
+    assert!(matrix.contains("return [object[]]$items.ToArray()"));
+    assert_eq!(
+        matrix
+            .matches("evidence = [string[]]$evidence.ToArray()")
+            .count(),
+        2,
+        "both generic string-list evidence paths must materialize native arrays"
+    );
+}
+
 fn unbraced_variable_colons_in_double_quotes(source: &str) -> Vec<usize> {
     const VALID_SCOPES: &[&str] = &["env", "global", "local", "private", "script", "using"];
     let bytes = source.as_bytes();
