@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
@@ -39,6 +39,7 @@ async function main() {
       const destination = join(tmp, `${current.id}-${version.originalName}`);
       await downloadFile(version.downloadUrl, destination);
       await strictValidate(destination);
+      typedCheck(destination);
       log('checked_document', {
         documentId: current.id,
         extension: selected.currentExtension,
@@ -117,6 +118,34 @@ async function strictValidate(file) {
   const errors = Number(parsed.errors ?? parsed.summary?.errors ?? 0);
   if (errors > 0) throw new Error(`Strict validation failed: ${stdout}`);
   log('validated', { file: basename(file), errors });
+}
+
+function typedCheck(file) {
+  const request = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: {
+      name: 'check_package',
+      arguments: { file, openXmlSdk: 'skip', failOn: 'error' },
+    },
+  });
+  const result = spawnSync(ooxmlBin, ['mcp'], {
+    input: `${request}\n`,
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    throw new Error(`Typed check_package MCP exited with ${result.status}: ${result.stderr}`);
+  }
+  const response = JSON.parse(String(result.stdout).trim());
+  if (response.error || response.result?.isError) {
+    throw new Error(`Typed check_package failed: ${JSON.stringify(response)}`);
+  }
+  const proof = response.result?.structuredContent;
+  const errors = Number(proof?.summary?.errors ?? 0);
+  if (errors > 0) throw new Error(`Typed check_package reported errors: ${JSON.stringify(proof)}`);
+  log('typed_check', { file: basename(file), proofLevel: proof?.proofLevel, errors });
 }
 
 async function getJson(path) {

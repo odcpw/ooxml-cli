@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
+use std::path::{Path, PathBuf};
 
 use crate::{
     CliError, CliResult, EXIT_SUCCESS, EXIT_UNEXPECTED, ServeState, json_string,
@@ -17,6 +18,7 @@ pub(crate) fn run_mcp_stdio() -> i32 {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
     let mut state = McpState::default();
+    let mut output_policy = McpOutputPolicy::from_env();
     for line in stdin.lock().lines() {
         let line = match line {
             Ok(line) => line,
@@ -48,6 +50,13 @@ pub(crate) fn run_mcp_stdio() -> i32 {
             }
         };
         if let Some(response) = state.handle_rpc(request) {
+            let response = match output_policy.externalize(response) {
+                Ok(response) => response,
+                Err(err) => {
+                    let _ = writeln!(std::io::stderr(), "mcp output error: {err}");
+                    return EXIT_UNEXPECTED;
+                }
+            };
             if writeln!(
                 stdout,
                 "{}",
@@ -63,6 +72,90 @@ pub(crate) fn run_mcp_stdio() -> i32 {
         }
     }
     EXIT_SUCCESS
+}
+
+#[derive(Default)]
+struct McpOutputPolicy {
+    max_inline_bytes: Option<usize>,
+    output_dir: Option<PathBuf>,
+    sequence: u64,
+}
+
+impl McpOutputPolicy {
+    fn from_env() -> Self {
+        let max_inline_bytes = std::env::var("OOXML_MCP_MAX_OUTPUT_BYTES")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|value| *value > 0);
+        let output_dir = std::env::var_os("OOXML_MCP_OUTPUT_DIR")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+        Self {
+            max_inline_bytes,
+            output_dir,
+            sequence: 0,
+        }
+    }
+
+    fn externalize(&mut self, response: Value) -> Result<Value, String> {
+        let (Some(max_inline_bytes), Some(output_dir)) =
+            (self.max_inline_bytes, self.output_dir.clone())
+        else {
+            return Ok(response);
+        };
+        if response.get("result").is_none() {
+            return Ok(response);
+        }
+        let serialized = serde_json::to_vec(&response)
+            .map_err(|error| format!("failed to measure JSON-RPC response: {error}"))?;
+        if serialized.len() <= max_inline_bytes {
+            return Ok(response);
+        }
+
+        self.sequence += 1;
+        std::fs::create_dir_all(&output_dir).map_err(|error| {
+            format!(
+                "failed to create configured MCP output directory {}: {error}",
+                output_dir.display()
+            )
+        })?;
+        let output_file = output_dir.join(format!("mcp-response-{:06}.json", self.sequence));
+        write_lf_json(&output_file, &response)?;
+        let byte_count = serialized.len() + 1;
+        let id = response.get("id").cloned().unwrap_or(Value::Null);
+        let output_file = output_file.to_string_lossy().into_owned();
+        Ok(json!({
+            "id": id,
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [{
+                    "type": "text",
+                    "text": format!(
+                        "MCP response exceeded {max_inline_bytes} inline bytes; read the full JSON-RPC response from {output_file}"
+                    ),
+                }],
+                "isError": false,
+                "structuredContent": {
+                    "byteCount": byte_count,
+                    "mimeType": "application/json",
+                    "outputFile": output_file,
+                    "truncated": true,
+                },
+            },
+        }))
+    }
+}
+
+fn write_lf_json(path: &Path, value: &Value) -> Result<(), String> {
+    let mut serialized = serde_json::to_vec(value)
+        .map_err(|error| format!("failed to serialize oversized MCP response: {error}"))?;
+    serialized.push(b'\n');
+    std::fs::write(path, serialized).map_err(|error| {
+        format!(
+            "failed to write oversized MCP response to {}: {error}",
+            path.display()
+        )
+    })
 }
 
 #[derive(Default)]

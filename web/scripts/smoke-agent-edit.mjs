@@ -65,6 +65,9 @@ async function main() {
     if (summary.toolNames.length && !summary.toolNames.includes('apply_ooxml_ops_to_current')) {
       throw new Error(`Agent did not use apply_ooxml_ops_to_current. Saw tools: ${summary.toolNames.join(', ')}`);
     }
+    if (summary.toolNames.length && !summary.toolNames.includes('check_package')) {
+      throw new Error(`Agent did not use typed check_package. Saw tools: ${summary.toolNames.join(', ')}`);
+    }
 
     console.log(JSON.stringify({ ok: true, ...summary }, null, 2));
   } finally {
@@ -133,7 +136,8 @@ async function runAgent(threadId) {
     '2. inspect_current_with_ooxml for slide 1 text',
     '3. apply_ooxml_ops_to_current with command "pptx replace text" and args {"slide":1,"target":"title","text":"' + marker + '"}',
     '   Include expectedDocumentId and expectedVersionId from the inspection/status output.',
-    '4. render_current_presentation_preview',
+    '4. check_package with openXmlSdk "skip" and failOn "error"',
+    '5. render_current_presentation_preview',
     '',
     'Do not use replace_text_in_current_document or set_current_presentation_slide_shape_text for this smoke.',
   ].join('\n');

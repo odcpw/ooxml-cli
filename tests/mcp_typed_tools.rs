@@ -18,6 +18,18 @@ const TYPED_NAMES: [&str; 10] = [
     "find_text",
     "replace_text",
 ];
+const TYPED_CLI_EQUIVALENTS: [(&str, &str); 10] = [
+    ("build_presentation", "ooxml pptx build"),
+    ("build_workbook", "ooxml xlsx build"),
+    ("build_document", "ooxml docx build"),
+    ("edit_package", "ooxml apply"),
+    ("outline_package", "ooxml outline"),
+    ("check_package", "ooxml check"),
+    ("validate_package", "ooxml validate"),
+    ("render_preview", "ooxml render"),
+    ("find_text", "ooxml find"),
+    ("replace_text", "ooxml find"),
+];
 
 #[test]
 fn tools_list_pins_typed_schemas_and_matches_cli_contracts() {
@@ -774,6 +786,108 @@ fn typed_read_tools_are_byte_contract_equivalent_to_cli_outputs() {
             .as_str()
             .is_some_and(|value| value.starts_with("bW9jay1pbWFnZS12MT") && value.len() % 4 == 0)
     );
+}
+
+#[test]
+fn typed_cli_parity_matrix_covers_every_published_tool_and_command() {
+    let mapped_tools = TYPED_CLI_EQUIVALENTS
+        .iter()
+        .map(|(tool, _)| *tool)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(mapped_tools, TYPED_NAMES.into_iter().collect());
+
+    let capabilities = run_cli_json(&strings(&["--json", "capabilities"]), &[]);
+    let command_paths = capabilities["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|command| command["path"].as_str())
+        .collect::<BTreeSet<_>>();
+    for (tool, command) in TYPED_CLI_EQUIVALENTS {
+        assert!(
+            command_paths.contains(command),
+            "typed tool {tool} maps to missing CLI command {command}"
+        );
+    }
+}
+
+#[test]
+fn json_rpc_errors_and_typed_tool_failures_keep_protocol_boundaries() {
+    let responses = mcp(
+        &[
+            rpc(1, "unsupported/method", json!({})),
+            tool_call(2, "not_a_tool", json!({})),
+            tool_call(3, "outline_package", json!({})),
+        ],
+        &[],
+    );
+    assert_eq!(responses[0]["error"]["code"], -32601);
+    assert_eq!(responses[0]["error"]["data"]["exitCode"], 2);
+    assert_eq!(responses[1]["error"]["code"], -32602);
+    assert_eq!(responses[1]["error"]["data"]["exitCode"], 2);
+
+    assert!(responses[2].get("error").is_none());
+    assert_eq!(responses[2]["result"]["isError"], true);
+    assert_eq!(
+        responses[2]["result"]["structuredContent"]["error"]["code"],
+        "invalid_args"
+    );
+    assert_eq!(
+        responses[2]["result"]["structuredContent"]["error"]["exitCode"],
+        2
+    );
+}
+
+#[test]
+fn oversized_typed_output_spills_to_configured_lf_json_file() {
+    let output_dir = temp_dir("output-spill");
+    let response = mcp(
+        &[tool_call(
+            41,
+            "outline_package",
+            json!({
+                "file": "testdata/pptx/edge-large-deck/presentation.pptx",
+                "depth": 2,
+                "textPreview": 80,
+            }),
+        )],
+        &[
+            ("OOXML_MCP_MAX_OUTPUT_BYTES", "512"),
+            (
+                "OOXML_MCP_OUTPUT_DIR",
+                output_dir.to_string_lossy().as_ref(),
+            ),
+        ],
+    )
+    .remove(0);
+    let pointer = &response["result"]["structuredContent"];
+    assert_eq!(pointer["truncated"], true);
+    assert_eq!(pointer["mimeType"], "application/json");
+    let output_file = PathBuf::from(pointer["outputFile"].as_str().unwrap());
+    assert_eq!(output_file, output_dir.join("mcp-response-000001.json"));
+    let bytes = std::fs::read(&output_file).expect("read externalized MCP response");
+    assert_eq!(pointer["byteCount"], bytes.len());
+    assert!(bytes.ends_with(b"\n"));
+    assert!(!bytes.contains(&b'\r'));
+    let full: Value = serde_json::from_slice(&bytes).expect("externalized JSON-RPC response");
+    assert_eq!(full["id"], 41);
+    assert_ne!(full["result"]["isError"], true);
+    assert_eq!(full["result"]["structuredContent"]["type"], "pptx");
+    assert!(
+        full["result"]["structuredContent"]["slides"]
+            .as_array()
+            .is_some_and(|slides| slides.len() > 10)
+    );
+}
+
+#[test]
+fn flue_smokes_require_the_typed_check_tool_where_applicable() {
+    let non_pptx = std::fs::read_to_string("web/scripts/smoke-nonpptx.mjs").unwrap();
+    let agent_edit = std::fs::read_to_string("web/scripts/smoke-agent-edit.mjs").unwrap();
+    assert!(non_pptx.contains("check_package"));
+    assert!(non_pptx.contains("tools/call"));
+    assert!(agent_edit.contains("check_package"));
+    assert!(agent_edit.contains("summary.toolNames.includes('check_package')"));
 }
 
 #[test]
