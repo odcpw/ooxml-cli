@@ -4,6 +4,7 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use crate::xlsx_model::{XLSX_MAX_COLUMN, XLSX_MAX_ROW};
 use crate::xlsx_sheet_xml::{
     XlsxWorksheetRootBounds as WorksheetRootBounds,
     xlsx_worksheet_root_bounds_permissive as worksheet_root_bounds,
@@ -15,9 +16,6 @@ use crate::{
     xml_direct_child_ranges, xml_fragment_bounds, xml_open_tag_from_start, xml_tag_prefix,
     zip_text,
 };
-
-const XLSX_MAX_ROW: i64 = 1_048_576;
-const XLSX_MAX_COL: i64 = 16_384;
 
 #[derive(Clone)]
 struct XlsxFreezeState {
@@ -76,7 +74,7 @@ pub(crate) fn xlsx_freeze_set(
             "provide at least one of --rows or --cols (>= 1)".to_string(),
         ));
     }
-    if options.rows > XLSX_MAX_ROW - 1 {
+    if options.rows > i64::from(XLSX_MAX_ROW) - 1 {
         return Err(map_freeze_error(
             "set",
             format!(
@@ -86,13 +84,13 @@ pub(crate) fn xlsx_freeze_set(
             ),
         ));
     }
-    if options.cols > XLSX_MAX_COL - 1 {
+    if options.cols > i64::from(XLSX_MAX_COLUMN) - 1 {
         return Err(map_freeze_error(
             "set",
             format!(
                 "--cols {} exceeds the maximum freezable columns ({})",
                 options.cols,
-                XLSX_MAX_COL - 1
+                XLSX_MAX_COLUMN - 1
             ),
         ));
     }

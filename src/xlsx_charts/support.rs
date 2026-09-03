@@ -34,54 +34,13 @@ pub(super) fn normalize_formula_range(range: &str) -> Option<String> {
 }
 
 pub(super) fn parse_formula_cell(value: &str) -> Option<FormulaCellRef> {
-    let mut rest = value.trim();
-    if rest.is_empty() {
-        return None;
-    }
-    let abs_column = rest.starts_with('$');
-    if abs_column {
-        rest = &rest[1..];
-    }
-    let col_len = rest
-        .bytes()
-        .take_while(|byte| byte.is_ascii_alphabetic())
-        .count();
-    if col_len == 0 {
-        return None;
-    }
-    let column = column_letters_to_index(&rest[..col_len])?;
-    rest = &rest[col_len..];
-    let abs_row = rest.starts_with('$');
-    if abs_row {
-        rest = &rest[1..];
-    }
-    if rest.is_empty() || rest.contains('$') || !rest.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    let row = rest.parse::<u32>().ok()?;
-    if row == 0 || row > 1_048_576 {
-        return None;
-    }
+    let reference = crate::xlsx_model::parse_a1_cell_ref(value).ok()?;
     Some(FormulaCellRef {
-        column,
-        row,
-        abs_column,
-        abs_row,
+        column: reference.column,
+        row: reference.row,
+        abs_column: reference.absolute_column,
+        abs_row: reference.absolute_row,
     })
-}
-
-pub(super) fn column_letters_to_index(value: &str) -> Option<u32> {
-    let mut index = 0_u32;
-    for ch in value.chars() {
-        if !ch.is_ascii_alphabetic() {
-            return None;
-        }
-        index = index * 26 + (ch.to_ascii_uppercase() as u32 - 'A' as u32 + 1);
-        if index > 16_384 {
-            return None;
-        }
-    }
-    Some(index)
 }
 
 pub(super) fn format_formula_cell(cell: FormulaCellRef) -> String {
@@ -89,22 +48,12 @@ pub(super) fn format_formula_cell(cell: FormulaCellRef) -> String {
     if cell.abs_column {
         out.push('$');
     }
-    out.push_str(&column_index_to_letters(cell.column));
+    out.push_str(&col_name(cell.column));
     if cell.abs_row {
         out.push('$');
     }
     out.push_str(&cell.row.to_string());
     out
-}
-
-pub(super) fn column_index_to_letters(mut index: u32) -> String {
-    let mut chars = Vec::new();
-    while index > 0 {
-        index -= 1;
-        chars.push((b'A' + (index % 26) as u8) as char);
-        index /= 26;
-    }
-    chars.iter().rev().collect()
 }
 
 pub(super) fn resolve_workbook_target_uri(target: &str) -> String {

@@ -16,7 +16,8 @@ mod render;
 mod styles;
 
 pub(crate) use range::{
-    RangeBounds, col_name, normalize_xlsx_cell_ref, parse_cell_ref, parse_cli_range, parse_range,
+    A1CellReference, RangeBounds, XLSX_MAX_COLUMN, XLSX_MAX_ROW, checked_col_name, col_name,
+    normalize_xlsx_cell_ref, parse_a1_cell_ref, parse_cell_ref, parse_cli_range, parse_range,
     range_contains_cell,
 };
 pub(crate) use render::{

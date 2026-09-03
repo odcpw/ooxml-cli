@@ -4,6 +4,7 @@ use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+use crate::xlsx_model::{XLSX_MAX_COLUMN, XLSX_MAX_ROW};
 use crate::xlsx_sheet_xml::{
     XlsxRowSpan, XlsxWorksheetRootBounds as WorksheetRootBounds,
     xlsx_direct_worksheet_child_range as direct_worksheet_child_range,
@@ -18,8 +19,6 @@ use crate::{
     xml_open_tag_from_start, xml_tag_prefix, zip_entry_names, zip_text,
 };
 
-const XLSX_MAX_ROW: u32 = 1_048_576;
-const XLSX_MAX_COL: u32 = 16_384;
 const STRUCTURE_DRY_RUN_PLACEHOLDER: &str = "<out.pptx>";
 
 pub(crate) struct XlsxRowsInsertOptions<'a> {
@@ -617,7 +616,7 @@ fn parse_structure_column(value: &str, name: &str) -> CliResult<u32> {
             )));
         }
         col = col * 26 + (upper as u32 - 'A' as u32 + 1);
-        if col > XLSX_MAX_COL {
+        if col > XLSX_MAX_COLUMN {
             return Err(CliError::invalid_args(format!(
                 "invalid --{name}: column {value:?} out of XLSX bounds A-XFD"
             )));
@@ -642,15 +641,15 @@ fn validate_row_span_in_bounds(start: u32, count: u32) -> CliResult<()> {
 }
 
 fn validate_column_span_in_bounds(start: u32, count: u32) -> CliResult<()> {
-    if count > XLSX_MAX_COL {
+    if count > XLSX_MAX_COLUMN {
         return Err(CliError::invalid_args(format!(
-            "worksheet structural edit out of bounds: column count {count} exceeds XLSX column limit {XLSX_MAX_COL}"
+            "worksheet structural edit out of bounds: column count {count} exceeds XLSX column limit {XLSX_MAX_COLUMN}"
         )));
     }
     let delta = count - 1;
-    if start as u64 + delta as u64 > XLSX_MAX_COL as u64 {
+    if start as u64 + delta as u64 > XLSX_MAX_COLUMN as u64 {
         return Err(CliError::invalid_args(format!(
-            "worksheet structural edit out of bounds: column {start} offset by {delta} is out of XLSX bounds 1-{XLSX_MAX_COL}"
+            "worksheet structural edit out of bounds: column {start} offset by {delta} is out of XLSX bounds 1-{XLSX_MAX_COLUMN}"
         )));
     }
     Ok(())
@@ -668,9 +667,9 @@ fn offset_row(row: u32, delta: i64) -> CliResult<u32> {
 
 fn offset_col(col: u32, delta: i64) -> CliResult<u32> {
     let shifted = col as i64 + delta;
-    if shifted < 1 || shifted > XLSX_MAX_COL as i64 {
+    if shifted < 1 || shifted > XLSX_MAX_COLUMN as i64 {
         return Err(CliError::invalid_args(format!(
-            "worksheet structural edit out of bounds: column {col} offset by {delta} is out of XLSX bounds 1-{XLSX_MAX_COL}"
+            "worksheet structural edit out of bounds: column {col} offset by {delta} is out of XLSX bounds 1-{XLSX_MAX_COLUMN}"
         )));
     }
     Ok(shifted as u32)

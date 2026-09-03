@@ -7,6 +7,7 @@ use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+use crate::xlsx_model::XLSX_MAX_ROW;
 use crate::xlsx_mutation::{
     XlsxMatrixCell, add_xlsx_range_mutation_commands, parse_xlsx_range_set_matrix,
     rectangularize_xlsx_matrix, resolve_xlsx_ranges_set_values, set_xlsx_range_in_sheet_xml,
@@ -25,8 +26,6 @@ use records::{
     normalize_xlsx_missing_policy, resolve_xlsx_tables_append_records, xlsx_records_to_rows,
 };
 use table_xml::{update_xlsx_table_refs, validate_xlsx_table_append_xml};
-
-const XLSX_MAX_ROW: u32 = 1_048_576;
 
 pub(crate) struct XlsxTablesAppendRowsOptions<'a> {
     pub(crate) sheet: Option<&'a str>,

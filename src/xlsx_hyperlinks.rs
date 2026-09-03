@@ -4,6 +4,7 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use crate::xlsx_model::{A1CellReference, parse_a1_cell_ref};
 use crate::xlsx_sheet_xml::{
     XlsxWorksheetRootBounds as WorksheetRootBounds,
     xlsx_worksheet_root_bounds_permissive as worksheet_root_bounds,
@@ -921,120 +922,10 @@ fn normalize_hyperlink_range(ref_: &str) -> CliResult<String> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct HyperlinkCellRef {
-    col: u32,
-    row: u32,
-    abs_col: bool,
-    abs_row: bool,
-}
-
-impl HyperlinkCellRef {
-    fn to_a1(self) -> String {
-        let mut out = String::new();
-        if self.abs_col {
-            out.push('$');
-        }
-        out.push_str(&column_name(self.col));
-        if self.abs_row {
-            out.push('$');
-        }
-        out.push_str(&self.row.to_string());
-        out
-    }
-}
+type HyperlinkCellRef = A1CellReference;
 
 fn parse_hyperlink_cell(value: &str) -> CliResult<HyperlinkCellRef> {
-    let mut rest = value.trim();
-    if rest.is_empty() {
-        return Err(CliError::invalid_args("cell reference cannot be empty"));
-    }
-    let abs_col = if let Some(after) = rest.strip_prefix('$') {
-        rest = after;
-        if rest.is_empty() {
-            return Err(CliError::invalid_args("missing column in cell reference"));
-        }
-        true
-    } else {
-        false
-    };
-    let col_len = rest
-        .bytes()
-        .take_while(|byte| byte.is_ascii_alphabetic())
-        .count();
-    if col_len == 0 {
-        return Err(CliError::invalid_args("missing column in cell reference"));
-    }
-    let col_letters = &rest[..col_len];
-    let col = column_letters_to_index(col_letters)?;
-    rest = &rest[col_len..];
-    if rest.is_empty() {
-        return Err(CliError::invalid_args("missing row in cell reference"));
-    }
-    let abs_row = if let Some(after) = rest.strip_prefix('$') {
-        rest = after;
-        if rest.is_empty() {
-            return Err(CliError::invalid_args("missing row in cell reference"));
-        }
-        true
-    } else {
-        false
-    };
-    if rest.contains('$') {
-        return Err(CliError::invalid_args(
-            "invalid absolute marker in row reference",
-        ));
-    }
-    if !rest.chars().all(|ch| ch.is_ascii_digit()) {
-        return Err(CliError::invalid_args(format!(
-            "invalid row {rest:?} in cell reference"
-        )));
-    }
-    let row = rest
-        .parse::<u32>()
-        .map_err(|err| CliError::invalid_args(format!("invalid row {rest:?}: {err}")))?;
-    if row == 0 || row > 1_048_576 {
-        return Err(CliError::invalid_args(format!(
-            "row {row} out of XLSX bounds 1-1048576"
-        )));
-    }
-    Ok(HyperlinkCellRef {
-        col,
-        row,
-        abs_col,
-        abs_row,
-    })
-}
-
-fn column_letters_to_index(letters: &str) -> CliResult<u32> {
-    if letters.trim().is_empty() {
-        return Err(CliError::invalid_args("column letters cannot be empty"));
-    }
-    let mut col = 0u32;
-    for ch in letters.chars() {
-        if !ch.is_ascii_alphabetic() {
-            return Err(CliError::invalid_args(format!(
-                "invalid column letter {ch:?}"
-            )));
-        }
-        col = col * 26 + (ch.to_ascii_uppercase() as u32 - 'A' as u32 + 1);
-        if col > 16_384 {
-            return Err(CliError::invalid_args(format!(
-                "column {letters:?} out of XLSX bounds A-XFD"
-            )));
-        }
-    }
-    Ok(col)
-}
-
-fn column_name(mut col: u32) -> String {
-    let mut chars = Vec::new();
-    while col > 0 {
-        col -= 1;
-        chars.push((b'A' + (col % 26) as u8) as char);
-        col /= 26;
-    }
-    chars.iter().rev().collect()
+    parse_a1_cell_ref(value)
 }
 
 fn hyperlink_json(link: &XlsxHyperlink) -> Value {

@@ -357,7 +357,10 @@ fn compile_columns(
     for (column_index, column) in columns.iter().enumerate() {
         let column = column.as_object().expect("validated column object");
         let node_path = format!("{path}/columns/{column_index}");
-        let letter = column_letters(column_index + 1);
+        let column_number = u32::try_from(column_index + 1)
+            .map_err(|_| invalid(&node_path, "column index is out of XLSX bounds A-XFD"))?;
+        let letter = crate::xlsx_model::checked_col_name(column_number)
+            .map_err(|err| invalid(&node_path, err.message))?;
         let mut operation_ids = Vec::new();
         if let Some(width) = column.get("width") {
             let id = format!(
@@ -1049,17 +1052,11 @@ fn header_range(column_count: usize, path: &str) -> Result<String, BuildCompileE
             "headerStyle requires columns or a non-empty first row",
         ));
     }
-    Ok(format!("A1:{}1", column_letters(column_count)))
-}
-
-fn column_letters(mut index: usize) -> String {
-    let mut letters = Vec::new();
-    while index > 0 {
-        index -= 1;
-        letters.push((b'A' + (index % 26) as u8) as char);
-        index /= 26;
-    }
-    letters.iter().rev().collect()
+    let column_number = u32::try_from(column_count)
+        .map_err(|_| invalid(path, "column count is out of XLSX bounds A-XFD"))?;
+    let last_column = crate::xlsx_model::checked_col_name(column_number)
+        .map_err(|err| invalid(path, err.message))?;
+    Ok(format!("A1:{last_column}1"))
 }
 
 fn totals_string(value: &Value, path: &str) -> Result<String, BuildCompileError> {

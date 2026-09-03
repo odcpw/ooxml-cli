@@ -3,6 +3,7 @@ use quick_xml::events::{BytesStart, Event};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::xlsx_model::{A1CellReference, parse_a1_cell_ref};
 use crate::xml_util::{append_xml_text_event, attr_bound_ns, attr_exact, is_xml_text_event};
 use crate::{
     col_name, element_in_ns, local_name, relationships_part_for, resolve_relationship_target,
@@ -1062,22 +1063,16 @@ fn defined_name_label(position: usize, defined_name: &DefinedNameInfo) -> String
     }
 }
 
-#[derive(Default)]
-struct ParsedCellReference {
-    column: u32,
-    row: u32,
-    abs_column: bool,
-    abs_row: bool,
-}
+type ParsedCellReference = A1CellReference;
 
 fn normalize_cell_reference(value: &str) -> Result<String, String> {
     let cell = parse_cell_reference(value)?;
     let mut out = String::new();
-    if cell.abs_column {
+    if cell.absolute_column {
         out.push('$');
     }
     out.push_str(&col_name(cell.column));
-    if cell.abs_row {
+    if cell.absolute_row {
         out.push('$');
     }
     out.push_str(&cell.row.to_string());
@@ -1085,70 +1080,5 @@ fn normalize_cell_reference(value: &str) -> Result<String, String> {
 }
 
 fn parse_cell_reference(value: &str) -> Result<ParsedCellReference, String> {
-    let mut value = value.trim();
-    if value.is_empty() {
-        return Err("cell reference cannot be empty".to_string());
-    }
-
-    let mut cell = ParsedCellReference::default();
-    if let Some(rest) = value.strip_prefix('$') {
-        cell.abs_column = true;
-        value = rest;
-        if value.is_empty() {
-            return Err("missing column in cell reference".to_string());
-        }
-    }
-
-    let col_end = value
-        .bytes()
-        .take_while(|byte| byte.is_ascii_alphabetic())
-        .count();
-    if col_end == 0 {
-        return Err("missing column in cell reference".to_string());
-    }
-    cell.column = column_letters_to_index(&value[..col_end])?;
-    value = &value[col_end..];
-
-    if value.is_empty() {
-        return Err("missing row in cell reference".to_string());
-    }
-    if let Some(rest) = value.strip_prefix('$') {
-        cell.abs_row = true;
-        value = rest;
-        if value.is_empty() {
-            return Err("missing row in cell reference".to_string());
-        }
-    }
-    if value.contains('$') {
-        return Err("invalid absolute marker in row reference".to_string());
-    }
-    if !value.chars().all(|ch| ch.is_ascii_digit()) {
-        return Err(format!("invalid row {value:?} in cell reference"));
-    }
-    let row = value
-        .parse::<u32>()
-        .map_err(|err| format!("invalid row {value:?}: {err}"))?;
-    if row == 0 || row > 1_048_576 {
-        return Err(format!("row {row} out of XLSX bounds 1-1048576"));
-    }
-    cell.row = row;
-    Ok(cell)
-}
-
-fn column_letters_to_index(letters: &str) -> Result<u32, String> {
-    let letters = letters.trim();
-    if letters.is_empty() {
-        return Err("column letters cannot be empty".to_string());
-    }
-    let mut index = 0u32;
-    for ch in letters.chars() {
-        if !ch.is_ascii_alphabetic() {
-            return Err(format!("invalid column letter {ch:?}"));
-        }
-        index = index * 26 + (ch.to_ascii_uppercase() as u32 - 'A' as u32 + 1);
-        if index > 16_384 {
-            return Err(format!("column {letters:?} out of XLSX bounds A-XFD"));
-        }
-    }
-    Ok(index)
+    parse_a1_cell_ref(value).map_err(|err| err.message)
 }

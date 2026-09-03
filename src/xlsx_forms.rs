@@ -6,6 +6,7 @@ use std::path::Path;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
+use crate::xlsx_model::{XLSX_MAX_COLUMN, checked_col_name};
 use crate::{
     CliError, CliResult, command_arg, vba::vba_xlsx_standard_module_project_bin, xml_attr_escape,
     xml_escape,
@@ -28,7 +29,6 @@ const CONTROL_MARGIN_ROWS: usize = 3;
 const BUTTON_ANCHOR_ROW_SPAN: usize = 2;
 const GROUP_BOX_TOP_ANCHOR_ROW: usize = 2;
 const GROUP_BOX_BOTTOM_PADDING_ROWS: usize = 1;
-const MAX_XLSX_COLUMN: usize = 16_384;
 
 pub(crate) struct XlsxFormsEntryOptions<'a> {
     pub(crate) out: &'a str,
@@ -421,10 +421,24 @@ fn form_sheet_xml(fields: &[String]) -> String {
 }
 
 fn data_sheet_xml(fields: &[String]) -> CliResult<String> {
-    let last_column = column_name(fields.len() + 1)?;
+    let last_column = checked_col_name(u32::try_from(fields.len() + 1).map_err(|_| {
+        CliError::invalid_args(format!(
+            "column {} out of XLSX bounds 1-{XLSX_MAX_COLUMN} (A-XFD)",
+            fields.len() + 1
+        ))
+    })?)?;
     let mut headers = vec![("A".to_string(), "Timestamp".to_string(), 4)];
     for (index, field) in fields.iter().enumerate() {
-        headers.push((column_name(index + 2)?, field.clone(), 4));
+        headers.push((
+            checked_col_name(u32::try_from(index + 2).map_err(|_| {
+                CliError::invalid_args(format!(
+                    "column {} out of XLSX bounds 1-{XLSX_MAX_COLUMN} (A-XFD)",
+                    index + 2
+                ))
+            })?)?,
+            field.clone(),
+            4,
+        ));
     }
     let header_refs = headers
         .iter()
@@ -570,15 +584,6 @@ fn button_vml(
         caption = xml_escape(caption),
         macro_name = xml_escape(macro_name),
     )
-}
-
-fn column_name(number: usize) -> CliResult<String> {
-    if !(1..=MAX_XLSX_COLUMN).contains(&number) {
-        return Err(CliError::invalid_args(format!(
-            "column {number} out of XLSX bounds 1-{MAX_XLSX_COLUMN} (A-XFD)"
-        )));
-    }
-    Ok(crate::xlsx_model::col_name(number as u32))
 }
 
 fn write_zip_string(
@@ -797,9 +802,9 @@ mod tests {
 
     #[test]
     fn column_names_are_bounded_to_xlsx_columns() {
-        assert_eq!(column_name(1).unwrap(), "A");
-        assert_eq!(column_name(MAX_XLSX_COLUMN).unwrap(), "XFD");
-        assert!(column_name(0).is_err());
-        assert!(column_name(MAX_XLSX_COLUMN + 1).is_err());
+        assert_eq!(checked_col_name(1).unwrap(), "A");
+        assert_eq!(checked_col_name(XLSX_MAX_COLUMN).unwrap(), "XFD");
+        assert!(checked_col_name(0).is_err());
+        assert!(checked_col_name(XLSX_MAX_COLUMN + 1).is_err());
     }
 }

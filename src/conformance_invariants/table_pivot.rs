@@ -5,6 +5,7 @@ use quick_xml::name::{Namespace, ResolveResult};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::xlsx_model::{A1CellReference, parse_a1_cell_ref};
 use crate::{CliResult, col_name, local_name, xml_attrs, zip_text};
 
 use super::spec::{
@@ -13,9 +14,6 @@ use super::spec::{
 };
 use super::types::PartInfo;
 use super::util::diag;
-
-const MAX_COLUMN: u32 = 16_384;
-const MAX_ROW: u32 = 1_048_576;
 
 #[derive(Clone, Default)]
 struct StructuralNode {
@@ -31,13 +29,7 @@ struct StructuralXmlPart {
     nodes: Vec<StructuralNode>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct CellRef {
-    column: u32,
-    row: u32,
-    abs_column: bool,
-    abs_row: bool,
-}
+type CellRef = A1CellReference;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct RangeRef {
@@ -837,82 +829,7 @@ fn parse_range_ref(value: &str) -> Result<RangeRef, String> {
 }
 
 fn parse_cell_ref(value: &str) -> Result<CellRef, String> {
-    let mut value = value.trim();
-    if value.is_empty() {
-        return Err("cell reference cannot be empty".to_string());
-    }
-
-    let mut reference = CellRef {
-        column: 0,
-        row: 0,
-        abs_column: false,
-        abs_row: false,
-    };
-    if value.as_bytes()[0] == b'$' {
-        reference.abs_column = true;
-        value = &value[1..];
-        if value.is_empty() {
-            return Err("missing column in cell reference".to_string());
-        }
-    }
-
-    let col_end = value
-        .bytes()
-        .take_while(|byte| byte.is_ascii_alphabetic())
-        .count();
-    if col_end == 0 {
-        return Err("missing column in cell reference".to_string());
-    }
-    let letters = &value[..col_end];
-    reference.column = column_letters_to_index(letters)?;
-    value = &value[col_end..];
-
-    if value.is_empty() {
-        return Err("missing row in cell reference".to_string());
-    }
-    if value.as_bytes()[0] == b'$' {
-        reference.abs_row = true;
-        value = &value[1..];
-        if value.is_empty() {
-            return Err("missing row in cell reference".to_string());
-        }
-    }
-    if value.contains('$') {
-        return Err("invalid absolute marker in row reference".to_string());
-    }
-    if !value.chars().all(|ch| ch.is_ascii_digit()) {
-        return Err(format!("invalid row {value:?} in cell reference"));
-    }
-
-    let row = value
-        .parse::<i64>()
-        .map_err(|err| format!("invalid row {value:?}: {err}"))?;
-    if !(1..=i64::from(MAX_ROW)).contains(&row) {
-        return Err(format!("row {row} out of XLSX bounds 1-{MAX_ROW}"));
-    }
-    reference.row = row as u32;
-    Ok(reference)
-}
-
-fn column_letters_to_index(letters: &str) -> Result<u32, String> {
-    let letters = letters.trim();
-    if letters.is_empty() {
-        return Err("column letters cannot be empty".to_string());
-    }
-    let mut index = 0u32;
-    for mut ch in letters.chars() {
-        if ch.is_ascii_lowercase() {
-            ch = ch.to_ascii_uppercase();
-        }
-        if !ch.is_ascii_uppercase() {
-            return Err(format!("invalid column letter {ch:?}"));
-        }
-        index = index * 26 + (ch as u32 - 'A' as u32 + 1);
-        if index > MAX_COLUMN {
-            return Err(format!("column {letters:?} out of XLSX bounds A-XFD"));
-        }
-    }
-    Ok(index)
+    parse_a1_cell_ref(value).map_err(|err| err.message)
 }
 
 fn range_ref_string(reference: &RangeRef) -> String {
@@ -926,11 +843,11 @@ fn range_ref_string(reference: &RangeRef) -> String {
 
 fn cell_ref_string(reference: &CellRef) -> String {
     let mut out = String::new();
-    if reference.abs_column {
+    if reference.absolute_column {
         out.push('$');
     }
     out.push_str(&col_name(reference.column));
-    if reference.abs_row {
+    if reference.absolute_row {
         out.push('$');
     }
     out.push_str(&reference.row.to_string());

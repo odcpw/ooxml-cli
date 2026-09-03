@@ -59,68 +59,12 @@ fn parse_sqref_range(value: &str) -> CliResult<(SqrefCell, SqrefCell)> {
 }
 
 fn parse_sqref_cell(value: &str) -> CliResult<SqrefCell> {
-    let mut rest = value.trim();
-    if rest.is_empty() {
-        return Err(CliError::invalid_args("cell reference cannot be empty"));
-    }
-    let abs_col = rest.starts_with('$');
-    if abs_col {
-        rest = &rest[1..];
-        if rest.is_empty() {
-            return Err(CliError::invalid_args("missing column in cell reference"));
-        }
-    }
-    let col_len = rest
-        .bytes()
-        .take_while(|byte| byte.is_ascii_alphabetic())
-        .count();
-    if col_len == 0 {
-        return Err(CliError::invalid_args("missing column in cell reference"));
-    }
-    let letters = &rest[..col_len];
-    let mut col = 0u32;
-    for ch in letters.chars() {
-        col = col * 26 + (ch.to_ascii_uppercase() as u32 - 'A' as u32 + 1);
-        if col > 16_384 {
-            return Err(CliError::invalid_args(format!(
-                "column {letters:?} out of XLSX bounds A-XFD"
-            )));
-        }
-    }
-    rest = &rest[col_len..];
-    if rest.is_empty() {
-        return Err(CliError::invalid_args("missing row in cell reference"));
-    }
-    let abs_row = rest.starts_with('$');
-    if abs_row {
-        rest = &rest[1..];
-        if rest.is_empty() {
-            return Err(CliError::invalid_args("missing row in cell reference"));
-        }
-    }
-    if rest.contains('$') {
-        return Err(CliError::invalid_args(
-            "invalid absolute marker in row reference",
-        ));
-    }
-    if !rest.chars().all(|ch| ch.is_ascii_digit()) {
-        return Err(CliError::invalid_args(format!(
-            "invalid row {rest:?} in cell reference"
-        )));
-    }
-    let row = rest
-        .parse::<u32>()
-        .map_err(|err| CliError::invalid_args(format!("invalid row {rest:?}: {err}")))?;
-    if row == 0 || row > 1_048_576 {
-        return Err(CliError::invalid_args(format!(
-            "row {row} out of XLSX bounds 1-1048576"
-        )));
-    }
+    let reference = crate::xlsx_model::parse_a1_cell_ref(value)?;
     Ok(SqrefCell {
-        col,
-        row,
-        abs_col,
-        abs_row,
+        col: reference.column,
+        row: reference.row,
+        abs_col: reference.absolute_column,
+        abs_row: reference.absolute_row,
     })
 }
 
@@ -130,23 +74,13 @@ impl SqrefCell {
         if self.abs_col {
             out.push('$');
         }
-        out.push_str(&sqref_col_name(self.col));
+        out.push_str(&crate::col_name(self.col));
         if self.abs_row {
             out.push('$');
         }
         out.push_str(&self.row.to_string());
         out
     }
-}
-
-fn sqref_col_name(mut col: u32) -> String {
-    let mut chars = Vec::new();
-    while col > 0 {
-        col -= 1;
-        chars.push((b'A' + (col % 26) as u8) as char);
-        col /= 26;
-    }
-    chars.iter().rev().collect()
 }
 
 pub(super) fn sqref_cell_count(sqref: &str) -> i64 {
