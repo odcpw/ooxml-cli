@@ -7,6 +7,8 @@ use crate::{
     mcp_resources, mcp_tool_success, mcp_tools,
 };
 
+mod typed;
+
 pub(crate) fn run_mcp_stdio() -> i32 {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
@@ -97,7 +99,7 @@ impl McpState {
                 "protocolVersion": "2025-06-18",
                 "serverInfo": {"name": "ooxml", "version": env!("CARGO_PKG_VERSION")},
             })),
-            "tools/list" => Ok(json!({"tools": mcp_tools()})),
+            "tools/list" => Ok(json!({"tools": tools_with_typed_surfaces()})),
             "tools/call" => self.handle_tools_call(params),
             "resources/list" => Ok(json!({"resources": mcp_resources_with_build_schemas()})),
             "resources/templates/list" => {
@@ -124,6 +126,9 @@ impl McpState {
             "plan" => self.call_engine("plan", &arguments, Vec::new()),
             "commit" => self.call_commit(&arguments),
             "abort" => self.call_engine("abort", &arguments, Vec::new()),
+            name if typed::is_typed_tool(name) => {
+                Ok(typed::call(&mut self.engine, name, &arguments))
+            }
             _ => Err(CliError::invalid_args(format!("unknown tool: {name}"))),
         }
     }
@@ -216,6 +221,12 @@ impl McpState {
             }]
         }))
     }
+}
+
+fn tools_with_typed_surfaces() -> Value {
+    let mut tools = mcp_tools().as_array().cloned().unwrap_or_default();
+    tools.extend(typed::tools());
+    Value::Array(tools)
 }
 
 fn mcp_resources_with_build_schemas() -> Value {
