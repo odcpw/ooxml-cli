@@ -40,6 +40,7 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                 "--theme",
                 "--theme-seed",
                 "--template",
+                "--brand",
             ];
             let bool_flags = ["--force", "--no-validate"];
             reject_unknown_flags(rest, &value_flags, &bool_flags)?;
@@ -49,6 +50,7 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
             let theme = parse_string_flag(rest, "--theme")?;
             let theme_seed = parse_string_flag(rest, "--theme-seed")?;
             let template = parse_string_flag(rest, "--template")?;
+            let brand = parse_string_flag(rest, "--brand")?;
             docx_scaffold(
                 &output,
                 DocxScaffoldOptions {
@@ -57,6 +59,7 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                     theme: theme.as_deref(),
                     theme_seed: theme_seed.as_deref(),
                     template: template.as_deref(),
+                    brand: brand.as_deref(),
                     force: has_flag(rest, "--force"),
                     no_validate: has_flag(rest, "--no-validate"),
                 },

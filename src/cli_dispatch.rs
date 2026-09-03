@@ -224,6 +224,11 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
             Ok(json!({"tool": "ooxml", "version": env!("CARGO_PKG_VERSION")}))
         }
         [cmd, rest @ ..] if cmd == "agent-triage" => crate::agent_triage::agent_triage(rest),
+        [cmd, schema_flag, schema, rest @ ..]
+            if cmd == "capabilities" && schema_flag == "--schema" && schema == "brand" =>
+        {
+            crate::brand::brand_schema_command(rest)
+        }
         [cmd, rest @ ..] if cmd == "capabilities" => capabilities::capabilities(rest),
         [cmd, file, rest @ ..] if cmd == "apply" => apply(file, rest),
         [cmd, conversion, file, rest @ ..] if cmd == "convert" && conversion == "xlsm-to-xlsx" => {
@@ -231,6 +236,11 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
         }
         [cmd, verb, file, rest @ ..] if cmd == "repair" && verb == "normalize" => {
             repair_normalize(file, rest)
+        }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "template" && group == "brand" && verb == "extract" =>
+        {
+            crate::brand::template_brand_extract(file, rest)
         }
         [cmd, verb, file, rest @ ..] if cmd == "template" && verb == "apply" => {
             template_apply(file, rest)
@@ -613,6 +623,7 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                 "--theme",
                 "--theme-seed",
                 "--template",
+                "--brand",
                 "--size",
             ];
             let bool_flags = ["--force", "--no-validate"];
@@ -623,6 +634,7 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
             let theme = parse_string_flag(rest, "--theme")?;
             let theme_seed = parse_string_flag(rest, "--theme-seed")?;
             let template = parse_string_flag(rest, "--template")?;
+            let brand = parse_string_flag(rest, "--brand")?;
             let size = parse_string_flag(rest, "--size")?;
             pptx_scaffold(
                 &output,
@@ -632,6 +644,7 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                     theme: theme.as_deref(),
                     theme_seed: theme_seed.as_deref(),
                     template: template.as_deref(),
+                    brand: brand.as_deref(),
                     size: size.as_deref(),
                     force: has_flag(rest, "--force"),
                     no_validate: has_flag(rest, "--no-validate"),
