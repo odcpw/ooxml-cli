@@ -111,9 +111,6 @@ pub(crate) fn xlsx_build(args: &[String]) -> crate::CliResult<Value> {
         apply_args.push("--out".to_string());
         apply_args.push(output.clone());
     }
-    // The compiler resolves reviewed spec-relative sources into staged absolute
-    // paths before the shared apply path-safety gate sees them.
-    apply_args.push("--allow-absolute-paths".to_string());
     let mutation_envelope = crate::apply(&virtual_input.to_string_lossy(), &apply_args)
         .map_err(|error| super::compiler::execution_error_with_spec_path(&compiled.plan, error))?;
     let mutation_envelope = scrub_build_paths(mutation_envelope, &temp.path, &spec_base);
@@ -1177,14 +1174,10 @@ fn materialize_operations(
     let column_types = xlsx_column_types(document);
     let mut row_counts = BTreeMap::new();
     let mut materialized = Vec::with_capacity(operations.len());
-    for operation in operations {
+    for (operation_index, operation) in operations.iter().enumerate() {
         let mut operation = operation.clone();
-        for key in ["brand", "valuesFile"] {
-            if let Some(Value::String(path)) = operation.args.get_mut(key)
-                && !Path::new(path).is_absolute()
-            {
-                *path = spec_base.join(&*path).to_string_lossy().into_owned();
-            }
+        if let Some(Value::String(brand)) = operation.args.get_mut("brand") {
+            *brand = stage_build_source(brand, spec_base, temp, operation_index, "brand")?;
         }
         if operation.command == "xlsx ranges set"
             && let (Some(sheet), Some(values_file), Some(data_format)) = (
@@ -1205,9 +1198,11 @@ fn materialize_operations(
                     .map(str::to_string),
             )
         {
+            let values_file = resolve_source_path(&values_file, spec_base);
             let data = fs::read_to_string(&values_file).map_err(|cause| {
                 crate::CliError::unexpected(format!(
-                    "failed to read XLSX build data file {values_file}: {cause}"
+                    "failed to read XLSX build data file {}: {cause}",
+                    values_file.display()
                 ))
             })?;
             let matrix = crate::xlsx_mutation::parse_xlsx_range_set_matrix(&data, &data_format)?;
@@ -1284,11 +1279,27 @@ fn materialize_operations(
                 })?;
                 operation.args.insert(
                     "valuesFile".to_string(),
-                    Value::String(typed_path.to_string_lossy().into_owned()),
+                    Value::String(
+                        typed_path
+                            .file_name()
+                            .expect("typed build data filename")
+                            .to_string_lossy()
+                            .into_owned(),
+                    ),
                 );
                 operation
                     .args
                     .insert("dataFormat".to_string(), json!("json"));
+            } else {
+                operation.args.insert(
+                    "valuesFile".to_string(),
+                    Value::String(stage_resolved_build_source(
+                        &values_file,
+                        temp,
+                        operation_index,
+                        "valuesFile",
+                    )?),
+                );
             }
             let column_count = matrix.rows.iter().map(Vec::len).max().unwrap_or(0);
             insert_exact_max_cells(
@@ -1319,6 +1330,51 @@ fn materialize_operations(
         materialized.push(operation);
     }
     Ok(materialized)
+}
+
+fn resolve_source_path(path: &str, spec_base: &Path) -> PathBuf {
+    if Path::new(path).is_absolute() {
+        PathBuf::from(path)
+    } else {
+        spec_base.join(path)
+    }
+}
+
+fn stage_build_source(
+    value: &str,
+    spec_base: &Path,
+    temp: &Path,
+    operation_index: usize,
+    key: &str,
+) -> crate::CliResult<String> {
+    let source = resolve_source_path(value, spec_base);
+    stage_resolved_build_source(&source, temp, operation_index, key)
+}
+
+fn stage_resolved_build_source(
+    source: &Path,
+    temp: &Path,
+    operation_index: usize,
+    key: &str,
+) -> crate::CliResult<String> {
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| format!(".{value}"))
+        .unwrap_or_default();
+    let relative =
+        PathBuf::from("external").join(format!("op-{}-{key}{extension}", operation_index + 1));
+    let destination = temp.join(&relative);
+    fs::create_dir_all(destination.parent().expect("staged source parent")).map_err(|cause| {
+        crate::CliError::unexpected(format!("failed to create build source stage: {cause}"))
+    })?;
+    fs::copy(source, &destination).map_err(|cause| {
+        crate::CliError::invalid_args(format!(
+            "failed to stage XLSX build source {}: {cause}",
+            source.display()
+        ))
+    })?;
+    Ok(relative.to_string_lossy().into_owned())
 }
 
 fn xlsx_column_types(document: &Value) -> BTreeMap<String, Vec<String>> {

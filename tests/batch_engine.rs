@@ -1115,6 +1115,89 @@ fn relative_input_paths_are_ops_local_and_cannot_escape_the_ops_directory() {
 }
 
 #[test]
+fn build_specs_stage_external_sources_without_weakening_user_path_guards() {
+    let temp = temp_dir("build-staged-sources");
+    let cases = [
+        (
+            "xlsx",
+            "testdata/xlsx/build-spec/sales.json",
+            temp.join("sales.xlsx"),
+        ),
+        (
+            "pptx",
+            "testdata/pptx/build-spec/q3-review.json",
+            temp.join("q3-review.pptx"),
+        ),
+        (
+            "docx",
+            "testdata/docx/build-spec/quarterly-report.json",
+            temp.join("quarterly-report.docx"),
+        ),
+    ];
+
+    for (family, spec, output) in &cases {
+        let built = run(&[
+            "--json",
+            family,
+            "build",
+            "--spec",
+            spec,
+            "--out",
+            output.to_str().expect("build output path"),
+        ]);
+        assert!(
+            built.status.success(),
+            "{family} build with staged external sources failed; stdout={}; stderr={}",
+            String::from_utf8_lossy(&built.stdout),
+            String::from_utf8_lossy(&built.stderr)
+        );
+        assert_strictly_valid(output, &format!("{family} build with staged sources"));
+    }
+
+    // The compiler's private staging must not become a user-facing bypass.
+    let user_ops = temp.join("user-absolute.json");
+    let user_asset = fs::canonicalize("testdata/test_image.png").expect("absolute image fixture");
+    write_ops(
+        &user_ops,
+        json!([
+            {"command": "pptx scaffold", "args": {"title": "Guard proof"}},
+            {
+                "command": "pptx place image",
+                "args": {
+                    "slide": 1,
+                    "image": user_asset,
+                    "x": 0,
+                    "y": 0,
+                    "cx": 1000000,
+                    "cy": 1000000
+                }
+            }
+        ]),
+    );
+    let refused_output = temp.join("user-absolute.pptx");
+    let refused = run(&[
+        "--json",
+        "apply",
+        temp.join("new.pptx").to_str().expect("virtual deck path"),
+        "--ops",
+        user_ops.to_str().expect("user ops path"),
+        "--out",
+        refused_output.to_str().expect("refused output path"),
+    ]);
+    assert!(!refused.status.success(), "user absolute path was accepted");
+    assert!(
+        json_error(&refused)["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("--allow-absolute-paths")),
+        "absolute-path refusal lost its remediation: {}",
+        json_error(&refused)
+    );
+    assert!(!refused_output.exists(), "refused apply published output");
+
+    let _ = fs::remove_dir_all(temp);
+}
+
+#[test]
 fn one_apply_process_scaffolds_fills_and_charts_a_strictly_valid_deck() {
     let temp = temp_dir("pptx-build-batch");
     let virtual_input = temp.join("new-deck.pptx");

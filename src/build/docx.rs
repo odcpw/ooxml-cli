@@ -202,9 +202,6 @@ pub(crate) fn docx_build(args: &[String]) -> crate::CliResult<Value> {
         apply_args.push("--out".to_string());
         apply_args.push(output.clone());
     }
-    // Build sources are resolved against the reviewed spec/Markdown directory
-    // above, then passed through the same apply path guard as direct batches.
-    apply_args.push("--allow-absolute-paths".to_string());
     let mutation_envelope = crate::apply(&virtual_input.to_string_lossy(), &apply_args)
         .map_err(|error| super::compiler::execution_error_with_spec_path(&compiled.plan, error))?;
     let mutation_envelope = scrub_paths(mutation_envelope, &temp.path, &spec_base);
@@ -674,41 +671,46 @@ fn materialize_operations(
 ) -> crate::CliResult<Vec<BuildOperation>> {
     operations
         .iter()
-        .map(|operation| {
+        .enumerate()
+        .map(|(operation_index, operation)| {
             let mut operation = operation.clone();
             materialize_table_source(&mut operation, spec_base)?;
             for key in ["brand", "template", "image", "valuesFile"] {
-                if let Some(Value::String(value)) = operation.args.get_mut(key)
-                    && !Path::new(value).is_absolute()
-                {
-                    *value = spec_base.join(&*value).to_string_lossy().into_owned();
+                if let Some(Value::String(value)) = operation.args.get_mut(key) {
+                    *value = stage_build_source(value, spec_base, temp, operation_index, key)?;
                 }
-            }
-            if operation.command == "docx images insert" {
-                let source = operation.args["image"]
-                    .as_str()
-                    .expect("compiled image path");
-                let extension = Path::new(source)
-                    .extension()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("bin");
-                let destination = temp.join(format!(
-                    "image-{}.{}",
-                    operation.id.as_deref().unwrap_or("asset"),
-                    extension
-                ));
-                fs::copy(source, &destination).map_err(|cause| {
-                    crate::CliError::invalid_args(format!(
-                        "failed to read DOCX build image {source:?}: {cause}"
-                    ))
-                })?;
-                operation
-                    .args
-                    .insert("image".to_string(), json!(destination.to_string_lossy()));
             }
             Ok(operation)
         })
         .collect()
+}
+
+fn stage_build_source(
+    value: &str,
+    spec_base: &Path,
+    temp: &Path,
+    operation_index: usize,
+    key: &str,
+) -> crate::CliResult<String> {
+    let source = resolve_source_path(value, spec_base);
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| format!(".{value}"))
+        .unwrap_or_default();
+    let relative =
+        PathBuf::from("external").join(format!("op-{}-{key}{extension}", operation_index + 1));
+    let destination = temp.join(&relative);
+    fs::create_dir_all(destination.parent().expect("staged source parent")).map_err(|cause| {
+        crate::CliError::unexpected(format!("failed to create build source stage: {cause}"))
+    })?;
+    fs::copy(&source, &destination).map_err(|cause| {
+        crate::CliError::invalid_args(format!(
+            "failed to stage DOCX build source {}: {cause}",
+            source.display()
+        ))
+    })?;
+    Ok(relative.to_string_lossy().into_owned())
 }
 
 fn materialize_table_source(

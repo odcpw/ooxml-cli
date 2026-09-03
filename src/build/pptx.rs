@@ -160,9 +160,6 @@ pub(crate) fn pptx_build(args: &[String]) -> crate::CliResult<Value> {
         apply_args.push("--out".to_string());
         apply_args.push(output.clone());
     }
-    // Build sources are resolved against the reviewed spec/Markdown directory
-    // above, then passed through the same apply path guard as direct batches.
-    apply_args.push("--allow-absolute-paths".to_string());
     let mutation_envelope = crate::apply(&virtual_input.to_string_lossy(), &apply_args)
         .map_err(|error| super::compiler::execution_error_with_spec_path(&compiled.plan, error))?;
     let mutation_envelope = scrub_generated_paths(mutation_envelope, &temp.path);
@@ -412,11 +409,20 @@ fn materialize_operations(
 ) -> crate::CliResult<Vec<super::BuildOperation>> {
     operations
         .iter()
-        .map(|operation| {
+        .enumerate()
+        .map(|(operation_index, operation)| {
             let mut operation = operation.clone();
+            let mut source_index = 0;
             for (key, value) in &mut operation.args {
                 if is_path_arg(&operation.command, key) {
-                    *value = materialize_path_value(value, key, temp, spec_base)?;
+                    *value = materialize_path_value(
+                        value,
+                        key,
+                        temp,
+                        spec_base,
+                        operation_index,
+                        &mut source_index,
+                    )?;
                 }
             }
             Ok(operation)
@@ -436,14 +442,19 @@ fn materialize_path_value(
     key: &str,
     temp: &Path,
     spec_base: &Path,
+    operation_index: usize,
+    source_index: &mut usize,
 ) -> crate::CliResult<Value> {
     match value {
         Value::String(path) => {
-            materialize_path_string(path, key, temp, spec_base).map(Value::String)
+            materialize_path_string(path, key, temp, spec_base, operation_index, source_index)
+                .map(Value::String)
         }
         Value::Array(values) => values
             .iter()
-            .map(|value| materialize_path_value(value, key, temp, spec_base))
+            .map(|value| {
+                materialize_path_value(value, key, temp, spec_base, operation_index, source_index)
+            })
             .collect::<crate::CliResult<Vec<_>>>()
             .map(Value::Array),
         _ => Err(crate::CliError::invalid_args(format!(
@@ -455,8 +466,10 @@ fn materialize_path_value(
 fn materialize_path_string(
     value: &str,
     key: &str,
-    _temp: &Path,
+    temp: &Path,
     spec_base: &Path,
+    operation_index: usize,
+    source_index: &mut usize,
 ) -> crate::CliResult<String> {
     let (assignment, path) = if key == "paragraphsFile" {
         value
@@ -466,19 +479,52 @@ fn materialize_path_string(
     } else {
         (None, value)
     };
-    let generated = path.strip_prefix(GENERATED_PREFIX);
-    let resolved = if let Some(relative) = generated {
+    let rendered = if let Some(relative) = path.strip_prefix(GENERATED_PREFIX) {
         PathBuf::from("generated").join(relative)
-    } else if Path::new(path).is_absolute() {
-        PathBuf::from(path)
     } else {
-        spec_base.join(path)
+        let source = if Path::new(path).is_absolute() {
+            PathBuf::from(path)
+        } else {
+            spec_base.join(path)
+        };
+        let index = *source_index;
+        *source_index += 1;
+        stage_build_source(&source, temp, operation_index, key, index)?
     };
-    let rendered = resolved.to_string_lossy();
+    let rendered = rendered.to_string_lossy();
     Ok(match assignment {
         Some(target) => format!("{target}={rendered}"),
         None => rendered.into_owned(),
     })
+}
+
+fn stage_build_source(
+    source: &Path,
+    temp: &Path,
+    operation_index: usize,
+    key: &str,
+    source_index: usize,
+) -> crate::CliResult<PathBuf> {
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| format!(".{value}"))
+        .unwrap_or_default();
+    let relative = PathBuf::from("external").join(format!(
+        "op-{}-{key}-{source_index}{extension}",
+        operation_index + 1
+    ));
+    let destination = temp.join(&relative);
+    fs::create_dir_all(destination.parent().expect("staged source parent")).map_err(|cause| {
+        crate::CliError::unexpected(format!("failed to create build source stage: {cause}"))
+    })?;
+    fs::copy(source, &destination).map_err(|cause| {
+        crate::CliError::invalid_args(format!(
+            "failed to stage PPTX build source {}: {cause}",
+            source.display()
+        ))
+    })?;
+    Ok(relative)
 }
 
 fn scrub_generated_paths(value: Value, temp: &Path) -> Value {
