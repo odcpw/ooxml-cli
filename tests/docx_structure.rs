@@ -103,6 +103,76 @@ fn page_and_section_breaks_are_schema_clean_and_hash_visible() {
     fs::remove_dir_all(temp).unwrap();
 }
 
+#[test]
+fn indexed_sections_set_size_orientation_and_margins_in_schema_order() {
+    let temp = temp_dir("section-setup");
+    let source = temp.join("source.docx");
+    let split = temp.join("split.docx");
+    let first = temp.join("first.docx");
+    let second = temp.join("second.docx");
+    run_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path(&source),
+        "--text",
+        "Section one",
+    ]);
+    run_ok(&[
+        "--json",
+        "docx",
+        "breaks",
+        "insert",
+        path(&source),
+        "--section",
+        "--out",
+        path(&split),
+    ]);
+    let first_report = run_ok(&[
+        "--json",
+        "docx",
+        "sections",
+        "set",
+        path(&split),
+        "--section",
+        "1",
+        "--orientation",
+        "landscape",
+        "--size",
+        "A4",
+        "--margins",
+        "0.5in,0.75in,1in,1.25in",
+        "--out",
+        path(&first),
+    ]);
+    assert_eq!(first_report["marginsTwips"]["top"], 720);
+    let second_report = run_ok(&[
+        "--json",
+        "docx",
+        "sections",
+        "set",
+        path(&first),
+        "--section",
+        "2",
+        "--orientation",
+        "portrait",
+        "--size",
+        "Letter",
+        "--margins",
+        "1in,1in,1in,1in",
+        "--out",
+        path(&second),
+    ]);
+    assert_eq!(second_report["section"], 2);
+    let xml = zip_text(&second, "word/document.xml");
+    assert!(xml.contains(r#"<w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="720" w:right="1080" w:bottom="1440" w:left="1800"/>"#));
+    assert!(xml.contains(r#"<w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/>"#));
+    for package in [&source, &split, &first, &second] {
+        assert_all_proofs(package);
+    }
+    fs::remove_dir_all(temp).unwrap();
+}
+
 fn build_list_document(temp: &Path, label: &str) -> PathBuf {
     let mut current = temp.join(format!("{label}-0.docx"));
     run_ok(&[

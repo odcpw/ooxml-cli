@@ -22,7 +22,7 @@ use crate::{
     zip_entry_names, zip_text,
 };
 
-pub(crate) use structure::docx_break_insert;
+pub(crate) use structure::{DocxSectionSetupOptions, docx_break_insert, docx_section_set};
 
 const DOCUMENT_PART: &str = "word/document.xml";
 const DOCUMENT_RELS_PART: &str = "word/_rels/document.xml.rels";

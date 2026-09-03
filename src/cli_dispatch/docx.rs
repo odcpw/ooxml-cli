@@ -690,6 +690,50 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                 },
             )
         }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "sections" && verb == "set" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &[
+                    "--section",
+                    "--orientation",
+                    "--size",
+                    "--margins",
+                    "--out",
+                    "--backup",
+                ],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let section = parse_i64_flag(rest, "--section")?.unwrap_or(0);
+            let orientation = parse_string_flag(rest, "--orientation")?
+                .ok_or_else(|| CliError::invalid_args("--orientation is required"))?;
+            let size = parse_string_flag(rest, "--size")?
+                .ok_or_else(|| CliError::invalid_args("--size is required"))?;
+            let margins = parse_string_flag(rest, "--margins")?
+                .ok_or_else(|| CliError::invalid_args("--margins is required"))?;
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            docx_section_set(
+                file,
+                DocxSectionSetupOptions {
+                    section,
+                    orientation: &orientation,
+                    size: &size,
+                    margins: &margins,
+                    mutation: DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: out.as_deref(),
+                        backup: backup.as_deref(),
+                        dry_run: has_flag(rest, "--dry-run"),
+                        in_place: has_flag(rest, "--in-place"),
+                        no_validate: has_flag(rest, "--no-validate"),
+                    },
+                },
+            )
+        }
         [cmd, group, ..] if cmd == "docx" && group == "tables" => dispatch_docx_tables(args),
         [cmd, group, ..] if cmd == "docx" && group == "paragraphs" => {
             dispatch_docx_paragraphs(args)
@@ -882,6 +926,7 @@ fn docx_is_mutation(args: &[String]) -> bool {
             "blocks" => matches!(verb.as_str(), "replace" | "delete" | "insert-after"),
             "paragraphs" => matches!(verb.as_str(), "append" | "insert" | "set" | "clear"),
             "breaks" => verb == "insert",
+            "sections" => verb == "set",
             "styles" => verb == "apply",
             "comments" => matches!(verb.as_str(), "add" | "edit" | "remove"),
             "fields" => matches!(verb.as_str(), "insert" | "set-result"),
