@@ -43,6 +43,46 @@ fn rule_catalog_is_reviewable_complete_and_stable() {
 }
 
 #[test]
+fn scaffold_recipes_have_zero_design_errors() {
+    let temp = temp_dir("recipes");
+    let pptx = temp.join("recipe.pptx");
+    let docx = temp.join("recipe.docx");
+    let xlsx = temp.join("recipe.xlsx");
+    run_ok(&[
+        "--json",
+        "pptx",
+        "scaffold",
+        path(&pptx),
+        "--title",
+        "Quarterly review",
+        "--subtitle",
+        "Prepared for the team",
+    ]);
+    run_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path(&docx),
+        "--text",
+        "Design review",
+    ]);
+    run_ok(&[
+        "--json",
+        "xlsx",
+        "scaffold",
+        path(&xlsx),
+        "--sheet",
+        "Summary",
+    ]);
+    for package in [&pptx, &docx, &xlsx] {
+        let report = design_check(package);
+        assert_eq!(report["summary"]["errors"], 0, "{report}");
+        assert_package_proofs(package);
+    }
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
 fn committed_bad_deck_triggers_every_pptx_rule_exactly_once_with_fixes() {
     let fixture = fixture("testdata/design-check/bad-deck/presentation.pptx");
     let report = design_check(&fixture);
