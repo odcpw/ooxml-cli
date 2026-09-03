@@ -212,7 +212,7 @@ pub(crate) fn mcp_tools() -> Value {
         {
             "name": "op",
             "description": "Apply one mutation operation to the session working copy.",
-            "inputSchema": mcp_command_tool_schema()
+            "inputSchema": mcp_op_tool_schema()
         },
         {
             "name": "inspect",
@@ -240,6 +240,28 @@ pub(crate) fn mcp_tools() -> Value {
             "inputSchema": mcp_session_tool_schema()
         }
     ])
+}
+
+fn mcp_op_tool_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "session": {"type": "string"},
+            "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9_:-]+$"
+            },
+            "command": {"type": "string"},
+            "args": {
+                "type": "object",
+                "description": "Command arguments; any value may be an exact {$ref: id.destination.field} object resolved from an earlier named op."
+            }
+        },
+        "required": ["args", "command", "session"],
+        "additionalProperties": false
+    })
 }
 
 fn mcp_command_tool_schema() -> Value {
