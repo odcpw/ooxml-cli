@@ -4,8 +4,6 @@ use std::path::Path;
 use std::process::{Command, Output};
 use std::time::{Duration, Instant};
 
-const GIT_ATTRIBUTES: &str = include_str!("../.gitattributes");
-
 const GOLDEN_CASES: &[(&str, &str, &[&str], &str)] = &[
     (
         "pptx-chart-simple",
@@ -122,10 +120,29 @@ fn golden_document<'a>(documents: &'a [(&str, Value)], name: &str) -> &'a Value 
 #[test]
 fn json_golden_contracts_are_lf_only_on_every_runner() {
     for directory in ["outline", "check", "design-check"] {
-        let rule = format!("testdata/golden/{directory}/** text eol=lf");
+        let path = format!("testdata/golden/{directory}/attribute-contract.json");
+        let output = Command::new("git")
+            .args(["check-attr", "text", "eol", "--", &path])
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output()
+            .expect("run git check-attr for JSON golden");
         assert!(
-            GIT_ATTRIBUTES.lines().any(|line| line == rule),
-            "missing raw-byte golden rule: {rule}"
+            output.status.success(),
+            "git check-attr failed for {path}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let attributes = String::from_utf8(output.stdout).expect("git check-attr UTF-8 output");
+        assert!(
+            attributes
+                .lines()
+                .any(|line| line == format!("{path}: text: set")),
+            "{path} must be treated as text: {attributes}"
+        );
+        assert!(
+            attributes
+                .lines()
+                .any(|line| line == format!("{path}: eol: lf")),
+            "{path} must be checked out with LF: {attributes}"
         );
     }
 
