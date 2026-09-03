@@ -194,45 +194,38 @@ fn make_xlsx_source(root: &Path) -> PathBuf {
     formatted
 }
 
-fn command_exists(command: &str) -> bool {
-    Command::new(command).arg("--version").output().is_ok()
+fn pdftotext_available() -> bool {
+    Command::new("pdftotext")
+        .arg("-v")
+        .output()
+        .is_ok_and(|output| output.status.success())
 }
 
 fn render_with_libreoffice(path: &Path, root: &Path, label: &str) -> Option<PathBuf> {
-    let office = if command_exists("soffice") {
-        "soffice"
-    } else if command_exists("libreoffice") {
-        "libreoffice"
-    } else {
-        eprintln!("SKIP LibreOffice chart render: soffice is unavailable");
-        return None;
-    };
     let output_dir = root.join(format!("render-{label}"));
-    let profile = root.join(format!("profile-{label}"));
-    fs::create_dir_all(&output_dir).expect("create render output directory");
-    let profile_arg = format!("-env:UserInstallation=file://{}", profile.display());
-    let output = Command::new(office)
-        .args([
-            "--headless",
-            &profile_arg,
-            "--convert-to",
-            "pdf",
-            "--outdir",
-            output_dir.to_str().unwrap(),
-            path.to_str().unwrap(),
-        ])
-        .output()
-        .expect("render chart with LibreOffice");
-    assert!(
-        output.status.success(),
-        "LibreOffice rejected {}: {}",
-        path.display(),
-        String::from_utf8_lossy(&output.stderr)
+    let report = run_json(&[
+        "--json",
+        "render",
+        path.to_str().unwrap(),
+        "--out",
+        output_dir.to_str().unwrap(),
+    ]);
+    if report["status"] == "skipped" {
+        eprintln!(
+            "SKIP LibreOffice chart render for {}: missingTools={} remediation={}",
+            path.display(),
+            report["missingTools"],
+            report["remediation"]
+        );
+        return None;
+    }
+    assert_eq!(report["status"], "ok", "{report}");
+    assert_eq!(report["engine"], "libreoffice", "{report}");
+    let pdf = PathBuf::from(
+        report["pdfPath"]
+            .as_str()
+            .unwrap_or_else(|| panic!("render report has no pdfPath: {report}")),
     );
-    let pdf = output_dir.join(format!(
-        "{}.pdf",
-        path.file_stem().unwrap().to_string_lossy()
-    ));
     assert!(
         pdf.is_file(),
         "LibreOffice did not create {}",
@@ -254,13 +247,15 @@ fn assert_golden(actual: &Value) {
         fs::create_dir_all(path.parent().unwrap()).expect("create chart golden directory");
         fs::write(path, &bytes_with_lf).expect("write chart golden");
     }
-    let expected = fs::read(path).unwrap_or_else(|error| {
+    let expected_bytes = fs::read(path).unwrap_or_else(|error| {
         panic!(
             "missing {}: {error}; rerun with UPDATE_GOLDENS=1",
             path.display()
         )
     });
-    assert_eq!(bytes_with_lf, expected, "chart house-style golden drift");
+    let expected: Value = serde_json::from_slice(&expected_bytes)
+        .unwrap_or_else(|error| panic!("invalid chart golden {}: {error}", path.display()));
+    assert_eq!(actual, &expected, "chart house-style golden drift");
 }
 
 #[test]
@@ -332,7 +327,7 @@ fn default_recipes_for_every_chart_type_are_schema_clean_renderable_and_golden()
         );
         let rendered = render_with_libreoffice(&xlsx, &root, &format!("xlsx-{chart_type}"));
         if chart_type == "bar"
-            && command_exists("pdftotext")
+            && pdftotext_available()
             && let Some(pdf) = rendered
         {
             let text = Command::new("pdftotext")

@@ -25,5 +25,7 @@ Makefile text eol=lf
 # Command-manifest contract goldens are raw-byte text fixtures on every platform.
 testdata/golden/command-manifest-contract/** text eol=lf
 
-# JSON golden contracts are compared as raw bytes and must not be rewritten on Windows.
+# JSON fixtures and goldens are text contracts and must not be rewritten on Windows.
 testdata/golden/**/*.json text eol=lf
+testdata/**/*.json text eol=lf
+tests/**/*.json text eol=lf
