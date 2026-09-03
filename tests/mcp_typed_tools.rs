@@ -179,7 +179,7 @@ fn typed_build_tools_create_three_strictly_valid_recipe_outputs() {
         }
         assert!(output.is_file(), "missing built {family} output");
         let validation = run_cli_json(
-            &vec![
+            &[
                 "--json".to_string(),
                 "--strict".to_string(),
                 "validate".to_string(),
@@ -234,7 +234,7 @@ fn typed_presentation_build_matches_the_family_cli_contract() {
     );
 
     let mut expected = run_cli_json(
-        &vec![
+        &[
             "--json".to_string(),
             "pptx".to_string(),
             "build".to_string(),
@@ -328,7 +328,7 @@ fn typed_read_tools_are_byte_contract_equivalent_to_cli_outputs() {
             &[],
         ),
         run_cli_json(
-            &vec![
+            &[
                 "--json".to_string(),
                 "render".to_string(),
                 file.to_string(),
@@ -453,7 +453,7 @@ fn typed_edit_replace_and_errors_are_one_call_and_teaching() {
 
 fn xlsx_a1(file: &Path) -> String {
     let value = run_cli_json(
-        &vec![
+        &[
             "--json".to_string(),
             "xlsx".to_string(),
             "cells".to_string(),
