@@ -408,6 +408,61 @@ fn pptx_diff_render_mock_mode_emits_deterministic_visual_artifacts() {
 }
 
 #[test]
+fn pptx_render_diff_reports_pixel_ratio_and_structural_similarity_for_text_change() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-render-change-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let candidate = temp_dir.join("candidate.pptx");
+    rewrite_zip_fixture(
+        "testdata/pptx/title-content/presentation.pptx",
+        &candidate,
+        |name, data| {
+            let data = if name == "ppt/slides/slide1.xml" {
+                replace_ascii(data, "Title Content Presentation", "Changed Presentation")
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let candidate_text = candidate.to_str().expect("candidate");
+    let (validate_code, validate_stdout, validate_stderr) =
+        run_ooxml(&["--json", "validate", candidate_text, "--strict"]);
+    assert_eq!(validate_code, 0, "generated PPTX must strictly validate");
+    assert!(validate_stdout.is_some());
+    assert_eq!(validate_stderr, None);
+    let out = temp_dir.join("visual");
+    let (code, stdout, stderr) = run_ooxml_with_env(
+        &[
+            "--json",
+            "diff",
+            "testdata/pptx/title-content/presentation.pptx",
+            candidate_text,
+            "--render",
+            "--out",
+            out.to_str().expect("out"),
+        ],
+        &[("OOXML_RUST_MOCK_RENDER", "1")],
+    );
+
+    assert_eq!(code, 8);
+    assert_eq!(stderr, None);
+    let output = stdout.expect("changed render diff stdout");
+    assert_eq!(output["visual"]["status"], "ok");
+    assert_eq!(output["visual"]["pass"], false);
+    let slide = &output["visual"]["slides"][0];
+    assert_eq!(slide["slide"], 1);
+    assert_eq!(slide["pixelDifferenceRatio"], 1.0);
+    assert_eq!(slide["structuralSimilarity"], 0.0);
+    assert_eq!(slide["pass"], false);
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn xlsx_and_docx_render_diff_distinguish_no_change_from_one_word_change() {
     let temp_dir =
         std::env::temp_dir().join(format!("ooxml-rust-render-diff-all-{}", std::process::id()));
@@ -439,6 +494,21 @@ fn xlsx_and_docx_render_diff_distinguish_no_change_from_one_word_change() {
             Some((name.to_string(), data))
         },
     );
+
+    for (family, candidate) in [
+        ("xlsx", xlsx_candidate.as_path()),
+        ("docx", docx_candidate.as_path()),
+    ] {
+        let (code, stdout, stderr) = run_ooxml(&[
+            "--json",
+            "validate",
+            candidate.to_str().expect("candidate path"),
+            "--strict",
+        ]);
+        assert_eq!(code, 0, "generated {family} must strictly validate");
+        assert!(stdout.is_some());
+        assert_eq!(stderr, None);
+    }
 
     for (family, baseline, candidate) in [
         (
