@@ -1556,6 +1556,10 @@ pub(crate) fn schema_command(args: &[String]) -> CliResult<Value> {
 }
 
 #[cfg(test)]
+#[path = "mutation_envelope/proof_matrix_tests.rs"]
+mod proof_matrix_tests;
+
+#[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
 

@@ -1,0 +1,1085 @@
+{
+  "proofs": [
+    {
+      "commandPath": "ooxml pptx add-textbox",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx animations add",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx animations prune-stale",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx animations remove",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx animations reorder",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx charts convert-type",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx charts copy-style",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx charts create",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx charts set-axis",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx charts set-chart-area-fill",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx charts set-legend",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx charts set-plot-area-fill",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx charts set-series-style",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx charts set-title",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx charts update-data",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx clone-slide",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx comments add",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx comments edit",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx comments remove",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx fields set",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx layouts add-placeholder",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx layouts clone",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx layouts delete-shape",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx layouts import",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx layouts rename",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx layouts set-bounds",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx masters add-placeholder",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx masters import",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx media add",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx media replace",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx new-slide-from-layout",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx notes clear",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx notes set",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx place image",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx place table",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx place table-from-xlsx",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx replace images",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx replace text",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx replace text-from-xlsx",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx replace text-map-from-xlsx",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx replace text-occurrences",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx scaffold",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx shapes delete",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx shapes set-bounds",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx slides compose",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx slides delete",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx slides import-slide",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx slides merge",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx slides move",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx slides reorder",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx tables delete-col",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx tables delete-row",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx tables insert-col",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx tables insert-row",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx tables set-cell",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx tables update-from-xlsx",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx template compile",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx text set",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx theme update",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml pptx xlsx-bindings apply",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    }
+  ],
+  "schemaVersion": "ooxml-cli.mutation-contract-evidence.v1"
+}

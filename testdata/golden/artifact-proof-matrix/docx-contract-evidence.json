@@ -1,0 +1,491 @@
+{
+  "proofs": [
+    {
+      "commandPath": "ooxml docx blocks delete",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx blocks insert-after",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx blocks replace",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx breaks insert",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx comments add",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx comments edit",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx comments remove",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx fields insert",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx fields set-result",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx footers set-text",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx headers set-text",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx images insert",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx images replace",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx paragraphs append",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx paragraphs clear",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx paragraphs insert",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx paragraphs set",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx replace",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx scaffold",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx sections set",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx styles apply",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx tables clear-cell",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx tables create",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx tables delete-row",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx tables insert-row",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx tables set-cell",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml docx tables set-style",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    }
+  ],
+  "schemaVersion": "ooxml-cli.mutation-contract-evidence.v1"
+}

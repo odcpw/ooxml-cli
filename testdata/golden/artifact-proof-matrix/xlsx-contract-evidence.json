@@ -1,0 +1,1085 @@
+{
+  "proofs": [
+    {
+      "commandPath": "ooxml xlsx cells clear",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx cells set",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx cells set-batch",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx charts convert-type",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx charts copy-style",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx charts create",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx charts set-axis",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx charts set-chart-area-fill",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx charts set-legend",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx charts set-plot-area-fill",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx charts set-series-style",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx charts set-title",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx charts update-source",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx cols delete",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx cols insert",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx colwidths autofit",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx colwidths set",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx comments add",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx comments remove",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx comments update",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx conditional-formats add",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx conditional-formats delete",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx conditional-formats reorder",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx data-validations create",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx data-validations delete",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx data-validations update",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx filters-sorts add-column-filter",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx filters-sorts clear-autofilter",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx filters-sorts clear-column-filter",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx filters-sorts clear-sort",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx filters-sorts set-autofilter",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx filters-sorts set-sort",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx freeze clear",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx freeze set",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx hyperlinks add",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx hyperlinks delete",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx hyperlinks update",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx names add",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx names delete",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx names rename",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx names update",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx pivots create",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx ranges set",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx ranges set-format",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx ranges set-style",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx rowheights set",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx rows delete",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx rows insert",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx scaffold",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx sheets add",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx sheets delete",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx sheets move",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx sheets rename",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx sheets set-print",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx sheets set-tab-color",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx tables append-records",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx tables append-rows",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx tables create",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx tables set-column-format",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml xlsx workbook metadata update",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    }
+  ],
+  "schemaVersion": "ooxml-cli.mutation-contract-evidence.v1"
+}

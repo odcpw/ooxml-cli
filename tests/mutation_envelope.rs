@@ -30,6 +30,12 @@ fn pinned_mutation_envelope_schema() -> Value {
 }
 
 fn temp_dir(label: &str) -> std::path::PathBuf {
+    if let Some(root) = std::env::var_os("OOXML_CONTRACT_PROOF_DIR") {
+        let path = Path::new(&root).join(label);
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).expect("create retained contract proof directory");
+        return path;
+    }
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system clock")
@@ -40,6 +46,12 @@ fn temp_dir(label: &str) -> std::path::PathBuf {
     ));
     fs::create_dir_all(&path).expect("create test directory");
     path
+}
+
+fn remove_temp_dir(path: std::path::PathBuf) {
+    if std::env::var_os("OOXML_CONTRACT_PROOF_DIR").is_none() {
+        fs::remove_dir_all(path).expect("remove contract directory");
+    }
 }
 
 #[derive(Debug)]
@@ -53,6 +65,8 @@ struct ContractCase {
 #[derive(Debug)]
 struct ContractRow {
     command: String,
+    family: String,
+    artifact: String,
     exit_zero: bool,
     one_json_object: bool,
     envelope_fields: bool,
@@ -61,6 +75,7 @@ struct ContractRow {
     readback_exit_zero: bool,
     selector_resolved: bool,
     validate_exit_zero: bool,
+    conformance_exit_zero: bool,
     diagnostics: Vec<String>,
 }
 
@@ -74,6 +89,7 @@ impl ContractRow {
             && self.readback_exit_zero
             && self.selector_resolved
             && self.validate_exit_zero
+            && self.conformance_exit_zero
     }
 }
 
@@ -387,6 +403,8 @@ fn run_contract_case(case: &ContractCase, schema: &Value) -> ContractRow {
     let output = run_owned(&case.args);
     let mut row = ContractRow {
         command: case.path.to_string(),
+        family: String::new(),
+        artifact: String::new(),
         exit_zero: output.status.success(),
         one_json_object: false,
         envelope_fields: false,
@@ -395,6 +413,7 @@ fn run_contract_case(case: &ContractCase, schema: &Value) -> ContractRow {
         readback_exit_zero: false,
         selector_resolved: false,
         validate_exit_zero: false,
+        conformance_exit_zero: false,
         diagnostics: Vec::new(),
     };
     if !row.exit_zero {
@@ -417,6 +436,8 @@ fn run_contract_case(case: &ContractCase, schema: &Value) -> ContractRow {
         }
     };
     let envelope = &response["mutationEnvelope"];
+    row.family = envelope["family"].as_str().unwrap_or_default().to_string();
+    row.artifact = envelope["file"].as_str().unwrap_or_default().to_string();
     row.envelope_fields = required_envelope_fields_present(envelope);
     row.destination_kind = envelope["destination"]["kind"] == case.destination_kind;
     row.schema_valid = validates_pinned_schema(envelope, schema);
@@ -472,6 +493,22 @@ fn run_contract_case(case: &ContractCase, schema: &Value) -> ContractRow {
             ));
         }
     }
+    let conformance = envelope["conformanceCommand"].as_str().and_then(|command| {
+        emitted_ooxml_args(command)
+            .map_err(|err| row.diagnostics.push(err))
+            .ok()
+            .map(|args| run_owned(&args))
+    });
+    if let Some(conformance) = conformance {
+        row.conformance_exit_zero = conformance.status.success();
+        if !row.conformance_exit_zero {
+            row.diagnostics.push(format!(
+                "conformance stdout={} stderr={}",
+                String::from_utf8_lossy(&conformance.stdout),
+                String::from_utf8_lossy(&conformance.stderr)
+            ));
+        }
+    }
     row
 }
 
@@ -480,11 +517,11 @@ fn assert_contract_matrix(rows: &[ContractRow]) {
         return;
     }
     let mut matrix = String::from(
-        "command | exit | json | fields | kind | schema | readback | selector | validate\n",
+        "command | exit | json | fields | kind | schema | readback | selector | validate | conformance\n",
     );
     for row in rows {
         matrix.push_str(&format!(
-            "{} | {} | {} | {} | {} | {} | {} | {} | {}\n",
+            "{} | {} | {} | {} | {} | {} | {} | {} | {} | {}\n",
             row.command,
             row.exit_zero,
             row.one_json_object,
@@ -493,13 +530,93 @@ fn assert_contract_matrix(rows: &[ContractRow]) {
             row.schema_valid,
             row.readback_exit_zero,
             row.selector_resolved,
-            row.validate_exit_zero
+            row.validate_exit_zero,
+            row.conformance_exit_zero
         ));
         for diagnostic in &row.diagnostics {
             matrix.push_str(&format!("  {diagnostic}\n"));
         }
     }
     panic!("mutation envelope contract failures:\n{matrix}");
+}
+
+fn contract_evidence(rows: &[ContractRow], include_artifacts: bool) -> Value {
+    let mut proofs = rows
+        .iter()
+        .map(|row| {
+            let structural = row.exit_zero
+                && row.one_json_object
+                && row.envelope_fields
+                && row.destination_kind
+                && row.schema_valid;
+            let readback = row.readback_exit_zero && row.selector_resolved;
+            let mut proof = serde_json::json!({
+                "commandPath": row.command,
+                "inputFixtureType": "committed fixture",
+                "tiers": {
+                    "structural": {"status": if structural { "passed" } else { "failed" }},
+                    "readback": {"status": if readback { "passed" } else { "failed" }},
+                    "validate": {"status": if row.validate_exit_zero { "passed" } else { "failed" }},
+                    "conformance": {"status": if row.conformance_exit_zero { "passed" } else { "failed" }}
+                }
+            });
+            if include_artifacts {
+                proof["generatedOutputPath"] = Value::String(row.artifact.clone());
+                proof["family"] = Value::String(row.family.clone());
+            }
+            proof
+        })
+        .collect::<Vec<_>>();
+    proofs.sort_by(|left, right| {
+        left["commandPath"]
+            .as_str()
+            .cmp(&right["commandPath"].as_str())
+    });
+    serde_json::json!({
+        "schemaVersion": "ooxml-cli.mutation-contract-evidence.v1",
+        "proofs": proofs
+    })
+}
+
+fn assert_contract_evidence(rows: &[ContractRow], group: &str) {
+    assert_contract_matrix(rows);
+    let evidence = contract_evidence(rows, false);
+    let golden = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("testdata")
+        .join("golden")
+        .join("artifact-proof-matrix")
+        .join(format!("{group}-contract-evidence.json"));
+    let expected = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&evidence).expect("serialize contract evidence")
+    );
+    if std::env::var("UPDATE_GOLDENS").as_deref() == Ok("1") {
+        fs::create_dir_all(golden.parent().expect("golden parent"))
+            .expect("create proof evidence golden directory");
+        fs::write(&golden, &expected).expect("write proof evidence golden");
+    }
+    let actual = fs::read_to_string(&golden).unwrap_or_else(|error| {
+        panic!(
+            "missing {}: {error}; rerun this target with UPDATE_GOLDENS=1 and review the proof rows",
+            golden.display()
+        )
+    });
+    assert_eq!(actual, expected, "{} drifted", golden.display());
+
+    if let Some(root) = std::env::var_os("OOXML_CONTRACT_PROOF_DIR") {
+        let evidence_dir = Path::new(&root).join("evidence");
+        fs::create_dir_all(&evidence_dir).expect("create runtime contract evidence directory");
+        let runtime = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&contract_evidence(rows, true))
+                .expect("serialize runtime contract evidence")
+        );
+        fs::write(
+            evidence_dir.join(format!("{group}-contract-evidence.json")),
+            runtime,
+        )
+        .expect("write runtime contract evidence");
+    }
 }
 
 fn case(path: &'static str, destination_kind: &'static str, args: Vec<String>) -> ContractCase {
@@ -1106,8 +1223,8 @@ fn docx_mutation_commands_satisfy_the_envelope_contract() {
         .iter()
         .map(|case| run_contract_case(case, &schema))
         .collect::<Vec<_>>();
-    assert_contract_matrix(&rows);
-    fs::remove_dir_all(dir).expect("remove DOCX contract directory");
+    assert_contract_evidence(&rows, "docx");
+    remove_temp_dir(dir);
 }
 
 fn xlsx_contract_cases(dir: &Path) -> Vec<ContractCase> {
@@ -1981,8 +2098,8 @@ fn xlsx_mutation_commands_satisfy_the_envelope_contract() {
         .iter()
         .map(|case| run_contract_case(case, &schema))
         .collect::<Vec<_>>();
-    assert_contract_matrix(&rows);
-    fs::remove_dir_all(dir).expect("remove XLSX contract directory");
+    assert_contract_evidence(&rows, "xlsx");
+    remove_temp_dir(dir);
 }
 
 fn pptx_contract_cases(dir: &Path) -> Vec<ContractCase> {
@@ -2006,7 +2123,13 @@ fn pptx_contract_cases(dir: &Path) -> Vec<ContractCase> {
     fs::write(&media, b"opaque contract media").expect("write media");
     fs::write(&replacement_media, b"opaque replacement media").expect("write replacement media");
 
-    let animation_json = run_json(&["--json", "pptx", "animations", "list", animation]);
+    let animation_clean = setup_with_out(
+        dir,
+        "pptx-animation-clean",
+        "pptx",
+        owned_args(&["--json", "pptx", "animations", "prune-stale", animation]),
+    );
+    let animation_json = run_json(&["--json", "pptx", "animations", "list", &animation_clean]);
     let effects = animation_json["slides"][0]["effects"]
         .as_array()
         .expect("animation effects");
@@ -2334,13 +2457,13 @@ fn pptx_contract_cases(dir: &Path) -> Vec<ContractCase> {
         remove(
             "ooxml pptx animations remove",
             "animation",
-            animation,
+            &animation_clean,
             &["--slide", "1", "--effect-id", &effect_id],
         ),
         c(
             "ooxml pptx animations reorder",
             "animation",
-            animation,
+            &animation_clean,
             &["--slide", "1", "--order", &animation_order],
         ),
         remove(
@@ -2882,8 +3005,8 @@ fn pptx_mutation_commands_satisfy_the_envelope_contract() {
         .iter()
         .map(|case| run_contract_case(case, &schema))
         .collect::<Vec<_>>();
-    assert_contract_matrix(&rows);
-    fs::remove_dir_all(dir).expect("remove PPTX contract directory");
+    assert_contract_evidence(&rows, "pptx");
+    remove_temp_dir(dir);
 }
 
 fn package_contract_cases(dir: &Path) -> Vec<ContractCase> {
@@ -2993,8 +3116,8 @@ fn package_mutation_commands_satisfy_the_envelope_contract() {
         .iter()
         .map(|case| run_contract_case(case, &schema))
         .collect::<Vec<_>>();
-    assert_contract_matrix(&rows);
-    fs::remove_dir_all(dir).expect("remove package contract directory");
+    assert_contract_evidence(&rows, "package");
+    remove_temp_dir(dir);
 }
 
 #[test]

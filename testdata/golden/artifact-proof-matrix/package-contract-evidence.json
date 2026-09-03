@@ -1,0 +1,95 @@
+{
+  "proofs": [
+    {
+      "commandPath": "ooxml apply",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml convert xlsm-to-xlsx",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml find",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml repair normalize",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    },
+    {
+      "commandPath": "ooxml template apply",
+      "inputFixtureType": "committed fixture",
+      "tiers": {
+        "conformance": {
+          "status": "passed"
+        },
+        "readback": {
+          "status": "passed"
+        },
+        "structural": {
+          "status": "passed"
+        },
+        "validate": {
+          "status": "passed"
+        }
+      }
+    }
+  ],
+  "schemaVersion": "ooxml-cli.mutation-contract-evidence.v1"
+}

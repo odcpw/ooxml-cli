@@ -12,8 +12,8 @@ use crate::{
     current_utc_rfc3339, ensure_content_type_override, is_xml_text_event, local_name, package_type,
     relationship_entries_from_xml, relationship_target_from_source_to_target,
     relationships_part_for, remove_xml_span, replace_xml_span, resolve_relationship_target,
-    validate_xlsx_mutation_output_flags, xml_attr_escape, xml_direct_child_ranges, xml_escape,
-    zip_entry_exists, zip_entry_names, zip_text,
+    validate_xlsx_mutation_output_flags, xml_attr_escape, xml_escape, zip_entry_exists,
+    zip_entry_names, zip_text,
 };
 
 mod output;
@@ -1204,36 +1204,29 @@ fn write_comment_mutation(
 
 fn remove_content_type_override(xml: &str, part: &str) -> CliResult<String> {
     let normalized = package_uri(part);
-    let open_end = xml
-        .find('>')
-        .ok_or_else(|| CliError::unexpected("invalid [Content_Types].xml"))?;
-    let close_start = xml
-        .rfind("</")
-        .ok_or_else(|| CliError::unexpected("invalid [Content_Types].xml"))?;
-    let mut out = xml.to_string();
-    for child in xml_direct_child_ranges(xml, open_end + 1, close_start)?
-        .into_iter()
-        .rev()
-    {
-        if child.kind != "Override" {
-            continue;
-        }
-        let fragment = &xml[child.start..child.end];
-        let mut reader = Reader::from_str(fragment);
-        reader.config_mut().trim_text(true);
-        let remove = loop {
-            match reader.read_event() {
-                Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                    break attr(&e, "PartName").as_deref() == Some(normalized.as_str());
-                }
-                Ok(Event::Eof) => break false,
-                Err(_) => break false,
-                _ => {}
+    let mut reader = Reader::from_str(xml);
+    let mut event_start = 0usize;
+    let mut ranges = Vec::new();
+    loop {
+        let event = reader.read_event().map_err(|error| {
+            CliError::unexpected(format!("invalid [Content_Types].xml: {error}"))
+        })?;
+        let event_end = reader.buffer_position() as usize;
+        match event {
+            Event::Empty(element)
+                if local_name(element.name().as_ref()) == "Override"
+                    && attr(&element, "PartName").as_deref() == Some(normalized.as_str()) =>
+            {
+                ranges.push((event_start, event_end));
             }
-        };
-        if remove {
-            out = remove_xml_span(&out, child.start, child.end);
+            Event::Eof => break,
+            _ => {}
         }
+        event_start = event_end;
+    }
+    let mut out = xml.to_string();
+    for (start, end) in ranges.into_iter().rev() {
+        out = remove_xml_span(&out, start, end);
     }
     Ok(out)
 }
@@ -1294,4 +1287,18 @@ fn package_uri(part: &str) -> String {
 
 fn package_part_name(uri: &str) -> String {
     uri.trim_start_matches('/').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::remove_content_type_override;
+
+    #[test]
+    fn removing_last_comment_removes_its_content_type_after_xml_declaration() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/comments/comment1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.comments+xml"/><Override PartName="/ppt/commentAuthors.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.commentAuthors+xml"/></Types>"#;
+        let updated = remove_content_type_override(xml, "ppt/comments/comment1.xml")
+            .expect("remove comment content type");
+        assert!(!updated.contains("/ppt/comments/comment1.xml"));
+        assert!(updated.contains("/ppt/commentAuthors.xml"));
+    }
 }
