@@ -48,6 +48,7 @@ fn page_and_section_breaks_are_schema_clean_and_hash_visible() {
     let temp = temp_dir("breaks");
     let source = temp.join("source.docx");
     let page = temp.join("page.docx");
+    let page_again = temp.join("page-again.docx");
     let section = temp.join("section.docx");
     run_ok(&[
         "--json",
@@ -67,6 +68,17 @@ fn page_and_section_breaks_are_schema_clean_and_hash_visible() {
         "--out",
         path(&page),
     ]);
+    run_ok(&[
+        "--json",
+        "docx",
+        "breaks",
+        "insert",
+        path(&source),
+        "--page",
+        "--out",
+        path(&page_again),
+    ]);
+    assert_eq!(fs::read(&page).unwrap(), fs::read(&page_again).unwrap());
     assert_eq!(page_report["break"], "page");
     assert!(
         page_report["documentHash"]
@@ -97,7 +109,7 @@ fn page_and_section_breaks_are_schema_clean_and_hash_visible() {
             .count(),
         2
     );
-    for package in [&source, &page, &section] {
+    for package in [&source, &page, &page_again, &section] {
         assert_all_proofs(package);
     }
     fs::remove_dir_all(temp).unwrap();
@@ -109,6 +121,7 @@ fn indexed_sections_set_size_orientation_and_margins_in_schema_order() {
     let source = temp.join("source.docx");
     let split = temp.join("split.docx");
     let first = temp.join("first.docx");
+    let first_again = temp.join("first-again.docx");
     let second = temp.join("second.docx");
     run_ok(&[
         "--json",
@@ -145,6 +158,24 @@ fn indexed_sections_set_size_orientation_and_margins_in_schema_order() {
         "--out",
         path(&first),
     ]);
+    run_ok(&[
+        "--json",
+        "docx",
+        "sections",
+        "set",
+        path(&split),
+        "--section",
+        "1",
+        "--orientation",
+        "landscape",
+        "--size",
+        "A4",
+        "--margins",
+        "0.5in,0.75in,1in,1.25in",
+        "--out",
+        path(&first_again),
+    ]);
+    assert_eq!(fs::read(&first).unwrap(), fs::read(&first_again).unwrap());
     assert_eq!(first_report["marginsTwips"]["top"], 720);
     let second_report = run_ok(&[
         "--json",
@@ -167,7 +198,7 @@ fn indexed_sections_set_size_orientation_and_margins_in_schema_order() {
     let xml = zip_text(&second, "word/document.xml");
     assert!(xml.contains(r#"<w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="720" w:right="1080" w:bottom="1440" w:left="1800"/>"#));
     assert!(xml.contains(r#"<w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/>"#));
-    for package in [&source, &split, &first, &second] {
+    for package in [&source, &split, &first, &first_again, &second] {
         assert_all_proofs(package);
     }
     fs::remove_dir_all(temp).unwrap();
@@ -178,6 +209,7 @@ fn styled_tables_have_widths_repeating_headers_numeric_alignment_and_set_style()
     let temp = temp_dir("styled-table");
     let source = temp.join("source.docx");
     let created = temp.join("created.docx");
+    let created_again = temp.join("created-again.docx");
     let restyled = temp.join("restyled.docx");
     run_ok(&[
         "--json",
@@ -207,6 +239,30 @@ fn styled_tables_have_widths_repeating_headers_numeric_alignment_and_set_style()
         "--out",
         path(&created),
     ]);
+    run_ok(&[
+        "--json",
+        "docx",
+        "tables",
+        "create",
+        path(&source),
+        "--values",
+        r#"[["Product","Revenue","Trend"],["Widgets",1200,"Up"],["Gadgets",950,"Flat"]]"#,
+        "--style",
+        "TableGrid",
+        "--header-row",
+        "--widths",
+        "2in,1in,auto",
+        "--align",
+        "center",
+        "--caption",
+        "Quarterly revenue",
+        "--out",
+        path(&created_again),
+    ]);
+    assert_eq!(
+        fs::read(&created).unwrap(),
+        fs::read(&created_again).unwrap()
+    );
     let hash = create["contentHash"].as_str().unwrap();
     assert!(
         create["documentHash"]
@@ -244,7 +300,7 @@ fn styled_tables_have_widths_repeating_headers_numeric_alignment_and_set_style()
     let restyled_xml = zip_text(&restyled, "word/document.xml");
     assert!(restyled_xml.contains(r#"<w:tblStyle w:val="TableLight"/>"#));
     assert!(!restyled_xml.contains(r#"<w:tblStyle w:val="TableGrid"/>"#));
-    for package in [&source, &created, &restyled] {
+    for package in [&source, &created, &created_again, &restyled] {
         assert_all_proofs(package);
     }
     fs::remove_dir_all(temp).unwrap();
@@ -255,6 +311,7 @@ fn image_caption_uses_caption_style_seq_field_and_alignment() {
     let temp = temp_dir("image-caption");
     let source = temp.join("source.docx");
     let output = temp.join("captioned.docx");
+    let output_again = temp.join("captioned-again.docx");
     let scaffold = run_ok(&[
         "--json",
         "docx",
@@ -288,6 +345,30 @@ fn image_caption_uses_caption_style_seq_field_and_alignment() {
         "--out",
         path(&output),
     ]);
+    run_ok(&[
+        "--json",
+        "docx",
+        "images",
+        "insert",
+        path(&source),
+        "--after",
+        "1",
+        "--expect-hash",
+        anchor,
+        "--file",
+        path(&image),
+        "--width",
+        "2in",
+        "--height",
+        "1in",
+        "--caption",
+        "Quarterly trend",
+        "--align",
+        "center",
+        "--out",
+        path(&output_again),
+    ]);
+    assert_eq!(fs::read(&output).unwrap(), fs::read(&output_again).unwrap());
     assert_eq!(report["caption"], "Quarterly trend");
     assert_eq!(report["captionBlock"], 3);
     assert!(report["blockHashes"].as_array().unwrap().len() >= 3);
@@ -296,7 +377,7 @@ fn image_caption_uses_caption_style_seq_field_and_alignment() {
     assert!(xml.contains(r#"<w:pStyle w:val="Caption"/><w:jc w:val="center"/>"#));
     assert!(xml.contains(r#"w:instr=" SEQ Figure \* ARABIC ""#));
     assert!(xml.contains("Quarterly trend"));
-    for package in [&source, &output] {
+    for package in [&source, &output, &output_again] {
         assert_all_proofs(package);
     }
     fs::remove_dir_all(temp).unwrap();
@@ -307,6 +388,7 @@ fn toc_field_has_placeholder_update_fields_and_readback_warning() {
     let temp = temp_dir("toc");
     let source = temp.join("source.docx");
     let output = temp.join("toc.docx");
+    let output_again = temp.join("toc-again.docx");
     run_ok(&[
         "--json",
         "docx",
@@ -327,6 +409,19 @@ fn toc_field_has_placeholder_update_fields_and_readback_warning() {
         "--out",
         path(&output),
     ]);
+    run_ok(&[
+        "--json",
+        "docx",
+        "fields",
+        "insert",
+        path(&source),
+        "--toc",
+        "--levels",
+        "1-3",
+        "--out",
+        path(&output_again),
+    ]);
+    assert_eq!(fs::read(&output).unwrap(), fs::read(&output_again).unwrap());
     assert_eq!(inserted["levels"], "1-3");
     assert_eq!(inserted["updateFields"], true);
     assert_eq!(
@@ -349,7 +444,7 @@ fn toc_field_has_placeholder_update_fields_and_readback_warning() {
     ]);
     assert_eq!(fields["fields"].as_array().unwrap().len(), 1);
     assert_eq!(fields["warnings"][0]["code"], "DOCX_FIELD_UPDATE_REQUIRED");
-    for package in [&source, &output] {
+    for package in [&source, &output, &output_again] {
         assert_all_proofs(package);
     }
     fs::remove_dir_all(temp).unwrap();
@@ -360,6 +455,7 @@ fn footer_page_numbers_use_page_and_numpages_fields() {
     let temp = temp_dir("page-numbers");
     let source = temp.join("source.docx");
     let output = temp.join("numbered.docx");
+    let output_again = temp.join("numbered-again.docx");
     run_ok(&[
         "--json",
         "docx",
@@ -378,6 +474,17 @@ fn footer_page_numbers_use_page_and_numpages_fields() {
         "--out",
         path(&output),
     ]);
+    run_ok(&[
+        "--json",
+        "docx",
+        "footers",
+        "set-text",
+        path(&source),
+        "--page-numbers",
+        "--out",
+        path(&output_again),
+    ]);
+    assert_eq!(fs::read(&output).unwrap(), fs::read(&output_again).unwrap());
     assert_eq!(report["pageNumbers"], true);
     assert_eq!(report["text"], "Page 1 of 1");
     assert!(
@@ -393,7 +500,7 @@ fn footer_page_numbers_use_page_and_numpages_fields() {
     assert!(footer.contains(" of "));
     let fields = run_ok(&["--json", "docx", "fields", "list", path(&output)]);
     assert_eq!(fields["fields"].as_array().unwrap().len(), 2);
-    for package in [&source, &output] {
+    for package in [&source, &output, &output_again] {
         assert_all_proofs(package);
     }
     fs::remove_dir_all(temp).unwrap();
