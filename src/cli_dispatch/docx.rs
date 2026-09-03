@@ -534,10 +534,18 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                     "--expect-hash",
                     "--width",
                     "--height",
+                    "--fit",
+                    "--max-dpi",
+                    "--alt",
                     "--out",
                     "--backup",
                 ],
-                &["--dry-run", "--in-place", "--no-validate"],
+                &[
+                    "--keep-original",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
             )?;
             let image = parse_string_flag(rest, "--image")?.ok_or_else(|| {
                 CliError::invalid_args("--image is required (1-based index or relationship id)")
@@ -558,24 +566,35 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                     "--width and --height must be >= 0 (EMU)",
                 ));
             }
+            let fit = parse_string_flag(rest, "--fit")?;
+            let max_dpi = parse_string_flag(rest, "--max-dpi")?;
+            let alt = parse_string_flag(rest, "--alt")?.unwrap_or_default();
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             docx_images_replace(
                 file,
-                &image,
-                &image_file,
-                &expect_hash,
-                width,
-                height,
-                DocxParagraphMutationOptions {
-                    text: None,
-                    text_file: None,
-                    style: "",
-                    out: out.as_deref(),
-                    backup: backup.as_deref(),
-                    dry_run: has_flag(rest, "--dry-run"),
-                    in_place: has_flag(rest, "--in-place"),
-                    no_validate: has_flag(rest, "--no-validate"),
+                DocxImageReplaceOptions {
+                    selector: &image,
+                    image_file: &image_file,
+                    expected_hash: &expect_hash,
+                    width,
+                    height,
+                    image: DocxImagePipelineArgs {
+                        fit: fit.as_deref(),
+                        max_dpi: max_dpi.as_deref(),
+                        keep_original: has_flag(rest, "--keep-original"),
+                        alt: &alt,
+                    },
+                    mutation: DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: out.as_deref(),
+                        backup: backup.as_deref(),
+                        dry_run: has_flag(rest, "--dry-run"),
+                        in_place: has_flag(rest, "--in-place"),
+                        no_validate: has_flag(rest, "--no-validate"),
+                    },
                 },
             )
         }
@@ -592,10 +611,18 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                     "--height",
                     "--caption",
                     "--align",
+                    "--fit",
+                    "--max-dpi",
+                    "--alt",
                     "--out",
                     "--backup",
                 ],
-                &["--dry-run", "--in-place", "--no-validate"],
+                &[
+                    "--keep-original",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
             )?;
             let after = parse_i64_flag(rest, "--after")?.unwrap_or(0);
             if after < 0 {
@@ -613,6 +640,9 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
             let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
             let caption = parse_string_flag(rest, "--caption")?;
             let align = parse_string_flag(rest, "--align")?.unwrap_or_default();
+            let fit = parse_string_flag(rest, "--fit")?;
+            let max_dpi = parse_string_flag(rest, "--max-dpi")?;
+            let alt = parse_string_flag(rest, "--alt")?.unwrap_or_default();
             if after > 0 {
                 if !expect_hash.is_empty() {
                     require_docx_block_hash(&expect_hash)?;
@@ -634,6 +664,12 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                     height,
                     caption: caption.as_deref(),
                     align: &align,
+                    image: DocxImagePipelineArgs {
+                        fit: fit.as_deref(),
+                        max_dpi: max_dpi.as_deref(),
+                        keep_original: has_flag(rest, "--keep-original"),
+                        alt: &alt,
+                    },
                     mutation: DocxParagraphMutationOptions {
                         text: None,
                         text_file: None,

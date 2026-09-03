@@ -6,6 +6,10 @@ use std::fs;
 use std::path::Path;
 
 use crate::cli_args::value_flag_present;
+use crate::image_pipeline::{
+    ImageBounds, ImageFit, ImagePipelineOptions, ProcessedImage, parse_max_dpi, probe_image,
+    process_image,
+};
 use crate::pptx_mutation::paragraphs::{
     Paragraph, ParagraphContext, ParagraphDefaults, paragraphs_from_file, paragraphs_from_text,
     render_paragraphs,
@@ -74,7 +78,10 @@ struct ImageRequest {
     image_path: String,
     bounds: Bounds,
     name: String,
-    fit_mode: String,
+    fit: ImageFit,
+    max_dpi: f64,
+    keep_original: bool,
+    alt: String,
 }
 
 struct TableRequest {
@@ -119,11 +126,10 @@ struct ImageMutation {
     target_uri: String,
     content_type: String,
     relationship_id: String,
-    fit_mode: String,
+    processed: ProcessedImage,
     updated_slide_xml: String,
     updated_rels_xml: String,
     updated_content_types_xml: String,
-    image_data: Vec<u8>,
 }
 
 struct TableMutation {
@@ -198,7 +204,7 @@ pub(crate) fn pptx_place_image(file: &str, args: &[String]) -> CliResult<Value> 
     let mut binary_overrides = BTreeMap::new();
     binary_overrides.insert(
         mutation.target_uri.trim_start_matches('/').to_string(),
-        mutation.image_data.clone(),
+        mutation.processed.data.clone(),
     );
     let stage = stage_placement_mutation(
         file,
@@ -217,7 +223,6 @@ pub(crate) fn pptx_place_image(file: &str, args: &[String]) -> CliResult<Value> 
     let result = place_image_result_json(
         file,
         &mutation,
-        &request,
         &options,
         stage.output_path.as_deref(),
         destination,
@@ -369,19 +374,37 @@ fn parse_place_image_request(file: &str, args: &[String]) -> CliResult<ImageRequ
             "file not found: {image_path}"
         )));
     }
-    let aspect = image_aspect_ratio(&image_path);
+    let image_bytes = fs::read(&image_path)
+        .map_err(|err| CliError::unexpected(format!("failed to read image file: {err}")))?;
+    let probe = probe_image(&image_bytes)?;
+    let aspect = (probe.oriented_height > 0)
+        .then_some(probe.oriented_width as f64 / probe.oriented_height as f64);
     let bounds = resolve_placement_bounds(file, slide as u32, args, false, aspect)?;
-    let fit_mode = normalize_fit_mode(
-        parse_string_flag(args, "--fit-mode")?
-            .as_deref()
-            .unwrap_or("contain"),
-    )?;
+    let fit_value = parse_string_flag(args, "--fit")?;
+    let fit_mode_value = parse_string_flag(args, "--fit-mode")?;
+    if fit_value.is_some() && fit_mode_value.is_some() {
+        return Err(CliError::invalid_args(
+            "use either --fit or the legacy --fit-mode alias, not both",
+        ));
+    }
+    let fit = if fit_value.is_none()
+        && fit_mode_value.is_none()
+        && parse_string_flag(args, "--aspect")?
+            .is_some_and(|value| value.eq_ignore_ascii_case("fill"))
+    {
+        ImageFit::Stretch
+    } else {
+        ImageFit::parse(fit_value.as_deref().or(fit_mode_value.as_deref()))?
+    };
     Ok(ImageRequest {
         slide: slide as u32,
         image_path,
         bounds,
         name: parse_string_flag(args, "--name")?.unwrap_or_default(),
-        fit_mode,
+        fit,
+        max_dpi: parse_max_dpi(parse_string_flag(args, "--max-dpi")?.as_deref())?,
+        keep_original: crate::has_flag(args, "--keep-original"),
+        alt: parse_string_flag(args, "--alt")?.unwrap_or_default(),
     })
 }
 
@@ -545,16 +568,6 @@ fn require_explicit_geometry_without_slot(args: &[String], flags: &[&str]) -> Cl
     }
 }
 
-fn image_aspect_ratio(path: &str) -> Option<f64> {
-    let data = fs::read(path).ok()?;
-    if data.starts_with(b"\x89PNG\r\n\x1a\n") && data.len() >= 24 {
-        let width = u32::from_be_bytes(data[16..20].try_into().ok()?);
-        let height = u32::from_be_bytes(data[20..24].try_into().ok()?);
-        return (height > 0).then_some(width as f64 / height as f64);
-    }
-    None
-}
-
 fn require_value_flags(args: &[String], flags: &[&str]) -> CliResult<()> {
     let missing = flags
         .iter()
@@ -579,16 +592,6 @@ fn parse_f64_flag(args: &[String], name: &str) -> CliResult<Option<f64>> {
                 .map_err(|_| CliError::invalid_args(format!("{name} must be a number")))
         })
         .transpose()
-}
-
-fn normalize_fit_mode(value: &str) -> CliResult<String> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "contain" | "fit" => Ok("contain".to_string()),
-        "cover" | "crop" => Ok("cover".to_string()),
-        other => Err(CliError::invalid_args(format!(
-            "invalid fit mode {other:?} (must be 'contain' or 'cover')"
-        ))),
-    }
 }
 
 fn normalize_table_data_format(value: Option<&str>) -> CliResult<String> {
@@ -922,10 +925,23 @@ fn build_image_mutation(file: &str, request: &ImageRequest) -> CliResult<ImageMu
     let shape_id = next_shape_id(&slide_xml)?;
     let image_data = fs::read(&request.image_path)
         .map_err(|err| CliError::unexpected(format!("failed to read image file: {err}")))?;
-    let content_type = image_content_type(&request.image_path)?;
-    validate_image_payload(&content_type, &image_data)?;
-    let extension = image_extension_for_content_type(&content_type)?;
-    let target_uri = allocate_image_part(file, shape_id, extension)?;
+    let processed = process_image(
+        &image_data,
+        &ImagePipelineOptions {
+            placed: ImageBounds {
+                x: request.bounds.x,
+                y: request.bounds.y,
+                cx: request.bounds.cx,
+                cy: request.bounds.cy,
+            },
+            fit: request.fit,
+            max_dpi: request.max_dpi,
+            keep_original: request.keep_original,
+            alt: &request.alt,
+        },
+    )?;
+    let content_type = processed.content_type.to_string();
+    let target_uri = allocate_image_part(file, shape_id, processed.extension)?;
     let rels_part = relationships_part_for(&slide_part);
     let rels_xml = zip_text(file, &rels_part).unwrap_or_else(|_| {
         r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#
@@ -949,7 +965,7 @@ fn build_image_mutation(file: &str, request: &ImageRequest) -> CliResult<ImageMu
     } else {
         request.name.clone()
     };
-    let pic_xml = picture_shape_xml(shape_id, &shape_name, &relationship_id, request);
+    let pic_xml = picture_shape_xml(shape_id, &shape_name, &relationship_id, &processed);
     let slide_xml = ensure_root_namespace(slide_xml, "r", R_NS)?;
     let updated_slide_xml = insert_shape_into_sp_tree(&slide_xml, &pic_xml)?;
     Ok(ImageMutation {
@@ -960,11 +976,10 @@ fn build_image_mutation(file: &str, request: &ImageRequest) -> CliResult<ImageMu
         target_uri,
         content_type,
         relationship_id,
-        fit_mode: request.fit_mode.clone(),
+        processed,
         updated_slide_xml,
         updated_rels_xml,
         updated_content_types_xml,
-        image_data,
     })
 }
 
@@ -1077,21 +1092,25 @@ fn picture_shape_xml(
     shape_id: u32,
     shape_name: &str,
     rel_id: &str,
-    request: &ImageRequest,
+    processed: &ProcessedImage,
 ) -> String {
-    let fit = if request.fit_mode == "cover" {
-        r#"<a:tile tx="0" ty="0" sx="100000" sy="100000" flip="none" algn="ctr"/>"#
+    let crop = if processed.crop.is_empty() {
+        String::new()
     } else {
-        "<a:stretch><a:fillRect/></a:stretch>"
+        format!(
+            r#"<a:srcRect l="{}" t="{}" r="{}" b="{}"/>"#,
+            processed.crop.left, processed.crop.top, processed.crop.right, processed.crop.bottom
+        )
     };
     format!(
-        r#"<p:pic><p:nvPicPr><p:cNvPr id="{shape_id}" name="{}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="{}"/>{fit}</p:blipFill><p:spPr><a:xfrm><a:off x="{}" y="{}"/><a:ext cx="{}" cy="{}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"#,
+        r#"<p:pic><p:nvPicPr><p:cNvPr id="{shape_id}" name="{}" descr="{}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="{}"/>{crop}<a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="{}" y="{}"/><a:ext cx="{}" cy="{}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"#,
         xml_attr_escape(shape_name),
+        xml_attr_escape(&processed.alt),
         xml_attr_escape(rel_id),
-        request.bounds.x,
-        request.bounds.y,
-        request.bounds.cx,
-        request.bounds.cy
+        processed.placed.x,
+        processed.placed.y,
+        processed.placed.cx,
+        processed.placed.cy
     )
 }
 
@@ -1231,53 +1250,6 @@ fn table_cell_text_body_xml(text: &str, font_size: i64, is_header: bool) -> Stri
         r#"<a:txBody><a:bodyPr wrap="none" rtlCol="0"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en-US" sz="{size}"{bold}/>{}</a:r><a:endParaRPr lang="en-US" sz="{size}"/></a:p></a:txBody>"#,
         text_element_xml(text)
     )
-}
-
-fn image_content_type(path: &str) -> CliResult<String> {
-    let ext = Path::new(path)
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match ext.as_str() {
-        "png" => Ok("image/png".to_string()),
-        "jpg" | "jpeg" => Ok("image/jpeg".to_string()),
-        "gif" => Ok("image/gif".to_string()),
-        "bmp" => Ok("image/bmp".to_string()),
-        "tif" | "tiff" => Ok("image/tiff".to_string()),
-        _ => Err(CliError::invalid_args(format!(
-            "unsupported image content type for {path:?}"
-        ))),
-    }
-}
-
-fn image_extension_for_content_type(content_type: &str) -> CliResult<&'static str> {
-    match content_type {
-        "image/png" => Ok(".png"),
-        "image/jpeg" => Ok(".jpeg"),
-        "image/gif" => Ok(".gif"),
-        "image/bmp" => Ok(".bmp"),
-        "image/tiff" => Ok(".tiff"),
-        _ => Err(CliError::invalid_args(format!(
-            "unsupported image content type {content_type:?}"
-        ))),
-    }
-}
-
-fn validate_image_payload(content_type: &str, data: &[u8]) -> CliResult<()> {
-    let ok = match content_type {
-        "image/png" => data.starts_with(b"\x89PNG\r\n\x1a\n"),
-        "image/jpeg" => data.starts_with(&[0xff, 0xd8, 0xff]),
-        "image/gif" => data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a"),
-        _ => true,
-    };
-    if ok {
-        Ok(())
-    } else {
-        Err(CliError::invalid_args(format!(
-            "image payload does not match content type {content_type}"
-        )))
-    }
 }
 
 fn allocate_image_part(file: &str, shape_id: u32, extension: &str) -> CliResult<String> {

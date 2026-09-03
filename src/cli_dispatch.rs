@@ -779,11 +779,19 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                     "--inset",
                     "--aspect",
                     "--name",
+                    "--fit",
                     "--fit-mode",
+                    "--max-dpi",
+                    "--alt",
                     "--out",
                     "--backup",
                 ],
-                &["--dry-run", "--in-place", "--no-validate"],
+                &[
+                    "--keep-original",
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                ],
             )?;
             pptx_place_image(file, rest)
         }

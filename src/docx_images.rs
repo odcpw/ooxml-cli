@@ -6,6 +6,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
+use crate::image_pipeline::{
+    CropRect, ImageBounds, ImageFit, ImagePipelineOptions, ProcessedImage, parse_max_dpi,
+    process_image,
+};
 use crate::{
     CliError, CliResult, DOCX_W_NS, DocxParagraphMutationOptions, InspectPackageKind,
     add_relationship_to_xml, allocate_relationship_id, attr, attr_exact, attr_prefixed_ns,
@@ -117,18 +121,41 @@ pub(crate) struct DocxImageInsertOptions<'a> {
     pub(crate) height: i64,
     pub(crate) caption: Option<&'a str>,
     pub(crate) align: &'a str,
+    pub(crate) image: DocxImagePipelineArgs<'a>,
     pub(crate) mutation: DocxParagraphMutationOptions<'a>,
+}
+
+pub(crate) struct DocxImageReplaceOptions<'a> {
+    pub(crate) selector: &'a str,
+    pub(crate) image_file: &'a str,
+    pub(crate) expected_hash: &'a str,
+    pub(crate) width: i64,
+    pub(crate) height: i64,
+    pub(crate) image: DocxImagePipelineArgs<'a>,
+    pub(crate) mutation: DocxParagraphMutationOptions<'a>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct DocxImagePipelineArgs<'a> {
+    pub(crate) fit: Option<&'a str>,
+    pub(crate) max_dpi: Option<&'a str>,
+    pub(crate) keep_original: bool,
+    pub(crate) alt: &'a str,
 }
 
 pub(crate) fn docx_images_replace(
     file: &str,
-    selector: &str,
-    image_file: &str,
-    expected_hash: &str,
-    width: i64,
-    height: i64,
-    options: DocxParagraphMutationOptions<'_>,
+    request: DocxImageReplaceOptions<'_>,
 ) -> CliResult<Value> {
+    let DocxImageReplaceOptions {
+        selector,
+        image_file,
+        expected_hash,
+        width,
+        height,
+        image,
+        mutation: options,
+    } = request;
     validate_xlsx_mutation_output_flags(
         options.out,
         options.in_place,
@@ -146,9 +173,6 @@ pub(crate) fn docx_images_replace(
         ))
     })?;
     let image_bytes = read_docx_image_file(image_file)?;
-    let new_content_type = docx_image_content_type_from_path(image_file)?;
-    validate_docx_image_payload(&image_bytes, &new_content_type)
-        .map_err(|message| CliError::unexpected(format!("failed to mutate image: {message}")))?;
 
     let block_reports = docx_rich_block_reports(&document_xml, false)
         .map_err(|err| CliError::unexpected(format!("failed to mutate image: {}", err.message)))?;
@@ -182,17 +206,26 @@ pub(crate) fn docx_images_replace(
     }
     let previous_uri = resolve_relationship_target(&document_uri, &rel.target);
     let previous_content_type = content_type_for_part(file, &previous_uri).unwrap_or_default();
+    let requested_width = if width > 0 { width } else { target.width };
+    let requested_height = if height > 0 { height } else { target.height };
+    let processed = process_docx_image(&image_bytes, requested_width, requested_height, image)?;
+    let new_content_type = processed.content_type.to_string();
     let new_uri = replacement_docx_image_uri(
         &entries,
         &previous_uri,
         &previous_content_type,
         &new_content_type,
     );
-    let final_width = if width > 0 { width } else { target.width };
-    let final_height = if height > 0 { height } else { target.height };
+    let final_width = processed.placed.cx;
+    let final_height = processed.placed.cy;
     let inline_xml = &document_xml[target.container_start..target.container_end];
-    let updated_inline_xml =
-        update_docx_image_extent_fragment(inline_xml, final_width, final_height);
+    let updated_inline_xml = update_docx_image_presentation_fragment(
+        inline_xml,
+        final_width,
+        final_height,
+        &processed.alt,
+        processed.crop,
+    );
     let mut updated_document_xml = replace_xml_span(
         &document_xml,
         target.container_start,
@@ -222,7 +255,7 @@ pub(crate) fn docx_images_replace(
         ensure_content_type_override(content_types_xml, &new_uri, &new_content_type)?,
     );
     let mut binary_overrides = BTreeMap::new();
-    binary_overrides.insert(package_part_name(&new_uri), image_bytes);
+    binary_overrides.insert(package_part_name(&new_uri), processed.data.clone());
     write_docx_package_binary_mutation_output(file, &text_overrides, &binary_overrides, options)?;
 
     let mut result = Map::new();
@@ -244,6 +277,7 @@ pub(crate) fn docx_images_replace(
     result.insert("newContentType".to_string(), json!(new_content_type));
     result.insert("width".to_string(), json!(final_width));
     result.insert("height".to_string(), json!(final_height));
+    extend_image_pipeline_report(&mut result, &processed);
     result.insert(
         "widthInches".to_string(),
         json!(crate::cli_dispatch::units::inches(final_width)),
@@ -267,6 +301,7 @@ pub(crate) fn docx_images_insert(
         height,
         caption,
         align,
+        image,
         mutation: options,
     } = options;
     validate_xlsx_mutation_output_flags(
@@ -280,9 +315,8 @@ pub(crate) fn docx_images_insert(
     let document_part = find_docx_document_part(file, &entries)?;
     let document_uri = format!("/{}", document_part.trim_start_matches('/'));
     let image_bytes = read_docx_image_file(image_file)?;
-    let new_content_type = docx_image_content_type_from_path(image_file)?;
-    validate_docx_image_payload(&image_bytes, &new_content_type)
-        .map_err(|message| CliError::unexpected(format!("failed to mutate image: {message}")))?;
+    let processed = process_docx_image(&image_bytes, width, height, image)?;
+    let new_content_type = processed.content_type.to_string();
     let document_xml = zip_text(file, &document_part).map_err(|err| {
         CliError::unexpected(format!(
             "failed to mutate image: failed to read document part {document_uri}: {}",
@@ -323,9 +357,8 @@ pub(crate) fn docx_images_insert(
     let doc_pr_id = next_docx_doc_pr_id(&document_xml);
     let prefix = docx_body_prefix(&body_tag);
     let align = normalize_docx_image_alignment(align)?;
-    let mut paragraph_xml = render_docx_image_paragraph(
-        &prefix, &rel_id, &media_uri, doc_pr_id, width, height, align,
-    );
+    let mut paragraph_xml =
+        render_docx_image_paragraph(&prefix, &rel_id, &media_uri, doc_pr_id, align, &processed);
     if let Some(caption) = caption.filter(|caption| !caption.trim().is_empty()) {
         paragraph_xml.push_str(&render_docx_image_caption(&prefix, caption, align));
     }
@@ -354,7 +387,7 @@ pub(crate) fn docx_images_insert(
         ensure_content_type_override(content_types_xml, &media_uri, &new_content_type)?,
     );
     let mut binary_overrides = BTreeMap::new();
-    binary_overrides.insert(package_part_name(&media_uri), image_bytes);
+    binary_overrides.insert(package_part_name(&media_uri), processed.data.clone());
     write_docx_package_binary_mutation_output(file, &text_overrides, &binary_overrides, options)?;
 
     let mut result = Map::new();
@@ -367,8 +400,9 @@ pub(crate) fn docx_images_insert(
     }
     result.insert("mediaUri".to_string(), json!(media_uri));
     result.insert("newContentType".to_string(), json!(new_content_type));
-    result.insert("width".to_string(), json!(width));
-    result.insert("height".to_string(), json!(height));
+    result.insert("width".to_string(), json!(processed.placed.cx));
+    result.insert("height".to_string(), json!(processed.placed.cy));
+    extend_image_pipeline_report(&mut result, &processed);
     result.insert("align".to_string(), json!(align));
     if let Some(caption) = caption.filter(|caption| !caption.trim().is_empty()) {
         result.insert("caption".to_string(), json!(caption));
@@ -376,11 +410,11 @@ pub(crate) fn docx_images_insert(
     }
     result.insert(
         "widthInches".to_string(),
-        json!(crate::cli_dispatch::units::inches(width)),
+        json!(crate::cli_dispatch::units::inches(processed.placed.cx)),
     );
     result.insert(
         "heightInches".to_string(),
-        json!(crate::cli_dispatch::units::inches(height)),
+        json!(crate::cli_dispatch::units::inches(processed.placed.cy)),
     );
     Ok(Value::Object(result))
 }
@@ -723,82 +757,33 @@ fn read_docx_image_file(path: &str) -> CliResult<Vec<u8>> {
     fs::read(path).map_err(|_| CliError::file_not_found(format!("file not found: {path}")))
 }
 
-fn docx_image_content_type_from_path(path: &str) -> CliResult<String> {
-    let extension = Path::new(path)
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match extension.as_str() {
-        "jpg" | "jpeg" => Ok("image/jpeg".to_string()),
-        "png" => Ok("image/png".to_string()),
-        "gif" => Ok("image/gif".to_string()),
-        "bmp" => Ok("image/bmp".to_string()),
-        "tif" | "tiff" => Ok("image/tiff".to_string()),
-        "webp" => Ok("image/webp".to_string()),
-        "svg" => Ok("image/svg+xml".to_string()),
-        "emf" => Ok("image/x-emf".to_string()),
-        "wmf" => Ok("image/x-wmf".to_string()),
-        _ => Err(CliError::unsupported_type(format!(
-            "unsupported image extension {path:?}"
-        ))),
-    }
+fn process_docx_image(
+    bytes: &[u8],
+    width: i64,
+    height: i64,
+    args: DocxImagePipelineArgs<'_>,
+) -> CliResult<ProcessedImage> {
+    process_image(
+        bytes,
+        &ImagePipelineOptions {
+            placed: ImageBounds {
+                x: 0,
+                y: 0,
+                cx: width,
+                cy: height,
+            },
+            fit: ImageFit::parse(args.fit)?,
+            max_dpi: parse_max_dpi(args.max_dpi)?,
+            keep_original: args.keep_original,
+            alt: args.alt,
+        },
+    )
 }
 
-fn validate_docx_image_payload(raw: &[u8], content_type: &str) -> Result<(), String> {
-    let normalized = normalized_image_content_type(content_type);
-    let ok = match normalized.as_str() {
-        "image/png" => raw.starts_with(b"\x89PNG\r\n\x1a\n"),
-        "image/jpeg" | "image/jpg" | "image/pjpeg" => {
-            raw.len() >= 3 && raw[0] == 0xff && raw[1] == 0xd8 && raw[2] == 0xff
-        }
-        "image/gif" => raw.starts_with(b"GIF87a") || raw.starts_with(b"GIF89a"),
-        "image/bmp" => valid_docx_bmp_header(raw),
-        "image/tiff" => valid_docx_tiff_header(raw),
-        _ => true,
-    };
-    if ok {
-        Ok(())
-    } else {
-        Err(format!(
-            "image payload does not match content type {normalized}"
-        ))
+fn extend_image_pipeline_report(result: &mut Map<String, Value>, processed: &ProcessedImage) {
+    if let Some(report) = processed.report_json().as_object() {
+        result.extend(report.clone());
     }
-}
-
-fn valid_docx_bmp_header(raw: &[u8]) -> bool {
-    if raw.len() < 26 || !raw.starts_with(b"BM") {
-        return false;
-    }
-    let file_size = u32::from_le_bytes([raw[2], raw[3], raw[4], raw[5]]) as usize;
-    let pixel_offset = u32::from_le_bytes([raw[10], raw[11], raw[12], raw[13]]) as usize;
-    let dib_header_size = u32::from_le_bytes([raw[14], raw[15], raw[16], raw[17]]) as usize;
-    let header_end = 14usize.saturating_add(dib_header_size);
-    dib_header_size >= 12
-        && header_end <= raw.len()
-        && pixel_offset >= header_end
-        && pixel_offset <= raw.len()
-        && (file_size == 0 || file_size <= raw.len())
-}
-
-fn valid_docx_tiff_header(raw: &[u8]) -> bool {
-    if raw.len() < 8 {
-        return false;
-    }
-    let magic = match &raw[..2] {
-        b"II" => u16::from_le_bytes([raw[2], raw[3]]),
-        b"MM" => u16::from_be_bytes([raw[2], raw[3]]),
-        _ => return false,
-    };
-    if magic != 42 && magic != 43 {
-        return false;
-    }
-    let first_ifd = match &raw[..2] {
-        b"II" => u32::from_le_bytes([raw[4], raw[5], raw[6], raw[7]]),
-        b"MM" => u32::from_be_bytes([raw[4], raw[5], raw[6], raw[7]]),
-        _ => 0,
-    } as usize;
-    first_ifd >= 8 && first_ifd < raw.len()
 }
 
 fn normalized_image_content_type(content_type: &str) -> String {
@@ -948,6 +933,82 @@ fn update_docx_image_extent_fragment(fragment: &str, width: i64, height: i64) ->
     out
 }
 
+fn update_docx_image_presentation_fragment(
+    fragment: &str,
+    width: i64,
+    height: i64,
+    alt: &str,
+    crop: CropRect,
+) -> String {
+    let fragment = update_docx_image_extent_fragment(fragment, width, height);
+    let mut out = String::with_capacity(fragment.len() + alt.len() * 2 + 96);
+    let mut cursor = 0usize;
+    let mut doc_pr_seen = false;
+    let mut pic_pr_seen = false;
+    let mut crop_inserted = false;
+    let mut skipping_src_rect = false;
+    while cursor < fragment.len() {
+        let Some(relative_start) = fragment[cursor..].find('<') else {
+            out.push_str(&fragment[cursor..]);
+            break;
+        };
+        let tag_start = cursor + relative_start;
+        let Some(relative_end) = fragment[tag_start..].find('>') else {
+            out.push_str(&fragment[cursor..]);
+            break;
+        };
+        let tag_end = tag_start + relative_end + 1;
+        out.push_str(&fragment[cursor..tag_start]);
+        let tag = &fragment[tag_start..tag_end];
+        let token = &tag[1..tag.len().saturating_sub(1)];
+        let name = xml_token_name(token).unwrap_or_default();
+        let local = local_name(name.as_bytes());
+        let is_end = token.trim_start().starts_with('/');
+        if skipping_src_rect {
+            if local == "srcRect" && is_end {
+                skipping_src_rect = false;
+            }
+            cursor = tag_end;
+            continue;
+        }
+        if local == "srcRect" && !is_end {
+            skipping_src_rect = !tag.trim_end().ends_with("/>");
+            cursor = tag_end;
+            continue;
+        }
+        if local == "docPr" && !is_end && !doc_pr_seen {
+            out.push_str(&replace_xml_tag_attr(tag, "descr", alt));
+            doc_pr_seen = true;
+        } else if local == "cNvPr" && !is_end && !pic_pr_seen {
+            out.push_str(&replace_xml_tag_attr(tag, "descr", alt));
+            pic_pr_seen = true;
+        } else {
+            out.push_str(tag);
+        }
+        if local == "blip"
+            && !crop.is_empty()
+            && !crop_inserted
+            && (tag.trim_end().ends_with("/>") || is_end)
+        {
+            out.push_str(&docx_crop_xml(crop));
+            crop_inserted = true;
+        }
+        cursor = tag_end;
+    }
+    out
+}
+
+fn docx_crop_xml(crop: CropRect) -> String {
+    if crop.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"<a:srcRect l="{}" t="{}" r="{}" b="{}"/>"#,
+            crop.left, crop.top, crop.right, crop.bottom
+        )
+    }
+}
+
 fn replace_xml_tag_attr(tag: &str, name: &str, value: &str) -> String {
     if let Some((value_start, value_end)) = xml_tag_attr_value_span(tag, name) {
         let mut out = String::with_capacity(tag.len() + value.len());
@@ -1075,9 +1136,8 @@ fn render_docx_image_paragraph(
     rel_id: &str,
     media_uri: &str,
     doc_pr_id: i64,
-    width: i64,
-    height: i64,
     align: &str,
+    processed: &ProcessedImage,
 ) -> String {
     let p = word_xml_tag(prefix, "p");
     let r = word_xml_tag(prefix, "r");
@@ -1098,8 +1158,12 @@ fn render_docx_image_paragraph(
         .unwrap_or("image")
         .to_string();
     let escaped_media_name = xml_attr_escape(&media_name);
+    let escaped_alt = xml_attr_escape(&processed.alt);
+    let crop = docx_crop_xml(processed.crop);
+    let width = processed.placed.cx;
+    let height = processed.placed.cy;
     format!(
-        r#"<{p}>{alignment}<{r}><{drawing}><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{width}" cy="{height}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="{doc_pr_id}" name="{escaped_picture_name}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="{DRAWINGML_MAIN_NS}" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="{DRAWINGML_MAIN_NS}"><a:graphicData uri="{DRAWINGML_PIC_NS}"><pic:pic xmlns:pic="{DRAWINGML_PIC_NS}"><pic:nvPicPr><pic:cNvPr id="0" name="{escaped_media_name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="{escaped_rel_id}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{width}" cy="{height}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></{drawing}></{r}></{p}>"#
+        r#"<{p}>{alignment}<{r}><{drawing}><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{width}" cy="{height}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="{doc_pr_id}" name="{escaped_picture_name}" descr="{escaped_alt}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="{DRAWINGML_MAIN_NS}" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="{DRAWINGML_MAIN_NS}"><a:graphicData uri="{DRAWINGML_PIC_NS}"><pic:pic xmlns:pic="{DRAWINGML_PIC_NS}"><pic:nvPicPr><pic:cNvPr id="0" name="{escaped_media_name}" descr="{escaped_alt}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="{escaped_rel_id}"/>{crop}<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{width}" cy="{height}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></{drawing}></{r}></{p}>"#
     )
 }
 

@@ -4,8 +4,8 @@ use crate::pptx_readback::{pptx_shapes_get, pptx_tables_show};
 use crate::{CliError, CliResult, command_arg};
 
 use super::{
-    ImageMutation, ImageRequest, PlacementMutationOptions, TableFromXlsxRequest, TableMutation,
-    TableRequest, TextboxMutation,
+    ImageMutation, PlacementMutationOptions, TableFromXlsxRequest, TableMutation, TableRequest,
+    TextboxMutation,
 };
 
 pub(super) fn read_shape_destination(
@@ -191,7 +191,6 @@ pub(super) fn place_table_from_xlsx_result_json(
 pub(super) fn place_image_result_json(
     file: &str,
     mutation: &ImageMutation,
-    request: &ImageRequest,
     options: &PlacementMutationOptions,
     output_path: Option<&str>,
     destination: Value,
@@ -211,11 +210,17 @@ pub(super) fn place_image_result_json(
         "relationshipId".to_string(),
         json!(mutation.relationship_id),
     );
-    result.insert("x".to_string(), json!(request.bounds.x));
-    result.insert("y".to_string(), json!(request.bounds.y));
-    result.insert("cx".to_string(), json!(request.bounds.cx));
-    result.insert("cy".to_string(), json!(request.bounds.cy));
-    result.insert("fitMode".to_string(), json!(mutation.fit_mode));
+    result.insert("x".to_string(), json!(mutation.processed.placed.x));
+    result.insert("y".to_string(), json!(mutation.processed.placed.y));
+    result.insert("cx".to_string(), json!(mutation.processed.placed.cx));
+    result.insert("cy".to_string(), json!(mutation.processed.placed.cy));
+    result.insert(
+        "fitMode".to_string(),
+        json!(mutation.processed.fit.as_str()),
+    );
+    if let Some(pipeline) = mutation.processed.report_json().as_object() {
+        result.extend(pipeline.clone());
+    }
     result.insert("destination".to_string(), destination);
     add_shape_readback_commands(
         &mut result,

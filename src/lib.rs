@@ -35,6 +35,7 @@ mod docx_tables;
 mod docx_xml;
 mod find;
 mod help;
+mod image_pipeline;
 mod inspect;
 mod json_util;
 mod mcp;

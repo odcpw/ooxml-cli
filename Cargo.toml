@@ -20,6 +20,7 @@ debug = 0
 incremental = true
 
 [dependencies]
+image = { version = "0.25", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
 quick-xml = "0.38"
 regex = "1"
 serde = { version = "1.0", features = ["derive"] }
