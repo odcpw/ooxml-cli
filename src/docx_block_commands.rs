@@ -21,16 +21,61 @@ pub(crate) fn docx_text(file: &str) -> CliResult<Value> {
     let xml = zip_text(file, "word/document.xml")?;
     let mut blocks = docx_blocks(&xml);
     let reports = docx_rich_block_reports(&xml, false)?;
-    for (block, report) in blocks.iter_mut().zip(reports) {
+    for (block, report) in blocks.iter_mut().zip(&reports) {
         if let Some(object) = block.as_object_mut() {
             object.insert("contentHash".to_string(), json!(report.content_hash));
         }
     }
+    let (document_hash, block_hashes) = docx_hash_readback_from_reports(&xml, reports);
     Ok(json!({
         "blocks": blocks,
-        "documentHash": hash_docx_document_xml(&xml),
+        "blockHashes": block_hashes,
+        "documentHash": document_hash,
         "file": file,
     }))
+}
+
+pub(crate) fn docx_hash_readback(xml: &str) -> CliResult<(String, Value)> {
+    let reports = docx_rich_block_reports(xml, false)?;
+    Ok(docx_hash_readback_from_reports(xml, reports))
+}
+
+pub(crate) fn enrich_docx_hash_readback(file: &str, result: &mut Value) -> CliResult<()> {
+    let entries = zip_entry_names(file)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let xml = zip_text(file, &document_part)?;
+    let (document_hash, block_hashes) = docx_hash_readback(&xml)?;
+    let object = result
+        .as_object_mut()
+        .ok_or_else(|| CliError::unexpected("DOCX readback must be a JSON object"))?;
+    object.insert("documentHash".to_string(), json!(document_hash));
+    object.insert("blockHashes".to_string(), block_hashes);
+    Ok(())
+}
+
+fn docx_hash_readback_from_reports(
+    xml: &str,
+    reports: Vec<crate::DocxRichBlockReport>,
+) -> (String, Value) {
+    let block_hashes = reports
+        .into_iter()
+        .map(|report| {
+            let mut block = Map::new();
+            block.insert("index".to_string(), json!(report.index));
+            block.insert("contentHash".to_string(), json!(report.content_hash));
+            if !report.style.is_empty() {
+                block.insert("styleId".to_string(), json!(report.style));
+            }
+            if let Some(list_level) = report.list_level {
+                block.insert("listLevel".to_string(), json!(list_level));
+            }
+            if let Some(num_id) = report.num_id {
+                block.insert("numId".to_string(), json!(num_id));
+            }
+            Value::Object(block)
+        })
+        .collect();
+    (hash_docx_document_xml(xml), Value::Array(block_hashes))
 }
 
 pub(crate) fn docx_blocks_show(file: &str, block: usize, include_runs: bool) -> CliResult<Value> {

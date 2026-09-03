@@ -17,7 +17,7 @@ use crate::docx_images::*;
 use crate::docx_mutation_core::*;
 use crate::docx_replace::*;
 use crate::docx_styles::*;
-use crate::{docx_rich_block_reports, find_docx_document_part, zip_entry_names};
+use crate::{find_docx_document_part, zip_entry_names};
 use comments::dispatch_docx_comments;
 use paragraphs::dispatch_docx_paragraphs;
 use tables::dispatch_docx_tables;
@@ -793,29 +793,11 @@ fn enrich_docx_result(args: &[String], guard: &DocxGuardArgs, result: &mut Value
     let entries = zip_entry_names(&path)?;
     let document_part = find_docx_document_part(&path, &entries)?;
     let bytes = crate::zip_bytes(&path, &document_part)?;
-    let document_hash = format!("sha256:{:x}", Sha256::digest(&bytes));
     let xml = String::from_utf8(bytes)
         .map_err(|_| CliError::unexpected("DOCX document part is not UTF-8 XML"))?;
-    let block_hashes = docx_rich_block_reports(&xml, false)?
-        .into_iter()
-        .map(|report| {
-            let mut block = Map::new();
-            block.insert("index".to_string(), json!(report.index));
-            block.insert("contentHash".to_string(), json!(report.content_hash));
-            if !report.style.is_empty() {
-                block.insert("styleId".to_string(), json!(report.style));
-            }
-            if let Some(list_level) = report.list_level {
-                block.insert("listLevel".to_string(), json!(list_level));
-            }
-            if let Some(num_id) = report.num_id {
-                block.insert("numId".to_string(), json!(num_id));
-            }
-            Value::Object(block)
-        })
-        .collect::<Vec<_>>();
+    let (document_hash, block_hashes) = docx_hash_readback(&xml)?;
     object.insert("documentHash".to_string(), json!(document_hash));
-    object.insert("blockHashes".to_string(), Value::Array(block_hashes));
+    object.insert("blockHashes".to_string(), block_hashes);
     Ok(())
 }
 

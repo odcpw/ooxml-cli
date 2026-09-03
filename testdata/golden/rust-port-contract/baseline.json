@@ -210,13 +210,21 @@
       ],
       "exitCode": 0,
       "stdoutJson": {
+        "blockHashes": [
+          {
+            "contentHash": "sha256:32adb9d9c4f90db3d62d6d633d3762ad00b01c8ba19cf33ab2337eb1577ffba6",
+            "index": 1
+          }
+        ],
         "blocks": [
           {
+            "contentHash": "sha256:32adb9d9c4f90db3d62d6d633d3762ad00b01c8ba19cf33ab2337eb1577ffba6",
             "index": 1,
             "kind": "paragraph",
             "text": "Hello world"
           }
         ],
+        "documentHash": "sha256:4ee321c81fbe40be1759af47e844eb7643050b8ccd3410f18b2f546f6705110c",
         "file": "testdata/docx/minimal/document.docx"
       }
     },

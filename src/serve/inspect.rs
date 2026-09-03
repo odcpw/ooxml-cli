@@ -29,7 +29,7 @@ pub(super) fn serve_inspect_command(
             "unsupported serve inspect command: {command}"
         )));
     };
-    match command_id {
+    let mut result = match command_id {
         CommandId::Xlsx(XlsxCommandId::RangesExport) => {
             let sheet = json_string(args, "sheet")?;
             let range = json_string(args, "range")?;
@@ -319,5 +319,9 @@ pub(super) fn serve_inspect_command(
         _ => Err(CliError::invalid_args(format!(
             "unsupported serve inspect command: {command}"
         ))),
+    }?;
+    if matches!(command_id, CommandId::Docx(_)) {
+        crate::docx_block_commands::enrich_docx_hash_readback(working, &mut result)?;
     }
+    Ok(result)
 }
