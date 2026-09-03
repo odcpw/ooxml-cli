@@ -416,9 +416,13 @@ mod tests {
 
     #[test]
     fn mutation_namespace_is_exact_unique_and_manifest_backed() {
-        let manifest_ids = manifest_serve_mutation_ids()
-            .into_iter()
-            .collect::<BTreeSet<_>>();
+        let manifest_id_list = manifest_serve_mutation_ids();
+        let manifest_ids = manifest_id_list.iter().copied().collect::<BTreeSet<_>>();
+        let manifest_vba_count = manifest_id_list
+            .iter()
+            .filter(|id| matches!(id, CommandId::Vba(_)))
+            .count();
+        let manifest_package_count = manifest_id_list.len() - manifest_vba_count;
         let ids = SERVE_MUTATION_SPECS
             .iter()
             .map(|spec| spec.id)
@@ -437,7 +441,16 @@ mod tests {
             .collect::<BTreeSet<_>>();
 
         assert_eq!(SERVE_MUTATION_SPECS.len(), 73);
-        assert_eq!(manifest_ids.len(), 156);
+        assert_eq!(
+            manifest_ids.len(),
+            manifest_id_list.len(),
+            "manifest-derived Serve mutation IDs must be unique"
+        );
+        assert_eq!(
+            (manifest_package_count, manifest_vba_count),
+            (150, 4),
+            "reviewed denominator: 150 nestable package mutations + 4 VBA mutations = 154"
+        );
         assert_eq!(ids.len(), 73);
         assert_eq!(canonicals.len(), 73);
         assert!(ids.is_subset(&manifest_ids));
