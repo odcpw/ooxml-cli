@@ -7,8 +7,8 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
         spec(
             PptxCommandId::Build,
             &["pptx", "build"],
-            "build --spec <deck.json|-> --out <deck.pptx>",
-            "Build a complete presentation from a published PPTX build specification in one atomic batch.",
+            "build (--spec <deck.json|-> | --from-markdown <deck.md|->) --out <deck.pptx>",
+            "Build a complete presentation from a published PPTX build specification or the supported Markdown profile in one atomic batch.",
             &["package", "slide", "shape", "table", "chart"],
             vec![
                 flag(
@@ -16,6 +16,18 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                     "spec",
                     "string",
                     "PPTX build-spec JSON path, or - to read JSON from stdin",
+                ),
+                flag(
+                    "--from-markdown",
+                    "fromMarkdown",
+                    "string",
+                    "Markdown path, or - to read Markdown from stdin; mutually exclusive with --spec",
+                ),
+                flag(
+                    "--emit-spec",
+                    "emitSpec",
+                    "string",
+                    "write the validated intermediate JSON spec produced by --from-markdown",
                 ),
                 flag("--out", "out", "string", "output presentation path"),
                 flag(
@@ -34,7 +46,7 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                     "--force",
                     "force",
                     "bool",
-                    "replace an existing output after the staged build validates",
+                    "allow replacement of an existing output or emitted spec",
                 ),
             ],
             super::ExecutionSupport::DirectOnly {

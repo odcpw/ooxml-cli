@@ -197,8 +197,8 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
         spec(
             DocxCommandId::Build,
             &["docx", "build"],
-            "build --spec <document.json|-> --out <document.docx>",
-            "Build a complete document from a published DOCX build specification in one atomic batch.",
+            "build (--spec <document.json|-> | --from-markdown <document.md|->) --out <document.docx>",
+            "Build a complete document from a published DOCX build specification or the supported Markdown profile in one atomic batch.",
             &["package", "paragraph", "table", "image", "section"],
             vec![
                 flag(
@@ -206,6 +206,18 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "spec",
                     "string",
                     "DOCX build-spec JSON path, or - to read JSON from stdin",
+                ),
+                flag(
+                    "--from-markdown",
+                    "fromMarkdown",
+                    "string",
+                    "Markdown path, or - to read Markdown from stdin; mutually exclusive with --spec",
+                ),
+                flag(
+                    "--emit-spec",
+                    "emitSpec",
+                    "string",
+                    "write the validated intermediate JSON spec produced by --from-markdown",
                 ),
                 flag("--out", "out", "string", "output document path"),
                 flag(
@@ -224,7 +236,7 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "--force",
                     "force",
                     "bool",
-                    "replace an existing output after the staged build validates",
+                    "allow replacement of an existing output or emitted spec",
                 ),
             ],
             ExecutionSupport::DirectOnly {
