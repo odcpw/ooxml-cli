@@ -556,6 +556,8 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                     "--expect-hash",
                     "--width",
                     "--height",
+                    "--caption",
+                    "--align",
                     "--out",
                     "--backup",
                 ],
@@ -575,6 +577,8 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                 ));
             }
             let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            let caption = parse_string_flag(rest, "--caption")?;
+            let align = parse_string_flag(rest, "--align")?.unwrap_or_default();
             if after > 0 {
                 if !expect_hash.is_empty() {
                     require_docx_block_hash(&expect_hash)?;
@@ -588,20 +592,24 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
             let backup = parse_string_flag(rest, "--backup")?;
             docx_images_insert(
                 file,
-                after as usize,
-                &image_file,
-                &expect_hash,
-                width,
-                height,
-                DocxParagraphMutationOptions {
-                    text: None,
-                    text_file: None,
-                    style: "",
-                    out: out.as_deref(),
-                    backup: backup.as_deref(),
-                    dry_run: has_flag(rest, "--dry-run"),
-                    in_place: has_flag(rest, "--in-place"),
-                    no_validate: has_flag(rest, "--no-validate"),
+                DocxImageInsertOptions {
+                    after: after as usize,
+                    image_file: &image_file,
+                    expected_hash: &expect_hash,
+                    width,
+                    height,
+                    caption: caption.as_deref(),
+                    align: &align,
+                    mutation: DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: out.as_deref(),
+                        backup: backup.as_deref(),
+                        dry_run: has_flag(rest, "--dry-run"),
+                        in_place: has_flag(rest, "--in-place"),
+                        no_validate: has_flag(rest, "--no-validate"),
+                    },
                 },
             )
         }

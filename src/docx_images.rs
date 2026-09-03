@@ -109,6 +109,17 @@ const DOCX_WP_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/wordp
 const DRAWINGML_MAIN_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const DRAWINGML_PIC_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/picture";
 
+pub(crate) struct DocxImageInsertOptions<'a> {
+    pub(crate) after: usize,
+    pub(crate) image_file: &'a str,
+    pub(crate) expected_hash: &'a str,
+    pub(crate) width: i64,
+    pub(crate) height: i64,
+    pub(crate) caption: Option<&'a str>,
+    pub(crate) align: &'a str,
+    pub(crate) mutation: DocxParagraphMutationOptions<'a>,
+}
+
 pub(crate) fn docx_images_replace(
     file: &str,
     selector: &str,
@@ -246,13 +257,18 @@ pub(crate) fn docx_images_replace(
 
 pub(crate) fn docx_images_insert(
     file: &str,
-    after: usize,
-    image_file: &str,
-    expected_hash: &str,
-    width: i64,
-    height: i64,
-    options: DocxParagraphMutationOptions<'_>,
+    options: DocxImageInsertOptions<'_>,
 ) -> CliResult<Value> {
+    let DocxImageInsertOptions {
+        after,
+        image_file,
+        expected_hash,
+        width,
+        height,
+        caption,
+        align,
+        mutation: options,
+    } = options;
     validate_xlsx_mutation_output_flags(
         options.out,
         options.in_place,
@@ -306,8 +322,13 @@ pub(crate) fn docx_images_insert(
         add_relationship_to_xml(rels_xml, &rel_id, DOCX_IMAGE_REL_TYPE, &rel_target);
     let doc_pr_id = next_docx_doc_pr_id(&document_xml);
     let prefix = docx_body_prefix(&body_tag);
-    let paragraph_xml =
-        render_docx_image_paragraph(&prefix, &rel_id, &media_uri, doc_pr_id, width, height);
+    let align = normalize_docx_image_alignment(align)?;
+    let mut paragraph_xml = render_docx_image_paragraph(
+        &prefix, &rel_id, &media_uri, doc_pr_id, width, height, align,
+    );
+    if let Some(caption) = caption.filter(|caption| !caption.trim().is_empty()) {
+        paragraph_xml.push_str(&render_docx_image_caption(&prefix, caption, align));
+    }
     let mut updated_document_xml = insert_docx_image_paragraph_xml(
         &document_xml,
         &body_tag,
@@ -348,6 +369,11 @@ pub(crate) fn docx_images_insert(
     result.insert("newContentType".to_string(), json!(new_content_type));
     result.insert("width".to_string(), json!(width));
     result.insert("height".to_string(), json!(height));
+    result.insert("align".to_string(), json!(align));
+    if let Some(caption) = caption.filter(|caption| !caption.trim().is_empty()) {
+        result.insert("caption".to_string(), json!(caption));
+        result.insert("captionBlock".to_string(), json!(after + 2));
+    }
     result.insert(
         "widthInches".to_string(),
         json!(crate::cli_dispatch::units::inches(width)),
@@ -1051,10 +1077,18 @@ fn render_docx_image_paragraph(
     doc_pr_id: i64,
     width: i64,
     height: i64,
+    align: &str,
 ) -> String {
     let p = word_xml_tag(prefix, "p");
     let r = word_xml_tag(prefix, "r");
     let drawing = word_xml_tag(prefix, "drawing");
+    let p_pr = word_xml_tag(prefix, "pPr");
+    let jc = word_xml_tag(prefix, "jc");
+    let alignment = if align == "left" {
+        String::new()
+    } else {
+        format!(r#"<{p_pr}><{jc} w:val="{align}"/></{p_pr}>"#)
+    };
     let picture_name = format!("Picture {doc_pr_id}");
     let escaped_picture_name = xml_attr_escape(&picture_name);
     let escaped_rel_id = xml_attr_escape(rel_id);
@@ -1065,7 +1099,38 @@ fn render_docx_image_paragraph(
         .to_string();
     let escaped_media_name = xml_attr_escape(&media_name);
     format!(
-        r#"<{p}><{r}><{drawing}><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{width}" cy="{height}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="{doc_pr_id}" name="{escaped_picture_name}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="{DRAWINGML_MAIN_NS}" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="{DRAWINGML_MAIN_NS}"><a:graphicData uri="{DRAWINGML_PIC_NS}"><pic:pic xmlns:pic="{DRAWINGML_PIC_NS}"><pic:nvPicPr><pic:cNvPr id="0" name="{escaped_media_name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="{escaped_rel_id}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{width}" cy="{height}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></{drawing}></{r}></{p}>"#
+        r#"<{p}>{alignment}<{r}><{drawing}><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{width}" cy="{height}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="{doc_pr_id}" name="{escaped_picture_name}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="{DRAWINGML_MAIN_NS}" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="{DRAWINGML_MAIN_NS}"><a:graphicData uri="{DRAWINGML_PIC_NS}"><pic:pic xmlns:pic="{DRAWINGML_PIC_NS}"><pic:nvPicPr><pic:cNvPr id="0" name="{escaped_media_name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="{escaped_rel_id}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{width}" cy="{height}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></{drawing}></{r}></{p}>"#
+    )
+}
+
+fn normalize_docx_image_alignment(raw: &str) -> CliResult<&'static str> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "" | "left" => Ok("left"),
+        "center" => Ok("center"),
+        "right" => Ok("right"),
+        _ => Err(CliError::invalid_args(
+            "--align must be left, center, or right",
+        )),
+    }
+}
+
+fn render_docx_image_caption(prefix: &str, caption: &str, align: &str) -> String {
+    let p = word_xml_tag(prefix, "p");
+    let p_pr = word_xml_tag(prefix, "pPr");
+    let p_style = word_xml_tag(prefix, "pStyle");
+    let jc = word_xml_tag(prefix, "jc");
+    let fld = word_xml_tag(prefix, "fldSimple");
+    let instr = word_xml_tag(prefix, "instr");
+    let r = word_xml_tag(prefix, "r");
+    let t = word_xml_tag(prefix, "t");
+    let alignment = if align == "left" {
+        String::new()
+    } else {
+        format!(r#"<{jc} w:val="{align}"/>"#)
+    };
+    format!(
+        r#"<{p}><{p_pr}><{p_style} w:val="Caption"/>{alignment}</{p_pr}><{fld} {instr}=" SEQ Figure \* ARABIC "><{r}><{t}>Figure 1</{t}></{r}></{fld}><{r}><{t} xml:space="preserve">: {}</{t}></{r}></{p}>"#,
+        crate::xml_escape(caption)
     )
 }
 

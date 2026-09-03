@@ -250,6 +250,58 @@ fn styled_tables_have_widths_repeating_headers_numeric_alignment_and_set_style()
     fs::remove_dir_all(temp).unwrap();
 }
 
+#[test]
+fn image_caption_uses_caption_style_seq_field_and_alignment() {
+    let temp = temp_dir("image-caption");
+    let source = temp.join("source.docx");
+    let output = temp.join("captioned.docx");
+    let scaffold = run_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path(&source),
+        "--text",
+        "Figure follows",
+    ]);
+    let anchor = scaffold["blockHashes"][0]["contentHash"].as_str().unwrap();
+    let image = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/test_image.png");
+    let report = run_ok(&[
+        "--json",
+        "docx",
+        "images",
+        "insert",
+        path(&source),
+        "--after",
+        "1",
+        "--expect-hash",
+        anchor,
+        "--file",
+        path(&image),
+        "--width",
+        "2in",
+        "--height",
+        "1in",
+        "--caption",
+        "Quarterly trend",
+        "--align",
+        "center",
+        "--out",
+        path(&output),
+    ]);
+    assert_eq!(report["caption"], "Quarterly trend");
+    assert_eq!(report["captionBlock"], 3);
+    assert!(report["blockHashes"].as_array().unwrap().len() >= 3);
+    let xml = zip_text(&output, "word/document.xml");
+    assert!(xml.contains(r#"<w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing>"#));
+    assert!(xml.contains(r#"<w:pStyle w:val="Caption"/><w:jc w:val="center"/>"#));
+    assert!(xml.contains(r#"w:instr=" SEQ Figure \* ARABIC ""#));
+    assert!(xml.contains("Quarterly trend"));
+    for package in [&source, &output] {
+        assert_all_proofs(package);
+    }
+    fs::remove_dir_all(temp).unwrap();
+}
+
 fn build_list_document(temp: &Path, label: &str) -> PathBuf {
     let mut current = temp.join(format!("{label}-0.docx"));
     run_ok(&[
