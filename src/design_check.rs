@@ -162,21 +162,24 @@ pub(crate) fn finding(
 }
 
 pub(crate) fn fixed_output_path(file: &str, suffix: &str) -> String {
-    let path = Path::new(file);
-    let stem = path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("fixed");
-    let extension = path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default();
+    let (directory, file_name) = file
+        .rfind(['/', '\\'])
+        .map_or(("", file), |index| file.split_at(index + 1));
+    let file_name = if file_name.is_empty() {
+        "fixed"
+    } else {
+        file_name
+    };
+    let (stem, extension) = match file_name.rfind('.') {
+        Some(index) if index > 0 => (&file_name[..index], &file_name[index + 1..]),
+        _ => (file_name, ""),
+    };
     let name = if extension.is_empty() {
         format!("{stem}.{suffix}")
     } else {
         format!("{stem}.{suffix}.{extension}")
     };
-    path.with_file_name(name).to_string_lossy().into_owned()
+    format!("{directory}{name}")
 }
 
 pub(crate) fn location(fields: &[(&str, Value)]) -> Value {
@@ -281,5 +284,24 @@ mod tests {
         assert!(RULES.iter().all(|rule| {
             !rule.description.is_empty() && matches!(rule.severity, "error" | "warning" | "info")
         }));
+    }
+
+    #[test]
+    fn fixed_output_path_preserves_forward_slashes_for_every_family() {
+        assert_eq!(
+            fixed_output_path(
+                "testdata/docx/scaffold-styles/dangling-style.docx",
+                "style-fixed"
+            ),
+            "testdata/docx/scaffold-styles/dangling-style.style-fixed.docx"
+        );
+        assert_eq!(
+            fixed_output_path("testdata/pptx/design-check/bad-deck.pptx", "design-fixed"),
+            "testdata/pptx/design-check/bad-deck.design-fixed.pptx"
+        );
+        assert_eq!(
+            fixed_output_path("testdata/xlsx/design-check/bad-sheet.xlsx", "design-fixed"),
+            "testdata/xlsx/design-check/bad-sheet.design-fixed.xlsx"
+        );
     }
 }
