@@ -134,7 +134,7 @@ fn command_context(args: &[String]) -> CliResult<Option<(i64, i64, ContextKind)>
     if matches!(args.get(0..3), Some(prefix) if prefix == ["xlsx", "colwidths", "set"]) {
         return Ok(Some((0, 0, ContextKind::XlsxColumnWidth)));
     }
-    let pptx_length_command = args.get(0).is_some_and(|v| v == "pptx")
+    let pptx_length_command = args.first().is_some_and(|v| v == "pptx")
         && (args.get(1).is_some_and(|v| v == "add-textbox")
             || matches!(args.get(1..3), Some(prefix) if matches!(prefix, [group, verb]
                 if (group == "place" && matches!(verb.as_str(), "image" | "table" | "table-from-xlsx"))
