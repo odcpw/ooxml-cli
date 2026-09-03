@@ -260,21 +260,24 @@ fn brand_logo_is_embedded_and_positioned_in_all_three_families() {
             temp.join("deck.pptx"),
             "ppt/slides/slide1.xml",
             "Brand Logo",
+            r#"x="11049000" y="5715000""#,
         ),
         (
             "xlsx",
             temp.join("workbook.xlsx"),
             "xl/drawings/drawing1.xml",
             "Brand Logo",
+            "<xdr:col>7</xdr:col>",
         ),
         (
             "docx",
             temp.join("report.docx"),
             "word/document.xml",
             "Brand Logo",
+            r#"w:jc w:val="right""#,
         ),
     ];
-    for (family, output, part, marker) in cases {
+    for (family, output, part, marker, position_marker) in cases {
         run_ok(&[
             "--json",
             family,
@@ -293,8 +296,26 @@ fn brand_logo_is_embedded_and_positioned_in_all_three_families() {
         let placement = zip_text(&output, part);
         assert!(placement.contains(marker), "{family} logo marker missing");
         assert!(
+            placement.contains(position_marker),
+            "{family} logo placement missing"
+        );
+        assert!(
             placement.contains(r#"cx="914400" cy="914400""#),
             "{family} logo dimensions missing"
+        );
+        let repeat = temp.join(format!("repeat.{family}"));
+        run_ok(&[
+            "--json",
+            family,
+            "scaffold",
+            path(&repeat),
+            "--brand",
+            path(&brand),
+        ]);
+        assert_eq!(
+            fs::read(&output).unwrap(),
+            fs::read(&repeat).unwrap(),
+            "{family} branded logo bytes must be deterministic"
         );
         assert_strict_valid(&output);
         assert_sdk_valid_if_available(&output);
