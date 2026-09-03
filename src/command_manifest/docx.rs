@@ -1867,7 +1867,10 @@ mod tests {
         let start = crate::command_manifest::core::command_specs().len()
             + crate::command_manifest::pptx::command_specs().len()
             + crate::command_manifest::xlsx::command_specs().len();
-        assert_eq!(start, LEGACY_START);
+        assert_eq!(
+            start, LEGACY_START,
+            "DOCX starts at 261 within the 327-command denominator"
+        );
         assert_eq!(specs.len(), COMMAND_COUNT);
         assert_segment_matches_frozen_contract(
             &specs,
