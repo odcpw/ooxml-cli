@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Title Slide",
+    "layoutType": "title",
+    "placeholders": [
+      { "name": "Title 1", "type": "ctrTitle", "rect": [900, 2700, 8200, 1400], "align": "center" },
+      { "name": "Subtitle 2", "type": "subTitle", "idx": 1, "rect": [1600, 4600, 6800, 900], "align": "center" }
+    ]
+  },
+  {
+    "name": "Title and Content",
+    "layoutType": "obj",
+    "placeholders": [
+      { "name": "Title 1", "type": "title", "rect": [400, 400, 9200, 1000] },
+      { "name": "Content Placeholder 2", "type": "body", "idx": 1, "rect": [400, 1750, 9200, 7850] }
+    ]
+  },
+  {
+    "name": "Section Header",
+    "layoutType": "secHead",
+    "placeholders": [
+      { "name": "Title 1", "type": "title", "rect": [800, 2500, 8400, 1000], "align": "center" },
+      { "name": "Text Placeholder 2", "type": "body", "idx": 1, "rect": [1600, 3900, 6800, 1100], "align": "center" }
+    ]
+  },
+  {
+    "name": "Two Content",
+    "layoutType": "twoObj",
+    "placeholders": [
+      { "name": "Title 1", "type": "title", "rect": [400, 400, 9200, 1000] },
+      { "name": "Content Placeholder 2", "type": "body", "idx": 1, "rect": [400, 1750, 4400, 7850] },
+      { "name": "Content Placeholder 3", "type": "body", "idx": 2, "rect": [5200, 1750, 4400, 7850] }
+    ]
+  },
+  {
+    "name": "Comparison",
+    "layoutType": "twoTxTwoObj",
+    "placeholders": [
+      { "name": "Title 1", "type": "title", "rect": [400, 400, 9200, 1000] },
+      { "name": "Text Placeholder 2", "type": "body", "idx": 1, "rect": [400, 1750, 4400, 800], "align": "center" },
+      { "name": "Content Placeholder 3", "type": "body", "idx": 2, "rect": [400, 2850, 4400, 6750] },
+      { "name": "Text Placeholder 4", "type": "body", "idx": 3, "rect": [5200, 1750, 4400, 800], "align": "center" },
+      { "name": "Content Placeholder 5", "type": "body", "idx": 4, "rect": [5200, 2850, 4400, 6750] }
+    ]
+  },
+  {
+    "name": "Title Only",
+    "layoutType": "titleOnly",
+    "placeholders": [
+      { "name": "Title 1", "type": "title", "rect": [400, 400, 9200, 1000] }
+    ]
+  },
+  {
+    "name": "Blank",
+    "layoutType": "blank",
+    "placeholders": []
+  },
+  {
+    "name": "Content with Caption",
+    "layoutType": "objTx",
+    "placeholders": [
+      { "name": "Content Placeholder 1", "type": "body", "idx": 1, "rect": [400, 1750, 6000, 7850] },
+      { "name": "Title 2", "type": "title", "rect": [6750, 2500, 2850, 800] },
+      { "name": "Text Placeholder 3", "type": "body", "idx": 2, "rect": [6750, 3600, 2850, 3000] }
+    ]
+  },
+  {
+    "name": "Picture with Caption",
+    "layoutType": "picTx",
+    "placeholders": [
+      { "name": "Picture Placeholder 1", "type": "pic", "idx": 1, "rect": [400, 1750, 6000, 7850] },
+      { "name": "Title 2", "type": "title", "rect": [6750, 2500, 2850, 800] },
+      { "name": "Text Placeholder 3", "type": "body", "idx": 2, "rect": [6750, 3600, 2850, 3000] }
+    ]
+  },
+  {
+    "name": "Title and Vertical Text",
+    "layoutType": "vertTx",
+    "placeholders": [
+      { "name": "Title 1", "type": "title", "rect": [400, 400, 9200, 1000] },
+      { "name": "Vertical Text Placeholder 2", "type": "body", "idx": 1, "rect": [6500, 1750, 3100, 7850], "vertical": true }
+    ]
+  },
+  {
+    "name": "Vertical Title and Text",
+    "layoutType": "vertTitleAndTx",
+    "placeholders": [
+      { "name": "Vertical Title 1", "type": "title", "rect": [400, 1750, 1800, 7850], "vertical": true },
+      { "name": "Vertical Text Placeholder 2", "type": "body", "idx": 1, "rect": [2500, 1750, 7100, 7850], "vertical": true }
+    ]
+  }
+]

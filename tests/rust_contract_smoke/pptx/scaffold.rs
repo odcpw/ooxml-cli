@@ -10,7 +10,14 @@ fn pptx_scaffold_creates_readable_valid_conformant_mutable_package() {
     let subtitle = "Built by Rust";
 
     let (create_code, create_stdout, create_stderr) = run_ooxml(&[
-        "--json", "pptx", "scaffold", "--out", &out_str, "--title", title, "--subtitle",
+        "--json",
+        "pptx",
+        "scaffold",
+        "--out",
+        &out_str,
+        "--title",
+        title,
+        "--subtitle",
         subtitle,
     ]);
     assert_eq!(create_code, 0, "pptx scaffold exit");
@@ -40,6 +47,11 @@ fn pptx_scaffold_creates_readable_valid_conformant_mutable_package() {
         Value::String("ppt/theme/theme1.xml".to_string())
     );
     assert_eq!(create["initialSlideCount"], Value::from(1));
+    assert_eq!(create["layoutCount"], Value::from(11));
+    assert_eq!(create["theme"], Value::String("neutral".to_string()));
+    assert_eq!(create["size"]["name"], Value::String("16:9".to_string()));
+    assert_eq!(create["size"]["widthEmu"], Value::from(12_192_000));
+    assert_eq!(create["size"]["heightEmu"], Value::from(6_858_000));
     assert_eq!(create["initialTitle"], Value::String(title.to_string()));
     assert_eq!(
         create["initialSubtitle"],
@@ -86,11 +98,23 @@ fn pptx_scaffold_creates_readable_valid_conformant_mutable_package() {
         "ppt/slides/_rels/slide1.xml.rels",
         "ppt/slideMasters/slideMaster1.xml",
         "ppt/slideMasters/_rels/slideMaster1.xml.rels",
-        "ppt/slideLayouts/slideLayout1.xml",
-        "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
         "ppt/theme/theme1.xml",
     ] {
-        assert!(zip_entry_exists(&out, entry), "missing scaffold entry {entry}");
+        assert!(
+            zip_entry_exists(&out, entry),
+            "missing scaffold entry {entry}"
+        );
+    }
+    for number in 1..=11 {
+        for entry in [
+            format!("ppt/slideLayouts/slideLayout{number}.xml"),
+            format!("ppt/slideLayouts/_rels/slideLayout{number}.xml.rels"),
+        ] {
+            assert!(
+                zip_entry_exists(&out, &entry),
+                "missing scaffold entry {entry}"
+            );
+        }
     }
 
     let content_types = read_zip_string(&out, "[Content_Types].xml");
@@ -183,7 +207,9 @@ fn pptx_scaffold_creates_readable_valid_conformant_mutable_package() {
     );
     assert!(
         presentation_xml.contains(r#"<p:sldId id="256" "#)
-            && presentation_xml.contains(r#"r:id="rId"#),
+            && presentation_xml.contains(r#"r:id="rId"#)
+            && presentation_xml
+                .contains(r#"<p:sldSz cx="12192000" cy="6858000" type="screen16x9"/>"#),
         "presentation slide id list missing expected first slide: {presentation_xml}"
     );
 
@@ -200,7 +226,6 @@ fn pptx_scaffold_creates_readable_valid_conformant_mutable_package() {
             "<a:t>Built by Rust</a:t>",
         ],
     );
-
     let master_xml = read_zip_string(&out, "ppt/slideMasters/slideMaster1.xml");
     assert_pptx_sp_tree_basics(&master_xml, "slide master");
     assert_pptx_xml_tag_order(
@@ -213,6 +238,13 @@ fn pptx_scaffold_creates_readable_valid_conformant_mutable_package() {
             "<p:txStyles",
         ],
     );
+    for size in ["4000", "2800", "2000", "1800", "1600", "1400"] {
+        assert!(
+            master_xml.contains(&format!(r#"sz="{size}""#)),
+            "master is missing required typographic size {size}: {master_xml}"
+        );
+    }
+    assert_eq!(master_xml.matches("<p:sldLayoutId ").count(), 11);
 
     let layout_xml = read_zip_string(&out, "ppt/slideLayouts/slideLayout1.xml");
     assert_pptx_sp_tree_basics(&layout_xml, "slide layout");
@@ -236,8 +268,72 @@ fn pptx_scaffold_creates_readable_valid_conformant_mutable_package() {
         slide_items[0]["partUri"],
         Value::String("/ppt/slides/slide1.xml".to_string())
     );
-    assert_eq!(slide_items[0]["layout"], Value::String("Title Slide".to_string()));
+    assert_eq!(
+        slide_items[0]["layout"],
+        Value::String("Title Slide".to_string())
+    );
     assert_eq!(slide_items[0]["textShapes"], Value::from(2));
+
+    let (layouts_code, layouts_stdout, layouts_stderr) =
+        run_ooxml(&["--json", "pptx", "layouts", "list", &out_str]);
+    assert_eq!(layouts_code, 0, "layouts list readback exit");
+    assert_eq!(layouts_stderr, None, "layouts list readback stderr");
+    let layouts = layouts_stdout.expect("layouts list stdout");
+    let layout_names = layouts["layouts"]
+        .as_array()
+        .expect("layouts array")
+        .iter()
+        .map(|layout| layout["name"].as_str().expect("layout name"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        layout_names,
+        [
+            "Title Slide",
+            "Title and Content",
+            "Section Header",
+            "Two Content",
+            "Comparison",
+            "Title Only",
+            "Blank",
+            "Content with Caption",
+            "Picture with Caption",
+            "Title and Vertical Text",
+            "Vertical Title and Text",
+        ]
+    );
+
+    let title_content = temp_dir.join("title-content.pptx");
+    let title_content_str = title_content.to_string_lossy().to_string();
+    let (layout_slide_code, layout_slide_stdout, layout_slide_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "new-slide-from-layout",
+        &out_str,
+        "--layout",
+        "Title and Content",
+        "--set-text",
+        "title=Quarterly review",
+        "--set-text",
+        "body=Revenue grew\nMargin expanded",
+        "--out",
+        &title_content_str,
+    ]);
+    assert_eq!(layout_slide_code, 0, "Title and Content mutation exit");
+    assert_eq!(
+        layout_slide_stderr, None,
+        "Title and Content mutation stderr"
+    );
+    let layout_slide = layout_slide_stdout.expect("Title and Content mutation stdout");
+    assert_rust_emitted_ooxml_command_succeeds(&layout_slide, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&layout_slide, "validateCommand");
+    let (qa_code, qa_stdout, qa_stderr) =
+        run_ooxml(&["--json", "pptx", "validate-layout", &title_content_str]);
+    assert_eq!(qa_code, 0, "Title and Content layout QA exit");
+    assert_eq!(qa_stderr, None, "Title and Content layout QA stderr");
+    let qa = qa_stdout.expect("Title and Content layout QA stdout");
+    assert_eq!(qa["totalCollisions"], Value::from(0), "{qa}");
+    assert_eq!(qa["totalOffSlide"], Value::from(0), "{qa}");
+    assert_pptx_strict_valid(&title_content_str, "Title and Content scaffold mutation");
 
     let (show_code, show_stdout, show_stderr) = run_ooxml(&[
         "--json",
@@ -330,6 +426,136 @@ fn pptx_scaffold_creates_readable_valid_conformant_mutable_package() {
     assert_shape_text(&mutated_shapes["shapes"], "title", title);
     assert_shape_text_preview(&mutated_shapes["shapes"], "Scaffold callout");
     assert_pptx_strict_valid(&mutated_str, "mutated scaffold");
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn pptx_scaffold_applies_theme_size_seed_and_template_contracts() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-pptx-scaffold-options-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("pptx scaffold options temp dir");
+
+    let themed = temp_dir.join("corporate-4x3.pptx");
+    let themed_str = themed.to_string_lossy().to_string();
+    let (themed_code, themed_stdout, themed_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "scaffold",
+        &themed_str,
+        "--theme",
+        "corporate",
+        "--size",
+        "4:3",
+    ]);
+    assert_eq!(themed_code, 0, "themed scaffold exit");
+    assert_eq!(themed_stderr, None, "themed scaffold stderr");
+    let themed_result = themed_stdout.expect("themed scaffold stdout");
+    assert_eq!(themed_result["theme"], "corporate");
+    assert_eq!(themed_result["size"]["name"], "4:3");
+    assert!(
+        read_zip_string(&themed, "ppt/presentation.xml")
+            .contains(r#"cx="9144000" cy="6858000" type="screen4x3""#)
+    );
+    assert_pptx_strict_valid(&themed_str, "corporate 4:3 scaffold");
+
+    let seeded = temp_dir.join("seeded-a4.pptx");
+    let seeded_str = seeded.to_string_lossy().to_string();
+    let (seeded_code, seeded_stdout, seeded_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "scaffold",
+        &seeded_str,
+        "--theme-seed",
+        "#336699",
+        "--size",
+        "A4",
+    ]);
+    assert_eq!(seeded_code, 0, "seeded scaffold exit");
+    assert_eq!(seeded_stderr, None, "seeded scaffold stderr");
+    let seeded_result = seeded_stdout.expect("seeded scaffold stdout");
+    assert_eq!(seeded_result["theme"], "custom");
+    assert_eq!(seeded_result["themeSeed"], "336699");
+    assert_eq!(seeded_result["size"]["name"], "A4");
+    assert!(
+        read_zip_string(&seeded, "ppt/theme/theme1.xml").contains(r#"name="ooxml-cli custom""#)
+    );
+    assert_pptx_strict_valid(&seeded_str, "seeded A4 scaffold");
+
+    let templated = temp_dir.join("templated.pptx");
+    let templated_str = templated.to_string_lossy().to_string();
+    let (template_code, template_stdout, template_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "scaffold",
+        &templated_str,
+        "--title",
+        "Imported title",
+        "--subtitle",
+        "Imported subtitle",
+        "--template",
+        "testdata/pptx/multi-layout/presentation.pptx",
+    ]);
+    assert_eq!(template_code, 0, "template scaffold exit");
+    assert_eq!(template_stderr, None, "template scaffold stderr");
+    let template_result = template_stdout.expect("template scaffold stdout");
+    assert_eq!(template_result["layoutCount"], 22);
+    assert_eq!(template_result["size"]["name"], "4:3");
+    assert_eq!(
+        template_result["slideMasterPart"],
+        "ppt/slideMasters/slideMaster2.xml"
+    );
+    assert_eq!(
+        template_result["slideLayoutPart"],
+        "ppt/slideLayouts/slideLayout12.xml"
+    );
+    let (show_code, show_stdout, show_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "slides",
+        "show",
+        &templated_str,
+        "--slide",
+        "1",
+        "--include-text",
+    ]);
+    assert_eq!(show_code, 0, "template slide readback exit");
+    assert_eq!(show_stderr, None, "template slide readback stderr");
+    let shown = show_stdout.expect("template slide readback stdout");
+    assert_eq!(shown["slides"][0]["layoutNumber"], 12);
+    let shown_text = shown["slides"][0]["shapes"]
+        .as_array()
+        .expect("template slide shapes")
+        .iter()
+        .filter_map(|shape| shape["textContent"].as_str())
+        .collect::<Vec<_>>();
+    assert!(shown_text.contains(&"Imported title"));
+    assert!(shown_text.contains(&"Imported subtitle"));
+    assert_pptx_strict_valid(&templated_str, "template scaffold");
+
+    let conflict = temp_dir.join("conflict.pptx");
+    let conflict_str = conflict.to_string_lossy().to_string();
+    let (conflict_code, conflict_stdout, conflict_stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "scaffold",
+        &conflict_str,
+        "--template",
+        "testdata/pptx/multi-layout/presentation.pptx",
+        "--theme",
+        "warm",
+    ]);
+    assert_eq!(conflict_code, 2, "template/theme conflict exit");
+    assert_eq!(conflict_stdout, None, "template/theme conflict stdout");
+    assert!(
+        conflict_stderr.expect("template/theme conflict stderr")["error"]["message"]
+            .as_str()
+            .expect("template/theme conflict message")
+            .contains("cannot be combined")
+    );
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
