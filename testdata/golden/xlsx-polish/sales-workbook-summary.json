@@ -1,0 +1,50 @@
+{
+  "columns": {
+    "A": {
+      "custom": true,
+      "explicit": true,
+      "hidden": false,
+      "width": 10
+    },
+    "B": {
+      "custom": true,
+      "explicit": true,
+      "hidden": false,
+      "width": 10
+    },
+    "C": {
+      "custom": true,
+      "explicit": true,
+      "hidden": false,
+      "width": 10
+    }
+  },
+  "packageSha256": "c0a82924cb5e479774a1337113151239a91a9d2159e32eb91e346067593bd877",
+  "partSha256": {
+    "contentTypes": "0bdea185832e43588371e58ca60f62b966a2e8c1de5279155dbba7606c03c18d",
+    "styles": "1184c677b5bc33f68b6e58859853d6a69fc8c8565394340663fad0c1649566d6",
+    "table": "621c389246b62b8b886a811d3d9959706d958946a3c1c2839ef0b1f151299ab9",
+    "theme": "d07929a13783aa1df2d9b3afc21f42995f4cde08de2d371996815417026cd516",
+    "worksheet": "e7cecb7259c2920c053ee53bf8954cf875b85ed3933d76e939dd357e19cb3e9e"
+  },
+  "recipe": "corporate sales workbook v1",
+  "sheet": {
+    "fitToWidth": true,
+    "gridlinesHidden": true,
+    "landscape": true,
+    "tabColor": "4472C4"
+  },
+  "styles": {
+    "borders": 2,
+    "cellXfs": 2,
+    "fills": 3,
+    "fonts": 2,
+    "headerStyleIndex": 1
+  },
+  "table": {
+    "hasRevenueSubtotal": true,
+    "hasUnitsSubtotal": true,
+    "range": "A1:C5",
+    "totalFunctions": 2
+  }
+}

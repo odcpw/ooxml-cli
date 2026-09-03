@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use crate::xlsx_mutation::XlsxMatrixCell;
+use crate::xlsx_mutation::{XlsxRangesSetStyleOptions, xlsx_ranges_set_style};
 use crate::xlsx_sheet_xml::{
     XlsxWorksheetRootBounds as WorksheetRootBounds,
     xlsx_direct_worksheet_child_range as direct_worksheet_child_range,
@@ -131,6 +132,46 @@ pub(crate) fn xlsx_tables_create(
         ensure_content_type_override(content_types, &target.table_part, CONTENT_TYPE_TABLE)?,
     );
     copy_zip_with_part_overrides_and_removals(file, &readback_path, &overrides, &removals)?;
+    let header_style_result = if let Some(header_style) = target.header_style.as_deref() {
+        let header_range = range_bounds_ref(RangeBounds {
+            start_col: target.range.start_col,
+            end_col: target.range.end_col,
+            start_row: target.range.start_row,
+            end_row: target.range.start_row,
+        });
+        Some(xlsx_ranges_set_style(
+            &readback_path,
+            XlsxRangesSetStyleOptions {
+                sheet: &target.sheet.name,
+                range: &header_range,
+                preset: Some(header_style),
+                font_name: None,
+                font_size: None,
+                font_bold: None,
+                font_italic: None,
+                font_underline: None,
+                font_color: None,
+                fill_color: None,
+                border_style: None,
+                border_color: None,
+                border_top: None,
+                border_bottom: None,
+                border_left: None,
+                border_right: None,
+                alignment_horizontal: None,
+                alignment_vertical: None,
+                alignment_wrap_text: None,
+                max_cells: i64::from(target.range.col_count()),
+                out: None,
+                backup: None,
+                dry_run: false,
+                no_validate: true,
+                in_place: true,
+            },
+        )?)
+    } else {
+        None
+    };
     if !options.no_validate {
         crate::validate_owned_mutation_output(&readback_path)?;
     }
@@ -177,6 +218,13 @@ pub(crate) fn xlsx_tables_create(
     result.insert("totalRow".to_string(), json!(target.total_row));
     if let Some(header_style) = target.header_style.as_deref() {
         result.insert("headerStyle".to_string(), json!(header_style));
+    }
+    if let Some(Value::Object(style_result)) = header_style_result {
+        for field in ["createdStyles", "styleIndexes"] {
+            if let Some(value) = style_result.get(field) {
+                result.insert(field.to_string(), value.clone());
+            }
+        }
     }
     let totals = target
         .totals
