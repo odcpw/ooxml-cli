@@ -87,6 +87,7 @@ struct ServeSession {
     working: String,
     ops: Vec<ServeOp>,
     op_ids: Vec<Option<String>>,
+    op_results: Vec<Value>,
     resolved_args: Vec<Value>,
     named_results: BTreeMap<String, Value>,
 }
@@ -169,6 +170,7 @@ impl ServeState {
                 working,
                 ops: Vec::new(),
                 op_ids: Vec::new(),
+                op_results: Vec::new(),
                 resolved_args: Vec::new(),
                 named_results: BTreeMap::new(),
             },
@@ -234,6 +236,7 @@ impl ServeState {
             session.named_results.insert(op_id.clone(), result.clone());
         }
         session.op_ids.push(op_id);
+        session.op_results.push(result.clone());
         session.resolved_args.push(resolved_args);
         session.ops.push(op);
         Ok(result)
@@ -279,6 +282,11 @@ impl ServeState {
                     && let Value::Object(object) = &mut item
                 {
                     object.insert("id".to_string(), json!(op_id));
+                }
+                if let Some(envelope) = session.op_results[index].get("mutationEnvelope")
+                    && let Value::Object(object) = &mut item
+                {
+                    object.insert("mutationEnvelope".to_string(), envelope.clone());
                 }
                 item
             })

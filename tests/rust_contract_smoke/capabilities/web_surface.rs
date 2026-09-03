@@ -9,7 +9,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml agent-triage", false);
     assert_command(&all_caps, "ooxml help", false);
     assert_command(&all_caps, "ooxml apply", false);
-    assert_command(&all_caps, "ooxml convert xlsm-to-xlsx", false);
+    assert_command(&all_caps, "ooxml convert xlsm-to-xlsx", true);
     assert_command(&all_caps, "ooxml diff", false);
     assert_command(&all_caps, "ooxml template", false);
     assert_command(&all_caps, "ooxml template apply", true);
@@ -26,66 +26,66 @@ fn capabilities_advertise_supported_web_agent_surface() {
         assert_command(&all_caps, path, false);
     }
     assert_command(&all_caps, "ooxml pptx diff", false);
-    assert_command(&all_caps, "ooxml pptx scaffold", false);
+    assert_command(&all_caps, "ooxml pptx scaffold", true);
     assert_command(&all_caps, "ooxml pptx extract text", false);
     assert_command(&all_caps, "ooxml pptx extract notes", false);
     assert_command(&all_caps, "ooxml pptx extract images", false);
     assert_command(&all_caps, "ooxml pptx extract xml", false);
-    assert_command(&all_caps, "ooxml pptx slides delete", false);
-    assert_command(&all_caps, "ooxml pptx slides move", false);
-    assert_command(&all_caps, "ooxml pptx slides reorder", false);
-    assert_command(&all_caps, "ooxml pptx slides import-slide", false);
-    assert_command(&all_caps, "ooxml pptx slides merge", false);
-    assert_command(&all_caps, "ooxml pptx clone-slide", false);
-    assert_command(&all_caps, "ooxml pptx new-slide-from-layout", false);
+    assert_command(&all_caps, "ooxml pptx slides delete", true);
+    assert_command(&all_caps, "ooxml pptx slides move", true);
+    assert_command(&all_caps, "ooxml pptx slides reorder", true);
+    assert_command(&all_caps, "ooxml pptx slides import-slide", true);
+    assert_command(&all_caps, "ooxml pptx slides merge", true);
+    assert_command(&all_caps, "ooxml pptx clone-slide", true);
+    assert_command(&all_caps, "ooxml pptx new-slide-from-layout", true);
     assert_command(&all_caps, "ooxml pptx validate-layout", false);
     assert_command(&all_caps, "ooxml pptx template", false);
     assert_command(&all_caps, "ooxml pptx template inspect", false);
     assert_command(&all_caps, "ooxml pptx template capture", false);
-    assert_command(&all_caps, "ooxml pptx template compile", false);
+    assert_command(&all_caps, "ooxml pptx template compile", true);
     assert_command(&all_caps, "ooxml pptx xlsx-bindings plan", false);
-    assert_command(&all_caps, "ooxml pptx xlsx-bindings apply", false);
+    assert_command(&all_caps, "ooxml pptx xlsx-bindings apply", true);
     assert_command(&all_caps, "ooxml pptx notes show", false);
     assert_command(&all_caps, "ooxml pptx notes set", true);
     assert_command(&all_caps, "ooxml pptx notes clear", true);
     assert_command(&all_caps, "ooxml pptx masters list", false);
     assert_command(&all_caps, "ooxml pptx masters show", false);
-    assert_command(&all_caps, "ooxml pptx masters import", false);
-    assert_command(&all_caps, "ooxml pptx masters add-placeholder", false);
+    assert_command(&all_caps, "ooxml pptx masters import", true);
+    assert_command(&all_caps, "ooxml pptx masters add-placeholder", true);
     assert_command(&all_caps, "ooxml pptx layouts list", false);
     assert_command(&all_caps, "ooxml pptx layouts show", false);
-    assert_command(&all_caps, "ooxml pptx layouts import", false);
-    assert_command(&all_caps, "ooxml pptx layouts clone", false);
+    assert_command(&all_caps, "ooxml pptx layouts import", true);
+    assert_command(&all_caps, "ooxml pptx layouts clone", true);
     assert_command(&all_caps, "ooxml pptx shapes get", false);
-    assert_command(&all_caps, "ooxml pptx add-textbox", false);
-    assert_command(&all_caps, "ooxml pptx text set", false);
+    assert_command(&all_caps, "ooxml pptx add-textbox", true);
+    assert_command(&all_caps, "ooxml pptx text set", true);
     assert_command(&all_caps, "ooxml pptx translate export", false);
     assert_command(&all_caps, "ooxml pptx translate apply", false);
     assert_command(&all_caps, "ooxml pptx fields inspect", false);
-    assert_command(&all_caps, "ooxml pptx fields set", false);
-    assert_command(&all_caps, "ooxml pptx theme update", false);
-    assert_command(&all_caps, "ooxml pptx place image", false);
-    assert_command(&all_caps, "ooxml pptx place table", false);
-    assert_command(&all_caps, "ooxml pptx place table-from-xlsx", false);
-    assert_command(&all_caps, "ooxml pptx shapes set-bounds", false);
+    assert_command(&all_caps, "ooxml pptx fields set", true);
+    assert_command(&all_caps, "ooxml pptx theme update", true);
+    assert_command(&all_caps, "ooxml pptx place image", true);
+    assert_command(&all_caps, "ooxml pptx place table", true);
+    assert_command(&all_caps, "ooxml pptx place table-from-xlsx", true);
+    assert_command(&all_caps, "ooxml pptx shapes set-bounds", true);
     assert_command(&all_caps, "ooxml pptx shapes delete", true);
     assert_command(&all_caps, "ooxml pptx animations list", false);
-    assert_command(&all_caps, "ooxml pptx animations add", false);
-    assert_command(&all_caps, "ooxml pptx animations remove", false);
-    assert_command(&all_caps, "ooxml pptx animations reorder", false);
-    assert_command(&all_caps, "ooxml pptx animations prune-stale", false);
+    assert_command(&all_caps, "ooxml pptx animations add", true);
+    assert_command(&all_caps, "ooxml pptx animations remove", true);
+    assert_command(&all_caps, "ooxml pptx animations reorder", true);
+    assert_command(&all_caps, "ooxml pptx animations prune-stale", true);
     assert_command(&all_caps, "ooxml pptx charts list", false);
     assert_command(&all_caps, "ooxml pptx charts show", false);
-    assert_command(&all_caps, "ooxml pptx charts create", false);
-    assert_command(&all_caps, "ooxml pptx charts update-data", false);
-    assert_command(&all_caps, "ooxml pptx charts set-title", false);
-    assert_command(&all_caps, "ooxml pptx charts set-legend", false);
-    assert_command(&all_caps, "ooxml pptx charts set-chart-area-fill", false);
-    assert_command(&all_caps, "ooxml pptx charts set-plot-area-fill", false);
-    assert_command(&all_caps, "ooxml pptx charts set-series-style", false);
-    assert_command(&all_caps, "ooxml pptx charts set-axis", false);
-    assert_command(&all_caps, "ooxml pptx charts convert-type", false);
-    assert_command(&all_caps, "ooxml pptx charts copy-style", false);
+    assert_command(&all_caps, "ooxml pptx charts create", true);
+    assert_command(&all_caps, "ooxml pptx charts update-data", true);
+    assert_command(&all_caps, "ooxml pptx charts set-title", true);
+    assert_command(&all_caps, "ooxml pptx charts set-legend", true);
+    assert_command(&all_caps, "ooxml pptx charts set-chart-area-fill", true);
+    assert_command(&all_caps, "ooxml pptx charts set-plot-area-fill", true);
+    assert_command(&all_caps, "ooxml pptx charts set-series-style", true);
+    assert_command(&all_caps, "ooxml pptx charts set-axis", true);
+    assert_command(&all_caps, "ooxml pptx charts convert-type", true);
+    assert_command(&all_caps, "ooxml pptx charts copy-style", true);
     assert_command(&all_caps, "ooxml pptx tables show", false);
     assert_command(&all_caps, "ooxml pptx tables set-cell", true);
     assert_command(&all_caps, "ooxml pptx tables delete-row", true);
@@ -94,21 +94,21 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml pptx tables insert-col", true);
     assert_command(&all_caps, "ooxml pptx tables update-from-xlsx", true);
     assert_command(&all_caps, "ooxml pptx comments list", false);
-    assert_command(&all_caps, "ooxml pptx comments add", false);
-    assert_command(&all_caps, "ooxml pptx comments edit", false);
-    assert_command(&all_caps, "ooxml pptx comments remove", false);
+    assert_command(&all_caps, "ooxml pptx comments add", true);
+    assert_command(&all_caps, "ooxml pptx comments edit", true);
+    assert_command(&all_caps, "ooxml pptx comments remove", true);
     assert_command(&all_caps, "ooxml pptx media list", false);
-    assert_command(&all_caps, "ooxml pptx media add", false);
-    assert_command(&all_caps, "ooxml pptx media replace", false);
+    assert_command(&all_caps, "ooxml pptx media add", true);
+    assert_command(&all_caps, "ooxml pptx media replace", true);
     assert_command(&all_caps, "ooxml pptx replace text-occurrences", true);
-    assert_command(&all_caps, "ooxml pptx replace text-from-xlsx", false);
-    assert_command(&all_caps, "ooxml pptx replace text-map-from-xlsx", false);
-    assert_command(&all_caps, "ooxml pptx replace images", false);
+    assert_command(&all_caps, "ooxml pptx replace text-from-xlsx", true);
+    assert_command(&all_caps, "ooxml pptx replace text-map-from-xlsx", true);
+    assert_command(&all_caps, "ooxml pptx replace images", true);
     for path in DOCX_PARENT_GROUP_COMMANDS {
         assert_command(&all_caps, path, false);
     }
-    assert_command(&all_caps, "ooxml docx scaffold", false);
-    assert_command(&all_caps, "ooxml xlsx scaffold", false);
+    assert_command(&all_caps, "ooxml docx scaffold", true);
+    assert_command(&all_caps, "ooxml xlsx scaffold", true);
     assert_command(&all_caps, "ooxml docx fields list", false);
     assert_command(&all_caps, "ooxml docx fields insert", true);
     assert_command(&all_caps, "ooxml docx fields set-result", true);
@@ -119,8 +119,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&all_caps, "ooxml docx headers set-text", true);
     assert_command(&all_caps, "ooxml docx footers set-text", true);
     assert_command(&all_caps, "ooxml docx images list", false);
-    assert_command(&all_caps, "ooxml docx images replace", false);
-    assert_command(&all_caps, "ooxml docx images insert", false);
+    assert_command(&all_caps, "ooxml docx images replace", true);
+    assert_command(&all_caps, "ooxml docx images insert", true);
     assert_command(&all_caps, "ooxml docx tables show", false);
     assert_command(&all_caps, "ooxml docx tables set-cell", true);
     assert_command(&all_caps, "ooxml docx tables clear-cell", true);
@@ -729,57 +729,57 @@ fn capabilities_advertise_supported_web_agent_surface() {
         pptx_caps["contractVersion"],
         Value::String("ooxml-cli.agent-capabilities.v4".to_string())
     );
-    assert_command(&pptx_caps, "ooxml pptx scaffold", false);
+    assert_command(&pptx_caps, "ooxml pptx scaffold", true);
     assert_command(&pptx_caps, "ooxml pptx slides list", false);
     assert_command(&pptx_caps, "ooxml pptx slides selectors", false);
     assert_command(&pptx_caps, "ooxml pptx slides show", false);
-    assert_command(&pptx_caps, "ooxml pptx slides delete", false);
-    assert_command(&pptx_caps, "ooxml pptx slides move", false);
-    assert_command(&pptx_caps, "ooxml pptx slides reorder", false);
-    assert_command(&pptx_caps, "ooxml pptx slides import-slide", false);
-    assert_command(&pptx_caps, "ooxml pptx slides merge", false);
+    assert_command(&pptx_caps, "ooxml pptx slides delete", true);
+    assert_command(&pptx_caps, "ooxml pptx slides move", true);
+    assert_command(&pptx_caps, "ooxml pptx slides reorder", true);
+    assert_command(&pptx_caps, "ooxml pptx slides import-slide", true);
+    assert_command(&pptx_caps, "ooxml pptx slides merge", true);
     assert_command(&pptx_caps, "ooxml pptx validate-layout", false);
     assert_command(&pptx_caps, "ooxml pptx template", false);
     assert_command(&pptx_caps, "ooxml pptx template inspect", false);
     assert_command(&pptx_caps, "ooxml pptx template capture", false);
-    assert_command(&pptx_caps, "ooxml pptx template compile", false);
+    assert_command(&pptx_caps, "ooxml pptx template compile", true);
     assert_command(&pptx_caps, "ooxml pptx shapes show", false);
     assert_command(&pptx_caps, "ooxml pptx shapes get", false);
-    assert_command(&pptx_caps, "ooxml pptx add-textbox", false);
-    assert_command(&pptx_caps, "ooxml pptx place image", false);
-    assert_command(&pptx_caps, "ooxml pptx place table", false);
-    assert_command(&pptx_caps, "ooxml pptx place table-from-xlsx", false);
-    assert_command(&pptx_caps, "ooxml pptx shapes set-bounds", false);
+    assert_command(&pptx_caps, "ooxml pptx add-textbox", true);
+    assert_command(&pptx_caps, "ooxml pptx place image", true);
+    assert_command(&pptx_caps, "ooxml pptx place table", true);
+    assert_command(&pptx_caps, "ooxml pptx place table-from-xlsx", true);
+    assert_command(&pptx_caps, "ooxml pptx shapes set-bounds", true);
     assert_command(&pptx_caps, "ooxml pptx shapes delete", true);
     assert_command(&pptx_caps, "ooxml pptx translate export", false);
     assert_command(&pptx_caps, "ooxml pptx translate apply", false);
     assert_command(&pptx_caps, "ooxml pptx animations list", false);
-    assert_command(&pptx_caps, "ooxml pptx animations add", false);
-    assert_command(&pptx_caps, "ooxml pptx animations remove", false);
-    assert_command(&pptx_caps, "ooxml pptx animations reorder", false);
-    assert_command(&pptx_caps, "ooxml pptx animations prune-stale", false);
+    assert_command(&pptx_caps, "ooxml pptx animations add", true);
+    assert_command(&pptx_caps, "ooxml pptx animations remove", true);
+    assert_command(&pptx_caps, "ooxml pptx animations reorder", true);
+    assert_command(&pptx_caps, "ooxml pptx animations prune-stale", true);
     assert_command(&pptx_caps, "ooxml pptx masters list", false);
     assert_command(&pptx_caps, "ooxml pptx masters show", false);
-    assert_command(&pptx_caps, "ooxml pptx masters import", false);
+    assert_command(&pptx_caps, "ooxml pptx masters import", true);
     assert_command(&pptx_caps, "ooxml pptx layouts list", false);
     assert_command(&pptx_caps, "ooxml pptx layouts show", false);
-    assert_command(&pptx_caps, "ooxml pptx layouts import", false);
-    assert_command(&pptx_caps, "ooxml pptx layouts rename", false);
-    assert_command(&pptx_caps, "ooxml pptx layouts set-bounds", false);
-    assert_command(&pptx_caps, "ooxml pptx layouts delete-shape", false);
-    assert_command(&pptx_caps, "ooxml pptx layouts add-placeholder", false);
+    assert_command(&pptx_caps, "ooxml pptx layouts import", true);
+    assert_command(&pptx_caps, "ooxml pptx layouts rename", true);
+    assert_command(&pptx_caps, "ooxml pptx layouts set-bounds", true);
+    assert_command(&pptx_caps, "ooxml pptx layouts delete-shape", true);
+    assert_command(&pptx_caps, "ooxml pptx layouts add-placeholder", true);
     assert_command(&pptx_caps, "ooxml pptx charts list", false);
     assert_command(&pptx_caps, "ooxml pptx charts show", false);
-    assert_command(&pptx_caps, "ooxml pptx charts create", false);
-    assert_command(&pptx_caps, "ooxml pptx charts update-data", false);
-    assert_command(&pptx_caps, "ooxml pptx charts set-title", false);
-    assert_command(&pptx_caps, "ooxml pptx charts set-legend", false);
-    assert_command(&pptx_caps, "ooxml pptx charts set-chart-area-fill", false);
-    assert_command(&pptx_caps, "ooxml pptx charts set-plot-area-fill", false);
-    assert_command(&pptx_caps, "ooxml pptx charts set-series-style", false);
-    assert_command(&pptx_caps, "ooxml pptx charts set-axis", false);
-    assert_command(&pptx_caps, "ooxml pptx charts convert-type", false);
-    assert_command(&pptx_caps, "ooxml pptx charts copy-style", false);
+    assert_command(&pptx_caps, "ooxml pptx charts create", true);
+    assert_command(&pptx_caps, "ooxml pptx charts update-data", true);
+    assert_command(&pptx_caps, "ooxml pptx charts set-title", true);
+    assert_command(&pptx_caps, "ooxml pptx charts set-legend", true);
+    assert_command(&pptx_caps, "ooxml pptx charts set-chart-area-fill", true);
+    assert_command(&pptx_caps, "ooxml pptx charts set-plot-area-fill", true);
+    assert_command(&pptx_caps, "ooxml pptx charts set-series-style", true);
+    assert_command(&pptx_caps, "ooxml pptx charts set-axis", true);
+    assert_command(&pptx_caps, "ooxml pptx charts convert-type", true);
+    assert_command(&pptx_caps, "ooxml pptx charts copy-style", true);
     assert_command(&pptx_caps, "ooxml pptx tables show", false);
     assert_command(&pptx_caps, "ooxml pptx tables set-cell", true);
     assert_command(&pptx_caps, "ooxml pptx tables delete-row", true);
@@ -795,15 +795,15 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&pptx_caps, "ooxml pptx notes set", true);
     assert_command(&pptx_caps, "ooxml pptx notes clear", true);
     assert_command(&pptx_caps, "ooxml pptx comments list", false);
-    assert_command(&pptx_caps, "ooxml pptx comments add", false);
-    assert_command(&pptx_caps, "ooxml pptx comments edit", false);
-    assert_command(&pptx_caps, "ooxml pptx comments remove", false);
+    assert_command(&pptx_caps, "ooxml pptx comments add", true);
+    assert_command(&pptx_caps, "ooxml pptx comments edit", true);
+    assert_command(&pptx_caps, "ooxml pptx comments remove", true);
     assert_command(&pptx_caps, "ooxml pptx replace text", true);
     assert_command(&pptx_caps, "ooxml pptx replace text-occurrences", true);
-    assert_command(&pptx_caps, "ooxml pptx replace text-from-xlsx", false);
-    assert_command(&pptx_caps, "ooxml pptx replace text-map-from-xlsx", false);
-    assert_command(&pptx_caps, "ooxml pptx replace images", false);
-    assert_command(&pptx_caps, "ooxml pptx xlsx-bindings apply", false);
+    assert_command(&pptx_caps, "ooxml pptx replace text-from-xlsx", true);
+    assert_command(&pptx_caps, "ooxml pptx replace text-map-from-xlsx", true);
+    assert_command(&pptx_caps, "ooxml pptx replace images", true);
+    assert_command(&pptx_caps, "ooxml pptx xlsx-bindings apply", true);
 
     let (template_code, template_stdout, template_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "template"]);
@@ -819,9 +819,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&template_caps, "ooxml pptx template", false);
     assert_command(&template_caps, "ooxml pptx template inspect", false);
     assert_command(&template_caps, "ooxml pptx template capture", false);
-    assert_command(&template_caps, "ooxml pptx template compile", false);
+    assert_command(&template_caps, "ooxml pptx template compile", true);
     assert_command(&template_caps, "ooxml pptx xlsx-bindings plan", false);
-    assert_command(&template_caps, "ooxml pptx xlsx-bindings apply", false);
+    assert_command(&template_caps, "ooxml pptx xlsx-bindings apply", true);
 
     let (package_code, package_stdout, package_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "package"]);
@@ -831,10 +831,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&package_caps, "ooxml conformance check", false);
     assert_command(&package_caps, "ooxml diff", false);
     assert_command(&package_caps, "ooxml template apply", true);
-    assert_command(&package_caps, "ooxml convert xlsm-to-xlsx", false);
-    assert_command(&package_caps, "ooxml docx scaffold", false);
-    assert_command(&package_caps, "ooxml pptx scaffold", false);
-    assert_command(&package_caps, "ooxml xlsx scaffold", false);
+    assert_command(&package_caps, "ooxml convert xlsm-to-xlsx", true);
+    assert_command(&package_caps, "ooxml docx scaffold", true);
+    assert_command(&package_caps, "ooxml pptx scaffold", true);
+    assert_command(&package_caps, "ooxml xlsx scaffold", true);
     assert_no_command(&package_caps, "ooxml docx blocks");
 
     let (convert_code, convert_stdout, convert_stderr) =
@@ -842,7 +842,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(convert_code, 0);
     assert_eq!(convert_stderr, None);
     let convert_caps = convert_stdout.expect("convert capabilities");
-    assert_command(&convert_caps, "ooxml convert xlsm-to-xlsx", false);
+    assert_command(&convert_caps, "ooxml convert xlsm-to-xlsx", true);
     assert_no_command(&convert_caps, "ooxml vba remove");
 
     let (xlsx_code, xlsx_stdout, xlsx_stderr) =
@@ -850,7 +850,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(xlsx_code, 0);
     assert_eq!(xlsx_stderr, None);
     let xlsx_caps = xlsx_stdout.expect("xlsx capabilities");
-    assert_command(&xlsx_caps, "ooxml xlsx scaffold", false);
+    assert_command(&xlsx_caps, "ooxml xlsx scaffold", true);
     assert_command(&xlsx_caps, "ooxml xlsx sheets list", false);
     assert_command(&xlsx_caps, "ooxml xlsx sheets show", false);
     assert_command(&xlsx_caps, "ooxml xlsx sheets add", true);
@@ -861,29 +861,29 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx colwidths set", true);
     assert_command(&xlsx_caps, "ooxml xlsx rowheights show", false);
     assert_command(&xlsx_caps, "ooxml xlsx rowheights set", true);
-    assert_command(&xlsx_caps, "ooxml xlsx rows insert", false);
-    assert_command(&xlsx_caps, "ooxml xlsx rows delete", false);
-    assert_command(&xlsx_caps, "ooxml xlsx cols insert", false);
-    assert_command(&xlsx_caps, "ooxml xlsx cols delete", false);
+    assert_command(&xlsx_caps, "ooxml xlsx rows insert", true);
+    assert_command(&xlsx_caps, "ooxml xlsx rows delete", true);
+    assert_command(&xlsx_caps, "ooxml xlsx cols insert", true);
+    assert_command(&xlsx_caps, "ooxml xlsx cols delete", true);
     assert_command(&xlsx_caps, "ooxml xlsx filters-sorts show", false);
-    assert_command(&xlsx_caps, "ooxml xlsx filters-sorts set-autofilter", false);
+    assert_command(&xlsx_caps, "ooxml xlsx filters-sorts set-autofilter", true);
     assert_command(
         &xlsx_caps,
         "ooxml xlsx filters-sorts clear-autofilter",
-        false,
+        true,
     );
     assert_command(
         &xlsx_caps,
         "ooxml xlsx filters-sorts add-column-filter",
-        false,
+        true,
     );
     assert_command(
         &xlsx_caps,
         "ooxml xlsx filters-sorts clear-column-filter",
-        false,
+        true,
     );
-    assert_command(&xlsx_caps, "ooxml xlsx filters-sorts set-sort", false);
-    assert_command(&xlsx_caps, "ooxml xlsx filters-sorts clear-sort", false);
+    assert_command(&xlsx_caps, "ooxml xlsx filters-sorts set-sort", true);
+    assert_command(&xlsx_caps, "ooxml xlsx filters-sorts clear-sort", true);
     assert_command(&xlsx_caps, "ooxml xlsx comments list", false);
     assert_command(&xlsx_caps, "ooxml xlsx comments add", true);
     assert_command(&xlsx_caps, "ooxml xlsx comments update", true);
@@ -905,24 +905,24 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx hyperlinks delete", true);
     assert_command(&xlsx_caps, "ooxml xlsx charts list", false);
     assert_command(&xlsx_caps, "ooxml xlsx charts show", false);
-    assert_command(&xlsx_caps, "ooxml xlsx charts create", false);
-    assert_command(&xlsx_caps, "ooxml xlsx charts update-source", false);
-    assert_command(&xlsx_caps, "ooxml xlsx charts set-title", false);
-    assert_command(&xlsx_caps, "ooxml xlsx charts set-legend", false);
-    assert_command(&xlsx_caps, "ooxml xlsx charts set-chart-area-fill", false);
-    assert_command(&xlsx_caps, "ooxml xlsx charts set-plot-area-fill", false);
+    assert_command(&xlsx_caps, "ooxml xlsx charts create", true);
+    assert_command(&xlsx_caps, "ooxml xlsx charts update-source", true);
+    assert_command(&xlsx_caps, "ooxml xlsx charts set-title", true);
+    assert_command(&xlsx_caps, "ooxml xlsx charts set-legend", true);
+    assert_command(&xlsx_caps, "ooxml xlsx charts set-chart-area-fill", true);
+    assert_command(&xlsx_caps, "ooxml xlsx charts set-plot-area-fill", true);
     assert_command(&xlsx_caps, "ooxml xlsx charts set-series-style", true);
-    assert_command(&xlsx_caps, "ooxml xlsx charts convert-type", false);
-    assert_command(&xlsx_caps, "ooxml xlsx charts copy-style", false);
-    assert_command(&xlsx_caps, "ooxml xlsx charts set-axis", false);
+    assert_command(&xlsx_caps, "ooxml xlsx charts convert-type", true);
+    assert_command(&xlsx_caps, "ooxml xlsx charts copy-style", true);
+    assert_command(&xlsx_caps, "ooxml xlsx charts set-axis", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges export", false);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set", true);
     assert_command(&xlsx_caps, "ooxml xlsx ranges set-format", true);
-    assert_command(&xlsx_caps, "ooxml xlsx ranges set-style", false);
+    assert_command(&xlsx_caps, "ooxml xlsx ranges set-style", true);
     assert_command(&xlsx_caps, "ooxml xlsx cells extract", false);
     assert_command(&xlsx_caps, "ooxml xlsx cells set", true);
-    assert_command(&xlsx_caps, "ooxml xlsx cells clear", false);
-    assert_command(&xlsx_caps, "ooxml xlsx cells set-batch", false);
+    assert_command(&xlsx_caps, "ooxml xlsx cells clear", true);
+    assert_command(&xlsx_caps, "ooxml xlsx cells set-batch", true);
     assert_command(&xlsx_caps, "ooxml xlsx freeze show", false);
     assert_command(&xlsx_caps, "ooxml xlsx freeze set", true);
     assert_command(&xlsx_caps, "ooxml xlsx freeze clear", true);
@@ -931,10 +931,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&xlsx_caps, "ooxml xlsx tables export", false);
     assert_command(&xlsx_caps, "ooxml xlsx tables append-rows", true);
     assert_command(&xlsx_caps, "ooxml xlsx tables append-records", true);
-    assert_command(&xlsx_caps, "ooxml xlsx tables set-column-format", false);
+    assert_command(&xlsx_caps, "ooxml xlsx tables set-column-format", true);
     assert_command(&xlsx_caps, "ooxml xlsx pivots list", false);
     assert_command(&xlsx_caps, "ooxml xlsx pivots show", false);
-    assert_command(&xlsx_caps, "ooxml xlsx pivots create", false);
+    assert_command(&xlsx_caps, "ooxml xlsx pivots create", true);
     assert_command(&xlsx_caps, "ooxml xlsx names list", false);
     assert_command(&xlsx_caps, "ooxml xlsx names show", false);
     assert_command(&xlsx_caps, "ooxml xlsx names add", true);
@@ -953,33 +953,29 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&range_caps, "ooxml xlsx colwidths set", true);
     assert_command(&range_caps, "ooxml xlsx rowheights show", false);
     assert_command(&range_caps, "ooxml xlsx rowheights set", true);
-    assert_command(&range_caps, "ooxml xlsx rows insert", false);
-    assert_command(&range_caps, "ooxml xlsx rows delete", false);
-    assert_command(&range_caps, "ooxml xlsx cols insert", false);
-    assert_command(&range_caps, "ooxml xlsx cols delete", false);
+    assert_command(&range_caps, "ooxml xlsx rows insert", true);
+    assert_command(&range_caps, "ooxml xlsx rows delete", true);
+    assert_command(&range_caps, "ooxml xlsx cols insert", true);
+    assert_command(&range_caps, "ooxml xlsx cols delete", true);
     assert_command(&range_caps, "ooxml xlsx filters-sorts show", false);
-    assert_command(
-        &range_caps,
-        "ooxml xlsx filters-sorts set-autofilter",
-        false,
-    );
+    assert_command(&range_caps, "ooxml xlsx filters-sorts set-autofilter", true);
     assert_command(
         &range_caps,
         "ooxml xlsx filters-sorts clear-autofilter",
-        false,
+        true,
     );
     assert_command(
         &range_caps,
         "ooxml xlsx filters-sorts add-column-filter",
-        false,
+        true,
     );
     assert_command(
         &range_caps,
         "ooxml xlsx filters-sorts clear-column-filter",
-        false,
+        true,
     );
-    assert_command(&range_caps, "ooxml xlsx filters-sorts set-sort", false);
-    assert_command(&range_caps, "ooxml xlsx filters-sorts clear-sort", false);
+    assert_command(&range_caps, "ooxml xlsx filters-sorts set-sort", true);
+    assert_command(&range_caps, "ooxml xlsx filters-sorts clear-sort", true);
     assert_command(&range_caps, "ooxml xlsx conditional-formats list", false);
     assert_command(&range_caps, "ooxml xlsx conditional-formats show", false);
     assert_command(&range_caps, "ooxml xlsx conditional-formats add", true);
@@ -996,17 +992,17 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&range_caps, "ooxml xlsx hyperlinks update", true);
     assert_command(&range_caps, "ooxml xlsx hyperlinks delete", true);
     assert_command(&range_caps, "ooxml pptx tables update-from-xlsx", true);
-    assert_command(&range_caps, "ooxml pptx place table-from-xlsx", false);
-    assert_command(&range_caps, "ooxml pptx replace text-from-xlsx", false);
-    assert_command(&range_caps, "ooxml pptx replace text-map-from-xlsx", false);
-    assert_command(&range_caps, "ooxml pptx xlsx-bindings apply", false);
-    assert_command(&range_caps, "ooxml pptx charts create", false);
+    assert_command(&range_caps, "ooxml pptx place table-from-xlsx", true);
+    assert_command(&range_caps, "ooxml pptx replace text-from-xlsx", true);
+    assert_command(&range_caps, "ooxml pptx replace text-map-from-xlsx", true);
+    assert_command(&range_caps, "ooxml pptx xlsx-bindings apply", true);
+    assert_command(&range_caps, "ooxml pptx charts create", true);
     assert_command(&range_caps, "ooxml xlsx ranges export", false);
-    assert_command(&range_caps, "ooxml xlsx ranges set-style", false);
-    assert_command(&range_caps, "ooxml xlsx cells clear", false);
-    assert_command(&range_caps, "ooxml xlsx cells set-batch", false);
-    assert_command(&range_caps, "ooxml xlsx tables set-column-format", false);
-    assert_command(&range_caps, "ooxml xlsx pivots create", false);
+    assert_command(&range_caps, "ooxml xlsx ranges set-style", true);
+    assert_command(&range_caps, "ooxml xlsx cells clear", true);
+    assert_command(&range_caps, "ooxml xlsx cells set-batch", true);
+    assert_command(&range_caps, "ooxml xlsx tables set-column-format", true);
+    assert_command(&range_caps, "ooxml xlsx pivots create", true);
 
     let (cell_code, cell_stdout, cell_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "cell"]);
@@ -1014,16 +1010,16 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(cell_stderr, None);
     let cell_caps = cell_stdout.expect("cell capabilities");
     assert_command(&cell_caps, "ooxml xlsx cells set", true);
-    assert_command(&cell_caps, "ooxml xlsx cells clear", false);
-    assert_command(&cell_caps, "ooxml xlsx cells set-batch", false);
+    assert_command(&cell_caps, "ooxml xlsx cells clear", true);
+    assert_command(&cell_caps, "ooxml xlsx cells set-batch", true);
 
     let (table_code, table_stdout, table_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "table"]);
     assert_eq!(table_code, 0);
     assert_eq!(table_stderr, None);
     let table_caps = table_stdout.expect("table capabilities");
-    assert_command(&table_caps, "ooxml pptx place table", false);
-    assert_command(&table_caps, "ooxml pptx place table-from-xlsx", false);
+    assert_command(&table_caps, "ooxml pptx place table", true);
+    assert_command(&table_caps, "ooxml pptx place table-from-xlsx", true);
     assert_command(&table_caps, "ooxml pptx tables show", false);
     assert_command(&table_caps, "ooxml pptx tables set-cell", true);
     assert_command(&table_caps, "ooxml pptx tables delete-row", true);
@@ -1031,27 +1027,23 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&table_caps, "ooxml pptx tables delete-col", true);
     assert_command(&table_caps, "ooxml pptx tables insert-col", true);
     assert_command(&table_caps, "ooxml pptx tables update-from-xlsx", true);
-    assert_command(&table_caps, "ooxml pptx xlsx-bindings apply", false);
+    assert_command(&table_caps, "ooxml pptx xlsx-bindings apply", true);
     assert_command(&table_caps, "ooxml xlsx filters-sorts show", false);
-    assert_command(
-        &table_caps,
-        "ooxml xlsx filters-sorts set-autofilter",
-        false,
-    );
+    assert_command(&table_caps, "ooxml xlsx filters-sorts set-autofilter", true);
     assert_command(
         &table_caps,
         "ooxml xlsx filters-sorts clear-autofilter",
-        false,
+        true,
     );
     assert_command(&table_caps, "ooxml xlsx tables list", false);
     assert_command(&table_caps, "ooxml xlsx tables show", false);
     assert_command(&table_caps, "ooxml xlsx tables export", false);
     assert_command(&table_caps, "ooxml xlsx tables append-rows", true);
     assert_command(&table_caps, "ooxml xlsx tables append-records", true);
-    assert_command(&table_caps, "ooxml xlsx tables set-column-format", false);
+    assert_command(&table_caps, "ooxml xlsx tables set-column-format", true);
     assert_command(&table_caps, "ooxml xlsx pivots list", false);
     assert_command(&table_caps, "ooxml xlsx pivots show", false);
-    assert_command(&table_caps, "ooxml xlsx pivots create", false);
+    assert_command(&table_caps, "ooxml xlsx pivots create", true);
     assert_command(&table_caps, "ooxml docx tables set-cell", true);
     assert_command(&table_caps, "ooxml docx tables clear-cell", true);
     assert_command(&table_caps, "ooxml docx tables insert-row", true);
@@ -1068,16 +1060,16 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let chart_caps = chart_stdout.expect("chart capabilities");
     assert_command(&chart_caps, "ooxml pptx charts list", false);
     assert_command(&chart_caps, "ooxml pptx charts show", false);
-    assert_command(&chart_caps, "ooxml pptx charts create", false);
-    assert_command(&chart_caps, "ooxml pptx charts update-data", false);
-    assert_command(&chart_caps, "ooxml pptx charts set-title", false);
-    assert_command(&chart_caps, "ooxml pptx charts set-legend", false);
-    assert_command(&chart_caps, "ooxml pptx charts set-chart-area-fill", false);
-    assert_command(&chart_caps, "ooxml pptx charts set-plot-area-fill", false);
-    assert_command(&chart_caps, "ooxml pptx charts set-series-style", false);
-    assert_command(&chart_caps, "ooxml pptx charts set-axis", false);
-    assert_command(&chart_caps, "ooxml pptx charts convert-type", false);
-    assert_command(&chart_caps, "ooxml pptx charts copy-style", false);
+    assert_command(&chart_caps, "ooxml pptx charts create", true);
+    assert_command(&chart_caps, "ooxml pptx charts update-data", true);
+    assert_command(&chart_caps, "ooxml pptx charts set-title", true);
+    assert_command(&chart_caps, "ooxml pptx charts set-legend", true);
+    assert_command(&chart_caps, "ooxml pptx charts set-chart-area-fill", true);
+    assert_command(&chart_caps, "ooxml pptx charts set-plot-area-fill", true);
+    assert_command(&chart_caps, "ooxml pptx charts set-series-style", true);
+    assert_command(&chart_caps, "ooxml pptx charts set-axis", true);
+    assert_command(&chart_caps, "ooxml pptx charts convert-type", true);
+    assert_command(&chart_caps, "ooxml pptx charts copy-style", true);
     assert_no_command(&chart_caps, "ooxml pptx tables show");
 
     let (animation_code, animation_stdout, animation_stderr) =
@@ -1086,10 +1078,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(animation_stderr, None);
     let animation_caps = animation_stdout.expect("animation capabilities");
     assert_command(&animation_caps, "ooxml pptx animations list", false);
-    assert_command(&animation_caps, "ooxml pptx animations add", false);
-    assert_command(&animation_caps, "ooxml pptx animations remove", false);
-    assert_command(&animation_caps, "ooxml pptx animations reorder", false);
-    assert_command(&animation_caps, "ooxml pptx animations prune-stale", false);
+    assert_command(&animation_caps, "ooxml pptx animations add", true);
+    assert_command(&animation_caps, "ooxml pptx animations remove", true);
+    assert_command(&animation_caps, "ooxml pptx animations reorder", true);
+    assert_command(&animation_caps, "ooxml pptx animations prune-stale", true);
     assert_no_command(&animation_caps, "ooxml pptx tables show");
 
     let (name_code, name_stdout, name_stderr) =
@@ -1148,30 +1140,30 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let chart_caps = chart_stdout.expect("chart capabilities");
     assert_command(&chart_caps, "ooxml xlsx charts list", false);
     assert_command(&chart_caps, "ooxml xlsx charts show", false);
-    assert_command(&chart_caps, "ooxml xlsx charts create", false);
-    assert_command(&chart_caps, "ooxml xlsx charts update-source", false);
-    assert_command(&chart_caps, "ooxml xlsx charts set-title", false);
-    assert_command(&chart_caps, "ooxml xlsx charts set-legend", false);
-    assert_command(&chart_caps, "ooxml xlsx charts set-chart-area-fill", false);
-    assert_command(&chart_caps, "ooxml xlsx charts set-plot-area-fill", false);
+    assert_command(&chart_caps, "ooxml xlsx charts create", true);
+    assert_command(&chart_caps, "ooxml xlsx charts update-source", true);
+    assert_command(&chart_caps, "ooxml xlsx charts set-title", true);
+    assert_command(&chart_caps, "ooxml xlsx charts set-legend", true);
+    assert_command(&chart_caps, "ooxml xlsx charts set-chart-area-fill", true);
+    assert_command(&chart_caps, "ooxml xlsx charts set-plot-area-fill", true);
     assert_command(&chart_caps, "ooxml xlsx charts set-series-style", true);
-    assert_command(&chart_caps, "ooxml xlsx charts convert-type", false);
-    assert_command(&chart_caps, "ooxml xlsx charts copy-style", false);
-    assert_command(&chart_caps, "ooxml xlsx charts set-axis", false);
+    assert_command(&chart_caps, "ooxml xlsx charts convert-type", true);
+    assert_command(&chart_caps, "ooxml xlsx charts copy-style", true);
+    assert_command(&chart_caps, "ooxml xlsx charts set-axis", true);
 
     let (style_code, style_stdout, style_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "style"]);
     assert_eq!(style_code, 0);
     assert_eq!(style_stderr, None);
     let style_caps = style_stdout.expect("style capabilities");
-    assert_command(&style_caps, "ooxml xlsx charts set-title", false);
-    assert_command(&style_caps, "ooxml xlsx charts set-legend", false);
-    assert_command(&style_caps, "ooxml xlsx charts set-chart-area-fill", false);
-    assert_command(&style_caps, "ooxml xlsx charts set-plot-area-fill", false);
+    assert_command(&style_caps, "ooxml xlsx charts set-title", true);
+    assert_command(&style_caps, "ooxml xlsx charts set-legend", true);
+    assert_command(&style_caps, "ooxml xlsx charts set-chart-area-fill", true);
+    assert_command(&style_caps, "ooxml xlsx charts set-plot-area-fill", true);
     assert_command(&style_caps, "ooxml xlsx charts set-series-style", true);
-    assert_command(&style_caps, "ooxml xlsx charts copy-style", false);
-    assert_command(&style_caps, "ooxml xlsx charts set-axis", false);
-    assert_command(&style_caps, "ooxml xlsx tables set-column-format", false);
+    assert_command(&style_caps, "ooxml xlsx charts copy-style", true);
+    assert_command(&style_caps, "ooxml xlsx charts set-axis", true);
+    assert_command(&style_caps, "ooxml xlsx tables set-column-format", true);
     assert_no_command(&style_caps, "ooxml xlsx charts show");
     assert_no_command(&style_caps, "ooxml xlsx charts convert-type");
 
@@ -1182,7 +1174,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let pivot_caps = pivot_stdout.expect("pivot capabilities");
     assert_command(&pivot_caps, "ooxml xlsx pivots list", false);
     assert_command(&pivot_caps, "ooxml xlsx pivots show", false);
-    assert_command(&pivot_caps, "ooxml xlsx pivots create", false);
+    assert_command(&pivot_caps, "ooxml xlsx pivots create", true);
     assert_no_command(&pivot_caps, "ooxml xlsx tables list");
 
     let (layout_code, layout_stdout, layout_stderr) =
@@ -1192,11 +1184,11 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let layout_caps = layout_stdout.expect("layout capabilities");
     assert_command(&layout_caps, "ooxml pptx layouts list", false);
     assert_command(&layout_caps, "ooxml pptx layouts show", false);
-    assert_command(&layout_caps, "ooxml pptx layouts import", false);
-    assert_command(&layout_caps, "ooxml pptx layouts rename", false);
-    assert_command(&layout_caps, "ooxml pptx layouts set-bounds", false);
-    assert_command(&layout_caps, "ooxml pptx layouts delete-shape", false);
-    assert_command(&layout_caps, "ooxml pptx layouts add-placeholder", false);
+    assert_command(&layout_caps, "ooxml pptx layouts import", true);
+    assert_command(&layout_caps, "ooxml pptx layouts rename", true);
+    assert_command(&layout_caps, "ooxml pptx layouts set-bounds", true);
+    assert_command(&layout_caps, "ooxml pptx layouts delete-shape", true);
+    assert_command(&layout_caps, "ooxml pptx layouts add-placeholder", true);
     assert_command(&layout_caps, "ooxml pptx extract xml", false);
     assert_no_command(&layout_caps, "ooxml pptx tables show");
 
@@ -1207,7 +1199,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     let master_caps = master_stdout.expect("master capabilities");
     assert_command(&master_caps, "ooxml pptx masters list", false);
     assert_command(&master_caps, "ooxml pptx masters show", false);
-    assert_command(&master_caps, "ooxml pptx masters import", false);
+    assert_command(&master_caps, "ooxml pptx masters import", true);
     assert_command(&master_caps, "ooxml pptx extract xml", false);
     assert_no_command(&master_caps, "ooxml pptx layouts show");
 
@@ -1219,12 +1211,12 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&placeholder_caps, "ooxml pptx masters show", false);
     assert_command(&placeholder_caps, "ooxml pptx layouts list", false);
     assert_command(&placeholder_caps, "ooxml pptx layouts show", false);
-    assert_command(&placeholder_caps, "ooxml pptx layouts set-bounds", false);
-    assert_command(&placeholder_caps, "ooxml pptx layouts delete-shape", false);
+    assert_command(&placeholder_caps, "ooxml pptx layouts set-bounds", true);
+    assert_command(&placeholder_caps, "ooxml pptx layouts delete-shape", true);
     assert_command(
         &placeholder_caps,
         "ooxml pptx layouts add-placeholder",
-        false,
+        true,
     );
 
     let (paragraph_code, paragraph_stdout, paragraph_stderr) =
@@ -1240,7 +1232,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&paragraph_caps, "ooxml docx paragraphs set", true);
     assert_command(&paragraph_caps, "ooxml docx paragraphs clear", true);
     assert_command(&paragraph_caps, "ooxml docx replace", true);
-    assert_command(&paragraph_caps, "ooxml docx images insert", false);
+    assert_command(&paragraph_caps, "ooxml docx images insert", true);
     assert_no_command(&paragraph_caps, "ooxml docx blocks");
 
     let (style_code, style_stdout, style_stderr) =
@@ -1248,17 +1240,17 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(style_code, 0);
     assert_eq!(style_stderr, None);
     let style_caps = style_stdout.expect("style capabilities");
-    assert_command(&style_caps, "ooxml pptx theme update", false);
-    assert_command(&style_caps, "ooxml pptx charts set-title", false);
-    assert_command(&style_caps, "ooxml pptx charts set-legend", false);
-    assert_command(&style_caps, "ooxml pptx charts set-chart-area-fill", false);
-    assert_command(&style_caps, "ooxml pptx charts set-plot-area-fill", false);
-    assert_command(&style_caps, "ooxml pptx charts set-series-style", false);
-    assert_command(&style_caps, "ooxml pptx charts set-axis", false);
-    assert_command(&style_caps, "ooxml pptx charts convert-type", false);
-    assert_command(&style_caps, "ooxml pptx charts copy-style", false);
+    assert_command(&style_caps, "ooxml pptx theme update", true);
+    assert_command(&style_caps, "ooxml pptx charts set-title", true);
+    assert_command(&style_caps, "ooxml pptx charts set-legend", true);
+    assert_command(&style_caps, "ooxml pptx charts set-chart-area-fill", true);
+    assert_command(&style_caps, "ooxml pptx charts set-plot-area-fill", true);
+    assert_command(&style_caps, "ooxml pptx charts set-series-style", true);
+    assert_command(&style_caps, "ooxml pptx charts set-axis", true);
+    assert_command(&style_caps, "ooxml pptx charts convert-type", true);
+    assert_command(&style_caps, "ooxml pptx charts copy-style", true);
     assert_command(&style_caps, "ooxml xlsx ranges set-format", true);
-    assert_command(&style_caps, "ooxml xlsx ranges set-style", false);
+    assert_command(&style_caps, "ooxml xlsx ranges set-style", true);
     assert_command(&style_caps, "ooxml docx styles list", false);
     assert_command(&style_caps, "ooxml docx styles show", false);
     assert_command(&style_caps, "ooxml docx styles apply", true);
@@ -1268,10 +1260,10 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(theme_code, 0);
     assert_eq!(theme_stderr, None);
     let theme_caps = theme_stdout.expect("theme capabilities");
-    assert_command(&theme_caps, "ooxml pptx slides import-slide", false);
-    assert_command(&theme_caps, "ooxml pptx slides merge", false);
-    assert_command(&theme_caps, "ooxml pptx masters import", false);
-    assert_command(&theme_caps, "ooxml pptx layouts import", false);
+    assert_command(&theme_caps, "ooxml pptx slides import-slide", true);
+    assert_command(&theme_caps, "ooxml pptx slides merge", true);
+    assert_command(&theme_caps, "ooxml pptx masters import", true);
+    assert_command(&theme_caps, "ooxml pptx layouts import", true);
     assert_no_command(&theme_caps, "ooxml pptx theme update");
 
     let (comment_code, comment_stdout, comment_stderr) =
@@ -1280,9 +1272,9 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(comment_stderr, None);
     let comment_caps = comment_stdout.expect("comment capabilities");
     assert_command(&comment_caps, "ooxml pptx comments list", false);
-    assert_command(&comment_caps, "ooxml pptx comments add", false);
-    assert_command(&comment_caps, "ooxml pptx comments edit", false);
-    assert_command(&comment_caps, "ooxml pptx comments remove", false);
+    assert_command(&comment_caps, "ooxml pptx comments add", true);
+    assert_command(&comment_caps, "ooxml pptx comments edit", true);
+    assert_command(&comment_caps, "ooxml pptx comments remove", true);
     assert_command(&comment_caps, "ooxml xlsx comments list", false);
     assert_command(&comment_caps, "ooxml xlsx comments add", true);
     assert_command(&comment_caps, "ooxml xlsx comments update", true);
@@ -1298,7 +1290,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(field_stderr, None);
     let field_caps = field_stdout.expect("field capabilities");
     assert_command(&field_caps, "ooxml pptx fields inspect", false);
-    assert_command(&field_caps, "ooxml pptx fields set", false);
+    assert_command(&field_caps, "ooxml pptx fields set", true);
     assert_command(&field_caps, "ooxml docx fields list", false);
     assert_command(&field_caps, "ooxml docx fields insert", true);
     assert_command(&field_caps, "ooxml docx fields set-result", true);
@@ -1319,7 +1311,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(footer_stderr, None);
     let footer_caps = footer_stdout.expect("footer capabilities");
     assert_command(&footer_caps, "ooxml pptx fields inspect", false);
-    assert_command(&footer_caps, "ooxml pptx fields set", false);
+    assert_command(&footer_caps, "ooxml pptx fields set", true);
     assert_command(&footer_caps, "ooxml docx headers list", false);
     assert_command(&footer_caps, "ooxml docx footers list", false);
     assert_command(&footer_caps, "ooxml docx footers show", false);
@@ -1331,12 +1323,12 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_eq!(image_stderr, None);
     let image_caps = image_stdout.expect("image capabilities");
     assert_command(&image_caps, "ooxml pptx extract images", false);
-    assert_command(&image_caps, "ooxml pptx place image", false);
-    assert_command(&image_caps, "ooxml pptx replace images", false);
-    assert_command(&image_caps, "ooxml pptx xlsx-bindings apply", false);
+    assert_command(&image_caps, "ooxml pptx place image", true);
+    assert_command(&image_caps, "ooxml pptx replace images", true);
+    assert_command(&image_caps, "ooxml pptx xlsx-bindings apply", true);
     assert_command(&image_caps, "ooxml docx images list", false);
-    assert_command(&image_caps, "ooxml docx images replace", false);
-    assert_command(&image_caps, "ooxml docx images insert", false);
+    assert_command(&image_caps, "ooxml docx images replace", true);
+    assert_command(&image_caps, "ooxml docx images insert", true);
 
     let (capabilities_code, capabilities_stdout, capabilities_stderr) =
         run_ooxml(&["--json", "capabilities", "--for", "capabilities"]);
@@ -1369,7 +1361,7 @@ fn capabilities_advertise_supported_web_agent_surface() {
     for path in DOCX_PARENT_GROUP_COMMANDS {
         assert_command(&docx_caps, path, false);
     }
-    assert_command(&docx_caps, "ooxml docx scaffold", false);
+    assert_command(&docx_caps, "ooxml docx scaffold", true);
     assert_command(&docx_caps, "ooxml docx fields list", false);
     assert_command(&docx_caps, "ooxml docx fields insert", true);
     assert_command(&docx_caps, "ooxml docx fields set-result", true);
@@ -1380,8 +1372,8 @@ fn capabilities_advertise_supported_web_agent_surface() {
     assert_command(&docx_caps, "ooxml docx headers set-text", true);
     assert_command(&docx_caps, "ooxml docx footers set-text", true);
     assert_command(&docx_caps, "ooxml docx images list", false);
-    assert_command(&docx_caps, "ooxml docx images replace", false);
-    assert_command(&docx_caps, "ooxml docx images insert", false);
+    assert_command(&docx_caps, "ooxml docx images replace", true);
+    assert_command(&docx_caps, "ooxml docx images insert", true);
     assert_command(&docx_caps, "ooxml docx tables show", false);
     assert_command(&docx_caps, "ooxml docx tables set-cell", true);
     assert_command(&docx_caps, "ooxml docx tables clear-cell", true);

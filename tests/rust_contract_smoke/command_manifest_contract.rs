@@ -89,7 +89,7 @@ fn capabilities_match_exact_raw_bytes_and_frozen_contract_shapes() {
             .iter()
             .filter(|command| command["opCompatible"] == true)
             .count(),
-        73
+        154
     );
     let compatible_advisories = commands
         .iter()
@@ -113,6 +113,10 @@ fn capabilities_match_exact_raw_bytes_and_frozen_contract_shapes() {
                 "narrow repair command; run validate/conformance after normalization before handing the file to a user",
             ),
             (
+                "ooxml pptx fields set",
+                "direct CLI mutation; synthesizes missing footer placeholders when --show-footer=true or --footer is requested",
+            ),
+            (
                 "ooxml vba create",
                 "preferred cross-platform macro authoring path; legacy Office-COM create remains available without --pure for XLSM/PPTM seeds",
             ),
@@ -121,7 +125,7 @@ fn capabilities_match_exact_raw_bytes_and_frozen_contract_shapes() {
                 "safe module-set replacement path; rebuilds a fresh source-only vbaProject.bin rather than patching Office-authored binary metadata",
             ),
         ]),
-        "only the four frozen operation-compatible commands carry advisory reasons"
+        "only the five reviewed operation-compatible commands carry advisory reasons"
     );
 
     let inspect_promises = commands
@@ -175,10 +179,11 @@ fn capabilities_match_exact_raw_bytes_and_frozen_contract_shapes() {
     );
     assert!(inspect.get("flagConstraints").is_none());
 
-    let direct_only = command_by_path(commands, "ooxml pptx scaffold");
-    assert_eq!(direct_only["opCompatible"], false);
-    assert!(direct_only.get("opIneligibleReason").is_none());
-    assert!(direct_only.get("flagConstraints").is_none());
+    let promoted_mutation = command_by_path(commands, "ooxml pptx scaffold");
+    assert_eq!(promoted_mutation["opCompatible"], true);
+    assert!(promoted_mutation.get("opIneligibleReason").is_none());
+    assert!(promoted_mutation["opArgsSchema"].is_object());
+    assert!(promoted_mutation.get("flagConstraints").is_none());
 
     let mutation = command_by_path(commands, "ooxml xlsx cells set");
     assert_eq!(mutation["opCompatible"], true);

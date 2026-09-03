@@ -39,7 +39,27 @@ fn apply_dry_run_plan_matches_rust_baseline() {
         "cell",
         false,
     );
-    assert_eq!(rust_stdout, baseline_stdout, "apply dry-run stdout");
+    let rust_working = rust_stdout
+        .as_ref()
+        .and_then(|value| value.pointer("/applied/0/readback/file"))
+        .and_then(Value::as_str)
+        .expect("Rust dry-run working path")
+        .to_string();
+    let baseline_working = baseline_stdout
+        .as_ref()
+        .and_then(|value| value.pointer("/applied/0/readback/file"))
+        .and_then(Value::as_str)
+        .expect("baseline dry-run working path")
+        .to_string();
+    assert_eq!(
+        rust_stdout.map(|value| scrub_path(value, &rust_working, "[DRY_RUN_WORKING_PACKAGE]")),
+        baseline_stdout.map(|value| scrub_path(
+            value,
+            &baseline_working,
+            "[DRY_RUN_WORKING_PACKAGE]"
+        )),
+        "apply dry-run stdout after normalizing the intentionally ephemeral session stage"
+    );
 }
 
 #[test]
@@ -286,7 +306,25 @@ fn find_replace_apply_dry_run_matches_rust_baseline_for_xlsx() {
     assert_eq!(rust_stderr, baseline_stderr, "find apply dry-run stderr");
     let baseline_json: Value = serde_json::from_str(baseline_stdout.trim()).expect("baseline plan");
     let rust_json: Value = serde_json::from_str(rust_stdout.trim()).expect("rust plan");
-    assert_eq!(rust_json, baseline_json, "find apply dry-run stdout");
+    assert_eq!(rust_json["plan"][0]["resolvedArgs"]["value"], "Income");
+    assert_eq!(rust_json["validated"], true);
+    let rust_working = rust_json["applied"][0]["readback"]["file"]
+        .as_str()
+        .expect("Rust find dry-run working path")
+        .to_string();
+    let baseline_working = baseline_json["applied"][0]["readback"]["file"]
+        .as_str()
+        .expect("baseline find dry-run working path")
+        .to_string();
+    assert_eq!(
+        scrub_path(rust_json, &rust_working, "[DRY_RUN_WORKING_PACKAGE]"),
+        scrub_path(
+            baseline_json,
+            &baseline_working,
+            "[DRY_RUN_WORKING_PACKAGE]"
+        ),
+        "find apply dry-run stdout after normalizing the intentionally ephemeral session stage"
+    );
 }
 
 #[test]
@@ -490,7 +528,67 @@ fn frozen_mcp_discovery_and_flow_match_legacy_baseline() {
     let mut expected_discovery = baseline["mcp"]["discovery"].clone();
     expected_discovery["initialize"]["serverInfo"]["version"] =
         Value::String(env!("CARGO_PKG_VERSION").to_string());
-    assert_eq!(discovery, expected_discovery);
+    let schema_resources = discovery["resources"]
+        .as_array()
+        .expect("MCP resources")
+        .iter()
+        .filter_map(|resource| {
+            resource["uri"]
+                .as_str()
+                .filter(|uri| uri.starts_with("resource://schema/"))
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        schema_resources,
+        BTreeSet::from([
+            "resource://schema/docx-build",
+            "resource://schema/pptx-build",
+            "resource://schema/xlsx-build",
+        ]),
+        "build schemas are an additive MCP discovery surface"
+    );
+    let op_tool = discovery["tools"]
+        .as_array()
+        .expect("MCP tools")
+        .iter()
+        .find(|tool| tool["name"] == "op")
+        .expect("MCP op tool");
+    assert!(
+        op_tool["properties"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("id"))
+    );
+    assert!(
+        op_tool["required"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("args"))
+    );
+    let mut legacy_discovery = discovery.clone();
+    legacy_discovery["resources"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|resource| {
+            !resource["uri"]
+                .as_str()
+                .is_some_and(|uri| uri.starts_with("resource://schema/"))
+        });
+    let legacy_op_tool = legacy_discovery["tools"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|tool| tool["name"] == "op")
+        .unwrap();
+    legacy_op_tool["properties"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|property| property != "id");
+    legacy_op_tool["required"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|property| property != "args");
+    assert_eq!(legacy_discovery, expected_discovery);
 
     let mut replacements = vec![
         (input_str.clone(), "[MCP_INPUT_XLSX]".to_string()),
@@ -542,6 +640,14 @@ fn frozen_mcp_discovery_and_flow_match_legacy_baseline() {
         .as_object_mut()
         .expect("MCP op structuredContent")
         .remove("mutationEnvelope");
+    assert_eq!(
+        op_response["result"]["structuredContent"]["resolvedArgs"],
+        serde_json::json!({"cell": "A1", "sheet": "1", "value": "mcp-contract"})
+    );
+    op_response["result"]["structuredContent"]
+        .as_object_mut()
+        .unwrap()
+        .remove("resolvedArgs");
     flow.push(flow_item("tools/call", op, op_response, &replacements));
 
     let inspect = rpc_request(
@@ -571,7 +677,26 @@ fn frozen_mcp_discovery_and_flow_match_legacy_baseline() {
             serde_json::json!({"name": name, "arguments": {"session": session}}),
         );
         let mut response = serve_roundtrip(&mut stdin, &mut reader, &request);
-        if name == "commit" {
+        if name == "plan" {
+            super::serve::assert_session_mutation_envelope(
+                &response["result"]["structuredContent"]["plan"][0]["mutationEnvelope"],
+                "xlsx",
+                "cell",
+                false,
+            );
+            assert_eq!(
+                response["result"]["structuredContent"]["plan"][0]["resolvedArgs"],
+                serde_json::json!({"cell": "A1", "sheet": "1", "value": "mcp-contract"})
+            );
+            response["result"]["structuredContent"]["plan"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("mutationEnvelope");
+            response["result"]["structuredContent"]["plan"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("resolvedArgs");
+        } else if name == "commit" {
             super::serve::assert_session_mutation_envelope(
                 &response["result"]["structuredContent"]["applied"][0]["mutationEnvelope"],
                 "xlsx",
@@ -582,6 +707,19 @@ fn frozen_mcp_discovery_and_flow_match_legacy_baseline() {
                 .as_object_mut()
                 .expect("MCP commit applied item")
                 .remove("mutationEnvelope");
+            assert_eq!(
+                response["result"]["structuredContent"]["applied"][0]["resolvedArgs"],
+                serde_json::json!({"cell": "A1", "sheet": "1", "value": "mcp-contract"})
+            );
+            response["result"]["structuredContent"]["applied"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("resolvedArgs");
+            assert_eq!(response["result"]["structuredContent"]["validated"], true);
+            response["result"]["structuredContent"]
+                .as_object_mut()
+                .unwrap()
+                .remove("validated");
         }
         flow.push(flow_item("tools/call", request, response, &replacements));
     }

@@ -65,6 +65,14 @@ fn frozen_serve_flow_matches_legacy_baseline() {
         .as_object_mut()
         .expect("serve op result")
         .remove("mutationEnvelope");
+    assert_eq!(
+        op_response["result"]["resolvedArgs"],
+        serde_json::json!({"cell": "A1", "sheet": "1", "value": "serve-contract"})
+    );
+    op_response["result"]
+        .as_object_mut()
+        .unwrap()
+        .remove("resolvedArgs");
     flow.push(flow_item("op", op, op_response, &replacements));
 
     let inspect = rpc_request(
@@ -87,7 +95,26 @@ fn frozen_serve_flow_matches_legacy_baseline() {
     for (id, method) in [(4, "validate"), (5, "plan"), (6, "commit")] {
         let request = rpc_request(id, method, serde_json::json!({"session": session}));
         let mut response = serve_roundtrip(&mut stdin, &mut reader, &request);
-        if method == "commit" {
+        if method == "plan" {
+            assert_session_mutation_envelope(
+                &response["result"]["plan"][0]["mutationEnvelope"],
+                "xlsx",
+                "cell",
+                false,
+            );
+            assert_eq!(
+                response["result"]["plan"][0]["resolvedArgs"],
+                serde_json::json!({"cell": "A1", "sheet": "1", "value": "serve-contract"})
+            );
+            response["result"]["plan"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("mutationEnvelope");
+            response["result"]["plan"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("resolvedArgs");
+        } else if method == "commit" {
             assert_session_mutation_envelope(
                 &response["result"]["applied"][0]["mutationEnvelope"],
                 "xlsx",
@@ -98,6 +125,19 @@ fn frozen_serve_flow_matches_legacy_baseline() {
                 .as_object_mut()
                 .expect("serve commit applied item")
                 .remove("mutationEnvelope");
+            assert_eq!(
+                response["result"]["applied"][0]["resolvedArgs"],
+                serde_json::json!({"cell": "A1", "sheet": "1", "value": "serve-contract"})
+            );
+            response["result"]["applied"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("resolvedArgs");
+            assert_eq!(response["result"]["validated"], true);
+            response["result"]
+                .as_object_mut()
+                .unwrap()
+                .remove("validated");
         }
         flow.push(flow_item(method, request, response, &replacements));
     }
@@ -448,7 +488,22 @@ fn serve_dispatches_every_op_compatible_capability_to_validation() {
         })
         .collect::<Vec<_>>();
     let command_set = commands.iter().cloned().collect::<BTreeSet<_>>();
-    assert_eq!(commands.len(), 73, "advertised opCompatible command count");
+    assert_eq!(
+        commands.len(),
+        154,
+        "advertised opCompatible command count: 150 batchable package mutations plus four VBA operations"
+    );
+    assert_eq!(
+        commands
+            .iter()
+            .filter(|command| !matches!(
+                command.as_str(),
+                "vba attach" | "vba create" | "vba rebuild" | "vba remove"
+            ))
+            .count(),
+        150,
+        "complete batchable package-mutation denominator; apply and conditional find are excluded"
+    );
     assert_eq!(
         command_set.len(),
         commands.len(),
@@ -472,7 +527,7 @@ fn serve_dispatches_every_op_compatible_capability_to_validation() {
                 .to_string()
         })
         .collect::<BTreeSet<_>>();
-    assert_eq!(frozen_command_set.len(), 73);
+    assert_eq!(frozen_command_set.len(), 154);
     assert_eq!(
         command_set, frozen_command_set,
         "advertised opCompatible set drifted from the committed contract"

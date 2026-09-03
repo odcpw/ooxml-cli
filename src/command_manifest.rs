@@ -141,7 +141,12 @@ pub(crate) fn manifest_serve_mutation_ids() -> Vec<CommandId> {
 
 fn spec_is_op_compatible(spec: &CommandSpec) -> bool {
     matches!(spec.execution, ExecutionSupport::ServeMutation { .. })
-        || crate::mutation_envelope::is_mutation_command_path(spec.path)
+        || is_batchable_mutation_path(spec.path)
+}
+
+fn is_batchable_mutation_path(path: &[&str]) -> bool {
+    crate::mutation_envelope::is_mutation_command_path(path)
+        && !matches!(path, ["apply"] | ["find"])
 }
 
 pub(crate) fn command_id_for_canonical_path(canonical_path: &[&str]) -> Option<CommandId> {
@@ -618,10 +623,21 @@ fn capability_value_from_parts<'a>(
     execution: &'a ExecutionSupport,
     flag_constraints: Option<&'a Value>,
 ) -> Value {
-    let inventory_mutation = crate::mutation_envelope::is_mutation_command_path(path);
+    let batchable_mutation = is_batchable_mutation_path(path);
     let (op_compatible, op_ineligible_reason) = match execution {
         ExecutionSupport::ServeMutation { reason } => (true, *reason),
-        _ if inventory_mutation => (true, None),
+        ExecutionSupport::DirectOnly { reason }
+        | ExecutionSupport::ServeInspect { reason }
+        | ExecutionSupport::GroupOnly { reason }
+            if batchable_mutation =>
+        {
+            (
+                true,
+                (path == ["pptx", "fields", "set"])
+                    .then_some(*reason)
+                    .flatten(),
+            )
+        }
         ExecutionSupport::DirectOnly { reason }
         | ExecutionSupport::ServeInspect { reason }
         | ExecutionSupport::GroupOnly { reason } => (false, *reason),
@@ -1545,7 +1561,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_op_compatible_set_matches_frozen_156_command_contract() {
+    fn complete_op_compatible_set_matches_frozen_154_command_contract() {
         let frozen: Value = serde_json::from_str(include_str!(
             "../testdata/golden/command-manifest-contract/capabilities.json"
         ))
@@ -1563,7 +1579,7 @@ mod tests {
             .filter_map(|spec| capability_value(spec)["path"].as_str().map(str::to_owned))
             .collect::<BTreeSet<_>>();
         assert_eq!(actual, expected);
-        assert_eq!(actual.len(), 156);
+        assert_eq!(actual.len(), 154);
     }
 
     #[test]

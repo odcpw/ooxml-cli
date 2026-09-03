@@ -1830,6 +1830,7 @@ mod tests {
     ];
 
     const SERVE_MUTATION_PATHS: &[&str] = &[
+        "ooxml docx scaffold",
         "ooxml docx blocks replace",
         "ooxml docx blocks delete",
         "ooxml docx blocks insert-after",
@@ -1847,6 +1848,8 @@ mod tests {
         "ooxml docx fields set-result",
         "ooxml docx headers set-text",
         "ooxml docx footers set-text",
+        "ooxml docx images replace",
+        "ooxml docx images insert",
         "ooxml docx replace",
         "ooxml docx tables create",
         "ooxml docx tables set-style",
@@ -1958,7 +1961,7 @@ mod tests {
             .collect::<BTreeSet<_>>();
         let actual = specs
             .iter()
-            .filter(|spec| matches!(&spec.execution, ExecutionSupport::ServeMutation { .. }))
+            .filter(|spec| crate::command_manifest::spec_is_op_compatible(spec))
             .filter_map(|spec| capability_value(spec)["path"].as_str().map(str::to_owned))
             .collect::<BTreeSet<_>>();
         let dispatch_oracle = SERVE_MUTATION_PATHS
@@ -1967,7 +1970,7 @@ mod tests {
             .collect::<BTreeSet<_>>();
         assert_eq!(actual, expected);
         assert_eq!(actual, dispatch_oracle);
-        assert_eq!(actual.len(), 24);
+        assert_eq!(actual.len(), 27);
         let advisories = specs
             .iter()
             .filter_map(|spec| match &spec.execution {

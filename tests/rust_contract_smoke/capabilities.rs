@@ -138,6 +138,7 @@ fn capabilities_schema_shape_is_stable_for_typed_builder() {
         "aliases".to_string(),
         "flagConstraints".to_string(),
         "localFlags".to_string(),
+        "opArgsSchema".to_string(),
         "opCompatible".to_string(),
         "opIneligibleReason".to_string(),
         "path".to_string(),
@@ -197,6 +198,11 @@ fn capabilities_schema_shape_is_stable_for_typed_builder() {
                 "opIneligibleReason should be omitted or string for {path}"
             );
         }
+        assert_eq!(
+            command.get("opArgsSchema").is_some(),
+            command["opCompatible"] == true,
+            "opArgsSchema must appear exactly on op-compatible commands for {path}"
+        );
         if let Some(flag_constraints) = command.get("flagConstraints") {
             assert!(
                 flag_constraints.is_object(),
