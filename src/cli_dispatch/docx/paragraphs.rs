@@ -6,8 +6,8 @@ use crate::cli_args::{
 use crate::cli_core::{CliError, CliResult};
 use crate::docx_mutation_core::DocxParagraphMutationOptions;
 use crate::docx_paragraph_commands::{
-    docx_paragraphs_append, docx_paragraphs_clear, docx_paragraphs_insert, docx_paragraphs_set,
-    resolve_required_docx_paragraph_set_text,
+    DocxParagraphInsertOptions, docx_paragraphs_append, docx_paragraphs_clear,
+    docx_paragraphs_insert, docx_paragraphs_set, resolve_required_docx_paragraph_set_text,
 };
 
 pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
@@ -111,22 +111,24 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
             let no_validate = has_flag(rest, "--no-validate");
             docx_paragraphs_insert(
                 file,
-                insert_after,
-                &expect_hash,
-                list.as_deref(),
-                level,
-                has_flag(rest, "--restart"),
-                DocxParagraphMutationOptions {
-                    text: text.as_deref(),
-                    text_file: text_file.as_deref(),
-                    style: &style,
-                    out: out.as_deref(),
-                    backup: backup.as_deref(),
-                    dry_run,
-                    in_place,
-                    no_validate,
+                DocxParagraphInsertOptions {
+                    insert_after,
+                    expected_hash: &expect_hash,
+                    list: list.as_deref(),
+                    level,
+                    restart: has_flag(rest, "--restart"),
+                    mutation: DocxParagraphMutationOptions {
+                        text: text.as_deref(),
+                        text_file: text_file.as_deref(),
+                        style: &style,
+                        out: out.as_deref(),
+                        backup: backup.as_deref(),
+                        dry_run,
+                        in_place,
+                        no_validate,
+                    },
+                    create_style: has_flag(rest, "--create-style"),
                 },
-                has_flag(rest, "--create-style"),
             )
         }
         [cmd, group, verb, file, rest @ ..]

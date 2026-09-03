@@ -113,16 +113,29 @@ pub(crate) fn docx_paragraphs_append(
     Ok(Value::Object(result))
 }
 
+pub(crate) struct DocxParagraphInsertOptions<'a> {
+    pub(crate) insert_after: i64,
+    pub(crate) expected_hash: &'a str,
+    pub(crate) list: Option<&'a str>,
+    pub(crate) level: u32,
+    pub(crate) restart: bool,
+    pub(crate) mutation: DocxParagraphMutationOptions<'a>,
+    pub(crate) create_style: bool,
+}
+
 pub(crate) fn docx_paragraphs_insert(
     file: &str,
-    insert_after: i64,
-    expected_hash: &str,
-    list: Option<&str>,
-    level: u32,
-    restart: bool,
-    options: DocxParagraphMutationOptions<'_>,
-    create_style: bool,
+    options: DocxParagraphInsertOptions<'_>,
 ) -> CliResult<Value> {
+    let DocxParagraphInsertOptions {
+        insert_after,
+        expected_hash,
+        list,
+        level,
+        restart,
+        mutation: options,
+        create_style,
+    } = options;
     let entries = zip_entry_names(file)?;
     if insert_after < 0 {
         return Err(CliError::invalid_args("--insert-after must be >= 0"));

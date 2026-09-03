@@ -2,6 +2,7 @@ use serde_json::{Value, json};
 
 use super::super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
 use crate::command_manifest::DocxCommandId;
+use crate::docx_paragraph_commands::DocxParagraphInsertOptions;
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, docx_paragraphs_append,
     docx_paragraphs_clear, docx_paragraphs_insert, docx_paragraphs_set, json_bool, json_i64,
@@ -96,22 +97,24 @@ pub(super) fn serve_docx_paragraphs_op(
                 .unwrap_or(false);
             let readback = docx_paragraphs_insert(
                 working,
-                insert_after,
-                "",
-                list.as_deref(),
-                level,
-                restart,
-                DocxParagraphMutationOptions {
-                    text: text.as_deref(),
-                    text_file: text_file.as_deref(),
-                    style: &style,
-                    out: None,
-                    backup: None,
-                    dry_run: false,
-                    in_place: true,
-                    no_validate: true,
+                DocxParagraphInsertOptions {
+                    insert_after,
+                    expected_hash: "",
+                    list: list.as_deref(),
+                    level,
+                    restart,
+                    mutation: DocxParagraphMutationOptions {
+                        text: text.as_deref(),
+                        text_file: text_file.as_deref(),
+                        style: &style,
+                        out: None,
+                        backup: None,
+                        dry_run: false,
+                        in_place: true,
+                        no_validate: true,
+                    },
+                    create_style,
                 },
-                create_style,
             )?;
             let mut plan_flags = vec![json!("--after"), json!(insert_after.to_string())];
             push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
