@@ -22,17 +22,30 @@ use tables::dispatch_docx_tables;
 pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
     match args {
         [cmd, verb, rest @ ..] if cmd == "docx" && verb == "scaffold" => {
-            let value_flags = ["--out", "--text", "--text-file"];
+            let value_flags = [
+                "--out",
+                "--text",
+                "--text-file",
+                "--theme",
+                "--theme-seed",
+                "--template",
+            ];
             let bool_flags = ["--force", "--no-validate"];
             reject_unknown_flags(rest, &value_flags, &bool_flags)?;
             let output = output_path_arg(rest, &value_flags, &bool_flags, "docx scaffold")?;
             let text = parse_string_flag(rest, "--text")?;
             let text_file = parse_string_flag(rest, "--text-file")?;
+            let theme = parse_string_flag(rest, "--theme")?;
+            let theme_seed = parse_string_flag(rest, "--theme-seed")?;
+            let template = parse_string_flag(rest, "--template")?;
             docx_scaffold(
                 &output,
                 DocxScaffoldOptions {
                     text: text.as_deref(),
                     text_file: text_file.as_deref(),
+                    theme: theme.as_deref(),
+                    theme_seed: theme_seed.as_deref(),
+                    template: template.as_deref(),
                     force: has_flag(rest, "--force"),
                     no_validate: has_flag(rest, "--no-validate"),
                 },
