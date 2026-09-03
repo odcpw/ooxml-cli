@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::pptx_render::pptx_render;
+use crate::pptx_render::shared::{LIBREOFFICE_REMEDIATION, render_for_diff};
 use crate::{
     CliError, CliResult, DocxRichBlockReport, EXIT_DIFF_THRESHOLD, EXIT_PARTIAL_SUCCESS,
     EXIT_RENDER_FAILED, EXIT_SUCCESS, EXIT_UNEXPECTED, GlobalFlags, InspectPackageKind,
@@ -51,7 +51,7 @@ pub(crate) fn diff_command(
         ))),
     }?;
     let mut exit_code = EXIT_SUCCESS;
-    if baseline_type == "pptx" {
+    if baseline_type == "pptx" || options.render {
         let visual = if options.render {
             let outcome = render_visual_diff(flags, baseline, candidate, &options);
             exit_code = outcome.exit_code;
@@ -221,23 +221,37 @@ fn render_visual_diff(
             };
             VisualOutcome { value, exit_code }
         }
-        Err(err) if is_render_tool_issue(&err) => VisualOutcome {
-            value: json!({
-                "enabled": true,
-                "status": "unavailable",
-                "threshold": options.threshold,
-            }),
-            exit_code: if flags.strict {
-                EXIT_RENDER_FAILED
+        Err(err) if is_render_tool_issue(&err) => {
+            let remediation = if err.message.contains("pdftoppm") {
+                "Install Poppler utilities and ensure pdftoppm is on PATH."
+            } else if err.message.contains("compare") || err.message.contains("magick") {
+                "Install ImageMagick and ensure compare (or magick) is on PATH."
             } else {
-                EXIT_PARTIAL_SUCCESS
-            },
-        },
-        Err(_) => VisualOutcome {
+                LIBREOFFICE_REMEDIATION
+            };
+            VisualOutcome {
+                value: json!({
+                    "enabled": true,
+                    "status": "unavailable",
+                    "threshold": options.threshold,
+                    "detail": err.message,
+                    "remediation": remediation,
+                    "doctorCommand": "ooxml --json doctor --only render-engine,fonts",
+                    "doctorChecks": ["render-engine", "fonts"],
+                }),
+                exit_code: if flags.strict {
+                    EXIT_RENDER_FAILED
+                } else {
+                    EXIT_PARTIAL_SUCCESS
+                },
+            }
+        }
+        Err(err) => VisualOutcome {
             value: json!({
                 "enabled": true,
                 "status": "error",
                 "threshold": options.threshold,
+                "detail": err.message,
             }),
             exit_code: EXIT_UNEXPECTED,
         },
@@ -255,26 +269,56 @@ fn try_render_visual_diff(
     let diff_dir = workspace.path.join("diff");
     fs::create_dir_all(&diff_dir).map_err(|err| CliError::unexpected(err.to_string()))?;
 
-    let base_images = render_pptx_images(baseline, &base_dir)?;
-    let candidate_images = render_pptx_images(candidate, &candidate_dir)?;
-    let max_slides = base_images.len().max(candidate_images.len());
+    let base_render = render_for_diff(baseline, &base_dir)?;
+    let candidate_render = render_for_diff(candidate, &candidate_dir)?;
+    if base_render.family != candidate_render.family {
+        return Err(CliError::unsupported_type(
+            "visual diff requires matching package families",
+        ));
+    }
+    let family = base_render.family;
+    let base_images: BTreeMap<u32, PathBuf> = base_render
+        .images
+        .into_iter()
+        .map(|image| (image.number, image.path))
+        .collect();
+    let candidate_images: BTreeMap<u32, PathBuf> = candidate_render
+        .images
+        .into_iter()
+        .map(|image| (image.number, image.path))
+        .collect();
+    let page_numbers: BTreeSet<u32> = base_images
+        .keys()
+        .chain(candidate_images.keys())
+        .copied()
+        .collect();
     let mut pass = true;
-    let mut slides = Vec::with_capacity(max_slides);
+    let mut pages = Vec::with_capacity(page_numbers.len());
 
-    for index in 0..max_slides {
-        let slide = index + 1;
+    for page in page_numbers {
         let mut entry = Map::new();
-        entry.insert("slide".to_string(), json!(slide));
-        match (base_images.get(index), candidate_images.get(index)) {
+        entry.insert(number_key(family).to_string(), json!(page));
+        match (base_images.get(&page), candidate_images.get(&page)) {
             (Some(base_image), Some(candidate_image)) => {
-                let diff_image = diff_dir.join(format!("slide-{slide}-diff.png"));
-                let difference = visual_image_diff(base_image, candidate_image, &diff_image)?;
-                let slide_pass = difference <= options.threshold;
-                if !slide_pass {
+                let diff_image = diff_dir.join(format!("{}-{page}-diff.png", number_key(family)));
+                let metrics = visual_image_diff(base_image, candidate_image, &diff_image)?;
+                let page_pass = metrics.pixel_difference_ratio <= options.threshold;
+                if !page_pass {
                     pass = false;
                 }
-                entry.insert("difference".to_string(), json!(difference));
-                entry.insert("pass".to_string(), json!(slide_pass));
+                entry.insert(
+                    "difference".to_string(),
+                    json!(metrics.pixel_difference_ratio),
+                );
+                entry.insert(
+                    "pixelDifferenceRatio".to_string(),
+                    json!(metrics.pixel_difference_ratio),
+                );
+                entry.insert(
+                    "structuralSimilarity".to_string(),
+                    json!(metrics.structural_similarity),
+                );
+                entry.insert("pass".to_string(), json!(page_pass));
                 if diff_image.exists() {
                     entry.insert(
                         "diffImage".to_string(),
@@ -285,19 +329,21 @@ fn try_render_visual_diff(
             _ => {
                 pass = false;
                 entry.insert("difference".to_string(), json!(1.0));
+                entry.insert("pixelDifferenceRatio".to_string(), json!(1.0));
+                entry.insert("structuralSimilarity".to_string(), json!(0.0));
                 entry.insert("pass".to_string(), json!(false));
             }
         }
-        slides.push(Value::Object(entry));
+        pages.push(Value::Object(entry));
     }
 
-    Ok(json!({
-        "enabled": true,
-        "status": "ok",
-        "threshold": options.threshold,
-        "pass": pass,
-        "slides": slides,
-    }))
+    let mut value = Map::new();
+    value.insert("enabled".to_string(), json!(true));
+    value.insert("status".to_string(), json!("ok"));
+    value.insert("threshold".to_string(), json!(options.threshold));
+    value.insert("pass".to_string(), json!(pass));
+    value.insert(item_key(family).to_string(), Value::Array(pages));
+    Ok(Value::Object(value))
 }
 
 struct DiffRenderWorkspace {
@@ -339,65 +385,36 @@ impl Drop for DiffRenderWorkspace {
     }
 }
 
-fn render_pptx_images(file: &str, out_dir: &Path) -> CliResult<Vec<PathBuf>> {
-    let args = vec![
-        "--out".to_string(),
-        out_dir.to_string_lossy().to_string(),
-        "--format".to_string(),
-        "json".to_string(),
-    ];
-    let value = pptx_render(file, &args)?;
-    let slides = value["slides"]
-        .as_array()
-        .ok_or_else(|| CliError::unexpected("render manifest missing slides"))?;
-    let mut images = Vec::with_capacity(slides.len());
-    for slide in slides {
-        let image = slide["imagePath"]
-            .as_str()
-            .ok_or_else(|| CliError::unexpected("render manifest slide missing imagePath"))?;
-        images.push(PathBuf::from(image));
-    }
-    Ok(images)
+struct VisualMetrics {
+    pixel_difference_ratio: f64,
+    structural_similarity: f64,
 }
 
 fn visual_image_diff(
     base_image: &Path,
     candidate_image: &Path,
     diff_image: &Path,
-) -> CliResult<f64> {
+) -> CliResult<VisualMetrics> {
     if std::env::var_os("OOXML_RUST_MOCK_RENDER").is_some() {
         return mock_visual_image_diff(base_image, candidate_image, diff_image);
     }
-    let (program, args) = visual_diff_command(base_image, candidate_image, diff_image)?;
-    let output = Command::new(&program)
-        .args(args)
-        .output()
-        .map_err(|err| CliError::unexpected(format!("{program} failed: {err}")))?;
-    if let Some(metric) = parse_visual_diff_metric(&output.stderr)
-        .or_else(|| parse_visual_diff_metric(&output.stdout))
-    {
-        return Ok(metric);
-    }
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        if stderr.is_empty() {
-            return Err(CliError::unexpected(format!(
-                "{program} failed: {}",
-                output.status
-            )));
-        }
-        return Err(CliError::unexpected(format!("{program} failed: {stderr}")));
-    }
-    Err(CliError::unexpected(
-        "could not parse visual diff metric output",
-    ))
+    let image_magick = ImageMagick::detect()?;
+    let pixel_difference_ratio =
+        image_magick.compare_metric("AE", base_image, candidate_image, Some(diff_image))?;
+    let ssim_distortion = image_magick
+        .compare_metric("SSIM", base_image, candidate_image, None)?
+        .clamp(0.0, 1.0);
+    Ok(VisualMetrics {
+        pixel_difference_ratio: pixel_difference_ratio.clamp(0.0, 1.0),
+        structural_similarity: 1.0 - ssim_distortion,
+    })
 }
 
 fn mock_visual_image_diff(
     base_image: &Path,
     candidate_image: &Path,
     diff_image: &Path,
-) -> CliResult<f64> {
+) -> CliResult<VisualMetrics> {
     if let Some(parent) = diff_image.parent() {
         fs::create_dir_all(parent).map_err(|err| CliError::unexpected(err.to_string()))?;
     }
@@ -405,41 +422,77 @@ fn mock_visual_image_diff(
     let candidate =
         fs::read(candidate_image).map_err(|err| CliError::unexpected(err.to_string()))?;
     fs::write(diff_image, b"png").map_err(|err| CliError::unexpected(err.to_string()))?;
-    Ok(if base == candidate { 0.0 } else { 1.0 })
+    let identical = base == candidate;
+    Ok(VisualMetrics {
+        pixel_difference_ratio: if identical { 0.0 } else { 1.0 },
+        structural_similarity: if identical { 1.0 } else { 0.0 },
+    })
 }
 
-fn visual_diff_command(
-    base_image: &Path,
-    candidate_image: &Path,
-    diff_image: &Path,
-) -> CliResult<(String, Vec<String>)> {
-    if command_exists("compare") {
-        return Ok((
-            "compare".to_string(),
-            vec![
-                "-metric".to_string(),
-                "RMSE".to_string(),
-                base_image.to_string_lossy().to_string(),
-                candidate_image.to_string_lossy().to_string(),
-                diff_image.to_string_lossy().to_string(),
-            ],
-        ));
+enum ImageMagick {
+    SplitCommands,
+    Magick,
+}
+
+impl ImageMagick {
+    fn detect() -> CliResult<Self> {
+        if command_exists("compare") {
+            Ok(Self::SplitCommands)
+        } else if command_exists("magick") {
+            Ok(Self::Magick)
+        } else {
+            Err(CliError::unexpected(
+                "required render tool not available: compare or magick",
+            ))
+        }
     }
-    if command_exists("magick") {
-        return Ok((
-            "magick".to_string(),
-            vec![
-                "compare".to_string(),
-                "-metric".to_string(),
-                "RMSE".to_string(),
-                base_image.to_string_lossy().to_string(),
-                candidate_image.to_string_lossy().to_string(),
-                diff_image.to_string_lossy().to_string(),
-            ],
-        ));
+
+    fn compare_metric(
+        &self,
+        metric: &str,
+        base_image: &Path,
+        candidate_image: &Path,
+        output_image: Option<&Path>,
+    ) -> CliResult<f64> {
+        let (program, mut args) = match self {
+            Self::SplitCommands => ("compare", Vec::new()),
+            Self::Magick => ("magick", vec!["compare".to_string()]),
+        };
+        args.extend(["-metric".to_string(), metric.to_string()]);
+        args.push(base_image.to_string_lossy().to_string());
+        args.push(candidate_image.to_string_lossy().to_string());
+        args.push(
+            output_image
+                .map(|path| path.to_string_lossy().to_string())
+                .unwrap_or_else(|| "null:".to_string()),
+        );
+        let output = Command::new(program)
+            .args(&args)
+            .output()
+            .map_err(|err| CliError::unexpected(format!("{program} failed: {err}")))?;
+        if output.status.code().is_some_and(|code| code > 1) {
+            return Err(image_magick_failure(program, metric, &output));
+        }
+        parse_visual_diff_metric(&output.stderr)
+            .or_else(|| parse_visual_diff_metric(&output.stdout))
+            .ok_or_else(|| image_magick_failure(program, metric, &output))
     }
-    Err(CliError::unexpected(
-        "required render tool not available: compare",
+}
+
+fn image_magick_failure(program: &str, metric: &str, output: &std::process::Output) -> CliError {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let detail = if stderr.is_empty() {
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    } else {
+        stderr
+    };
+    CliError::unexpected(format!(
+        "{program} failed: {metric} metric unavailable{}",
+        if detail.is_empty() {
+            String::new()
+        } else {
+            format!(": {detail}")
+        }
     ))
 }
 
@@ -476,6 +529,14 @@ fn is_render_tool_issue(err: &CliError) -> bool {
         || message.starts_with("magick failed:")
         || message == "soffice render failed"
         || message == "pdftoppm rasterize failed"
+}
+
+fn item_key(family: &str) -> &'static str {
+    if family == "pptx" { "slides" } else { "pages" }
+}
+
+fn number_key(family: &str) -> &'static str {
+    if family == "pptx" { "slide" } else { "page" }
 }
 
 fn validate_json_format(value: &str) -> CliResult<()> {

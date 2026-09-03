@@ -347,6 +347,14 @@ fn top_level_diff_render_reports_unavailable_tools_with_visual_payload() {
     assert_eq!(output["visual"]["enabled"], true);
     assert_eq!(output["visual"]["status"], "unavailable");
     assert_eq!(output["visual"]["threshold"], 0.01);
+    assert_eq!(
+        output["visual"]["remediation"],
+        "Install LibreOffice and ensure soffice is on PATH."
+    );
+    assert_eq!(
+        output["visual"]["doctorCommand"],
+        "ooxml --json doctor --only render-engine,fonts"
+    );
 }
 
 #[test]
@@ -385,6 +393,8 @@ fn pptx_diff_render_mock_mode_emits_deterministic_visual_artifacts() {
     for (index, slide) in slides.iter().enumerate() {
         assert_eq!(slide["slide"], index + 1);
         assert_eq!(slide["difference"], 0.0);
+        assert_eq!(slide["pixelDifferenceRatio"], 0.0);
+        assert_eq!(slide["structuralSimilarity"], 1.0);
         assert_eq!(slide["pass"], true);
         let diff_image = slide["diffImage"].as_str().expect("diff image");
         assert!(
@@ -395,6 +405,105 @@ fn pptx_diff_render_mock_mode_emits_deterministic_visual_artifacts() {
     assert!(out_dir.join("baseline").join("slide-1.png").exists());
     assert!(out_dir.join("candidate").join("slide-1.png").exists());
     assert!(out_dir.join("diff").join("slide-1-diff.png").exists());
+}
+
+#[test]
+fn xlsx_and_docx_render_diff_distinguish_no_change_from_one_word_change() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("ooxml-rust-render-diff-all-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).expect("temp dir");
+    let xlsx_candidate = temp_dir.join("candidate.xlsx");
+    rewrite_zip_fixture(
+        "testdata/xlsx/types-and-formulas/workbook.xlsx",
+        &xlsx_candidate,
+        |name, data| {
+            let data = if name == "xl/worksheets/sheet1.xml" {
+                replace_ascii(data, r#"<v>1234.5</v>"#, r#"<v>4321.0</v>"#)
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+    let docx_candidate = temp_dir.join("candidate.docx");
+    rewrite_zip_fixture(
+        "testdata/docx/mixed-blocks/document.docx",
+        &docx_candidate,
+        |name, data| {
+            let data = if name == "word/document.xml" {
+                replace_ascii(data, "Tail paragraph", "Tail sentence")
+            } else {
+                data
+            };
+            Some((name.to_string(), data))
+        },
+    );
+
+    for (family, baseline, candidate) in [
+        (
+            "xlsx",
+            "testdata/xlsx/types-and-formulas/workbook.xlsx",
+            xlsx_candidate.to_str().expect("xlsx candidate"),
+        ),
+        (
+            "docx",
+            "testdata/docx/mixed-blocks/document.docx",
+            docx_candidate.to_str().expect("docx candidate"),
+        ),
+    ] {
+        let same_out = temp_dir.join(format!("{family}-same"));
+        let same_out_text = same_out.to_str().expect("same out");
+        let (same_code, same_stdout, same_stderr) = run_ooxml_with_env(
+            &[
+                "--json",
+                "diff",
+                baseline,
+                baseline,
+                "--render",
+                "--out",
+                same_out_text,
+            ],
+            &[("OOXML_RUST_MOCK_RENDER", "1")],
+        );
+        assert_eq!(same_code, 0, "{family} identical render diff exit");
+        assert_eq!(same_stderr, None);
+        let same = same_stdout.expect("identical render diff stdout");
+        assert_eq!(same["visual"]["status"], "ok");
+        assert_eq!(same["visual"]["pass"], true);
+        let same_page = &same["visual"]["pages"][0];
+        assert_eq!(same_page["page"], 1);
+        assert_eq!(same_page["pixelDifferenceRatio"], 0.0);
+        assert_eq!(same_page["structuralSimilarity"], 1.0);
+
+        let changed_out = temp_dir.join(format!("{family}-changed"));
+        let changed_out_text = changed_out.to_str().expect("changed out");
+        let (changed_code, changed_stdout, changed_stderr) = run_ooxml_with_env(
+            &[
+                "--json",
+                "diff",
+                baseline,
+                candidate,
+                "--render",
+                "--out",
+                changed_out_text,
+            ],
+            &[("OOXML_RUST_MOCK_RENDER", "1")],
+        );
+        assert_eq!(changed_code, 8, "{family} changed render diff exit");
+        assert_eq!(changed_stderr, None);
+        let changed = changed_stdout.expect("changed render diff stdout");
+        assert_eq!(changed["visual"]["status"], "ok");
+        assert_eq!(changed["visual"]["pass"], false);
+        let changed_page = &changed["visual"]["pages"][0];
+        assert_eq!(changed_page["page"], 1);
+        assert_eq!(changed_page["pixelDifferenceRatio"], 1.0);
+        assert_eq!(changed_page["structuralSimilarity"], 0.0);
+        assert_eq!(changed_page["pass"], false);
+        assert!(Path::new(changed_page["diffImage"].as_str().expect("diff image")).is_file());
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
 }
 
 fn run_ooxml_with_path(args: &[&str], path: &str) -> (i32, Option<Value>, Option<Value>) {

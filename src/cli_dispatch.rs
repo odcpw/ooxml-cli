@@ -14,6 +14,7 @@ use crate::inspect::inspect;
 use crate::pptx_mutation::*;
 use crate::pptx_readback::*;
 use crate::pptx_render::pptx_render;
+use crate::pptx_render::shared::render_command;
 use crate::vba::*;
 use crate::verify::verify;
 use crate::{
@@ -69,6 +70,14 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
         && cmd == "conformance"
     {
         return crate::conformance::conformance(flags, rest);
+    }
+    if let [cmd, file, rest @ ..] = args
+        && cmd == "render"
+    {
+        return Ok(DispatchOutput {
+            body: DispatchBody::Json(render_command(file, rest)?),
+            exit_code: EXIT_SUCCESS,
+        });
     }
     if let [cmd, baseline, candidate, rest @ ..] = args
         && cmd == "diff"

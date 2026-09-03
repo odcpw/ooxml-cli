@@ -88,7 +88,19 @@ echo "fake pdftoppm raster chatter"
     assert!(output.stderr.is_empty());
     let parsed: Value = serde_json::from_slice(&output.stdout)
         .expect("external tool chatter must not precede render JSON");
+    assert_eq!(parsed["schemaVersion"], "1.0");
+    assert_eq!(parsed["type"], "pptx");
+    assert_eq!(parsed["status"], "ok");
+    assert_eq!(parsed["engine"], "libreoffice");
+    assert_eq!(parsed["dpi"], 144);
+    assert!(
+        !parsed["limitations"]
+            .as_array()
+            .expect("limitations")
+            .is_empty()
+    );
     assert_eq!(parsed["slides"].as_array().map(Vec::len), Some(1));
+    assert_eq!(parsed["slides"][0]["slide"], 1);
     assert!(out_dir.join("presentation.pdf").exists());
     assert!(out_dir.join("slide-1.png").exists());
 
