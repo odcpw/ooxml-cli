@@ -374,32 +374,69 @@ fn xlsx_formula_defined_name_table_chart_and_pivot_sources_are_checked() {
 
 #[test]
 fn openxml_sdk_policy_tracks_doctor_and_require_never_silently_skips() {
-    let doctor = run_ok(&["--json", "doctor", "--only", "openxml-sdk-validator"]);
-    let available = doctor["checks"][0]["status"] == "ok";
-    let auto = parse_report(
-        &run(&[
-            "--json",
-            "check",
-            "testdata/docx/minimal/document.docx",
-            "--openxml-sdk",
-            "auto",
-        ]),
-        "SDK auto",
+    let doctor_output = run(&["--json", "doctor", "--only", "openxml-sdk-validator"]);
+    assert!(
+        doctor_output.stderr.is_empty(),
+        "doctor stderr: {}",
+        String::from_utf8_lossy(&doctor_output.stderr)
     );
+    let doctor: Value =
+        serde_json::from_slice(&doctor_output.stdout).expect("Open XML SDK doctor JSON");
+    let doctor_check = &doctor["checks"][0];
+    let available = doctor_check["status"] == "ok";
+    let sdk_required_by_environment =
+        std::env::var("OOXML_REQUIRE_OPENXML_SDK").is_ok_and(|value| value == "1");
+    if sdk_required_by_environment {
+        assert!(
+            available,
+            "OOXML_REQUIRE_OPENXML_SDK=1 but doctor reports no validator: {doctor_check}"
+        );
+    }
+
+    let auto_output = run(&[
+        "--json",
+        "check",
+        "testdata/docx/minimal/document.docx",
+        "--openxml-sdk",
+        "auto",
+    ]);
+    assert_eq!(auto_output.status.code(), Some(0));
+    let auto = parse_report(&auto_output, "SDK auto");
     assert_eq!(
         auto["proofLevel"]["schema"] != "skipped",
         available,
         "{auto}"
     );
 
-    let required = run(&[
-        "--json",
-        "check",
-        "testdata/xlsx/invalid/pivot-table-parts.xlsx",
-        "--openxml-sdk",
-        "require",
-    ]);
-    assert_eq!(required.status.code(), Some(5));
+    let auto_findings = auto["findings"].as_array().expect("auto findings");
+    if available {
+        assert!(
+            !auto_findings
+                .iter()
+                .any(|finding| finding["code"] == "CHECK_OPENXML_SDK_SKIPPED"),
+            "{auto}"
+        );
+    } else {
+        let skipped = auto_findings
+            .iter()
+            .find(|finding| finding["code"] == "CHECK_OPENXML_SDK_SKIPPED")
+            .unwrap_or_else(|| panic!("auto must log the unavailable validator: {auto}"));
+        assert_eq!(skipped["severity"], "info", "{skipped}");
+        assert!(
+            skipped["fixCommand"]
+                .as_str()
+                .is_some_and(|command| !command.is_empty()),
+            "{skipped}"
+        );
+    }
+
+    let required_file = if available {
+        "testdata/xlsx/invalid/pivot-table-parts.xlsx"
+    } else {
+        "testdata/docx/minimal/document.docx"
+    };
+    let required = run(&["--json", "check", required_file, "--openxml-sdk", "require"]);
+    assert_eq!(required.status.code(), Some(5), "SDK require");
     let required = parse_report(&required, "SDK require");
     if available {
         assert_eq!(required["proofLevel"]["schema"], "failed", "{required}");
@@ -412,13 +449,20 @@ fn openxml_sdk_policy_tracks_doctor_and_require_never_silently_skips() {
             "{required}"
         );
     } else {
-        assert!(
-            required["findings"]
-                .as_array()
-                .expect("required findings")
-                .iter()
-                .any(|finding| finding["code"] == "CHECK_OPENXML_SDK_REQUIRED"),
-            "{required}"
+        let finding = required["findings"]
+            .as_array()
+            .expect("required findings")
+            .iter()
+            .find(|finding| finding["code"] == "CHECK_OPENXML_SDK_REQUIRED")
+            .unwrap_or_else(|| panic!("require must fail on unavailable validator: {required}"));
+        let expected_fix = doctor_check["remediationCommand"]
+            .as_str()
+            .unwrap_or("ooxml --json doctor --only openxml-sdk-validator");
+        assert_eq!(finding["severity"], "error", "{finding}");
+        assert_eq!(finding["fixCommand"], expected_fix, "{finding}");
+        assert_eq!(
+            required["summary"]["errors"], 1,
+            "missing SDK must be the only error for a clean document: {required}"
         );
     }
 }

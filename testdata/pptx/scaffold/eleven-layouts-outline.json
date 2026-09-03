@@ -1,7 +1,8 @@
 {
+  "checkCommand": "ooxml --json check testdata/pptx/scaffold/eleven-layouts.pptx",
   "depth": 3,
   "file": "testdata/pptx/scaffold/eleven-layouts.pptx",
-  "fileSizeBytes": 27488,
+  "fileSizeBytes": 27493,
   "layouts": [
     {
       "id": "layout-1",

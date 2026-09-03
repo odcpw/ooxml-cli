@@ -327,6 +327,10 @@ fn add_conformance_findings(
             {
                 finding.severity = "error".to_string();
                 finding.code = "CHECK_OPENXML_SDK_REQUIRED".to_string();
+                finding.fix_command = diagnostic["remediationCommand"]
+                    .as_str()
+                    .unwrap_or("ooxml --json doctor --only openxml-sdk-validator")
+                    .to_string();
             }
             findings.push(finding);
         }
@@ -554,7 +558,11 @@ fn fixed_path(file: &str, suffix: &str) -> String {
         || format!("{stem}.{suffix}"),
         |extension| format!("{stem}.{suffix}.{extension}"),
     );
-    path.with_file_name(name).to_string_lossy().into_owned()
+    portable_command_path(&path.with_file_name(name).to_string_lossy())
+}
+
+fn portable_command_path(path: &str) -> String {
+    path.replace('\\', "/")
 }
 
 fn sort_and_dedup(findings: &mut Vec<CheckFinding>) {
@@ -691,6 +699,14 @@ mod tests {
                 "part".to_string(),
                 "severity".to_string(),
             ])
+        );
+    }
+
+    #[test]
+    fn command_paths_are_platform_independent() {
+        assert_eq!(
+            portable_command_path(r"testdata\xlsx\invalid\pivot.repaired.xlsx"),
+            "testdata/xlsx/invalid/pivot.repaired.xlsx"
         );
     }
 }
