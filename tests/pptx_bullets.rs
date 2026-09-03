@@ -414,3 +414,33 @@ fn text_set_append_preserves_existing_paragraphs() {
     assert_eq!(paragraphs[paragraphs.len() - 1]["level"], 1);
     validate(&output);
 }
+
+#[test]
+fn committed_render_fixture_preserves_three_plus_two_bullet_hierarchy() {
+    let fixture = Path::new("testdata/pptx/bullets/presentation.pptx");
+    let readback = run(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "get",
+        fixture.to_str().unwrap(),
+        "--slide",
+        "5",
+        "--target",
+        "body",
+        "--include-text",
+    ]);
+    let paragraphs = readback["shapes"][0]["paragraphs"].as_array().unwrap();
+    assert_eq!(paragraphs.len(), 5);
+    assert!(
+        paragraphs[..3]
+            .iter()
+            .all(|paragraph| paragraph["bullet"] == true && paragraph["level"] == 0)
+    );
+    assert!(
+        paragraphs[3..]
+            .iter()
+            .all(|paragraph| paragraph["bullet"] == true && paragraph["level"] == 1)
+    );
+    validate(fixture);
+}
