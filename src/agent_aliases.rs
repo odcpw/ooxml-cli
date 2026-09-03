@@ -380,6 +380,7 @@ pub(crate) const CAPABILITY_OBJECT_KINDS: &[&str] = &[
     "name",
     "block",
     "paragraph",
+    "section",
     "style",
     "theme",
     "comment",

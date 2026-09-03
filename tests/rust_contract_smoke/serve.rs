@@ -398,7 +398,7 @@ fn serve_dispatches_every_op_compatible_capability_to_validation() {
         })
         .collect::<Vec<_>>();
     let command_set = commands.iter().cloned().collect::<BTreeSet<_>>();
-    assert_eq!(commands.len(), 70, "advertised opCompatible command count");
+    assert_eq!(commands.len(), 73, "advertised opCompatible command count");
     assert_eq!(
         command_set.len(),
         commands.len(),
@@ -422,7 +422,7 @@ fn serve_dispatches_every_op_compatible_capability_to_validation() {
                 .to_string()
         })
         .collect::<BTreeSet<_>>();
-    assert_eq!(frozen_command_set.len(), 70);
+    assert_eq!(frozen_command_set.len(), 73);
     assert_eq!(
         command_set, frozen_command_set,
         "advertised opCompatible set drifted from the committed contract"

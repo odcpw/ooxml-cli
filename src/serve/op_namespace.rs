@@ -130,6 +130,21 @@ const SERVE_MUTATION_SPECS: &[ServeMutationSpec] = &[
         "docx tables create",
         &[],
     ),
+    spec(
+        CommandId::Docx(DocxCommandId::TablesSetStyle),
+        "docx tables set-style",
+        &[],
+    ),
+    spec(
+        CommandId::Docx(DocxCommandId::BreaksInsert),
+        "docx breaks insert",
+        &[],
+    ),
+    spec(
+        CommandId::Docx(DocxCommandId::SectionsSet),
+        "docx sections set",
+        &[],
+    ),
     spec(CommandId::Vba(VbaCommandId::Create), "vba create", &[]),
     spec(CommandId::Vba(VbaCommandId::Rebuild), "vba rebuild", &[]),
     spec(CommandId::Vba(VbaCommandId::Attach), "vba attach", &[]),
@@ -409,13 +424,13 @@ mod tests {
             .flat_map(|spec| std::iter::once(spec.canonical).chain(spec.aliases.iter().copied()))
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(SERVE_MUTATION_SPECS.len(), 70);
-        assert_eq!(manifest_ids.len(), 70);
-        assert_eq!(ids.len(), 70);
-        assert_eq!(canonicals.len(), 70);
+        assert_eq!(SERVE_MUTATION_SPECS.len(), 73);
+        assert_eq!(manifest_ids.len(), 73);
+        assert_eq!(ids.len(), 73);
+        assert_eq!(canonicals.len(), 73);
         assert_eq!(ids, manifest_ids);
         assert_eq!(aliases.len(), 14);
-        assert_eq!(labels.len(), 84);
+        assert_eq!(labels.len(), 87);
         assert_eq!(
             aliases,
             BTreeSet::from([
@@ -447,7 +462,7 @@ mod tests {
         for (family, expected) in [
             ("core", 2),
             ("xlsx", 32),
-            ("docx", 21),
+            ("docx", 24),
             ("pptx", 11),
             ("vba", 4),
         ] {
