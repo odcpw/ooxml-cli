@@ -1,6 +1,7 @@
 use serde_json::Value;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const GOLDEN_DIR: &str = "testdata/golden/markdown-read";
 
@@ -115,6 +116,16 @@ fn markdown_readbacks_match_lf_goldens_and_non_tty_contract() {
             ],
         },
         GoldenCase {
+            name: "docx-table",
+            args: &[
+                "--format",
+                "markdown",
+                "docx",
+                "text",
+                "testdata/docx/table/document.docx",
+            ],
+        },
+        GoldenCase {
             name: "pptx-slides-bullets",
             args: &[
                 "--format",
@@ -152,6 +163,39 @@ fn markdown_readbacks_match_lf_goldens_and_non_tty_contract() {
             ],
         },
         GoldenCase {
+            name: "pptx-bullets",
+            args: &[
+                "--format",
+                "markdown",
+                "pptx",
+                "extract",
+                "text",
+                "testdata/pptx/bullets/presentation.pptx",
+            ],
+        },
+        GoldenCase {
+            name: "pptx-rich-formatting",
+            args: &[
+                "--format",
+                "markdown",
+                "pptx",
+                "extract",
+                "text",
+                "testdata/pptx/rich-formatting/presentation.pptx",
+            ],
+        },
+        GoldenCase {
+            name: "pptx-numbered-lists",
+            args: &[
+                "--format",
+                "markdown",
+                "pptx",
+                "extract",
+                "text",
+                "testdata/pptx/rich-numbered-lists/presentation.pptx",
+            ],
+        },
+        GoldenCase {
             name: "xlsx-formatted-range",
             args: &[
                 "--format",
@@ -165,6 +209,81 @@ fn markdown_readbacks_match_lf_goldens_and_non_tty_contract() {
                 "--range",
                 "A1:H2",
                 "--formatted",
+            ],
+        },
+        GoldenCase {
+            name: "xlsx-minimal-range",
+            args: &[
+                "--format",
+                "markdown",
+                "xlsx",
+                "ranges",
+                "export",
+                "testdata/xlsx/minimal-workbook/workbook.xlsx",
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A1:C1",
+            ],
+        },
+        GoldenCase {
+            name: "xlsx-used-range",
+            args: &[
+                "--format",
+                "markdown",
+                "xlsx",
+                "ranges",
+                "export",
+                "testdata/xlsx/used-range/workbook.xlsx",
+                "--sheet",
+                "Sparse",
+                "--range",
+                "B2:D5",
+            ],
+        },
+        GoldenCase {
+            name: "xlsx-shared-strings",
+            args: &[
+                "--format",
+                "markdown",
+                "xlsx",
+                "ranges",
+                "export",
+                "testdata/xlsx/shared-strings/workbook.xlsx",
+                "--sheet",
+                "Summary",
+                "--range",
+                "A1:B1",
+            ],
+        },
+        GoldenCase {
+            name: "xlsx-shared-string-runs",
+            args: &[
+                "--format",
+                "markdown",
+                "xlsx",
+                "ranges",
+                "export",
+                "testdata/xlsx/shared-string-runs/workbook.xlsx",
+                "--sheet",
+                "Runs",
+                "--range",
+                "A1:A2",
+            ],
+        },
+        GoldenCase {
+            name: "xlsx-shared-formula",
+            args: &[
+                "--format",
+                "markdown",
+                "xlsx",
+                "ranges",
+                "export",
+                "testdata/xlsx/shared-formula/workbook.xlsx",
+                "--sheet",
+                "SharedFormula",
+                "--range",
+                "A1:B2",
             ],
         },
         GoldenCase {
@@ -201,15 +320,30 @@ fn markdown_readbacks_match_lf_goldens_and_non_tty_contract() {
             ],
         },
     ];
-    let unique_fixtures = cases
-        .iter()
-        .filter_map(|case| {
-            case.args.iter().find(|arg| {
-                arg.ends_with(".docx") || arg.ends_with(".pptx") || arg.ends_with(".xlsx")
-            })
-        })
-        .collect::<std::collections::BTreeSet<_>>();
-    assert!(unique_fixtures.len() >= 6, "fixture denominator");
+    let mut fixtures_by_family = std::collections::BTreeMap::new();
+    for case in &cases {
+        let fixture = case
+            .args
+            .iter()
+            .find(|arg| arg.ends_with(".docx") || arg.ends_with(".pptx") || arg.ends_with(".xlsx"))
+            .expect("Markdown case fixture");
+        let family = Path::new(fixture)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .expect("OOXML fixture extension");
+        fixtures_by_family
+            .entry(family)
+            .or_insert_with(std::collections::BTreeSet::new)
+            .insert(*fixture);
+    }
+    for family in ["docx", "pptx", "xlsx"] {
+        assert!(
+            fixtures_by_family
+                .get(family)
+                .is_some_and(|fixtures| fixtures.len() >= 6),
+            "Markdown corpus needs at least six unique {family} fixtures: {fixtures_by_family:#?}"
+        );
+    }
     for case in &cases {
         assert_golden(case);
     }
@@ -382,4 +516,112 @@ fn json_contract_stays_json_and_markdown_errors_are_diagnostic_only() {
         String::from_utf8_lossy(&formatted_without_markdown.stderr)
             .contains("--formatted requires --format markdown")
     );
+}
+
+#[test]
+fn supported_markdown_subset_is_stable_across_build_read_build_read() {
+    for (family, source) in [
+        (
+            "docx",
+            "# Stable document\n\nA plain paragraph.\n\n- Alpha\n- Beta\n",
+        ),
+        (
+            "pptx",
+            "# Stable deck\n\n## First slide\n\n- Alpha\n- Beta\n\n---\n\n## Second slide\n\nA plain paragraph.\n",
+        ),
+    ] {
+        let temp = temp_dir(&format!("roundtrip-{family}"));
+        let source_path = temp.join("source.md");
+        std::fs::write(&source_path, source).expect("write supported Markdown source");
+
+        let first_package = temp.join(format!("first.{family}"));
+        build_from_markdown(family, &source_path, &first_package);
+        let first_readback = read_built_markdown(family, &first_package);
+
+        let readback_path = temp.join("readback.md");
+        std::fs::write(&readback_path, &first_readback).expect("write first readback");
+        let second_package = temp.join(format!("second.{family}"));
+        build_from_markdown(family, &readback_path, &second_package);
+        let second_readback = read_built_markdown(family, &second_package);
+
+        assert_eq!(
+            second_readback, first_readback,
+            "{family} supported Markdown subset was not stable"
+        );
+        let _ = std::fs::remove_dir_all(temp);
+    }
+}
+
+fn build_from_markdown(family: &str, source: &Path, output: &Path) {
+    let result = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args([
+            "--json",
+            family,
+            "build",
+            "--from-markdown",
+            source.to_str().expect("UTF-8 Markdown source path"),
+            "--out",
+            output.to_str().expect("UTF-8 OOXML output path"),
+        ])
+        .output()
+        .expect("build from Markdown");
+    assert!(
+        result.status.success(),
+        "{family} Markdown build failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(result.stderr.is_empty(), "{family} build diagnostics");
+    let report: Value = serde_json::from_slice(&result.stdout).expect("build JSON report");
+    assert_eq!(report["validated"], true);
+
+    let strict = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args([
+            "--json",
+            "--strict",
+            "validate",
+            output.to_str().expect("UTF-8 OOXML output path"),
+        ])
+        .output()
+        .expect("strict validate Markdown output");
+    assert!(
+        strict.status.success(),
+        "{family} strict validation failed: {}",
+        String::from_utf8_lossy(&strict.stderr)
+    );
+    let validation: Value = serde_json::from_slice(&strict.stdout).expect("strict validation JSON");
+    assert_eq!(validation["valid"], true);
+}
+
+fn read_built_markdown(family: &str, file: &Path) -> String {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ooxml"));
+    command.arg("--format").arg("markdown");
+    if family == "pptx" {
+        command.args(["pptx", "extract", "text"]);
+    } else {
+        command.args(["docx", "text"]);
+    }
+    let result = command.arg(file).output().expect("read built Markdown");
+    assert!(
+        result.status.success(),
+        "{family} Markdown read failed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(result.stderr.is_empty(), "{family} read diagnostics");
+    let markdown = String::from_utf8(result.stdout).expect("UTF-8 Markdown readback");
+    assert!(!markdown.contains('\r'));
+    assert!(!markdown.contains("\u{1b}["));
+    markdown
+}
+
+fn temp_dir(label: &str) -> PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "ooxml-markdown-read-{label}-{}-{nonce}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&path).expect("create Markdown read temp directory");
+    path
 }
