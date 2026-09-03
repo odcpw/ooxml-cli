@@ -71,6 +71,23 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
     {
         return crate::conformance::conformance(flags, rest);
     }
+    if let [family, group, verb, rest @ ..] = args
+        && family == "pptx"
+        && group == "theme"
+        && verb == "derive"
+    {
+        reject_unknown_flags(rest, &["--seed"], &[])?;
+        let seed = parse_string_flag(rest, "--seed")?
+            .ok_or_else(|| CliError::invalid_args("--seed is required"))?;
+        let palette = crate::palette::ThemePalette::derive(&seed)
+            .map_err(|err| CliError::invalid_args(format!("invalid --seed: {err}")))?;
+        return Ok(DispatchOutput {
+            body: DispatchBody::Json(
+                serde_json::to_value(palette).expect("serialize derived theme palette"),
+            ),
+            exit_code: EXIT_SUCCESS,
+        });
+    }
     if let [cmd, file, rest @ ..] = args
         && cmd == "render"
     {
@@ -588,6 +605,7 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                 &[
                     "--slide",
                     "--text",
+                    "--paragraphs-file",
                     "--x",
                     "--y",
                     "--cx",
@@ -629,6 +647,7 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                 &[
                     "--layout",
                     "--set-text",
+                    "--paragraphs-file",
                     "--set-rich-text",
                     "--set-image",
                     "--set-image-coords",
@@ -1715,6 +1734,8 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                 &[
                     "--slide",
                     "--target",
+                    "--text",
+                    "--paragraphs-file",
                     "--paragraph",
                     "--run-index",
                     "--underline",
@@ -1728,6 +1749,7 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                 &[
                     "--bold",
                     "--italic",
+                    "--append",
                     "--remove-bold",
                     "--remove-italic",
                     "--remove-underline",
