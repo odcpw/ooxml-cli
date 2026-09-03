@@ -494,6 +494,22 @@
                 "totalRow": {
                   "type": "boolean"
                 },
+                "totals": {
+                  "anyOf": [
+                    {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    }
+                  ]
+                },
                 "xlsx": {
                   "additionalProperties": false,
                   "properties": {
@@ -1041,6 +1057,22 @@
                 },
                 "totalRow": {
                   "type": "boolean"
+                },
+                "totals": {
+                  "anyOf": [
+                    {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    }
+                  ]
                 },
                 "xlsx": {
                   "additionalProperties": false,
@@ -1811,6 +1843,22 @@
                 },
                 "totalRow": {
                   "type": "boolean"
+                },
+                "totals": {
+                  "anyOf": [
+                    {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    }
+                  ]
                 },
                 "xlsx": {
                   "additionalProperties": false,
