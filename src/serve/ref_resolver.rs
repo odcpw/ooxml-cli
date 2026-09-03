@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::{CliError, CliResult};
 
-pub(in crate::serve) fn resolve_refs(
+pub(crate) fn resolve_refs(
     value: &Value,
     named_results: &BTreeMap<String, Value>,
 ) -> CliResult<Value> {

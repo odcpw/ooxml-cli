@@ -17,6 +17,7 @@ mod op_dispatch;
 mod op_namespace;
 use inspect::serve_inspect_command;
 use op::ServeOp;
+pub(crate) use op_dispatch::resolve_refs;
 use op_dispatch::serve_op_command;
 
 pub(crate) fn run_serve_stdio() -> i32 {

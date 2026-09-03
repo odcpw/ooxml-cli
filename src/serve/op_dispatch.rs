@@ -21,7 +21,7 @@ use crate::{
 };
 
 pub(super) use path_resolver::resolve_op_paths;
-pub(super) use ref_resolver::resolve_refs;
+pub(crate) use ref_resolver::resolve_refs;
 
 pub(super) fn serve_op_command(working: &str, command: &str, args: &Value) -> CliResult<ServeOp> {
     let Some(command_id) = resolve_serve_mutation_command(command) else {

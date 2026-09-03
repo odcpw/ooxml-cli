@@ -83,6 +83,14 @@ impl BrandKit {
     }
 
     fn from_value(value: &Value, source: Option<&str>) -> CliResult<Self> {
+        Self::from_value_with_logo_check(value, source, true)
+    }
+
+    fn from_value_with_logo_check(
+        value: &Value,
+        source: Option<&str>,
+        require_logo_file: bool,
+    ) -> CliResult<Self> {
         let object = value
             .as_object()
             .ok_or_else(|| CliError::invalid_args("brand kit must be a JSON object"))?;
@@ -90,7 +98,7 @@ impl BrandKit {
         let name = nonempty_string(object.get("name"), "name")?.to_string();
         let (palette, seed) = parse_brand_colors(object)?;
         let fonts = parse_brand_fonts(object.get("fonts"))?;
-        let logo = parse_brand_logo(object.get("logo"), source)?;
+        let logo = parse_brand_logo(object.get("logo"), source, require_logo_file)?;
         let footer_text = optional_string(object.get("footerText"), "footerText")?;
         let slide_number_policy =
             optional_string(object.get("slideNumberPolicy"), "slideNumberPolicy")?
@@ -176,6 +184,12 @@ impl BrandKit {
         }
         Value::Object(out)
     }
+}
+
+pub(crate) fn parse_brand_kit_bytes_for_fuzz(source: &[u8]) -> CliResult<Value> {
+    let value: Value = serde_json::from_slice(source)
+        .map_err(|err| CliError::invalid_args(format!("invalid --brand JSON: {err}")))?;
+    BrandKit::from_value_with_logo_check(&value, None, false).map(|kit| kit.to_json())
 }
 
 #[allow(dead_code)]
@@ -1329,7 +1343,11 @@ fn parse_brand_fonts(value: Option<&Value>) -> CliResult<BrandFonts> {
     })
 }
 
-fn parse_brand_logo(value: Option<&Value>, source: Option<&str>) -> CliResult<Option<BrandLogo>> {
+fn parse_brand_logo(
+    value: Option<&Value>,
+    source: Option<&str>,
+    require_logo_file: bool,
+) -> CliResult<Option<BrandLogo>> {
     let Some(value) = value else {
         return Ok(None);
     };
@@ -1354,7 +1372,7 @@ fn parse_brand_logo(value: Option<&Value>, source: Option<&str>) -> CliResult<Op
     } else {
         Path::new(raw_path).to_path_buf()
     };
-    if !path.is_file() {
+    if require_logo_file && !path.is_file() {
         return Err(CliError::file_not_found(format!(
             "brand logo file not found: {}",
             path.display()

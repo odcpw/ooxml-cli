@@ -409,7 +409,7 @@ fn svg_dimensions(bytes: &[u8]) -> CliResult<(u32, u32)> {
     let width = svg_number_attr(tag, "width");
     let height = svg_number_attr(tag, "height");
     if let (Some(width), Some(height)) = (width, height) {
-        return Ok((width, height));
+        return checked_svg_dimensions(width, height);
     }
     if let Some(view_box) = svg_attr(tag, "viewBox") {
         let values = view_box
@@ -418,12 +418,21 @@ fn svg_dimensions(bytes: &[u8]) -> CliResult<(u32, u32)> {
             .filter_map(|value| value.parse::<f64>().ok())
             .collect::<Vec<_>>();
         if values.len() == 4 && values[2] > 0.0 && values[3] > 0.0 {
-            return Ok((values[2].round() as u32, values[3].round() as u32));
+            return checked_svg_dimensions(values[2].round() as u32, values[3].round() as u32);
         }
     }
     Err(CliError::invalid_args(
         "SVG must declare positive width/height or viewBox dimensions",
     ))
+}
+
+fn checked_svg_dimensions(width: u32, height: u32) -> CliResult<(u32, u32)> {
+    if width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION {
+        return Err(CliError::invalid_args(format!(
+            "SVG exceeds image limits (maximum {MAX_IMAGE_DIMENSION}px per axis; received {width}x{height})"
+        )));
+    }
+    Ok((width, height))
 }
 
 fn svg_number_attr(tag: &str, name: &str) -> Option<u32> {
