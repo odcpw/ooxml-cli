@@ -2,7 +2,9 @@ mod comments;
 mod paragraphs;
 mod tables;
 
-use serde_json::Value;
+use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
+use std::path::Path;
 
 use super::require_docx_block_hash;
 use crate::cli_args::*;
@@ -15,11 +17,20 @@ use crate::docx_images::*;
 use crate::docx_mutation_core::*;
 use crate::docx_replace::*;
 use crate::docx_styles::*;
+use crate::{docx_rich_block_reports, find_docx_document_part, zip_entry_names};
 use comments::dispatch_docx_comments;
 use paragraphs::dispatch_docx_paragraphs;
 use tables::dispatch_docx_tables;
 
 pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
+    let (dispatch_args, guard) = docx_guard_args(args)?;
+    preflight_docx_document_guard(&dispatch_args, &guard)?;
+    let mut result = dispatch_docx_inner(&dispatch_args)?;
+    enrich_docx_result(&dispatch_args, &guard, &mut result)?;
+    Ok(result)
+}
+
+fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
     match args {
         [cmd, verb, rest @ ..] if cmd == "docx" && verb == "scaffold" => {
             let value_flags = [
@@ -73,7 +84,9 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
                 return Err(CliError::invalid_args("--block must be >= 1"));
             }
             let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
-            require_docx_block_hash(&expect_hash)?;
+            if !expect_hash.is_empty() {
+                require_docx_block_hash(&expect_hash)?;
+            }
             let text = parse_string_flag(rest, "--text")?;
             let text_file = parse_string_flag(rest, "--text-file")?;
             let style = parse_string_flag(rest, "--style")?.unwrap_or_default();
@@ -112,7 +125,9 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
                 return Err(CliError::invalid_args("--block must be >= 1"));
             }
             let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
-            require_docx_block_hash(&expect_hash)?;
+            if !expect_hash.is_empty() {
+                require_docx_block_hash(&expect_hash)?;
+            }
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             let dry_run = has_flag(rest, "--dry-run");
@@ -157,7 +172,9 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
             let expect_hash_set = flag_present(rest, "--expect-hash");
             let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
             if block > 0 {
-                require_docx_block_hash(&expect_hash)?;
+                if !expect_hash.is_empty() {
+                    require_docx_block_hash(&expect_hash)?;
+                }
             } else if expect_hash_set {
                 return Err(CliError::invalid_args(
                     "--expect-hash cannot be used with --block 0",
@@ -559,7 +576,9 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
             }
             let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
             if after > 0 {
-                require_docx_block_hash(&expect_hash)?;
+                if !expect_hash.is_empty() {
+                    require_docx_block_hash(&expect_hash)?;
+                }
             } else if value_flag_present(rest, "--expect-hash") {
                 return Err(CliError::invalid_args(
                     "--expect-hash cannot be used with --after 0",
@@ -648,6 +667,243 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
             args.join(" ")
         ))),
     }
+}
+
+#[derive(Default)]
+struct DocxGuardArgs {
+    expected_document_hash: Option<String>,
+    require_guard: bool,
+}
+
+fn docx_guard_args(args: &[String]) -> CliResult<(Vec<String>, DocxGuardArgs)> {
+    let mut dispatch_args = Vec::with_capacity(args.len());
+    let mut guard = DocxGuardArgs::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--expect-document-hash" => {
+                if guard.expected_document_hash.is_some() {
+                    return Err(CliError::invalid_args(
+                        "--expect-document-hash may be specified only once",
+                    ));
+                }
+                let value = args.get(index + 1).ok_or_else(|| {
+                    CliError::invalid_args("--expect-document-hash requires a value")
+                })?;
+                require_docx_document_hash(value)?;
+                guard.expected_document_hash = Some(value.clone());
+                index += 2;
+            }
+            "--require-guard" => {
+                if guard.require_guard {
+                    return Err(CliError::invalid_args(
+                        "--require-guard may be specified only once",
+                    ));
+                }
+                guard.require_guard = true;
+                index += 1;
+            }
+            _ => {
+                dispatch_args.push(args[index].clone());
+                index += 1;
+            }
+        }
+    }
+    Ok((dispatch_args, guard))
+}
+
+fn preflight_docx_document_guard(args: &[String], guard: &DocxGuardArgs) -> CliResult<()> {
+    if !docx_is_mutation(args) {
+        if guard.require_guard || guard.expected_document_hash.is_some() {
+            return Err(CliError::invalid_args(
+                "DOCX guard flags are accepted only by mutation commands",
+            ));
+        }
+        return Ok(());
+    }
+
+    let has_block_hash = docx_is_block_addressed_mutation(args)
+        && value_after(args, "--expect-hash").is_some_and(|value| !value.is_empty());
+    if guard.require_guard && !has_block_hash && guard.expected_document_hash.is_none() {
+        return Err(CliError::invalid_args(
+            "--require-guard requires --expect-hash or --expect-document-hash",
+        ));
+    }
+    let Some(expected) = guard.expected_document_hash.as_deref() else {
+        return Ok(());
+    };
+    let source = docx_source_path(args).ok_or_else(|| {
+        CliError::invalid_args("could not resolve DOCX source for --expect-document-hash")
+    })?;
+    let actual = docx_document_hash(source)?;
+    if expected != actual {
+        return Err(CliError::invalid_args(format!(
+            "document hash mismatch: expected {expected} but found {actual}"
+        )));
+    }
+    Ok(())
+}
+
+fn enrich_docx_result(args: &[String], guard: &DocxGuardArgs, result: &mut Value) -> CliResult<()> {
+    let Some(object) = result.as_object_mut() else {
+        return Ok(());
+    };
+    if docx_is_block_addressed_mutation(args)
+        && guard.expected_document_hash.is_none()
+        && value_after(args, "--expect-hash").is_none_or(str::is_empty)
+    {
+        push_docx_guard_warning(object);
+    }
+
+    let Some(path) = docx_result_path(args, object) else {
+        return Ok(());
+    };
+    let entries = zip_entry_names(&path)?;
+    let document_part = find_docx_document_part(&path, &entries)?;
+    let bytes = crate::zip_bytes(&path, &document_part)?;
+    let document_hash = format!("sha256:{:x}", Sha256::digest(&bytes));
+    let xml = String::from_utf8(bytes)
+        .map_err(|_| CliError::unexpected("DOCX document part is not UTF-8 XML"))?;
+    let block_hashes = docx_rich_block_reports(&xml, false)?
+        .into_iter()
+        .map(|report| {
+            let mut block = Map::new();
+            block.insert("index".to_string(), json!(report.index));
+            block.insert("contentHash".to_string(), json!(report.content_hash));
+            if !report.style.is_empty() {
+                block.insert("styleId".to_string(), json!(report.style));
+            }
+            if let Some(list_level) = report.list_level {
+                block.insert("listLevel".to_string(), json!(list_level));
+            }
+            if let Some(num_id) = report.num_id {
+                block.insert("numId".to_string(), json!(num_id));
+            }
+            Value::Object(block)
+        })
+        .collect::<Vec<_>>();
+    object.insert("documentHash".to_string(), json!(document_hash));
+    object.insert("blockHashes".to_string(), Value::Array(block_hashes));
+    Ok(())
+}
+
+fn push_docx_guard_warning(object: &mut Map<String, Value>) {
+    let warning = json!({
+        "code": "DOCX_GUARD_NOT_PROVIDED",
+        "message": "mutation proceeded without a block or document hash guard",
+    });
+    match object.get_mut("warnings") {
+        Some(Value::Array(warnings)) => warnings.push(warning),
+        _ => {
+            object.insert("warnings".to_string(), json!([warning]));
+        }
+    }
+}
+
+fn docx_result_path(args: &[String], result: &Map<String, Value>) -> Option<String> {
+    if !has_flag(args, "--dry-run")
+        && let Some(output) = value_after(args, "--out")
+        && Path::new(output).is_file()
+    {
+        return Some(output.to_string());
+    }
+    if let Some(output) = result.get("output").and_then(Value::as_str)
+        && Path::new(output).is_file()
+    {
+        return Some(output.to_string());
+    }
+    if let Some(file) = result.get("file").and_then(Value::as_str)
+        && Path::new(file).is_file()
+    {
+        return Some(file.to_string());
+    }
+    docx_source_path(args)
+        .filter(|path| Path::new(path).is_file())
+        .map(ToString::to_string)
+}
+
+fn docx_document_hash(file: &str) -> CliResult<String> {
+    let entries = zip_entry_names(file)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let bytes = crate::zip_bytes(file, &document_part)?;
+    Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
+}
+
+fn require_docx_document_hash(value: &str) -> CliResult<()> {
+    let Some(hex) = value.strip_prefix("sha256:") else {
+        return Err(CliError::invalid_args(
+            "--expect-document-hash must match sha256:<64 lowercase hex chars> from a DOCX readback",
+        ));
+    };
+    if hex.len() != 64
+        || !hex
+            .bytes()
+            .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase())
+    {
+        return Err(CliError::invalid_args(
+            "--expect-document-hash must match sha256:<64 lowercase hex chars> from a DOCX readback",
+        ));
+    }
+    Ok(())
+}
+
+fn docx_source_path(args: &[String]) -> Option<&str> {
+    match args {
+        [family, command, file, ..]
+            if family == "docx" && matches!(command.as_str(), "text" | "replace") =>
+        {
+            Some(file)
+        }
+        [family, command, file, ..] if family == "docx" && command == "scaffold" => Some(file),
+        [family, _group, _verb, file, ..] if family == "docx" => Some(file),
+        _ => None,
+    }
+}
+
+fn docx_is_mutation(args: &[String]) -> bool {
+    match args {
+        [family, command, ..] if family == "docx" && command == "scaffold" => false,
+        [family, command, ..] if family == "docx" && command == "replace" => true,
+        [family, group, verb, ..] if family == "docx" => match group.as_str() {
+            "blocks" => matches!(verb.as_str(), "replace" | "delete" | "insert-after"),
+            "paragraphs" => matches!(verb.as_str(), "append" | "insert" | "set" | "clear"),
+            "styles" => verb == "apply",
+            "comments" => matches!(verb.as_str(), "add" | "edit" | "remove"),
+            "fields" => matches!(verb.as_str(), "insert" | "set-result"),
+            "headers" | "footers" => verb == "set-text",
+            "images" => matches!(verb.as_str(), "replace" | "insert"),
+            "tables" => matches!(
+                verb.as_str(),
+                "create" | "set-cell" | "clear-cell" | "insert-row" | "delete-row"
+            ),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+fn docx_is_block_addressed_mutation(args: &[String]) -> bool {
+    match args {
+        [family, group, verb, ..] if family == "docx" => match group.as_str() {
+            "blocks" => matches!(verb.as_str(), "replace" | "delete" | "insert-after"),
+            "paragraphs" => matches!(verb.as_str(), "insert" | "set" | "clear"),
+            "styles" => verb == "apply",
+            "fields" => matches!(verb.as_str(), "insert" | "set-result"),
+            "images" => verb == "insert",
+            "tables" => matches!(
+                verb.as_str(),
+                "set-cell" | "clear-cell" | "insert-row" | "delete-row"
+            ),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+fn value_after<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    args.windows(2)
+        .find(|pair| pair[0] == flag)
+        .map(|pair| pair[1].as_str())
 }
 
 fn require_docx_image_hash_format(value: &str) -> CliResult<()> {

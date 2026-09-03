@@ -11,6 +11,8 @@ use crate::{CliError, CliResult, DOCX_W_NS, append_xml_text_event, is_xml_text_e
 struct DocxRichParagraphState {
     text: String,
     style: String,
+    list_level: Option<u32>,
+    num_id: Option<u32>,
     para_id: String,
     runs: Vec<DocxRichRunInfo>,
 }
@@ -48,6 +50,8 @@ pub(crate) struct DocxRichBlockReport {
     pub(crate) kind: &'static str,
     pub(crate) text: String,
     pub(crate) style: String,
+    pub(crate) list_level: Option<u32>,
+    pub(crate) num_id: Option<u32>,
     pub(crate) para_id: String,
     handle: String,
     pub(crate) content_hash: String,
@@ -357,6 +361,21 @@ fn docx_rich_note_empty_or_start(
         paragraph.style = style;
     }
 
+    if let Some(paragraph) = current_paragraph.as_mut()
+        && matches!(name, "ilvl" | "numId")
+        && element_in_ns(resolver, element, DOCX_W_NS)
+        && stack.last().is_some_and(|parent| parent == "numPr")
+        && word_stack.last().copied().unwrap_or(false)
+        && let Some(value) =
+            docx_word_val_ns(element, resolver).and_then(|value| value.parse::<u32>().ok())
+    {
+        if name == "ilvl" {
+            paragraph.list_level = Some(value);
+        } else {
+            paragraph.num_id = Some(value);
+        }
+    }
+
     if stack.last().is_some_and(|parent| parent == "rPr")
         && word_stack.last().copied().unwrap_or(false)
         && element_in_ns(resolver, element, DOCX_W_NS)
@@ -445,12 +464,20 @@ fn docx_rich_paragraph_report(
     } else {
         String::new()
     };
-    let content_hash = docx_rich_block_content_hash("paragraph", &paragraph.style, &paragraph.text);
+    let content_hash = docx_rich_block_content_hash(
+        "paragraph",
+        &paragraph.style,
+        paragraph.list_level,
+        paragraph.num_id,
+        &paragraph.text,
+    );
     DocxRichBlockReport {
         index,
         kind: "paragraph",
         text: paragraph.text,
         style: paragraph.style,
+        list_level: paragraph.list_level,
+        num_id: paragraph.num_id,
         para_id: paragraph.para_id,
         handle,
         content_hash,
@@ -466,12 +493,14 @@ fn docx_rich_table_report(
     merged: bool,
 ) -> DocxRichBlockReport {
     let text = docx_rich_table_text(&rows);
-    let content_hash = docx_rich_block_content_hash("table", "", &text);
+    let content_hash = docx_rich_block_content_hash("table", "", None, None, &text);
     DocxRichBlockReport {
         index,
         kind: "table",
         text,
         style: String::new(),
+        list_level: None,
+        num_id: None,
         para_id: String::new(),
         handle: String::new(),
         content_hash,
@@ -502,7 +531,16 @@ pub(crate) fn docx_rich_block_json(report: DocxRichBlockReport) -> Value {
     if report.kind == "paragraph" {
         let mut paragraph = Map::new();
         if !report.style.is_empty() {
+            block.insert("styleId".to_string(), json!(report.style));
             paragraph.insert("style".to_string(), json!(report.style));
+        }
+        if let Some(list_level) = report.list_level {
+            block.insert("listLevel".to_string(), json!(list_level));
+            paragraph.insert("listLevel".to_string(), json!(list_level));
+        }
+        if let Some(num_id) = report.num_id {
+            block.insert("numId".to_string(), json!(num_id));
+            paragraph.insert("numId".to_string(), json!(num_id));
         }
         if !report.runs.is_empty() {
             paragraph.insert(
@@ -553,12 +591,29 @@ fn docx_rich_table_text(rows: &[Vec<String>]) -> String {
         .join("\n")
 }
 
-fn docx_rich_block_content_hash(kind: &str, style: &str, text: &str) -> String {
+fn docx_rich_block_content_hash(
+    kind: &str,
+    style: &str,
+    list_level: Option<u32>,
+    num_id: Option<u32>,
+    text: &str,
+) -> String {
     let mut hasher = Sha256::new();
     hasher.update(kind.as_bytes());
     hasher.update([0]);
     hasher.update(style.as_bytes());
     hasher.update([0]);
+    if list_level.is_some() || num_id.is_some() {
+        hasher.update(b"list\0");
+        hasher.update(
+            list_level
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+        );
+        hasher.update([0]);
+        hasher.update(num_id.map(|value| value.to_string()).unwrap_or_default());
+        hasher.update([0]);
+    }
     hasher.update(text.as_bytes());
     format!("sha256:{:x}", hasher.finalize())
 }

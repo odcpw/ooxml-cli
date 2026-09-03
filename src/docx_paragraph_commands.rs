@@ -89,6 +89,7 @@ pub(crate) fn docx_paragraphs_append(
 pub(crate) fn docx_paragraphs_insert(
     file: &str,
     insert_after: i64,
+    expected_hash: &str,
     options: DocxParagraphMutationOptions<'_>,
     create_style: bool,
 ) -> CliResult<Value> {
@@ -118,6 +119,24 @@ pub(crate) fn docx_paragraphs_insert(
 
     let document_part = find_docx_document_part(file, &entries)?;
     let xml = zip_text(file, &document_part)?;
+    if insert_after > 0 {
+        let reports = docx_rich_block_reports(&xml, false).map_err(|err| {
+            CliError::unexpected(format!("failed to read main document: {}", err.message))
+        })?;
+        let anchor = reports
+            .get(insert_after as usize - 1)
+            .ok_or_else(|| CliError::target_not_found("target not found: block"))?;
+        if !expected_hash.is_empty() && expected_hash != anchor.content_hash {
+            return Err(CliError::invalid_args(format!(
+                "block hash mismatch: block {insert_after} expected {expected_hash} but found {}",
+                anchor.content_hash
+            )));
+        }
+    } else if !expected_hash.is_empty() {
+        return Err(CliError::invalid_args(
+            "--expect-hash cannot be used with --after 0",
+        ));
+    }
     let prepared = crate::docx_styles::prepare_docx_style_for_mutation(
         file,
         options.style,
@@ -167,6 +186,7 @@ pub(crate) fn docx_paragraphs_set(
     index: i64,
     handle: Option<&str>,
     replacement: &str,
+    expected_hash: &str,
     options: DocxParagraphMutationOptions<'_>,
 ) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
@@ -185,6 +205,7 @@ pub(crate) fn docx_paragraphs_set(
     } else {
         index as usize
     };
+    validate_docx_paragraph_block_hash(&xml, target_index, expected_hash)?;
     let mutation = set_or_clear_docx_body_paragraph_xml(&xml, target_index, Some(replacement))?;
     write_docx_mutation_output(file, &document_part, &mutation.xml, options)?;
 
@@ -207,6 +228,7 @@ pub(crate) fn docx_paragraphs_clear(
     file: &str,
     index: i64,
     handle: Option<&str>,
+    expected_hash: &str,
     options: DocxParagraphMutationOptions<'_>,
 ) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
@@ -225,6 +247,7 @@ pub(crate) fn docx_paragraphs_clear(
     } else {
         index as usize
     };
+    validate_docx_paragraph_block_hash(&xml, target_index, expected_hash)?;
     let mutation = set_or_clear_docx_body_paragraph_xml(&xml, target_index, None)?;
     write_docx_mutation_output(file, &document_part, &mutation.xml, options)?;
 
@@ -239,6 +262,27 @@ pub(crate) fn docx_paragraphs_clear(
         result.insert("handle".to_string(), json!(mutation.handle));
     }
     Ok(Value::Object(result))
+}
+
+fn validate_docx_paragraph_block_hash(
+    xml: &str,
+    target_index: usize,
+    expected_hash: &str,
+) -> CliResult<()> {
+    if expected_hash.is_empty() {
+        return Ok(());
+    }
+    let report = docx_rich_block_reports(xml, false)?
+        .into_iter()
+        .find(|report| report.index == target_index && report.kind == "paragraph")
+        .ok_or_else(|| CliError::target_not_found("target not found: paragraph"))?;
+    if report.content_hash != expected_hash {
+        return Err(CliError::invalid_args(format!(
+            "block hash mismatch: block {target_index} expected {expected_hash} but found {}",
+            report.content_hash
+        )));
+    }
+    Ok(())
 }
 
 pub(crate) fn resolve_required_docx_paragraph_set_text(

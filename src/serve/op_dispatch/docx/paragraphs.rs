@@ -75,6 +75,7 @@ pub(super) fn serve_docx_paragraphs_op(
             let readback = docx_paragraphs_insert(
                 working,
                 insert_after,
+                "",
                 DocxParagraphMutationOptions {
                     text: text.as_deref(),
                     text_file: text_file.as_deref(),
@@ -138,6 +139,7 @@ pub(super) fn serve_docx_paragraphs_op(
                 index,
                 handle.as_deref(),
                 &resolved_text,
+                "",
                 DocxParagraphMutationOptions {
                     text: None,
                     text_file: None,
@@ -188,6 +190,7 @@ pub(super) fn serve_docx_paragraphs_op(
                 working,
                 index,
                 handle.as_deref(),
+                "",
                 DocxParagraphMutationOptions {
                     text: None,
                     text_file: None,

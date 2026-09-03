@@ -84,7 +84,9 @@ pub(super) fn dispatch_docx_tables(args: &[String]) -> CliResult<Value> {
             validate_positive_i64(row, "--row")?;
             validate_positive_i64(col, "--col")?;
             let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
-            require_docx_block_hash(&expect_hash)?;
+            if !expect_hash.is_empty() {
+                require_docx_block_hash(&expect_hash)?;
+            }
             let text_changed = flag_present(rest, "--text");
             let text_file_changed = flag_present(rest, "--text-file");
             let text = parse_string_flag(rest, "--text")?;
@@ -141,7 +143,9 @@ pub(super) fn dispatch_docx_tables(args: &[String]) -> CliResult<Value> {
             validate_positive_i64(row, "--row")?;
             validate_positive_i64(col, "--col")?;
             let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
-            require_docx_block_hash(&expect_hash)?;
+            if !expect_hash.is_empty() {
+                require_docx_block_hash(&expect_hash)?;
+            }
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             let dry_run = has_flag(rest, "--dry-run");
@@ -178,7 +182,9 @@ pub(super) fn dispatch_docx_tables(args: &[String]) -> CliResult<Value> {
             validate_positive_i64(table, "--table")?;
             validate_positive_i64(at, "--at")?;
             let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
-            require_docx_block_hash(&expect_hash)?;
+            if !expect_hash.is_empty() {
+                require_docx_block_hash(&expect_hash)?;
+            }
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             let dry_run = has_flag(rest, "--dry-run");
@@ -214,7 +220,9 @@ pub(super) fn dispatch_docx_tables(args: &[String]) -> CliResult<Value> {
             validate_positive_i64(table, "--table")?;
             validate_positive_i64(row, "--row")?;
             let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
-            require_docx_block_hash(&expect_hash)?;
+            if !expect_hash.is_empty() {
+                require_docx_block_hash(&expect_hash)?;
+            }
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             let dry_run = has_flag(rest, "--dry-run");

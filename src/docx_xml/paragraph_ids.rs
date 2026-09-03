@@ -1,12 +1,10 @@
 use quick_xml::NsReader;
 use quick_xml::events::Event;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
 use super::DOCX_W_NS;
-use crate::{
-    CliError, CliResult, chrono_like_counter, docx_para_id_ns, element_in_ns, local_name,
-    xml_attr_escape,
-};
+use crate::{CliError, CliResult, docx_para_id_ns, element_in_ns, local_name, xml_attr_escape};
 
 pub(crate) fn docx_open_tag_with_para_id(start_tag: &str, para_id: &str) -> String {
     let mut out = if start_tag.trim_end().ends_with("/>") {
@@ -85,13 +83,39 @@ pub(crate) fn docx_all_para_ids(xml: &str) -> CliResult<BTreeSet<String>> {
 
 pub(crate) fn mint_docx_para_id(existing: &BTreeSet<String>) -> String {
     for attempt in 0..10_000u32 {
-        let raw =
-            ((chrono_like_counter() as u64) ^ ((std::process::id() as u64) << 17) ^ attempt as u64)
-                & 0x7fff_ffff;
-        let candidate = format!("{:08X}", raw as u32);
+        let mut hasher = Sha256::new();
+        hasher.update(b"ooxml-cli/docx/para-id/v1\0");
+        for para_id in existing {
+            hasher.update(para_id.as_bytes());
+            hasher.update([0]);
+        }
+        hasher.update(attempt.to_le_bytes());
+        let digest = hasher.finalize();
+        let raw = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]) & 0x7fff_ffff;
+        let candidate = format!("{raw:08X}");
         if !existing.contains(&candidate) {
             return candidate;
         }
     }
     "00000000".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn minted_paragraph_ids_are_deterministic_and_collision_free() {
+        let mut existing = BTreeSet::from(["12345678".to_string()]);
+        let first = mint_docx_para_id(&existing);
+        assert_eq!(first, mint_docx_para_id(&existing));
+        assert_eq!(first.len(), 8);
+        assert!(first.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert!(!existing.contains(&first));
+
+        existing.insert(first.clone());
+        let second = mint_docx_para_id(&existing);
+        assert_ne!(second, first);
+        assert!(!existing.contains(&second));
+    }
 }

@@ -49,7 +49,9 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
             reject_unknown_flags(
                 rest,
                 &[
+                    "--after",
                     "--insert-after",
+                    "--expect-hash",
                     "--text",
                     "--text-file",
                     "--style",
@@ -58,7 +60,18 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
                 ],
                 &["--dry-run", "--in-place", "--no-validate", "--create-style"],
             )?;
-            let insert_after = parse_i64_flag(rest, "--insert-after")?.unwrap_or(0);
+            let after = parse_i64_flag(rest, "--after")?;
+            let insert_after_alias = parse_i64_flag(rest, "--insert-after")?;
+            if after.is_some() && insert_after_alias.is_some() {
+                return Err(CliError::invalid_args(
+                    "cannot specify both --after and --insert-after",
+                ));
+            }
+            let insert_after = after.or(insert_after_alias).unwrap_or(0);
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            if !expect_hash.is_empty() {
+                crate::require_docx_block_hash(&expect_hash)?;
+            }
             let text = parse_string_flag(rest, "--text")?;
             let text_file = parse_string_flag(rest, "--text-file")?;
             let style = parse_string_flag(rest, "--style")?.unwrap_or_default();
@@ -70,6 +83,7 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
             docx_paragraphs_insert(
                 file,
                 insert_after,
+                &expect_hash,
                 DocxParagraphMutationOptions {
                     text: text.as_deref(),
                     text_file: text_file.as_deref(),
@@ -91,6 +105,7 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
                 &[
                     "--index",
                     "--handle",
+                    "--expect-hash",
                     "--text",
                     "--text-file",
                     "--out",
@@ -120,6 +135,10 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
                 flag_present(rest, "--text"),
                 flag_present(rest, "--text-file"),
             )?;
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            if !expect_hash.is_empty() {
+                crate::require_docx_block_hash(&expect_hash)?;
+            }
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             let dry_run = has_flag(rest, "--dry-run");
@@ -130,6 +149,7 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
                 index,
                 handle.as_deref(),
                 &replacement,
+                &expect_hash,
                 DocxParagraphMutationOptions {
                     text: None,
                     text_file: None,
@@ -147,7 +167,7 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
         {
             reject_unknown_flags(
                 rest,
-                &["--index", "--handle", "--out", "--backup"],
+                &["--index", "--handle", "--expect-hash", "--out", "--backup"],
                 &["--dry-run", "--in-place", "--no-validate"],
             )?;
             let index = parse_i64_flag(rest, "--index")?.unwrap_or(0);
@@ -164,6 +184,10 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
                     "cannot specify both --index and --handle",
                 ));
             }
+            let expect_hash = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            if !expect_hash.is_empty() {
+                crate::require_docx_block_hash(&expect_hash)?;
+            }
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             let dry_run = has_flag(rest, "--dry-run");
@@ -173,6 +197,7 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
                 file,
                 index,
                 handle.as_deref(),
+                &expect_hash,
                 DocxParagraphMutationOptions {
                     text: None,
                     text_file: None,

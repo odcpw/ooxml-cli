@@ -472,7 +472,7 @@ fn docx_table_cell_text_mutation(
         }
         selected_block = report.index;
         previous_hash = report.content_hash.clone();
-        if previous_hash != expected_hash {
+        if !expected_hash.is_empty() && previous_hash != expected_hash {
             return Err(CliError::invalid_args(format!(
                 "block hash mismatch: block {selected_block} expected {expected_hash} but found {previous_hash}"
             )));
@@ -554,7 +554,7 @@ fn docx_table_insert_row_mutation(
         }
         selected_block = report.index;
         previous_hash = report.content_hash.clone();
-        if previous_hash != expected_hash {
+        if !expected_hash.is_empty() && previous_hash != expected_hash {
             return Err(CliError::invalid_args(format!(
                 "block hash mismatch: block {selected_block} expected {expected_hash} but found {previous_hash}"
             )));
@@ -641,7 +641,7 @@ fn docx_table_delete_row_mutation(
         }
         selected_block = report.index;
         previous_hash = report.content_hash.clone();
-        if previous_hash != expected_hash {
+        if !expected_hash.is_empty() && previous_hash != expected_hash {
             return Err(CliError::invalid_args(format!(
                 "block hash mismatch: block {selected_block} expected {expected_hash} but found {previous_hash}"
             )));

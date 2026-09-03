@@ -1,4 +1,5 @@
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, DocxStyleTarget, InspectPackageKind,
@@ -18,8 +19,18 @@ pub(crate) fn docx_text(file: &str) -> CliResult<Value> {
         )));
     }
     let xml = zip_text(file, "word/document.xml")?;
-    let blocks = docx_blocks(&xml);
-    Ok(json!({"blocks": blocks, "file": file}))
+    let mut blocks = docx_blocks(&xml);
+    let reports = docx_rich_block_reports(&xml, false)?;
+    for (block, report) in blocks.iter_mut().zip(reports) {
+        if let Some(object) = block.as_object_mut() {
+            object.insert("contentHash".to_string(), json!(report.content_hash));
+        }
+    }
+    Ok(json!({
+        "blocks": blocks,
+        "documentHash": hash_docx_document_xml(&xml),
+        "file": file,
+    }))
 }
 
 pub(crate) fn docx_blocks_show(file: &str, block: usize, include_runs: bool) -> CliResult<Value> {
@@ -67,8 +78,13 @@ pub(crate) fn docx_blocks_show(file: &str, block: usize, include_runs: bool) -> 
     Ok(json!({
         "file": file,
         "documentPartUri": document_uri,
+        "documentHash": hash_docx_document_xml(&xml),
         "blocks": blocks,
     }))
+}
+
+fn hash_docx_document_xml(xml: &str) -> String {
+    format!("sha256:{:x}", Sha256::digest(xml.as_bytes()))
 }
 
 pub(crate) fn docx_blocks_insert_after(
@@ -103,7 +119,7 @@ pub(crate) fn docx_blocks_insert_after(
         let anchor = reports
             .get(block - 1)
             .ok_or_else(|| CliError::target_not_found("target not found: block"))?;
-        if anchor.content_hash != expected_hash {
+        if !expected_hash.is_empty() && anchor.content_hash != expected_hash {
             return Err(CliError::invalid_args(format!(
                 "block hash mismatch: block {block} expected {expected_hash} but found {}",
                 anchor.content_hash
@@ -180,7 +196,7 @@ pub(crate) fn docx_blocks_replace(
     let previous = reports
         .get(block - 1)
         .ok_or_else(|| CliError::target_not_found("target not found: block"))?;
-    if previous.content_hash != expected_hash {
+    if !expected_hash.is_empty() && previous.content_hash != expected_hash {
         return Err(CliError::invalid_args(format!(
             "block hash mismatch: block {block} expected {expected_hash} but found {}",
             previous.content_hash
@@ -292,7 +308,7 @@ pub(crate) fn docx_blocks_delete(
             "block contains section properties: block {block}"
         )));
     }
-    if previous.content_hash != expected_hash {
+    if !expected_hash.is_empty() && previous.content_hash != expected_hash {
         return Err(CliError::invalid_args(format!(
             "block hash mismatch: block {block} expected {expected_hash} but found {}",
             previous.content_hash

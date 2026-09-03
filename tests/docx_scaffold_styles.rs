@@ -650,6 +650,330 @@ fn libreoffice_render_preserves_heading_reading_order_and_page_count() {
 }
 
 #[test]
+fn docx_hash_guards_support_a_five_step_chain_without_intermediate_reads() {
+    let temp = temp_dir("five-step-guarded-chain");
+    let source = temp.join("source.docx");
+    let scaffold = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path_str(&source),
+        "--text",
+        "Anchor",
+    ]);
+    let mut document_hash = json_sha256(&scaffold, "documentHash").to_string();
+    assert_block_hashes(&scaffold, 1);
+    assert_all_docx_proofs(&source);
+
+    let first = temp.join("step-1.docx");
+    let step_one = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "blocks",
+        "insert-after",
+        path_str(&source),
+        "--block",
+        "1",
+        "--text",
+        "One",
+        "--expect-document-hash",
+        &document_hash,
+        "--require-guard",
+        "--out",
+        path_str(&first),
+    ]);
+    assert!(step_one.get("warnings").is_none(), "{step_one}");
+    document_hash = json_sha256(&step_one, "documentHash").to_string();
+    let first_anchor_hash = block_hash(&step_one, 2).to_string();
+    assert_all_docx_proofs(&first);
+
+    let second = temp.join("step-2.docx");
+    let step_two = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "insert",
+        path_str(&first),
+        "--after",
+        "2",
+        "--text",
+        "Two",
+        "--expect-hash",
+        &first_anchor_hash,
+        "--expect-document-hash",
+        &document_hash,
+        "--require-guard",
+        "--out",
+        path_str(&second),
+    ]);
+    document_hash = json_sha256(&step_two, "documentHash").to_string();
+    let second_inserted_hash = block_hash(&step_two, 3).to_string();
+    assert_all_docx_proofs(&second);
+
+    let third = temp.join("step-3.docx");
+    let step_three = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "blocks",
+        "replace",
+        path_str(&second),
+        "--block",
+        "3",
+        "--text",
+        "Three",
+        "--expect-hash",
+        &second_inserted_hash,
+        "--expect-document-hash",
+        &document_hash,
+        "--require-guard",
+        "--out",
+        path_str(&third),
+    ]);
+    document_hash = json_sha256(&step_three, "documentHash").to_string();
+    assert_all_docx_proofs(&third);
+
+    let fourth = temp.join("step-4.docx");
+    let step_four = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "insert",
+        path_str(&third),
+        "--after",
+        "3",
+        "--text",
+        "Four",
+        "--expect-document-hash",
+        &document_hash,
+        "--require-guard",
+        "--out",
+        path_str(&fourth),
+    ]);
+    document_hash = json_sha256(&step_four, "documentHash").to_string();
+    let delete_hash = block_hash(&step_four, 2).to_string();
+    assert_all_docx_proofs(&fourth);
+
+    let fifth = temp.join("step-5.docx");
+    let step_five = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "blocks",
+        "delete",
+        path_str(&fourth),
+        "--block",
+        "2",
+        "--expect-hash",
+        &delete_hash,
+        "--expect-document-hash",
+        &document_hash,
+        "--require-guard",
+        "--out",
+        path_str(&fifth),
+    ]);
+    assert_block_hashes(&step_five, 3);
+    assert_all_docx_proofs(&fifth);
+    let text = run_ooxml_ok(&["--json", "docx", "text", path_str(&fifth)]);
+    let texts = text["blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|block| block["text"].as_str().unwrap_or_default())
+        .collect::<Vec<_>>();
+    assert_eq!(texts, ["Anchor", "Three", "Four"]);
+
+    fs::remove_dir_all(temp).expect("remove five-step guarded chain temp dir");
+}
+
+#[test]
+fn docx_guards_are_optional_warn_when_missing_and_reject_stale_documents_before_write() {
+    let temp = temp_dir("guard-semantics");
+    let source = temp.join("source.docx");
+    let unguarded = temp.join("unguarded.docx");
+    let rejected = temp.join("rejected.docx");
+    let stale = temp.join("stale.docx");
+    let scaffold = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path_str(&source),
+        "--text",
+        "Guard seed",
+    ]);
+    let original_hash = json_sha256(&scaffold, "documentHash").to_string();
+
+    let warning = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "blocks",
+        "insert-after",
+        path_str(&source),
+        "--block",
+        "1",
+        "--text",
+        "Allowed with warning",
+        "--out",
+        path_str(&unguarded),
+    ]);
+    assert_eq!(warning["warnings"][0]["code"], "DOCX_GUARD_NOT_PROVIDED");
+    assert_all_docx_proofs(&unguarded);
+
+    let (required_output, required_error) = run_ooxml(
+        &[
+            "--json",
+            "docx",
+            "paragraphs",
+            "insert",
+            path_str(&source),
+            "--after",
+            "1",
+            "--text",
+            "Must not write",
+            "--require-guard",
+            "--out",
+            path_str(&rejected),
+        ],
+        &[],
+    );
+    assert_eq!(required_output.status.code(), Some(2), "{required_error}");
+    assert!(
+        required_error["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("--require-guard requires"),
+        "{required_error}"
+    );
+    assert!(!rejected.exists(), "missing guard published output");
+
+    let (stale_output, stale_error) = run_ooxml(
+        &[
+            "--json",
+            "docx",
+            "blocks",
+            "insert-after",
+            path_str(&unguarded),
+            "--block",
+            "1",
+            "--text",
+            "Must not write stale",
+            "--expect-document-hash",
+            &original_hash,
+            "--out",
+            path_str(&stale),
+        ],
+        &[],
+    );
+    assert_eq!(stale_output.status.code(), Some(2), "{stale_error}");
+    assert!(
+        stale_error["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("document hash mismatch"),
+        "{stale_error}"
+    );
+    assert!(!stale.exists(), "stale guard published output");
+
+    fs::remove_dir_all(temp).expect("remove guard semantics temp dir");
+}
+
+#[test]
+fn every_docx_read_surface_returns_document_and_block_hashes() {
+    let temp = temp_dir("all-read-hashes");
+    let source = temp.join("source.docx");
+    run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path_str(&source),
+        "--text",
+        "Read hash seed",
+    ]);
+    let file = path_str(&source);
+    let commands = [
+        vec!["--json", "docx", "text", file],
+        vec!["--json", "docx", "blocks", file],
+        vec!["--json", "docx", "styles", "list", file],
+        vec![
+            "--json", "docx", "styles", "show", file, "--style", "Normal",
+        ],
+        vec!["--json", "docx", "fields", "list", file],
+        vec!["--json", "docx", "headers", "list", file],
+        vec!["--json", "docx", "footers", "list", file],
+        vec!["--json", "docx", "images", "list", file],
+        vec!["--json", "docx", "comments", "list", file],
+        vec!["--json", "docx", "tables", "show", file],
+    ];
+    let mut expected_hash = None::<String>;
+    for args in commands {
+        let report = run_ooxml_ok(&args);
+        let document_hash = json_sha256(&report, "documentHash");
+        assert_block_hashes(&report, 1);
+        match expected_hash.as_deref() {
+            Some(expected) => assert_eq!(document_hash, expected, "read command {args:?}"),
+            None => expected_hash = Some(document_hash.to_string()),
+        }
+    }
+
+    fs::remove_dir_all(temp).expect("remove all read hashes temp dir");
+}
+
+#[test]
+fn hash_bearing_docx_mutation_outputs_remain_byte_deterministic() {
+    let temp = temp_dir("hash-mutation-determinism");
+    let source = temp.join("source.docx");
+    let first = temp.join("first.docx");
+    let second = temp.join("second.docx");
+    let scaffold = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path_str(&source),
+        "--text",
+        "Original",
+    ]);
+    let document_hash = json_sha256(&scaffold, "documentHash");
+    let first_report = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "set",
+        path_str(&source),
+        "--index",
+        "1",
+        "--text",
+        "Deterministic replacement",
+        "--expect-document-hash",
+        document_hash,
+        "--out",
+        path_str(&first),
+    ]);
+    let second_report = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "set",
+        path_str(&source),
+        "--index",
+        "1",
+        "--text",
+        "Deterministic replacement",
+        "--expect-document-hash",
+        document_hash,
+        "--out",
+        path_str(&second),
+    ]);
+    assert_eq!(first_report["documentHash"], second_report["documentHash"]);
+    assert_eq!(
+        fs::read(&first).unwrap(),
+        fs::read(&second).unwrap(),
+        "identical guarded mutations must produce identical DOCX bytes"
+    );
+    assert_all_docx_proofs(&first);
+    assert_all_docx_proofs(&second);
+
+    fs::remove_dir_all(temp).expect("remove hash mutation determinism temp dir");
+}
+
+#[test]
 fn committed_dangling_style_fixture_fails_strict_and_check() {
     let fixture = repo_path("testdata/docx/scaffold-styles/dangling-style.docx");
     let (output, report) = run_ooxml(&["--json", "validate", "--strict", path_str(&fixture)], &[]);
@@ -1187,6 +1511,42 @@ fn assert_all_docx_proofs(package: &Path) {
     );
     assert_eq!(report["status"], "passed");
     assert_sdk_valid_if_available(package);
+}
+
+fn json_sha256<'a>(report: &'a Value, field: &str) -> &'a str {
+    let value = report[field]
+        .as_str()
+        .unwrap_or_else(|| panic!("missing {field} in report: {report}"));
+    assert!(
+        value.starts_with("sha256:")
+            && value.len() == 71
+            && value[7..]
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()),
+        "invalid {field}: {value}"
+    );
+    value
+}
+
+fn assert_block_hashes(report: &Value, expected_count: usize) {
+    let blocks = report["blockHashes"]
+        .as_array()
+        .unwrap_or_else(|| panic!("missing blockHashes: {report}"));
+    assert_eq!(blocks.len(), expected_count, "block hashes: {report}");
+    for (offset, block) in blocks.iter().enumerate() {
+        assert_eq!(block["index"], offset + 1);
+        json_sha256(block, "contentHash");
+    }
+}
+
+fn block_hash(report: &Value, index: usize) -> &str {
+    let block = report["blockHashes"]
+        .as_array()
+        .unwrap_or_else(|| panic!("missing blockHashes: {report}"))
+        .iter()
+        .find(|block| block["index"] == index)
+        .unwrap_or_else(|| panic!("missing block {index} hash: {report}"));
+    json_sha256(block, "contentHash")
 }
 
 fn assert_sdk_valid_if_available(package: &Path) {
