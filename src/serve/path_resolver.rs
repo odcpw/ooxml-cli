@@ -7,6 +7,7 @@ pub(in crate::serve) fn resolve_op_paths(
     command: &str,
     args: &Value,
     base_dir: &Path,
+    allow_absolute_paths: bool,
 ) -> CliResult<Value> {
     let object = args
         .as_object()
@@ -16,7 +17,7 @@ pub(in crate::serve) fn resolve_op_paths(
         .map(|(key, value)| {
             let normalized = normalize_arg_key(key);
             let value = if is_external_path_arg(command, &normalized) {
-                resolve_path_value(value, base_dir, &normalized)?
+                resolve_path_value(value, base_dir, &normalized, allow_absolute_paths)?
             } else {
                 value.clone()
             };
@@ -58,12 +59,19 @@ fn is_external_path_arg(command: &str, key: &str) -> bool {
     )
 }
 
-fn resolve_path_value(value: &Value, base_dir: &Path, key: &str) -> CliResult<Value> {
+fn resolve_path_value(
+    value: &Value,
+    base_dir: &Path,
+    key: &str,
+    allow_absolute_paths: bool,
+) -> CliResult<Value> {
     match value {
-        Value::String(text) => resolve_path_string(text, base_dir, key).map(Value::String),
+        Value::String(text) => {
+            resolve_path_string(text, base_dir, key, allow_absolute_paths).map(Value::String)
+        }
         Value::Array(items) => items
             .iter()
-            .map(|item| resolve_path_value(item, base_dir, key))
+            .map(|item| resolve_path_value(item, base_dir, key, allow_absolute_paths))
             .collect::<CliResult<Vec<_>>>()
             .map(Value::Array),
         other => Err(CliError::invalid_args(format!(
@@ -72,8 +80,13 @@ fn resolve_path_value(value: &Value, base_dir: &Path, key: &str) -> CliResult<Va
     }
 }
 
-fn resolve_path_string(text: &str, base_dir: &Path, key: &str) -> CliResult<String> {
-    if text == "-" || text.is_empty() || Path::new(text).is_absolute() {
+fn resolve_path_string(
+    text: &str,
+    base_dir: &Path,
+    key: &str,
+    allow_absolute_paths: bool,
+) -> CliResult<String> {
+    if text == "-" || text.is_empty() {
         return Ok(text.to_string());
     }
     let (prefix, path_text) = if key == "paragraphs-file" {
@@ -83,6 +96,15 @@ fn resolve_path_string(text: &str, base_dir: &Path, key: &str) -> CliResult<Stri
     } else {
         (None, text)
     };
+    if Path::new(path_text).is_absolute() {
+        return if allow_absolute_paths {
+            Ok(text.to_string())
+        } else {
+            Err(CliError::invalid_args(format!(
+                "absolute path-valued op arg {key:?} is disabled: {text:?}; pass --allow-absolute-paths on apply to opt in"
+            )))
+        };
+    }
     let relative = Path::new(path_text);
     if relative
         .components()
@@ -148,6 +170,7 @@ mod tests {
                     "paragraphsFile": ["title=copy/title.json", "body=./copy/body.json"]
                 }),
                 &base,
+                false,
             )
             .unwrap(),
             json!({
@@ -160,12 +183,48 @@ mod tests {
     }
 
     #[test]
-    fn leaves_non_paths_and_absolute_paths_unchanged() {
+    fn leaves_non_paths_unchanged_and_requires_opt_in_for_absolute_paths() {
         let absolute = std::env::temp_dir().join("replacement.png");
         let args = json!({"image": "rId7", "file": absolute});
+        let error = resolve_op_paths(
+            "docx images replace",
+            &args,
+            Path::new("ops-root/spec"),
+            false,
+        )
+        .unwrap_err();
+        assert!(error.message.contains("--allow-absolute-paths"));
         assert_eq!(
-            resolve_op_paths("docx images replace", &args, Path::new("ops-root/spec")).unwrap(),
+            resolve_op_paths(
+                "docx images replace",
+                &args,
+                Path::new("ops-root/spec"),
+                true,
+            )
+            .unwrap(),
             args
+        );
+
+        let assigned = json!({
+            "paragraphsFile": [format!("title={}", absolute.to_string_lossy())]
+        });
+        let error = resolve_op_paths(
+            "pptx new-slide-from-layout",
+            &assigned,
+            Path::new("ops-root/spec"),
+            false,
+        )
+        .unwrap_err();
+        assert!(error.message.contains("--allow-absolute-paths"));
+        assert_eq!(
+            resolve_op_paths(
+                "pptx new-slide-from-layout",
+                &assigned,
+                Path::new("ops-root/spec"),
+                true,
+            )
+            .unwrap(),
+            assigned
         );
     }
 
@@ -175,6 +234,7 @@ mod tests {
             "pptx place image",
             &json!({"image": "../secret.png"}),
             Path::new("ops-root/spec"),
+            false,
         )
         .unwrap_err();
         assert!(error.message.contains("escapes the ops directory"));

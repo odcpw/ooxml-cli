@@ -398,6 +398,12 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "string",
                     "JSON file containing an array of operations",
                 ),
+                flag(
+                    "--allow-absolute-paths",
+                    "allowAbsolutePaths",
+                    "bool",
+                    "allow absolute file-valued op argument paths; relative parent traversal remains forbidden",
+                ),
                 flag("--out", "out", "string", "output package path"),
                 flag(
                     "--backup",

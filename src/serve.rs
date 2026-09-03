@@ -84,12 +84,32 @@ struct ServeSession {
     no_validate: bool,
     dry_run: bool,
     ops_base_dir: Option<String>,
+    allow_absolute_paths: bool,
     working: String,
     ops: Vec<ServeOp>,
     op_ids: Vec<Option<String>>,
     op_results: Vec<Value>,
     resolved_args: Vec<Value>,
     named_results: BTreeMap<String, Value>,
+}
+
+impl Drop for ServeSession {
+    fn drop(&mut self) {
+        let working = Path::new(&self.working);
+        let expected_prefix = format!("ooxml-rust-serve-{}-", std::process::id());
+        if working
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("working."))
+            && let Some(stage_dir) = working.parent()
+            && stage_dir
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(&expected_prefix))
+        {
+            let _ = fs::remove_dir_all(stage_dir);
+        }
+    }
 }
 
 impl ServeState {
@@ -140,6 +160,7 @@ impl ServeState {
             .and_then(Value::as_bool)
             .unwrap_or(false);
         let ops_base_dir = json_optional_string(params, "opsBaseDir");
+        let allow_absolute_paths = json_bool(params, "allowAbsolutePaths").unwrap_or(false);
         if out.is_some() && in_place {
             return Err(CliError::invalid_args(
                 "cannot specify both out and inPlace",
@@ -167,6 +188,7 @@ impl ServeState {
                 no_validate,
                 dry_run,
                 ops_base_dir,
+                allow_absolute_paths,
                 working,
                 ops: Vec::new(),
                 op_ids: Vec::new(),
@@ -208,8 +230,12 @@ impl ServeState {
         }
         let mut resolved_args = op_dispatch::resolve_refs(args, &session.named_results)?;
         if let Some(base_dir) = session.ops_base_dir.as_deref() {
-            resolved_args =
-                op_dispatch::resolve_op_paths(&command, &resolved_args, Path::new(base_dir))?;
+            resolved_args = op_dispatch::resolve_op_paths(
+                &command,
+                &resolved_args,
+                Path::new(base_dir),
+                session.allow_absolute_paths,
+            )?;
         }
         let op = serve_op_command(&session.working, &command, &resolved_args)?;
         let readback = op.readback(&session.working);

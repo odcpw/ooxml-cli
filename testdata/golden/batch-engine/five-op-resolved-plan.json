@@ -1,0 +1,53 @@
+{
+  "committed": false,
+  "dryRun": true,
+  "opsCount": 5,
+  "plan": [
+    {
+      "command": "xlsx scaffold",
+      "id": "workbook",
+      "index": 0,
+      "resolvedArgs": {}
+    },
+    {
+      "command": "xlsx sheets add",
+      "id": "data-sheet",
+      "index": 1,
+      "resolvedArgs": {
+        "name": "Data"
+      }
+    },
+    {
+      "command": "xlsx ranges set",
+      "id": "data-range",
+      "index": 2,
+      "resolvedArgs": {
+        "range": "A1:B2",
+        "sheet": "Data",
+        "values": "[[\"Metric\",\"Value\"],[\"Revenue\",42]]"
+      }
+    },
+    {
+      "command": "xlsx tables create",
+      "id": "data-table",
+      "index": 3,
+      "resolvedArgs": {
+        "range": "A1:B2",
+        "sheet": "Data",
+        "table": "DataTable"
+      }
+    },
+    {
+      "command": "xlsx comments add",
+      "id": "data-note",
+      "index": 4,
+      "resolvedArgs": {
+        "author": "Batch proof",
+        "cell": "A2",
+        "sheet": "Data",
+        "text": "Created after the referenced range and table"
+      }
+    }
+  ],
+  "schemaVersion": 1
+}

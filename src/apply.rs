@@ -26,7 +26,12 @@ pub(crate) fn apply(file: &str, args: &[String]) -> CliResult<Value> {
     reject_unknown_flags(
         args,
         &["--ops", "--out", "--backup"],
-        &["--dry-run", "--in-place", "--no-validate"],
+        &[
+            "--allow-absolute-paths",
+            "--dry-run",
+            "--in-place",
+            "--no-validate",
+        ],
     )?;
     let ops_path = parse_string_flag(args, "--ops")?
         .ok_or_else(|| CliError::invalid_args("--ops is required"))?;
@@ -48,6 +53,7 @@ pub(crate) fn apply(file: &str, args: &[String]) -> CliResult<Value> {
     let dry_run = has_flag(args, "--dry-run");
     let in_place = has_flag(args, "--in-place");
     let no_validate = has_flag(args, "--no-validate");
+    let allow_absolute_paths = has_flag(args, "--allow-absolute-paths");
     validate_xlsx_mutation_output_flags(out.as_deref(), in_place, backup.as_deref(), dry_run)?;
 
     let ops_base_dir = Path::new(&ops_path)
@@ -71,6 +77,7 @@ pub(crate) fn apply(file: &str, args: &[String]) -> CliResult<Value> {
             "noValidate": no_validate,
             "dryRun": dry_run,
             "opsBaseDir": ops_base_dir,
+            "allowAbsolutePaths": allow_absolute_paths,
         }),
     )?;
     let session = open["sessionId"]
@@ -376,7 +383,9 @@ fn normalize_arg_key_name(key: &str) -> String {
 fn is_session_owned_mutation_arg(normalized: &str) -> bool {
     matches!(
         normalized,
-        "out"
+        "allow-absolute-paths"
+            | "allowabsolutepaths"
+            | "out"
             | "in-place"
             | "inplace"
             | "dry-run"

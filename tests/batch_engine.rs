@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
@@ -20,6 +22,14 @@ fn run(args: &[&str]) -> Output {
         .args(args)
         .output()
         .expect("run ooxml")
+}
+
+fn run_with_temp_root(args: &[&str], temp_root: &Path) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args(args)
+        .env("TMPDIR", temp_root)
+        .output()
+        .expect("run ooxml with isolated temp root")
 }
 
 fn json_stdout(output: &Output) -> Value {
@@ -56,6 +66,54 @@ fn write_ops(path: &Path, operations: Value) {
     .expect("write operations");
 }
 
+fn sha256(path: &Path) -> String {
+    let mut hash = Sha256::new();
+    hash.update(fs::read(path).expect("read file for SHA-256"));
+    format!("{:x}", hash.finalize())
+}
+
+fn assert_strictly_valid(path: &Path, label: &str) {
+    let validated = run(&[
+        "--json",
+        "validate",
+        "--strict",
+        path.to_str().expect("OOXML output path"),
+    ]);
+    assert!(
+        validated.status.success(),
+        "{label} strict validation failed; stdout={}; stderr={}",
+        String::from_utf8_lossy(&validated.stdout),
+        String::from_utf8_lossy(&validated.stderr)
+    );
+}
+
+fn compare_or_update_golden(path: &Path, value: &Value) {
+    let mut actual = serde_json::to_vec_pretty(value).expect("serialize batch golden");
+    actual.push(b'\n');
+    if std::env::var_os("UPDATE_GOLDENS").is_some() {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create batch golden directory");
+        }
+        fs::write(path, &actual).expect("update reviewed batch golden");
+    }
+    assert_eq!(
+        fs::read(path).expect("read reviewed batch golden"),
+        actual,
+        "batch golden drift: {}",
+        path.display()
+    );
+}
+
+fn jsonl_roundtrip(stdin: &mut impl Write, reader: &mut impl BufRead, request: &Value) -> Value {
+    writeln!(stdin, "{}", serde_json::to_string(request).unwrap()).expect("write JSONL request");
+    stdin.flush().expect("flush JSONL request");
+    let mut line = String::new();
+    reader.read_line(&mut line).expect("read JSONL response");
+    serde_json::from_str(&line).unwrap_or_else(|error| {
+        panic!("parse JSONL response ({error}): request={request}; response={line}")
+    })
+}
+
 fn run_jsonl_server(mode: &str, requests: &[Value]) -> Vec<Value> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
         .arg(mode)
@@ -82,6 +140,41 @@ fn run_jsonl_server(mode: &str, requests: &[Value]) -> Vec<Value> {
         .lines()
         .map(|line| serde_json::from_str(line).expect("server JSON response"))
         .collect()
+}
+
+fn op_compatible_commands() -> Vec<String> {
+    let output = run(&["--json", "capabilities"]);
+    assert!(
+        output.status.success(),
+        "capabilities failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    json_stdout(&output)["commands"]
+        .as_array()
+        .expect("capability commands")
+        .iter()
+        .filter(|command| command["opCompatible"] == true)
+        .map(|command| {
+            command["path"]
+                .as_str()
+                .expect("command path")
+                .strip_prefix("ooxml ")
+                .expect("ooxml command prefix")
+                .to_string()
+        })
+        .collect()
+}
+
+fn fixture_for_operation(command: &str) -> &'static str {
+    if command.starts_with("pptx ") {
+        "testdata/pptx/title-content/presentation.pptx"
+    } else if command.starts_with("docx ") {
+        "testdata/docx/styled-headings/document.docx"
+    } else if command.starts_with("vba ") || command == "convert xlsm-to-xlsx" {
+        "testdata/golden/vba-authoring/xlsx-rebuilt/rebuilt.xlsm"
+    } else {
+        "testdata/xlsx/minimal-workbook/workbook.xlsx"
+    }
 }
 
 #[test]
@@ -142,6 +235,130 @@ fn capabilities_publish_arg_schemas_for_the_150_batchable_package_mutations() {
         );
         assert!(command.get("opArgsSchema").is_none(), "{path} op schema");
     }
+    let apply = capabilities["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|command| command["path"] == "ooxml apply")
+        .expect("apply capability");
+    assert!(
+        apply["localFlags"]
+            .as_array()
+            .expect("apply flags")
+            .iter()
+            .any(|flag| {
+                flag["name"] == "--allow-absolute-paths"
+                    && flag["argName"] == "allowAbsolutePaths"
+                    && flag["type"] == "bool"
+            }),
+        "apply must advertise the explicit absolute-path opt-in"
+    );
+}
+
+#[test]
+fn all_154_op_compatible_commands_reach_apply_serve_and_mcp_dispatch() {
+    let commands = op_compatible_commands();
+    assert_eq!(commands.len(), 154, "op-compatible command denominator");
+    assert_eq!(
+        commands.iter().collect::<BTreeSet<_>>().len(),
+        commands.len(),
+        "op-compatible commands must be unique"
+    );
+    for command in &commands {
+        assert!(
+            Path::new(fixture_for_operation(command)).is_file(),
+            "missing package fixture for {command}"
+        );
+    }
+
+    let temp = temp_dir("all-dispatch");
+    let ops = temp.join("one-op.json");
+    for command in &commands {
+        write_ops(&ops, json!([{"command": command, "args": {}}]));
+        let applied = run(&[
+            "--json",
+            "apply",
+            fixture_for_operation(command),
+            "--ops",
+            ops.to_str().expect("ops path"),
+            "--dry-run",
+        ]);
+        if !applied.status.success() {
+            let error = json_error(&applied);
+            let message = error["message"].as_str().unwrap_or_default();
+            assert!(
+                !message.contains("unknown command")
+                    && !message.contains("cannot be used as an apply/serve/MCP op")
+                    && !message.contains("unsupported serve op command"),
+                "apply did not dispatch {command}: error={error}; ops={}",
+                fs::read_to_string(&ops).expect("read failing op fixture")
+            );
+        }
+    }
+
+    for mode in ["serve", "mcp"] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+            .arg(mode)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap_or_else(|error| panic!("spawn {mode}: {error}"));
+        let mut stdin = child.stdin.take().expect("server stdin");
+        let mut reader = BufReader::new(child.stdout.take().expect("server stdout"));
+        for (index, command) in commands.iter().enumerate() {
+            let request_id = index * 3 + 1;
+            let open_arguments = json!({"file": fixture_for_operation(command)});
+            let open_request = if mode == "serve" {
+                json!({"jsonrpc": "2.0", "id": request_id, "method": "open", "params": open_arguments})
+            } else {
+                json!({"jsonrpc": "2.0", "id": request_id, "method": "tools/call", "params": {"name": "open", "arguments": open_arguments}})
+            };
+            let opened = jsonl_roundtrip(&mut stdin, &mut reader, &open_request);
+            let open_result = if mode == "serve" {
+                &opened["result"]
+            } else {
+                &opened["result"]["structuredContent"]
+            };
+            let session = open_result["sessionId"].as_str().unwrap_or_else(|| {
+                panic!(
+                    "{mode} open failed for {command}: request={open_request}; response={opened}"
+                )
+            });
+            let op_arguments = json!({"session": session, "command": command, "args": {}});
+            let op_request = if mode == "serve" {
+                json!({"jsonrpc": "2.0", "id": request_id + 1, "method": "op", "params": op_arguments})
+            } else {
+                json!({"jsonrpc": "2.0", "id": request_id + 1, "method": "tools/call", "params": {"name": "op", "arguments": op_arguments}})
+            };
+            let response = jsonl_roundtrip(&mut stdin, &mut reader, &op_request);
+            let encoded = serde_json::to_string(&response).expect("encode op response");
+            assert!(
+                !encoded.contains("unsupported serve op command"),
+                "{mode} did not dispatch {command}: request={op_request}; response={response}"
+            );
+
+            let abort_arguments = json!({"session": session});
+            let abort_request = if mode == "serve" {
+                json!({"jsonrpc": "2.0", "id": request_id + 2, "method": "abort", "params": abort_arguments})
+            } else {
+                json!({"jsonrpc": "2.0", "id": request_id + 2, "method": "tools/call", "params": {"name": "abort", "arguments": abort_arguments}})
+            };
+            let aborted = jsonl_roundtrip(&mut stdin, &mut reader, &abort_request);
+            assert!(
+                !serde_json::to_string(&aborted)
+                    .expect("encode abort response")
+                    .contains("session not found"),
+                "{mode} failed to abort fixture session for {command}: {aborted}"
+            );
+        }
+        drop(stdin);
+        assert!(
+            child.wait().expect("wait for dispatch server").success(),
+            "{mode} dispatch server failed"
+        );
+    }
+
+    let _ = fs::remove_dir_all(temp);
 }
 
 #[test]
@@ -228,23 +445,172 @@ fn serve_and_mcp_resolve_refs_through_the_same_session_engine() {
 }
 
 #[test]
-fn apply_resolves_named_operation_refs_and_dry_run_returns_the_resolved_plan() {
-    let temp = temp_dir("refs");
-    let input = temp.join("input.xlsx");
+fn positive_family_fixtures_commit_valid_packages_on_apply_serve_and_mcp() {
+    let temp = temp_dir("positive-surfaces");
+    let cases = [
+        (
+            "xlsx",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "xlsx cells set",
+            json!({"sheet": "Sheet1", "cell": "A1", "value": "batch surface"}),
+        ),
+        (
+            "pptx",
+            "testdata/pptx/title-content/presentation.pptx",
+            "pptx replace text",
+            json!({"slide": 1, "target": "title", "text": "Batch surface"}),
+        ),
+        (
+            "docx",
+            "testdata/docx/styled-headings/document.docx",
+            "docx paragraphs set",
+            json!({"index": 1, "text": "Batch surface"}),
+        ),
+    ];
+
+    for (family, fixture, command, args) in &cases {
+        let ops = temp.join(format!("apply-{family}.json"));
+        let output = temp.join(format!("apply.{family}"));
+        write_ops(
+            &ops,
+            json!([{"id": "positive", "command": command, "args": args}]),
+        );
+        let applied = run(&[
+            "--json",
+            "apply",
+            fixture,
+            "--ops",
+            ops.to_str().expect("ops path"),
+            "--out",
+            output.to_str().expect("output path"),
+        ]);
+        assert!(
+            applied.status.success(),
+            "apply {command} failed; plan={}; stdout={}; stderr={}",
+            fs::read_to_string(&ops).expect("read positive apply plan"),
+            String::from_utf8_lossy(&applied.stdout),
+            String::from_utf8_lossy(&applied.stderr)
+        );
+        let result = json_stdout(&applied);
+        assert_eq!(result["opsCount"], 1, "apply {command}: {result}");
+        assert_eq!(result["applied"][0]["id"], "positive");
+        assert!(
+            result["applied"][0]["mutationEnvelope"].is_object(),
+            "apply {command} omitted per-op envelope: {result}"
+        );
+        assert_strictly_valid(&output, &format!("apply {command}"));
+    }
+
+    for mode in ["serve", "mcp"] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+            .arg(mode)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap_or_else(|error| panic!("spawn {mode}: {error}"));
+        let mut stdin = child.stdin.take().expect("surface stdin");
+        let mut reader = BufReader::new(child.stdout.take().expect("surface stdout"));
+        for (index, (family, fixture, command, args)) in cases.iter().enumerate() {
+            let output = temp.join(format!("{mode}-{index}.{family}"));
+            let open_arguments = json!({"file": fixture, "out": output});
+            let open_request = if mode == "serve" {
+                json!({"jsonrpc":"2.0","id":index * 3 + 1,"method":"open","params":open_arguments})
+            } else {
+                json!({"jsonrpc":"2.0","id":index * 3 + 1,"method":"tools/call","params":{"name":"open","arguments":open_arguments}})
+            };
+            let opened = jsonl_roundtrip(&mut stdin, &mut reader, &open_request);
+            let open_result = if mode == "serve" {
+                &opened["result"]
+            } else {
+                &opened["result"]["structuredContent"]
+            };
+            let session = open_result["sessionId"].as_str().unwrap_or_else(|| {
+                panic!(
+                    "{mode} open failed for {command}: request={open_request}; response={opened}"
+                )
+            });
+            let op_arguments =
+                json!({"session":session,"id":"positive","command":command,"args":args});
+            let op_request = if mode == "serve" {
+                json!({"jsonrpc":"2.0","id":index * 3 + 2,"method":"op","params":op_arguments})
+            } else {
+                json!({"jsonrpc":"2.0","id":index * 3 + 2,"method":"tools/call","params":{"name":"op","arguments":op_arguments}})
+            };
+            let mutated = jsonl_roundtrip(&mut stdin, &mut reader, &op_request);
+            let op_result = if mode == "serve" {
+                &mutated["result"]
+            } else {
+                &mutated["result"]["structuredContent"]
+            };
+            assert!(
+                op_result["mutationEnvelope"].is_object(),
+                "{mode} {command} failed or omitted its envelope: request={op_request}; response={mutated}"
+            );
+
+            let commit_arguments = json!({"session":session});
+            let commit_request = if mode == "serve" {
+                json!({"jsonrpc":"2.0","id":index * 3 + 3,"method":"commit","params":commit_arguments})
+            } else {
+                json!({"jsonrpc":"2.0","id":index * 3 + 3,"method":"tools/call","params":{"name":"commit","arguments":commit_arguments}})
+            };
+            let committed = jsonl_roundtrip(&mut stdin, &mut reader, &commit_request);
+            let commit_result = if mode == "serve" {
+                &committed["result"]
+            } else {
+                &committed["result"]["structuredContent"]
+            };
+            assert_eq!(
+                commit_result["validated"], true,
+                "{mode} {command} commit failed; op={mutated}; commit={committed}"
+            );
+            assert_eq!(commit_result["opsCount"], 1);
+            assert!(commit_result["applied"][0]["mutationEnvelope"].is_object());
+            assert_strictly_valid(&output, &format!("{mode} {command}"));
+        }
+        drop(stdin);
+        assert!(child.wait().expect("wait for positive server").success());
+    }
+
+    let _ = fs::remove_dir_all(temp);
+}
+
+#[test]
+fn five_op_ref_batch_pins_the_fully_resolved_dry_run_plan() {
+    let temp = temp_dir("five-op-refs");
+    let input = temp.join("new-workbook.xlsx");
     let output = temp.join("output.xlsx");
     let ops = temp.join("ops.json");
-    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("copy workbook");
     write_ops(
         &ops,
         json!([
+            {"id": "workbook", "command": "xlsx scaffold", "args": {}},
             {"id": "data-sheet", "command": "xlsx sheets add", "args": {"name": "Data"}},
             {
-                "id": "header-cell",
-                "command": "xlsx cells set",
+                "id": "data-range",
+                "command": "xlsx ranges set",
                 "args": {
                     "sheet": {"$ref": "data-sheet.destination.name"},
-                    "cell": "A1",
-                    "value": "Revenue"
+                    "range": "A1:B2",
+                    "values": "[[\"Metric\",\"Value\"],[\"Revenue\",42]]"
+                }
+            },
+            {
+                "id": "data-table",
+                "command": "xlsx tables create",
+                "args": {
+                    "sheet": {"$ref": "data-sheet.destination.name"},
+                    "range": {"$ref": "data-range.destination.range"},
+                    "table": "DataTable"
+                }
+            },
+            {
+                "id": "data-note",
+                "command": "xlsx comments add",
+                "args": {
+                    "sheet": {"$ref": "data-sheet.destination.name"},
+                    "cell": "A2",
+                    "author": "Batch proof",
+                    "text": "Created after the referenced range and table"
                 }
             }
         ]),
@@ -266,7 +632,10 @@ fn apply_resolves_named_operation_refs_and_dry_run_returns_the_resolved_plan() {
     let dry_json = json_stdout(&dry);
     assert_eq!(dry_json["dryRun"], true);
     assert_eq!(dry_json["committed"], false);
-    assert_eq!(dry_json["plan"][1]["resolvedArgs"]["sheet"], "Data");
+    assert_eq!(dry_json["opsCount"], 5);
+    assert_eq!(dry_json["plan"][2]["resolvedArgs"]["sheet"], "Data");
+    assert_eq!(dry_json["plan"][3]["resolvedArgs"]["range"], "A1:B2");
+    assert_eq!(dry_json["plan"][4]["resolvedArgs"]["sheet"], "Data");
     assert!(
         !serde_json::to_string(&dry_json["plan"])
             .unwrap()
@@ -274,6 +643,27 @@ fn apply_resolves_named_operation_refs_and_dry_run_returns_the_resolved_plan() {
         "resolved dry-run plan must not retain reference objects"
     );
     assert!(!output.exists(), "dry-run must not publish output");
+    let plan_projection = json!({
+        "schemaVersion": dry_json["schemaVersion"],
+        "dryRun": dry_json["dryRun"],
+        "committed": dry_json["committed"],
+        "opsCount": dry_json["opsCount"],
+        "plan": dry_json["plan"]
+            .as_array()
+            .expect("dry-run plan")
+            .iter()
+            .map(|operation| json!({
+                "index": operation["index"],
+                "id": operation.get("id").cloned().unwrap_or(Value::Null),
+                "command": operation["command"],
+                "resolvedArgs": operation["resolvedArgs"],
+            }))
+            .collect::<Vec<_>>(),
+    });
+    compare_or_update_golden(
+        Path::new("testdata/golden/batch-engine/five-op-resolved-plan.json"),
+        &plan_projection,
+    );
 
     let applied = run(&[
         "--json",
@@ -290,9 +680,12 @@ fn apply_resolves_named_operation_refs_and_dry_run_returns_the_resolved_plan() {
         String::from_utf8_lossy(&applied.stderr)
     );
     let applied_json = json_stdout(&applied);
-    assert_eq!(applied_json["opsCount"], 2);
-    assert_eq!(applied_json["applied"][0]["id"], "data-sheet");
-    assert_eq!(applied_json["applied"][1]["id"], "header-cell");
+    assert_eq!(applied_json["opsCount"], 5);
+    assert_eq!(applied_json["applied"][0]["id"], "workbook");
+    assert_eq!(applied_json["applied"][1]["id"], "data-sheet");
+    assert_eq!(applied_json["applied"][2]["id"], "data-range");
+    assert_eq!(applied_json["applied"][3]["id"], "data-table");
+    assert_eq!(applied_json["applied"][4]["id"], "data-note");
 
     let readback = run(&[
         "--json",
@@ -303,21 +696,14 @@ fn apply_resolves_named_operation_refs_and_dry_run_returns_the_resolved_plan() {
         "--sheet",
         "Data",
         "--range",
-        "A1",
+        "A1:B2",
     ]);
     assert!(readback.status.success());
-    assert_eq!(json_stdout(&readback)["values"][0][0], "Revenue");
-    let strict = run(&[
-        "--json",
-        "validate",
-        "--strict",
-        output.to_str().expect("output path"),
-    ]);
-    assert!(
-        strict.status.success(),
-        "strict validation: {}",
-        String::from_utf8_lossy(&strict.stderr)
+    assert_eq!(
+        json_stdout(&readback)["values"],
+        json!([["Metric", "Value"], ["Revenue", 42]])
     );
+    assert_strictly_valid(&output, "five-op referenced workbook");
 
     let _ = fs::remove_dir_all(temp);
 }
@@ -364,7 +750,203 @@ fn unresolved_ref_discards_the_stage_and_preserves_an_existing_output() {
             .unwrap()
             .contains("unresolved $ref")
     );
+    let message = error["message"].as_str().expect("reference error message");
+    assert!(
+        message.contains("op 1 (xlsx cells set) failed"),
+        "{message}"
+    );
+    assert!(message.contains("missing.destination.name"), "{message}");
+    assert!(message.contains("operation id \"missing\""), "{message}");
     assert_eq!(fs::read(&output).expect("read preserved output"), before);
+
+    let _ = fs::remove_dir_all(temp);
+}
+
+#[test]
+fn self_and_cyclic_refs_fail_before_publish_with_named_operations() {
+    let temp = temp_dir("cyclic-refs");
+    let input = temp.join("input.xlsx");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("copy input");
+
+    let cases = [
+        (
+            "self",
+            json!([{
+                "id": "self",
+                "command": "xlsx cells set",
+                "args": {
+                    "sheet": {"$ref": "self.destination.name"},
+                    "cell": "A1",
+                    "value": "must not publish"
+                }
+            }]),
+            "operation id \"self\" has not completed",
+        ),
+        (
+            "cycle",
+            json!([
+                {
+                    "id": "first",
+                    "command": "xlsx cells set",
+                    "args": {
+                        "sheet": {"$ref": "second.destination.name"},
+                        "cell": "A1",
+                        "value": "first"
+                    }
+                },
+                {
+                    "id": "second",
+                    "command": "xlsx cells set",
+                    "args": {
+                        "sheet": {"$ref": "first.destination.name"},
+                        "cell": "A2",
+                        "value": "second"
+                    }
+                }
+            ]),
+            "operation id \"second\" has not completed",
+        ),
+    ];
+
+    for (label, operations, expected) in cases {
+        let ops = temp.join(format!("{label}.json"));
+        let output = temp.join(format!("{label}.xlsx"));
+        write_ops(&ops, operations);
+        let failed = run(&[
+            "--json",
+            "apply",
+            input.to_str().expect("input path"),
+            "--ops",
+            ops.to_str().expect("ops path"),
+            "--out",
+            output.to_str().expect("output path"),
+        ]);
+        assert!(
+            !failed.status.success(),
+            "{label} reference unexpectedly passed"
+        );
+        let error = json_error(&failed);
+        let message = error["message"].as_str().expect("reference error message");
+        assert!(message.contains(expected), "{label}: {error}");
+        assert!(!output.exists(), "{label} reference published output");
+    }
+
+    let _ = fs::remove_dir_all(temp);
+}
+
+#[test]
+fn middle_op_failure_preserves_output_and_in_place_hashes_and_cleans_stages() {
+    let temp = temp_dir("atomic-middle-failure");
+    let child_temp = temp.join("child-temp");
+    fs::create_dir_all(&child_temp).expect("create isolated child temp root");
+    let input = temp.join("input.xlsx");
+    let output = temp.join("existing-output.xlsx");
+    let ops = temp.join("ops.json");
+    fs::copy("testdata/xlsx/minimal-workbook/workbook.xlsx", &input).expect("copy input");
+    fs::copy(&input, &output).expect("seed existing output");
+    write_ops(
+        &ops,
+        json!([
+            {
+                "id": "first",
+                "command": "xlsx cells set",
+                "args": {"sheet": "Sheet1", "cell": "A1", "value": "staged only"}
+            },
+            {
+                "id": "bad-selector",
+                "command": "xlsx cells set",
+                "args": {"sheet": "Missing sheet", "cell": "A1", "value": "fail"}
+            },
+            {
+                "id": "never-runs",
+                "command": "xlsx cells set",
+                "args": {"sheet": "Sheet1", "cell": "A2", "value": "unreachable"}
+            }
+        ]),
+    );
+    let input_hash = sha256(&input);
+    let output_hash = sha256(&output);
+
+    let failed_output = run_with_temp_root(
+        &[
+            "--json",
+            "apply",
+            input.to_str().expect("input path"),
+            "--ops",
+            ops.to_str().expect("ops path"),
+            "--out",
+            output.to_str().expect("output path"),
+        ],
+        &child_temp,
+    );
+    assert!(!failed_output.status.success());
+    let output_error = json_error(&failed_output);
+    assert!(
+        output_error["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("op 1 (xlsx cells set) failed")),
+        "output failure did not name the middle op: error={output_error}; plan={}",
+        fs::read_to_string(&ops).expect("read failing plan")
+    );
+    assert_eq!(
+        sha256(&input),
+        input_hash,
+        "source changed during --out failure"
+    );
+    assert_eq!(sha256(&output), output_hash, "existing output was replaced");
+    assert_eq!(
+        fs::read_dir(&child_temp)
+            .expect("read isolated child temp root")
+            .count(),
+        0,
+        "failed --out batch leaked a session stage"
+    );
+
+    let failed_in_place = run_with_temp_root(
+        &[
+            "--json",
+            "apply",
+            input.to_str().expect("input path"),
+            "--ops",
+            ops.to_str().expect("ops path"),
+            "--in-place",
+        ],
+        &child_temp,
+    );
+    assert!(!failed_in_place.status.success());
+    assert_eq!(
+        sha256(&input),
+        input_hash,
+        "failed --in-place batch changed the input package"
+    );
+    assert_eq!(
+        fs::read_dir(&child_temp)
+            .expect("read isolated child temp root")
+            .count(),
+        0,
+        "failed --in-place batch leaked a session stage"
+    );
+
+    let implicit_in_place = run(&[
+        "--json",
+        "apply",
+        input.to_str().expect("input path"),
+        "--ops",
+        ops.to_str().expect("ops path"),
+    ]);
+    assert!(!implicit_in_place.status.success());
+    assert_eq!(
+        sha256(&input),
+        input_hash,
+        "apply mutated without --in-place"
+    );
+    assert!(
+        json_error(&implicit_in_place)["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("--out") && message.contains("--in-place")),
+        "missing explicit destination error: {}",
+        json_error(&implicit_in_place)
+    );
 
     let _ = fs::remove_dir_all(temp);
 }
@@ -455,6 +1037,79 @@ fn relative_input_paths_are_ops_local_and_cannot_escape_the_ops_directory() {
             .contains("escapes the ops directory")
     );
     assert!(!unsafe_output.exists());
+
+    let unsafe_with_opt_in = run(&[
+        "--json",
+        "apply",
+        virtual_input.to_str().expect("virtual input"),
+        "--ops",
+        unsafe_ops.to_str().expect("unsafe ops"),
+        "--out",
+        unsafe_output.to_str().expect("unsafe output"),
+        "--allow-absolute-paths",
+    ]);
+    assert!(
+        !unsafe_with_opt_in.status.success(),
+        "absolute-path opt-in must not permit relative parent traversal"
+    );
+    assert!(!unsafe_output.exists());
+
+    let absolute_ops = project.join("absolute.json");
+    let absolute_asset = project.join("asset.png");
+    write_ops(
+        &absolute_ops,
+        json!([
+            {"command": "pptx scaffold", "args": {"title": "Absolute path opt-in"}},
+            {
+                "command": "pptx place image",
+                "args": {
+                    "slide": 1,
+                    "image": absolute_asset,
+                    "x": 0,
+                    "y": 0,
+                    "cx": 1000000,
+                    "cy": 1000000
+                }
+            }
+        ]),
+    );
+    let absolute_output = temp.join("absolute.pptx");
+    let absolute_denied = run(&[
+        "--json",
+        "apply",
+        virtual_input.to_str().expect("virtual input"),
+        "--ops",
+        absolute_ops.to_str().expect("absolute ops"),
+        "--out",
+        absolute_output.to_str().expect("absolute output"),
+    ]);
+    assert!(!absolute_denied.status.success());
+    assert!(
+        json_error(&absolute_denied)["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("--allow-absolute-paths")),
+        "absolute path denial: {}",
+        json_error(&absolute_denied)
+    );
+    assert!(!absolute_output.exists());
+
+    let absolute_allowed = run(&[
+        "--json",
+        "apply",
+        virtual_input.to_str().expect("virtual input"),
+        "--ops",
+        absolute_ops.to_str().expect("absolute ops"),
+        "--out",
+        absolute_output.to_str().expect("absolute output"),
+        "--allow-absolute-paths",
+    ]);
+    assert!(
+        absolute_allowed.status.success(),
+        "absolute path opt-in failed; stdout={}; stderr={}",
+        String::from_utf8_lossy(&absolute_allowed.stdout),
+        String::from_utf8_lossy(&absolute_allowed.stderr)
+    );
+    assert_strictly_valid(&absolute_output, "absolute-path opt-in deck");
 
     let _ = fs::remove_dir_all(temp);
 }
