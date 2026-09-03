@@ -100,6 +100,7 @@ pub(crate) fn template_apply(file: &str, args: &[String]) -> CliResult<Value> {
             "--from",
             "--tokens",
             "--profile",
+            "--brand",
             "--out",
             "--backup",
         ],
@@ -114,14 +115,10 @@ pub(crate) fn template_apply(file: &str, args: &[String]) -> CliResult<Value> {
             "--no-validate",
         ],
     )?;
-    let target_kind = resolve_template_kind(
-        file,
-        parse_string_flag(args, "--for")?.as_deref(),
-        "template apply supports PPTX/POTX and XLSX/XLTX files",
-    )?;
     let from = parse_string_flag(args, "--from")?;
     let tokens_path = parse_string_flag(args, "--tokens")?;
     let profile_path = parse_string_flag(args, "--profile")?;
+    let brand_path = parse_string_flag(args, "--brand")?;
     let out = parse_string_flag(args, "--out")?;
     let backup = parse_string_flag(args, "--backup")?;
     let dry_run = has_flag(args, "--dry-run");
@@ -129,15 +126,50 @@ pub(crate) fn template_apply(file: &str, args: &[String]) -> CliResult<Value> {
     let no_validate = has_flag(args, "--no-validate");
     validate_xlsx_mutation_output_flags(out.as_deref(), in_place, backup.as_deref(), dry_run)?;
 
-    let source_count = [&from, &tokens_path, &profile_path]
+    let source_count = [&from, &tokens_path, &profile_path, &brand_path]
         .iter()
         .filter(|value| value.as_deref().is_some_and(|path| !path.trim().is_empty()))
         .count();
     if source_count != 1 {
         return Err(CliError::invalid_args(
-            "must specify exactly one of --from, --tokens, or --profile",
+            "must specify exactly one of --from, --tokens, --profile, or --brand",
         ));
     }
+
+    if let Some(brand_path) = brand_path.as_deref() {
+        let has_target_flag = args.iter().any(|arg| {
+            matches!(
+                arg.split_once('=').map_or(arg.as_str(), |(flag, _)| flag),
+                "--target-colors"
+                    | "--target-fonts"
+                    | "--target-charts"
+                    | "--target-text-styles"
+                    | "--target-ranges"
+            )
+        });
+        if has_target_flag {
+            return Err(CliError::invalid_args(
+                "--brand applies the complete brand kit and cannot be combined with --target-* flags",
+            ));
+        }
+        return crate::brand::template_apply_brand(
+            file,
+            brand_path,
+            crate::brand::BrandApplyOptions {
+                out: out.as_deref(),
+                backup: backup.as_deref(),
+                dry_run,
+                in_place,
+                no_validate,
+            },
+        );
+    }
+
+    let target_kind = resolve_template_kind(
+        file,
+        parse_string_flag(args, "--for")?.as_deref(),
+        "template apply supports PPTX/POTX and XLSX/XLTX files",
+    )?;
 
     let target_colors = has_flag(args, "--target-colors");
     let target_fonts = has_flag(args, "--target-fonts");
@@ -1121,13 +1153,78 @@ fn is_valid_text_style_color_ref(value: &str) -> bool {
     )
 }
 
+#[allow(dead_code)]
+pub(crate) fn package_theme(file: &str, target_kind: &str) -> CliResult<Value> {
+    let part = template_theme_parts(file, target_kind)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            CliError::unexpected(format!("no theme part found for {target_kind} package"))
+        })?;
+    parse_theme_xml(&zip_text(file, &part)?)
+        .ok_or_else(|| CliError::unexpected(format!("failed to parse theme part /{part}")))
+}
+
+pub(crate) fn brand_theme_overrides(
+    file: &str,
+    target_kind: &str,
+    palette: &crate::palette::ThemePalette,
+    heading_font: &str,
+    body_font: &str,
+) -> CliResult<BTreeMap<String, String>> {
+    let color_values = [
+        palette.dk1.to_hex(),
+        palette.lt1.to_hex(),
+        palette.dk2.to_hex(),
+        palette.lt2.to_hex(),
+        palette.accent1.to_hex(),
+        palette.accent2.to_hex(),
+        palette.accent3.to_hex(),
+        palette.accent4.to_hex(),
+        palette.accent5.to_hex(),
+        palette.accent6.to_hex(),
+        palette.hlink.to_hex(),
+        palette.fol_hlink.to_hex(),
+    ];
+    let colors = TEMPLATE_COLOR_ORDER
+        .iter()
+        .zip(color_values)
+        .map(|((ooxml_name, json_name), hex)| ThemeColorUpdate {
+            ooxml_name,
+            json_name,
+            hex,
+        })
+        .collect::<Vec<_>>();
+    let fonts = ThemeFontUpdates {
+        major_font: Some(heading_font.to_string()),
+        minor_font: Some(body_font.to_string()),
+    };
+    let mut overrides = BTreeMap::new();
+    for part in template_theme_parts(file, target_kind)? {
+        let xml = zip_text(file, &part)?;
+        let current = parse_theme_xml(&xml).unwrap_or_else(|| json!({}));
+        let applied = apply_theme_updates_to_part(
+            &xml,
+            &format!("/{}", part.trim_start_matches('/')),
+            &current,
+            &colors,
+            &fonts,
+        )?;
+        if applied.updated_xml != xml {
+            overrides.insert(part, applied.updated_xml);
+        }
+    }
+    Ok(overrides)
+}
+
 fn template_theme_parts(file: &str, target_kind: &str) -> CliResult<Vec<String>> {
     let prefix = match target_kind {
         "pptx" => "ppt/theme/",
         "xlsx" => "xl/theme/",
+        "docx" => "word/theme/",
         other => {
             return Err(CliError::unsupported_type(format!(
-                "template apply supports PPTX/POTX and XLSX/XLTX files (detected: {other})"
+                "brand application supports PPTX, XLSX, and DOCX files (detected: {other})"
             )));
         }
     };

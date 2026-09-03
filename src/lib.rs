@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 mod agent_aliases;
 mod agent_triage;
 mod apply;
+mod brand;
 mod capabilities;
 mod cli_args;
 mod cli_core;

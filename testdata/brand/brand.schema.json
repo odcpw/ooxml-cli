@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ooxml-cli.dev/schemas/brand.schema.json",
+  "title": "OOXML Brand Kit",
+  "description": "Deterministic design tokens shared by PPTX, XLSX, and DOCX packages.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "colors", "fonts"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": { "type": "string", "minLength": 1 },
+    "colors": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["seed"],
+          "properties": { "seed": { "$ref": "#/$defs/color" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dark1", "light1", "dark2", "light2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hyperlink", "followedHyperlink"],
+          "properties": {
+            "dark1": { "$ref": "#/$defs/color" },
+            "light1": { "$ref": "#/$defs/color" },
+            "dark2": { "$ref": "#/$defs/color" },
+            "light2": { "$ref": "#/$defs/color" },
+            "accent1": { "$ref": "#/$defs/color" },
+            "accent2": { "$ref": "#/$defs/color" },
+            "accent3": { "$ref": "#/$defs/color" },
+            "accent4": { "$ref": "#/$defs/color" },
+            "accent5": { "$ref": "#/$defs/color" },
+            "accent6": { "$ref": "#/$defs/color" },
+            "hyperlink": { "$ref": "#/$defs/color" },
+            "followedHyperlink": { "$ref": "#/$defs/color" }
+          }
+        }
+      ]
+    },
+    "fonts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["heading", "body"],
+      "properties": {
+        "heading": { "type": "string", "minLength": 1 },
+        "body": { "type": "string", "minLength": 1 },
+        "mono": { "type": "string", "minLength": 1 },
+        "fallbacks": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      }
+    },
+    "logo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "placement": { "enum": ["top-left", "top-right", "bottom-left", "bottom-right"] },
+        "widthEmu": { "type": "integer", "minimum": 1 },
+        "heightEmu": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "footerText": { "type": "string", "minLength": 1 },
+    "slideNumberPolicy": { "enum": ["none", "all", "except-title"] },
+    "pageSetup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "orientation": { "enum": ["portrait", "landscape"] },
+        "paperSize": { "enum": ["letter", "A4"] },
+        "slideSize": { "enum": ["screen16x9", "screen4x3", "A4"] },
+        "margins": { "type": "object" }
+      }
+    },
+    "tableStyle": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "color": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" }
+  }
+}
