@@ -230,9 +230,14 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
         }
         [cmd, rest @ ..] if cmd == "agent-triage" => crate::agent_triage::agent_triage(rest),
         [cmd, schema_flag, schema, rest @ ..]
-            if cmd == "capabilities" && schema_flag == "--schema" && schema == "brand" =>
+            if cmd == "capabilities" && schema_flag == "--schema" =>
         {
-            crate::brand::brand_schema_command(rest)
+            if schema == "brand" {
+                crate::brand::brand_schema_command(rest)
+            } else {
+                reject_unknown_flags(rest, &[], &[])?;
+                crate::build::schema_by_name(schema).map_err(CliError::invalid_args)
+            }
         }
         [cmd, rest @ ..] if cmd == "capabilities" => capabilities::capabilities(rest),
         [cmd, file, rest @ ..] if cmd == "apply" => apply(file, rest),

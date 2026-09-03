@@ -4,6 +4,7 @@ use ooxml_cli::build::{
 };
 use serde_json::{Map, Value, json};
 use std::collections::BTreeSet;
+use std::process::Command;
 
 const SCHEMA_INDEX: &str = include_str!("../testdata/golden/build-spec/schema-index.json");
 
@@ -43,6 +44,24 @@ fn published_family_schemas_match_the_pinned_index() {
             .collect::<Vec<_>>(),
     );
     assert_eq!(actual, expected, "published build schema index drifted");
+}
+
+#[test]
+fn capabilities_publishes_each_pinned_build_schema() {
+    for family in BuildFamily::ALL {
+        let output = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+            .args(["--json", "capabilities", "--schema", family.schema_name()])
+            .output()
+            .expect("run capabilities schema command");
+        assert!(
+            output.status.success(),
+            "{} schema stderr: {}",
+            family,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let actual: Value = serde_json::from_slice(&output.stdout).expect("schema JSON stdout");
+        assert_eq!(actual, schema_by_name(family.schema_name()).unwrap());
+    }
 }
 
 #[test]
