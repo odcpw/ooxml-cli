@@ -367,11 +367,27 @@ fn assert_strict_valid(file: &Path) {
 
 fn assert_sdk_valid_if_available(file: &Path) {
     let validator = repo_path("tools/openxml-validator/bin/Release/net8.0/openxml-validator.dll");
-    let dotnet = dirs_home().join("dotnet/dotnet");
-    if !validator.is_file() || !dotnet.is_file() {
+    if !validator.is_file() {
         eprintln!(
-            "SKIP Open XML SDK: validator={} dotnet={}",
-            validator.display(),
+            "SKIP Open XML SDK: validator is unavailable at {}",
+            validator.display()
+        );
+        return;
+    }
+    let Some(profile) = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }) else {
+        eprintln!("SKIP Open XML SDK: user profile environment variable is unavailable");
+        return;
+    };
+    let dotnet = PathBuf::from(profile)
+        .join("dotnet")
+        .join(if cfg!(windows) {
+            "dotnet.exe"
+        } else {
+            "dotnet"
+        });
+    if !dotnet.is_file() {
+        eprintln!(
+            "SKIP Open XML SDK: dotnet host is unavailable at {}",
             dotnet.display()
         );
         return;
@@ -425,12 +441,6 @@ fn path(path: &Path) -> &str {
 
 fn repo_path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative)
-}
-
-fn dirs_home() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .expect("HOME is set")
 }
 
 fn temp_dir(label: &str) -> PathBuf {
