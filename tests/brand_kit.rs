@@ -374,17 +374,15 @@ fn assert_sdk_valid_if_available(file: &Path) {
         );
         return;
     }
-    let Some(profile) = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }) else {
-        eprintln!("SKIP Open XML SDK: user profile environment variable is unavailable");
+    let Some(dotnet_root) = std::env::var_os("DOTNET_ROOT") else {
+        eprintln!("SKIP Open XML SDK: DOTNET_ROOT is unavailable");
         return;
     };
-    let dotnet = PathBuf::from(profile)
-        .join("dotnet")
-        .join(if cfg!(windows) {
-            "dotnet.exe"
-        } else {
-            "dotnet"
-        });
+    let dotnet = PathBuf::from(dotnet_root).join(if cfg!(windows) {
+        "dotnet.exe"
+    } else {
+        "dotnet"
+    });
     if !dotnet.is_file() {
         eprintln!(
             "SKIP Open XML SDK: dotnet host is unavailable at {}",
