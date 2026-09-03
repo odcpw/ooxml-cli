@@ -1,0 +1,1751 @@
+{
+  "build": {
+    "checkSummary": {
+      "errors": 0,
+      "info": 0,
+      "total": 3,
+      "warnings": 3
+    },
+    "layoutQa": null,
+    "nodeMap": {
+      "/": {
+        "opId": "document",
+        "selector": "package",
+        "specId": null
+      },
+      "/metadata": {
+        "opId": "workbook-metadata",
+        "selector": "package",
+        "specId": null
+      },
+      "/sheets/0": {
+        "opId": "sheet-1-data",
+        "selector": "range:A1:E5",
+        "specId": "sales"
+      },
+      "/sheets/0/charts/0": {
+        "opId": "sheet-1-chart-1",
+        "selector": "sheet:Sales",
+        "specId": "units-chart"
+      },
+      "/sheets/0/columns/0": {
+        "opId": "sheet-1-column-1-width",
+        "selector": "range:A:A",
+        "specId": null
+      },
+      "/sheets/0/columns/1": {
+        "opId": "sheet-1-column-2-width",
+        "selector": "range:B:B",
+        "specId": null
+      },
+      "/sheets/0/columns/2": {
+        "opId": "sheet-1-column-3-width",
+        "selector": "range:C:C",
+        "specId": null
+      },
+      "/sheets/0/columns/3": {
+        "opId": "sheet-1-column-4-width",
+        "selector": "range:D:D",
+        "specId": null
+      },
+      "/sheets/0/columns/4": {
+        "opId": "sheet-1-column-5-width",
+        "selector": "range:E:E",
+        "specId": null
+      },
+      "/sheets/0/comments/0": {
+        "opId": "sheet-1-comment-1",
+        "selector": "comment:0",
+        "specId": null
+      },
+      "/sheets/0/conditionalFormats/0": {
+        "opId": "sheet-1-conditional-format-1",
+        "selector": "sheet:Sales",
+        "specId": null
+      },
+      "/sheets/0/dataValidations/0": {
+        "opId": "sheet-1-data-validation-1",
+        "selector": "sheet:Sales",
+        "specId": null
+      },
+      "/sheets/0/freeze": {
+        "opId": "sheet-1-freeze",
+        "selector": "sheet:Sales",
+        "specId": null
+      },
+      "/sheets/0/headerStyle": {
+        "opId": "sheet-1-header-style",
+        "selector": "range:A1:E1",
+        "specId": null
+      },
+      "/sheets/0/hyperlinks/0": {
+        "opId": "sheet-1-hyperlink-1",
+        "selector": "sheet:Sales",
+        "specId": null
+      },
+      "/sheets/0/names/0": {
+        "opId": "sheet-1-name-1",
+        "selector": "name:RevenueData",
+        "specId": null
+      },
+      "/sheets/0/printSetup": {
+        "opId": "sheet-1-print",
+        "selector": "sheet:Sales",
+        "specId": null
+      },
+      "/sheets/0/tabColor": {
+        "opId": "sheet-1-tab-color",
+        "selector": "sheet:Sales",
+        "specId": null
+      },
+      "/sheets/0/tables/0": {
+        "opId": "sheet-1-table-1",
+        "selector": "table:SalesTable",
+        "specId": "sales-table"
+      },
+      "/sheets/1": {
+        "opId": "sheet-2-data",
+        "selector": "range:A1:F5",
+        "specId": "targets"
+      },
+      "/sheets/1/columns/0": {
+        "opId": "sheet-2-column-1-autofit",
+        "selector": "range:A:A",
+        "specId": null
+      },
+      "/sheets/1/columns/1": {
+        "opId": "sheet-2-column-2-autofit",
+        "selector": "range:B:B",
+        "specId": null
+      },
+      "/sheets/1/columns/2": {
+        "opId": "sheet-2-column-3-width",
+        "selector": "range:C:C",
+        "specId": null
+      },
+      "/sheets/1/columns/3": {
+        "opId": "sheet-2-column-4-width",
+        "selector": "range:D:D",
+        "specId": null
+      },
+      "/sheets/1/columns/4": {
+        "opId": "sheet-2-column-5-width",
+        "selector": "range:E:E",
+        "specId": null
+      },
+      "/sheets/1/columns/5": {
+        "opId": "sheet-2-column-6-width",
+        "selector": "range:F:F",
+        "specId": null
+      },
+      "/sheets/1/freeze": {
+        "opId": "sheet-2-freeze",
+        "selector": "sheet:Targets",
+        "specId": null
+      },
+      "/sheets/1/headerStyle": {
+        "opId": "sheet-2-header-style",
+        "selector": "range:A1:F1",
+        "specId": null
+      },
+      "/sheets/1/tabColor": {
+        "opId": "sheet-2-tab-color",
+        "selector": "sheet:Targets",
+        "specId": null
+      },
+      "/sheets/1/tables/0": {
+        "opId": "sheet-2-table-1",
+        "selector": "table:TargetsTable",
+        "specId": "targets-table"
+      }
+    },
+    "operations": [
+      {
+        "command": "xlsx scaffold",
+        "destination": {
+          "handle": "H:xlsx/package:package",
+          "kind": "package",
+          "partUri": "/",
+          "primarySelector": "package"
+        },
+        "id": "document",
+        "index": 0,
+        "readbackKeys": [
+          "conformanceCommand",
+          "created",
+          "family",
+          "output",
+          "rangeSetCommandTemplate",
+          "readbackCommand",
+          "sheet",
+          "sheetCount",
+          "sheetId",
+          "sheets",
+          "stylesPart",
+          "theme",
+          "themePart",
+          "themeSeed",
+          "validateCommand",
+          "validated",
+          "workbookPart",
+          "worksheetPart"
+        ],
+        "readbackSha256": "sha256:1449f18f2b0f5a5362d40528f2c83469dff3e9bf7d080c0e11b3cf5d0f63c470",
+        "resolvedArgs": {
+          "sheet": [
+            "Sales",
+            "Targets"
+          ],
+          "theme-seed": "2563EB"
+        }
+      },
+      {
+        "command": "xlsx ranges set",
+        "destination": {
+          "handle": "H:xlsx/range:range/A1/E5",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:A1:E5"
+        },
+        "id": "sheet-1-data",
+        "index": 1,
+        "readbackKeys": [
+          "anchor",
+          "cellsExtractCommand",
+          "cleared",
+          "cols",
+          "created",
+          "dataFormat",
+          "destination",
+          "dryRun",
+          "file",
+          "formulaCount",
+          "majorDimension",
+          "nullPolicy",
+          "output",
+          "range",
+          "rangesExportCommand",
+          "rows",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "skipped",
+          "updated",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:b372a15058318d100b5d9b695c2d518c604b529adaea443a993490e494c3347a",
+        "resolvedArgs": {
+          "anchor": "A1",
+          "data-format": "json",
+          "sheet": "Sales",
+          "values": "[[\"Region\",\"Units\",\"Unit Price\",\"Revenue\",\"Margin\"],[\"North\",12.0,125.5,{\"formula\":\"B2*C2\"},0.25],[\"Central\",9.0,140.0,{\"formula\":\"B3*C3\"},0.2],[\"South\",15.0,118.75,{\"formula\":\"B4*C4\"},0.3],[\"West\",11.0,132.0,{\"formula\":\"B5*C5\"},0.22]]"
+        }
+      },
+      {
+        "command": "xlsx sheets set-tab-color",
+        "destination": {
+          "handle": "H:xlsx/sheet:sheet/Sales",
+          "kind": "sheet",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "sheet:Sales"
+        },
+        "id": "sheet-1-tab-color",
+        "index": 2,
+        "readbackKeys": [
+          "destination",
+          "dryRun",
+          "file",
+          "output",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "sheetsListCommand",
+          "tabColor",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:0db5f9787749b92524aca9b7a1ebed39d740388e93947700edd7223ffc4e5252",
+        "resolvedArgs": {
+          "color": "2563EB",
+          "sheet": "Sales"
+        }
+      },
+      {
+        "command": "xlsx freeze set",
+        "destination": {
+          "handle": "H:xlsx/sheet:sheet/Sales",
+          "kind": "sheet",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "sheet:Sales"
+        },
+        "id": "sheet-1-freeze",
+        "index": 3,
+        "readbackKeys": [
+          "action",
+          "dryRun",
+          "file",
+          "output",
+          "sheet",
+          "sheetNumber",
+          "showCommand",
+          "state",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:4f01f488bc9ae1f1ec8f75d9dfa037b7f16c02f4c47a831c2a2c0edb37652e98",
+        "resolvedArgs": {
+          "rows": "1",
+          "sheet": "Sales"
+        }
+      },
+      {
+        "command": "xlsx ranges set-style",
+        "destination": {
+          "handle": "H:xlsx/range:range/A1/E1",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:A1:E1"
+        },
+        "id": "sheet-1-header-style",
+        "index": 4,
+        "readbackKeys": [
+          "cellsExtractCommand",
+          "cols",
+          "created",
+          "createdStyles",
+          "destination",
+          "dryRun",
+          "file",
+          "output",
+          "preset",
+          "range",
+          "rangesExportCommand",
+          "rows",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "styleIndexes",
+          "updated",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:bd1f86477a47f8172ee75ea183249d06f305463b71bcfa160f280af8ee111375",
+        "resolvedArgs": {
+          "preset": "header",
+          "range": "A1:E1",
+          "sheet": "Sales"
+        }
+      },
+      {
+        "command": "xlsx colwidths set",
+        "destination": {
+          "handle": "H:xlsx/range:range/A/A",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:A:A"
+        },
+        "id": "sheet-1-column-1-width",
+        "index": 5,
+        "readbackKeys": [
+          "columns",
+          "colwidthsShowCommand",
+          "dryRun",
+          "file",
+          "maxColumn",
+          "minColumn",
+          "output",
+          "range",
+          "sheet",
+          "sheetNumber",
+          "validateCommand",
+          "width"
+        ],
+        "readbackSha256": "sha256:cafdd57ebe8e7c4f25bd2a8fbf95d1263157e2f02306b47eb1b835b2615df386",
+        "resolvedArgs": {
+          "range": "A:A",
+          "sheet": "Sales",
+          "width": "18.0"
+        }
+      },
+      {
+        "command": "xlsx colwidths set",
+        "destination": {
+          "handle": "H:xlsx/range:range/B/B",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:B:B"
+        },
+        "id": "sheet-1-column-2-width",
+        "index": 6,
+        "readbackKeys": [
+          "columns",
+          "colwidthsShowCommand",
+          "dryRun",
+          "file",
+          "maxColumn",
+          "minColumn",
+          "output",
+          "range",
+          "sheet",
+          "sheetNumber",
+          "validateCommand",
+          "width"
+        ],
+        "readbackSha256": "sha256:49be759d17b932d31829d4c71ec1b774f2f776195da26353cf108c42fa8e381c",
+        "resolvedArgs": {
+          "range": "B:B",
+          "sheet": "Sales",
+          "width": "10.0"
+        }
+      },
+      {
+        "command": "xlsx colwidths set",
+        "destination": {
+          "handle": "H:xlsx/range:range/C/C",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:C:C"
+        },
+        "id": "sheet-1-column-3-width",
+        "index": 7,
+        "readbackKeys": [
+          "columns",
+          "colwidthsShowCommand",
+          "dryRun",
+          "file",
+          "maxColumn",
+          "minColumn",
+          "output",
+          "range",
+          "sheet",
+          "sheetNumber",
+          "validateCommand",
+          "width"
+        ],
+        "readbackSha256": "sha256:e16e35b7ba4680ba7aaccfa99bf1c437bebd8a3da1a921f0530adfc7263dbe87",
+        "resolvedArgs": {
+          "range": "C:C",
+          "sheet": "Sales",
+          "width": "14.0"
+        }
+      },
+      {
+        "command": "xlsx ranges set-format",
+        "destination": {
+          "handle": "H:xlsx/range:range/C1/C5",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:C1:C5"
+        },
+        "id": "sheet-1-column-3-format",
+        "index": 8,
+        "readbackKeys": [
+          "builtin",
+          "cellsExtractCommand",
+          "cols",
+          "created",
+          "createdStyles",
+          "destination",
+          "dryRun",
+          "file",
+          "formatCode",
+          "numberFormatId",
+          "output",
+          "preset",
+          "range",
+          "rangesExportCommand",
+          "rows",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "styleIndexes",
+          "updated",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:37e8562f68590ee9bc9ee92472426c008ad3976c34b7eba642e5099d9cb7d3f9",
+        "resolvedArgs": {
+          "format-code": "$#,##0.00",
+          "range": "C1:C5",
+          "sheet": "Sales"
+        }
+      },
+      {
+        "command": "xlsx colwidths set",
+        "destination": {
+          "handle": "H:xlsx/range:range/D/D",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:D:D"
+        },
+        "id": "sheet-1-column-4-width",
+        "index": 9,
+        "readbackKeys": [
+          "columns",
+          "colwidthsShowCommand",
+          "dryRun",
+          "file",
+          "maxColumn",
+          "minColumn",
+          "output",
+          "range",
+          "sheet",
+          "sheetNumber",
+          "validateCommand",
+          "width"
+        ],
+        "readbackSha256": "sha256:de143b0ec4b39308aae10db7be5adba86f9ff7dd389cf7e405c9a965558d883d",
+        "resolvedArgs": {
+          "range": "D:D",
+          "sheet": "Sales",
+          "width": "14.0"
+        }
+      },
+      {
+        "command": "xlsx ranges set-format",
+        "destination": {
+          "handle": "H:xlsx/range:range/D1/D5",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:D1:D5"
+        },
+        "id": "sheet-1-column-4-format",
+        "index": 10,
+        "readbackKeys": [
+          "builtin",
+          "cellsExtractCommand",
+          "cols",
+          "created",
+          "createdStyles",
+          "destination",
+          "dryRun",
+          "file",
+          "formatCode",
+          "numberFormatId",
+          "output",
+          "preset",
+          "range",
+          "rangesExportCommand",
+          "rows",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "styleIndexes",
+          "updated",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:5cbd7f509017b501f179a8814e255460d7b80cd568aa2abf5efe4587f9a382fc",
+        "resolvedArgs": {
+          "format-code": "$#,##0.00",
+          "range": "D1:D5",
+          "sheet": "Sales"
+        }
+      },
+      {
+        "command": "xlsx colwidths set",
+        "destination": {
+          "handle": "H:xlsx/range:range/E/E",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:E:E"
+        },
+        "id": "sheet-1-column-5-width",
+        "index": 11,
+        "readbackKeys": [
+          "columns",
+          "colwidthsShowCommand",
+          "dryRun",
+          "file",
+          "maxColumn",
+          "minColumn",
+          "output",
+          "range",
+          "sheet",
+          "sheetNumber",
+          "validateCommand",
+          "width"
+        ],
+        "readbackSha256": "sha256:54fc399e9d416cd29f46b8f8783ba7dcbde636289de862f3715022d240848d57",
+        "resolvedArgs": {
+          "range": "E:E",
+          "sheet": "Sales",
+          "width": "12.0"
+        }
+      },
+      {
+        "command": "xlsx ranges set-format",
+        "destination": {
+          "handle": "H:xlsx/range:range/E1/E5",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:E1:E5"
+        },
+        "id": "sheet-1-column-5-format",
+        "index": 12,
+        "readbackKeys": [
+          "builtin",
+          "cellsExtractCommand",
+          "cols",
+          "created",
+          "createdStyles",
+          "destination",
+          "dryRun",
+          "file",
+          "formatCode",
+          "numberFormatId",
+          "output",
+          "preset",
+          "range",
+          "rangesExportCommand",
+          "rows",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "styleIndexes",
+          "updated",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:93a721aee0c2dfa3041b043609ffddfb82fdcfb38321518a18b328ca848454d0",
+        "resolvedArgs": {
+          "format-code": "0.0%",
+          "range": "E1:E5",
+          "sheet": "Sales"
+        }
+      },
+      {
+        "command": "xlsx tables create",
+        "destination": {
+          "handle": "H:xlsx/table:table/SalesTable",
+          "kind": "table",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "table:SalesTable"
+        },
+        "id": "sheet-1-table-1",
+        "index": 13,
+        "readbackKeys": [
+          "cols",
+          "columns",
+          "dataRowCount",
+          "destination",
+          "dryRun",
+          "file",
+          "output",
+          "range",
+          "relationshipId",
+          "rows",
+          "sheet",
+          "sheetNumber",
+          "styleName",
+          "table",
+          "tableExportCommand",
+          "tablePartUri",
+          "tableShowCommand",
+          "totalRow",
+          "totals",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:b1f75ee9887efc90db069d232af3eccc6d5ac2b69f92cf47b1cba7144438f8da",
+        "resolvedArgs": {
+          "range": "A1:E5",
+          "sheet": "Sales",
+          "style": "TableStyleMedium2",
+          "table": "SalesTable",
+          "total-row": true,
+          "totals": "Revenue:sum"
+        }
+      },
+      {
+        "command": "xlsx conditional-formats add",
+        "destination": {
+          "handle": "H:xlsx/conditional-format:sheet/Sales",
+          "kind": "conditional-format",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "sheet:Sales"
+        },
+        "id": "sheet-1-conditional-format-1",
+        "index": 14,
+        "readbackKeys": [
+          "action",
+          "cellsAffected",
+          "conditionalFormatsListCommand",
+          "conditionalFormatsShowCommand",
+          "dryRun",
+          "file",
+          "output",
+          "range",
+          "rule",
+          "sheet",
+          "sheetNumber",
+          "sheetSelector",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:4af988f0c4c7e03a6f5683daa71a483c717642844c356570a848030b059d4baa",
+        "resolvedArgs": {
+          "cfvo": [
+            "min",
+            "percentile:50",
+            "max"
+          ],
+          "color": [
+            "F8696B",
+            "FFEB84",
+            "63BE7B"
+          ],
+          "priority": "1",
+          "range": "E2:E5",
+          "sheet": "Sales",
+          "type": "color-scale"
+        }
+      },
+      {
+        "command": "xlsx data-validations create",
+        "destination": {
+          "handle": "H:xlsx/data-validation:sheet/Sales",
+          "kind": "data-validation",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "sheet:Sales"
+        },
+        "id": "sheet-1-data-validation-1",
+        "index": 15,
+        "readbackKeys": [
+          "action",
+          "cellsAffected",
+          "dataValidation",
+          "dataValidationsListCommand",
+          "dataValidationsShowCommand",
+          "dryRun",
+          "file",
+          "output",
+          "range",
+          "sheet",
+          "sheetNumber",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:01517639a1c9ed148676d92cf792f793f6fba74062de52f7ecd6bd1192033622",
+        "resolvedArgs": {
+          "allow-blank": false,
+          "input-message": "Choose a sales region",
+          "input-title": "Region",
+          "list-values": "North,Central,South,West",
+          "range": "A2:A5",
+          "sheet": "Sales",
+          "show-input-message": true,
+          "type": "list"
+        }
+      },
+      {
+        "command": "xlsx names add",
+        "destination": {
+          "handle": "H:xlsx/name:name/RevenueData",
+          "kind": "name",
+          "partUri": "/xl/workbook.xml",
+          "primarySelector": "name:RevenueData"
+        },
+        "id": "sheet-1-name-1",
+        "index": 16,
+        "readbackKeys": [
+          "action",
+          "dryRun",
+          "file",
+          "name",
+          "nameShowCommand",
+          "namesListCommand",
+          "output",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:4ee5e9ffa4c93ba1787b0565aafc91919652c2a7b9e5db130b3b6e7d467b74cd",
+        "resolvedArgs": {
+          "name": "RevenueData",
+          "range": "D2:D5",
+          "sheet": "Sales"
+        }
+      },
+      {
+        "command": "xlsx charts create",
+        "destination": {
+          "handle": "H:xlsx/chart:sheet/Sales",
+          "kind": "chart",
+          "partUri": "/xl/charts/chart1.xml",
+          "primarySelector": "sheet:Sales"
+        },
+        "id": "sheet-1-chart-1",
+        "index": 17,
+        "readbackKeys": [
+          "anchor",
+          "categories",
+          "chartPartUri",
+          "chartType",
+          "chartsListCommand",
+          "dataLabels",
+          "drawingPartUri",
+          "dryRun",
+          "file",
+          "houseStyle",
+          "numberFormat",
+          "output",
+          "seriesCount",
+          "sheet",
+          "sheetNumber",
+          "sourceRange",
+          "sourceSheet",
+          "title",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:fd7c7d91ed0501bcc5a90d380986991b504d775c24e07abb953255daf10a9512",
+        "resolvedArgs": {
+          "anchor": "G2",
+          "range": "A1:B5",
+          "sheet": "Sales",
+          "style": "default",
+          "title": "Units by Region",
+          "type": "bar"
+        }
+      },
+      {
+        "command": "xlsx hyperlinks add",
+        "destination": {
+          "handle": "H:xlsx/hyperlink:sheet/Sales",
+          "kind": "hyperlink",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "sheet:Sales"
+        },
+        "id": "sheet-1-hyperlink-1",
+        "index": 18,
+        "readbackKeys": [
+          "action",
+          "dryRun",
+          "file",
+          "hyperlink",
+          "hyperlinksListCommand",
+          "output",
+          "ref",
+          "sheet",
+          "sheetNumber",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:acdfb0c78db460109bb9d9843fdbdadd92374b7a98d903f9e889939a1b7239ca",
+        "resolvedArgs": {
+          "cell": "A7",
+          "display": "Sales portal",
+          "sheet": "Sales",
+          "tooltip": "Open the sales portal",
+          "url": "https://example.com/sales"
+        }
+      },
+      {
+        "command": "xlsx comments add",
+        "destination": {
+          "handle": "H:xlsx/ws:1/comment:a:D1",
+          "kind": "comment",
+          "partUri": "/xl/comments1.xml",
+          "primarySelector": "comment:0"
+        },
+        "id": "sheet-1-comment-1",
+        "index": 19,
+        "readbackKeys": [
+          "anchoredToCell",
+          "author",
+          "commentId",
+          "contentHash",
+          "createdPart",
+          "createdRef",
+          "dryRun",
+          "file",
+          "handle",
+          "listCommand",
+          "operation",
+          "output",
+          "primarySelector",
+          "selectors",
+          "sheet",
+          "sheetNumber",
+          "text",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:43a925fe5a08f477d5e6647c3c6b5a630ef0b6bbcf123b8b671e52a53b7f660f",
+        "resolvedArgs": {
+          "author": "Finance",
+          "cell": "D1",
+          "sheet": "Sales",
+          "text": "Calculated revenue"
+        }
+      },
+      {
+        "command": "xlsx sheets set-print",
+        "destination": {
+          "handle": "H:xlsx/sheet:sheet/Sales",
+          "kind": "sheet",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "sheet:Sales"
+        },
+        "id": "sheet-1-print",
+        "index": 20,
+        "readbackKeys": [
+          "destination",
+          "dryRun",
+          "file",
+          "fitToWidth",
+          "gridlines",
+          "landscape",
+          "output",
+          "repeatHeaderRows",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "sheetsListCommand",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:7f9984da95ec4577494b9ea0910c3b3704649660bab77ff83ce25836ae577f0c",
+        "resolvedArgs": {
+          "fit-to-width": "1",
+          "gridlines": "off",
+          "landscape": true,
+          "repeat-header-rows": "1",
+          "sheet": "Sales"
+        }
+      },
+      {
+        "command": "xlsx ranges set",
+        "destination": {
+          "handle": "H:xlsx/range:range/A1/F5",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet2.xml",
+          "primarySelector": "range:A1:F5"
+        },
+        "id": "sheet-2-data",
+        "index": 21,
+        "readbackKeys": [
+          "anchor",
+          "cellsExtractCommand",
+          "cleared",
+          "cols",
+          "created",
+          "dataFormat",
+          "destination",
+          "dryRun",
+          "file",
+          "formulaCount",
+          "majorDimension",
+          "nullPolicy",
+          "output",
+          "range",
+          "rangesExportCommand",
+          "rows",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "skipped",
+          "updated",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:05d62547fcd62fad1b843c1b0500a18a32e6b672755d9c6b2a111503be3c53ae",
+        "resolvedArgs": {
+          "anchor": "A1",
+          "data-format": "json",
+          "sheet": "Targets",
+          "values-file": "<build-stage>/sheet-22-typed-data.json"
+        }
+      },
+      {
+        "command": "xlsx sheets set-tab-color",
+        "destination": {
+          "handle": "H:xlsx/sheet:sheet/Targets",
+          "kind": "sheet",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "sheet:Targets"
+        },
+        "id": "sheet-2-tab-color",
+        "index": 22,
+        "readbackKeys": [
+          "destination",
+          "dryRun",
+          "file",
+          "output",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "sheetsListCommand",
+          "tabColor",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:448fc473fc04695b6092328f0363d6bd765b99f513022c14256c2bfdbf3c19e1",
+        "resolvedArgs": {
+          "color": "16A34A",
+          "sheet": "Targets"
+        }
+      },
+      {
+        "command": "xlsx freeze set",
+        "destination": {
+          "handle": "H:xlsx/sheet:sheet/Targets",
+          "kind": "sheet",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "sheet:Targets"
+        },
+        "id": "sheet-2-freeze",
+        "index": 23,
+        "readbackKeys": [
+          "action",
+          "dryRun",
+          "file",
+          "output",
+          "sheet",
+          "sheetNumber",
+          "showCommand",
+          "state",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:d022c4450afa8cb41b2d97cb1b31bd42370de7c5ee48f3633e2e42a9ca90f07a",
+        "resolvedArgs": {
+          "rows": "1",
+          "sheet": "Targets"
+        }
+      },
+      {
+        "command": "xlsx ranges set-style",
+        "destination": {
+          "handle": "H:xlsx/range:range/A1/F1",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet2.xml",
+          "primarySelector": "range:A1:F1"
+        },
+        "id": "sheet-2-header-style",
+        "index": 24,
+        "readbackKeys": [
+          "cellsExtractCommand",
+          "cols",
+          "created",
+          "createdStyles",
+          "destination",
+          "dryRun",
+          "file",
+          "output",
+          "preset",
+          "range",
+          "rangesExportCommand",
+          "rows",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "styleIndexes",
+          "updated",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:3efa8bc1a96dc98d771b0f3a22c46d20346a7410f48c631b4f7d7c5ecc840fb4",
+        "resolvedArgs": {
+          "preset": "muted",
+          "range": "A1:F1",
+          "sheet": "Targets"
+        }
+      },
+      {
+        "command": "xlsx colwidths autofit",
+        "destination": {
+          "handle": "H:xlsx/range:range/A/A",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:A:A"
+        },
+        "id": "sheet-2-column-1-autofit",
+        "index": 25,
+        "readbackKeys": [
+          "dryRun",
+          "file",
+          "font",
+          "fontSize",
+          "heuristic",
+          "max",
+          "min",
+          "output",
+          "range",
+          "sheet",
+          "sheetNumber",
+          "widths"
+        ],
+        "readbackSha256": "sha256:98f0d486649df73f44691fec9afe8d655bed31d8ca8eba80727aae5fc81ef722",
+        "resolvedArgs": {
+          "range": "A:A",
+          "sheet": "Targets"
+        }
+      },
+      {
+        "command": "xlsx colwidths autofit",
+        "destination": {
+          "handle": "H:xlsx/range:range/B/B",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:B:B"
+        },
+        "id": "sheet-2-column-2-autofit",
+        "index": 26,
+        "readbackKeys": [
+          "dryRun",
+          "file",
+          "font",
+          "fontSize",
+          "heuristic",
+          "max",
+          "min",
+          "output",
+          "range",
+          "sheet",
+          "sheetNumber",
+          "widths"
+        ],
+        "readbackSha256": "sha256:5fa8c637f20e923ef119abffddbc2bb00deaee2f12ad1741e00123ded4316f02",
+        "resolvedArgs": {
+          "range": "B:B",
+          "sheet": "Targets"
+        }
+      },
+      {
+        "command": "xlsx colwidths set",
+        "destination": {
+          "handle": "H:xlsx/range:range/C/C",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:C:C"
+        },
+        "id": "sheet-2-column-3-width",
+        "index": 27,
+        "readbackKeys": [
+          "columns",
+          "colwidthsShowCommand",
+          "dryRun",
+          "file",
+          "maxColumn",
+          "minColumn",
+          "output",
+          "range",
+          "sheet",
+          "sheetNumber",
+          "validateCommand",
+          "width"
+        ],
+        "readbackSha256": "sha256:ab18ca37a3d599a39893e11b178cfe9096b30a3223ff7fd46d6819a791d8ab6b",
+        "resolvedArgs": {
+          "range": "C:C",
+          "sheet": "Targets",
+          "width": "14.0"
+        }
+      },
+      {
+        "command": "xlsx ranges set-format",
+        "destination": {
+          "handle": "H:xlsx/range:range/C1/C5",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet2.xml",
+          "primarySelector": "range:C1:C5"
+        },
+        "id": "sheet-2-column-3-format",
+        "index": 28,
+        "readbackKeys": [
+          "builtin",
+          "cellsExtractCommand",
+          "cols",
+          "created",
+          "createdStyles",
+          "destination",
+          "dryRun",
+          "file",
+          "formatCode",
+          "numberFormatId",
+          "output",
+          "preset",
+          "range",
+          "rangesExportCommand",
+          "rows",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "styleIndexes",
+          "updated",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:c309d9351bded88216158b5bc134249cddf2586909b599da77a4cdd8eb137e2e",
+        "resolvedArgs": {
+          "format-code": "$#,##0",
+          "range": "C1:C5",
+          "sheet": "Targets"
+        }
+      },
+      {
+        "command": "xlsx colwidths set",
+        "destination": {
+          "handle": "H:xlsx/range:range/D/D",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:D:D"
+        },
+        "id": "sheet-2-column-4-width",
+        "index": 29,
+        "readbackKeys": [
+          "columns",
+          "colwidthsShowCommand",
+          "dryRun",
+          "file",
+          "maxColumn",
+          "minColumn",
+          "output",
+          "range",
+          "sheet",
+          "sheetNumber",
+          "validateCommand",
+          "width"
+        ],
+        "readbackSha256": "sha256:6b55410f3511fac0aa6ddbd8603a0785a5423b4a8c7d56af7ee070bd45c260d9",
+        "resolvedArgs": {
+          "range": "D:D",
+          "sheet": "Targets",
+          "width": "10.0"
+        }
+      },
+      {
+        "command": "xlsx colwidths set",
+        "destination": {
+          "handle": "H:xlsx/range:range/E/E",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:E:E"
+        },
+        "id": "sheet-2-column-5-width",
+        "index": 30,
+        "readbackKeys": [
+          "columns",
+          "colwidthsShowCommand",
+          "dryRun",
+          "file",
+          "maxColumn",
+          "minColumn",
+          "output",
+          "range",
+          "sheet",
+          "sheetNumber",
+          "validateCommand",
+          "width"
+        ],
+        "readbackSha256": "sha256:502beb7cda1c06b4e80dfafb14c2af07372a02db104b8804983bf2febd331b6d",
+        "resolvedArgs": {
+          "range": "E:E",
+          "sheet": "Targets",
+          "width": "13.0"
+        }
+      },
+      {
+        "command": "xlsx ranges set-format",
+        "destination": {
+          "handle": "H:xlsx/range:range/E1/E5",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet2.xml",
+          "primarySelector": "range:E1:E5"
+        },
+        "id": "sheet-2-column-5-format",
+        "index": 31,
+        "readbackKeys": [
+          "builtin",
+          "cellsExtractCommand",
+          "cols",
+          "created",
+          "createdStyles",
+          "destination",
+          "dryRun",
+          "file",
+          "formatCode",
+          "numberFormatId",
+          "output",
+          "preset",
+          "range",
+          "rangesExportCommand",
+          "rows",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "styleIndexes",
+          "updated",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:69bb4ab8244afecf27533e4f136b0a34f56c5df024d199b5f8718b52627ac142",
+        "resolvedArgs": {
+          "format-code": "yyyy-mm-dd",
+          "range": "E1:E5",
+          "sheet": "Targets"
+        }
+      },
+      {
+        "command": "xlsx colwidths set",
+        "destination": {
+          "handle": "H:xlsx/range:range/F/F",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet1.xml",
+          "primarySelector": "range:F:F"
+        },
+        "id": "sheet-2-column-6-width",
+        "index": 32,
+        "readbackKeys": [
+          "columns",
+          "colwidthsShowCommand",
+          "dryRun",
+          "file",
+          "maxColumn",
+          "minColumn",
+          "output",
+          "range",
+          "sheet",
+          "sheetNumber",
+          "validateCommand",
+          "width"
+        ],
+        "readbackSha256": "sha256:a63739e70f4d3ec7ef113bf214a35da1a3ee24ce8f418d42823f5378899cb5f8",
+        "resolvedArgs": {
+          "range": "F:F",
+          "sheet": "Targets",
+          "width": "12.0"
+        }
+      },
+      {
+        "command": "xlsx ranges set-format",
+        "destination": {
+          "handle": "H:xlsx/range:range/F1/F5",
+          "kind": "range",
+          "partUri": "/xl/worksheets/sheet2.xml",
+          "primarySelector": "range:F1:F5"
+        },
+        "id": "sheet-2-column-6-format",
+        "index": 33,
+        "readbackKeys": [
+          "builtin",
+          "cellsExtractCommand",
+          "cols",
+          "created",
+          "createdStyles",
+          "destination",
+          "dryRun",
+          "file",
+          "formatCode",
+          "numberFormatId",
+          "output",
+          "preset",
+          "range",
+          "rangesExportCommand",
+          "rows",
+          "sheet",
+          "sheetNumber",
+          "sheetShowCommand",
+          "styleIndexes",
+          "updated",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:3fd88b6e7f608b105b1ce13fa6e7ecc52b39316f12d4bbb414844ad7460a3743",
+        "resolvedArgs": {
+          "format-code": "0%",
+          "range": "F1:F5",
+          "sheet": "Targets"
+        }
+      },
+      {
+        "command": "xlsx tables create",
+        "destination": {
+          "handle": "H:xlsx/table:table/TargetsTable",
+          "kind": "table",
+          "partUri": "/xl/worksheets/sheet2.xml",
+          "primarySelector": "table:TargetsTable"
+        },
+        "id": "sheet-2-table-1",
+        "index": 34,
+        "readbackKeys": [
+          "cols",
+          "columns",
+          "dataRowCount",
+          "destination",
+          "dryRun",
+          "file",
+          "output",
+          "range",
+          "relationshipId",
+          "rows",
+          "sheet",
+          "sheetNumber",
+          "styleName",
+          "table",
+          "tableExportCommand",
+          "tablePartUri",
+          "tableShowCommand",
+          "totalRow",
+          "totals",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:1dec9ce04c04470e85c34393ff49492d71f8552c594bb2502dd17e44d5e6c478",
+        "resolvedArgs": {
+          "range": "A1:F5",
+          "sheet": "Targets",
+          "style": "TableStyleMedium4",
+          "table": "TargetsTable"
+        }
+      },
+      {
+        "command": "xlsx workbook metadata update",
+        "destination": {
+          "handle": "H:xlsx/package:package",
+          "kind": "package",
+          "partUri": "/xl/workbook.xml",
+          "primarySelector": "package"
+        },
+        "id": "workbook-metadata",
+        "index": 35,
+        "readbackKeys": [
+          "action",
+          "calcSettings",
+          "dryRun",
+          "file",
+          "inspectCommand",
+          "metadata",
+          "output",
+          "previousValues",
+          "updated",
+          "updatedFields",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:092a90e8d04f2d2eb21ce32e91d21fff6de38c47d63f5edccff878f479f1dcfb",
+        "resolvedArgs": {
+          "creator": "ooxml-cli",
+          "description": "Deterministic XLSX build-spec acceptance workbook",
+          "full-calc-on-load": true,
+          "keywords": "sales,quarterly,regional",
+          "subject": "Regional sales performance",
+          "title": "Quarterly Sales Workbook"
+        }
+      }
+    ],
+    "schemaVersion": "ooxml-cli.xlsx-build.v1",
+    "validated": true,
+    "warnings": null
+  },
+  "check": {
+    "checkCommand": "ooxml --json check <artifact-root>/first.xlsx --openxml-sdk auto",
+    "checks": {
+      "conformance": "passed",
+      "design": "passed",
+      "layout": "not-applicable",
+      "references": "passed",
+      "schema": "passed",
+      "strict": "passed",
+      "structural": "passed",
+      "visual": "skipped"
+    },
+    "failOn": "error",
+    "family": "xlsx",
+    "file": "<artifact-root>/first.xlsx",
+    "findings": [
+      {
+        "code": "XLSX_INCONSISTENT_NUMBER_FORMAT",
+        "docs": "docs/bridge-plan-2026-09.md#d8-design-lint",
+        "fixCommand": "ooxml --json xlsx ranges set-format <artifact-root>/first.xlsx --sheet Sales --range D1:D6 --preset general --out <artifact-root>/first.design-fixed.xlsx",
+        "location": {
+          "column": "D",
+          "part": "/xl/worksheets/sheet1.xml",
+          "sheet": "Sales"
+        },
+        "message": "Column D uses 2 number formats",
+        "part": "/xl/worksheets/sheet1.xml",
+        "severity": "warning"
+      },
+      {
+        "code": "XLSX_MULTIPLE_FONTS",
+        "docs": "docs/bridge-plan-2026-09.md#d8-design-lint",
+        "fixCommand": "ooxml --json xlsx ranges set-style <artifact-root>/first.xlsx --sheet Sales --range A1:E6 --font-name Aptos --out <artifact-root>/first.design-fixed.xlsx",
+        "location": {
+          "part": "/xl/worksheets/sheet1.xml",
+          "sheet": "Sales"
+        },
+        "message": "Sheet Sales uses 2 font families",
+        "part": "/xl/worksheets/sheet1.xml",
+        "severity": "warning"
+      },
+      {
+        "code": "XLSX_MULTIPLE_FONTS",
+        "docs": "docs/bridge-plan-2026-09.md#d8-design-lint",
+        "fixCommand": "ooxml --json xlsx ranges set-style <artifact-root>/first.xlsx --sheet Targets --range A1:F5 --font-name Aptos --out <artifact-root>/first.design-fixed.xlsx",
+        "location": {
+          "part": "/xl/worksheets/sheet2.xml",
+          "sheet": "Targets"
+        },
+        "message": "Sheet Targets uses 2 font families",
+        "part": "/xl/worksheets/sheet2.xml",
+        "severity": "warning"
+      }
+    ],
+    "proofLevel": {
+      "schema": "passed",
+      "strict": "passed",
+      "structural": "passed",
+      "visual": "skipped"
+    },
+    "schemaVersion": "ooxml-cli.check.v1",
+    "status": "warning",
+    "summary": {
+      "errors": 0,
+      "info": 0,
+      "total": 3,
+      "warnings": 3
+    }
+  },
+  "conformance": {
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed"
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed"
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed"
+      },
+      {
+        "contract": "Open XML SDK passed, or cleanly skipped when unavailable",
+        "name": "schema",
+        "validator": "openxml-sdk"
+      }
+    ],
+    "errors": 0,
+    "schemaVersion": "ooxml-cli.conformance.v1",
+    "status": "passed",
+    "warnings": 0
+  },
+  "designCheck": {
+    "config": null,
+    "family": "xlsx",
+    "file": "<artifact-root>/first.xlsx",
+    "findings": [
+      {
+        "code": "XLSX_INCONSISTENT_NUMBER_FORMAT",
+        "evidence": {
+          "formats": [
+            "$#,##0.00",
+            "General"
+          ]
+        },
+        "fixCommand": "ooxml --json xlsx ranges set-format <artifact-root>/first.xlsx --sheet Sales --range D1:D6 --preset general --out <artifact-root>/first.design-fixed.xlsx",
+        "location": {
+          "column": "D",
+          "part": "/xl/worksheets/sheet1.xml",
+          "sheet": "Sales"
+        },
+        "message": "Column D uses 2 number formats",
+        "severity": "warning"
+      },
+      {
+        "code": "XLSX_MULTIPLE_FONTS",
+        "evidence": {
+          "fonts": [
+            "Aptos",
+            "Aptos"
+          ]
+        },
+        "fixCommand": "ooxml --json xlsx ranges set-style <artifact-root>/first.xlsx --sheet Sales --range A1:E6 --font-name Aptos --out <artifact-root>/first.design-fixed.xlsx",
+        "location": {
+          "part": "/xl/worksheets/sheet1.xml",
+          "sheet": "Sales"
+        },
+        "message": "Sheet Sales uses 2 font families",
+        "severity": "warning"
+      },
+      {
+        "code": "XLSX_MULTIPLE_FONTS",
+        "evidence": {
+          "fonts": [
+            "Aptos",
+            "Aptos"
+          ]
+        },
+        "fixCommand": "ooxml --json xlsx ranges set-style <artifact-root>/first.xlsx --sheet Targets --range A1:F5 --font-name Aptos --out <artifact-root>/first.design-fixed.xlsx",
+        "location": {
+          "part": "/xl/worksheets/sheet2.xml",
+          "sheet": "Targets"
+        },
+        "message": "Sheet Targets uses 2 font families",
+        "severity": "warning"
+      }
+    ],
+    "ignored": [],
+    "schemaVersion": "ooxml-cli.design-check.v1",
+    "status": "passed",
+    "summary": {
+      "errors": 0,
+      "infos": 0,
+      "total": 3,
+      "warnings": 3
+    }
+  },
+  "determinism": {
+    "byteLength": 10115,
+    "sha256": "sha256:3274fce64f864b184330a062ba4b68cd2f15f44b870d7b21cdee4c0f74b3efac",
+    "sourceDateEpoch": "946684800"
+  },
+  "family": "xlsx",
+  "layout": null,
+  "outline": {
+    "checkCommand": "ooxml --json check <artifact-root>/first.xlsx",
+    "depth": 3,
+    "file": "<artifact-root>/first.xlsx",
+    "fileSizeBytes": 10115,
+    "names": [
+      {
+        "handle": "H:xlsx/wb/name:n:RevenueData",
+        "name": "RevenueData",
+        "primarySelector": "name:RevenueData",
+        "ref": "'Sales'!$D$2:$D$5",
+        "scope": "workbook"
+      },
+      {
+        "name": "_xlnm.Print_Titles",
+        "primarySelector": "sheet:1/name:_xlnm.Print_Titles",
+        "ref": "'Sales'!$1:$1",
+        "scope": "sheet"
+      }
+    ],
+    "schemaVersion": 1,
+    "sheets": [
+      {
+        "cellCount": 27,
+        "charts": [
+          {
+            "anchor": {
+              "from": {
+                "column": 6,
+                "row": 1
+              },
+              "to": {
+                "column": 14,
+                "row": 16
+              },
+              "type": "twoCellAnchor"
+            },
+            "name": "Chart 1",
+            "number": 1,
+            "partUri": "/xl/charts/chart1.xml",
+            "primarySelector": "chart:1",
+            "title": "Units by Region",
+            "types": [
+              "barChart"
+            ]
+          }
+        ],
+        "commentCount": 1,
+        "conditionalFormatCount": 1,
+        "dimensionDeclared": "A1:E6",
+        "freeze": {
+          "cols": 0,
+          "frozen": true,
+          "rows": 1,
+          "topLeftCell": "A2"
+        },
+        "name": "Sales",
+        "number": 1,
+        "partUri": "/xl/worksheets/sheet1.xml",
+        "pivots": [],
+        "primarySelector": "sheetId:1",
+        "rowCount": 6,
+        "sheetId": "1",
+        "state": "visible",
+        "tables": [
+          {
+            "displayName": "SalesTable",
+            "name": "SalesTable",
+            "partUri": "/xl/tables/table1.xml",
+            "primarySelector": "tableId:1",
+            "range": "A1:E6"
+          }
+        ],
+        "usedRange": {
+          "cols": 5,
+          "empty": false,
+          "maxCol": 5,
+          "maxRow": 6,
+          "minCol": 1,
+          "minRow": 1,
+          "ref": "A1:E6",
+          "rows": 6
+        },
+        "validationCount": 1
+      },
+      {
+        "cellCount": 30,
+        "charts": [],
+        "commentCount": 0,
+        "conditionalFormatCount": 0,
+        "dimensionDeclared": "A1:F5",
+        "freeze": {
+          "cols": 0,
+          "frozen": true,
+          "rows": 1,
+          "topLeftCell": "A2"
+        },
+        "name": "Targets",
+        "number": 2,
+        "partUri": "/xl/worksheets/sheet2.xml",
+        "pivots": [],
+        "primarySelector": "sheetId:2",
+        "rowCount": 5,
+        "sheetId": "2",
+        "state": "visible",
+        "tables": [
+          {
+            "displayName": "TargetsTable",
+            "name": "TargetsTable",
+            "partUri": "/xl/tables/table2.xml",
+            "primarySelector": "tableId:2",
+            "range": "A1:F5"
+          }
+        ],
+        "usedRange": {
+          "cols": 6,
+          "empty": false,
+          "maxCol": 6,
+          "maxRow": 5,
+          "minCol": 1,
+          "minRow": 1,
+          "ref": "A1:F5",
+          "rows": 5
+        },
+        "validationCount": 0
+      }
+    ],
+    "summary": {
+      "charts": 1,
+      "customXmlParts": 0,
+      "mediaAssets": 0,
+      "pivotCaches": 0,
+      "pivots": 0,
+      "sharedStrings": false,
+      "sheets": 2,
+      "styles": true,
+      "tables": 2,
+      "themes": 1,
+      "worksheets": 2
+    },
+    "textPreviewChars": 240,
+    "type": "xlsx"
+  },
+  "recipe": "sales-workbook",
+  "render": {
+    "collection": "pages",
+    "countKey": "page",
+    "engine": "libreoffice",
+    "expectedCount": 2,
+    "policy": "real render with exact count, or clean skip when the renderer is unavailable"
+  },
+  "schemaVersion": "ooxml-cli.recipe-e2e.v1",
+  "source": {
+    "kind": "spec",
+    "path": "testdata/xlsx/build-spec/sales.json"
+  },
+  "strictValidation": {
+    "file": "<artifact-root>/first.xlsx",
+    "status": "valid",
+    "summary": {
+      "errors": 0,
+      "info": 0,
+      "warnings": 0
+    },
+    "valid": true
+  }
+}

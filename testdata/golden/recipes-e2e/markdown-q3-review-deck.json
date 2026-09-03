@@ -1,0 +1,1478 @@
+{
+  "build": {
+    "checkSummary": {
+      "errors": 0,
+      "info": 0,
+      "total": 1,
+      "warnings": 1
+    },
+    "layoutQa": {
+      "totalCollisions": 0,
+      "totalOffSlide": 0,
+      "totalSafeMarginViolations": 0,
+      "totalTextOverflows": 0
+    },
+    "nodeMap": {
+      "/": {
+        "opId": "document",
+        "selector": "package",
+        "slide": null,
+        "specId": null
+      },
+      "/slides/0": {
+        "opId": "slide_1",
+        "selector": "slide:2",
+        "slide": 1,
+        "specId": "markdown-slide-1"
+      },
+      "/slides/0/subtitle": {
+        "opId": "slide_1",
+        "selector": "slide:2",
+        "slide": 1,
+        "specId": null
+      },
+      "/slides/0/title": {
+        "opId": "slide_1",
+        "selector": "slide:2",
+        "slide": 1,
+        "specId": null
+      },
+      "/slides/1": {
+        "opId": "slide_2",
+        "selector": "slide:2",
+        "slide": 2,
+        "specId": "markdown-slide-2"
+      },
+      "/slides/1/bullets": {
+        "opId": "slide_2",
+        "selector": "slide:2",
+        "slide": 2,
+        "specId": null
+      },
+      "/slides/1/bullets/1/runs/1": {
+        "opId": "slide_2_paragraph_2_run_2_style",
+        "selector": "body",
+        "slide": 2,
+        "specId": null
+      },
+      "/slides/1/bullets/1/runs/3": {
+        "opId": "slide_2_paragraph_2_run_4_style",
+        "selector": "body",
+        "slide": 2,
+        "specId": null
+      },
+      "/slides/1/notes": {
+        "opId": "slide_2_notes",
+        "selector": "slide:2",
+        "slide": 2,
+        "specId": null
+      },
+      "/slides/1/title": {
+        "opId": "slide_2",
+        "selector": "slide:2",
+        "slide": 2,
+        "specId": null
+      },
+      "/slides/2": {
+        "opId": "slide_3",
+        "selector": "slide:3",
+        "slide": 3,
+        "specId": "markdown-slide-3"
+      },
+      "/slides/2/tables/0": {
+        "opId": "slide_3_table_1",
+        "selector": "shape:3",
+        "slide": 3,
+        "specId": null
+      },
+      "/slides/2/title": {
+        "opId": "slide_3",
+        "selector": "slide:3",
+        "slide": 3,
+        "specId": null
+      },
+      "/slides/3": {
+        "opId": "slide_4",
+        "selector": "slide:4",
+        "slide": 4,
+        "specId": "markdown-slide-4"
+      },
+      "/slides/3/charts/0": {
+        "opId": "slide_4_chart_1",
+        "selector": "slide:4",
+        "slide": 4,
+        "specId": null
+      },
+      "/slides/3/title": {
+        "opId": "slide_4",
+        "selector": "slide:4",
+        "slide": 4,
+        "specId": null
+      },
+      "/slides/4": {
+        "opId": "slide_5",
+        "selector": "slide:5",
+        "slide": 5,
+        "specId": "markdown-slide-5"
+      },
+      "/slides/4/images/0": {
+        "opId": "slide_5_image_1",
+        "selector": "shape:3",
+        "slide": 5,
+        "specId": null
+      },
+      "/slides/4/title": {
+        "opId": "slide_5",
+        "selector": "slide:5",
+        "slide": 5,
+        "specId": null
+      }
+    },
+    "operations": [
+      {
+        "command": "pptx scaffold",
+        "destination": {
+          "handle": "H:pptx/package:package",
+          "kind": "package",
+          "partUri": "/",
+          "primarySelector": "package"
+        },
+        "id": "document",
+        "index": 0,
+        "readbackKeys": [
+          "conformanceCommand",
+          "created",
+          "family",
+          "initialSlideCount",
+          "initialSubtitle",
+          "initialTitle",
+          "layoutCount",
+          "layouts",
+          "layoutsCommand",
+          "output",
+          "presentationPart",
+          "readbackCommand",
+          "shapesCommand",
+          "size",
+          "slide",
+          "slideId",
+          "slideLayoutPart",
+          "slideMasterPart",
+          "slidePart",
+          "subtitle",
+          "tableStylesPart",
+          "theme",
+          "themePart",
+          "title",
+          "validateCommand",
+          "validated"
+        ],
+        "readbackSha256": "sha256:83bfb499291cb6d389667f645bcd397651347f37cb7671e83271a312963466d8",
+        "resolvedArgs": {
+          "size": "16:9",
+          "theme": "corporate"
+        }
+      },
+      {
+        "command": "pptx new-slide-from-layout",
+        "destination": {
+          "handle": "H:pptx/slide:slide/2",
+          "kind": "slide",
+          "partUri": "/ppt/slides/slide2.xml",
+          "primarySelector": "slide:2"
+        },
+        "id": "slide_1",
+        "index": 1,
+        "readbackKeys": [
+          "destination",
+          "dryRun",
+          "file",
+          "layout",
+          "newSlideId",
+          "newSlideNumber",
+          "newSlideUri",
+          "output",
+          "readbackCommand",
+          "renderCommand",
+          "slidesListCommand",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:1f9e30a57b78ef1a681a8bbc071e1c1768f412b2cfb1bbad5d5a879066a6d7a4",
+        "resolvedArgs": {
+          "layout": "Title Slide",
+          "set-text": [
+            "title=Q3 Review",
+            "subtitle=Results, decisions, and next steps"
+          ]
+        }
+      },
+      {
+        "command": "pptx slides delete",
+        "destination": {
+          "handle": "H:pptx/slide:slide/1",
+          "kind": "slide",
+          "partUri": "/ppt/presentation.xml",
+          "primarySelector": "slide:1"
+        },
+        "id": "remove_seed_slide",
+        "index": 2,
+        "readbackKeys": [
+          "deletedSlide",
+          "dryRun",
+          "file",
+          "output",
+          "remainingSlides",
+          "removedUri",
+          "renderCommand",
+          "slidesListCommand",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:3db10e1f8780de069c13c2b83fe4d8c702913b9bd8d84f32f58768d516f7f928",
+        "resolvedArgs": {
+          "slide-number": "1"
+        }
+      },
+      {
+        "command": "pptx new-slide-from-layout",
+        "destination": {
+          "handle": "H:pptx/slide:slide/2",
+          "kind": "slide",
+          "partUri": "/ppt/slides/slide3.xml",
+          "primarySelector": "slide:2"
+        },
+        "id": "slide_2",
+        "index": 3,
+        "readbackKeys": [
+          "destination",
+          "dryRun",
+          "file",
+          "layout",
+          "newSlideId",
+          "newSlideNumber",
+          "newSlideUri",
+          "output",
+          "readbackCommand",
+          "renderCommand",
+          "slidesListCommand",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:a0bfd89221f2389891c5cfbe786a417b0853814b90d23a70a1f81450597214d9",
+        "resolvedArgs": {
+          "layout": "Title and Content",
+          "paragraphs-file": "body=<build-stage>/generated/slide-002-bullets-000.json",
+          "set-text": [
+            "title=Performance"
+          ]
+        }
+      },
+      {
+        "command": "pptx new-slide-from-layout",
+        "destination": {
+          "handle": "H:pptx/slide:slide/3",
+          "kind": "slide",
+          "partUri": "/ppt/slides/slide4.xml",
+          "primarySelector": "slide:3"
+        },
+        "id": "slide_3",
+        "index": 4,
+        "readbackKeys": [
+          "destination",
+          "dryRun",
+          "file",
+          "layout",
+          "newSlideId",
+          "newSlideNumber",
+          "newSlideUri",
+          "output",
+          "readbackCommand",
+          "renderCommand",
+          "slidesListCommand",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:cf0adadb42a2e613a6afcda900c1570dea505432fdfadd1ed5971a7880d207a2",
+        "resolvedArgs": {
+          "layout": "Title Only",
+          "set-text": [
+            "title=Quarterly Results"
+          ]
+        }
+      },
+      {
+        "command": "pptx new-slide-from-layout",
+        "destination": {
+          "handle": "H:pptx/slide:slide/4",
+          "kind": "slide",
+          "partUri": "/ppt/slides/slide5.xml",
+          "primarySelector": "slide:4"
+        },
+        "id": "slide_4",
+        "index": 5,
+        "readbackKeys": [
+          "destination",
+          "dryRun",
+          "file",
+          "layout",
+          "newSlideId",
+          "newSlideNumber",
+          "newSlideUri",
+          "output",
+          "readbackCommand",
+          "renderCommand",
+          "slidesListCommand",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:5f7277f978a2d061d05aae7b234e9a0ad154ec7abd3cdac7e353f4967b597392",
+        "resolvedArgs": {
+          "layout": "Title Only",
+          "set-text": [
+            "title=Revenue Trend"
+          ]
+        }
+      },
+      {
+        "command": "pptx new-slide-from-layout",
+        "destination": {
+          "handle": "H:pptx/slide:slide/5",
+          "kind": "slide",
+          "partUri": "/ppt/slides/slide6.xml",
+          "primarySelector": "slide:5"
+        },
+        "id": "slide_5",
+        "index": 6,
+        "readbackKeys": [
+          "destination",
+          "dryRun",
+          "file",
+          "layout",
+          "newSlideId",
+          "newSlideNumber",
+          "newSlideUri",
+          "output",
+          "readbackCommand",
+          "renderCommand",
+          "slidesListCommand",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:5f4f5c110f08d2273ac0529cb9aafff9897abf2e2f62d86b2f6bada4a90b3ff5",
+        "resolvedArgs": {
+          "layout": "Title Only",
+          "set-text": [
+            "title=Product Detail"
+          ]
+        }
+      },
+      {
+        "command": "pptx text set",
+        "destination": {
+          "handle": "H:pptx/s:258/shape:n:3",
+          "kind": "shape",
+          "partUri": "/ppt/slides/slide3.xml",
+          "primarySelector": "body"
+        },
+        "id": "slide_2_paragraph_2_run_2_style",
+        "index": 7,
+        "readbackKeys": [
+          "appliedRuns",
+          "destination",
+          "dryRun",
+          "file",
+          "newProperties",
+          "oldProperties",
+          "output",
+          "paragraphIndex",
+          "partUri",
+          "readbackCommand",
+          "renderCommand",
+          "runIndex",
+          "shapeId",
+          "shapeName",
+          "shapeType",
+          "slide",
+          "slideReadbackCommand",
+          "target",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:6f654653dad471ddb2edebf1743559aa993795c8cf31a2c342b2702e09ac1928",
+        "resolvedArgs": {
+          "font-family": "Aptos Mono",
+          "paragraph": "1",
+          "run-index": "1",
+          "slide": "2",
+          "target": "body"
+        }
+      },
+      {
+        "command": "pptx text set",
+        "destination": {
+          "handle": "H:pptx/s:258/shape:n:3",
+          "kind": "shape",
+          "partUri": "/ppt/slides/slide3.xml",
+          "primarySelector": "body"
+        },
+        "id": "slide_2_paragraph_2_run_4_style",
+        "index": 8,
+        "readbackKeys": [
+          "appliedRuns",
+          "destination",
+          "dryRun",
+          "file",
+          "newProperties",
+          "oldProperties",
+          "output",
+          "paragraphIndex",
+          "partUri",
+          "readbackCommand",
+          "renderCommand",
+          "runIndex",
+          "shapeId",
+          "shapeName",
+          "shapeType",
+          "slide",
+          "slideReadbackCommand",
+          "target",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:96e6845f06feb568ef4c732ea06529ce00c572319cb08b475b579d44d1540fc3",
+        "resolvedArgs": {
+          "hyperlink": "https://example.test/q3",
+          "paragraph": "1",
+          "run-index": "3",
+          "slide": "2",
+          "target": "body"
+        }
+      },
+      {
+        "command": "pptx notes set",
+        "destination": {
+          "handle": "H:pptx/slide:slide/2",
+          "kind": "slide",
+          "partUri": "/ppt/notesSlides/notesSlide1.xml",
+          "primarySelector": "slide:2"
+        },
+        "id": "slide_2_notes",
+        "index": 9,
+        "readbackKeys": [
+          "createdPart",
+          "createdRelationship",
+          "dryRun",
+          "file",
+          "notesUri",
+          "output",
+          "readbackCommand",
+          "renderCommand",
+          "slide",
+          "slidePartUri",
+          "slideReadbackCommand",
+          "text",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:c59c7883bd95ec9270e795476a17f9f96f8c35f035c52279793e444273331074",
+        "resolvedArgs": {
+          "slide": "2",
+          "text": "Explain the Q3 variance before discussing the forecast."
+        }
+      },
+      {
+        "command": "pptx place table",
+        "destination": {
+          "handle": "H:pptx/table:shape/3",
+          "kind": "table",
+          "partUri": "/ppt/slides/slide1.xml",
+          "primarySelector": "shape:3"
+        },
+        "id": "slide_3_table_1",
+        "index": 10,
+        "readbackKeys": [
+          "cols",
+          "file",
+          "height",
+          "layoutCheckCommand",
+          "output",
+          "rows",
+          "shapeId",
+          "shapeName",
+          "width"
+        ],
+        "readbackSha256": "sha256:e112e3761bb2a4a28f517f1b09ebd96126028ee9f2f7bd45c966515e75060a26",
+        "resolvedArgs": {
+          "band1-color": "D9E1F2",
+          "banded-rows": true,
+          "data": "<build-stage>/generated/slide-003-table-001.json",
+          "format": "json",
+          "header": true,
+          "header-color": "4472C4",
+          "slide": "3",
+          "slot": "body"
+        }
+      },
+      {
+        "command": "pptx charts create",
+        "destination": {
+          "handle": "H:pptx/chart:slide/4",
+          "kind": "chart",
+          "partUri": "/ppt/charts/chart1.xml",
+          "primarySelector": "slide:4"
+        },
+        "id": "slide_4_chart_1",
+        "index": 11,
+        "readbackKeys": [
+          "action",
+          "categories",
+          "chart",
+          "chartPartUri",
+          "chartRelationshipId",
+          "chartShowCommand",
+          "chartType",
+          "chartsListCommand",
+          "cx",
+          "cy",
+          "dataLabels",
+          "dryRun",
+          "file",
+          "geometryInches",
+          "houseStyle",
+          "numberFormat",
+          "output",
+          "renderCommand",
+          "seriesCount",
+          "shapeId",
+          "shapeName",
+          "slide",
+          "sourceMode",
+          "sourceRange",
+          "sourceSheet",
+          "title",
+          "validateCommand",
+          "x",
+          "y"
+        ],
+        "readbackSha256": "sha256:45563ae17e8be6ea968177195f0b81273826469825e62027592ea764a19f578e",
+        "resolvedArgs": {
+          "slide": "4",
+          "slot": "body",
+          "title": "Revenue",
+          "type": "bar",
+          "values-json": "[[\"\",\"Actual\"],[\"Q1\",38.0],[\"Q2\",41.0],[\"Q3\",45.0]]"
+        }
+      },
+      {
+        "command": "pptx place image",
+        "destination": {
+          "handle": "H:pptx/s:261/shape:n:3",
+          "kind": "image",
+          "partUri": "/ppt/slides/slide1.xml",
+          "primarySelector": "shape:3"
+        },
+        "id": "slide_5_image_1",
+        "index": 12,
+        "readbackKeys": [
+          "altText",
+          "bytesEmbedded",
+          "bytesOriginal",
+          "bytesSaved",
+          "contentType",
+          "cx",
+          "cy",
+          "destination",
+          "dryRun",
+          "encodedHeightPx",
+          "encodedWidthPx",
+          "exifOrientation",
+          "file",
+          "fit",
+          "fitMode",
+          "imageFormat",
+          "keepOriginal",
+          "layoutCheckCommand",
+          "maxDpi",
+          "nativeHeightPx",
+          "nativeWidthPx",
+          "orientationApplied",
+          "output",
+          "placedHeightEmu",
+          "placedHeightInches",
+          "placedWidthEmu",
+          "placedWidthInches",
+          "readbackCommand",
+          "relationshipId",
+          "renderCommand",
+          "shapeId",
+          "shapeName",
+          "slideNumber",
+          "slideReadbackCommand",
+          "targetUri",
+          "validateCommand",
+          "x",
+          "y"
+        ],
+        "readbackSha256": "sha256:fa98c4b121c116f32a3ad6cfe0bc76a61a40d0c7e67d2236793b1b4b353ce879",
+        "resolvedArgs": {
+          "alt": "Product detail",
+          "fit": "contain",
+          "image": "<build-stage>/external/op-13-image-0.png",
+          "slide": "5",
+          "slot": "body"
+        }
+      }
+    ],
+    "schemaVersion": "ooxml-cli.pptx-build.v1",
+    "validated": true,
+    "warnings": [
+      {
+        "code": "MARKDOWN_NUMBERING_RENDERED_AS_BULLET",
+        "line": 13,
+        "message": "PPTX body numbering is not available; ordered list item was preserved as a bullet"
+      }
+    ]
+  },
+  "check": {
+    "checkCommand": "ooxml --json check <artifact-root>/first.pptx --openxml-sdk auto",
+    "checks": {
+      "conformance": "passed",
+      "design": "passed",
+      "layout": "passed",
+      "references": "not-applicable",
+      "schema": "passed",
+      "strict": "passed",
+      "structural": "passed",
+      "visual": "skipped"
+    },
+    "failOn": "error",
+    "family": "pptx",
+    "file": "<artifact-root>/first.pptx",
+    "findings": [
+      {
+        "code": "PPTX_IMAGE_SCALE",
+        "docs": "docs/bridge-plan-2026-09.md#d8-design-lint",
+        "fixCommand": "ooxml --json pptx shapes delete <artifact-root>/first.pptx --slide 5 --target shape:3 --out <artifact-root>/first.design-fixed.pptx",
+        "location": {
+          "part": "/ppt/slides/slide6.xml",
+          "shapeId": 3,
+          "slide": 5
+        },
+        "message": "Slide 5 picture shape:3 is upscaled or aspect-distorted",
+        "part": "/ppt/slides/slide6.xml",
+        "severity": "warning"
+      }
+    ],
+    "proofLevel": {
+      "schema": "passed",
+      "strict": "passed",
+      "structural": "passed",
+      "visual": "skipped"
+    },
+    "schemaVersion": "ooxml-cli.check.v1",
+    "status": "warning",
+    "summary": {
+      "errors": 0,
+      "info": 0,
+      "total": 1,
+      "warnings": 1
+    }
+  },
+  "conformance": {
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed"
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed"
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed"
+      },
+      {
+        "contract": "Open XML SDK passed, or cleanly skipped when unavailable",
+        "name": "schema",
+        "validator": "openxml-sdk"
+      }
+    ],
+    "errors": 0,
+    "schemaVersion": "ooxml-cli.conformance.v1",
+    "status": "passed",
+    "warnings": 0
+  },
+  "designCheck": {
+    "config": null,
+    "family": "pptx",
+    "file": "<artifact-root>/first.pptx",
+    "findings": [
+      {
+        "code": "PPTX_IMAGE_SCALE",
+        "evidence": {
+          "aspectDistortion": 0.0,
+          "assumedDpi": 96,
+          "displayedEmu": {
+            "height": 4800600,
+            "width": 4800600
+          },
+          "nativePixels": {
+            "height": 100,
+            "width": 100
+          },
+          "upscaled": true
+        },
+        "fixCommand": "ooxml --json pptx shapes delete <artifact-root>/first.pptx --slide 5 --target shape:3 --out <artifact-root>/first.design-fixed.pptx",
+        "location": {
+          "part": "/ppt/slides/slide6.xml",
+          "shapeId": 3,
+          "slide": 5
+        },
+        "message": "Slide 5 picture shape:3 is upscaled or aspect-distorted",
+        "severity": "warning"
+      }
+    ],
+    "ignored": [],
+    "schemaVersion": "ooxml-cli.design-check.v1",
+    "status": "passed",
+    "summary": {
+      "errors": 0,
+      "infos": 0,
+      "total": 1,
+      "warnings": 1
+    }
+  },
+  "determinism": {
+    "byteLength": 24851,
+    "sha256": "sha256:2f9a8c3db74cb7db46a4d84f99e8a76e0cc9be086dba22a40b57261fe5d6626a",
+    "sourceDateEpoch": "946684800"
+  },
+  "family": "pptx",
+  "layout": {
+    "averageDensity": 56.0365,
+    "file": "<artifact-root>/first.pptx",
+    "hasIssues": false,
+    "safeMargin": {
+      "emu": 228600,
+      "inches": 0.25
+    },
+    "slideReports": [
+      {
+        "density": {
+          "classification": "sparse",
+          "densityPercentage": 17.599999999999998,
+          "shapeCount": 2,
+          "slideArea": 83612736000000,
+          "totalShapeArea": 14715841536000
+        },
+        "hasIssues": false,
+        "issueCount": 0,
+        "slideIndex": 0,
+        "slideNumber": 1
+      },
+      {
+        "density": {
+          "classification": "dense",
+          "densityPercentage": 81.42,
+          "shapeCount": 2,
+          "slideArea": 83612736000000,
+          "totalShapeArea": 68077489651200
+        },
+        "hasIssues": false,
+        "issueCount": 0,
+        "slideIndex": 1,
+        "slideNumber": 2
+      },
+      {
+        "density": {
+          "classification": "dense",
+          "densityPercentage": 72.2,
+          "shapeCount": 2,
+          "slideArea": 83612736000000,
+          "totalShapeArea": 60368395392000
+        },
+        "hasIssues": false,
+        "issueCount": 0,
+        "slideIndex": 2,
+        "slideNumber": 3
+      },
+      {
+        "density": {
+          "classification": "dense",
+          "densityPercentage": 72.2,
+          "shapeCount": 2,
+          "slideArea": 83612736000000,
+          "totalShapeArea": 60368395392000
+        },
+        "hasIssues": false,
+        "issueCount": 0,
+        "slideIndex": 3,
+        "slideNumber": 4
+      },
+      {
+        "density": {
+          "classification": "moderate",
+          "densityPercentage": 36.7625,
+          "shapeCount": 2,
+          "slideArea": 83612736000000,
+          "totalShapeArea": 30738132072000
+        },
+        "hasIssues": false,
+        "issueCount": 0,
+        "slideIndex": 4,
+        "slideNumber": 5
+      }
+    ],
+    "slidesWithHighDensity": 3,
+    "slidesWithIssues": 0,
+    "totalCollisions": 0,
+    "totalOffSlide": 0,
+    "totalSafeMarginViolations": 0,
+    "totalSlides": 5,
+    "totalTextOverflows": 0
+  },
+  "outline": {
+    "checkCommand": "ooxml --json check <artifact-root>/first.pptx",
+    "depth": 3,
+    "file": "<artifact-root>/first.pptx",
+    "fileSizeBytes": 24851,
+    "layouts": [
+      {
+        "id": "layout-1",
+        "masterId": "master-1",
+        "name": "Title Slide",
+        "number": 1,
+        "partUri": "/ppt/slideLayouts/slideLayout1.xml",
+        "placeholderCount": 2,
+        "placeholders": [
+          "ctrTitle",
+          "subTitle:1"
+        ],
+        "primarySelector": "1"
+      },
+      {
+        "id": "layout-2",
+        "masterId": "master-1",
+        "name": "Title and Content",
+        "number": 2,
+        "partUri": "/ppt/slideLayouts/slideLayout2.xml",
+        "placeholderCount": 2,
+        "placeholders": [
+          "title",
+          "body:1"
+        ],
+        "primarySelector": "2"
+      },
+      {
+        "id": "layout-3",
+        "masterId": "master-1",
+        "name": "Section Header",
+        "number": 3,
+        "partUri": "/ppt/slideLayouts/slideLayout3.xml",
+        "placeholderCount": 2,
+        "placeholders": [
+          "title",
+          "body:1"
+        ],
+        "primarySelector": "3"
+      },
+      {
+        "id": "layout-4",
+        "masterId": "master-1",
+        "name": "Two Content",
+        "number": 4,
+        "partUri": "/ppt/slideLayouts/slideLayout4.xml",
+        "placeholderCount": 3,
+        "placeholders": [
+          "title",
+          "body:1",
+          "body:2"
+        ],
+        "primarySelector": "4"
+      },
+      {
+        "id": "layout-5",
+        "masterId": "master-1",
+        "name": "Comparison",
+        "number": 5,
+        "partUri": "/ppt/slideLayouts/slideLayout5.xml",
+        "placeholderCount": 5,
+        "placeholders": [
+          "title",
+          "body:1",
+          "body:2",
+          "body:3",
+          "body:4"
+        ],
+        "primarySelector": "5"
+      },
+      {
+        "id": "layout-6",
+        "masterId": "master-1",
+        "name": "Title Only",
+        "number": 6,
+        "partUri": "/ppt/slideLayouts/slideLayout6.xml",
+        "placeholderCount": 1,
+        "placeholders": [
+          "title"
+        ],
+        "primarySelector": "6"
+      },
+      {
+        "id": "layout-7",
+        "masterId": "master-1",
+        "name": "Blank",
+        "number": 7,
+        "partUri": "/ppt/slideLayouts/slideLayout7.xml",
+        "placeholderCount": 0,
+        "placeholders": [],
+        "primarySelector": "7"
+      },
+      {
+        "id": "layout-8",
+        "masterId": "master-1",
+        "name": "Content with Caption",
+        "number": 8,
+        "partUri": "/ppt/slideLayouts/slideLayout8.xml",
+        "placeholderCount": 3,
+        "placeholders": [
+          "body:1",
+          "title",
+          "body:2"
+        ],
+        "primarySelector": "8"
+      },
+      {
+        "id": "layout-9",
+        "masterId": "master-1",
+        "name": "Picture with Caption",
+        "number": 9,
+        "partUri": "/ppt/slideLayouts/slideLayout9.xml",
+        "placeholderCount": 3,
+        "placeholders": [
+          "pic:1",
+          "title",
+          "body:2"
+        ],
+        "primarySelector": "9"
+      },
+      {
+        "id": "layout-10",
+        "masterId": "master-1",
+        "name": "Title and Vertical Text",
+        "number": 10,
+        "partUri": "/ppt/slideLayouts/slideLayout10.xml",
+        "placeholderCount": 2,
+        "placeholders": [
+          "title",
+          "body:1"
+        ],
+        "primarySelector": "10"
+      },
+      {
+        "id": "layout-11",
+        "masterId": "master-1",
+        "name": "Vertical Title and Text",
+        "number": 11,
+        "partUri": "/ppt/slideLayouts/slideLayout11.xml",
+        "placeholderCount": 2,
+        "placeholders": [
+          "title",
+          "body:1"
+        ],
+        "primarySelector": "11"
+      }
+    ],
+    "masters": [
+      {
+        "index": 1,
+        "layouts": 11,
+        "primarySelector": "1",
+        "theme": "/ppt/theme/theme1.xml",
+        "uri": "/ppt/slideMasters/slideMaster1.xml"
+      }
+    ],
+    "schemaVersion": 1,
+    "slideSize": {
+      "emu": {
+        "height": 6858000,
+        "width": 12192000
+      },
+      "inches": {
+        "height": 7.5,
+        "width": 13.333333333333334
+      }
+    },
+    "slides": [
+      {
+        "chartCount": 0,
+        "charts": [],
+        "handle": "H:pptx/s:257",
+        "imageCount": 0,
+        "images": [],
+        "layout": "Title Slide",
+        "layoutNumber": 1,
+        "layoutPartUri": "/ppt/slideLayouts/slideLayout1.xml",
+        "notes": false,
+        "number": 1,
+        "partUri": "/ppt/slides/slide2.xml",
+        "primarySelector": "1",
+        "shapeCount": 2,
+        "shapes": [
+          {
+            "bounds": {
+              "cx": 9997440,
+              "cy": 960120,
+              "inches": {
+                "cx": 10.933333333333334,
+                "cy": 1.05,
+                "x": 1.2,
+                "y": 2.025
+              },
+              "x": 1097280,
+              "y": 1851660
+            },
+            "boundsSource": "layout",
+            "handle": "H:pptx/s:257/shape:n:2",
+            "kind": "title",
+            "placeholder": {
+              "key": "title",
+              "literalType": "ctrTitle",
+              "resolvedType": "ctrTitle",
+              "role": "title",
+              "typeSource": "slide"
+            },
+            "selector": "title",
+            "shapeId": 2,
+            "shapeName": "Title 1",
+            "shapeType": "sp",
+            "targetKind": "title",
+            "textPreview": "Q3 Review"
+          },
+          {
+            "bounds": {
+              "cx": 8290560,
+              "cy": 617220,
+              "inches": {
+                "cx": 9.066666666666666,
+                "cy": 0.675,
+                "x": 2.1333333333333333,
+                "y": 3.45
+              },
+              "x": 1950720,
+              "y": 3154680
+            },
+            "boundsSource": "layout",
+            "handle": "H:pptx/s:257/shape:n:3",
+            "kind": "subtitle",
+            "placeholder": {
+              "index": 1,
+              "key": "subtitle",
+              "literalType": "subTitle",
+              "resolvedType": "subTitle",
+              "role": "subtitle",
+              "typeSource": "slide"
+            },
+            "selector": "subtitle",
+            "shapeId": 3,
+            "shapeName": "Subtitle 2",
+            "shapeType": "sp",
+            "targetKind": "subtitle",
+            "textPreview": "Results, decisions, and next steps"
+          }
+        ],
+        "slideId": 257,
+        "tableCount": 0,
+        "tables": [],
+        "title": "Q3 Review"
+      },
+      {
+        "chartCount": 0,
+        "charts": [],
+        "handle": "H:pptx/s:258",
+        "imageCount": 0,
+        "images": [],
+        "layout": "Title and Content",
+        "layoutNumber": 2,
+        "layoutPartUri": "/ppt/slideLayouts/slideLayout2.xml",
+        "notes": true,
+        "number": 2,
+        "partUri": "/ppt/slides/slide3.xml",
+        "primarySelector": "2",
+        "shapeCount": 2,
+        "shapes": [
+          {
+            "bounds": {
+              "cx": 11216640,
+              "cy": 685800,
+              "inches": {
+                "cx": 12.266666666666667,
+                "cy": 0.75,
+                "x": 0.5333333333333333,
+                "y": 0.3
+              },
+              "x": 487680,
+              "y": 274320
+            },
+            "boundsSource": "slide",
+            "handle": "H:pptx/s:258/shape:n:2",
+            "kind": "title",
+            "placeholder": {
+              "key": "title",
+              "literalType": "title",
+              "resolvedType": "title",
+              "role": "title",
+              "typeSource": "slide"
+            },
+            "selector": "title",
+            "shapeId": 2,
+            "shapeName": "Title 1",
+            "shapeType": "sp",
+            "targetKind": "title",
+            "textPreview": "Performance"
+          },
+          {
+            "bounds": {
+              "cx": 11216640,
+              "cy": 5383530,
+              "inches": {
+                "cx": 12.266666666666667,
+                "cy": 5.8875,
+                "x": 0.5333333333333333,
+                "y": 1.3125
+              },
+              "x": 487680,
+              "y": 1200150
+            },
+            "boundsSource": "slide",
+            "handle": "H:pptx/s:258/shape:n:3",
+            "kind": "body",
+            "placeholder": {
+              "index": 1,
+              "key": "body",
+              "literalType": "body",
+              "resolvedType": "body",
+              "role": "body",
+              "typeSource": "slide"
+            },
+            "selector": "body",
+            "shapeId": 3,
+            "shapeName": "Content Placeholder 2",
+            "shapeType": "sp",
+            "targetKind": "body",
+            "textPreview": "Revenue grew 12 percent Review margin in the dashboard Confirm the revised forecast"
+          }
+        ],
+        "slideId": 258,
+        "tableCount": 0,
+        "tables": [],
+        "title": "Performance"
+      },
+      {
+        "chartCount": 0,
+        "charts": [],
+        "handle": "H:pptx/s:259",
+        "imageCount": 0,
+        "images": [],
+        "layout": "Title Only",
+        "layoutNumber": 6,
+        "layoutPartUri": "/ppt/slideLayouts/slideLayout6.xml",
+        "notes": false,
+        "number": 3,
+        "partUri": "/ppt/slides/slide4.xml",
+        "primarySelector": "3",
+        "shapeCount": 2,
+        "shapes": [
+          {
+            "bounds": {
+              "cx": 11216640,
+              "cy": 685800,
+              "inches": {
+                "cx": 12.266666666666667,
+                "cy": 0.75,
+                "x": 0.5333333333333333,
+                "y": 0.3
+              },
+              "x": 487680,
+              "y": 274320
+            },
+            "boundsSource": "slide",
+            "handle": "H:pptx/s:259/shape:n:2",
+            "kind": "title",
+            "placeholder": {
+              "key": "title",
+              "literalType": "title",
+              "resolvedType": "title",
+              "role": "title",
+              "typeSource": "slide"
+            },
+            "selector": "title",
+            "shapeId": 2,
+            "shapeName": "Title 1",
+            "shapeType": "sp",
+            "targetKind": "title",
+            "textPreview": "Quarterly Results"
+          },
+          {
+            "bounds": {
+              "cx": 10972800,
+              "cy": 4800600,
+              "inches": {
+                "cx": 12.0,
+                "cy": 5.25,
+                "x": 0.6666666666666666,
+                "y": 1.5
+              },
+              "x": 609600,
+              "y": 1371600
+            },
+            "boundsSource": "slide",
+            "handle": "H:pptx/s:259/shape:n:3",
+            "kind": "table",
+            "selector": "table:1",
+            "shapeId": 3,
+            "shapeName": "Table 3",
+            "shapeType": "graphicFrame",
+            "targetKind": "table"
+          }
+        ],
+        "slideId": 259,
+        "tableCount": 1,
+        "tables": [
+          {
+            "cols": 2,
+            "handle": "H:pptx/s:259/shape:n:3",
+            "rows": 4,
+            "selector": "table:1",
+            "shapeId": 3,
+            "shapeName": "Table 3"
+          }
+        ],
+        "title": "Quarterly Results"
+      },
+      {
+        "chartCount": 1,
+        "charts": [
+          {
+            "handle": "H:pptx/s:260/shape:n:3",
+            "number": 1,
+            "partUri": "/ppt/charts/chart1.xml",
+            "selector": "chart:1",
+            "shapeId": "3",
+            "title": "Revenue",
+            "types": [
+              "barChart"
+            ]
+          }
+        ],
+        "handle": "H:pptx/s:260",
+        "imageCount": 0,
+        "images": [],
+        "layout": "Title Only",
+        "layoutNumber": 6,
+        "layoutPartUri": "/ppt/slideLayouts/slideLayout6.xml",
+        "notes": false,
+        "number": 4,
+        "partUri": "/ppt/slides/slide5.xml",
+        "primarySelector": "4",
+        "shapeCount": 2,
+        "shapes": [
+          {
+            "bounds": {
+              "cx": 11216640,
+              "cy": 685800,
+              "inches": {
+                "cx": 12.266666666666667,
+                "cy": 0.75,
+                "x": 0.5333333333333333,
+                "y": 0.3
+              },
+              "x": 487680,
+              "y": 274320
+            },
+            "boundsSource": "slide",
+            "handle": "H:pptx/s:260/shape:n:2",
+            "kind": "title",
+            "placeholder": {
+              "key": "title",
+              "literalType": "title",
+              "resolvedType": "title",
+              "role": "title",
+              "typeSource": "slide"
+            },
+            "selector": "title",
+            "shapeId": 2,
+            "shapeName": "Title 1",
+            "shapeType": "sp",
+            "targetKind": "title",
+            "textPreview": "Revenue Trend"
+          },
+          {
+            "bounds": {
+              "cx": 10972800,
+              "cy": 4800600,
+              "inches": {
+                "cx": 12.0,
+                "cy": 5.25,
+                "x": 0.6666666666666666,
+                "y": 1.5
+              },
+              "x": 609600,
+              "y": 1371600
+            },
+            "boundsSource": "slide",
+            "handle": "H:pptx/s:260/shape:n:3",
+            "kind": "shape",
+            "selector": "shape:3",
+            "shapeId": 3,
+            "shapeName": "Chart 3",
+            "shapeType": "graphicFrame",
+            "targetKind": "shape"
+          }
+        ],
+        "slideId": 260,
+        "tableCount": 0,
+        "tables": [],
+        "title": "Revenue Trend"
+      },
+      {
+        "chartCount": 0,
+        "charts": [],
+        "handle": "H:pptx/s:261",
+        "imageCount": 1,
+        "images": [
+          {
+            "contentType": "image/png",
+            "handle": "H:pptx/s:261/shape:n:3",
+            "selector": "shape:3",
+            "shapeId": 3,
+            "shapeName": "image3",
+            "targetUri": "/ppt/media/image3.png"
+          }
+        ],
+        "layout": "Title Only",
+        "layoutNumber": 6,
+        "layoutPartUri": "/ppt/slideLayouts/slideLayout6.xml",
+        "notes": false,
+        "number": 5,
+        "partUri": "/ppt/slides/slide6.xml",
+        "primarySelector": "5",
+        "shapeCount": 2,
+        "shapes": [
+          {
+            "bounds": {
+              "cx": 11216640,
+              "cy": 685800,
+              "inches": {
+                "cx": 12.266666666666667,
+                "cy": 0.75,
+                "x": 0.5333333333333333,
+                "y": 0.3
+              },
+              "x": 487680,
+              "y": 274320
+            },
+            "boundsSource": "slide",
+            "handle": "H:pptx/s:261/shape:n:2",
+            "kind": "title",
+            "placeholder": {
+              "key": "title",
+              "literalType": "title",
+              "resolvedType": "title",
+              "role": "title",
+              "typeSource": "slide"
+            },
+            "selector": "title",
+            "shapeId": 2,
+            "shapeName": "Title 1",
+            "shapeType": "sp",
+            "targetKind": "title",
+            "textPreview": "Product Detail"
+          },
+          {
+            "bounds": {
+              "cx": 4800600,
+              "cy": 4800600,
+              "inches": {
+                "cx": 5.25,
+                "cy": 5.25,
+                "x": 4.041666666666667,
+                "y": 1.5
+              },
+              "x": 3695700,
+              "y": 1371600
+            },
+            "boundsSource": "slide",
+            "handle": "H:pptx/s:261/shape:n:3",
+            "kind": "picture",
+            "selector": "shape:3",
+            "shapeId": 3,
+            "shapeName": "image3",
+            "shapeType": "pic",
+            "targetKind": "picture"
+          }
+        ],
+        "slideId": 261,
+        "tableCount": 0,
+        "tables": [],
+        "title": "Product Detail"
+      }
+    ],
+    "summary": {
+      "customXmlParts": 0,
+      "handoutMasters": 0,
+      "layouts": 11,
+      "masters": 1,
+      "mediaAssets": 1,
+      "notesMasters": 1,
+      "slideSize": {
+        "cx": 12192000,
+        "cy": 6858000,
+        "unit": "emu"
+      },
+      "slides": 5,
+      "themes": 1
+    },
+    "textPreviewChars": 240,
+    "theme": {
+      "colorScheme": {
+        "accent1": "4472C4",
+        "accent2": "9765B1",
+        "accent3": "A7525D",
+        "accent4": "A56D0A",
+        "accent5": "547A35",
+        "accent6": "008987",
+        "dark1": "0A0F19",
+        "dark2": "1E304F",
+        "folLink": "006C6A",
+        "hypLink": "666800",
+        "light1": "FFFFFF",
+        "light2": "E9F1FD",
+        "name": "ooxml-cli corporate"
+      },
+      "fontScheme": {
+        "majorFont": "Aptos Display",
+        "minorFont": "Aptos",
+        "name": "ooxml-cli"
+      },
+      "name": "ooxml-cli corporate"
+    },
+    "type": "pptx"
+  },
+  "recipe": "markdown-q3-review-deck",
+  "render": {
+    "collection": "slides",
+    "countKey": "slide",
+    "engine": "libreoffice",
+    "expectedCount": 5,
+    "policy": "real render with exact count, or clean skip when the renderer is unavailable"
+  },
+  "schemaVersion": "ooxml-cli.recipe-e2e.v1",
+  "source": {
+    "kind": "markdown",
+    "path": "testdata/markdown/q3-review.md"
+  },
+  "strictValidation": {
+    "file": "<artifact-root>/first.pptx",
+    "status": "valid",
+    "summary": {
+      "errors": 0,
+      "info": 0,
+      "warnings": 0
+    },
+    "valid": true
+  }
+}

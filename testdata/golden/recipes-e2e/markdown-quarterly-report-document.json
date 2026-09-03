@@ -1,0 +1,1158 @@
+{
+  "build": {
+    "checkSummary": {
+      "errors": 0,
+      "info": 0,
+      "total": 2,
+      "warnings": 2
+    },
+    "layoutQa": null,
+    "nodeMap": {
+      "/": {
+        "opId": "document",
+        "selector": "package",
+        "specId": null
+      },
+      "/blocks/0": {
+        "opId": "block_001",
+        "selector": "slide:1",
+        "specId": null
+      },
+      "/blocks/1": {
+        "opId": "block_002",
+        "selector": "block:3",
+        "specId": null
+      },
+      "/blocks/10": {
+        "opId": "block_011",
+        "selector": "block:12",
+        "specId": null
+      },
+      "/blocks/11": {
+        "opId": "block_012",
+        "selector": "block:13",
+        "specId": null
+      },
+      "/blocks/2": {
+        "opId": "block_003",
+        "selector": "block:4",
+        "specId": null
+      },
+      "/blocks/3": {
+        "opId": "block_004",
+        "selector": "block:5",
+        "specId": null
+      },
+      "/blocks/4": {
+        "opId": "block_005",
+        "selector": "block:6",
+        "specId": null
+      },
+      "/blocks/5": {
+        "opId": "block_006",
+        "selector": "block:7",
+        "specId": null
+      },
+      "/blocks/6": {
+        "opId": "block_007",
+        "selector": "block:8",
+        "specId": null
+      },
+      "/blocks/7": {
+        "opId": "block_008",
+        "selector": "table:1",
+        "specId": null
+      },
+      "/blocks/8": {
+        "opId": "block_009",
+        "selector": "image:11",
+        "specId": null
+      },
+      "/blocks/9": {
+        "opId": "block_010",
+        "selector": "section:document",
+        "specId": null
+      },
+      "/sections/0": {
+        "opId": "section_setup_001",
+        "selector": "section:1",
+        "specId": null
+      },
+      "/title": {
+        "opId": "title",
+        "selector": "block:2",
+        "specId": null
+      }
+    },
+    "operations": [
+      {
+        "command": "docx scaffold",
+        "destination": {
+          "handle": "H:docx/package:package",
+          "kind": "package",
+          "partUri": "/",
+          "primarySelector": "package"
+        },
+        "id": "document",
+        "index": 0,
+        "readbackKeys": [
+          "blockHashes",
+          "builtInStyleCount",
+          "conformanceCommand",
+          "created",
+          "documentHash",
+          "documentPart",
+          "family",
+          "fontTablePart",
+          "initialBlockCount",
+          "initialText",
+          "numberingPart",
+          "output",
+          "readbackCommand",
+          "settingsPart",
+          "stylesPart",
+          "template",
+          "theme",
+          "themePart",
+          "themeSeed",
+          "validateCommand",
+          "validated"
+        ],
+        "readbackSha256": "sha256:f4c35a3c2e3275b322fed13f8f06afe4e616ce403daf0793482f8bb7d00690d8",
+        "resolvedArgs": {
+          "creator": "Ada Lovelace",
+          "theme": "corporate-blue"
+        }
+      },
+      {
+        "command": "docx paragraphs append",
+        "destination": {
+          "handle": "H:docx/paragraph:block/2",
+          "kind": "paragraph",
+          "partUri": "/word/document.xml",
+          "primarySelector": "block:2"
+        },
+        "id": "title",
+        "index": 1,
+        "readbackKeys": [
+          "file",
+          "index",
+          "style",
+          "text"
+        ],
+        "readbackSha256": "sha256:80e301cc8e754b467acfa35f76307fa87d11a09ce332a4bca22285366c261c62",
+        "resolvedArgs": {
+          "style": "Title",
+          "text": "Q3 Quarterly Report"
+        }
+      },
+      {
+        "command": "docx fields insert",
+        "destination": {
+          "handle": "H:docx/field:slide/1",
+          "kind": "field",
+          "partUri": "/word/document.xml",
+          "primarySelector": "slide:1"
+        },
+        "id": "block_001",
+        "index": 2,
+        "readbackKeys": [
+          "cachedResult",
+          "fieldType",
+          "file",
+          "instruction",
+          "levels",
+          "operation",
+          "output",
+          "updateFields",
+          "warnings"
+        ],
+        "readbackSha256": "sha256:770d80ae98c9e2700fc4f6088bc44300c38b102788a38d1c20ab746aba8d4d39",
+        "resolvedArgs": {
+          "levels": "1-4",
+          "toc": true
+        }
+      },
+      {
+        "command": "docx paragraphs append",
+        "destination": {
+          "handle": "H:docx/paragraph:block/4",
+          "kind": "paragraph",
+          "partUri": "/word/document.xml",
+          "primarySelector": "block:4"
+        },
+        "id": "block_002",
+        "index": 3,
+        "readbackKeys": [
+          "file",
+          "index",
+          "style",
+          "text"
+        ],
+        "readbackSha256": "sha256:680dcb68cac94b597f9f7a2bf7b23f4531dba35985d51ffd0dea2b6b413d097d",
+        "resolvedArgs": {
+          "style": "Heading1",
+          "text": "Highlights"
+        }
+      },
+      {
+        "command": "docx paragraphs append",
+        "destination": {
+          "handle": "H:docx/paragraph:block/5",
+          "kind": "paragraph",
+          "partUri": "/word/document.xml",
+          "primarySelector": "block:5"
+        },
+        "id": "block_003",
+        "index": 4,
+        "readbackKeys": [
+          "file",
+          "index",
+          "runs",
+          "style",
+          "text"
+        ],
+        "readbackSha256": "sha256:c5ebaee7a451ef294d3c3dae3adc6370fdf8e42c3d8dd59a1254619ad48727a0",
+        "resolvedArgs": {
+          "runs": [
+            {
+              "bold": true,
+              "text": "Revenue grew 18 percent"
+            },
+            {
+              "text": " while the team reviewed "
+            },
+            {
+              "inlineCode": true,
+              "text": "forecast()"
+            },
+            {
+              "text": " in the "
+            },
+            {
+              "link": "https://example.test/q3-report",
+              "text": "dashboard"
+            },
+            {
+              "text": "."
+            }
+          ],
+          "style": "Normal"
+        }
+      },
+      {
+        "command": "docx paragraphs append",
+        "destination": {
+          "handle": "H:docx/paragraph:block/6",
+          "kind": "paragraph",
+          "partUri": "/word/document.xml",
+          "primarySelector": "block:6"
+        },
+        "id": "block_004",
+        "index": 5,
+        "readbackKeys": [
+          "file",
+          "index",
+          "list",
+          "listLevel",
+          "numId",
+          "restarted",
+          "style",
+          "text"
+        ],
+        "readbackSha256": "sha256:c1148957c171e98869afce7131923a1cf84249b255c9ebdb039afbe1fbc4f835",
+        "resolvedArgs": {
+          "level": "0",
+          "list": "bullet",
+          "style": "ListBullet",
+          "text": "Enterprise pipeline reached a record level"
+        }
+      },
+      {
+        "command": "docx paragraphs append",
+        "destination": {
+          "handle": "H:docx/paragraph:block/7",
+          "kind": "paragraph",
+          "partUri": "/word/document.xml",
+          "primarySelector": "block:7"
+        },
+        "id": "block_005",
+        "index": 6,
+        "readbackKeys": [
+          "file",
+          "index",
+          "list",
+          "listLevel",
+          "numId",
+          "restarted",
+          "style",
+          "text"
+        ],
+        "readbackSha256": "sha256:37de8efe817516ea0b43423957c85af3f00f2fb3cac29a537afe168d94e812d7",
+        "resolvedArgs": {
+          "level": "1",
+          "list": "bullet",
+          "style": "ListBullet",
+          "text": "Customer retention remained above plan"
+        }
+      },
+      {
+        "command": "docx paragraphs append",
+        "destination": {
+          "handle": "H:docx/paragraph:block/8",
+          "kind": "paragraph",
+          "partUri": "/word/document.xml",
+          "primarySelector": "block:8"
+        },
+        "id": "block_006",
+        "index": 7,
+        "readbackKeys": [
+          "file",
+          "index",
+          "list",
+          "listLevel",
+          "numId",
+          "restarted",
+          "style",
+          "text"
+        ],
+        "readbackSha256": "sha256:2d30dbf7ae4cc91b47e51e8e33f9e01f42ae67653608a08d786ab14dd8d7e676",
+        "resolvedArgs": {
+          "level": "0",
+          "list": "number",
+          "style": "ListNumber",
+          "text": "Confirm the revised operating plan"
+        }
+      },
+      {
+        "command": "docx paragraphs append",
+        "destination": {
+          "handle": "H:docx/paragraph:block/9",
+          "kind": "paragraph",
+          "partUri": "/word/document.xml",
+          "primarySelector": "block:9"
+        },
+        "id": "block_007",
+        "index": 8,
+        "readbackKeys": [
+          "file",
+          "index",
+          "style",
+          "text"
+        ],
+        "readbackSha256": "sha256:50fb5bbc7a2cc91fcd36a5fbef393be4290e2a3abb7eae2f1fe4e4a36fec72dc",
+        "resolvedArgs": {
+          "style": "Heading2",
+          "text": "Regional Metrics"
+        }
+      },
+      {
+        "command": "docx tables create",
+        "destination": {
+          "handle": "H:docx/table:table/1",
+          "kind": "table",
+          "partUri": "/word/document.xml",
+          "primarySelector": "table:1"
+        },
+        "id": "block_008",
+        "index": 9,
+        "readbackKeys": [
+          "block",
+          "blockHashes",
+          "cols",
+          "contentHash",
+          "documentHash",
+          "dryRun",
+          "file",
+          "output",
+          "rows",
+          "table",
+          "tablesListCommand",
+          "tablesShowCommand",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:2904a6ceca5dd744d6a90dc667e32b35e5fedfc1df95fcb30e082e0cb31ff954",
+        "resolvedArgs": {
+          "header-row": true,
+          "style": "TableGrid",
+          "values": "[[\"Region\",\"Revenue\",\"Growth\"],[\"North America\",\"$28m\",\"21%\"],[\"Europe\",\"$17m\",\"14%\"]]"
+        }
+      },
+      {
+        "command": "docx images insert",
+        "destination": {
+          "handle": "H:docx/image:image/11",
+          "kind": "image",
+          "partUri": "/word/document.xml",
+          "primarySelector": "image:11"
+        },
+        "id": "block_009",
+        "index": 10,
+        "readbackKeys": [
+          "align",
+          "altText",
+          "anchorHash",
+          "bytesEmbedded",
+          "bytesOriginal",
+          "bytesSaved",
+          "encodedHeightPx",
+          "encodedWidthPx",
+          "exifOrientation",
+          "file",
+          "fit",
+          "height",
+          "heightInches",
+          "id",
+          "imageFormat",
+          "index",
+          "insertAfter",
+          "keepOriginal",
+          "maxDpi",
+          "mediaUri",
+          "nativeHeightPx",
+          "nativeWidthPx",
+          "newContentType",
+          "orientationApplied",
+          "placedHeightEmu",
+          "placedHeightInches",
+          "placedWidthEmu",
+          "placedWidthInches",
+          "width",
+          "widthInches"
+        ],
+        "readbackSha256": "sha256:4535702dc4a80e2645a8c651afc50dd6326560882411af211a93a86d29309942",
+        "resolvedArgs": {
+          "after": "10",
+          "alt": "Product workflow",
+          "height": "2194560",
+          "image": "<build-stage>/external/op-11-image.png",
+          "width": "1828800"
+        }
+      },
+      {
+        "command": "docx breaks insert",
+        "destination": {
+          "handle": "H:docx/section:section/document",
+          "kind": "section",
+          "partUri": "/word/document.xml",
+          "primarySelector": "section:document"
+        },
+        "id": "block_010",
+        "index": 11,
+        "readbackKeys": [
+          "blockHashes",
+          "break",
+          "command",
+          "documentHash",
+          "file",
+          "validation"
+        ],
+        "readbackSha256": "sha256:d170b186d7a7638a1f1e3c4e92a04c3b8a74d2e4e1d8ba30f7b4bdb22c65d92a",
+        "resolvedArgs": {
+          "page": true
+        }
+      },
+      {
+        "command": "docx paragraphs append",
+        "destination": {
+          "handle": "H:docx/paragraph:block/13",
+          "kind": "paragraph",
+          "partUri": "/word/document.xml",
+          "primarySelector": "block:13"
+        },
+        "id": "block_011",
+        "index": 12,
+        "readbackKeys": [
+          "file",
+          "index",
+          "style",
+          "text"
+        ],
+        "readbackSha256": "sha256:4112635440bfb46e570f949d0a771d615fad0f49643925b25a198b1b92cab8db",
+        "resolvedArgs": {
+          "style": "Heading1",
+          "text": "Outlook"
+        }
+      },
+      {
+        "command": "docx paragraphs append",
+        "destination": {
+          "handle": "H:docx/paragraph:block/14",
+          "kind": "paragraph",
+          "partUri": "/word/document.xml",
+          "primarySelector": "block:14"
+        },
+        "id": "block_012",
+        "index": 13,
+        "readbackKeys": [
+          "file",
+          "index",
+          "runs",
+          "style",
+          "text"
+        ],
+        "readbackSha256": "sha256:e70176496867c2f4878d1ffa58a49c0057460de9450254ad1b9b12eb5ccb259b",
+        "resolvedArgs": {
+          "runs": [
+            {
+              "inlineCode": true,
+              "text": "focus = execution"
+            }
+          ],
+          "style": "Normal"
+        }
+      },
+      {
+        "command": "docx blocks delete",
+        "destination": {
+          "handle": "H:docx/paragraph:block/1",
+          "kind": "paragraph",
+          "partUri": "/word/document.xml",
+          "primarySelector": "block:1"
+        },
+        "id": "remove_seed",
+        "index": 14,
+        "readbackKeys": [
+          "blockId",
+          "file",
+          "index",
+          "previousHash",
+          "previousKind",
+          "previousText"
+        ],
+        "readbackSha256": "sha256:134b323f831bfefde9ced237d724d2e521e9e5db25ce04e45c3baaa9f0037387",
+        "resolvedArgs": {
+          "block": "1",
+          "expect-hash": "sha256:ed257d3d2fadf92642f62594a802b9956f5fcf84cc02d74d61f5fed50fdbe144"
+        }
+      },
+      {
+        "command": "docx sections set",
+        "destination": {
+          "handle": "H:docx/section:section/1",
+          "kind": "section",
+          "partUri": "/word/document.xml",
+          "primarySelector": "section:1"
+        },
+        "id": "section_setup_001",
+        "index": 15,
+        "readbackKeys": [
+          "blockHashes",
+          "command",
+          "documentHash",
+          "file",
+          "marginsTwips",
+          "orientation",
+          "section",
+          "size",
+          "validation"
+        ],
+        "readbackSha256": "sha256:7abadbe098fec867a7e1f528d06d823936890d7f3798ecbc145b2f87d3d86dcd",
+        "resolvedArgs": {
+          "margins": "0.75in,0.8in,0.75in,0.8in",
+          "orientation": "portrait",
+          "section": "1",
+          "size": "Letter"
+        }
+      },
+      {
+        "command": "docx headers set-text",
+        "destination": {
+          "handle": "H:docx/header:section/1",
+          "kind": "header",
+          "partUri": "/word/header1.xml",
+          "primarySelector": "section:1"
+        },
+        "id": "header_default",
+        "index": 16,
+        "readbackKeys": [
+          "createdPart",
+          "createdRef",
+          "dryRun",
+          "file",
+          "id",
+          "kind",
+          "listCommand",
+          "output",
+          "pageNumbers",
+          "paragraphIndex",
+          "paragraphPrimarySelector",
+          "paragraphSelectors",
+          "partUri",
+          "previousText",
+          "primarySelector",
+          "section",
+          "selectors",
+          "showCommand",
+          "text",
+          "type",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:8811241c8a2ad6a7e955fb153c9128ea1c81b7749f552b40dd22802888303e5a",
+        "resolvedArgs": {
+          "section": "1",
+          "text": "Q3 Operating Review",
+          "type": "default"
+        }
+      },
+      {
+        "command": "docx footers set-text",
+        "destination": {
+          "handle": "H:docx/footer:section/1",
+          "kind": "footer",
+          "partUri": "/word/footer1.xml",
+          "primarySelector": "section:1"
+        },
+        "id": "footer_default",
+        "index": 17,
+        "readbackKeys": [
+          "createdPart",
+          "createdRef",
+          "dryRun",
+          "file",
+          "id",
+          "kind",
+          "listCommand",
+          "output",
+          "pageNumbers",
+          "paragraphIndex",
+          "paragraphPrimarySelector",
+          "paragraphSelectors",
+          "partUri",
+          "previousText",
+          "primarySelector",
+          "section",
+          "selectors",
+          "showCommand",
+          "text",
+          "type",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:7df25a600e00b39cab650c2d04f555c9b559c928871c4c6ff273def1d13cdc37",
+        "resolvedArgs": {
+          "section": "1",
+          "text": "Internal",
+          "type": "default"
+        }
+      },
+      {
+        "command": "docx footers set-text",
+        "destination": {
+          "handle": "H:docx/footer:section/1",
+          "kind": "footer",
+          "partUri": "/word/footer1.xml",
+          "primarySelector": "section:1"
+        },
+        "id": "footer_page_numbers",
+        "index": 18,
+        "readbackKeys": [
+          "createdPart",
+          "createdRef",
+          "dryRun",
+          "file",
+          "id",
+          "kind",
+          "listCommand",
+          "output",
+          "pageNumbers",
+          "paragraphIndex",
+          "paragraphPrimarySelector",
+          "paragraphSelectors",
+          "partUri",
+          "previousText",
+          "primarySelector",
+          "section",
+          "selectors",
+          "showCommand",
+          "text",
+          "type",
+          "validateCommand"
+        ],
+        "readbackSha256": "sha256:8e596912e3b0ebc945182b3c92d622a5fc7530a0e2fce5857dc295bf63552962",
+        "resolvedArgs": {
+          "page-numbers": true,
+          "section": "1",
+          "type": "default"
+        }
+      }
+    ],
+    "schemaVersion": "ooxml-cli.docx-build.v1",
+    "validated": true,
+    "warnings": null
+  },
+  "check": {
+    "checkCommand": "ooxml --json check <artifact-root>/first.docx --openxml-sdk auto",
+    "checks": {
+      "conformance": "passed",
+      "design": "passed",
+      "layout": "not-applicable",
+      "references": "not-applicable",
+      "schema": "passed",
+      "strict": "passed",
+      "structural": "passed",
+      "visual": "skipped"
+    },
+    "failOn": "error",
+    "family": "docx",
+    "file": "<artifact-root>/first.docx",
+    "findings": [
+      {
+        "code": "DOCX_FONT_OUTSIDE_THEME",
+        "docs": "docs/bridge-plan-2026-09.md#d8-design-lint",
+        "fixCommand": "ooxml --json docx blocks replace <artifact-root>/first.docx --block 13 --expect-hash sha256:f25b29c2bfbb92a74fb4c40c232633266ef62e9cded293e8884189a727a34376 --text 'focus = execution' --style Normal --out <artifact-root>/first.font-fixed.docx",
+        "location": {
+          "block": 13,
+          "part": "/word/document.xml"
+        },
+        "message": "Block 13 uses font(s) outside the theme: Consolas",
+        "part": "/word/document.xml",
+        "severity": "warning"
+      },
+      {
+        "code": "DOCX_FONT_OUTSIDE_THEME",
+        "docs": "docs/bridge-plan-2026-09.md#d8-design-lint",
+        "fixCommand": "ooxml --json docx blocks replace <artifact-root>/first.docx --block 4 --expect-hash sha256:747dcf5f0f37b543bc597755c4ca479017a7663648e0c582c440351dc8593329 --text 'Revenue grew 18 percent while the team reviewed forecast() in the dashboard.' --style Normal --out <artifact-root>/first.font-fixed.docx",
+        "location": {
+          "block": 4,
+          "part": "/word/document.xml"
+        },
+        "message": "Block 4 uses font(s) outside the theme: Consolas",
+        "part": "/word/document.xml",
+        "severity": "warning"
+      }
+    ],
+    "proofLevel": {
+      "schema": "passed",
+      "strict": "passed",
+      "structural": "passed",
+      "visual": "skipped"
+    },
+    "schemaVersion": "ooxml-cli.check.v1",
+    "status": "warning",
+    "summary": {
+      "errors": 0,
+      "info": 0,
+      "total": 2,
+      "warnings": 2
+    }
+  },
+  "conformance": {
+    "checks": [
+      {
+        "name": "package-open",
+        "status": "passed"
+      },
+      {
+        "name": "repo-validation",
+        "status": "passed"
+      },
+      {
+        "name": "repair-invariants",
+        "status": "passed"
+      },
+      {
+        "contract": "Open XML SDK passed, or cleanly skipped when unavailable",
+        "name": "schema",
+        "validator": "openxml-sdk"
+      }
+    ],
+    "errors": 0,
+    "schemaVersion": "ooxml-cli.conformance.v1",
+    "status": "passed",
+    "warnings": 0
+  },
+  "designCheck": {
+    "config": null,
+    "family": "docx",
+    "file": "<artifact-root>/first.docx",
+    "findings": [
+      {
+        "code": "DOCX_FONT_OUTSIDE_THEME",
+        "evidence": {
+          "fonts": [
+            "Consolas"
+          ],
+          "themeFonts": [
+            "Aptos",
+            "Aptos Display"
+          ]
+        },
+        "fixCommand": "ooxml --json docx blocks replace <artifact-root>/first.docx --block 13 --expect-hash sha256:f25b29c2bfbb92a74fb4c40c232633266ef62e9cded293e8884189a727a34376 --text 'focus = execution' --style Normal --out <artifact-root>/first.font-fixed.docx",
+        "location": {
+          "block": 13,
+          "part": "/word/document.xml"
+        },
+        "message": "Block 13 uses font(s) outside the theme: Consolas",
+        "severity": "warning"
+      },
+      {
+        "code": "DOCX_FONT_OUTSIDE_THEME",
+        "evidence": {
+          "fonts": [
+            "Consolas"
+          ],
+          "themeFonts": [
+            "Aptos",
+            "Aptos Display"
+          ]
+        },
+        "fixCommand": "ooxml --json docx blocks replace <artifact-root>/first.docx --block 4 --expect-hash sha256:747dcf5f0f37b543bc597755c4ca479017a7663648e0c582c440351dc8593329 --text 'Revenue grew 18 percent while the team reviewed forecast() in the dashboard.' --style Normal --out <artifact-root>/first.font-fixed.docx",
+        "location": {
+          "block": 4,
+          "part": "/word/document.xml"
+        },
+        "message": "Block 4 uses font(s) outside the theme: Consolas",
+        "severity": "warning"
+      }
+    ],
+    "ignored": [],
+    "schemaVersion": "ooxml-cli.design-check.v1",
+    "status": "passed",
+    "summary": {
+      "errors": 0,
+      "infos": 0,
+      "total": 2,
+      "warnings": 2
+    }
+  },
+  "determinism": {
+    "byteLength": 7643,
+    "sha256": "sha256:cb27ecdfc3ce6f869ad48976ffc00d63e1bb7218fbec2b44f48a073d43a5b853",
+    "sourceDateEpoch": "946684800"
+  },
+  "family": "docx",
+  "layout": null,
+  "outline": {
+    "blocks": [
+      {
+        "contentHash": "sha256:de434feb5b11c9c95b649576df0d0d4a6ba43bde80f43371a181881875c51987",
+        "id": "body.b1",
+        "index": 1,
+        "kind": "paragraph",
+        "primarySelector": "1",
+        "section": 1,
+        "styleId": "Title",
+        "textPreview": "Q3 Quarterly Report"
+      },
+      {
+        "contentHash": "sha256:f328aa583ebe1d13f406706ef58f87db5300fe42ce859d572c891f32db6a9a9e",
+        "id": "body.b2",
+        "index": 2,
+        "kind": "paragraph",
+        "primarySelector": "2",
+        "section": 1,
+        "textPreview": "Table of contents — update field to refresh"
+      },
+      {
+        "contentHash": "sha256:73d8f26d69dd6067fa48d9830f35cc5c93991a6657f6a75891a1a0e6d0e23332",
+        "id": "body.b3",
+        "index": 3,
+        "kind": "paragraph",
+        "primarySelector": "3",
+        "section": 1,
+        "styleId": "Heading1",
+        "textPreview": "Highlights"
+      },
+      {
+        "contentHash": "sha256:747dcf5f0f37b543bc597755c4ca479017a7663648e0c582c440351dc8593329",
+        "id": "body.b4",
+        "index": 4,
+        "kind": "paragraph",
+        "primarySelector": "4",
+        "section": 1,
+        "styleId": "Normal",
+        "textPreview": "Revenue grew 18 percent while the team reviewed forecast() in the dashboard."
+      },
+      {
+        "contentHash": "sha256:f7f54875cc04e3b134c21abe69e62a37d4709cdf7b12cfc78252e02f5ea835d3",
+        "id": "body.b5",
+        "index": 5,
+        "kind": "paragraph",
+        "listLevel": 0,
+        "numId": 1,
+        "primarySelector": "5",
+        "section": 1,
+        "styleId": "ListBullet",
+        "textPreview": "Enterprise pipeline reached a record level"
+      },
+      {
+        "contentHash": "sha256:4a3d353afd7420030d4ea7d96c726482dc7ec8aad2466302157a79b46a309628",
+        "id": "body.b6",
+        "index": 6,
+        "kind": "paragraph",
+        "listLevel": 1,
+        "numId": 1,
+        "primarySelector": "6",
+        "section": 1,
+        "styleId": "ListBullet",
+        "textPreview": "Customer retention remained above plan"
+      },
+      {
+        "contentHash": "sha256:260d4a849f83916b791a9ef7d8f489044dd510595cf339b734d84c63c9456ed9",
+        "id": "body.b7",
+        "index": 7,
+        "kind": "paragraph",
+        "listLevel": 0,
+        "numId": 2,
+        "primarySelector": "7",
+        "section": 1,
+        "styleId": "ListNumber",
+        "textPreview": "Confirm the revised operating plan"
+      },
+      {
+        "contentHash": "sha256:56f44abd070af92e470ee165da3648278dcdceeb320fdbe7fc556cfa09b3ed0d",
+        "id": "body.b8",
+        "index": 8,
+        "kind": "paragraph",
+        "primarySelector": "8",
+        "section": 1,
+        "styleId": "Heading2",
+        "textPreview": "Regional Metrics"
+      },
+      {
+        "contentHash": "sha256:57e5d22ca2af0f58c02d4e964df7388d1ff5030e99f24a6da64441e8651df7c5",
+        "id": "body.b9",
+        "index": 9,
+        "kind": "table",
+        "primarySelector": "9",
+        "section": 1,
+        "textPreview": "Region Revenue Growth North America $28m 21% Europe $17m 14%"
+      },
+      {
+        "contentHash": "sha256:a6cd446a4bd7d7661a1048d57c7cf52f8702143ad430b0aba83997e51475b09f",
+        "id": "body.b10",
+        "index": 10,
+        "kind": "paragraph",
+        "primarySelector": "10",
+        "section": 1
+      },
+      {
+        "contentHash": "sha256:3716b385aff5884475289ce676d34fa369ba7d0a2833fbde4ea79792f27e6e12",
+        "id": "body.b11",
+        "index": 11,
+        "kind": "paragraph",
+        "primarySelector": "11",
+        "section": 1
+      },
+      {
+        "contentHash": "sha256:dbc620dbce9f6e7070e33036e7b304c6dfdc334f7c8157673061d37254ad40d5",
+        "id": "body.b12",
+        "index": 12,
+        "kind": "paragraph",
+        "primarySelector": "12",
+        "section": 1,
+        "styleId": "Heading1",
+        "textPreview": "Outlook"
+      },
+      {
+        "contentHash": "sha256:f25b29c2bfbb92a74fb4c40c232633266ef62e9cded293e8884189a727a34376",
+        "id": "body.b13",
+        "index": 13,
+        "kind": "paragraph",
+        "primarySelector": "13",
+        "section": 1,
+        "styleId": "Normal",
+        "textPreview": "focus = execution"
+      }
+    ],
+    "checkCommand": "ooxml --json check <artifact-root>/first.docx",
+    "coreProperties": {
+      "created": "2000-01-01T00:00:00Z",
+      "creator": "Ada Lovelace",
+      "lastModifiedBy": "Ada Lovelace",
+      "modified": "2000-01-01T00:00:00Z"
+    },
+    "depth": 3,
+    "documentHash": "sha256:6c14a245a0cdb36f196ab042bf2baa06ec2cd4e741d39e9c109be96636ac4cd7",
+    "fields": [
+      {
+        "blockIndex": 2,
+        "cachedResult": "Table of contents — update field to refresh",
+        "fieldType": "simple",
+        "index": 0,
+        "instruction": "TOC \\o \"1-4\" \\h \\z \\u",
+        "location": "body:2",
+        "partUri": "/word/document.xml"
+      },
+      {
+        "blockIndex": 1,
+        "cachedResult": "1",
+        "fieldType": "simple",
+        "index": 1,
+        "instruction": "PAGE",
+        "location": "footer1:1",
+        "partUri": "/word/footer1.xml"
+      },
+      {
+        "blockIndex": 1,
+        "cachedResult": "1",
+        "fieldType": "simple",
+        "index": 2,
+        "instruction": "NUMPAGES",
+        "location": "footer1:1",
+        "partUri": "/word/footer1.xml"
+      }
+    ],
+    "file": "<artifact-root>/first.docx",
+    "fileSizeBytes": 7643,
+    "footers": [
+      {
+        "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
+        "id": "rId9",
+        "kind": "footer",
+        "partUri": "/word/footer1.xml",
+        "primarySelector": "footer:1:default",
+        "section": 1,
+        "selectors": [
+          "footer:1:default",
+          "id:rId9",
+          "rId9",
+          "part:/word/footer1.xml",
+          "/word/footer1.xml"
+        ],
+        "type": "default"
+      }
+    ],
+    "headers": [
+      {
+        "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+        "id": "rId8",
+        "kind": "header",
+        "partUri": "/word/header1.xml",
+        "primarySelector": "header:1:default",
+        "section": 1,
+        "selectors": [
+          "header:1:default",
+          "id:rId8",
+          "rId8",
+          "part:/word/header1.xml",
+          "/word/header1.xml"
+        ],
+        "type": "default"
+      }
+    ],
+    "images": [
+      {
+        "blockIndex": 10,
+        "contentType": "image/png",
+        "height": 2194560,
+        "heightInches": 2.4,
+        "index": 1,
+        "mediaUri": "/word/media/image1.png",
+        "primarySelector": "1",
+        "width": 1828800,
+        "widthInches": 2.0
+      }
+    ],
+    "schemaVersion": 1,
+    "sections": [
+      {
+        "footers": [
+          {
+            "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
+            "id": "rId9",
+            "kind": "footer",
+            "partUri": "/word/footer1.xml",
+            "primarySelector": "footer:1:default",
+            "section": 1,
+            "selectors": [
+              "footer:1:default",
+              "id:rId9",
+              "rId9",
+              "part:/word/footer1.xml",
+              "/word/footer1.xml"
+            ],
+            "type": "default"
+          }
+        ],
+        "headers": [
+          {
+            "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+            "id": "rId8",
+            "kind": "header",
+            "partUri": "/word/header1.xml",
+            "primarySelector": "header:1:default",
+            "section": 1,
+            "selectors": [
+              "header:1:default",
+              "id:rId8",
+              "rId8",
+              "part:/word/header1.xml",
+              "/word/header1.xml"
+            ],
+            "type": "default"
+          }
+        ],
+        "number": 1,
+        "pageSetup": {
+          "margins": {
+            "bottomInches": 0.75,
+            "bottomTwips": 1080,
+            "leftInches": 0.8,
+            "leftTwips": 1152,
+            "rightInches": 0.8,
+            "rightTwips": 1152,
+            "topInches": 0.75,
+            "topTwips": 1080
+          },
+          "pageSize": {
+            "heightInches": 11.0,
+            "heightTwips": 15840,
+            "widthInches": 8.5,
+            "widthTwips": 12240
+          }
+        }
+      }
+    ],
+    "summary": {
+      "comments": false,
+      "customXmlParts": 0,
+      "endnotes": false,
+      "footers": 1,
+      "footnotes": false,
+      "headers": 1,
+      "hyperlinks": 1,
+      "mediaAssets": 1,
+      "numbering": true,
+      "paragraphs": 12,
+      "sections": 1,
+      "styles": true,
+      "tables": 1
+    },
+    "tables": [
+      {
+        "block": 9,
+        "cols": 3,
+        "contentHash": "sha256:57e5d22ca2af0f58c02d4e964df7388d1ff5030e99f24a6da64441e8651df7c5",
+        "primarySelector": "1",
+        "rows": 3,
+        "table": 1
+      }
+    ],
+    "textPreviewChars": 240,
+    "type": "docx"
+  },
+  "recipe": "markdown-quarterly-report-document",
+  "render": {
+    "collection": "pages",
+    "countKey": "page",
+    "engine": "libreoffice",
+    "expectedCount": 2,
+    "policy": "real render with exact count, or clean skip when the renderer is unavailable"
+  },
+  "schemaVersion": "ooxml-cli.recipe-e2e.v1",
+  "source": {
+    "kind": "markdown",
+    "path": "testdata/markdown/quarterly-report.md"
+  },
+  "strictValidation": {
+    "file": "<artifact-root>/first.docx",
+    "status": "valid",
+    "summary": {
+      "errors": 0,
+      "info": 0,
+      "warnings": 0
+    },
+    "valid": true
+  }
+}

@@ -127,7 +127,9 @@ jobs:
           dotnet build tools/openxml-validator/openxml-validator.csproj --configuration Release --no-restore
 
       - name: Run Linux Open XML SDK schema gate
-        run: cargo test --test openxml_sdk_gate -- --nocapture
+        run: |
+          cargo test --test openxml_sdk_gate -- --nocapture
+          cargo test --test recipes_e2e -- --nocapture
 
   rust-cross-platform:
     name: Rust compile (${{ matrix.os }})
