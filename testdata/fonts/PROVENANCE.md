@@ -16,6 +16,10 @@ then normalized to 1,000 units per em:
 | LiberationSerif-Bold.ttf | `28f2d4300ee366d1ff9ca95df967a27e77987c87857fad0d9c85034405aae39d` |
 | NotoSans-Regular.ttf | `478c558ea716033cd60c03438f628dfa75694dcf6b5f6d505a2f05fd2b4f3823` |
 | NotoSans-Bold.ttf | `1df075a380fc7cb898acf64c1f7b3b4dd780de3caa860178bf929de35817a913` |
+| DejaVuSans.ttf | `7da195a74c55bef988d0d48f9508bd5d849425c1770dba5d7bfc6ce9ed848954` |
+| DejaVuSans-Bold.ttf | `e6476c1b80502924294eed40894c5b18e06c181444ca953e5334262df9c27724` |
+| Carlito-Regular.ttf | `b4ff23ba370cc95a3c349336b73f9c28514a1371210f89832efc85c4b1ea7131` |
+| Carlito-Bold.ttf | `0f62ab34ad5d079a0a28fac01bcf7c7a724a4db4d6cb99cab9cabff382fbb80f` |
 
 Each advance vector has 95 entries in Unicode order, U+0020 through U+007E.
 The average is the arithmetic mean of A-Z, a-z, and 0-9. Line height is the
@@ -23,8 +27,9 @@ font horizontal-header ascent minus descent plus line gap. Regular and bold
 are independent measurements.
 
 `families-v1.tsv` makes substitution explicit and reviewable. Proprietary
-theme fonts are not installed or redistributed on the Linux calibration host,
-so they deliberately select the same open-font profiles LibreOffice uses for
-repeatable layout estimates. The selected source profile is returned by the
+theme fonts are not installed or redistributed on the Linux calibration host.
+Calibri selects Carlito and Arial selects Liberation Sans, their open
+metric-compatible LibreOffice substitutes. Aptos and Segoe UI select the open
+Noto Sans calibration profile. The selected source profile is returned by the
 debug API; callers can therefore distinguish a native metric from a calibrated
 substitute. Unknown families use the Noto Sans fallback profile.

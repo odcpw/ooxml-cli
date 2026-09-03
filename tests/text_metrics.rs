@@ -51,6 +51,16 @@ fn committed_tables_cover_theme_fonts_and_pin_reference_advances() {
     assert_eq!(noto.source_family, "Noto Sans");
     assert_eq!(noto.advance('W', false), 930);
     assert_eq!(noto.advance('i', false), 258);
+
+    let calibri = font_metrics("Calibri");
+    assert_eq!(calibri.source_family, "Carlito");
+    assert_eq!(calibri.advance('W', false), 890);
+    assert_eq!(calibri.advance('i', false), 229);
+
+    let dejavu = font_metrics("DejaVu Sans");
+    assert_eq!(dejavu.source_family, "DejaVu Sans");
+    assert_eq!(dejavu.advance('W', false), 989);
+    assert_eq!(dejavu.advance('i', false), 278);
 }
 
 #[test]
