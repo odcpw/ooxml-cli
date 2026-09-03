@@ -173,6 +173,83 @@ fn indexed_sections_set_size_orientation_and_margins_in_schema_order() {
     fs::remove_dir_all(temp).unwrap();
 }
 
+#[test]
+fn styled_tables_have_widths_repeating_headers_numeric_alignment_and_set_style() {
+    let temp = temp_dir("styled-table");
+    let source = temp.join("source.docx");
+    let created = temp.join("created.docx");
+    let restyled = temp.join("restyled.docx");
+    run_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path(&source),
+        "--text",
+        "Quarterly data",
+    ]);
+    let create = run_ok(&[
+        "--json",
+        "docx",
+        "tables",
+        "create",
+        path(&source),
+        "--values",
+        r#"[["Product","Revenue","Trend"],["Widgets",1200,"Up"],["Gadgets",950,"Flat"]]"#,
+        "--style",
+        "TableGrid",
+        "--header-row",
+        "--widths",
+        "2in,1in,auto",
+        "--align",
+        "center",
+        "--caption",
+        "Quarterly revenue",
+        "--out",
+        path(&created),
+    ]);
+    let hash = create["contentHash"].as_str().unwrap();
+    assert!(
+        create["documentHash"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:")
+    );
+    let created_xml = zip_text(&created, "word/document.xml");
+    for wanted in [
+        r#"<w:tblStyle w:val="TableGrid"/>"#,
+        r#"<w:jc w:val="center"/>"#,
+        r#"<w:tblCaption w:val="Quarterly revenue"/>"#,
+        r#"<w:trPr><w:tblHeader/></w:trPr>"#,
+        r#"<w:gridCol w:w="2880"/><w:gridCol w:w="1440"/>"#,
+        r#"<w:pPr><w:jc w:val="right"/></w:pPr>"#,
+    ] {
+        assert!(created_xml.contains(wanted), "missing {wanted}");
+    }
+    let set = run_ok(&[
+        "--json",
+        "docx",
+        "tables",
+        "set-style",
+        path(&created),
+        "--table",
+        "1",
+        "--expect-hash",
+        hash,
+        "--style",
+        "TableLight",
+        "--out",
+        path(&restyled),
+    ]);
+    assert_eq!(set["style"], "TableLight");
+    let restyled_xml = zip_text(&restyled, "word/document.xml");
+    assert!(restyled_xml.contains(r#"<w:tblStyle w:val="TableLight"/>"#));
+    assert!(!restyled_xml.contains(r#"<w:tblStyle w:val="TableGrid"/>"#));
+    for package in [&source, &created, &restyled] {
+        assert_all_proofs(package);
+    }
+    fs::remove_dir_all(temp).unwrap();
+}
+
 fn build_list_document(temp: &Path, label: &str) -> PathBuf {
     let mut current = temp.join(format!("{label}-0.docx"));
     run_ok(&[

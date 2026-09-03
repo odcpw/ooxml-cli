@@ -934,7 +934,7 @@ fn docx_is_mutation(args: &[String]) -> bool {
             "images" => matches!(verb.as_str(), "replace" | "insert"),
             "tables" => matches!(
                 verb.as_str(),
-                "create" | "set-cell" | "clear-cell" | "insert-row" | "delete-row"
+                "create" | "set-style" | "set-cell" | "clear-cell" | "insert-row" | "delete-row"
             ),
             _ => false,
         },
@@ -952,7 +952,7 @@ fn docx_is_block_addressed_mutation(args: &[String]) -> bool {
             "images" => verb == "insert",
             "tables" => matches!(
                 verb.as_str(),
-                "set-cell" | "clear-cell" | "insert-row" | "delete-row"
+                "set-style" | "set-cell" | "clear-cell" | "insert-row" | "delete-row"
             ),
             _ => false,
         },

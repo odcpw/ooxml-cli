@@ -8,8 +8,8 @@ use crate::cli_args::{
 use crate::cli_core::{CliError, CliResult};
 use crate::docx_mutation_core::{DocxParagraphMutationOptions, resolve_required_docx_table_text};
 use crate::docx_tables::{
-    docx_tables_clear_cell, docx_tables_create, docx_tables_delete_row, docx_tables_insert_row,
-    docx_tables_set_cell, docx_tables_show,
+    DocxTableCreateOptions, docx_tables_clear_cell, docx_tables_create, docx_tables_delete_row,
+    docx_tables_insert_row, docx_tables_set_cell, docx_tables_set_style, docx_tables_show,
 };
 
 pub(super) fn dispatch_docx_tables(args: &[String]) -> CliResult<Value> {
@@ -30,13 +30,26 @@ pub(super) fn dispatch_docx_tables(args: &[String]) -> CliResult<Value> {
         {
             reject_unknown_flags(
                 rest,
-                &["--values", "--values-file", "--out", "--backup"],
-                &["--dry-run", "--in-place", "--no-validate"],
+                &[
+                    "--values",
+                    "--values-file",
+                    "--style",
+                    "--widths",
+                    "--align",
+                    "--caption",
+                    "--out",
+                    "--backup",
+                ],
+                &["--header-row", "--dry-run", "--in-place", "--no-validate"],
             )?;
             let values_changed = flag_present(rest, "--values");
             let values_file_changed = flag_present(rest, "--values-file");
             let values = parse_string_flag(rest, "--values")?;
             let values_file = parse_string_flag(rest, "--values-file")?;
+            let style = parse_string_flag(rest, "--style")?.unwrap_or_default();
+            let widths = parse_string_flag(rest, "--widths")?;
+            let align = parse_string_flag(rest, "--align")?.unwrap_or_default();
+            let caption = parse_string_flag(rest, "--caption")?;
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             let dry_run = has_flag(rest, "--dry-run");
@@ -44,19 +57,60 @@ pub(super) fn dispatch_docx_tables(args: &[String]) -> CliResult<Value> {
             let no_validate = has_flag(rest, "--no-validate");
             docx_tables_create(
                 file,
-                values.as_deref(),
-                values_file.as_deref(),
-                values_changed,
-                values_file_changed,
+                DocxTableCreateOptions {
+                    values: values.as_deref(),
+                    values_file: values_file.as_deref(),
+                    values_changed,
+                    values_file_changed,
+                    style: &style,
+                    header_row: has_flag(rest, "--header-row"),
+                    widths: widths.as_deref(),
+                    align: &align,
+                    caption: caption.as_deref(),
+                    mutation: DocxParagraphMutationOptions {
+                        text: None,
+                        text_file: None,
+                        style: "",
+                        out: out.as_deref(),
+                        backup: backup.as_deref(),
+                        dry_run,
+                        in_place,
+                        no_validate,
+                    },
+                },
+            )
+        }
+        [cmd, group, verb, file, rest @ ..]
+            if cmd == "docx" && group == "tables" && verb == "set-style" =>
+        {
+            reject_unknown_flags(
+                rest,
+                &["--table", "--expect-hash", "--style", "--out", "--backup"],
+                &["--dry-run", "--in-place", "--no-validate"],
+            )?;
+            let table = parse_i64_flag(rest, "--table")?.unwrap_or(0);
+            validate_positive_i64(table, "--table")?;
+            let expected = parse_string_flag(rest, "--expect-hash")?.unwrap_or_default();
+            if !expected.is_empty() {
+                require_docx_block_hash(&expected)?;
+            }
+            let style = parse_string_flag(rest, "--style")?.unwrap_or_default();
+            let out = parse_string_flag(rest, "--out")?;
+            let backup = parse_string_flag(rest, "--backup")?;
+            docx_tables_set_style(
+                file,
+                table as usize,
+                &expected,
+                &style,
                 DocxParagraphMutationOptions {
                     text: None,
                     text_file: None,
                     style: "",
                     out: out.as_deref(),
                     backup: backup.as_deref(),
-                    dry_run,
-                    in_place,
-                    no_validate,
+                    dry_run: has_flag(rest, "--dry-run"),
+                    in_place: has_flag(rest, "--in-place"),
+                    no_validate: has_flag(rest, "--no-validate"),
                 },
             )
         }

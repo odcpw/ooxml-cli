@@ -8,9 +8,22 @@ use crate::{
     docx_mutation_output_path_for_result, docx_rich_block_reports, ensure_docx_package_kind,
     ensure_docx_table_scaffold_fragment, ensure_docx_word_prefix, find_docx_document_part,
     first_direct_xml_child_by_kind, package_type, validate_xlsx_mutation_output_flags,
-    word_xml_tag, write_docx_mutation_output, xml_direct_child_ranges, xml_fragment_bounds,
-    xml_open_tag_from_start, xml_tag_prefix, zip_entry_names, zip_text,
+    word_xml_tag, write_docx_mutation_output, xml_attr_escape, xml_direct_child_ranges,
+    xml_fragment_bounds, xml_open_tag_from_start, xml_tag_prefix, zip_entry_names, zip_text,
 };
+
+pub(crate) struct DocxTableCreateOptions<'a> {
+    pub(crate) values: Option<&'a str>,
+    pub(crate) values_file: Option<&'a str>,
+    pub(crate) values_changed: bool,
+    pub(crate) values_file_changed: bool,
+    pub(crate) style: &'a str,
+    pub(crate) header_row: bool,
+    pub(crate) widths: Option<&'a str>,
+    pub(crate) align: &'a str,
+    pub(crate) caption: Option<&'a str>,
+    pub(crate) mutation: DocxParagraphMutationOptions<'a>,
+}
 
 pub(crate) fn docx_tables_show(
     file: &str,
@@ -85,28 +98,98 @@ pub(crate) fn docx_tables_show(
 
 pub(crate) fn docx_tables_create(
     file: &str,
-    values: Option<&str>,
-    values_file: Option<&str>,
-    values_changed: bool,
-    values_file_changed: bool,
-    options: DocxParagraphMutationOptions<'_>,
+    options: DocxTableCreateOptions<'_>,
 ) -> CliResult<Value> {
     validate_xlsx_mutation_output_flags(
-        options.out,
-        options.in_place,
-        options.backup,
-        options.dry_run,
+        options.mutation.out,
+        options.mutation.in_place,
+        options.mutation.backup,
+        options.mutation.dry_run,
     )?;
-    let matrix = parse_docx_table_values(values, values_file, values_changed, values_file_changed)?;
-    let mutation = docx_table_create_mutation(file, &matrix)?;
-    let output_path = docx_mutation_output_path_for_result(file, &options);
-    write_docx_mutation_output(file, &mutation.document_part, &mutation.xml, options)?;
+    let matrix = parse_docx_table_values(
+        options.values,
+        options.values_file,
+        options.values_changed,
+        options.values_file_changed,
+    )?;
+    let widths = parse_docx_table_widths(options.widths, matrix[0].len())?;
+    let align = normalize_table_alignment(options.align)?;
+    let mutation = docx_table_create_mutation(
+        file,
+        &matrix,
+        options.style,
+        options.header_row,
+        &widths,
+        align,
+        options.caption,
+    )?;
+    let output_path = docx_mutation_output_path_for_result(file, &options.mutation);
+    write_docx_mutation_output(
+        file,
+        &mutation.document_part,
+        &mutation.xml,
+        options.mutation,
+    )?;
 
     Ok(Value::Object(docx_table_create_result(
         file,
         &mutation,
         output_path,
     )))
+}
+
+pub(crate) fn docx_tables_set_style(
+    file: &str,
+    table: usize,
+    expected_hash: &str,
+    style: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    if table == 0 || style.trim().is_empty() {
+        return Err(CliError::invalid_args("--table and --style are required"));
+    }
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let entries = zip_entry_names(file)?;
+    ensure_docx_package_kind(file, &entries)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let xml = zip_text(file, &document_part)?;
+    let reports = docx_rich_block_reports(&xml, false)?;
+    let report = reports
+        .iter()
+        .filter(|report| report.kind == "table")
+        .nth(table - 1)
+        .ok_or_else(|| CliError::target_not_found(format!("target not found: table {table}")))?;
+    if !expected_hash.is_empty() && expected_hash != report.content_hash {
+        return Err(CliError::invalid_args(format!(
+            "block hash mismatch: block {} expected {expected_hash} but found {}",
+            report.index, report.content_hash
+        )));
+    }
+    let body_tag = docx_body_tag(&xml)?;
+    let ranges = docx_body_block_ranges(&xml, &body_tag)?;
+    let range = ranges
+        .get(report.index - 1)
+        .ok_or_else(|| CliError::unexpected("table block missing"))?;
+    let fragment = &xml[range.start..range.end];
+    let updated_table = set_docx_table_style_fragment(fragment, style)?;
+    let mut updated = String::with_capacity(xml.len() + updated_table.len());
+    updated.push_str(&xml[..range.start]);
+    updated.push_str(&updated_table);
+    updated.push_str(&xml[range.end..]);
+    let output_path = docx_mutation_output_path_for_result(file, &options);
+    write_docx_mutation_output(file, &document_part, &updated, options)?;
+    let updated_report = docx_rich_block_reports(&updated, false)?
+        .into_iter()
+        .find(|item| item.index == report.index)
+        .unwrap();
+    Ok(
+        json!({"file": file, "table": table, "block": report.index, "style": style, "previousHash": report.content_hash, "contentHash": updated_report.content_hash, "output": output_path}),
+    )
 }
 
 pub(crate) fn docx_tables_set_cell(
@@ -318,6 +401,11 @@ fn docx_table_cell_value_to_text(value: &Value) -> CliResult<String> {
 fn docx_table_create_mutation(
     file: &str,
     matrix: &[Vec<String>],
+    style: &str,
+    header_row: bool,
+    widths: &[i64],
+    align: &str,
+    caption: Option<&str>,
 ) -> CliResult<DocxTableCreateMutation> {
     let entries = zip_entry_names(file)?;
     ensure_docx_package_kind(file, &entries)?;
@@ -333,7 +421,7 @@ fn docx_table_create_mutation(
         .find(|child| child.kind == "sectPr")
         .map(|child| child.start)
         .unwrap_or(content_end);
-    let table_xml = render_docx_table("w", matrix);
+    let table_xml = render_docx_table("w", matrix, style, header_row, widths, align, caption);
     working.insert_str(insert_at, &table_xml);
 
     let reports = docx_rich_block_reports(&working, false).map_err(|err| {
@@ -358,25 +446,32 @@ fn docx_table_create_mutation(
     })
 }
 
-fn render_docx_table(prefix: &str, matrix: &[Vec<String>]) -> String {
+fn render_docx_table(
+    prefix: &str,
+    matrix: &[Vec<String>],
+    style: &str,
+    header_row: bool,
+    widths: &[i64],
+    align: &str,
+    caption: Option<&str>,
+) -> String {
     let tbl = word_xml_tag(prefix, "tbl");
     let tbl_pr = word_xml_tag(prefix, "tblPr");
     let tbl_w = word_xml_tag(prefix, "tblW");
+    let tbl_style = word_xml_tag(prefix, "tblStyle");
+    let tbl_jc = word_xml_tag(prefix, "jc");
+    let tbl_caption = word_xml_tag(prefix, "tblCaption");
     let tbl_grid = word_xml_tag(prefix, "tblGrid");
     let grid_col = word_xml_tag(prefix, "gridCol");
     let tr = word_xml_tag(prefix, "tr");
+    let tr_pr = word_xml_tag(prefix, "trPr");
+    let tbl_header = word_xml_tag(prefix, "tblHeader");
     let tc = word_xml_tag(prefix, "tc");
     let tc_pr = word_xml_tag(prefix, "tcPr");
     let tc_w = word_xml_tag(prefix, "tcW");
     let p = word_xml_tag(prefix, "p");
     let r = word_xml_tag(prefix, "r");
-    let cols = matrix.first().map(Vec::len).unwrap_or_default();
-    let col_width = if cols == 0 {
-        2400
-    } else {
-        (8640 / cols.max(1)).max(720)
-    };
-
+    let p_pr = word_xml_tag(prefix, "pPr");
     let mut out = String::new();
     out.push('<');
     out.push_str(&tbl);
@@ -384,16 +479,31 @@ fn render_docx_table(prefix: &str, matrix: &[Vec<String>]) -> String {
     out.push('<');
     out.push_str(&tbl_pr);
     out.push('>');
+    if !style.is_empty() {
+        out.push_str(&format!(
+            r#"<{tbl_style} w:val="{}"/>"#,
+            xml_attr_escape(style)
+        ));
+    }
     out.push('<');
     out.push_str(&tbl_w);
     out.push_str(r#" w:w="0" w:type="auto"/>"#);
+    if align != "left" {
+        out.push_str(&format!(r#"<{tbl_jc} w:val="{align}"/>"#));
+    }
+    if let Some(caption) = caption.filter(|caption| !caption.is_empty()) {
+        out.push_str(&format!(
+            r#"<{tbl_caption} w:val="{}"/>"#,
+            xml_attr_escape(caption)
+        ));
+    }
     out.push_str("</");
     out.push_str(&tbl_pr);
     out.push('>');
     out.push('<');
     out.push_str(&tbl_grid);
     out.push('>');
-    for _ in 0..cols {
+    for col_width in widths {
         out.push('<');
         out.push_str(&grid_col);
         out.push_str(&format!(r#" w:w="{col_width}"/>"#));
@@ -401,11 +511,15 @@ fn render_docx_table(prefix: &str, matrix: &[Vec<String>]) -> String {
     out.push_str("</");
     out.push_str(&tbl_grid);
     out.push('>');
-    for row in matrix {
+    for (row_index, row) in matrix.iter().enumerate() {
         out.push('<');
         out.push_str(&tr);
         out.push('>');
-        for cell in row {
+        if header_row && row_index == 0 {
+            out.push_str(&format!("<{tr_pr}><{tbl_header}/></{tr_pr}>"));
+        }
+        for (col_index, cell) in row.iter().enumerate() {
+            let col_width = widths[col_index];
             out.push('<');
             out.push_str(&tc);
             out.push('>');
@@ -421,6 +535,9 @@ fn render_docx_table(prefix: &str, matrix: &[Vec<String>]) -> String {
             out.push('<');
             out.push_str(&p);
             out.push('>');
+            if row_index > 0 && cell.trim().parse::<f64>().is_ok() {
+                out.push_str(&format!(r#"<{p_pr}><{tbl_jc} w:val="right"/></{p_pr}>"#));
+            }
             out.push('<');
             out.push_str(&r);
             out.push('>');
@@ -443,6 +560,89 @@ fn render_docx_table(prefix: &str, matrix: &[Vec<String>]) -> String {
     out.push_str(&tbl);
     out.push('>');
     out
+}
+
+fn parse_docx_table_widths(raw: Option<&str>, cols: usize) -> CliResult<Vec<i64>> {
+    let default = (8640 / cols.max(1)).max(720) as i64;
+    let Some(raw) = raw.filter(|raw| !raw.trim().is_empty()) else {
+        return Ok(vec![default; cols]);
+    };
+    let parts = raw.split(',').map(str::trim).collect::<Vec<_>>();
+    if parts.len() != cols {
+        return Err(CliError::invalid_args(format!(
+            "--widths has {} entries; table has {cols} columns",
+            parts.len()
+        )));
+    }
+    parts
+        .into_iter()
+        .map(|part| {
+            if part.eq_ignore_ascii_case("auto") {
+                return Ok(default);
+            }
+            let emu = crate::cli_dispatch::units::parse_length(part, None)?;
+            if emu <= 0 {
+                return Err(CliError::invalid_args(
+                    "table widths must be positive or auto",
+                ));
+            }
+            Ok(emu / 635)
+        })
+        .collect()
+}
+
+fn normalize_table_alignment(raw: &str) -> CliResult<&'static str> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "" | "left" => Ok("left"),
+        "center" => Ok("center"),
+        "right" => Ok("right"),
+        _ => Err(CliError::invalid_args(
+            "--align must be left, center, or right",
+        )),
+    }
+}
+
+fn set_docx_table_style_fragment(fragment: &str, style: &str) -> CliResult<String> {
+    let (open_end, _, _, self_closing) = xml_fragment_bounds(fragment)?;
+    if self_closing {
+        return Err(CliError::unexpected("invalid empty table"));
+    }
+    let children = xml_direct_child_ranges(fragment, open_end + 1, fragment.len())?;
+    let tbl_pr = children
+        .iter()
+        .find(|child| child.kind == "tblPr")
+        .ok_or_else(|| CliError::unexpected("table properties missing"))?;
+    let properties = &fragment[tbl_pr.start..tbl_pr.end];
+    let (pr_open_end, tag, pr_close, pr_empty) = xml_fragment_bounds(properties)?;
+    let style_xml = format!(
+        r#"<{} w:val="{}"/>"#,
+        word_xml_tag(&xml_tag_prefix(&tag), "tblStyle"),
+        xml_attr_escape(style)
+    );
+    let updated_properties = if pr_empty {
+        format!(
+            "{}>{style_xml}</{tag}>",
+            properties[..pr_open_end].trim_end_matches('/')
+        )
+    } else {
+        let children = xml_direct_child_ranges(properties, pr_open_end + 1, pr_close)?;
+        let mut out = String::new();
+        out.push_str(&properties[..=pr_open_end]);
+        out.push_str(&style_xml);
+        for child in children
+            .into_iter()
+            .filter(|child| child.kind != "tblStyle")
+        {
+            out.push_str(&properties[child.start..child.end]);
+        }
+        out.push_str(&properties[pr_close..]);
+        out
+    };
+    let mut out = String::with_capacity(fragment.len() + updated_properties.len());
+    out.push_str(&fragment[..tbl_pr.start]);
+    out.push_str(&updated_properties);
+    out.push_str(&fragment[tbl_pr.end..]);
+    Ok(out)
 }
 
 fn docx_table_cell_text_mutation(
