@@ -1115,13 +1115,7 @@ fn invalid_args_envelope_redirects_the_remaining_known_first_guess_failures() {
 
 #[test]
 fn invalid_args_text_mode_prints_the_same_recovery_fields_on_stderr() {
-    let output = run_ooxml_process(&[
-        "--format",
-        "text",
-        "capabilities",
-        "--fro",
-        "xlsx",
-    ]);
+    let output = run_ooxml_process(&["--format", "text", "capabilities", "--fro", "xlsx"]);
     assert_eq!(output.code, 2);
     assert!(output.stdout.is_empty());
     let stderr = String::from_utf8(output.stderr).expect("text diagnostics are UTF-8");
