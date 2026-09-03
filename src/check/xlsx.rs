@@ -3,7 +3,7 @@ use quick_xml::events::Event;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
-use super::finding::CheckFinding;
+use super::{finding::CheckFinding, fixed_path};
 use crate::{
     CliError, CliResult, append_xml_text_event, command_arg, find_xlsx_workbook_part,
     is_xml_text_event, local_name, parse_range, workbook_sheets, xlsx_charts_list, xlsx_names_list,
@@ -282,13 +282,23 @@ fn add_formula_findings(
     }
     for sheet in referenced_sheets(formula) {
         if !sheet_names.contains(&sheet.to_ascii_lowercase()) {
+            let fix_command = if codes.missing_sheet == CHART_SOURCE_CODES.missing_sheet {
+                format!(
+                    "ooxml --json xlsx sheets add {} --name {} --out {}",
+                    command_arg(file),
+                    command_arg(&sheet),
+                    command_arg(&fixed_path(file, "chart-source-fixed")),
+                )
+            } else {
+                format!("ooxml --json xlsx sheets list {}", command_arg(file))
+            };
             findings.push(CheckFinding::new(
                 "error",
                 codes.missing_sheet,
                 json!(part),
                 location.clone(),
                 format!("formula references missing worksheet {sheet:?}: {formula}"),
-                format!("ooxml --json xlsx sheets list {}", command_arg(file)),
+                fix_command,
                 DOCS,
             ));
         }

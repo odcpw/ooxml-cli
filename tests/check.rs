@@ -50,7 +50,16 @@ const GOLDEN_CASES: &[(&str, &str, &str, i32, Option<&str>)] = &[
         0,
         Some("PPTX_SHAPE_COLLISION"),
     ),
+    (
+        "xlsx-missing-chart-source",
+        "testdata/invalid/missing-chart-source.xlsx",
+        "xlsx",
+        5,
+        Some("XLSX_CHART_SOURCE_INVALID"),
+    ),
 ];
+
+const MISSING_CHART_SOURCE_FIXTURE: &str = "testdata/invalid/missing-chart-source.xlsx";
 
 const FINDING_FIELDS: [&str; 7] = [
     "code",
@@ -75,6 +84,14 @@ fn run_with_env(args: &[&str], env: &[(&str, &str)]) -> Output {
         .envs(env.iter().copied())
         .output()
         .expect("run ooxml with environment")
+}
+
+fn run_in_dir(args: &[&str], directory: &Path) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args(args)
+        .current_dir(directory)
+        .output()
+        .expect("run ooxml from isolated directory")
 }
 
 fn run_check(file: &str) -> Output {
@@ -130,7 +147,7 @@ fn run_ok(args: &[&str]) -> Value {
     serde_json::from_slice(&output.stdout).expect("command JSON")
 }
 
-fn rewrite_xlsx_references(source: &Path, destination: &Path) {
+fn rewrite_xlsx_references(source: &Path, destination: &Path, corrupt_table: bool) {
     let mut archive = ZipArchive::new(File::open(source).expect("open reference source"))
         .expect("read reference source zip");
     let mut writer = ZipWriter::new(File::create(destination).expect("create reference fixture"));
@@ -155,7 +172,7 @@ fn rewrite_xlsx_references(source: &Path, destination: &Path) {
             let replaced = xml.replace("Data!", "MissingChart!");
             changed_chart = replaced != xml;
             bytes = replaced.into_bytes();
-        } else if name == "xl/tables/table1.xml" {
+        } else if corrupt_table && name == "xl/tables/table1.xml" {
             let xml = String::from_utf8(bytes).expect("table XML UTF-8");
             let replaced = xml.replace("A1:B4", "NOT_A_RANGE");
             changed_table = replaced != xml;
@@ -166,14 +183,77 @@ fn rewrite_xlsx_references(source: &Path, destination: &Path) {
     }
     writer.finish().expect("finish reference fixture");
     assert!(changed_chart, "chart source replacement must be exercised");
-    assert!(
-        changed_table,
-        "table reference replacement must be exercised"
+    assert_eq!(
+        changed_table, corrupt_table,
+        "table reference replacement must match the requested corruption"
     );
 }
 
+fn finding_with_code_once<'a>(report: &'a Value, code: &str, context: &str) -> &'a Value {
+    let matches = report["findings"]
+        .as_array()
+        .expect("findings array")
+        .iter()
+        .filter(|finding| finding["code"] == code)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        matches.len(),
+        1,
+        "{context}: expected {code} exactly once: {report}"
+    );
+    matches[0]
+}
+
+fn command_words(command: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut quote = None;
+    for character in command.chars() {
+        match (quote, character) {
+            (Some(active), current) if current == active => quote = None,
+            (None, '\'' | '"') => quote = Some(character),
+            (None, current) if current.is_whitespace() => {
+                if !word.is_empty() {
+                    words.push(std::mem::take(&mut word));
+                }
+            }
+            (_, current) => word.push(current),
+        }
+    }
+    assert!(
+        quote.is_none(),
+        "unterminated quote in fix command: {command}"
+    );
+    if !word.is_empty() {
+        words.push(word);
+    }
+    words
+}
+
+fn execute_fix_command(command: &str) -> PathBuf {
+    let args = command_words(command);
+    assert_eq!(args.first().map(String::as_str), Some("ooxml"), "{command}");
+    let output = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args(&args[1..])
+        .output()
+        .expect("execute finding fixCommand");
+    assert!(
+        output.status.success(),
+        "fix failed: {command}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let out_index = args
+        .iter()
+        .position(|arg| arg == "--out")
+        .unwrap_or_else(|| panic!("fix command must publish a repaired package: {command}"));
+    PathBuf::from(
+        args.get(out_index + 1)
+            .unwrap_or_else(|| panic!("--out needs a path: {command}")),
+    )
+}
+
 #[test]
-fn six_recipe_and_bad_fixture_reports_match_deterministic_goldens() {
+fn clean_and_bad_fixture_reports_match_deterministic_goldens() {
     for (name, file, family, expected_exit, expected_code) in GOLDEN_CASES {
         let first = run_check(file);
         let second = run_check(file);
@@ -227,12 +307,7 @@ fn six_recipe_and_bad_fixture_reports_match_deterministic_goldens() {
             "{name}: summary total"
         );
         if let Some(expected_code) = expected_code {
-            assert!(
-                findings
-                    .iter()
-                    .any(|finding| finding["code"] == *expected_code),
-                "{name}: missing {expected_code}: {report}"
-            );
+            finding_with_code_once(&report, expected_code, name);
         } else {
             assert_eq!(report["summary"]["errors"], 0, "{name}: {report}");
         }
@@ -340,7 +415,7 @@ fn xlsx_formula_defined_name_table_chart_and_pivot_sources_are_checked() {
         "--out",
         path_text(&formula),
     ]);
-    rewrite_xlsx_references(&formula, &corrupted);
+    rewrite_xlsx_references(&formula, &corrupted, true);
 
     let report = parse_report(&run_check(path_text(&corrupted)), "XLSX references");
     let findings = report["findings"].as_array().expect("reference findings");
@@ -370,6 +445,105 @@ fn xlsx_formula_defined_name_table_chart_and_pivot_sources_are_checked() {
         "{pivot}"
     );
     fs::remove_dir_all(temp).expect("remove reference temp directory");
+}
+
+#[test]
+fn committed_missing_chart_source_fixture_is_reproducible() {
+    let generated = temp_dir("missing-chart-fixture").with_extension("xlsx");
+    let _ = fs::remove_file(&generated);
+    rewrite_xlsx_references(
+        Path::new("testdata/xlsx/chart-workbook/workbook.xlsx"),
+        &generated,
+        false,
+    );
+    if std::env::var("UPDATE_FIXTURES").as_deref() == Ok("1") {
+        fs::create_dir_all(
+            Path::new(MISSING_CHART_SOURCE_FIXTURE)
+                .parent()
+                .expect("fixture parent"),
+        )
+        .expect("create invalid fixture directory");
+        fs::copy(&generated, MISSING_CHART_SOURCE_FIXTURE)
+            .expect("publish missing chart source fixture");
+    }
+    assert_eq!(
+        fs::read(&generated).expect("read regenerated missing chart fixture"),
+        fs::read(MISSING_CHART_SOURCE_FIXTURE).expect("read committed missing chart fixture"),
+        "missing chart source fixture must be reproducible; run UPDATE_FIXTURES=1 cargo test --test check committed_missing_chart_source_fixture_is_reproducible"
+    );
+    fs::remove_file(generated).expect("remove regenerated fixture");
+}
+
+#[test]
+fn emitted_fix_command_parser_preserves_quoted_windows_paths() {
+    assert_eq!(
+        command_words(
+            "ooxml --json repair normalize 'C:\\Program Files\\input.xlsx' --out 'C:\\Program Files\\output.xlsx'",
+        ),
+        [
+            "ooxml",
+            "--json",
+            "repair",
+            "normalize",
+            "C:\\Program Files\\input.xlsx",
+            "--out",
+            "C:\\Program Files\\output.xlsx",
+        ]
+    );
+}
+
+#[test]
+fn every_bad_fixture_fix_command_removes_its_expected_finding() {
+    let temp = temp_dir("finding-fixes");
+    let _ = fs::remove_dir_all(&temp);
+    fs::create_dir_all(&temp).expect("create finding fix directory");
+    for (label, source, expected_code) in [
+        (
+            "pivot-table-parts",
+            "testdata/xlsx/invalid/pivot-table-parts.xlsx",
+            "XML_UNKNOWN_CHILD",
+        ),
+        (
+            "dangling-style",
+            "testdata/docx/scaffold-styles/dangling-style.docx",
+            "DOCX_DANGLING_STYLE",
+        ),
+        (
+            "overlap-deck",
+            "testdata/pptx/layout-qa/inherited-title-chart-overlap/presentation.pptx",
+            "PPTX_SHAPE_COLLISION",
+        ),
+        (
+            "missing-chart-source",
+            MISSING_CHART_SOURCE_FIXTURE,
+            "XLSX_CHART_SOURCE_INVALID",
+        ),
+    ] {
+        let extension = Path::new(source)
+            .extension()
+            .and_then(|value| value.to_str())
+            .expect("fixture extension");
+        let staged = temp.join(format!("{label}.{extension}"));
+        fs::copy(source, &staged).expect("stage bad fixture");
+        let before = parse_report(&run_check(path_text(&staged)), label);
+        let finding = finding_with_code_once(&before, expected_code, label);
+        let command = finding["fixCommand"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{label}: finding has no fixCommand: {finding}"));
+        let fixed = execute_fix_command(command);
+        let after = parse_report(&run_check(path_text(&fixed)), &format!("{label} after fix"));
+        assert_eq!(
+            after["findings"]
+                .as_array()
+                .expect("findings after fix")
+                .iter()
+                .filter(|finding| finding["code"] == expected_code)
+                .count(),
+            0,
+            "{label}: fixCommand did not remove {expected_code}: {after}"
+        );
+    }
+    fs::remove_dir_all(temp).expect("remove finding fix directory");
 }
 
 #[test]
@@ -468,6 +642,35 @@ fn openxml_sdk_policy_tracks_doctor_and_require_never_silently_skips() {
 }
 
 #[test]
+fn openxml_sdk_require_fails_cleanly_without_checkout_validator() {
+    let temp = temp_dir("sdk-unavailable");
+    let _ = fs::remove_dir_all(&temp);
+    fs::create_dir_all(&temp).expect("create isolated SDK directory");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/docx/minimal/document.docx");
+    let output = run_in_dir(
+        &[
+            "--json",
+            "check",
+            path_text(&fixture),
+            "--openxml-sdk",
+            "require",
+        ],
+        &temp,
+    );
+    assert_eq!(output.status.code(), Some(5));
+    let report = parse_report(&output, "isolated SDK require");
+    assert_eq!(report["proofLevel"]["schema"], "skipped", "{report}");
+    assert_eq!(report["summary"]["errors"], 1, "{report}");
+    let finding = finding_with_code_once(&report, "CHECK_OPENXML_SDK_REQUIRED", "SDK require");
+    assert_eq!(finding["severity"], "error", "{finding}");
+    assert_eq!(
+        finding["fixCommand"], "ooxml --json doctor --only openxml-sdk-validator",
+        "{finding}"
+    );
+    fs::remove_dir_all(temp).expect("remove isolated SDK directory");
+}
+
+#[test]
 fn fail_on_text_mode_and_optional_render_preserve_the_same_proof_contract() {
     let overlap = "testdata/pptx/layout-qa/inherited-title-chart-overlap/presentation.pptx";
     let default = run_check(overlap);
@@ -518,6 +721,33 @@ fn fail_on_text_mode_and_optional_render_preserve_the_same_proof_contract() {
     let rendered = parse_report(&rendered, "mock render");
     assert_eq!(rendered["proofLevel"]["visual"], "passed");
     assert_eq!(rendered["checks"]["visual"], "passed");
+}
+
+#[test]
+fn render_proof_passes_with_pages_or_logs_the_unavailable_renderer() {
+    let renderer_available = Command::new("soffice")
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| output.status.success());
+    let output = run(&[
+        "--json",
+        "check",
+        "testdata/pptx/title-content/presentation.pptx",
+        "--openxml-sdk",
+        "skip",
+        "--render",
+    ]);
+    let report = parse_report(&output, "real render proof");
+    if renderer_available {
+        assert_eq!(output.status.code(), Some(0), "{report}");
+        assert_eq!(report["proofLevel"]["visual"], "passed", "{report}");
+        assert_eq!(report["checks"]["visual"], "passed", "{report}");
+        eprintln!("check --render produced a successful page render");
+    } else {
+        assert_eq!(report["proofLevel"]["visual"], "skipped", "{report}");
+        finding_with_code_once(&report, "CHECK_RENDER_SKIPPED", "render skip");
+        eprintln!("check --render skipped: soffice is unavailable on this runner");
+    }
 }
 
 #[test]

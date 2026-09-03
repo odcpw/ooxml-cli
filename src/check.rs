@@ -473,13 +473,27 @@ fn add_layout_findings(file: &str, report: &Value, findings: &mut Vec<CheckFindi
 /// but `check` always projects them into the seven-field `CheckFinding` shape.
 fn add_design_findings(report: &Value, findings: &mut Vec<CheckFinding>) {
     for item in array(report, "findings") {
+        let code = item["code"].as_str().unwrap_or("DESIGN_CHECK_FINDING");
+        let part = item
+            .get("part")
+            .filter(|part| !part.is_null())
+            .cloned()
+            .or_else(|| item.get("location")?.get("part").cloned())
+            .unwrap_or(Value::Null);
+        let mut fix_command = item["fixCommand"].as_str().unwrap_or_default().to_string();
+        if code == "DOCX_DANGLING_STYLE"
+            && fix_command.contains(" docx styles apply ")
+            && !fix_command.contains(" --create-style")
+        {
+            fix_command.push_str(" --create-style");
+        }
         findings.push(CheckFinding::new(
             item["severity"].as_str().unwrap_or("warning"),
-            item["code"].as_str().unwrap_or("DESIGN_CHECK_FINDING"),
-            item.get("part").cloned().unwrap_or(Value::Null),
+            code,
+            part,
             item.get("location").cloned().unwrap_or(Value::Null),
             item["message"].as_str().unwrap_or("design check finding"),
-            item["fixCommand"].as_str().unwrap_or_default(),
+            fix_command,
             "docs/bridge-plan-2026-09.md#d8-design-lint",
         ));
     }
@@ -568,7 +582,31 @@ fn portable_command_path(path: &str) -> String {
 fn sort_and_dedup(findings: &mut Vec<CheckFinding>) {
     findings.sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
     let mut seen = BTreeSet::new();
-    findings.retain(|finding| seen.insert(finding.dedup_key()));
+    findings.retain(|finding| {
+        let key = if finding.code == "XLSX_CHART_SOURCE_INVALID" {
+            serde_json::to_string(&(
+                &finding.severity,
+                &finding.code,
+                &finding.part,
+                &finding.fix_command,
+            ))
+            .expect("serialize actionable XLSX chart finding key")
+        } else if matches!(
+            finding.code.as_str(),
+            "DOCX_DANGLING_STYLE" | "DOCX_DANGLING_NUMBERING"
+        ) {
+            serde_json::to_string(&(
+                &finding.severity,
+                &finding.code,
+                &finding.part,
+                &finding.message,
+            ))
+            .expect("serialize semantic DOCX finding key")
+        } else {
+            finding.dedup_key()
+        };
+        seen.insert(key)
+    });
 }
 
 fn summary(findings: &[CheckFinding]) -> Value {

@@ -371,7 +371,9 @@ fn outline_xlsx(
         return Ok(());
     }
     let report = xlsx_sheets_show(file, options.sheet)?;
-    let names = xlsx_names_list(file, options.sheet)?;
+    // Workbook-scoped names remain relevant when the tree is narrowed to one
+    // sheet, so outline must not apply the names-list local-scope filter.
+    let names = xlsx_names_list(file, None)?;
     result.insert(
         "names".to_string(),
         Value::Array(
@@ -384,6 +386,7 @@ fn outline_xlsx(
                             "name",
                             "scope",
                             "scopeSheet",
+                            "ref",
                             "formula",
                             "primarySelector",
                             "handle",

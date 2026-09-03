@@ -6,6 +6,24 @@ use std::time::{Duration, Instant};
 
 const GOLDEN_CASES: &[(&str, &str, &[&str], &str)] = &[
     (
+        "pptx-python-pptx",
+        "testdata/pptx/producers/python-pptx/presentation.pptx",
+        &["--depth", "1", "--slide", "1", "--text-preview", "12"],
+        "pptx",
+    ),
+    (
+        "pptx-libreoffice",
+        "testdata/pptx/producers/libreoffice/presentation.pptx",
+        &["--depth", "2", "--slide", "2", "--text-preview", "16"],
+        "pptx",
+    ),
+    (
+        "pptx-multi-layout",
+        "testdata/pptx/multi-layout/presentation.pptx",
+        &["--depth", "3", "--slide", "3", "--text-preview", "40"],
+        "pptx",
+    ),
+    (
         "pptx-chart-simple",
         "testdata/pptx/chart-simple/presentation.pptx",
         &[],
@@ -32,8 +50,56 @@ const GOLDEN_CASES: &[(&str, &str, &[&str], &str)] = &[
     (
         "xlsx-used-range",
         "testdata/xlsx/used-range/workbook.xlsx",
-        &["--sheet", "Sparse"],
+        &["--depth", "2", "--sheet", "Sparse", "--text-preview", "24"],
         "xlsx",
+    ),
+    (
+        "xlsx-minimal",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        &["--depth", "0", "--text-preview", "0"],
+        "xlsx",
+    ),
+    (
+        "xlsx-libreoffice-chart",
+        "testdata/xlsx/libreoffice-chart-workbook/workbook.xlsx",
+        &["--depth", "1", "--sheet", "Data"],
+        "xlsx",
+    ),
+    (
+        "xlsx-pivot",
+        "testdata/xlsx/invalid/pivot-table-parts.xlsx",
+        &["--depth", "3", "--sheet", "1"],
+        "xlsx",
+    ),
+    (
+        "xlsx-types-formulas",
+        "testdata/xlsx/types-and-formulas/workbook.xlsx",
+        &["--depth", "2", "--sheet", "Types", "--text-preview", "12"],
+        "xlsx",
+    ),
+    (
+        "xlsx-table",
+        "testdata/xlsx/outline-table/workbook.xlsx",
+        &["--depth", "3", "--sheet", "Data", "--text-preview", "20"],
+        "xlsx",
+    ),
+    (
+        "xlsx-names",
+        "testdata/xlsx/outline-names/workbook.xlsx",
+        &["--depth", "3", "--sheet", "Data"],
+        "xlsx",
+    ),
+    (
+        "docx-minimal",
+        "testdata/docx/minimal/document.docx",
+        &["--depth", "0", "--text-preview", "0"],
+        "docx",
+    ),
+    (
+        "docx-comments",
+        "testdata/docx/with-comments/document.docx",
+        &["--depth", "2", "--section", "1", "--text-preview", "16"],
+        "docx",
     ),
     (
         "docx-fields",
@@ -117,6 +183,12 @@ fn golden_document<'a>(documents: &'a [(&str, Value)], name: &str) -> &'a Value 
         .1
 }
 
+fn expected_usize_flag(args: &[&str], flag: &str, default: usize) -> usize {
+    args.windows(2)
+        .find(|pair| pair[0] == flag)
+        .map_or(default, |pair| pair[1].parse().expect("numeric flag"))
+}
+
 #[test]
 fn json_golden_contracts_are_lf_only_on_every_runner() {
     for directory in ["outline", "check", "design-check"] {
@@ -159,7 +231,16 @@ fn json_golden_contracts_are_lf_only_on_every_runner() {
 }
 
 #[test]
-fn family_outlines_match_nine_deterministic_fixture_goldens() {
+fn family_outlines_match_twenty_deterministic_fixture_goldens() {
+    for (family, expected) in [("pptx", 6), ("xlsx", 8), ("docx", 6)] {
+        let count = GOLDEN_CASES
+            .iter()
+            .filter(|(_, _, _, candidate)| *candidate == family)
+            .count();
+        assert_eq!(count, expected, "{family} fixture count");
+        assert!(count >= 6, "{family} needs at least six fixture goldens");
+    }
+
     let mut documents = Vec::new();
     for (name, file, extra, family) in GOLDEN_CASES {
         let first = run_outline(file, extra);
@@ -181,7 +262,16 @@ fn family_outlines_match_nine_deterministic_fixture_goldens() {
         let document = successful_json(&first, name);
         assert_eq!(document["schemaVersion"], 1, "{name}");
         assert_eq!(document["type"], *family, "{name}");
-        assert_eq!(document["depth"], 3, "{name}");
+        assert_eq!(
+            document["depth"],
+            expected_usize_flag(extra, "--depth", 3),
+            "{name}"
+        );
+        assert_eq!(
+            document["textPreviewChars"],
+            expected_usize_flag(extra, "--text-preview", 80),
+            "{name}"
+        );
         assert_eq!(document["file"], *file, "{name}");
         assert!(document["summary"].is_object(), "{name}");
         documents.push((*name, document));
@@ -242,6 +332,22 @@ fn family_outlines_match_nine_deterministic_fixture_goldens() {
         golden_document(&documents, "xlsx-used-range")["scope"]["sheet"],
         "Sparse"
     );
+    assert_eq!(
+        golden_document(&documents, "xlsx-pivot")["sheets"][0]["pivots"][0]["primarySelector"],
+        "pivot:1"
+    );
+    assert!(
+        !nested_items(
+            golden_document(&documents, "xlsx-table"),
+            "sheets",
+            "tables"
+        )
+        .is_empty()
+    );
+    assert_eq!(
+        golden_document(&documents, "xlsx-names")["names"][0]["name"],
+        "DataRange"
+    );
 
     let fields = golden_document(&documents, "docx-fields");
     assert!(
@@ -282,6 +388,70 @@ fn family_outlines_match_nine_deterministic_fixture_goldens() {
     );
     assert!(fields["sections"][0]["pageSetup"].is_object());
     assert!(fields["coreProperties"].is_object());
+    assert_eq!(
+        golden_document(&documents, "docx-comments")["summary"]["comments"],
+        true
+    );
+}
+
+#[test]
+fn generated_xlsx_table_and_name_outline_fixtures_are_reproducible() {
+    let temp = std::env::temp_dir().join(format!(
+        "ooxml-outline-xlsx-fixtures-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp);
+    fs::create_dir_all(&temp).expect("create fixture reproduction directory");
+    let table = temp.join("table.xlsx");
+    let names = temp.join("names.xlsx");
+    for args in [
+        vec![
+            "--json",
+            "xlsx",
+            "tables",
+            "create",
+            "testdata/xlsx/chart-workbook/workbook.xlsx",
+            "--sheet",
+            "Data",
+            "--range",
+            "A1:B4",
+            "--table",
+            "Sales",
+            "--out",
+            table.to_str().expect("table path"),
+        ],
+        vec![
+            "--json",
+            "xlsx",
+            "names",
+            "add",
+            "testdata/xlsx/chart-workbook/workbook.xlsx",
+            "--name",
+            "DataRange",
+            "--ref",
+            "Data!$A$1:$B$4",
+            "--out",
+            names.to_str().expect("names path"),
+        ],
+    ] {
+        let output = run(&args);
+        assert!(
+            output.status.success(),
+            "fixture reproduction failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    assert_eq!(
+        fs::read(table).expect("read regenerated table workbook"),
+        fs::read("testdata/xlsx/outline-table/workbook.xlsx")
+            .expect("read committed table workbook")
+    );
+    assert_eq!(
+        fs::read(names).expect("read regenerated names workbook"),
+        fs::read("testdata/xlsx/outline-names/workbook.xlsx")
+            .expect("read committed names workbook")
+    );
+    fs::remove_dir_all(temp).expect("remove fixture reproduction directory");
 }
 
 #[test]

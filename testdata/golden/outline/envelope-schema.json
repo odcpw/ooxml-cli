@@ -1,0 +1,70 @@
+{
+  "chart": {
+    "handle": "string",
+    "number": "integer",
+    "partUri": "string",
+    "selector": "string",
+    "shapeId": "string",
+    "title": "string",
+    "types": "array"
+  },
+  "envelope": {
+    "checkCommand": "string",
+    "depth": "integer",
+    "file": "string",
+    "fileSizeBytes": "integer",
+    "layouts": "array",
+    "masters": "array",
+    "schemaVersion": "integer",
+    "slideSize": "object",
+    "slides": "array",
+    "summary": "object",
+    "textPreviewChars": "integer",
+    "theme": "object",
+    "type": "string"
+  },
+  "shape": {
+    "bounds": "object",
+    "boundsSource": "string",
+    "handle": "string",
+    "kind": "string",
+    "placeholder": "object",
+    "selector": "string",
+    "shapeId": "integer",
+    "shapeName": "string",
+    "shapeType": "string",
+    "targetKind": "string",
+    "textPreview": "string"
+  },
+  "slide": {
+    "chartCount": "integer",
+    "charts": "array",
+    "handle": "string",
+    "imageCount": "integer",
+    "images": "array",
+    "layout": "string",
+    "layoutNumber": "integer",
+    "layoutPartUri": "string",
+    "notes": "boolean",
+    "number": "integer",
+    "partUri": "string",
+    "primarySelector": "string",
+    "shapeCount": "integer",
+    "shapes": "array",
+    "slideId": "integer",
+    "tableCount": "integer",
+    "tables": "array",
+    "title": "string"
+  },
+  "summary": {
+    "customXmlParts": "integer",
+    "handoutMasters": "integer",
+    "layouts": "integer",
+    "masters": "integer",
+    "mediaAssets": "integer",
+    "notesMasters": "integer",
+    "slideSize": "object",
+    "slides": "integer",
+    "themes": "integer"
+  }
+}

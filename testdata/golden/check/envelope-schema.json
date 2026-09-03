@@ -1,0 +1,45 @@
+{
+  "checks": {
+    "conformance": "string",
+    "design": "string",
+    "layout": "string",
+    "references": "string",
+    "schema": "string",
+    "strict": "string",
+    "structural": "string",
+    "visual": "string"
+  },
+  "envelope": {
+    "checkCommand": "string",
+    "checks": "object",
+    "failOn": "string",
+    "family": "string",
+    "file": "string",
+    "findings": "array",
+    "proofLevel": "object",
+    "schemaVersion": "string",
+    "status": "string",
+    "summary": "object"
+  },
+  "finding": {
+    "code": "string",
+    "docs": "string",
+    "fixCommand": "string",
+    "location": "object",
+    "message": "string",
+    "part": "string",
+    "severity": "string"
+  },
+  "proofLevel": {
+    "schema": "string",
+    "strict": "string",
+    "structural": "string",
+    "visual": "string"
+  },
+  "summary": {
+    "errors": "integer",
+    "info": "integer",
+    "total": "integer",
+    "warnings": "integer"
+  }
+}
