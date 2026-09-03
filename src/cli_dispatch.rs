@@ -71,6 +71,48 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
     {
         return crate::conformance::conformance(flags, rest);
     }
+    if let [cmd, rest @ ..] = args
+        && cmd == "design-check"
+    {
+        return Ok(DispatchOutput {
+            body: DispatchBody::Json(crate::design_check::dispatch(rest)?),
+            exit_code: EXIT_SUCCESS,
+        });
+    }
+    if let [family, group, verb, file, rest @ ..] = args
+        && family == "pptx"
+        && group == "slides"
+        && verb == "compose"
+    {
+        reject_unknown_flags(
+            rest,
+            &[
+                "--slide",
+                "--items",
+                "--arrangement",
+                "--gutter",
+                "--padding",
+                "--out",
+                "--backup",
+            ],
+            &["--dry-run", "--in-place", "--no-validate"],
+        )?;
+        return Ok(DispatchOutput {
+            body: DispatchBody::Json(pptx_slots::compose::pptx_slides_compose(file, rest)?),
+            exit_code: EXIT_SUCCESS,
+        });
+    }
+    if let [family, group, verb, file, rest @ ..] = args
+        && family == "pptx"
+        && group == "text"
+        && verb == "measure"
+    {
+        reject_unknown_flags(rest, &["--slide", "--target"], &[])?;
+        return Ok(DispatchOutput {
+            body: DispatchBody::Json(crate::text_metrics::pptx_text_measure(file, rest)?),
+            exit_code: EXIT_SUCCESS,
+        });
+    }
     if let [family, group, verb, rest @ ..] = args
         && family == "pptx"
         && group == "theme"
