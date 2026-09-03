@@ -2,6 +2,7 @@ use serde_json::{Value, json};
 
 use crate::agent_aliases::{
     CAPABILITY_COMMAND_FAMILY_FILTERS, CAPABILITY_OBJECT_KINDS, capability_filter_alias_strings,
+    flag_alias_registry_json,
 };
 use crate::cli_dispatch::{DispatchBody, DispatchOutput};
 use crate::{CliError, CliResult, EXIT_SUCCESS, GlobalFlags, has_flag, reject_unknown_flags};
@@ -77,6 +78,7 @@ fn guide_json() -> Value {
             "textMode": "With explicit --format text, the same recovery fields are printed in a fixed layout on stderr.",
             "safety": "correctedCommand is a suggestion only and is never executed automatically."
         },
+        "flagAliases": flag_alias_registry_json(),
         "sections": [
             {
                 "name": "Discovery",
@@ -221,6 +223,23 @@ fn guide_text(value: &Value) -> String {
                 out.push_str(description);
                 out.push('\n');
             }
+        }
+    }
+    if let Some(aliases) = value["flagAliases"].as_array()
+        && !aliases.is_empty()
+    {
+        out.push_str("\nFlag aliases (accepted before command parsing):\n");
+        for alias in aliases {
+            let path = alias["path"].as_str().unwrap_or_default();
+            let alias_name = alias["alias"].as_str().unwrap_or_default();
+            let canonical = alias["canonicalFlags"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(" + ");
+            out.push_str(&format!("- {path}: {alias_name} -> {canonical}\n"));
         }
     }
     if let Some(sections) = value["sections"].as_array() {

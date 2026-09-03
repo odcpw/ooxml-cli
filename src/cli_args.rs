@@ -20,10 +20,11 @@ pub(crate) fn enrich_invalid_args(raw_args: &[String], err: CliError) -> Enriche
     let unknown_command = err.message.starts_with("unknown command token");
     let missing_required_flags = projection.as_ref().is_some_and(|command| {
         missing_required_arguments(&err.message)
-            && command
-                .required_flags()
-                .iter()
-                .any(|flag| !argv_has_flag(raw_args, flag))
+            && command.required_flags().iter().any(|flag| {
+                !std::iter::once(*flag)
+                    .chain(crate::agent_aliases::flag_aliases_for(&command.path, flag))
+                    .any(|accepted| argv_has_flag(raw_args, accepted))
+            })
     });
     if unknown_flag.is_none() && !unknown_command && !missing_required_flags {
         return EnrichedCliError {
@@ -38,13 +39,20 @@ pub(crate) fn enrich_invalid_args(raw_args: &[String], err: CliError) -> Enriche
             command
                 .local_flags
                 .iter()
-                .map(|flag| InvalidArgsFlag {
-                    flag: flag.name.to_string(),
-                    use_text: if flag.flag_type == "bool" {
-                        flag.name.to_string()
-                    } else {
-                        format!("{} <{}>", flag.name, flag.arg_name)
-                    },
+                .flat_map(|flag| {
+                    std::iter::once(flag.name)
+                        .chain(crate::agent_aliases::flag_aliases_for(
+                            &command.path,
+                            flag.name,
+                        ))
+                        .map(|name| InvalidArgsFlag {
+                            flag: name.to_string(),
+                            use_text: if flag.flag_type == "bool" {
+                                name.to_string()
+                            } else {
+                                format!("{} <{}>", name, flag.arg_name)
+                            },
+                        })
                 })
                 .collect::<Vec<_>>()
         })

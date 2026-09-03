@@ -461,7 +461,16 @@ fn group_help(topic: &[String]) -> CliResult<String> {
     ));
     let command = topic.join(" ");
     let children = available_children(topic);
-    let mut out = format!("{long}\n\nUsage:\n  ooxml {command} [command]\n");
+    let leaf = help_projection(topic).filter(|leaf| {
+        leaf.local_flags()
+            .iter()
+            .any(|flag| !flag.aliases().is_empty())
+    });
+    let mut out = format!("{long}\n\nUsage:\n");
+    if let Some(leaf) = &leaf {
+        out.push_str(&format!("  ooxml {}\n", leaf_usage(topic, leaf.use_text())));
+    }
+    out.push_str(&format!("  ooxml {command} [command]\n"));
     if !aliases.is_empty() {
         out.push_str("\nAliases:\n  ");
         out.push_str(&topic.last().cloned().unwrap_or_default());
@@ -470,6 +479,9 @@ fn group_help(topic: &[String]) -> CliResult<String> {
             out.push_str(alias);
         }
         out.push('\n');
+    }
+    if let Some(leaf) = &leaf {
+        append_local_flags(&mut out, leaf);
     }
     out.push_str("\nAvailable Commands:\n");
     if children.is_empty() {
@@ -490,20 +502,28 @@ fn leaf_help(topic: &[String], command: &HelpProjection) -> String {
     let short = command.short();
     let usage = leaf_usage(topic, use_text);
     let mut out = format!("{short}\n\nUsage:\n  ooxml {usage}\n");
-    if !command.local_flags().is_empty() {
-        out.push_str("\nFlags:\n");
-        for flag in command.local_flags() {
-            let name = flag.name();
-            let description = flag.description();
-            out.push_str(&format!("  {name:<24} {description}\n"));
-        }
-    }
+    append_local_flags(&mut out, command);
     if topic == ["vba", "create"] {
         append_vba_create_mode_guide(&mut out);
     }
     out.push_str("\nGlobal Flags:\n");
     out.push_str(global_flags_text());
     out
+}
+
+fn append_local_flags(out: &mut String, command: &HelpProjection) {
+    if !command.local_flags().is_empty() {
+        out.push_str("\nFlags:\n");
+        for flag in command.local_flags() {
+            let name = if flag.aliases().is_empty() {
+                flag.name().to_string()
+            } else {
+                format!("{} (aliases: {})", flag.name(), flag.aliases().join(", "))
+            };
+            let description = flag.description();
+            out.push_str(&format!("  {name:<24} {description}\n"));
+        }
+    }
 }
 
 fn append_vba_create_mode_guide(out: &mut String) {

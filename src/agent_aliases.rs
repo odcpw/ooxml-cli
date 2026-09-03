@@ -1,5 +1,246 @@
 use serde_json::{Value, json};
 
+use crate::{CliError, CliResult, parse_cell_ref};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FlagAliasTransform {
+    Rename,
+    FreezeAt,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct FlagAliasSpec {
+    path: &'static [&'static str],
+    alias: &'static str,
+    canonical_flags: &'static [&'static str],
+    transform: FlagAliasTransform,
+}
+
+macro_rules! rename_alias {
+    ($path:expr, $alias:literal, $canonical:literal) => {
+        FlagAliasSpec {
+            path: $path,
+            alias: $alias,
+            canonical_flags: &[$canonical],
+            transform: FlagAliasTransform::Rename,
+        }
+    };
+}
+
+const FLAG_ALIASES: &[FlagAliasSpec] = &[
+    rename_alias!(
+        &["pptx", "slides", "import-slide"],
+        "--after",
+        "--insert-after"
+    ),
+    rename_alias!(&["pptx", "clone-slide"], "--after", "--insert-after"),
+    rename_alias!(
+        &["pptx", "new-slide-from-layout"],
+        "--after",
+        "--insert-after"
+    ),
+    rename_alias!(
+        &["docx", "paragraphs", "insert"],
+        "--after",
+        "--insert-after"
+    ),
+    rename_alias!(
+        &["docx", "paragraphs", "insert"],
+        "--after-block",
+        "--insert-after"
+    ),
+    rename_alias!(&["docx", "images", "insert"], "--after-block", "--after"),
+    rename_alias!(&["docx", "images", "insert"], "--insert-after", "--after"),
+    rename_alias!(&["docx", "paragraphs", "set"], "--block", "--index"),
+    rename_alias!(&["docx", "paragraphs", "clear"], "--block", "--index"),
+    rename_alias!(&["docx", "styles", "apply"], "--block", "--index"),
+    rename_alias!(&["docx", "blocks"], "--index", "--block"),
+    rename_alias!(&["docx", "blocks", "replace"], "--index", "--block"),
+    rename_alias!(&["docx", "blocks", "delete"], "--index", "--block"),
+    rename_alias!(&["docx", "blocks", "insert-after"], "--index", "--block"),
+    rename_alias!(&["pptx", "place", "table"], "--values", "--data"),
+    rename_alias!(&["pptx", "place", "table"], "--values-file", "--data"),
+    rename_alias!(&["pptx", "place", "table"], "--data-format", "--format"),
+    rename_alias!(&["pptx", "media", "add"], "--image", "--file"),
+    rename_alias!(&["pptx", "media", "replace"], "--image", "--file"),
+    rename_alias!(&["docx", "images", "insert"], "--image", "--file"),
+    rename_alias!(&["xlsx", "colwidths", "show"], "--col", "--range"),
+    rename_alias!(&["xlsx", "colwidths", "show"], "--cols", "--range"),
+    rename_alias!(&["xlsx", "colwidths", "set"], "--col", "--range"),
+    rename_alias!(&["xlsx", "colwidths", "set"], "--cols", "--range"),
+    rename_alias!(&["xlsx", "cells", "extract"], "--cell", "--range"),
+    rename_alias!(&["xlsx", "cells", "clear"], "--cell", "--ref"),
+    FlagAliasSpec {
+        path: &["xlsx", "freeze", "set"],
+        alias: "--at",
+        canonical_flags: &["--rows", "--cols"],
+        transform: FlagAliasTransform::FreezeAt,
+    },
+    FlagAliasSpec {
+        path: &["xlsx", "freeze", "set"],
+        alias: "--cell",
+        canonical_flags: &["--rows", "--cols"],
+        transform: FlagAliasTransform::FreezeAt,
+    },
+];
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AppliedFlagAlias {
+    pub(crate) alias: &'static str,
+    pub(crate) canonical_flags: &'static [&'static str],
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct NormalizedFlagArgs {
+    pub(crate) args: Vec<String>,
+    pub(crate) applied: Vec<AppliedFlagAlias>,
+}
+
+pub(crate) fn flag_aliases_for(command_path: &[&str], canonical_flag: &str) -> Vec<&'static str> {
+    let mut aliases = FLAG_ALIASES
+        .iter()
+        .filter(|spec| spec.path == command_path && spec.canonical_flags.contains(&canonical_flag))
+        .map(|spec| spec.alias)
+        .collect::<Vec<_>>();
+    aliases.sort_unstable();
+    aliases.dedup();
+    aliases
+}
+
+pub(crate) fn flag_alias_registry_json() -> Value {
+    json!(
+        FLAG_ALIASES
+            .iter()
+            .map(|spec| json!({
+                "path": format!("ooxml {}", spec.path.join(" ")),
+                "alias": spec.alias,
+                "canonicalFlags": spec.canonical_flags,
+            }))
+            .collect::<Vec<_>>()
+    )
+}
+
+fn flag_name(arg: &str) -> &str {
+    arg.split_once('=').map_or(arg, |(name, _)| name)
+}
+
+fn has_any_flag(args: &[String], flags: &[&str]) -> bool {
+    let local_value_flags = crate::command_manifest::local_value_flag_names_for_argv(args);
+    let mut index = 0;
+    while index < args.len() {
+        let name = flag_name(&args[index]);
+        if flags.contains(&name) {
+            return true;
+        }
+        index += if local_value_flags.contains(&name) && !args[index].contains('=') {
+            2
+        } else {
+            1
+        };
+    }
+    false
+}
+
+fn matching_aliases(args: &[String]) -> Vec<&'static FlagAliasSpec> {
+    let path_matches = |spec: &&FlagAliasSpec| {
+        args.get(..spec.path.len()).is_some_and(|actual| {
+            actual
+                .iter()
+                .map(String::as_str)
+                .eq(spec.path.iter().copied())
+        })
+    };
+    let longest = FLAG_ALIASES
+        .iter()
+        .filter(path_matches)
+        .map(|spec| spec.path.len())
+        .max();
+    FLAG_ALIASES
+        .iter()
+        .filter(path_matches)
+        .filter(|spec| Some(spec.path.len()) == longest)
+        .collect()
+}
+
+pub(crate) fn normalize_flag_aliases(args: &[String]) -> CliResult<NormalizedFlagArgs> {
+    let aliases = matching_aliases(args);
+    if aliases.is_empty() {
+        return Ok(NormalizedFlagArgs {
+            args: args.to_vec(),
+            applied: Vec::new(),
+        });
+    }
+
+    let mut normalized = args.to_vec();
+    let local_value_flags = crate::command_manifest::local_value_flag_names_for_argv(args);
+    let mut applied = Vec::new();
+    let mut index = aliases[0].path.len();
+    while index < normalized.len() {
+        let name = flag_name(&normalized[index]);
+        let Some(spec) = aliases.iter().find(|spec| spec.alias == name).copied() else {
+            index += if local_value_flags.contains(&name) && !normalized[index].contains('=') {
+                2
+            } else {
+                1
+            };
+            continue;
+        };
+        if has_any_flag(&normalized, spec.canonical_flags) {
+            return Err(CliError::invalid_args(format!(
+                "alias {} cannot be combined with canonical {}",
+                spec.alias,
+                spec.canonical_flags.join(" and ")
+            )));
+        }
+        match spec.transform {
+            FlagAliasTransform::Rename => {
+                let replacement = normalized[index]
+                    .split_once('=')
+                    .map(|(_, value)| format!("{}={value}", spec.canonical_flags[0]))
+                    .unwrap_or_else(|| spec.canonical_flags[0].to_string());
+                normalized[index] = replacement;
+                index += 1;
+            }
+            FlagAliasTransform::FreezeAt => {
+                let (value, replaced) = if let Some((_, value)) = normalized[index].split_once('=')
+                {
+                    (value.to_string(), 1)
+                } else {
+                    let Some(value) = normalized.get(index + 1) else {
+                        return Err(CliError::invalid_args(format!(
+                            "{} requires a cell reference such as A2",
+                            spec.alias
+                        )));
+                    };
+                    (value.clone(), 2)
+                };
+                let (column, row) = parse_cell_ref(&value).map_err(|err| {
+                    CliError::invalid_args(format!("invalid {}: {}", spec.alias, err.message))
+                })?;
+                normalized.splice(
+                    index..index + replaced,
+                    [
+                        "--rows".to_string(),
+                        row.saturating_sub(1).to_string(),
+                        "--cols".to_string(),
+                        column.saturating_sub(1).to_string(),
+                    ],
+                );
+                index += 4;
+            }
+        }
+        applied.push(AppliedFlagAlias {
+            alias: spec.alias,
+            canonical_flags: spec.canonical_flags,
+        });
+    }
+    Ok(NormalizedFlagArgs {
+        args: normalized,
+        applied,
+    })
+}
+
 pub(crate) struct InvalidArgsIntentHint {
     pub(crate) did_you_mean: &'static [&'static str],
     pub(crate) hint: &'static str,
@@ -7,35 +248,11 @@ pub(crate) struct InvalidArgsIntentHint {
 
 const INVALID_ARGS_INTENT_HINTS: &[(&[&str], &str, InvalidArgsIntentHint)] = &[
     (
-        &["xlsx", "colwidths", "set"],
-        "--col",
-        InvalidArgsIntentHint {
-            did_you_mean: &["--range"],
-            hint: "column spans use --range, for example --range A:E",
-        },
-    ),
-    (
-        &["xlsx", "freeze", "set"],
-        "--cell",
-        InvalidArgsIntentHint {
-            did_you_mean: &["--rows", "--cols"],
-            hint: "freeze panes are expressed as --rows N --cols M; --at A2 will be accepted by the shared-alias follow-up",
-        },
-    ),
-    (
         &["xlsx", "charts", "create"],
         "--values",
         InvalidArgsIntentHint {
             did_you_mean: &["--range", "--table"],
             hint: "chart data is selected with --range or --table; write cell values with xlsx ranges set first",
-        },
-    ),
-    (
-        &["docx", "styles", "apply"],
-        "--block",
-        InvalidArgsIntentHint {
-            did_you_mean: &["--index"],
-            hint: "DOCX style targets use --index for a body block or --handle for a stable paragraph handle",
         },
     ),
     (
@@ -232,4 +449,117 @@ pub(crate) fn capability_known_filters() -> Vec<String> {
 
 pub(crate) fn is_command_family_filter(filter: &str) -> bool {
     CAPABILITY_COMMAND_FAMILY_FILTERS.contains(&filter)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn every_registered_flag_alias_normalizes_to_its_canonical_flags() {
+        let mut identities = BTreeSet::new();
+        for spec in FLAG_ALIASES {
+            assert!(
+                identities.insert((spec.path, spec.alias)),
+                "duplicate alias {} for {}",
+                spec.alias,
+                spec.path.join(" ")
+            );
+            let mut args = spec
+                .path
+                .iter()
+                .map(|token| (*token).to_string())
+                .collect::<Vec<_>>();
+            args.push(spec.alias.to_string());
+            args.push(
+                if spec.transform == FlagAliasTransform::FreezeAt {
+                    "B3"
+                } else {
+                    "value"
+                }
+                .to_string(),
+            );
+            let normalized = normalize_flag_aliases(&args).expect("normalize registered alias");
+            assert_eq!(
+                normalized.applied,
+                vec![AppliedFlagAlias {
+                    alias: spec.alias,
+                    canonical_flags: spec.canonical_flags,
+                }],
+                "{} {}",
+                spec.path.join(" "),
+                spec.alias
+            );
+            let expected_tail = if spec.transform == FlagAliasTransform::FreezeAt {
+                vec!["--rows", "2", "--cols", "1"]
+            } else {
+                vec![spec.canonical_flags[0], "value"]
+            };
+            assert_eq!(
+                &normalized.args[spec.path.len()..],
+                expected_tail,
+                "{} {}",
+                spec.path.join(" "),
+                spec.alias
+            );
+        }
+        assert_eq!(identities.len(), FLAG_ALIASES.len());
+    }
+
+    #[test]
+    fn inline_alias_values_and_freeze_coordinates_are_preserved() {
+        let renamed = normalize_flag_aliases(&[
+            "xlsx".to_string(),
+            "colwidths".to_string(),
+            "set".to_string(),
+            "--col=C:E".to_string(),
+        ])
+        .expect("inline rename alias");
+        assert_eq!(renamed.args, ["xlsx", "colwidths", "set", "--range=C:E"]);
+
+        let freeze = normalize_flag_aliases(&[
+            "xlsx".to_string(),
+            "freeze".to_string(),
+            "set".to_string(),
+            "--at=$C$4".to_string(),
+        ])
+        .expect("inline freeze alias");
+        assert_eq!(
+            freeze.args,
+            ["xlsx", "freeze", "set", "--rows", "3", "--cols", "2"]
+        );
+    }
+
+    #[test]
+    fn alias_and_canonical_flags_refuse_ambiguous_duplicates() {
+        let error = normalize_flag_aliases(&[
+            "docx".to_string(),
+            "styles".to_string(),
+            "apply".to_string(),
+            "--block".to_string(),
+            "1".to_string(),
+            "--index".to_string(),
+            "2".to_string(),
+        ])
+        .expect_err("alias plus canonical must be refused");
+        assert_eq!(
+            error.message,
+            "alias --block cannot be combined with canonical --index"
+        );
+    }
+
+    #[test]
+    fn alias_like_values_of_other_flags_are_not_rewritten() {
+        let args = [
+            "docx".to_string(),
+            "paragraphs".to_string(),
+            "insert".to_string(),
+            "--text".to_string(),
+            "--after".to_string(),
+        ];
+        let normalized = normalize_flag_aliases(&args).expect("preserve alias-like value");
+        assert_eq!(normalized.args, args);
+        assert!(normalized.applied.is_empty());
+    }
 }

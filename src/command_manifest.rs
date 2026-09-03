@@ -86,6 +86,8 @@ struct CapabilityFlagDto<'a> {
     #[serde(rename = "type")]
     flag_type: &'a str,
     description: &'a str,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    aliases: Vec<&'static str>,
 }
 
 fn command_specs() -> Vec<CommandSpec> {
@@ -147,10 +149,14 @@ pub(crate) fn local_value_flag_names_for_argv(raw_args: &[String]) -> Vec<&'stat
         .filter(|spec| command_path_matches_argv(spec.path, raw_args))
         .max_by_key(|spec| spec.path.len())
         .map(|spec| {
+            let path = spec.path;
             spec.local_flags
                 .into_iter()
                 .filter(|flag| flag.flag_type != "bool")
-                .map(|flag| flag.name)
+                .flat_map(|flag| {
+                    std::iter::once(flag.name)
+                        .chain(crate::agent_aliases::flag_aliases_for(path, flag.name))
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -379,6 +385,7 @@ pub(crate) fn capability_command_for_id(command_id: CommandId) -> Option<Value> 
 pub(crate) struct HelpFlagProjection {
     name: &'static str,
     description: &'static str,
+    aliases: Vec<&'static str>,
 }
 
 impl HelpFlagProjection {
@@ -388,6 +395,10 @@ impl HelpFlagProjection {
 
     pub(crate) fn description(&self) -> &'static str {
         self.description
+    }
+
+    pub(crate) fn aliases(&self) -> &[&'static str] {
+        &self.aliases
     }
 }
 
@@ -429,6 +440,7 @@ pub(crate) fn help_projection(canonical_path: &[String]) -> Option<HelpProjectio
                 .map(|flag| HelpFlagProjection {
                     name: flag.name,
                     description: flag.description,
+                    aliases: crate::agent_aliases::flag_aliases_for(spec.path, flag.name),
                 })
                 .collect(),
         })
@@ -582,6 +594,7 @@ fn capability_value_from_parts<'a>(
                 arg_name: flag.arg_name,
                 flag_type: flag.flag_type,
                 description: flag.description,
+                aliases: crate::agent_aliases::flag_aliases_for(path, flag.name),
             })
             .collect(),
         op_compatible,

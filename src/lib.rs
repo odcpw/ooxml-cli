@@ -1,6 +1,6 @@
 #![recursion_limit = "256"]
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 mod agent_aliases;
 mod agent_triage;
@@ -319,14 +319,17 @@ pub(crate) use zip_io::{
 
 #[doc(hidden)]
 pub fn run_process(raw_args: &[String]) -> i32 {
-    let parsed = parse_global_flags(raw_args);
-    let explicit_json = parsed.as_ref().is_ok_and(|(flags, _)| flags.json)
+    let parsed = parse_global_flags(raw_args).and_then(|(flags, args)| {
+        agent_aliases::normalize_flag_aliases(&args)
+            .map(|normalized| (flags, normalized.args, normalized.applied))
+    });
+    let explicit_json = parsed.as_ref().is_ok_and(|(flags, _, _)| flags.json)
         || raw_args.iter().any(|arg| arg == "--json");
     let explicit_text = parsed
         .as_ref()
-        .map(|(flags, _)| flags.format_text)
+        .map(|(flags, _, _)| flags.format_text)
         .unwrap_or(false);
-    if let Ok((_, args)) = &parsed {
+    if let Ok((_, args, _)) = &parsed {
         if args.first().map(String::as_str) == Some("serve") {
             return run_serve_stdio();
         }
@@ -334,8 +337,18 @@ pub fn run_process(raw_args: &[String]) -> i32 {
             return run_mcp_stdio();
         }
     }
-    match parsed.and_then(|(flags, args)| run(flags, args)) {
-        Ok(output) => {
+    match parsed.and_then(|(flags, args, aliases_applied)| {
+        run(flags, args).map(|output| (output, aliases_applied))
+    }) {
+        Ok((mut output, aliases_applied)) => {
+            if !aliases_applied.is_empty()
+                && let DispatchBody::Json(Value::Object(body)) = &mut output.body
+            {
+                body.insert(
+                    "aliasesApplied".to_string(),
+                    serde_json::to_value(aliases_applied).expect("serialize applied flag aliases"),
+                );
+            }
             match output.body {
                 DispatchBody::Json(value) => {
                     println!(

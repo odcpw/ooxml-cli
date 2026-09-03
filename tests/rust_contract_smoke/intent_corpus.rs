@@ -37,6 +37,8 @@ struct FrozenProcessMatrix {
 #[serde(rename_all = "camelCase")]
 struct IntentManifest {
     commands: Vec<IntentCommand>,
+    #[serde(default)]
+    flag_aliases: Vec<IntentAliasRecord>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,6 +55,16 @@ struct IntentFlag {
     name: String,
     #[serde(rename = "type")]
     flag_type: String,
+    #[serde(default)]
+    aliases: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IntentAliasRecord {
+    path: String,
+    alias: String,
+    canonical_flags: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -135,6 +147,327 @@ fn live_intent_manifest() -> IntentManifest {
         String::from_utf8_lossy(&output.stderr)
     );
     serde_json::from_slice(&output.stdout).expect("live capabilities contract")
+}
+
+fn explicit_json_success(args: &[String]) -> Value {
+    let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let output = run_ooxml_process(&refs);
+    assert_eq!(
+        output.code,
+        0,
+        "successful invocation {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "explicit JSON diagnostics must not contaminate stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).expect("JSON stdout is UTF-8");
+    assert_eq!(text.lines().count(), 1, "one JSON object: {text:?}");
+    serde_json::from_str(&text).expect("structured success JSON")
+}
+
+fn assert_alias_readback(args: &[&str], expected: Value) -> Value {
+    let args = args
+        .iter()
+        .map(|value| (*value).to_string())
+        .collect::<Vec<_>>();
+    let value = explicit_json_success(&args);
+    assert_eq!(value["aliasesApplied"], expected, "{args:?}: {value:?}");
+    value
+}
+
+#[test]
+fn every_documented_flag_alias_reaches_its_leaf_parser() {
+    let manifest = live_intent_manifest();
+    assert_eq!(
+        manifest.flag_aliases.len(),
+        28,
+        "explicit registry denominator changed; review and update this contract"
+    );
+
+    for record in &manifest.flag_aliases {
+        let command = manifest
+            .commands
+            .iter()
+            .find(|command| command.path == record.path)
+            .unwrap_or_else(|| panic!("alias path absent from manifest: {}", record.path));
+        for canonical in &record.canonical_flags {
+            let flag = command
+                .local_flags
+                .iter()
+                .find(|flag| flag.name == *canonical)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{} maps {} to absent canonical flag {}",
+                        record.path, record.alias, canonical
+                    )
+                });
+            assert!(
+                flag.aliases.contains(&record.alias),
+                "{} {} missing from localFlags alias metadata for {}",
+                record.path,
+                record.alias,
+                canonical
+            );
+        }
+
+        let mut help_args = vec!["help".to_string()];
+        help_args.extend(
+            record
+                .path
+                .split_whitespace()
+                .skip_while(|token| *token == "ooxml")
+                .map(str::to_string),
+        );
+        let help_refs = help_args.iter().map(String::as_str).collect::<Vec<_>>();
+        let help = run_ooxml_process(&help_refs);
+        assert_eq!(help.code, 0, "help exit for {}", record.path);
+        assert!(help.stderr.is_empty(), "help stderr for {}", record.path);
+        let help = String::from_utf8(help.stdout).expect("help UTF-8");
+        for canonical in &record.canonical_flags {
+            let line = help
+                .lines()
+                .find(|line| line.trim_start().starts_with(canonical))
+                .unwrap_or_else(|| panic!("help omitted {canonical} for {}", record.path));
+            assert!(
+                line.contains(&record.alias),
+                "help omitted alias {} for {} {canonical}: {line}",
+                record.alias,
+                record.path
+            );
+        }
+
+        let mut args = vec!["--json".to_string()];
+        args.extend(
+            record
+                .path
+                .split_whitespace()
+                .skip_while(|token| *token == "ooxml")
+                .map(str::to_string),
+        );
+        args.push(record.alias.clone());
+        args.push(
+            if record.path == "ooxml xlsx freeze set" {
+                "B3"
+            } else if matches!(
+                record.alias.as_str(),
+                "--after" | "--after-block" | "--insert-after" | "--block" | "--index"
+            ) {
+                "1"
+            } else {
+                "intent-value"
+            }
+            .to_string(),
+        );
+        let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+        let output = run_ooxml_process(&refs);
+        assert_ne!(
+            output.code, 0,
+            "incomplete alias probe must reach the leaf parser: {args:?}"
+        );
+        assert!(
+            output.stdout.is_empty() ^ output.stderr.is_empty(),
+            "alias probe must emit on exactly one channel for {args:?}"
+        );
+        let bytes = if output.stdout.is_empty() {
+            output.stderr
+        } else {
+            output.stdout
+        };
+        let text = String::from_utf8(bytes).expect("alias probe JSON is UTF-8");
+        assert_eq!(text.lines().count(), 1, "one JSON object for {args:?}");
+        let value: Value = serde_json::from_str(&text).expect("alias probe JSON object");
+        let message = value["error"]["message"]
+            .as_str()
+            .expect("alias probe error message");
+        assert!(
+            !message.contains(&format!("unknown flag: {}", record.alias)),
+            "registered alias was rejected before its leaf parser: {args:?}: {message}"
+        );
+    }
+
+    let robot_docs = explicit_json_success(
+        &["--json", "robot-docs", "guide"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>(),
+    );
+    let documented = robot_docs["flagAliases"]
+        .as_array()
+        .expect("robot-docs flag alias table");
+    assert_eq!(documented.len(), manifest.flag_aliases.len());
+    for record in &manifest.flag_aliases {
+        assert!(
+            documented.iter().any(|row| {
+                row["path"] == record.path
+                    && row["alias"] == record.alias
+                    && row["canonicalFlags"] == serde_json::json!(&record.canonical_flags)
+            }),
+            "robot-docs omitted {} {}",
+            record.path,
+            record.alias
+        );
+    }
+}
+
+#[test]
+fn flag_aliases_execute_and_report_canonical_readback() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock after epoch")
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-flag-aliases-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("create alias test directory");
+    let table_data = temp_dir.join("table.json");
+    std::fs::write(&table_data, r#"[["Region","Amount"],["North",42]]"#).expect("write table data");
+    let table_data = table_data.to_str().expect("table data path");
+    let clip = temp_dir.join("clip.mp4");
+    std::fs::write(&clip, b"opaque-fake-media-bytes").expect("write media clip");
+    let clip = clip.to_str().expect("media path");
+
+    assert_alias_readback(
+        &[
+            "--json",
+            "xlsx",
+            "colwidths",
+            "set",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--sheet",
+            "Sheet1",
+            "--col",
+            "A:E",
+            "--width",
+            "12",
+            "--dry-run",
+        ],
+        serde_json::json!([{"alias": "--col", "canonicalFlags": ["--range"]}]),
+    );
+    assert_alias_readback(
+        &[
+            "--json",
+            "xlsx",
+            "freeze",
+            "set",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--sheet",
+            "Sheet1",
+            "--at",
+            "B2",
+            "--dry-run",
+        ],
+        serde_json::json!([{
+            "alias": "--at",
+            "canonicalFlags": ["--rows", "--cols"]
+        }]),
+    );
+    assert_alias_readback(
+        &[
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            "testdata/docx/apply-styles/document.docx",
+            "--block",
+            "1",
+            "--target",
+            "paragraph",
+            "--style",
+            "Heading2",
+            "--dry-run",
+        ],
+        serde_json::json!([{"alias": "--block", "canonicalFlags": ["--index"]}]),
+    );
+    assert_alias_readback(
+        &[
+            "--json",
+            "docx",
+            "paragraphs",
+            "insert",
+            "testdata/docx/styled-headings/document.docx",
+            "--after",
+            "0",
+            "--text",
+            "Alias paragraph",
+            "--dry-run",
+        ],
+        serde_json::json!([{
+            "alias": "--after",
+            "canonicalFlags": ["--insert-after"]
+        }]),
+    );
+    assert_alias_readback(
+        &[
+            "--json",
+            "pptx",
+            "place",
+            "table",
+            "testdata/pptx/minimal-title/presentation.pptx",
+            "--slide",
+            "1",
+            "--values-file",
+            table_data,
+            "--data-format",
+            "json",
+            "--x",
+            "0",
+            "--y",
+            "0",
+            "--cx",
+            "2000000",
+            "--dry-run",
+        ],
+        serde_json::json!([
+            {"alias": "--values-file", "canonicalFlags": ["--data"]},
+            {"alias": "--data-format", "canonicalFlags": ["--format"]}
+        ]),
+    );
+    assert_alias_readback(
+        &[
+            "--json",
+            "pptx",
+            "media",
+            "add",
+            "testdata/pptx/minimal-title/presentation.pptx",
+            "--slide",
+            "1",
+            "--image",
+            clip,
+            "--dry-run",
+        ],
+        serde_json::json!([{"alias": "--image", "canonicalFlags": ["--file"]}]),
+    );
+    assert_alias_readback(
+        &[
+            "--json",
+            "xlsx",
+            "cells",
+            "extract",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--sheet",
+            "Sheet1",
+            "--cell",
+            "A1",
+        ],
+        serde_json::json!([{"alias": "--cell", "canonicalFlags": ["--range"]}]),
+    );
+    assert_alias_readback(
+        &[
+            "--json",
+            "docx",
+            "blocks",
+            "testdata/docx/styled-headings/document.docx",
+            "--index",
+            "1",
+        ],
+        serde_json::json!([{"alias": "--index", "canonicalFlags": ["--block"]}]),
+    );
+
+    std::fs::remove_dir_all(&temp_dir).expect("remove alias test directory");
 }
 
 fn transpose_flag(flag: &str) -> Option<String> {
@@ -333,36 +666,78 @@ fn manifest_derived_intent_cases(manifest: &IntentManifest) -> Vec<GeneratedInte
         }
     }
 
-    for (id, argv, bad_token, canonical_token) in [
+    for (id, argv, bad_token, canonical_token, expected_alias) in [
         (
             "sibling-range-col",
-            &["--json", "xlsx", "colwidths", "set", "--col", "A:E"][..],
+            &[
+                "--json",
+                "xlsx",
+                "colwidths",
+                "set",
+                "testdata/xlsx/minimal-workbook/workbook.xlsx",
+                "--sheet",
+                "Sheet1",
+                "--col",
+                "A:E",
+                "--width",
+                "12",
+                "--dry-run",
+            ][..],
             "--col",
             "--range",
+            true,
         ),
         (
             "sibling-freeze-cell",
-            &["--json", "xlsx", "freeze", "set", "--cell", "A2"][..],
+            &[
+                "--json",
+                "xlsx",
+                "freeze",
+                "set",
+                "testdata/xlsx/minimal-workbook/workbook.xlsx",
+                "--sheet",
+                "Sheet1",
+                "--cell",
+                "A2",
+                "--dry-run",
+            ][..],
             "--cell",
             "--at",
+            true,
         ),
         (
             "sibling-chart-values",
             &["--json", "xlsx", "charts", "create", "--values", "[]"][..],
             "--values",
             "--range",
+            false,
         ),
         (
             "sibling-docx-block",
-            &["--json", "docx", "styles", "apply", "--block", "1"][..],
+            &[
+                "--json",
+                "docx",
+                "styles",
+                "apply",
+                "testdata/docx/apply-styles/document.docx",
+                "--block",
+                "1",
+                "--target",
+                "paragraph",
+                "--style",
+                "Heading2",
+                "--dry-run",
+            ][..],
             "--block",
             "--index",
+            true,
         ),
         (
             "sibling-pptx-text",
             &["--json", "pptx", "text", "set", "--text", "X"][..],
             "--text",
             "pptx replace text",
+            false,
         ),
     ] {
         let argv: Vec<String> = argv.iter().map(|value| (*value).to_string()).collect();
@@ -382,7 +757,7 @@ fn manifest_derived_intent_cases(manifest: &IntentManifest) -> Vec<GeneratedInte
                 argv,
                 bad_token: bad_token.to_string(),
                 canonical_token: canonical_token.to_string(),
-                expected_alias: false,
+                expected_alias,
             },
         );
     }
@@ -598,6 +973,7 @@ fn manifest_derived_wrong_invocations_are_never_silent_or_useless() {
 
         let samples = text_samples.entry(case.category.clone()).or_default();
         if case.category == "sibling-concept"
+            && !case.expected_alias
             && *samples < 8
             && let Some(error) = error
         {
@@ -665,7 +1041,7 @@ fn corrected_command_reparses_and_dry_runs_a_manifest_mutation() {
         input,
         "--sheet",
         "Sheet1",
-        "--col",
+        "--rnage",
         "A:E",
         "--width",
         "12",
@@ -697,27 +1073,12 @@ fn corrected_command_reparses_and_dry_runs_a_manifest_mutation() {
 }
 
 #[test]
-fn invalid_args_envelope_redirects_the_five_known_first_guess_failures() {
+fn invalid_args_envelope_redirects_the_remaining_known_first_guess_failures() {
     let cases = [
-        (
-            vec!["--json", "xlsx", "colwidths", "set", "--col", "A:E"],
-            serde_json::json!(["--range"]),
-            Some("ooxml --json xlsx colwidths set --range A:E"),
-        ),
-        (
-            vec!["--json", "xlsx", "freeze", "set", "--cell", "A2"],
-            serde_json::json!(["--rows", "--cols"]),
-            None,
-        ),
         (
             vec!["--json", "xlsx", "charts", "create", "--values", "[]"],
             serde_json::json!(["--range", "--table"]),
             None,
-        ),
-        (
-            vec!["--json", "docx", "styles", "apply", "--block", "1"],
-            serde_json::json!(["--index"]),
-            Some("ooxml --json docx styles apply --index 1"),
         ),
         (
             vec!["--json", "pptx", "text", "set", "--text", "X"],
@@ -757,22 +1118,53 @@ fn invalid_args_text_mode_prints_the_same_recovery_fields_on_stderr() {
     let output = run_ooxml_process(&[
         "--format",
         "text",
+        "capabilities",
+        "--fro",
         "xlsx",
-        "colwidths",
-        "set",
-        "--col",
-        "A:E",
     ]);
     assert_eq!(output.code, 2);
     assert!(output.stdout.is_empty());
     let stderr = String::from_utf8(output.stderr).expect("text diagnostics are UTF-8");
-    assert!(stderr.starts_with("error [invalid_args]: unknown flag: --col\n"));
-    assert!(stderr.contains("hint: column spans use --range"));
-    assert!(stderr.contains("did you mean: --range"));
+    assert!(stderr.starts_with("error [invalid_args]: unknown flag: --fro"));
+    assert!(stderr.contains("hint: did you mean --for?"));
+    assert!(stderr.contains("did you mean: --for"));
     assert!(stderr.contains("valid flags:\n"));
-    assert!(stderr.contains("help: ooxml help xlsx colwidths set"));
+    assert!(stderr.contains("help: ooxml help capabilities"));
+    assert!(stderr.contains("corrected command: ooxml --format text capabilities --for xlsx"));
+}
+
+#[test]
+fn invalid_args_suggestions_consult_the_shared_alias_registry() {
+    let value = explicit_json_error(&[
+        "--json",
+        "xlsx",
+        "colwidths",
+        "set",
+        "testdata/xlsx/minimal-workbook/workbook.xlsx",
+        "--sheet",
+        "Sheet1",
+        "--colsx",
+        "A:E",
+        "--width",
+        "12",
+        "--dry-run",
+    ]);
+    let error = &value["error"];
     assert!(
-        stderr.contains("corrected command: ooxml --format text xlsx colwidths set --range A:E")
+        error["didYouMean"]
+            .as_array()
+            .expect("flag suggestions")
+            .iter()
+            .any(|suggestion| suggestion == "--cols"),
+        "registry alias missing from suggestions: {error:?}"
+    );
+    assert!(
+        error["validFlags"]
+            .as_array()
+            .expect("valid flag inventory")
+            .iter()
+            .any(|flag| flag["flag"] == "--cols"),
+        "registry alias missing from valid flags: {error:?}"
     );
 }
 
@@ -865,12 +1257,12 @@ fn capabilities_golden_includes_the_documented_error_envelope() {
 }
 
 #[test]
-fn invalid_args_frozen_corpora_track_the_structured_error_contract() {
+fn frozen_corpora_track_structured_errors_and_alias_help() {
     let help_path = "testdata/golden/command-manifest-contract/help-corpus.json";
     let mut help: FrozenHelpCorpus =
         serde_json::from_slice(&std::fs::read(help_path).expect("read frozen help corpus"))
             .expect("parse frozen help corpus");
-    for case in help.cases.iter_mut().filter(|case| case.status != 0) {
+    for case in &mut help.cases {
         refresh_frozen_case(case);
     }
 
