@@ -929,7 +929,7 @@ pub(crate) fn attach_cli_mutation_envelope(
         return Ok(());
     };
     let file = mutation_destination_file(args, spec, response)?;
-    let destination = mutation_destination(spec, response);
+    let destination = mutation_destination(spec, response, args);
     let selector = destination.primary_selector.clone();
     let handle = destination.handle.clone();
     let before_hash = direct_response_hash(response, &["beforeHash", "previousHash"]);
@@ -956,6 +956,7 @@ pub(crate) fn attach_cli_mutation_envelope(
             after_hash,
         }],
         readback_command: response_readback_command(spec, response)
+            .or_else(|| inferred_readback_command(spec, args, &file))
             .unwrap_or_else(|| readback_command(spec.readback, &file, response)),
         warnings,
         aliases_applied,
@@ -1040,7 +1041,11 @@ fn flag_value(args: &[String], name: &str) -> Option<String> {
     })
 }
 
-fn mutation_destination(spec: &MutationCommandSpec, response: &Value) -> MutationDestination {
+fn mutation_destination(
+    spec: &MutationCommandSpec,
+    response: &Value,
+    args: &[String],
+) -> MutationDestination {
     let part_uri = response
         .get("destination")
         .and_then(|value| value.get("partUri"))
@@ -1053,7 +1058,7 @@ fn mutation_destination(spec: &MutationCommandSpec, response: &Value) -> Mutatio
         .and_then(|value| value.get("primarySelector"))
         .and_then(nonempty_string)
         .or_else(|| response.get("selector").and_then(nonempty_string))
-        .unwrap_or_else(|| selector_from_response(spec, response));
+        .unwrap_or_else(|| selector_from_response(spec, response, args));
     let handle = response
         .get("destination")
         .and_then(|value| value.get("handle"))
@@ -1104,7 +1109,7 @@ fn mutation_destination(spec: &MutationCommandSpec, response: &Value) -> Mutatio
     }
 }
 
-fn selector_from_response(spec: &MutationCommandSpec, response: &Value) -> String {
+fn selector_from_response(spec: &MutationCommandSpec, response: &Value, args: &[String]) -> String {
     if spec.destination_kind == "cell"
         && let Some(cell) = response
             .get("ref")
@@ -1121,6 +1126,16 @@ fn selector_from_response(spec: &MutationCommandSpec, response: &Value) -> Strin
             .or_else(|| nested_destination_value(response, "range"))
     {
         return format!("range:{range}");
+    }
+    if spec.destination_kind == "chart"
+        && let Some(chart) = flag_value(args, "--chart")
+    {
+        return chart;
+    }
+    if spec.destination_kind == "name"
+        && let Some(name) = flag_value(args, "--new-name").or_else(|| flag_value(args, "--name"))
+    {
+        return format!("name:{name}");
     }
     for (key, prefix) in [
         ("commentId", "comment"),
@@ -1289,7 +1304,26 @@ fn response_readback_command(spec: &MutationCommandSpec, response: &Value) -> Op
             "cellsExtractCommand",
             "rangesExportCommand",
         ],
-        "range" => &["readbackCommand", "rangesExportCommand", "sheetShowCommand"],
+        "range" => &[
+            "readbackCommand",
+            "rangesExportCommand",
+            "colwidthsShowCommand",
+            "rowheightsShowCommand",
+            "showCommand",
+            "sheetShowCommand",
+        ],
+        "chart" => &[
+            "readbackCommand",
+            "chartShowCommand",
+            "chartsListCommand",
+            "showCommand",
+        ],
+        "name" => &[
+            "readbackCommand",
+            "nameShowCommand",
+            "namesListCommand",
+            "showCommand",
+        ],
         "slide" | "shape" | "image" | "table" => {
             &["readbackCommand", "slideReadbackCommand", "listCommand"]
         }
@@ -1298,6 +1332,26 @@ fn response_readback_command(spec: &MutationCommandSpec, response: &Value) -> Op
     candidates
         .iter()
         .find_map(|key| response.get(*key).and_then(nonempty_string))
+}
+
+fn inferred_readback_command(
+    spec: &MutationCommandSpec,
+    args: &[String],
+    file: &str,
+) -> Option<String> {
+    if spec.path == ["xlsx", "colwidths", "autofit"] {
+        let sheet = flag_value(args, "--sheet")?;
+        // Autofit without an explicit span publishes the normalized range in the
+        // command response and therefore does not need this fallback.
+        let range = flag_value(args, "--range")?;
+        return Some(format!(
+            "ooxml --json xlsx colwidths show {} --sheet {} --range {}",
+            command_arg(file),
+            command_arg(&sheet),
+            command_arg(&range)
+        ));
+    }
+    None
 }
 
 fn readback_command(kind: ReadbackKind, file: &str, response: &Value) -> String {

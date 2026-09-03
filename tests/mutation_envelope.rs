@@ -420,6 +420,49 @@ fn with_out(mut args: Vec<String>, out: &Path) -> Vec<String> {
     args
 }
 
+fn contract_case_with_out(
+    dir: &Path,
+    path: &'static str,
+    destination_kind: &'static str,
+    input: Option<&str>,
+    tail: &[&str],
+    removes_destination: bool,
+) -> ContractCase {
+    let mut args = vec!["--json".to_string()];
+    args.extend(path.split_whitespace().skip(1).map(str::to_string));
+    args.extend(input.map(str::to_string));
+    args.extend(tail.iter().map(|arg| (*arg).to_string()));
+    let extension = match path.split_whitespace().nth(1) {
+        Some("docx") => "docx",
+        Some("pptx") => "pptx",
+        _ => "xlsx",
+    };
+    let leaf = path
+        .strip_prefix("ooxml ")
+        .unwrap_or(path)
+        .replace(' ', "-");
+    let args = with_out(args, &dir.join(format!("{leaf}.{extension}")));
+    ContractCase {
+        path,
+        destination_kind,
+        args,
+        removes_destination,
+    }
+}
+
+fn setup_with_out(dir: &Path, name: &str, extension: &str, args: Vec<String>) -> String {
+    let output_path = dir.join(format!("setup-{name}.{extension}"));
+    let args = with_out(args, &output_path);
+    let output = run_owned(&args);
+    assert!(
+        output.status.success(),
+        "setup {name} failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output_path.to_string_lossy().to_string()
+}
+
 fn docx_contract_cases(dir: &Path, scaffold_source: &Path) -> Vec<ContractCase> {
     let out = |name: &str| dir.join(format!("docx-{name}.docx"));
     let scaffold_source = scaffold_source.to_string_lossy().to_string();
@@ -955,6 +998,881 @@ fn docx_mutation_commands_satisfy_the_envelope_contract() {
         .collect::<Vec<_>>();
     assert_contract_matrix(&rows);
     fs::remove_dir_all(dir).expect("remove DOCX contract directory");
+}
+
+fn xlsx_contract_cases(dir: &Path) -> Vec<ContractCase> {
+    let minimal = "testdata/xlsx/minimal-workbook/workbook.xlsx";
+    let chart = "testdata/xlsx/chart-workbook/workbook.xlsx";
+    let table = "testdata/xlsx/outline-table/workbook.xlsx";
+
+    let two_sheets = setup_with_out(
+        dir,
+        "xlsx-two-sheets",
+        "xlsx",
+        owned_args(&[
+            "--json", "xlsx", "sheets", "add", minimal, "--name", "Sheet2",
+        ]),
+    );
+    let three_sheets = setup_with_out(
+        dir,
+        "xlsx-three-sheets",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "sheets",
+            "add",
+            &two_sheets,
+            "--name",
+            "Sheet3",
+        ]),
+    );
+    let comment_source = setup_with_out(
+        dir,
+        "xlsx-comment",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "comments",
+            "add",
+            minimal,
+            "--sheet",
+            "Sheet1",
+            "--cell",
+            "A1",
+            "--author",
+            "Contract",
+            "--text",
+            "Seed comment",
+        ]),
+    );
+    let conditional_one = setup_with_out(
+        dir,
+        "xlsx-conditional-one",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "conditional-formats",
+            "add",
+            minimal,
+            "--sheet",
+            "1",
+            "--range",
+            "A1:A5",
+            "--type",
+            "expression",
+            "--formula",
+            "A1>0",
+            "--priority",
+            "1",
+        ]),
+    );
+    let conditional_two = setup_with_out(
+        dir,
+        "xlsx-conditional-two",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "conditional-formats",
+            "add",
+            &conditional_one,
+            "--sheet",
+            "1",
+            "--range",
+            "B1:B5",
+            "--type",
+            "expression",
+            "--formula",
+            "B1>0",
+            "--priority",
+            "2",
+        ]),
+    );
+    let validation_source = setup_with_out(
+        dir,
+        "xlsx-validation",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "data-validations",
+            "create",
+            minimal,
+            "--sheet",
+            "1",
+            "--range",
+            "A1:A10",
+            "--type",
+            "list",
+            "--list-values",
+            "Red,Green,Blue",
+        ]),
+    );
+    let hyperlink_source = setup_with_out(
+        dir,
+        "xlsx-hyperlink",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "hyperlinks",
+            "add",
+            minimal,
+            "--sheet",
+            "Sheet1",
+            "--cell",
+            "A1",
+            "--url",
+            "https://example.com/original",
+        ]),
+    );
+    let filter_source = setup_with_out(
+        dir,
+        "xlsx-filter",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "filters-sorts",
+            "set-autofilter",
+            minimal,
+            "--sheet",
+            "1",
+            "--range",
+            "A1:C3",
+        ]),
+    );
+    let column_filter_source = setup_with_out(
+        dir,
+        "xlsx-column-filter",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "filters-sorts",
+            "add-column-filter",
+            &filter_source,
+            "--sheet",
+            "1",
+            "--column",
+            "0",
+            "--values",
+            "North,South",
+        ]),
+    );
+    let sort_source = setup_with_out(
+        dir,
+        "xlsx-sort",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "filters-sorts",
+            "set-sort",
+            minimal,
+            "--sheet",
+            "1",
+            "--ref",
+            "A1:C3",
+            "--column",
+            "A",
+        ]),
+    );
+    let name_source = setup_with_out(
+        dir,
+        "xlsx-name",
+        "xlsx",
+        owned_args(&[
+            "--json",
+            "xlsx",
+            "names",
+            "add",
+            minimal,
+            "--name",
+            "SalesData",
+            "--sheet",
+            "Sheet1",
+            "--range",
+            "A1:B2",
+        ]),
+    );
+    let freeze_source = setup_with_out(
+        dir,
+        "xlsx-freeze",
+        "xlsx",
+        owned_args(&[
+            "--json", "xlsx", "freeze", "set", minimal, "--sheet", "Sheet1", "--rows", "1",
+        ]),
+    );
+
+    let mut cases = vec![
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx scaffold",
+            "package",
+            None,
+            &["--sheet", "Data"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx sheets add",
+            "sheet",
+            Some(minimal),
+            &["--name", "Added"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx sheets rename",
+            "sheet",
+            Some(chart),
+            &["--sheet", "Data", "--name", "Facts"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx sheets move",
+            "sheet",
+            Some(&three_sheets),
+            &["--sheet", "Sheet3", "--to", "1"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx sheets delete",
+            "sheet",
+            Some(&three_sheets),
+            &["--sheet", "Sheet3"],
+            true,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx sheets set-tab-color",
+            "sheet",
+            Some(minimal),
+            &["--sheet", "Sheet1", "--color", "#112233"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx sheets set-print",
+            "sheet",
+            Some(minimal),
+            &[
+                "--sheet",
+                "Sheet1",
+                "--landscape",
+                "--fit-to-width",
+                "1",
+                "--repeat-header-rows",
+                "1",
+                "--gridlines",
+                "off",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx colwidths set",
+            "range",
+            Some(minimal),
+            &["--sheet", "Sheet1", "--range", "A:B", "--width", "12"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx colwidths autofit",
+            "range",
+            Some("testdata/xlsx/used-range/workbook.xlsx"),
+            &[
+                "--sheet", "Sparse", "--range", "A:C", "--min", "5", "--max", "30",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx rowheights set",
+            "range",
+            Some(minimal),
+            &["--sheet", "Sheet1", "--range", "1:2", "--height", "20"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx rows insert",
+            "range",
+            Some(minimal),
+            &["--sheet", "Sheet1", "--at", "2"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx rows delete",
+            "range",
+            Some(minimal),
+            &["--sheet", "Sheet1", "--row", "2"],
+            true,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx cols insert",
+            "range",
+            Some(minimal),
+            &["--sheet", "Sheet1", "--at", "B"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx cols delete",
+            "range",
+            Some(minimal),
+            &["--sheet", "Sheet1", "--col", "B"],
+            true,
+        ),
+    ];
+
+    for (leaf, tail) in [
+        (
+            "create",
+            vec![
+                "--type",
+                "bar",
+                "--sheet",
+                "Data",
+                "--range",
+                "A1:B4",
+                "--title",
+                "Contract Chart",
+                "--anchor",
+                "D1",
+            ],
+        ),
+        (
+            "update-source",
+            vec![
+                "--chart",
+                "chart:1",
+                "--series",
+                "1",
+                "--role",
+                "values",
+                "--source-sheet",
+                "Data",
+                "--source-range",
+                "$B$2:$B$3",
+            ],
+        ),
+        (
+            "set-title",
+            vec!["--chart", "chart:1", "--title", "Contract Revenue"],
+        ),
+        (
+            "set-legend",
+            vec!["--chart", "chart:1", "--position", "bottom"],
+        ),
+        (
+            "set-chart-area-fill",
+            vec!["--chart", "chart:1", "--fill-color", "FFEEDD"],
+        ),
+        (
+            "set-plot-area-fill",
+            vec!["--chart", "chart:1", "--fill-color", "CCEEFF"],
+        ),
+        (
+            "set-series-style",
+            vec![
+                "--chart",
+                "chart:1",
+                "--series",
+                "1",
+                "--fill-color",
+                "FF8800",
+            ],
+        ),
+        ("convert-type", vec!["--chart", "chart:1", "--to", "line"]),
+        (
+            "copy-style",
+            vec![
+                "--chart",
+                "chart:1",
+                "--from",
+                chart,
+                "--from-chart",
+                "chart:1",
+            ],
+        ),
+        (
+            "set-axis",
+            vec![
+                "--chart",
+                "chart:1",
+                "--axis",
+                "value",
+                "--title",
+                "Contract Axis",
+            ],
+        ),
+    ] {
+        let path = match leaf {
+            "create" => "ooxml xlsx charts create",
+            "update-source" => "ooxml xlsx charts update-source",
+            "set-title" => "ooxml xlsx charts set-title",
+            "set-legend" => "ooxml xlsx charts set-legend",
+            "set-chart-area-fill" => "ooxml xlsx charts set-chart-area-fill",
+            "set-plot-area-fill" => "ooxml xlsx charts set-plot-area-fill",
+            "set-series-style" => "ooxml xlsx charts set-series-style",
+            "convert-type" => "ooxml xlsx charts convert-type",
+            "copy-style" => "ooxml xlsx charts copy-style",
+            "set-axis" => "ooxml xlsx charts set-axis",
+            _ => unreachable!(),
+        };
+        cases.push(contract_case_with_out(
+            dir,
+            path,
+            "chart",
+            Some(chart),
+            &tail,
+            false,
+        ));
+    }
+
+    cases.extend([
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx comments add",
+            "comment",
+            Some(minimal),
+            &[
+                "--sheet",
+                "Sheet1",
+                "--cell",
+                "A1",
+                "--author",
+                "Contract",
+                "--text",
+                "Envelope comment",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx comments update",
+            "comment",
+            Some(&comment_source),
+            &[
+                "--sheet",
+                "Sheet1",
+                "--comment-id",
+                "0",
+                "--text",
+                "Updated envelope comment",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx comments remove",
+            "comment",
+            Some(&comment_source),
+            &["--sheet", "Sheet1", "--comment-id", "0"],
+            true,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx conditional-formats add",
+            "conditional-format",
+            Some(minimal),
+            &[
+                "--sheet",
+                "1",
+                "--range",
+                "A1:A5",
+                "--type",
+                "expression",
+                "--formula",
+                "A1>0",
+                "--priority",
+                "1",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx conditional-formats delete",
+            "conditional-format",
+            Some(&conditional_one),
+            &["--sheet", "1", "--rule", "priority:1"],
+            true,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx conditional-formats reorder",
+            "conditional-format",
+            Some(&conditional_two),
+            &["--sheet", "1", "--rule", "cfRule:2", "--priority", "1"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx data-validations create",
+            "data-validation",
+            Some(minimal),
+            &[
+                "--sheet",
+                "1",
+                "--range",
+                "A1:A10",
+                "--type",
+                "list",
+                "--list-values",
+                "Red,Green,Blue",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx data-validations update",
+            "data-validation",
+            Some(&validation_source),
+            &[
+                "--sheet",
+                "1",
+                "--range",
+                "A1:A10",
+                "--list-values",
+                "Red,Green,Blue,Amber",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx data-validations delete",
+            "data-validation",
+            Some(&validation_source),
+            &["--sheet", "1", "--range", "A1:A10"],
+            true,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx hyperlinks add",
+            "hyperlink",
+            Some(minimal),
+            &[
+                "--sheet",
+                "Sheet1",
+                "--cell",
+                "A1",
+                "--url",
+                "https://example.com/report",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx hyperlinks update",
+            "hyperlink",
+            Some(&hyperlink_source),
+            &[
+                "--sheet",
+                "Sheet1",
+                "--cell",
+                "A1",
+                "--url",
+                "https://example.net/new",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx hyperlinks delete",
+            "hyperlink",
+            Some(&hyperlink_source),
+            &["--sheet", "Sheet1", "--cell", "A1"],
+            true,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx filters-sorts set-autofilter",
+            "range",
+            Some(minimal),
+            &["--sheet", "1", "--range", "A1:C3"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx filters-sorts clear-autofilter",
+            "range",
+            Some(&filter_source),
+            &["--sheet", "1"],
+            true,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx filters-sorts add-column-filter",
+            "range",
+            Some(&filter_source),
+            &["--sheet", "1", "--column", "0", "--values", "North,South"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx filters-sorts clear-column-filter",
+            "range",
+            Some(&column_filter_source),
+            &["--sheet", "1", "--column", "0"],
+            true,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx filters-sorts set-sort",
+            "range",
+            Some(minimal),
+            &["--sheet", "1", "--ref", "A1:C3", "--column", "A"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx filters-sorts clear-sort",
+            "range",
+            Some(&sort_source),
+            &["--sheet", "1"],
+            true,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx names add",
+            "name",
+            Some(minimal),
+            &[
+                "--name",
+                "ContractName",
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A1:B2",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx names update",
+            "name",
+            Some(&name_source),
+            &["--name", "SalesData", "--ref", "SUM('Sheet1'!$B$1:$B$2)"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx names rename",
+            "name",
+            Some(&name_source),
+            &["--name", "SalesData", "--new-name", "RevenueData"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx names delete",
+            "name",
+            Some(&name_source),
+            &["--name", "SalesData"],
+            true,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx tables create",
+            "table",
+            Some(chart),
+            &[
+                "--sheet",
+                "Data",
+                "--range",
+                "A1:B4",
+                "--table",
+                "ContractTable",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx tables append-rows",
+            "table",
+            Some(table),
+            &[
+                "--table",
+                "Sales",
+                "--values",
+                r#"[["North",30],["South",40]]"#,
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx tables append-records",
+            "table",
+            Some(table),
+            &[
+                "--table",
+                "Sales",
+                "--expect-range",
+                "A1:B4",
+                "--records",
+                r#"[{"Region":"North","Revenue":30}]"#,
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx tables set-column-format",
+            "table",
+            Some(table),
+            &[
+                "--table", "Sales", "--column", "Revenue", "--preset", "currency",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx pivots create",
+            "pivot",
+            Some(table),
+            &[
+                "--table",
+                "Sales",
+                "--name",
+                "ContractPivot",
+                "--rows",
+                "Region",
+                "--values",
+                "Revenue:sum",
+                "--anchor",
+                "D1",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx workbook metadata update",
+            "package",
+            Some(minimal),
+            &["--title", "Envelope contract"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx ranges set",
+            "range",
+            Some(minimal),
+            &[
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A1:B2",
+                "--values",
+                r#"[["Name",42],["Tail",true]]"#,
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx ranges set-format",
+            "range",
+            Some(minimal),
+            &[
+                "--sheet", "Sheet1", "--range", "A1:B2", "--preset", "currency",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx ranges set-style",
+            "range",
+            Some(minimal),
+            &[
+                "--sheet",
+                "Sheet1",
+                "--range",
+                "A1:B2",
+                "--font-bold",
+                "--fill-color",
+                "#DDEEFF",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx cells set",
+            "cell",
+            Some(minimal),
+            &[
+                "--sheet", "Sheet1", "--cell", "B2", "--value", "42", "--type", "number",
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx cells clear",
+            "cell",
+            Some(minimal),
+            &["--sheet", "Sheet1", "--ref", "A1"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx cells set-batch",
+            "cell",
+            Some(minimal),
+            &[
+                "--sheet",
+                "Sheet1",
+                "--cells",
+                r#"[{"ref":"B1","value":"64","type":"number"},{"ref":"A2","value":"batch"}]"#,
+            ],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx freeze set",
+            "sheet",
+            Some(minimal),
+            &["--sheet", "Sheet1", "--rows", "2", "--cols", "1"],
+            false,
+        ),
+        contract_case_with_out(
+            dir,
+            "ooxml xlsx freeze clear",
+            "sheet",
+            Some(&freeze_source),
+            &["--sheet", "Sheet1"],
+            false,
+        ),
+    ]);
+    cases
+}
+
+#[test]
+fn xlsx_mutation_commands_satisfy_the_envelope_contract() {
+    let dir = temp_dir("xlsx-contract-matrix");
+    let schema_response = run_json(&["--json", "capabilities", "--schema", "mutation-envelope"]);
+    let cases = xlsx_contract_cases(&dir);
+    assert_eq!(cases.len(), 60, "reviewed XLSX mutation denominator");
+    let mut paths = cases.iter().map(|case| case.path).collect::<Vec<_>>();
+    paths.sort_unstable();
+    paths.dedup();
+    assert_eq!(
+        paths.len(),
+        cases.len(),
+        "XLSX command paths must be unique"
+    );
+    let rows = cases
+        .iter()
+        .map(|case| run_contract_case(case, &schema_response["document"]))
+        .collect::<Vec<_>>();
+    assert_contract_matrix(&rows);
+    fs::remove_dir_all(dir).expect("remove XLSX contract directory");
 }
 
 #[test]
