@@ -3,7 +3,7 @@ use crate::cli_core::{EnrichedCliError, InvalidArgsDetails, InvalidArgsFlag};
 use crate::{CliError, CliResult, command_arg};
 
 const GLOBAL_ERROR_FLAGS: &[(&str, &str)] = &[
-    ("--format", "--format <json|text>"),
+    ("--format", "--format <json|text|markdown>"),
     ("--json", "--json"),
     ("--strict", "--strict"),
 ];

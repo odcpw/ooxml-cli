@@ -283,6 +283,7 @@ fn run_conformance(file: &str, schema: bool) -> CliResult<(Value, String)> {
         &GlobalFlags {
             json: true,
             format_text: false,
+            format_markdown: false,
             strict: false,
         },
         &args,

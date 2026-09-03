@@ -42,6 +42,7 @@ mod help;
 mod image_pipeline;
 mod inspect;
 mod json_util;
+mod markdown;
 mod mcp;
 mod mcp_support;
 mod mutation_envelope;
@@ -455,19 +456,23 @@ struct RunOutput {
 }
 
 fn run(flags: GlobalFlags, args: Vec<String>) -> CliResult<RunOutput> {
-    if let Some(flag) = command_manifest::first_registered_intent_mismatch(&args) {
+    let markdown_request = markdown::normalize_request(&flags, &args)?;
+    let command_args = markdown_request
+        .as_ref()
+        .map_or(args.as_slice(), |request| request.args.as_slice());
+    if let Some(flag) = command_manifest::first_registered_intent_mismatch(command_args) {
         return Err(CliError::invalid_args(format!("unknown flag: {flag}")));
     }
     if flags.format_text
-        && !has_command_json_format_request(&args)
-        && !is_validate_command(&args)
-        && !is_text_utility_command(&args)
+        && !has_command_json_format_request(command_args)
+        && !is_validate_command(command_args)
+        && !is_text_utility_command(command_args)
     {
         return Err(CliError::invalid_args(
             "text output is not supported for this command; use --json or --format json",
         ));
     }
-    if let [cmd, schema_flag, schema, rest @ ..] = args.as_slice()
+    if let [cmd, schema_flag, schema, rest @ ..] = command_args
         && cmd == "capabilities"
         && schema_flag == "--schema"
         && schema == "mutation-envelope"
@@ -477,7 +482,7 @@ fn run(flags: GlobalFlags, args: Vec<String>) -> CliResult<RunOutput> {
             exit_code: EXIT_SUCCESS,
         });
     }
-    if let [cmd, rest @ ..] = args.as_slice()
+    if let [cmd, rest @ ..] = command_args
         && cmd == "validate"
     {
         let (file, strict) = parse_validate_args(rest, flags.strict)?;
@@ -488,12 +493,24 @@ fn run(flags: GlobalFlags, args: Vec<String>) -> CliResult<RunOutput> {
             exit_code,
         });
     }
-    dispatch(&flags, &args)
-        .map_err(|err| normalize_unknown_command_error(&args, err))
-        .map(|output| RunOutput {
-            body: output.body,
-            exit_code: output.exit_code,
-        })
+    let output = dispatch(&flags, command_args)
+        .map_err(|err| normalize_unknown_command_error(command_args, err))?;
+    let body = if let Some(request) = markdown_request {
+        match output.body {
+            DispatchBody::Json(value) => DispatchBody::Text(markdown::render(&request, &value)?),
+            DispatchBody::Text(_) => {
+                return Err(CliError::unexpected(
+                    "markdown source command returned text instead of structured data",
+                ));
+            }
+        }
+    } else {
+        output.body
+    };
+    Ok(RunOutput {
+        body,
+        exit_code: output.exit_code,
+    })
 }
 
 fn normalize_unknown_command_error(args: &[String], err: CliError) -> CliError {
@@ -543,9 +560,10 @@ fn parse_global_flags(raw_args: &[String]) -> CliResult<(GlobalFlags, Vec<String
                 match value.as_str() {
                     "json" => flags.json = true,
                     "text" => flags.format_text = true,
+                    "markdown" => flags.format_markdown = true,
                     _ => {
                         return Err(CliError::invalid_args(format!(
-                            "invalid format: {value} (expected 'json' or 'text')"
+                            "invalid format: {value} (expected 'json', 'text', or 'markdown')"
                         )));
                     }
                 }
@@ -565,9 +583,10 @@ fn parse_global_flags(raw_args: &[String]) -> CliResult<(GlobalFlags, Vec<String
                 match format {
                     "json" => flags.json = true,
                     "text" => flags.format_text = true,
+                    "markdown" => flags.format_markdown = true,
                     _ => {
                         return Err(CliError::invalid_args(format!(
-                            "invalid format: {format} (expected 'json' or 'text')"
+                            "invalid format: {format} (expected 'json', 'text', or 'markdown')"
                         )));
                     }
                 }
