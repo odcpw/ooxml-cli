@@ -267,7 +267,7 @@ pub(crate) use xlsx_model::{
     xlsx_dimension_declared, xlsx_merged_cell_count, xlsx_sheet_selectors, xlsx_styles,
 };
 pub(crate) use xlsx_mutation::{
-    XlsxCellsSetOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions, default_xlsx_styles_xml,
+    XlsxCellsSetOptions, XlsxRangesSetFormatOptions, XlsxRangesSetOptions,
     validate_xlsx_mutation_output_flags, xlsx_cells_set, xlsx_range_destination_json,
     xlsx_ranges_set, xlsx_ranges_set_format,
 };
