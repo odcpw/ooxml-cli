@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, XmlNamedRange, XmlRange,
-    append_docx_text_children, docx_body_block_ranges, docx_body_tag, docx_first_word_attr,
-    docx_header_footer_part_uris, docx_header_footer_root_tag,
+    append_docx_text_children, command_arg, docx_body_block_ranges, docx_body_tag,
+    docx_first_word_attr, docx_header_footer_part_uris, docx_header_footer_root_tag,
     docx_mutation_output_path_for_result, docx_paragraph_fragment_text,
     docx_validate_strict_command, docx_word_text_descendants, ensure_docx_package_kind,
     find_docx_document_part, validate_xlsx_mutation_output_flags, word_xml_tag,
@@ -817,5 +817,5 @@ fn docx_field_content_hash(instruction: &str, result: &str) -> String {
 }
 
 fn docx_fields_list_command(file: &str) -> String {
-    format!("ooxml --json docx fields list {file}")
+    format!("ooxml --json docx fields list {}", command_arg(file))
 }

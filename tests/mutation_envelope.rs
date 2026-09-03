@@ -151,6 +151,14 @@ fn shell_words(command: &str) -> Result<Vec<String>, String> {
     Ok(words)
 }
 
+#[test]
+fn emitted_command_parser_preserves_quoted_windows_backslashes() {
+    let path = r"C:\Users\RUNNER~1\AppData\Local\Temp\docx-field-insert.docx";
+    let args = emitted_ooxml_args(&format!("ooxml --json docx fields list '{path}'"))
+        .expect("parse emitted Windows command");
+    assert_eq!(args.last().map(String::as_str), Some(path));
+}
+
 fn output_json(output: &Output) -> Result<Value, String> {
     let stdout = String::from_utf8(output.stdout.clone()).map_err(|err| err.to_string())?;
     if stdout.lines().count() != 1 {
