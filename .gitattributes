@@ -25,5 +25,10 @@ Makefile text eol=lf
 # Command-manifest contract goldens are raw-byte text fixtures on every platform.
 testdata/golden/command-manifest-contract/** text eol=lf
 
+# JSON golden contracts are compared as raw bytes and must not be rewritten on Windows.
+testdata/golden/outline/** text eol=lf
+testdata/golden/check/** text eol=lf
+testdata/golden/design-check/** text eol=lf
+
 # VBA project manifests are emitted as deterministic UTF-8 with LF line endings.
 testdata/golden/vba-authoring/**/vba-project.json text eol=lf

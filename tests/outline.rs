@@ -4,6 +4,8 @@ use std::path::Path;
 use std::process::{Command, Output};
 use std::time::{Duration, Instant};
 
+const GIT_ATTRIBUTES: &str = include_str!("../.gitattributes");
+
 const GOLDEN_CASES: &[(&str, &str, &[&str], &str)] = &[
     (
         "pptx-chart-simple",
@@ -115,6 +117,28 @@ fn golden_document<'a>(documents: &'a [(&str, Value)], name: &str) -> &'a Value 
         .find(|(candidate, _)| *candidate == name)
         .expect("golden document")
         .1
+}
+
+#[test]
+fn json_golden_contracts_are_lf_only_on_every_runner() {
+    for directory in ["outline", "check", "design-check"] {
+        let rule = format!("testdata/golden/{directory}/** text eol=lf");
+        assert!(
+            GIT_ATTRIBUTES.lines().any(|line| line == rule),
+            "missing raw-byte golden rule: {rule}"
+        );
+    }
+
+    for (name, _, _, _) in GOLDEN_CASES {
+        let path = Path::new("testdata/golden/outline").join(format!("{name}.json"));
+        let bytes = fs::read(&path).expect("read outline golden");
+        assert!(
+            !bytes.contains(&b'\r'),
+            "{} contains CR bytes",
+            path.display()
+        );
+        assert!(bytes.ends_with(b"\n"), "{} must end in LF", path.display());
+    }
 }
 
 #[test]
