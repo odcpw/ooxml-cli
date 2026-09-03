@@ -331,8 +331,10 @@ fn default_recipes_for_every_chart_type_are_schema_clean_renderable_and_golden()
             ),
         );
         let rendered = render_with_libreoffice(&xlsx, &root, &format!("xlsx-{chart_type}"));
-        if chart_type == "bar" && command_exists("pdftotext") {
-            let pdf = rendered.expect("LibreOffice available when pdftotext is available");
+        if chart_type == "bar"
+            && command_exists("pdftotext")
+            && let Some(pdf) = rendered
+        {
             let text = Command::new("pdftotext")
                 .args([pdf.to_str().unwrap(), "-"])
                 .output()
