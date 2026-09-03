@@ -11,20 +11,24 @@ use crate::{
     local_name, package_type, relationships, resolve_relationship_target, zip_text,
 };
 
+mod fix;
+
 const DEFAULT_SLIDE_WIDTH: i64 = 9_144_000;
 const DEFAULT_SLIDE_HEIGHT: i64 = 6_858_000;
 const DEFAULT_SAFE_MARGIN: i64 = 228_600;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct LayoutShape {
     id: i64,
     name: String,
+    kind: String,
+    is_placeholder: bool,
     bounds: Option<Bounds>,
     bounds_source: Option<BoundsSource>,
     text: Option<TextBlock>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct TextBlock {
     paragraphs: Vec<Paragraph>,
     plain_text: String,
@@ -35,7 +39,7 @@ struct TextBlock {
     autofit: TextAutofit,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Paragraph {
     text: String,
     font_sizes: Vec<f64>,
@@ -161,6 +165,13 @@ pub(crate) fn pptx_validate_layout(file: &str) -> CliResult<Value> {
         "totalSafeMarginViolations": total_safe_margin_violations,
         "hasIssues": slides_with_issues > 0,
     }))
+}
+
+pub(crate) fn pptx_validate_layout_command(file: &str, args: &[String]) -> CliResult<Value> {
+    if args.iter().any(|arg| arg == "--fix" || arg == "--out") {
+        return fix::validate_layout_with_fix(file, args);
+    }
+    pptx_validate_layout(file)
 }
 
 fn analyze_slide(
@@ -656,6 +667,19 @@ fn layout_shapes_from_resolved(xml: &str, resolved: &[Shape]) -> Vec<LayoutShape
             LayoutShape {
                 id: i64::from(shape.id),
                 name: shape.name.clone(),
+                kind: text_shapes
+                    .iter()
+                    .find(|candidate| {
+                        candidate.id == i64::from(shape.id) && candidate.name == shape.name
+                    })
+                    .map(|candidate| candidate.kind.clone())
+                    .unwrap_or_default(),
+                is_placeholder: text_shapes
+                    .iter()
+                    .find(|candidate| {
+                        candidate.id == i64::from(shape.id) && candidate.name == shape.name
+                    })
+                    .is_some_and(|candidate| candidate.is_placeholder),
                 bounds: shape.bounds.clone(),
                 bounds_source: shape.bounds_source,
                 text,
@@ -684,7 +708,10 @@ fn parse_layout_shapes(xml: &str) -> Vec<LayoutShape> {
                     && path.last().map(String::as_str) == Some("spTree")
                     && matches!(name.as_str(), "sp" | "pic" | "graphicFrame" | "grpSp")
                 {
-                    current = Some(LayoutShape::default());
+                    current = Some(LayoutShape {
+                        kind: name.clone(),
+                        ..LayoutShape::default()
+                    });
                     current_kind.clone_from(&name);
                     current_depth = path.len() + 1;
                 } else if current.is_some() {
@@ -704,7 +731,10 @@ fn parse_layout_shapes(xml: &str) -> Vec<LayoutShape> {
                     && path.last().map(String::as_str) == Some("spTree")
                     && matches!(name.as_str(), "sp" | "pic" | "graphicFrame" | "grpSp")
                 {
-                    let mut shape = LayoutShape::default();
+                    let mut shape = LayoutShape {
+                        kind: name.clone(),
+                        ..LayoutShape::default()
+                    };
                     parse_shape_empty(
                         &e,
                         &name,
@@ -778,6 +808,7 @@ fn parse_shape_start(
     if let Some(shape) = current.as_mut() {
         match name {
             "cNvPr" => apply_cnvpr(shape, e),
+            "ph" => shape.is_placeholder = true,
             "txBody" => {
                 *in_tx_body = true;
                 shape.text.get_or_insert_with(TextBlock::default);
@@ -824,6 +855,7 @@ fn parse_shape_empty(
 ) {
     match name {
         "cNvPr" => apply_cnvpr(shape, e),
+        "ph" => shape.is_placeholder = true,
         "txBody" => {
             *in_tx_body = false;
             shape.text.get_or_insert_with(TextBlock::default);

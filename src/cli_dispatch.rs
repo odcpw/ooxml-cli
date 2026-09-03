@@ -20,9 +20,9 @@ use crate::{
     OutlineOptions, PptxScaffoldOptions, apply, command_arg, diff_command, outline,
     pptx_diff_command, pptx_diff_dispatch, pptx_media_add, pptx_media_list, pptx_media_replace,
     pptx_scaffold, pptx_template_capture, pptx_template_compile, pptx_template_inspect,
-    pptx_translate_apply, pptx_translate_export, pptx_validate_layout, pptx_xlsx_bindings_apply,
-    pptx_xlsx_bindings_plan, render::render_command, repair_normalize, template_apply,
-    template_profile_inspect, template_profile_save, template_tokens,
+    pptx_translate_apply, pptx_translate_export, pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan,
+    render::render_command, repair_normalize, template_apply, template_profile_inspect,
+    template_profile_save, template_tokens,
 };
 
 pub(crate) enum DispatchBody {
@@ -669,8 +669,8 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
             pptx_render(file, rest)
         }
         [family, verb, file, rest @ ..] if family == "pptx" && verb == "validate-layout" => {
-            reject_unknown_flags(rest, &["--format"], &[])?;
-            pptx_validate_layout(file)
+            reject_unknown_flags(rest, &["--format", "--fix", "--out"], &[])?;
+            crate::pptx_layout_qa::pptx_validate_layout_command(file, rest)
         }
         [family, group, verb, manifest, rest @ ..]
             if family == "pptx" && group == "template" && verb == "inspect" =>
