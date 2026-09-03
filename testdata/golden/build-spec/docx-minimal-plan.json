@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "ooxml-cli.build-plan.v1",
+  "family": "docx",
+  "operations": [
+    {
+      "id": "document",
+      "command": "docx scaffold",
+      "args": {
+        "text": "Quarterly report",
+        "theme": "corporate-blue"
+      }
+    }
+  ],
+  "nodeMap": {
+    "/": {
+      "opId": "document",
+      "resultRef": {
+        "$ref": "document.destination"
+      }
+    },
+    "/blocks/0": {
+      "opId": "document",
+      "specId": "intro",
+      "resultRef": {
+        "$ref": "document.destination.summary.blockHashes.0.index"
+      }
+    }
+  }
+}

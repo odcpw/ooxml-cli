@@ -6,6 +6,7 @@ mod agent_aliases;
 mod agent_triage;
 mod apply;
 mod brand;
+pub mod build;
 mod capabilities;
 mod chart_style;
 mod check;

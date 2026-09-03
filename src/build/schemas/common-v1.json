@@ -1,0 +1,197 @@
+{
+  "length": {
+    "anyOf": [
+      { "type": "integer" },
+      {
+        "type": "string",
+        "pattern": "^-?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+)(?:in|cm|mm|pt|px|%|emu)?$"
+      }
+    ]
+  },
+  "color": {
+    "type": "string",
+    "minLength": 1
+  },
+  "bounds": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["x", "y", "cx", "cy"],
+    "properties": {
+      "x": { "$ref": "#/$defs/length" },
+      "y": { "$ref": "#/$defs/length" },
+      "cx": { "$ref": "#/$defs/length" },
+      "cy": { "$ref": "#/$defs/length" }
+    }
+  },
+  "textRun": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["text"],
+    "properties": {
+      "text": { "type": "string" },
+      "bold": { "type": "boolean" },
+      "italic": { "type": "boolean" },
+      "underline": { "type": "boolean" },
+      "size": { "$ref": "#/$defs/length" },
+      "color": { "$ref": "#/$defs/color" },
+      "link": { "type": "string", "minLength": 1 }
+    }
+  },
+  "paragraph": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "text": { "type": "string" },
+      "runs": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/textRun" }
+      },
+      "level": { "type": "integer", "minimum": 0 },
+      "bullet": { "type": "boolean" },
+      "numbered": { "type": "boolean" },
+      "bold": { "type": "boolean" },
+      "italic": { "type": "boolean" },
+      "size": { "$ref": "#/$defs/length" },
+      "color": { "$ref": "#/$defs/color" },
+      "align": {
+        "type": "string",
+        "enum": ["left", "center", "right", "justify"]
+      },
+      "style": { "type": "string", "minLength": 1 }
+    }
+  },
+  "imageRef": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["path"],
+    "properties": {
+      "id": { "type": "string", "minLength": 1 },
+      "path": { "type": "string", "minLength": 1 },
+      "fit": {
+        "type": "string",
+        "enum": ["contain", "cover", "fill"]
+      },
+      "altText": { "type": "string" },
+      "slot": { "type": "string", "minLength": 1 },
+      "bounds": { "$ref": "#/$defs/bounds" },
+      "width": { "$ref": "#/$defs/length" },
+      "height": { "$ref": "#/$defs/length" },
+      "align": {
+        "type": "string",
+        "enum": ["left", "center", "right"]
+      },
+      "caption": { "type": "string" },
+      "maxDpi": { "type": "integer", "minimum": 1 },
+      "keepOriginal": { "type": "boolean" }
+    }
+  },
+  "tableData": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "type": "string", "minLength": 1 },
+      "name": { "type": "string", "minLength": 1 },
+      "rows": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": { "type": ["string", "number", "boolean", "null"] }
+        }
+      },
+      "csv": { "type": "string", "minLength": 1 },
+      "json": { "type": "string", "minLength": 1 },
+      "xlsx": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sheet", "range"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "sheet": { "type": "string", "minLength": 1 },
+          "range": { "type": "string", "minLength": 1 }
+        }
+      },
+      "header": { "type": "boolean" },
+      "style": { "type": "string", "minLength": 1 },
+      "bandedRows": { "type": "boolean" },
+      "totalRow": { "type": "boolean" },
+      "slot": { "type": "string", "minLength": 1 },
+      "bounds": { "$ref": "#/$defs/bounds" },
+      "columnWidths": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/length" }
+      }
+    }
+  },
+  "chartSeries": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "values"],
+    "properties": {
+      "name": { "type": "string" },
+      "values": {
+        "type": "array",
+        "items": { "type": "number" }
+      },
+      "color": { "$ref": "#/$defs/color" }
+    }
+  },
+  "chartData": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["type"],
+    "properties": {
+      "id": { "type": "string", "minLength": 1 },
+      "type": {
+        "type": "string",
+        "enum": ["bar", "column", "line", "pie", "area", "scatter", "doughnut"]
+      },
+      "title": { "type": "string" },
+      "categories": {
+        "type": "array",
+        "items": { "type": ["string", "number"] }
+      },
+      "series": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/chartSeries" }
+      },
+      "source": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sheet", "range"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "sheet": { "type": "string", "minLength": 1 },
+          "range": { "type": "string", "minLength": 1 }
+        }
+      },
+      "style": { "type": ["string", "integer"] },
+      "slot": { "type": "string", "minLength": 1 },
+      "bounds": { "$ref": "#/$defs/bounds" },
+      "options": { "type": "object" }
+    }
+  },
+  "brandRef": {
+    "anyOf": [
+      { "type": "string", "minLength": 1 },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 }
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "title": { "type": "string" },
+      "subject": { "type": "string" },
+      "creator": { "type": "string" },
+      "keywords": { "type": "string" },
+      "description": { "type": "string" }
+    }
+  }
+}

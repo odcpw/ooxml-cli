@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ooxml.dev/schemas/pptx-build-v1.json",
+  "title": "ooxml-cli PPTX build specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "family", "slides"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "family": { "const": "pptx" },
+    "theme": { "type": "string", "minLength": 1 },
+    "themeSeed": { "$ref": "#/$defs/color" },
+    "template": { "type": "string", "minLength": 1 },
+    "brand": { "$ref": "#/$defs/brandRef" },
+    "size": { "type": "string", "minLength": 1 },
+    "footer": { "type": "string" },
+    "slideNumbers": { "type": "boolean" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "startSlide"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "startSlide": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "slides": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/pptxSlide" }
+    }
+  },
+  "$defs": {
+    "pptxSlide": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layout"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "layout": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "bullets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/paragraph" }
+        },
+        "notes": { "type": "string" },
+        "textBoxes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "text": { "type": "string" },
+              "paragraphs": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/paragraph" }
+              },
+              "slot": { "type": "string", "minLength": 1 },
+              "bounds": { "$ref": "#/$defs/bounds" }
+            }
+          }
+        },
+        "images": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/imageRef" }
+        },
+        "tables": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tableData" }
+        },
+        "charts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/chartData" }
+        },
+        "section": { "type": "string" },
+        "footer": { "type": "string" },
+        "slideNumber": { "type": "boolean" },
+        "hidden": { "type": "boolean" }
+      }
+    }
+  }
+}

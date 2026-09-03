@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "ooxml-cli.build-plan.v1",
+  "family": "pptx",
+  "operations": [
+    {
+      "id": "document",
+      "command": "pptx scaffold",
+      "args": {
+        "subtitle": "Board update",
+        "theme": "midnight",
+        "title": "Q3 review"
+      }
+    }
+  ],
+  "nodeMap": {
+    "/": {
+      "opId": "document",
+      "resultRef": {
+        "$ref": "document.destination"
+      }
+    },
+    "/slides/0": {
+      "opId": "document",
+      "specId": "cover",
+      "resultRef": {
+        "$ref": "document.destination.primarySelector"
+      }
+    }
+  }
+}

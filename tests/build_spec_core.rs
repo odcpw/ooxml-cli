@@ -1,0 +1,295 @@
+use ooxml_cli::build::{
+    BuildCompiler, BuildFamily, ImageRef, compile_minimal_spec, load_spec_str, operation_reference,
+    schema_by_name,
+};
+use serde_json::{Map, Value, json};
+use std::collections::BTreeSet;
+
+const SCHEMA_INDEX: &str = include_str!("../testdata/golden/build-spec/schema-index.json");
+
+#[test]
+fn published_family_schemas_match_the_pinned_index() {
+    let expected: Value = serde_json::from_str(SCHEMA_INDEX).expect("schema index golden");
+    let actual = Value::Array(
+        BuildFamily::ALL
+            .into_iter()
+            .map(|family| {
+                let schema = schema_by_name(family.schema_name()).expect("published schema");
+                assert_eq!(
+                    schema["$schema"],
+                    "https://json-schema.org/draft/2020-12/schema"
+                );
+                assert_eq!(schema["type"], "object");
+                assert_eq!(schema["additionalProperties"], false);
+                let family_definitions = match family {
+                    BuildFamily::Pptx => BTreeSet::from(["pptxSlide"]),
+                    BuildFamily::Xlsx => BTreeSet::from(["typedColumn", "xlsxSheet"]),
+                    BuildFamily::Docx => BTreeSet::from(["docxBlock", "docxSection"]),
+                };
+                let definitions = schema["$defs"].as_object().expect("schema definitions");
+                let common = definitions
+                    .keys()
+                    .filter(|name| !family_definitions.contains(name.as_str()))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                json!({
+                    "name": family.schema_name(),
+                    "id": schema["$id"],
+                    "required": schema["required"],
+                    "familyDefinitions": family_definitions,
+                    "commonDefinitions": common,
+                })
+            })
+            .collect::<Vec<_>>(),
+    );
+    assert_eq!(actual, expected, "published build schema index drifted");
+}
+
+#[test]
+fn loader_accepts_common_rich_types_and_human_lengths() {
+    let spec = load_spec_str(
+        BuildFamily::Pptx,
+        &json!({
+            "schemaVersion": 1,
+            "family": "pptx",
+            "brand": {"path": "brand.json"},
+            "slides": [{
+                "layout": "Title and Content",
+                "title": "Metrics",
+                "bullets": [{
+                    "runs": [
+                        {"text": "Revenue ", "bold": true, "color": "4472C4"},
+                        {"text": "details", "italic": true, "link": "https://example.com"}
+                    ],
+                    "level": 1,
+                    "bullet": true,
+                    "align": "left"
+                }],
+                "images": [{
+                    "path": "hero.png",
+                    "fit": "cover",
+                    "altText": "Product hero",
+                    "bounds": {"x": "5%", "y": "1in", "cx": "10cm", "cy": 1800000}
+                }],
+                "tables": [{
+                    "rows": [["Quarter", "Revenue"], ["Q3", 42]],
+                    "header": true,
+                    "style": "Medium2"
+                }],
+                "charts": [{
+                    "type": "column",
+                    "categories": ["Q2", "Q3"],
+                    "series": [{"name": "Revenue", "values": [38, 42]}],
+                    "slot": "right"
+                }]
+            }]
+        })
+        .to_string(),
+    )
+    .expect("rich common vocabulary must validate");
+    assert_eq!(spec.family(), BuildFamily::Pptx);
+
+    let image: ImageRef = serde_json::from_value(spec.document()["slides"][0]["images"][0].clone())
+        .expect("typed image ref");
+    image
+        .bounds
+        .as_ref()
+        .expect("image bounds")
+        .x
+        .validate()
+        .expect("percentage length");
+    assert_eq!(image.alt_text.as_deref(), Some("Product hero"));
+}
+
+#[test]
+fn loader_reports_precise_unknown_field_paths_and_errors_teach_suggestions() {
+    let error = load_spec_str(
+        BuildFamily::Pptx,
+        r#"{
+          "schemaVersion": 1,
+          "family": "pptx",
+          "slides": [{
+            "layout": "Title and Content",
+            "bullets": [{"text": "Revenue", "leve": 1}]
+          }]
+        }"#,
+    )
+    .expect_err("unknown nested field must be rejected");
+    assert_eq!(error.diagnostics.len(), 1, "{error:?}");
+    assert_eq!(
+        serde_json::to_value(&error.diagnostics[0]).expect("diagnostic JSON"),
+        json!({
+            "code": "BUILD_SPEC_UNKNOWN_FIELD",
+            "path": "/slides/0/bullets/0/leve",
+            "message": "unknown field \"leve\"; did you mean \"level\"?",
+            "didYouMean": ["level"],
+            "validFields": ["align", "bold", "bullet", "color", "italic", "level", "numbered", "runs", "size", "style", "text"]
+        })
+    );
+}
+
+#[test]
+fn loader_reports_required_type_and_length_errors_at_json_pointers() {
+    let missing = load_spec_str(BuildFamily::Xlsx, r#"{"schemaVersion":1,"family":"xlsx"}"#)
+        .expect_err("sheets are required");
+    assert_eq!(missing.diagnostics[0].path, "/sheets");
+    assert_eq!(
+        missing.diagnostics[0].code,
+        "BUILD_SPEC_REQUIRED_FIELD_MISSING"
+    );
+
+    let invalid = load_spec_str(
+        BuildFamily::Pptx,
+        r#"{"schemaVersion":1,"family":"pptx","slides":[{"layout":"Blank","images":[{"path":"x.png","bounds":{"x":"later","y":0,"cx":1,"cy":1}}]}]}"#,
+    )
+    .expect_err("invalid human length must be rejected");
+    assert_eq!(invalid.diagnostics.len(), 1, "{invalid:?}");
+    assert_eq!(invalid.diagnostics[0].path, "/slides/0/images/0/bounds/x");
+    assert_eq!(invalid.diagnostics[0].code, "BUILD_SPEC_VALUE_INVALID");
+
+    let wrong_family = load_spec_str(
+        BuildFamily::Docx,
+        r#"{"schemaVersion":1,"family":"pptx","blocks":[{"type":"paragraph","text":"x"}]}"#,
+    )
+    .expect_err("family constant is schema-enforced");
+    assert_eq!(wrong_family.diagnostics[0].path, "/family");
+}
+
+#[test]
+fn minimal_family_specs_compile_to_pinned_batch_plans() {
+    let cases = [
+        (
+            BuildFamily::Pptx,
+            json!({
+                "schemaVersion": 1,
+                "family": "pptx",
+                "theme": "midnight",
+                "slides": [{
+                    "id": "cover",
+                    "layout": "Title Slide",
+                    "title": "Q3 review",
+                    "subtitle": "Board update"
+                }]
+            }),
+            include_str!("../testdata/golden/build-spec/pptx-minimal-plan.json"),
+        ),
+        (
+            BuildFamily::Xlsx,
+            json!({
+                "schemaVersion": 1,
+                "family": "xlsx",
+                "themeSeed": "4472C4",
+                "sheets": [{"id": "sales", "name": "Sales"}]
+            }),
+            include_str!("../testdata/golden/build-spec/xlsx-minimal-plan.json"),
+        ),
+        (
+            BuildFamily::Docx,
+            json!({
+                "schemaVersion": 1,
+                "family": "docx",
+                "theme": "corporate-blue",
+                "blocks": [{
+                    "id": "intro",
+                    "type": "paragraph",
+                    "text": "Quarterly report"
+                }]
+            }),
+            include_str!("../testdata/golden/build-spec/docx-minimal-plan.json"),
+        ),
+    ];
+    for (family, source, golden) in cases {
+        let spec = load_spec_str(family, &source.to_string()).expect("minimal spec loads");
+        let plan = compile_minimal_spec(&spec).expect("minimal spec compiles");
+        let actual = serde_json::to_value(&plan).expect("plan JSON");
+        let expected: Value = serde_json::from_str(golden).expect("plan golden");
+        assert_eq!(actual, expected, "{family} minimal plan drifted");
+        assert_eq!(plan.operations_json(), actual["operations"]);
+    }
+}
+
+#[test]
+fn compiler_preserves_recursive_refs_and_rejects_unsafe_or_unresolved_ops() {
+    let mut compiler = BuildCompiler::new(BuildFamily::Pptx);
+    compiler
+        .push_operation(
+            "/",
+            None,
+            "document",
+            "pptx scaffold",
+            Map::new(),
+            "destination",
+        )
+        .expect("first op");
+    let mut args = Map::new();
+    args.insert(
+        "slide".to_string(),
+        operation_reference("document", "destination.summary.slide").expect("operation ref"),
+    );
+    args.insert(
+        "paragraphs".to_string(),
+        json!([{"target": {"$ref": "document.destination.primarySelector"}}]),
+    );
+    compiler
+        .push_operation(
+            "/slides/0/textBoxes/0",
+            Some("summary"),
+            "summary_box",
+            "pptx add-textbox",
+            args,
+            "destination.primarySelector",
+        )
+        .expect("dependent op");
+    let plan = compiler.finish().expect("ordered refs");
+    assert_eq!(
+        plan.operations_json()[1]["args"],
+        json!({
+            "paragraphs": [{"target": {"$ref": "document.destination.primarySelector"}}],
+            "slide": {"$ref": "document.destination.summary.slide"}
+        })
+    );
+
+    let mut unresolved = BuildCompiler::new(BuildFamily::Docx);
+    let error = unresolved
+        .push_operation(
+            "/blocks/0",
+            None,
+            "paragraph",
+            "docx paragraphs append",
+            Map::from_iter([(
+                "after".to_string(),
+                json!({"$ref": "future.destination.primarySelector"}),
+            )]),
+            "destination.primarySelector",
+        )
+        .expect_err("forward ref must fail at its spec node");
+    assert_eq!(error.path, "/blocks/0");
+    assert_eq!(error.op_id.as_deref(), Some("paragraph"));
+    assert!(error.message.contains("earlier op"), "{error:?}");
+
+    unresolved
+        .push_operation(
+            "/blocks/0",
+            None,
+            "paragraph",
+            "docx paragraphs append",
+            Map::new(),
+            "destination.primarySelector",
+        )
+        .expect("a rejected operation does not reserve its id");
+
+    let mut unsafe_args = BuildCompiler::new(BuildFamily::Xlsx);
+    let error = unsafe_args
+        .push_operation(
+            "/sheets/0",
+            None,
+            "sheet",
+            "xlsx scaffold",
+            Map::from_iter([("out".to_string(), json!("book.xlsx"))]),
+            "destination.primarySelector",
+        )
+        .expect_err("session-owned arg must fail");
+    assert_eq!(error.path, "/sheets/0");
+    assert_eq!(error.op_id.as_deref(), Some("sheet"));
+    assert!(error.message.contains("session-owned"), "{error:?}");
+}

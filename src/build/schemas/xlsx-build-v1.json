@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ooxml.dev/schemas/xlsx-build-v1.json",
+  "title": "ooxml-cli XLSX build specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "family", "sheets"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "family": { "const": "xlsx" },
+    "theme": { "type": "string", "minLength": 1 },
+    "themeSeed": { "$ref": "#/$defs/color" },
+    "brand": { "$ref": "#/$defs/brandRef" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "sheets": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/xlsxSheet" }
+    }
+  },
+  "$defs": {
+    "typedColumn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": {
+          "type": "string",
+          "enum": ["number", "currency", "percent", "date", "text", "boolean", "formula"]
+        },
+        "format": { "type": "string" },
+        "width": { "$ref": "#/$defs/length" },
+        "autofit": { "type": "boolean" }
+      }
+    },
+    "xlsxSheet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "tabColor": { "$ref": "#/$defs/color" },
+        "freeze": { "type": "string", "minLength": 1 },
+        "headerStyle": { "type": "string", "minLength": 1 },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": ["string", "number", "boolean", "null"] }
+          }
+        },
+        "dataFile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "format"],
+          "properties": {
+            "path": { "type": "string", "minLength": 1 },
+            "format": { "type": "string", "enum": ["csv", "json", "tsv"] }
+          }
+        },
+        "columns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/typedColumn" }
+        },
+        "tables": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tableData" }
+        },
+        "conditionalFormats": { "type": "array", "items": { "type": "object" } },
+        "dataValidations": { "type": "array", "items": { "type": "object" } },
+        "names": { "type": "array", "items": { "type": "object" } },
+        "charts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/chartData" }
+        },
+        "hyperlinks": { "type": "array", "items": { "type": "object" } },
+        "comments": { "type": "array", "items": { "type": "object" } },
+        "printSetup": { "type": "object" }
+      }
+    }
+  }
+}

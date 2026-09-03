@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "ooxml-cli.build-plan.v1",
+  "family": "xlsx",
+  "operations": [
+    {
+      "id": "document",
+      "command": "xlsx scaffold",
+      "args": {
+        "sheet": "Sales",
+        "themeSeed": "4472C4"
+      }
+    }
+  ],
+  "nodeMap": {
+    "/": {
+      "opId": "document",
+      "resultRef": {
+        "$ref": "document.destination"
+      }
+    },
+    "/sheets/0": {
+      "opId": "document",
+      "specId": "sales",
+      "resultRef": {
+        "$ref": "document.destination.primarySelector"
+      }
+    }
+  }
+}

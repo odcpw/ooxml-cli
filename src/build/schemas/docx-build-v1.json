@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ooxml.dev/schemas/docx-build-v1.json",
+  "title": "ooxml-cli DOCX build specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "family", "blocks"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "family": { "const": "docx" },
+    "template": { "type": "string", "minLength": 1 },
+    "theme": { "type": "string", "minLength": 1 },
+    "themeSeed": { "$ref": "#/$defs/color" },
+    "brand": { "$ref": "#/$defs/brandRef" },
+    "title": { "type": "string" },
+    "subtitle": { "type": "string" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "headers": { "type": "object" },
+    "footers": { "type": "object" },
+    "sections": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/docxSection" }
+    },
+    "blocks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/docxBlock" }
+    }
+  },
+  "$defs": {
+    "docxSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "startBlock": { "type": "integer", "minimum": 0 },
+        "size": { "type": "string", "minLength": 1 },
+        "orientation": { "type": "string", "enum": ["portrait", "landscape"] },
+        "margins": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "top": { "$ref": "#/$defs/length" },
+            "right": { "$ref": "#/$defs/length" },
+            "bottom": { "$ref": "#/$defs/length" },
+            "left": { "$ref": "#/$defs/length" }
+          }
+        }
+      }
+    },
+    "docxBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "type": "string",
+          "enum": ["title", "subtitle", "heading", "paragraph", "bullet", "numbered", "table", "image", "pageBreak", "toc"]
+        },
+        "text": { "type": "string" },
+        "runs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/textRun" }
+        },
+        "level": { "type": "integer", "minimum": 0 },
+        "style": { "type": "string", "minLength": 1 },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": ["string", "number", "boolean", "null"] }
+          }
+        },
+        "table": { "$ref": "#/$defs/tableData" },
+        "image": { "$ref": "#/$defs/imageRef" },
+        "caption": { "type": "string" }
+      }
+    }
+  }
+}

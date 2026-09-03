@@ -1,0 +1,23 @@
+[
+  {
+    "name": "pptx-build",
+    "id": "https://ooxml.dev/schemas/pptx-build-v1.json",
+    "required": ["schemaVersion", "family", "slides"],
+    "familyDefinitions": ["pptxSlide"],
+    "commonDefinitions": ["bounds", "brandRef", "chartData", "chartSeries", "color", "imageRef", "length", "metadata", "paragraph", "tableData", "textRun"]
+  },
+  {
+    "name": "xlsx-build",
+    "id": "https://ooxml.dev/schemas/xlsx-build-v1.json",
+    "required": ["schemaVersion", "family", "sheets"],
+    "familyDefinitions": ["typedColumn", "xlsxSheet"],
+    "commonDefinitions": ["bounds", "brandRef", "chartData", "chartSeries", "color", "imageRef", "length", "metadata", "paragraph", "tableData", "textRun"]
+  },
+  {
+    "name": "docx-build",
+    "id": "https://ooxml.dev/schemas/docx-build-v1.json",
+    "required": ["schemaVersion", "family", "blocks"],
+    "familyDefinitions": ["docxBlock", "docxSection"],
+    "commonDefinitions": ["bounds", "brandRef", "chartData", "chartSeries", "color", "imageRef", "length", "metadata", "paragraph", "tableData", "textRun"]
+  }
+]
