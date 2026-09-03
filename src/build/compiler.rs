@@ -128,6 +128,44 @@ impl BuildCompiler {
         Ok(())
     }
 
+    /// Append an implementation operation that has no corresponding user spec node.
+    ///
+    /// Family compilers use this for bounded housekeeping such as removing the
+    /// seed slide after creating the first requested slide. The operation is
+    /// still validated and participates in ordered `$ref` resolution, but it
+    /// is deliberately absent from the public spec-node map.
+    pub fn push_internal_operation(
+        &mut self,
+        op_id: impl Into<String>,
+        command: impl Into<String>,
+        args: Map<String, Value>,
+    ) -> Result<(), BuildCompileError> {
+        let op_id = op_id.into();
+        let node_path = "/";
+        validate_op_id(&op_id)
+            .map_err(|message| compile_error(node_path, Some(&op_id), message))?;
+        if self.ids.contains(&op_id) {
+            return Err(compile_error(
+                node_path,
+                Some(&op_id),
+                format!("duplicate build operation id {op_id:?}"),
+            ));
+        }
+        let command = command.into();
+        validate_command(self.family, &command)
+            .map_err(|message| compile_error(node_path, Some(&op_id), message))?;
+        validate_args(&args).map_err(|message| compile_error(node_path, Some(&op_id), message))?;
+        validate_reference_targets(&args, &self.ids)
+            .map_err(|message| compile_error(node_path, Some(&op_id), message))?;
+        self.ids.insert(op_id.clone());
+        self.operations.push(BuildOperation {
+            id: Some(op_id),
+            command,
+            args,
+        });
+        Ok(())
+    }
+
     pub fn map_node(
         &mut self,
         node_path: impl Into<String>,

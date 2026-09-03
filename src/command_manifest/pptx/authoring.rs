@@ -1,9 +1,49 @@
 use super::{PptxCommandId, direct, flag, inspect, mutation, spec};
 
-pub(super) const COMMAND_COUNT: usize = 17;
+pub(super) const COMMAND_COUNT: usize = 18;
 
 pub(super) fn command_specs() -> Vec<super::CommandSpec> {
     vec![
+        spec(
+            PptxCommandId::Build,
+            &["pptx", "build"],
+            "build --spec <deck.json|-> --out <deck.pptx>",
+            "Build a complete presentation from a published PPTX build specification in one atomic batch.",
+            &["package", "slide", "shape", "table", "chart"],
+            vec![
+                flag(
+                    "--spec",
+                    "spec",
+                    "string",
+                    "PPTX build-spec JSON path, or - to read JSON from stdin",
+                ),
+                flag("--out", "out", "string", "output presentation path"),
+                flag(
+                    "--check",
+                    "check",
+                    "bool",
+                    "run check after publishing and embed its findings",
+                ),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "compile, execute, and strictly validate the staged batch without publishing",
+                ),
+                flag(
+                    "--force",
+                    "force",
+                    "bool",
+                    "replace an existing output after the staged build validates",
+                ),
+            ],
+            super::ExecutionSupport::DirectOnly {
+                reason: Some(
+                    "build is the batch orchestrator and cannot be nested inside an apply op",
+                ),
+            },
+            None,
+        ),
         spec(
             PptxCommandId::Scaffold,
             &["pptx", "scaffold"],

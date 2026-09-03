@@ -625,6 +625,9 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
         }
         [family, ..] if family == "docx" => docx::dispatch_docx(args),
         [family, ..] if family == "xlsx" => xlsx::dispatch_xlsx(args),
+        [family, verb, rest @ ..] if family == "pptx" && verb == "build" => {
+            crate::build::pptx_build(rest)
+        }
         [family, verb, rest @ ..] if family == "pptx" && verb == "scaffold" => {
             let value_flags = [
                 "--out",

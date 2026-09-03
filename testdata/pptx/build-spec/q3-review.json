@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "family": "pptx",
+  "theme": "corporate",
+  "size": "16:9",
+  "slides": [
+    {
+      "id": "cover",
+      "layout": "Title Slide",
+      "title": "Q3 review",
+      "subtitle": "Board update"
+    },
+    {
+      "id": "results",
+      "layout": "Two Content",
+      "title": "Quarterly results",
+      "bullets": [
+        {
+          "text": "Revenue grew 18% year over year",
+          "level": 0,
+          "bullet": true
+        },
+        {
+          "text": "Gross margin expanded by 220 basis points",
+          "level": 0,
+          "bullet": true
+        },
+        {
+          "text": "Enterprise pipeline remains healthy",
+          "bold": true,
+          "level": 1,
+          "bullet": true
+        }
+      ],
+      "charts": [
+        {
+          "id": "revenue-chart",
+          "type": "column",
+          "title": "Revenue ($m)",
+          "categories": [
+            "Q1",
+            "Q2",
+            "Q3"
+          ],
+          "series": [
+            {
+              "name": "Actual",
+              "values": [
+                38,
+                41,
+                45
+              ]
+            }
+          ],
+          "style": "minimal",
+          "bounds": {
+            "x": 6339840,
+            "y": 1200150,
+            "cx": 5364480,
+            "cy": 5383530
+          }
+        }
+      ],
+      "notes": "Lead with growth, then explain the margin improvement."
+    },
+    {
+      "id": "regional-table",
+      "layout": "Title Only",
+      "title": "Regional performance",
+      "tables": [
+        {
+          "id": "regional-performance",
+          "rows": [
+            [
+              "Region",
+              "Revenue",
+              "Growth"
+            ],
+            [
+              "North America",
+              "$28m",
+              "21%"
+            ],
+            [
+              "Europe",
+              "$17m",
+              "14%"
+            ]
+          ],
+          "header": true,
+          "bandedRows": true,
+          "style": "Medium2",
+          "slot": "body"
+        }
+      ]
+    },
+    {
+      "id": "product",
+      "layout": "Title Only",
+      "title": "Product momentum",
+      "images": [
+        {
+          "id": "product-image",
+          "path": "../../test_image.png",
+          "bounds": {
+            "x": "1.35in",
+            "y": "1.55in",
+            "cx": "10.6in",
+            "cy": "3.8in"
+          },
+          "fit": "contain",
+          "altText": "Product illustration",
+          "caption": "New workflow adoption accelerated throughout Q3",
+          "keepOriginal": true
+        }
+      ]
+    },
+    {
+      "id": "outlook",
+      "layout": "Section Header",
+      "title": "Outlook",
+      "subtitle": "Focused execution in Q4"
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "checkErrors": 0,
+  "layoutQa": {
+    "slidesWithIssues": 0,
+    "totalCollisions": 0,
+    "totalOffSlide": 0,
+    "totalSafeMarginViolations": 0,
+    "totalTextOverflows": 0
+  },
+  "nodeIds": [
+    "cover",
+    "results",
+    "regional-table",
+    "product",
+    "outlook"
+  ],
+  "operations": [
+    "pptx scaffold",
+    "pptx new-slide-from-layout",
+    "pptx slides delete",
+    "pptx new-slide-from-layout",
+    "pptx new-slide-from-layout",
+    "pptx new-slide-from-layout",
+    "pptx new-slide-from-layout",
+    "pptx charts create",
+    "pptx notes set",
+    "pptx place table",
+    "pptx place image",
+    "pptx add-textbox"
+  ],
+  "schemaVersion": "ooxml-cli.pptx-build.v1",
+  "slides": [
+    {
+      "imageCount": 0,
+      "layout": "Title Slide",
+      "notes": false,
+      "number": 1,
+      "shapeCount": 2,
+      "tableCount": 0,
+      "title": "Q3 review"
+    },
+    {
+      "imageCount": 0,
+      "layout": "Two Content",
+      "notes": true,
+      "number": 2,
+      "shapeCount": 4,
+      "tableCount": 0,
+      "title": "Quarterly results"
+    },
+    {
+      "imageCount": 0,
+      "layout": "Title Only",
+      "notes": false,
+      "number": 3,
+      "shapeCount": 2,
+      "tableCount": 1,
+      "title": "Regional performance"
+    },
+    {
+      "imageCount": 1,
+      "layout": "Title Only",
+      "notes": false,
+      "number": 4,
+      "shapeCount": 3,
+      "tableCount": 0,
+      "title": "Product momentum"
+    },
+    {
+      "imageCount": 0,
+      "layout": "Section Header",
+      "notes": false,
+      "number": 5,
+      "shapeCount": 2,
+      "tableCount": 0,
+      "title": "Outlook"
+    }
+  ],
+  "validated": true
+}

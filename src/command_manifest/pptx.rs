@@ -57,6 +57,7 @@ pub(crate) enum PptxCommandId {
     TemplateCompile,
     XlsxBindingsPlan,
     XlsxBindingsApply,
+    Build,
     Scaffold,
     ShapesShow,
     ShapesGet,
