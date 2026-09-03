@@ -251,7 +251,7 @@ fn dry_run_validates_without_publishing_and_title_layout_can_hide_slide_numbers(
 }
 
 #[test]
-fn brand_logo_is_embedded_and_positioned_in_pptx_and_xlsx() {
+fn brand_logo_is_embedded_and_positioned_in_all_three_families() {
     let temp = temp_dir("logo");
     let brand = repo_path("testdata/brand/logo.json");
     let cases = [
@@ -265,6 +265,12 @@ fn brand_logo_is_embedded_and_positioned_in_pptx_and_xlsx() {
             "xlsx",
             temp.join("workbook.xlsx"),
             "xl/drawings/drawing1.xml",
+            "Brand Logo",
+        ),
+        (
+            "docx",
+            temp.join("report.docx"),
+            "word/document.xml",
             "Brand Logo",
         ),
     ];
