@@ -520,8 +520,16 @@ fn pptx_replace_images_for_slides_saved_dry_run_and_invalid_cases_match_rust_bas
         "replace images for-slides saved stderr"
     );
     assert_eq!(
-        rust_stdout.expect("rust replace images for-slides saved"),
-        baseline_stdout.expect("baseline replace images for-slides saved"),
+        scrub_path(
+            rust_stdout.expect("rust replace images for-slides saved"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            baseline_stdout.expect("baseline replace images for-slides saved"),
+            baseline_out_str,
+            "[OUT]"
+        ),
         "replace images for-slides saved stdout"
     );
     assert!(baseline_out.exists(), "Rust baseline for-slides output missing");

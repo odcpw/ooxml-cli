@@ -352,8 +352,16 @@ fn pptx_import_merge_authoring_commands_match_rust_baseline_and_validate() {
         "slides import-slide saved stderr"
     );
     assert_eq!(
-        rust_stdout.expect("rust import-slide stdout"),
-        baseline_stdout.expect("baseline import-slide stdout"),
+        scrub_path(
+            rust_stdout.expect("rust import-slide stdout"),
+            rust_import_slide_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            baseline_stdout.expect("baseline import-slide stdout"),
+            baseline_import_slide_str,
+            "[OUT]"
+        ),
         "slides import-slide saved stdout"
     );
     assert_rust_baseline_match(&["--json", "validate", "--strict", rust_import_slide_str]);
@@ -453,11 +461,16 @@ fn pptx_import_merge_authoring_commands_match_rust_baseline_and_validate() {
     assert_eq!(rust_stderr, baseline_stderr, "layouts import saved stderr");
     let rust_layout_json = rust_stdout.expect("rust layouts import stdout");
     assert_eq!(
-        scrub_path(rust_layout_json.clone(), rust_layout_str, "[OUT]"),
-        scrub_path(
+        scrub_paths(
+            rust_layout_json.clone(),
+            &[(rust_layout_str, "[OUT]"), (rust_source_str, "[SOURCE]")]
+        ),
+        scrub_paths(
             baseline_stdout.expect("baseline layouts import stdout"),
-            baseline_layout_str,
-            "[OUT]"
+            &[
+                (baseline_layout_str, "[OUT]"),
+                (baseline_source_str, "[SOURCE]")
+            ]
         ),
         "layouts import saved stdout"
     );
@@ -506,11 +519,16 @@ fn pptx_import_merge_authoring_commands_match_rust_baseline_and_validate() {
     assert_eq!(rust_stderr, baseline_stderr, "masters import saved stderr");
     let rust_master_json = rust_stdout.expect("rust masters import stdout");
     assert_eq!(
-        scrub_path(rust_master_json.clone(), rust_master_str, "[OUT]"),
-        scrub_path(
+        scrub_paths(
+            rust_master_json.clone(),
+            &[(rust_master_str, "[OUT]"), (rust_source_str, "[SOURCE]")]
+        ),
+        scrub_paths(
             baseline_stdout.expect("baseline masters import stdout"),
-            baseline_master_str,
-            "[OUT]"
+            &[
+                (baseline_master_str, "[OUT]"),
+                (baseline_source_str, "[SOURCE]")
+            ]
         ),
         "masters import saved stdout"
     );

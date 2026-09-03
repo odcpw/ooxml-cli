@@ -68,8 +68,16 @@ fn pptx_theme_update_deck_readback_dry_run_and_errors_match_rust_baseline() {
     assert_eq!(rust_code, baseline_code, "theme update saved exit");
     assert_eq!(rust_stderr, baseline_stderr, "theme update saved stderr");
     assert_eq!(
-        rust_stdout.expect("rust theme update stdout"),
-        baseline_stdout.expect("baseline theme update stdout"),
+        scrub_path(
+            rust_stdout.expect("rust theme update stdout"),
+            rust_out_str,
+            "[OUT]"
+        ),
+        scrub_path(
+            baseline_stdout.expect("baseline theme update stdout"),
+            baseline_out_str,
+            "[OUT]"
+        ),
         "theme update saved stdout"
     );
     assert!(
@@ -202,4 +210,3 @@ fn pptx_theme_update_deck_readback_dry_run_and_errors_match_rust_baseline() {
         assert_baseline_rust_json_match(&args, label);
     }
 }
-

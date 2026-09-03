@@ -317,15 +317,19 @@ fn template_apply_theme_tokens_dry_run_saved_ranges_and_errors_match_rust_baseli
     assert_eq!(rust_code, baseline_code, "template apply ranges exit");
     assert_eq!(rust_stderr, baseline_stderr, "template apply ranges stderr");
     assert_eq!(
-        scrub_path(
+        scrub_paths(
             rust_stdout.expect("rust ranges stdout"),
-            &tokens_str,
-            "[TOKENS]"
+            &[
+                (&tokens_str, "[TOKENS]"),
+                (&rust_ranges_out_str, "[OUT]")
+            ]
         ),
-        scrub_path(
+        scrub_paths(
             baseline_stdout.expect("baseline ranges stdout"),
-            &tokens_str,
-            "[TOKENS]"
+            &[
+                (&tokens_str, "[TOKENS]"),
+                (&baseline_ranges_out_str, "[OUT]")
+            ]
         ),
         "template apply ranges stdout"
     );
@@ -642,15 +646,31 @@ fn template_apply_chart_text_tokens_json() -> &'static str {
 }
 
 fn scrub_template_compile_result(value: Value, output_path: &str) -> Value {
-    let mut value = scrub_path(value, output_path, "[OUT]");
-    if let Value::Object(map) = &mut value {
-        for key in ["startedAt", "completedAt", "duration"] {
-            if map.contains_key(key) {
-                map.insert(key.to_string(), Value::String(format!("[{key}]")));
-            }
-        }
+    scrub_template_compile_dynamic(scrub_path(value, output_path, "[OUT]"))
+}
+
+fn scrub_template_compile_dynamic(value: Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(key, value)| {
+                    let value = if matches!(key.as_str(), "startedAt" | "completedAt" | "duration") {
+                        Value::String(format!("[{key}]"))
+                    } else {
+                        scrub_template_compile_dynamic(value)
+                    };
+                    (key, value)
+                })
+                .collect(),
+        ),
+        Value::Array(values) => Value::Array(
+            values
+                .into_iter()
+                .map(scrub_template_compile_dynamic)
+                .collect(),
+        ),
+        scalar => scalar,
     }
-    value
 }
 
 #[test]

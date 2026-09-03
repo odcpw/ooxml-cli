@@ -302,6 +302,51 @@
         "dryRun": false,
         "file": "testdata/pptx/minimal-title/presentation.pptx",
         "mode": "plain-text",
+        "mutationEnvelope": {
+          "aliasesApplied": [],
+          "changed": [
+            {
+              "handle": "H:pptx/s:256/shape:n:2",
+              "kind": "shape",
+              "selector": "title"
+            }
+          ],
+          "checkCommand": "ooxml --json check [EDITED_PPTX]",
+          "command": "ooxml --json pptx replace text testdata/pptx/minimal-title/presentation.pptx --slide 1 --target title --text 'Rust Port Contract' --out [EDITED_PPTX]",
+          "conformanceCommand": "ooxml --json conformance check [EDITED_PPTX]",
+          "destination": {
+            "handle": "H:pptx/s:256/shape:n:2",
+            "kind": "shape",
+            "partUri": "/ppt/slides/slide1.xml",
+            "primarySelector": "title",
+            "selectors": [
+              "title",
+              "H:pptx/s:256/shape:n:2",
+              "@title",
+              "shape:2",
+              "~Title 1"
+            ],
+            "summary": {
+              "dryRun": false,
+              "file": "testdata/pptx/minimal-title/presentation.pptx",
+              "mode": "plain-text",
+              "newText": "Rust Port Contract",
+              "output": "[EDITED_PPTX]",
+              "renderCommand": "ooxml pptx render [EDITED_PPTX] --out render-check",
+              "slideNumber": 1,
+              "slideReadbackCommand": "ooxml --json pptx slides show [EDITED_PPTX] --slide 1 --include-text --include-bounds",
+              "target": "title"
+            }
+          },
+          "family": "pptx",
+          "file": "[EDITED_PPTX]",
+          "layoutCheckCommand": "ooxml --json pptx validate-layout [EDITED_PPTX]",
+          "readbackCommand": "ooxml --json pptx shapes get [EDITED_PPTX] --slide 1 --target title --include-text --include-bounds",
+          "renderCommand": "ooxml --json render [EDITED_PPTX] --out [EDITED_PPTX].render",
+          "validateCommand": "ooxml --json validate --strict [EDITED_PPTX]",
+          "validated": true,
+          "warnings": []
+        },
         "newText": "Rust Port Contract",
         "output": "[EDITED_PPTX]",
         "readbackCommand": "ooxml --json pptx shapes get [EDITED_PPTX] --slide 1 --target title --include-text --include-bounds",

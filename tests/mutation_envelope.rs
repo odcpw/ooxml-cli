@@ -138,3 +138,144 @@ fn capabilities_serves_the_pinned_mutation_envelope_schema() {
         );
     }
 }
+
+#[test]
+fn xlsx_and_pptx_scaffolds_emit_family_specific_envelopes() {
+    let dir = temp_dir("scaffolds");
+    for (family, extension, title_flag) in
+        [("xlsx", "xlsx", "--sheet"), ("pptx", "pptx", "--title")]
+    {
+        let output = dir.join(format!("created.{extension}"));
+        let output_arg = output.to_string_lossy();
+        let result = run_json(&[
+            "--json",
+            family,
+            "scaffold",
+            "--out",
+            &output_arg,
+            title_flag,
+            "Envelope seed",
+        ]);
+        let envelope = &result["mutationEnvelope"];
+        assert_eq!(envelope["file"], output_arg.as_ref(), "{family}");
+        assert_eq!(envelope["family"], family, "{family}");
+        assert_eq!(envelope["destination"]["kind"], "package", "{family}");
+        assert_eq!(envelope["destination"]["partUri"], "/", "{family}");
+        assert!(envelope["renderCommand"].is_string(), "{family}");
+        assert_eq!(
+            envelope.get("layoutCheckCommand").is_some(),
+            family == "pptx",
+            "{family}"
+        );
+        let validated = run_json(&["--json", "validate", "--strict", &output_arg]);
+        assert_eq!(validated["valid"], true, "{family}");
+        let outline = run_json(&["--json", "outline", &output_arg, "--depth", "3"]);
+        assert_eq!(outline["file"], output_arg.as_ref(), "{family}");
+    }
+    fs::remove_dir_all(dir).expect("remove test directory");
+}
+
+#[test]
+fn xlsx_cell_and_pptx_shape_envelopes_preserve_writer_destinations() {
+    let dir = temp_dir("objects");
+
+    let xlsx_source = dir.join("source.xlsx");
+    let xlsx_output = dir.join("cell.xlsx");
+    let xlsx_source_arg = xlsx_source.to_string_lossy();
+    let xlsx_output_arg = xlsx_output.to_string_lossy();
+    run_json(&[
+        "--json",
+        "xlsx",
+        "scaffold",
+        "--out",
+        &xlsx_source_arg,
+        "--sheet",
+        "Sheet1",
+    ]);
+    let cell = run_json(&[
+        "--json",
+        "xlsx",
+        "cells",
+        "set",
+        &xlsx_source_arg,
+        "--sheet",
+        "Sheet1",
+        "--cell",
+        "A1",
+        "--value",
+        "Envelope cell",
+        "--out",
+        &xlsx_output_arg,
+    ]);
+    let cell_envelope = &cell["mutationEnvelope"];
+    assert_eq!(cell_envelope["destination"]["kind"], "cell");
+    assert_eq!(cell_envelope["destination"]["primarySelector"], "cell:A1");
+    assert_eq!(cell_envelope["destination"]["handle"], cell["handle"]);
+    assert_eq!(
+        cell_envelope["destination"]["partUri"],
+        "/xl/worksheets/sheet1.xml"
+    );
+    assert!(
+        cell_envelope["readbackCommand"]
+            .as_str()
+            .unwrap()
+            .contains("xlsx cells extract")
+    );
+
+    let pptx_source = dir.join("source.pptx");
+    let pptx_output = dir.join("shape.pptx");
+    let pptx_source_arg = pptx_source.to_string_lossy();
+    let pptx_output_arg = pptx_output.to_string_lossy();
+    run_json(&[
+        "--json",
+        "pptx",
+        "scaffold",
+        "--out",
+        &pptx_source_arg,
+        "--title",
+        "Envelope slide",
+    ]);
+    let shape = run_json(&[
+        "--json",
+        "pptx",
+        "add-textbox",
+        &pptx_source_arg,
+        "--slide",
+        "1",
+        "--text",
+        "Envelope shape",
+        "--x",
+        "100000",
+        "--y",
+        "100000",
+        "--cx",
+        "1000000",
+        "--cy",
+        "500000",
+        "--out",
+        &pptx_output_arg,
+    ]);
+    let shape_envelope = &shape["mutationEnvelope"];
+    assert_eq!(shape_envelope["destination"]["kind"], "shape");
+    assert_eq!(
+        shape_envelope["destination"]["primarySelector"],
+        shape["destination"]["primarySelector"]
+    );
+    assert_eq!(
+        shape_envelope["destination"]["selectors"],
+        serde_json::json!([
+            shape["destination"]["primarySelector"].clone(),
+            shape["destination"]["handle"].clone(),
+            shape["destination"]["selectors"][1].clone()
+        ])
+    );
+    assert!(shape_envelope["layoutCheckCommand"].is_string());
+    let layout = run_json(&["--json", "pptx", "validate-layout", &pptx_output_arg]);
+    assert!(layout["slideReports"].is_array());
+
+    for file in [&xlsx_output_arg, &pptx_output_arg] {
+        let validated = run_json(&["--json", "validate", "--strict", file]);
+        assert_eq!(validated["valid"], true, "{}", file);
+    }
+    fs::remove_dir_all(dir).expect("remove test directory");
+}
