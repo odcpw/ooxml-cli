@@ -1020,6 +1020,53 @@ mod tests {
     }
 
     #[test]
+    fn randomized_layout_property_preserves_order_and_non_overlap() {
+        let mut state = 0x5eed_cafe_f00d_u64;
+        let mut next = || {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            state
+        };
+        for case in 0..256 {
+            let count = (next() % 6 + 1) as usize;
+            let arrangement = match case % 3 {
+                0 => Arrangement::Row,
+                1 => Arrangement::Column,
+                _ => Arrangement::Grid { rows: 2, cols: 3 },
+            };
+            let bounds = SlotBounds {
+                x: (next() % 1_000) as i64,
+                y: (next() % 1_000) as i64,
+                cx: 30_000 + (next() % 70_000) as i64,
+                cy: 20_000 + (next() % 50_000) as i64,
+            };
+            let cells = [6, 2, 5, 1, 4, 3];
+            let items = (0..count)
+                .map(|index| {
+                    let grow = (next() % 100 + 1) as f64 / 10.0;
+                    let aspect = (next() % 3 != 0).then(|| (next() % 350 + 50) as f64 / 100.0);
+                    item(
+                        grow,
+                        aspect,
+                        matches!(arrangement, Arrangement::Grid { .. })
+                            .then_some(cells[(index + case) % cells.len()]),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let gutter = (next() % 100) as i64;
+            let padding = (next() % 200) as i64;
+            let planned = plan_items(1, bounds, arrangement, gutter, padding, items)
+                .expect("randomized property plan");
+            assert_eq!(
+                planned.iter().map(|item| item.index).collect::<Vec<_>>(),
+                (0..count).collect::<Vec<_>>()
+            );
+            assert_plan_is_inside_and_non_overlapping(bounds, &planned);
+        }
+    }
+
+    #[test]
     fn arrangement_and_grid_errors_name_the_valid_contract() {
         assert_eq!(
             parse_arrangement("GRID:2x3").expect("grid"),
