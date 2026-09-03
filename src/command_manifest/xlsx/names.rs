@@ -309,8 +309,8 @@ mod tests {
         let frozen = frozen_contract_commands();
         assert_eq!(
             frozen.len(),
-            328,
-            "names offset 233 is pinned to the 328-command denominator"
+            329,
+            "names offset 233 is pinned to the 329-command denominator"
         );
         assert_eq!(specs.len(), COMMAND_COUNT);
         assert_segment_matches_frozen_contract(

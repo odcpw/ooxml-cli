@@ -2002,7 +2002,11 @@ mod tests {
                 ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
             },
         );
-        assert_eq!(inventory, (11, 3, 12, 24));
+        assert_eq!(
+            inventory,
+            (11, 3, 12, 25),
+            "DOCX execution inventory after adding `docx build` and the 25th serve mutation"
+        );
         assert_eq!(
             specs
                 .iter()

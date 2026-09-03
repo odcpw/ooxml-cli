@@ -26,7 +26,9 @@ fn published_family_schemas_match_the_pinned_index() {
                 let family_definitions = match family {
                     BuildFamily::Pptx => BTreeSet::from(["pptxSlide"]),
                     BuildFamily::Xlsx => BTreeSet::from(["typedColumn", "xlsxSheet"]),
-                    BuildFamily::Docx => BTreeSet::from(["docxBlock", "docxSection"]),
+                    BuildFamily::Docx => {
+                        BTreeSet::from(["docxBlock", "docxFooters", "docxHeaders", "docxSection"])
+                    }
                 };
                 let definitions = schema["$defs"].as_object().expect("schema definitions");
                 let common = definitions

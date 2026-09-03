@@ -445,7 +445,11 @@ mod tests {
             .flat_map(|spec| std::iter::once(spec.canonical).chain(spec.aliases.iter().copied()))
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(SERVE_MUTATION_SPECS.len(), 73);
+        assert_eq!(
+            SERVE_MUTATION_SPECS.len(),
+            74,
+            "serve mutation dispatch table after adding `docx images insert`"
+        );
         assert_eq!(
             manifest_ids.len(),
             manifest_id_list.len(),
@@ -456,11 +460,11 @@ mod tests {
             (150, 4),
             "reviewed denominator: 150 nestable package mutations + 4 VBA mutations = 154"
         );
-        assert_eq!(ids.len(), 73);
-        assert_eq!(canonicals.len(), 73);
+        assert_eq!(ids.len(), 74);
+        assert_eq!(canonicals.len(), 74);
         assert!(ids.is_subset(&manifest_ids));
         assert_eq!(aliases.len(), 14);
-        assert_eq!(labels.len(), 87);
+        assert_eq!(labels.len(), 88);
         assert_eq!(
             aliases,
             BTreeSet::from([
@@ -506,7 +510,7 @@ mod tests {
         for (family, expected) in [
             ("core", 2),
             ("xlsx", 32),
-            ("docx", 24),
+            ("docx", 25),
             ("pptx", 11),
             ("vba", 4),
         ] {

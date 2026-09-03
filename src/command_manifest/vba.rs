@@ -3,7 +3,7 @@ use serde_json::Value;
 use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 
 pub(super) const COMMAND_COUNT: usize = 16;
-pub(super) const LEGACY_START: usize = 312;
+pub(super) const LEGACY_START: usize = 313;
 
 command_id_enum! {
 pub(crate) enum VbaCommandId {
@@ -740,7 +740,7 @@ mod tests {
             + crate::command_manifest::docx::command_specs().len();
         assert_eq!(
             start, LEGACY_START,
-            "VBA starts at 312 within the 328-command denominator"
+            "VBA starts at 313 within the 329-command denominator"
         );
         assert_eq!(specs.len(), COMMAND_COUNT);
         assert_segment_matches_frozen_contract(
@@ -756,8 +756,8 @@ mod tests {
         );
         assert_eq!(
             start + COMMAND_COUNT,
-            328,
-            "VBA tail ends at the 328-command denominator"
+            329,
+            "VBA tail ends at the 329-command denominator"
         );
     }
 
