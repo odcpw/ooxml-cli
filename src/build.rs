@@ -9,6 +9,7 @@ mod loader;
 mod pptx;
 mod schema;
 mod types;
+mod xlsx;
 
 pub use compiler::{
     BuildCompileError, BuildCompiler, BuildOperation, CompiledBuildPlan, PlanNode,
@@ -24,3 +25,5 @@ pub use types::{
     Bounds, BrandRef, BuildLength, ChartData, ChartSeries, ImageRef, Paragraph, TableData, TextRun,
     XlsxRangeRef,
 };
+pub(crate) use xlsx::xlsx_build;
+pub use xlsx::{CompiledXlsxBuild, compile_xlsx_spec};

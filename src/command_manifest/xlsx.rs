@@ -14,7 +14,7 @@ use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 
 const COMMAND_GROUP_REASON: &str = "it is a command group, not a leaf mutation command";
 pub(super) const GROUP_COMMAND_COUNT: usize = 21;
-pub(super) const FRONT_COMMAND_COUNT: usize = GROUP_COMMAND_COUNT + 1;
+pub(super) const FRONT_COMMAND_COUNT: usize = GROUP_COMMAND_COUNT + 2;
 pub(super) const ROOT_OWNED_COMMAND_COUNT: usize = FRONT_COMMAND_COUNT + 1;
 
 command_id_enum! {
@@ -40,6 +40,7 @@ pub(crate) enum XlsxCommandId {
     Tables,
     Workbook,
     WorkbookMetadata,
+    Build,
     Scaffold,
     FormsEntry,
     SheetsList,
@@ -147,6 +148,42 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
 
 pub(super) fn front_command_specs() -> Vec<CommandSpec> {
     let mut specs = group_command_specs();
+    specs.push(spec(
+        XlsxCommandId::Build,
+        &["xlsx", "build"],
+        "build --spec <book.json|-> --out <book.xlsx>",
+        "Build a complete workbook from a published XLSX build specification in one atomic batch.",
+        &["package", "sheet", "range", "table", "chart"],
+        vec![
+            flag(
+                "--spec",
+                "spec",
+                "string",
+                "XLSX build-spec JSON path, or - to read JSON from stdin",
+            ),
+            flag("--out", "out", "string", "output workbook path"),
+            flag(
+                "--check",
+                "check",
+                "bool",
+                "run check after publishing and embed its findings",
+            ),
+            flag(
+                "--dry-run",
+                "dryRun",
+                "bool",
+                "compile, execute, and strictly validate the staged batch without publishing",
+            ),
+            flag(
+                "--force",
+                "force",
+                "bool",
+                "replace an existing output after the staged build validates",
+            ),
+        ],
+        direct("build is the batch orchestrator and cannot be nested inside an apply op"),
+        None,
+    ));
     specs.push(spec(
         XlsxCommandId::Scaffold,
         &["xlsx", "scaffold"],

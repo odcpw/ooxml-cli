@@ -1,0 +1,95 @@
+{
+  "checkErrors": 0,
+  "nodeIds": [
+    "sales",
+    "units-chart",
+    "sales-table",
+    "targets",
+    "targets-table"
+  ],
+  "operations": [
+    "xlsx scaffold",
+    "xlsx ranges set",
+    "xlsx sheets set-tab-color",
+    "xlsx freeze set",
+    "xlsx ranges set-style",
+    "xlsx colwidths set",
+    "xlsx colwidths set",
+    "xlsx colwidths set",
+    "xlsx ranges set-format",
+    "xlsx colwidths set",
+    "xlsx ranges set-format",
+    "xlsx colwidths set",
+    "xlsx ranges set-format",
+    "xlsx tables create",
+    "xlsx conditional-formats add",
+    "xlsx data-validations create",
+    "xlsx names add",
+    "xlsx charts create",
+    "xlsx hyperlinks add",
+    "xlsx comments add",
+    "xlsx sheets set-print",
+    "xlsx ranges set",
+    "xlsx sheets set-tab-color",
+    "xlsx freeze set",
+    "xlsx ranges set-style",
+    "xlsx colwidths autofit",
+    "xlsx colwidths autofit",
+    "xlsx colwidths set",
+    "xlsx ranges set-format",
+    "xlsx colwidths set",
+    "xlsx colwidths set",
+    "xlsx ranges set-format",
+    "xlsx colwidths set",
+    "xlsx ranges set-format",
+    "xlsx tables create",
+    "xlsx workbook metadata update"
+  ],
+  "schemaVersion": "ooxml-cli.xlsx-build.v1",
+  "sheets": [
+    {
+      "cellCount": 27,
+      "commentCount": 1,
+      "conditionalFormatCount": 1,
+      "freeze": {
+        "cols": 0,
+        "frozen": true,
+        "rows": 1,
+        "topLeftCell": "A2"
+      },
+      "name": "Sales",
+      "rowCount": 6,
+      "usedRange": "A1:E6",
+      "validationCount": 1
+    },
+    {
+      "cellCount": 30,
+      "commentCount": 0,
+      "conditionalFormatCount": 0,
+      "freeze": {
+        "cols": 0,
+        "frozen": true,
+        "rows": 1,
+        "topLeftCell": "A2"
+      },
+      "name": "Targets",
+      "rowCount": 5,
+      "usedRange": "A1:F5",
+      "validationCount": 0
+    }
+  ],
+  "summary": {
+    "charts": 1,
+    "customXmlParts": 0,
+    "mediaAssets": 0,
+    "pivotCaches": 0,
+    "pivots": 0,
+    "sharedStrings": false,
+    "sheets": 2,
+    "styles": true,
+    "tables": 2,
+    "themes": 1,
+    "worksheets": 2
+  },
+  "validated": true
+}

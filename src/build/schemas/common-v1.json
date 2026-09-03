@@ -114,6 +114,16 @@
       "style": { "type": "string", "minLength": 1 },
       "bandedRows": { "type": "boolean" },
       "totalRow": { "type": "boolean" },
+      "totals": {
+        "anyOf": [
+          { "type": "string", "minLength": 1 },
+          {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        ]
+      },
       "slot": { "type": "string", "minLength": 1 },
       "bounds": { "$ref": "#/$defs/bounds" },
       "columnWidths": {

@@ -991,10 +991,10 @@ mod tests {
             "XLSX starts after the 42 core + 112 PPTX command denominator"
         );
         assert_eq!(front.len(), xlsx::FRONT_COMMAND_COUNT);
-        assert_eq!(xlsx::FRONT_COMMAND_COUNT, 22);
-        assert_segment_matches_frozen_contract(&front, &frozen[xlsx_start..176]);
+        assert_eq!(xlsx::FRONT_COMMAND_COUNT, 23);
+        assert_segment_matches_frozen_contract(&front, &frozen[xlsx_start..177]);
         assert_eq!(forms.len(), 1);
-        assert_segment_matches_frozen_contract(&forms, &frozen[231..232]);
+        assert_segment_matches_frozen_contract(&forms, &frozen[232..233]);
     }
 
     #[test]
@@ -1009,7 +1009,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(first.len(), xlsx::ROOT_OWNED_COMMAND_COUNT);
-        assert_eq!(xlsx::ROOT_OWNED_COMMAND_COUNT, 23);
+        assert_eq!(xlsx::ROOT_OWNED_COMMAND_COUNT, 24);
         assert_eq!(
             first
                 .iter()
@@ -1047,16 +1047,20 @@ mod tests {
                     }
                 ))
         );
-        assert!(
-            first[xlsx::GROUP_COMMAND_COUNT..]
-                .iter()
-                .all(|spec| matches!(
-                    &spec.execution,
-                    ExecutionSupport::DirectOnly {
-                        reason: Some("it creates a package and is not an apply/serve mutation op")
-                    }
-                ))
-        );
+        assert!(matches!(
+            &first[xlsx::GROUP_COMMAND_COUNT].execution,
+            ExecutionSupport::DirectOnly {
+                reason: Some(
+                    "build is the batch orchestrator and cannot be nested inside an apply op"
+                )
+            }
+        ));
+        assert!(matches!(
+            &first[xlsx::GROUP_COMMAND_COUNT + 1].execution,
+            ExecutionSupport::DirectOnly {
+                reason: Some("it creates a package and is not an apply/serve mutation op")
+            }
+        ));
     }
 
     #[test]
@@ -1111,7 +1115,7 @@ mod tests {
     #[test]
     fn complete_xlsx_shadow_has_expected_execution_inventory() {
         let specs = xlsx::command_specs();
-        assert_eq!(specs.len(), 107);
+        assert_eq!(specs.len(), 108);
         let inventory = specs.iter().fold(
             (0, 0, 0, 0),
             |(groups, direct, inspect, mutation), spec| match &spec.execution {
@@ -1121,7 +1125,7 @@ mod tests {
                 ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
             },
         );
-        assert_eq!(inventory, (21, 37, 17, 32));
+        assert_eq!(inventory, (21, 38, 17, 32));
         assert_eq!(
             specs
                 .iter()
@@ -1414,8 +1418,8 @@ mod tests {
         let frozen = frozen_contract_commands();
         assert_eq!(
             first.len(),
-            327,
-            "complete command denominator after adding `pptx build`"
+            328,
+            "complete command denominator after adding `xlsx build`"
         );
         assert_segment_matches_frozen_contract(&first, &frozen);
         assert_eq!(
@@ -1433,7 +1437,7 @@ mod tests {
             112,
             "PPTX family denominator after adding `pptx build`"
         );
-        assert_eq!(xlsx::XlsxCommandId::ALL.len(), 107);
+        assert_eq!(xlsx::XlsxCommandId::ALL.len(), 108);
         assert_eq!(docx::DocxCommandId::ALL.len(), 50);
         assert_eq!(vba::VbaCommandId::ALL.len(), 16);
         assert!(
@@ -1445,25 +1449,25 @@ mod tests {
             specs[42..154]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Pptx(_))),
-            "PPTX occupies [42, 154) in the 327-command denominator"
+            "PPTX occupies [42, 154) in the 328-command denominator"
         );
         assert!(
-            specs[154..261]
+            specs[154..262]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Xlsx(_))),
-            "XLSX occupies [154, 261) in the 327-command denominator"
+            "XLSX occupies [154, 262) in the 328-command denominator"
         );
         assert!(
-            specs[261..311]
+            specs[262..312]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Docx(_))),
-            "DOCX occupies [261, 311) in the 327-command denominator"
+            "DOCX occupies [262, 312) in the 328-command denominator"
         );
         assert!(
-            specs[311..327]
+            specs[312..328]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Vba(_))),
-            "VBA occupies [311, 327) in the 327-command denominator"
+            "VBA occupies [312, 328) in the 328-command denominator"
         );
     }
 
@@ -1477,8 +1481,8 @@ mod tests {
         let path_set = specs.iter().map(|spec| spec.path).collect::<BTreeSet<_>>();
         assert_eq!(
             declared.len(),
-            327,
-            "declared command denominator after adding `pptx build`"
+            328,
+            "declared command denominator after adding `xlsx build`"
         );
         assert_eq!(declared_set.len(), declared.len());
         assert_eq!(spec_id_set, declared_set);
@@ -1495,8 +1499,8 @@ mod tests {
 
         assert_eq!(
             specs.len(),
-            327,
-            "canonical command denominator after adding `pptx build`"
+            328,
+            "canonical command denominator after adding `xlsx build`"
         );
         for spec in &specs {
             let resolved = command_id_for_canonical_path(spec.path);
@@ -1533,8 +1537,8 @@ mod tests {
         assert_eq!(resolved_ids, declared);
         assert_eq!(
             resolved_paths.len(),
-            327,
-            "resolved canonical-path denominator after adding `pptx build`"
+            328,
+            "resolved canonical-path denominator after adding `xlsx build`"
         );
     }
 
@@ -1552,8 +1556,8 @@ mod tests {
         );
         assert_eq!(
             inventory,
-            (58, 151, 45, 73),
-            "327-command execution denominator: groups, direct-only, serve-inspect, serve-mutation"
+            (58, 152, 45, 73),
+            "328-command execution denominator: groups, direct-only, serve-inspect, serve-mutation"
         );
         assert_eq!(
             specs

@@ -140,6 +140,8 @@ pub struct TableData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_row: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub totals: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slot: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bounds: Option<Bounds>,

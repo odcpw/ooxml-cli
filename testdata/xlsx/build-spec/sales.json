@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "family": "xlsx",
+  "themeSeed": "2563EB",
+  "metadata": {
+    "title": "Quarterly Sales Workbook",
+    "subject": "Regional sales performance",
+    "creator": "ooxml-cli",
+    "keywords": "sales,quarterly,regional",
+    "description": "Deterministic XLSX build-spec acceptance workbook"
+  },
+  "sheets": [
+    {
+      "id": "sales",
+      "name": "Sales",
+      "tabColor": "2563EB",
+      "freeze": "A2",
+      "headerStyle": "header",
+      "rows": [
+        ["Region", "Units", "Unit Price", "Revenue", "Margin"],
+        ["North", 12, 125.5, "=B2*C2", 0.25],
+        ["Central", 9, 140, "=B3*C3", 0.2],
+        ["South", 15, 118.75, "=B4*C4", 0.3],
+        ["West", 11, 132, "=B5*C5", 0.22]
+      ],
+      "columns": [
+        {"name": "Region", "type": "text", "width": 18},
+        {"name": "Units", "type": "number", "width": 10},
+        {"name": "Unit Price", "type": "currency", "format": "$#,##0.00", "width": 14},
+        {"name": "Revenue", "type": "formula", "format": "$#,##0.00", "width": 14},
+        {"name": "Margin", "type": "percent", "format": "0.0%", "width": 12}
+      ],
+      "tables": [
+        {
+          "id": "sales-table",
+          "name": "SalesTable",
+          "header": true,
+          "style": "TableStyleMedium2",
+          "bandedRows": true,
+          "totalRow": true,
+          "totals": ["Revenue:sum"]
+        }
+      ],
+      "conditionalFormats": [
+        {
+          "range": "E2:E5",
+          "type": "color-scale",
+          "cfvo": ["min", "percentile:50", "max"],
+          "color": ["F8696B", "FFEB84", "63BE7B"],
+          "priority": 1
+        }
+      ],
+      "dataValidations": [
+        {
+          "range": "A2:A5",
+          "type": "list",
+          "listValues": "North,Central,South,West",
+          "allowBlank": false,
+          "showInputMessage": true,
+          "inputTitle": "Region",
+          "inputMessage": "Choose a sales region"
+        }
+      ],
+      "names": [
+        {"name": "RevenueData", "range": "D2:D5"}
+      ],
+      "charts": [
+        {
+          "id": "units-chart",
+          "type": "column",
+          "title": "Units by Region",
+          "source": {"path": "self", "sheet": "Sales", "range": "A1:B5"},
+          "style": "default",
+          "options": {"anchor": "G2"}
+        }
+      ],
+      "hyperlinks": [
+        {
+          "cell": "A7",
+          "url": "https://example.com/sales",
+          "display": "Sales portal",
+          "tooltip": "Open the sales portal"
+        }
+      ],
+      "comments": [
+        {"cell": "D1", "author": "Finance", "text": "Calculated revenue"}
+      ],
+      "printSetup": {
+        "landscape": true,
+        "fitToWidth": 1,
+        "repeatHeaderRows": 1,
+        "gridlines": "off"
+      }
+    },
+    {
+      "id": "targets",
+      "name": "Targets",
+      "tabColor": "16A34A",
+      "freeze": "A2",
+      "headerStyle": "muted",
+      "dataFile": {"path": "targets.csv", "format": "csv"},
+      "columns": [
+        {"name": "Region", "type": "text", "autofit": true},
+        {"name": "Manager", "type": "text", "autofit": true},
+        {"name": "Target", "type": "currency", "format": "$#,##0", "width": 14},
+        {"name": "Active", "type": "boolean", "width": 10},
+        {"name": "Start Date", "type": "date", "format": "yyyy-mm-dd", "width": 13},
+        {"name": "Attainment", "type": "percent", "format": "0%", "width": 12}
+      ],
+      "tables": [
+        {
+          "id": "targets-table",
+          "name": "TargetsTable",
+          "header": true,
+          "style": "TableStyleMedium4",
+          "bandedRows": true
+        }
+      ]
+    }
+  ]
+}

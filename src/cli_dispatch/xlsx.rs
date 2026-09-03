@@ -67,6 +67,9 @@ pub(super) fn dispatch_xlsx(args: &[String]) -> CliResult<Value> {
 
 fn dispatch_xlsx_inner(args: &[String]) -> CliResult<Value> {
     match args {
+        [family, verb, rest @ ..] if family == "xlsx" && verb == "build" => {
+            crate::build::xlsx_build(rest)
+        }
         [family, verb, rest @ ..] if family == "xlsx" && verb == "scaffold" => {
             let value_flags = ["--out", "--sheet", "--theme", "--theme-seed", "--brand"];
             let bool_flags = ["--force", "--no-validate"];

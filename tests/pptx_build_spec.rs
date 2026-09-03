@@ -142,8 +142,30 @@ fn q3_recipe_builds_strict_sdk_clean_renderable_deterministic_deck() {
         String::from_utf8_lossy(&render.stderr)
     );
     let render_result = json_stdout(&render);
-    assert_eq!(render_result["status"], "ok");
-    assert_eq!(render_result["slides"].as_array().unwrap().len(), 5);
+    let renderer_available = (command_available("soffice") || command_available("libreoffice"))
+        && command_available("pdftoppm");
+    if renderer_available || render_is_required() {
+        assert_eq!(render_result["status"], "ok", "{render_result}");
+        assert_eq!(render_result["slides"].as_array().unwrap().len(), 5);
+    } else {
+        assert_eq!(render_result["status"], "skipped", "{render_result}");
+        assert!(
+            render_result["missingTools"]
+                .as_array()
+                .is_some_and(|tools| !tools.is_empty()),
+            "skipped render must identify its missing tool: {render_result}"
+        );
+        assert!(
+            render_result["remediation"]
+                .as_str()
+                .is_some_and(|message| !message.is_empty()),
+            "skipped render must carry remediation: {render_result}"
+        );
+        assert_eq!(
+            render_result["doctorCommand"],
+            "ooxml --json doctor --only render-engine,fonts"
+        );
+    }
 
     let second_build = run(&[
         "--json",
@@ -249,6 +271,15 @@ fn compiler_maps_rich_textbox_and_global_field_vocabulary_without_dropping_it() 
     let paragraphs: Value = serde_json::from_slice(&compiled.assets[0].contents).unwrap();
     assert_eq!(paragraphs[0]["size"], 18.0);
     assert_eq!(compiled.plan.operations[4].args["showSlideNumber"], true);
+}
+
+fn command_available(name: &str) -> bool {
+    Command::new(name).arg("--version").output().is_ok()
+}
+
+fn render_is_required() -> bool {
+    std::env::var("OOXML_REQUIRE_RENDER")
+        .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
 }
 
 fn semantic_summary(result: &Value) -> Value {
