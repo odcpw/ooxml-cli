@@ -1,7 +1,7 @@
-mod numbering;
+pub(crate) mod numbering;
 mod properties;
 mod settings;
-mod styles;
+pub(crate) mod styles;
 mod theme;
 
 use serde_json::{Map, Value, json};
@@ -293,7 +293,7 @@ fn docx_scaffold_result(
     result.insert("themePart".to_string(), json!(THEME_PART));
     result.insert(
         "builtInStyleCount".to_string(),
-        json!(styles::BUILT_IN_STYLE_IDS.len()),
+        json!(styles::BUILT_IN_STYLES.len()),
     );
     result.insert("initialBlockCount".to_string(), json!(1));
     result.insert("initialText".to_string(), json!(text));

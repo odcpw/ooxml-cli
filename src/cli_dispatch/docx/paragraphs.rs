@@ -18,7 +18,7 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
             reject_unknown_flags(
                 rest,
                 &["--text", "--text-file", "--style", "--out", "--backup"],
-                &["--dry-run", "--in-place", "--no-validate"],
+                &["--dry-run", "--in-place", "--no-validate", "--create-style"],
             )?;
             let text = parse_string_flag(rest, "--text")?;
             let text_file = parse_string_flag(rest, "--text-file")?;
@@ -40,6 +40,7 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
                     in_place,
                     no_validate,
                 },
+                has_flag(rest, "--create-style"),
             )
         }
         [cmd, group, verb, file, rest @ ..]
@@ -55,7 +56,7 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
                     "--out",
                     "--backup",
                 ],
-                &["--dry-run", "--in-place", "--no-validate"],
+                &["--dry-run", "--in-place", "--no-validate", "--create-style"],
             )?;
             let insert_after = parse_i64_flag(rest, "--insert-after")?.unwrap_or(0);
             let text = parse_string_flag(rest, "--text")?;
@@ -79,6 +80,7 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
                     in_place,
                     no_validate,
                 },
+                has_flag(rest, "--create-style"),
             )
         }
         [cmd, group, verb, file, rest @ ..]

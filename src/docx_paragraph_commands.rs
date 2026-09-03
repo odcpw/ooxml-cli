@@ -2,17 +2,19 @@ use serde_json::{Map, Value, json};
 use std::fs;
 
 use crate::{
-    CliError, CliResult, DocxParagraphMutationOptions, InspectPackageKind,
-    append_docx_body_paragraph_xml, copy_zip_with_part_override, detect_inspect_package_type,
-    docx_rich_block_reports, ensure_docx_package_kind, find_docx_document_part,
-    insert_docx_body_paragraph_xml, package_type, resolve_docx_paragraph_handle_index,
-    resolve_optional_docx_paragraph_text, set_or_clear_docx_body_paragraph_xml,
-    validate_xlsx_mutation_output_flags, write_docx_mutation_output, zip_entry_names, zip_text,
+    CliError, CliResult, DocxParagraphMutationOptions, DocxStyleTarget, InspectPackageKind,
+    append_docx_body_paragraph_xml, copy_zip_with_part_override, copy_zip_with_part_overrides,
+    detect_inspect_package_type, docx_rich_block_reports, ensure_docx_package_kind,
+    find_docx_document_part, insert_docx_body_paragraph_xml, package_type,
+    resolve_docx_paragraph_handle_index, resolve_optional_docx_paragraph_text,
+    set_or_clear_docx_body_paragraph_xml, validate_xlsx_mutation_output_flags,
+    write_docx_mutation_output, zip_entry_names, zip_text,
 };
 
 pub(crate) fn docx_paragraphs_append(
     file: &str,
     options: DocxParagraphMutationOptions<'_>,
+    create_style: bool,
 ) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
     let text = resolve_optional_docx_paragraph_text(options.text, options.text_file)?;
@@ -37,16 +39,28 @@ pub(crate) fn docx_paragraphs_append(
 
     let document_part = find_docx_document_part(file, &entries)?;
     let xml = zip_text(file, &document_part)?;
+    let prepared = crate::docx_styles::prepare_docx_style_for_mutation(
+        file,
+        options.style,
+        DocxStyleTarget::Paragraph,
+        create_style,
+    )?;
     let block_count = docx_rich_block_reports(&xml, false)
         .map_err(|err| {
             CliError::unexpected(format!("failed to read main document: {}", err.message))
         })?
         .len();
-    let updated_xml = append_docx_body_paragraph_xml(&xml, &text, options.style)?;
+    let updated_xml = append_docx_body_paragraph_xml(&xml, &text, &prepared.style_id)?;
 
     let output_path = options.out.filter(|value| !value.trim().is_empty());
     let readback_path = crate::mutation_staging_path(file, output_path, "docx-paragraph");
-    copy_zip_with_part_override(file, &readback_path, &document_part, &updated_xml)?;
+    if prepared.overrides.is_empty() {
+        copy_zip_with_part_override(file, &readback_path, &document_part, &updated_xml)?;
+    } else {
+        let mut overrides = prepared.overrides;
+        overrides.insert(document_part, updated_xml);
+        copy_zip_with_part_overrides(file, &readback_path, &overrides)?;
+    }
     if !options.no_validate {
         crate::validate_owned_mutation_output(&readback_path)?;
     }
@@ -62,8 +76,11 @@ pub(crate) fn docx_paragraphs_append(
     let mut result = Map::new();
     result.insert("file".to_string(), json!(file));
     result.insert("index".to_string(), json!(block_count + 1));
-    if !options.style.is_empty() {
-        result.insert("style".to_string(), json!(options.style));
+    if !prepared.style_id.is_empty() {
+        result.insert("style".to_string(), json!(prepared.style_id));
+    }
+    if create_style {
+        result.insert("createdStyle".to_string(), json!(prepared.created));
     }
     result.insert("text".to_string(), json!(text));
     Ok(Value::Object(result))
@@ -73,6 +90,7 @@ pub(crate) fn docx_paragraphs_insert(
     file: &str,
     insert_after: i64,
     options: DocxParagraphMutationOptions<'_>,
+    create_style: bool,
 ) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
     if insert_after < 0 {
@@ -100,12 +118,24 @@ pub(crate) fn docx_paragraphs_insert(
 
     let document_part = find_docx_document_part(file, &entries)?;
     let xml = zip_text(file, &document_part)?;
+    let prepared = crate::docx_styles::prepare_docx_style_for_mutation(
+        file,
+        options.style,
+        DocxStyleTarget::Paragraph,
+        create_style,
+    )?;
     let (updated_xml, index) =
-        insert_docx_body_paragraph_xml(&xml, insert_after as usize, &text, options.style)?;
+        insert_docx_body_paragraph_xml(&xml, insert_after as usize, &text, &prepared.style_id)?;
 
     let output_path = options.out.filter(|value| !value.trim().is_empty());
     let readback_path = crate::mutation_staging_path(file, output_path, "docx-paragraph");
-    copy_zip_with_part_override(file, &readback_path, &document_part, &updated_xml)?;
+    if prepared.overrides.is_empty() {
+        copy_zip_with_part_override(file, &readback_path, &document_part, &updated_xml)?;
+    } else {
+        let mut overrides = prepared.overrides;
+        overrides.insert(document_part, updated_xml);
+        copy_zip_with_part_overrides(file, &readback_path, &overrides)?;
+    }
     if !options.no_validate {
         crate::validate_owned_mutation_output(&readback_path)?;
     }
@@ -122,8 +152,11 @@ pub(crate) fn docx_paragraphs_insert(
     result.insert("file".to_string(), json!(file));
     result.insert("index".to_string(), json!(index));
     result.insert("insertAfter".to_string(), json!(insert_after));
-    if !options.style.is_empty() {
-        result.insert("style".to_string(), json!(options.style));
+    if !prepared.style_id.is_empty() {
+        result.insert("style".to_string(), json!(prepared.style_id));
+    }
+    if create_style {
+        result.insert("createdStyle".to_string(), json!(prepared.created));
     }
     result.insert("text".to_string(), json!(text));
     Ok(Value::Object(result))

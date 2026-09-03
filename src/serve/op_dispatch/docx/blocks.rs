@@ -1,10 +1,10 @@
 use serde_json::{Value, json};
 
-use super::super::super::op::{ServeOp, push_serve_plan_string_flag};
+use super::super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
 use crate::command_manifest::DocxCommandId;
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, docx_blocks_delete,
-    docx_blocks_insert_after, docx_blocks_replace, json_i64, json_optional_string,
+    docx_blocks_insert_after, docx_blocks_replace, json_bool, json_i64, json_optional_string,
     require_docx_block_hash,
 };
 
@@ -29,6 +29,9 @@ pub(super) fn serve_docx_blocks_op(
             let text_file = json_optional_string(args, "text-file")
                 .or_else(|| json_optional_string(args, "textFile"));
             let style = json_optional_string(args, "style").unwrap_or_default();
+            let create_style = json_bool(args, "create-style")
+                .or_else(|| json_bool(args, "createStyle"))
+                .unwrap_or(false);
             let readback = docx_blocks_replace(
                 working,
                 block as usize,
@@ -43,6 +46,7 @@ pub(super) fn serve_docx_blocks_op(
                     in_place: true,
                     no_validate: true,
                 },
+                create_style,
             )?;
             let mut plan_flags = Vec::new();
             plan_flags.push(json!("--block"));
@@ -51,6 +55,11 @@ pub(super) fn serve_docx_blocks_op(
                 &mut plan_flags,
                 "--expect-hash",
                 Some(expect_hash.as_str()),
+            );
+            push_serve_plan_bool_flag(
+                &mut plan_flags,
+                "--create-style",
+                create_style.then_some(true),
             );
             push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
             push_serve_plan_string_flag(&mut plan_flags, "--text-file", text_file.as_deref());
@@ -127,6 +136,9 @@ pub(super) fn serve_docx_blocks_op(
             let text_file = json_optional_string(args, "text-file")
                 .or_else(|| json_optional_string(args, "textFile"));
             let style = json_optional_string(args, "style").unwrap_or_default();
+            let create_style = json_bool(args, "create-style")
+                .or_else(|| json_bool(args, "createStyle"))
+                .unwrap_or(false);
             let readback = docx_blocks_insert_after(
                 working,
                 block as usize,
@@ -141,6 +153,7 @@ pub(super) fn serve_docx_blocks_op(
                     in_place: true,
                     no_validate: true,
                 },
+                create_style,
             )?;
             let mut plan_flags = Vec::new();
             plan_flags.push(json!("--block"));
@@ -149,6 +162,11 @@ pub(super) fn serve_docx_blocks_op(
                 &mut plan_flags,
                 "--expect-hash",
                 (!expect_hash.is_empty()).then_some(expect_hash.as_str()),
+            );
+            push_serve_plan_bool_flag(
+                &mut plan_flags,
+                "--create-style",
+                create_style.then_some(true),
             );
             push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
             push_serve_plan_string_flag(&mut plan_flags, "--text-file", text_file.as_deref());

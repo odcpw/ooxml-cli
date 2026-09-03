@@ -1,10 +1,10 @@
 use serde_json::{Value, json};
 
-use super::super::super::op::{ServeOp, push_serve_plan_string_flag};
+use super::super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
 use crate::command_manifest::DocxCommandId;
 use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, docx_paragraphs_append,
-    docx_paragraphs_clear, docx_paragraphs_insert, docx_paragraphs_set, json_i64,
+    docx_paragraphs_clear, docx_paragraphs_insert, docx_paragraphs_set, json_bool, json_i64,
     json_optional_string, resolve_required_docx_paragraph_set_text,
 };
 
@@ -20,6 +20,9 @@ pub(super) fn serve_docx_paragraphs_op(
             let text_file = json_optional_string(args, "text-file")
                 .or_else(|| json_optional_string(args, "textFile"));
             let style = json_optional_string(args, "style").unwrap_or_default();
+            let create_style = json_bool(args, "create-style")
+                .or_else(|| json_bool(args, "createStyle"))
+                .unwrap_or(false);
             let readback = docx_paragraphs_append(
                 working,
                 DocxParagraphMutationOptions {
@@ -32,6 +35,7 @@ pub(super) fn serve_docx_paragraphs_op(
                     in_place: true,
                     no_validate: true,
                 },
+                create_style,
             )?;
             let mut plan_flags = Vec::new();
             push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
@@ -40,6 +44,11 @@ pub(super) fn serve_docx_paragraphs_op(
                 &mut plan_flags,
                 "--style",
                 (!style.is_empty()).then_some(style.as_str()),
+            );
+            push_serve_plan_bool_flag(
+                &mut plan_flags,
+                "--create-style",
+                create_style.then_some(true),
             );
             ServeOp::DocxParagraphsOp {
                 command: command.to_string(),
@@ -60,6 +69,9 @@ pub(super) fn serve_docx_paragraphs_op(
             let text_file = json_optional_string(args, "text-file")
                 .or_else(|| json_optional_string(args, "textFile"));
             let style = json_optional_string(args, "style").unwrap_or_default();
+            let create_style = json_bool(args, "create-style")
+                .or_else(|| json_bool(args, "createStyle"))
+                .unwrap_or(false);
             let readback = docx_paragraphs_insert(
                 working,
                 insert_after,
@@ -73,6 +85,7 @@ pub(super) fn serve_docx_paragraphs_op(
                     in_place: true,
                     no_validate: true,
                 },
+                create_style,
             )?;
             let mut plan_flags = vec![json!("--insert-after"), json!(insert_after.to_string())];
             push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
@@ -81,6 +94,11 @@ pub(super) fn serve_docx_paragraphs_op(
                 &mut plan_flags,
                 "--style",
                 (!style.is_empty()).then_some(style.as_str()),
+            );
+            push_serve_plan_bool_flag(
+                &mut plan_flags,
+                "--create-style",
+                create_style.then_some(true),
             );
             ServeOp::DocxParagraphsOp {
                 command: command.to_string(),

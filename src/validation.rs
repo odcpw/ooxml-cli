@@ -150,6 +150,9 @@ fn validate_diagnostics(file: &str) -> CliResult<Vec<Value>> {
     match package_kind {
         InspectPackageKind::Docx => {
             diagnostics.extend(validate_docx_required_parts(file, &entries, &entry_set)?);
+            diagnostics.extend(crate::docx_styles::validate_docx_style_integrity(
+                file, &entries,
+            )?);
         }
         InspectPackageKind::Xlsx => {
             diagnostics.extend(validate_xlsx_required_parts(file, &entries, &entry_set)?);

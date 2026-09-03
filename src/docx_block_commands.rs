@@ -1,13 +1,13 @@
 use serde_json::{Map, Value, json};
 
 use crate::{
-    CliError, CliResult, DocxParagraphMutationOptions, InspectPackageKind,
+    CliError, CliResult, DocxParagraphMutationOptions, DocxStyleTarget, InspectPackageKind,
     detect_inspect_package_type, docx_block_has_section_properties, docx_blocks,
     docx_body_block_ranges, docx_body_prefix, docx_body_tag, docx_rich_block_json,
     docx_rich_block_reports, ensure_docx_package_kind, ensure_docx_word_prefix,
     find_docx_document_part, insert_docx_body_paragraph_xml, package_type, render_docx_paragraph,
     resolve_optional_docx_paragraph_text, validate_xlsx_mutation_output_flags,
-    write_docx_mutation_output, zip_entry_names, zip_text,
+    write_docx_mutation_output, write_docx_package_mutation_output, zip_entry_names, zip_text,
 };
 
 pub(crate) fn docx_text(file: &str) -> CliResult<Value> {
@@ -76,6 +76,7 @@ pub(crate) fn docx_blocks_insert_after(
     block: usize,
     expected_hash: &str,
     options: DocxParagraphMutationOptions<'_>,
+    create_style: bool,
 ) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
     validate_xlsx_mutation_output_flags(
@@ -89,6 +90,12 @@ pub(crate) fn docx_blocks_insert_after(
     let text = resolve_optional_docx_paragraph_text(options.text, options.text_file)?;
     let document_part = find_docx_document_part(file, &entries)?;
     let xml = zip_text(file, &document_part)?;
+    let prepared = crate::docx_styles::prepare_docx_style_for_mutation(
+        file,
+        options.style,
+        DocxStyleTarget::Paragraph,
+        create_style,
+    )?;
     let reports = docx_rich_block_reports(&xml, false).map_err(|err| {
         CliError::unexpected(format!("failed to read main document: {}", err.message))
     })?;
@@ -107,9 +114,15 @@ pub(crate) fn docx_blocks_insert_after(
         String::new()
     };
 
-    let style = options.style;
-    let (updated_xml, index) = insert_docx_body_paragraph_xml(&xml, block, &text, style)?;
-    write_docx_mutation_output(file, &document_part, &updated_xml, options)?;
+    let style = prepared.style_id.clone();
+    let (updated_xml, index) = insert_docx_body_paragraph_xml(&xml, block, &text, &style)?;
+    if prepared.overrides.is_empty() {
+        write_docx_mutation_output(file, &document_part, &updated_xml, options)?;
+    } else {
+        let mut overrides = prepared.overrides;
+        overrides.insert(document_part.clone(), updated_xml.clone());
+        write_docx_package_mutation_output(file, &overrides, options)?;
+    }
     let updated_reports = docx_rich_block_reports(&updated_xml, false).map_err(|err| {
         CliError::unexpected(format!("failed to read main document: {}", err.message))
     })?;
@@ -129,6 +142,9 @@ pub(crate) fn docx_blocks_insert_after(
     if !style.is_empty() {
         result.insert("style".to_string(), json!(style));
     }
+    if create_style {
+        result.insert("createdStyle".to_string(), json!(prepared.created));
+    }
     result.insert("text".to_string(), json!(text));
     Ok(Value::Object(result))
 }
@@ -138,6 +154,7 @@ pub(crate) fn docx_blocks_replace(
     block: usize,
     expected_hash: &str,
     options: DocxParagraphMutationOptions<'_>,
+    create_style: bool,
 ) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
     validate_xlsx_mutation_output_flags(
@@ -151,6 +168,12 @@ pub(crate) fn docx_blocks_replace(
     let text = resolve_optional_docx_paragraph_text(options.text, options.text_file)?;
     let document_part = find_docx_document_part(file, &entries)?;
     let xml = zip_text(file, &document_part)?;
+    let prepared = crate::docx_styles::prepare_docx_style_for_mutation(
+        file,
+        options.style,
+        DocxStyleTarget::Paragraph,
+        create_style,
+    )?;
     let reports = docx_rich_block_reports(&xml, false).map_err(|err| {
         CliError::unexpected(format!("failed to read main document: {}", err.message))
     })?;
@@ -164,10 +187,10 @@ pub(crate) fn docx_blocks_replace(
         )));
     }
 
-    let style = if options.style.is_empty() && previous.kind == "paragraph" {
+    let style = if prepared.style_id.is_empty() && previous.kind == "paragraph" {
         previous.style.clone()
     } else {
-        options.style.to_string()
+        prepared.style_id.clone()
     };
     let original_body_tag = docx_body_tag(&xml)?;
     let original_prefix = docx_body_prefix(&original_body_tag);
@@ -195,7 +218,13 @@ pub(crate) fn docx_blocks_replace(
     updated_xml.push_str(&replacement);
     updated_xml.push_str(&working[target_range.end..]);
 
-    write_docx_mutation_output(file, &document_part, &updated_xml, options)?;
+    if prepared.overrides.is_empty() {
+        write_docx_mutation_output(file, &document_part, &updated_xml, options)?;
+    } else {
+        let mut overrides = prepared.overrides;
+        overrides.insert(document_part.clone(), updated_xml.clone());
+        write_docx_package_mutation_output(file, &overrides, options)?;
+    }
     let updated_report = docx_rich_block_reports(&updated_xml, true)
         .map_err(|err| {
             CliError::unexpected(format!("failed to read main document: {}", err.message))
@@ -216,6 +245,9 @@ pub(crate) fn docx_blocks_replace(
     result.insert("previousText".to_string(), json!(previous.text));
     if !style.is_empty() {
         result.insert("style".to_string(), json!(style));
+    }
+    if create_style {
+        result.insert("createdStyle".to_string(), json!(prepared.created));
     }
     result.insert("text".to_string(), json!(text));
     result.insert("destination".to_string(), destination);

@@ -1,5 +1,7 @@
 use serde_json::{Map, Value, json};
 
+mod create;
+mod integrity;
 mod mutation;
 mod read;
 
@@ -8,9 +10,11 @@ use crate::{
     HANDLE_AMBIGUOUS, HANDLE_FORMAT_MISMATCH, HANDLE_MALFORMED, HANDLE_SCOPE_STALE, HANDLE_STALE,
     docx_body_block_ranges, docx_body_tag, docx_handle_error, docx_rich_block_reports,
     ensure_docx_package_kind, resolve_docx_paragraph_handle_index,
-    validate_xlsx_mutation_output_flags, write_docx_mutation_output, zip_entry_names, zip_text,
+    validate_xlsx_mutation_output_flags, write_docx_mutation_output,
+    write_docx_package_mutation_output, zip_entry_names, zip_text,
 };
 
+use create::{PreparedDocxStyle, prepare_docx_style};
 use mutation::{apply_docx_style_xml, docx_first_run_style, docx_table_style};
 use read::{DocxStyleInfo, docx_document_and_styles_parts, docx_styles};
 pub(crate) use read::{docx_styles_list, docx_styles_show};
@@ -21,7 +25,7 @@ pub(crate) struct DocxStyleApplyOptions<'a> {
     pub(crate) target: DocxStyleTarget,
     pub(crate) style: &'a str,
     pub(crate) expected_hash: &'a str,
-    pub(crate) validate_style: bool,
+    pub(crate) create_style: bool,
     pub(crate) mutation: DocxParagraphMutationOptions<'a>,
 }
 
@@ -35,7 +39,7 @@ pub(crate) fn docx_styles_apply(
         target,
         style,
         expected_hash,
-        validate_style,
+        create_style,
         mutation: options,
     } = request;
     let entries = zip_entry_names(file)?;
@@ -61,9 +65,16 @@ pub(crate) fn docx_styles_apply(
         style_handle = style_id.clone();
         style_id = resolve_docx_style_handle_id(&styles, styles_part.as_deref(), &style_id)?;
     }
-    if validate_style {
-        validate_docx_style_for_target(&styles, &style_id, target)?;
-    }
+    let prepared = prepare_docx_style(
+        file,
+        &document_part,
+        styles_part.as_deref(),
+        &styles,
+        &style_id,
+        target,
+        create_style,
+    )?;
+    style_id = prepared.style_id.clone();
 
     let xml = zip_text(file, &document_part)?;
     let target_index = if let Some(handle_arg) = handle.filter(|value| !value.is_empty()) {
@@ -155,7 +166,13 @@ pub(crate) fn docx_styles_apply(
         };
 
     let updated_xml = apply_docx_style_xml(&xml, target, block_index, &style_id, para_id.trim())?;
-    write_docx_mutation_output(file, &document_part, &updated_xml, options)?;
+    if prepared.overrides.is_empty() {
+        write_docx_mutation_output(file, &document_part, &updated_xml, options)?;
+    } else {
+        let mut overrides = prepared.overrides;
+        overrides.insert(document_part.clone(), updated_xml.clone());
+        write_docx_package_mutation_output(file, &overrides, options)?;
+    }
 
     let updated_reports = docx_rich_block_reports(&updated_xml, false).map_err(|err| {
         CliError::unexpected(format!("failed to read main document: {}", err.message))
@@ -175,6 +192,9 @@ pub(crate) fn docx_styles_apply(
         result.insert("previousStyle".to_string(), json!(previous_style));
     }
     result.insert("style".to_string(), json!(style_id));
+    if create_style {
+        result.insert("createdStyle".to_string(), json!(prepared.created));
+    }
     result.insert(
         "contentHash".to_string(),
         json!(updated_report.content_hash),
@@ -230,46 +250,31 @@ pub(crate) fn normalize_docx_style_target(value: &str) -> CliResult<DocxStyleTar
     }
 }
 
-fn validate_docx_style_for_target(
-    styles: &[DocxStyleInfo],
-    style_id: &str,
+pub(crate) fn prepare_docx_style_for_mutation(
+    file: &str,
+    requested: &str,
     target: DocxStyleTarget,
-) -> CliResult<()> {
-    let wanted = target.required_style_type();
-    if let Some(style) = styles.iter().find(|style| style.style_id == style_id) {
-        if style.style_type != wanted {
-            return Err(CliError::invalid_args(format!(
-                "style type mismatch: {:?} is a {} style but {} target requires a {} style",
-                style_id,
-                style.style_type,
-                target.as_str(),
-                wanted
-            )));
-        }
-        return Ok(());
-    }
-    let mut candidates: Vec<&str> = styles
-        .iter()
-        .filter(|style| style.style_type == wanted)
-        .map(|style| style.style_id.as_str())
-        .collect();
-    candidates.sort_unstable();
-    let detail = if candidates.is_empty() {
-        format!(
-            "style not found: {:?} ({}); no {} styles defined",
-            style_id, wanted, wanted
-        )
+    create_style: bool,
+) -> CliResult<PreparedDocxStyle> {
+    let (document_uri, styles_part) = docx_document_and_styles_parts(file)?;
+    let document_part = document_uri.trim_start_matches('/');
+    let styles = if let Some(styles_part) = styles_part.as_deref() {
+        docx_styles(file, styles_part)?
     } else {
-        format!(
-            "style not found: {:?} ({}); available {} styles: [{}]",
-            style_id,
-            wanted,
-            wanted,
-            candidates.join(" ")
-        )
+        Vec::new()
     };
-    Err(CliError::target_not_found(detail))
+    prepare_docx_style(
+        file,
+        document_part,
+        styles_part.as_deref(),
+        &styles,
+        requested,
+        target,
+        create_style,
+    )
 }
+
+pub(crate) use integrity::validate_docx_style_integrity;
 
 fn resolve_docx_style_handle_id(
     styles: &[DocxStyleInfo],

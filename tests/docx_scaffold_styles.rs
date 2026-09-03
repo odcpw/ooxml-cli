@@ -232,6 +232,317 @@ fn template_inherits_styles_theme_and_page_setup_deterministically() {
     fs::remove_dir_all(temp).expect("remove template temp dir");
 }
 
+#[test]
+fn committed_dangling_style_fixture_fails_strict_and_check() {
+    let fixture = repo_path("testdata/docx/scaffold-styles/dangling-style.docx");
+    let (output, report) = run_ooxml(&["--json", "validate", "--strict", path_str(&fixture)], &[]);
+    assert_eq!(output.status.code(), Some(5), "strict report: {report}");
+    let diagnostic = diagnostics_with_code(&report, "DOCX_DANGLING_STYLE")
+        .into_iter()
+        .next()
+        .expect("dangling style diagnostic");
+    assert_eq!(diagnostic["part"], "/word/document.xml");
+    assert_eq!(diagnostic["element"], "pStyle");
+    assert_eq!(diagnostic["styleId"], "Heading1");
+    assert_eq!(diagnostic["check"], "style-integrity");
+
+    let (check_output, check) =
+        run_ooxml(&["--json", "conformance", "check", path_str(&fixture)], &[]);
+    assert_eq!(
+        check_output.status.code(),
+        Some(5),
+        "conformance report: {check}"
+    );
+    assert!(
+        !diagnostics_with_code(&check, "DOCX_DANGLING_STYLE").is_empty(),
+        "conformance check must include style integrity: {check}"
+    );
+}
+
+#[test]
+fn strict_style_integrity_covers_paragraph_run_table_and_numbering_references() {
+    let temp = temp_dir("all-dangling-reference-kinds");
+    let source = temp.join("source.docx");
+    let invalid = temp.join("invalid.docx");
+    run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path_str(&source),
+        "--text",
+        "Reference seed",
+    ]);
+    make_dangling_reference_package(&source, &invalid);
+
+    let (output, report) = run_ooxml(&["--json", "validate", "--strict", path_str(&invalid)], &[]);
+    assert_eq!(output.status.code(), Some(5), "strict report: {report}");
+    let style_diagnostics = diagnostics_with_code(&report, "DOCX_DANGLING_STYLE");
+    let elements = style_diagnostics
+        .iter()
+        .filter_map(|diagnostic| diagnostic["element"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(elements, BTreeSet::from(["pStyle", "rStyle", "tblStyle"]));
+    let numbering = diagnostics_with_code(&report, "DOCX_DANGLING_NUMBERING");
+    assert_eq!(numbering.len(), 1, "numbering diagnostics: {numbering:?}");
+    assert_eq!(numbering[0]["numId"], 77);
+    assert_eq!(numbering[0]["part"], "/word/document.xml");
+
+    fs::remove_dir_all(temp).expect("remove dangling references temp dir");
+}
+
+#[test]
+fn style_mutations_canonicalize_names_and_reject_typos_helpfully() {
+    let temp = temp_dir("style-resolution");
+    let source = temp.join("source.docx");
+    let named = temp.join("named.docx");
+    run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path_str(&source),
+        "--text",
+        "Style seed",
+    ]);
+    let append = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "append",
+        path_str(&source),
+        "--text",
+        "Canonical heading",
+        "--style",
+        "hEaDiNg 1",
+        "--out",
+        path_str(&named),
+    ]);
+    assert_eq!(append["style"], "Heading1");
+    assert!(append.get("createdStyle").is_none());
+    assert!(zip_text(&named, "word/document.xml").contains(r#"w:val="Heading1""#));
+    assert_strict_valid(&named);
+    assert_sdk_valid_if_available(&named);
+
+    let blocks = run_ooxml_ok(&["--json", "docx", "blocks", path_str(&source)]);
+    let hash = blocks["blocks"][0]["contentHash"]
+        .as_str()
+        .expect("block content hash");
+    let append_out = temp.join("append.docx");
+    let insert_out = temp.join("insert.docx");
+    let replace_out = temp.join("replace.docx");
+    let block_insert_out = temp.join("block-insert.docx");
+    let apply_out = temp.join("apply.docx");
+    let commands = [
+        vec![
+            "--json",
+            "docx",
+            "paragraphs",
+            "append",
+            path_str(&source),
+            "--text",
+            "Rejected",
+            "--style",
+            "Heding1",
+            "--no-validate",
+            "--out",
+            path_str(&append_out),
+        ],
+        vec![
+            "--json",
+            "docx",
+            "paragraphs",
+            "insert",
+            path_str(&source),
+            "--insert-after",
+            "0",
+            "--text",
+            "Rejected",
+            "--style",
+            "Heding1",
+            "--out",
+            path_str(&insert_out),
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "replace",
+            path_str(&source),
+            "--block",
+            "1",
+            "--expect-hash",
+            hash,
+            "--text",
+            "Rejected",
+            "--style",
+            "Heding1",
+            "--out",
+            path_str(&replace_out),
+        ],
+        vec![
+            "--json",
+            "docx",
+            "blocks",
+            "insert-after",
+            path_str(&source),
+            "--block",
+            "1",
+            "--expect-hash",
+            hash,
+            "--text",
+            "Rejected",
+            "--style",
+            "Heding1",
+            "--out",
+            path_str(&block_insert_out),
+        ],
+        vec![
+            "--json",
+            "docx",
+            "styles",
+            "apply",
+            path_str(&source),
+            "--index",
+            "1",
+            "--target",
+            "paragraph",
+            "--style",
+            "Heding1",
+            "--out",
+            path_str(&apply_out),
+        ],
+    ];
+    for args in commands {
+        let (output, error) = run_ooxml(&args, &[]);
+        assert!(
+            !output.status.success(),
+            "typo unexpectedly succeeded: {args:?}"
+        );
+        let message = error["error"]["message"].as_str().unwrap_or_default();
+        assert!(
+            message.contains("available paragraph styles"),
+            "missing available list for {args:?}: {error}"
+        );
+        assert!(
+            message.contains("nearest match: Heading1 (Heading 1)"),
+            "missing nearest match for {args:?}: {error}"
+        );
+    }
+
+    fs::remove_dir_all(temp).expect("remove style resolution temp dir");
+}
+
+#[test]
+fn create_style_repairs_the_original_minimal_case_atomically() {
+    let temp = temp_dir("create-style");
+    let source = repo_path("testdata/docx/scaffold-styles/dangling-style.docx");
+    let output = temp.join("created.docx");
+    let rejected_output = temp.join("rejected.docx");
+    let (rejected, error) = run_ooxml(
+        &[
+            "--json",
+            "docx",
+            "paragraphs",
+            "append",
+            path_str(&source),
+            "--text",
+            "Would silently render as Normal",
+            "--style",
+            "Heading1",
+            "--out",
+            path_str(&rejected_output),
+        ],
+        &[],
+    );
+    assert!(
+        !rejected.status.success(),
+        "missing style unexpectedly succeeded"
+    );
+    assert!(
+        !rejected_output.exists(),
+        "failed mutation published an output"
+    );
+    let message = error["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains(r#"style not found: "Heading1""#),
+        "{error}"
+    );
+    assert!(
+        message.contains("no paragraph styles are defined"),
+        "{error}"
+    );
+
+    let report = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "append",
+        path_str(&source),
+        "--text",
+        "Created heading style",
+        "--style",
+        "Heading1",
+        "--create-style",
+        "--out",
+        path_str(&output),
+    ]);
+    assert_eq!(report["style"], "Heading1");
+    assert_eq!(report["createdStyle"], true);
+    assert!(zip_entries(&output).contains("word/styles.xml"));
+    assert!(zip_entries(&output).contains("word/numbering.xml"));
+    let styles = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "styles",
+        "show",
+        path_str(&output),
+        "--style",
+        "Heading1",
+    ]);
+    assert_eq!(styles["found"], true);
+    assert_eq!(styles["style"]["name"], "Heading 1");
+    let document = zip_text(&output, "word/document.xml");
+    assert_eq!(document.matches(r#"w:val="Heading1""#).count(), 2);
+    assert_strict_valid(&output);
+    assert_sdk_valid_if_available(&output);
+
+    fs::remove_dir_all(temp).expect("remove create-style temp dir");
+}
+
+#[test]
+fn create_list_style_adds_numbering_to_an_existing_styles_package() {
+    let temp = temp_dir("create-list-style");
+    let old_minimal = repo_path("testdata/docx/scaffold-styles/dangling-style.docx");
+    let partial = temp.join("partial.docx");
+    let output = temp.join("numbered.docx");
+    make_partial_style_package(&old_minimal, &partial);
+    let report = run_ooxml_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "append",
+        path_str(&partial),
+        "--text",
+        "Numbered item",
+        "--style",
+        "list number",
+        "--create-style",
+        "--out",
+        path_str(&output),
+    ]);
+    assert_eq!(report["style"], "ListNumber");
+    assert_eq!(report["createdStyle"], true);
+    let styles = zip_text(&output, "word/styles.xml");
+    assert!(styles.contains(r#"w:styleId="ListNumber""#));
+    assert!(styles.contains(r#"<w:numId w:val="2"/>"#));
+    let numbering = zip_text(&output, "word/numbering.xml");
+    assert!(numbering.contains(r#"<w:num w:numId="2">"#));
+    let rels = zip_text(&output, "word/_rels/document.xml.rels");
+    assert!(rels.contains("/relationships/numbering"));
+    assert_strict_valid(&output);
+    assert_sdk_valid_if_available(&output);
+    fs::remove_dir_all(temp).expect("remove create-list-style temp dir");
+}
+
 fn make_distinct_template(input: &Path, output: &Path) {
     let mut archive = ZipArchive::new(File::open(input).expect("open base template")).unwrap();
     let mut parts = BTreeMap::<String, Vec<u8>>::new();
@@ -273,6 +584,109 @@ fn make_distinct_template(input: &Path, output: &Path) {
         writer.write_all(&bytes).unwrap();
     }
     writer.finish().unwrap();
+}
+
+fn make_dangling_reference_package(input: &Path, output: &Path) {
+    let document = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="MissingParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="77"/></w:numPr></w:pPr><w:r><w:rPr><w:rStyle w:val="MissingCharacter"/></w:rPr><w:t>Dangling paragraph and run</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblStyle w:val="MissingTable"/><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="2400"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr><w:p/></w:tc></w:tr></w:tbl><w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>"#;
+    rewrite_zip_part(input, output, "word/document.xml", document.as_bytes());
+}
+
+fn make_partial_style_package(input: &Path, output: &Path) {
+    let document = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Minimal</w:t></w:r></w:p><w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>"#;
+    let styles = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style></w:styles>"#;
+    let document_rels = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>"#;
+
+    let mut archive =
+        ZipArchive::new(File::open(input).expect("open old minimal package")).unwrap();
+    let mut parts = BTreeMap::<String, Vec<u8>>::new();
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).unwrap();
+        if entry.is_dir() {
+            continue;
+        }
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes).unwrap();
+        parts.insert(entry.name().to_string(), bytes);
+    }
+    let content_types = String::from_utf8(parts.remove("[Content_Types].xml").unwrap()).unwrap();
+    parts.insert(
+        "[Content_Types].xml".to_string(),
+        content_types
+            .replace(
+                "</Types>",
+                r#"<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>"#,
+            )
+            .into_bytes(),
+    );
+    parts.insert(
+        "word/document.xml".to_string(),
+        document.as_bytes().to_vec(),
+    );
+    parts.insert("word/styles.xml".to_string(), styles.as_bytes().to_vec());
+    parts.insert(
+        "word/_rels/document.xml.rels".to_string(),
+        document_rels.as_bytes().to_vec(),
+    );
+    let file = File::create(output).expect("create partial style package");
+    let mut writer = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    for (name, bytes) in parts {
+        writer.start_file(name, options).unwrap();
+        writer.write_all(&bytes).unwrap();
+    }
+    writer.finish().unwrap();
+}
+
+fn rewrite_zip_part(input: &Path, output: &Path, part: &str, replacement: &[u8]) {
+    let mut archive = ZipArchive::new(File::open(input).expect("open package to rewrite")).unwrap();
+    let mut parts = BTreeMap::<String, Vec<u8>>::new();
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).unwrap();
+        if entry.is_dir() {
+            continue;
+        }
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes).unwrap();
+        let bytes = if entry.name() == part {
+            replacement.to_vec()
+        } else {
+            bytes
+        };
+        parts.insert(entry.name().to_string(), bytes);
+    }
+    let file = File::create(output).expect("create rewritten package");
+    let mut writer = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    for (name, bytes) in parts {
+        writer.start_file(name, options).unwrap();
+        writer.write_all(&bytes).unwrap();
+    }
+    writer.finish().unwrap();
+}
+
+fn diagnostics_with_code<'a>(value: &'a Value, code: &str) -> Vec<&'a Value> {
+    let mut matches = Vec::new();
+    collect_diagnostics_with_code(value, code, &mut matches);
+    matches
+}
+
+fn collect_diagnostics_with_code<'a>(value: &'a Value, code: &str, matches: &mut Vec<&'a Value>) {
+    match value {
+        Value::Object(object) => {
+            if object.get("code").and_then(Value::as_str) == Some(code) {
+                matches.push(value);
+            }
+            for child in object.values() {
+                collect_diagnostics_with_code(child, code, matches);
+            }
+        }
+        Value::Array(array) => {
+            for child in array {
+                collect_diagnostics_with_code(child, code, matches);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn run_ooxml(args: &[&str], envs: &[(&str, &str)]) -> (Output, Value) {

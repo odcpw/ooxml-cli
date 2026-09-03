@@ -66,7 +66,7 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
                     "--out",
                     "--backup",
                 ],
-                &["--dry-run", "--in-place", "--no-validate"],
+                &["--dry-run", "--in-place", "--no-validate", "--create-style"],
             )?;
             let block = parse_i64_flag(rest, "--block")?.unwrap_or(0);
             if block < 1 {
@@ -96,6 +96,7 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
                     in_place,
                     no_validate,
                 },
+                has_flag(rest, "--create-style"),
             )
         }
         [cmd, group, verb, file, rest @ ..]
@@ -147,7 +148,7 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
                     "--out",
                     "--backup",
                 ],
-                &["--dry-run", "--in-place", "--no-validate"],
+                &["--dry-run", "--in-place", "--no-validate", "--create-style"],
             )?;
             let block = parse_i64_flag(rest, "--block")?.unwrap_or(0);
             if block < 0 {
@@ -184,6 +185,7 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
                     in_place,
                     no_validate,
                 },
+                has_flag(rest, "--create-style"),
             )
         }
         [cmd, group, file, rest @ ..] if cmd == "docx" && group == "blocks" => {
@@ -224,7 +226,7 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
                     "--out",
                     "--backup",
                 ],
-                &["--dry-run", "--in-place", "--no-validate"],
+                &["--dry-run", "--in-place", "--no-validate", "--create-style"],
             )?;
             let index = parse_i64_flag(rest, "--index")?.unwrap_or(0);
             let handle = parse_string_flag(rest, "--handle")?;
@@ -268,7 +270,7 @@ pub(super) fn dispatch_docx(args: &[String]) -> CliResult<Value> {
                     target,
                     style: &style,
                     expected_hash: &expect_hash,
-                    validate_style: !no_validate,
+                    create_style: has_flag(rest, "--create-style"),
                     mutation: DocxParagraphMutationOptions {
                         text: None,
                         text_file: None,

@@ -7,10 +7,14 @@ use std::process::{Command, Output};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
-const EXPECTED_INVALID: [(&str, &str); 6] = [
+const EXPECTED_INVALID: [(&str, &str); 7] = [
     (
         "testdata/docx/corrupted-missing-document/document.docx",
         "DOCX_MISSING_DOCUMENT",
+    ),
+    (
+        "testdata/docx/scaffold-styles/dangling-style.docx",
+        "DOCX_DANGLING_STYLE",
     ),
     (
         "testdata/pptx/animations-stale-media/presentation.pptx",

@@ -50,6 +50,9 @@ pub(super) fn serve_docx_styles_op(
             let skip_style_validation = json_bool(args, "no-validate")
                 .or_else(|| json_bool(args, "noValidate"))
                 .unwrap_or(false);
+            let create_style = json_bool(args, "create-style")
+                .or_else(|| json_bool(args, "createStyle"))
+                .unwrap_or(false);
             let readback = docx_styles_apply(
                 working,
                 DocxStyleApplyOptions {
@@ -58,7 +61,7 @@ pub(super) fn serve_docx_styles_op(
                     target,
                     style: &style,
                     expected_hash: &expect_hash,
-                    validate_style: !skip_style_validation,
+                    create_style,
                     mutation: DocxParagraphMutationOptions {
                         text: None,
                         text_file: None,
@@ -89,6 +92,11 @@ pub(super) fn serve_docx_styles_op(
                 &mut plan_flags,
                 "--no-validate",
                 skip_style_validation.then_some(true),
+            );
+            push_serve_plan_bool_flag(
+                &mut plan_flags,
+                "--create-style",
+                create_style.then_some(true),
             );
             ServeOp::DocxStylesOp {
                 command: command.to_string(),
