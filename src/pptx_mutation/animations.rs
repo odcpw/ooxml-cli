@@ -4,14 +4,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::pptx_readback::animations::{
     AnimationEffectInfo, ParagraphRange, ShapeTarget, SlideRef, XmlSpan,
     animation_effects_for_slide, build_shape_index, classify_effect, click_step_spans,
-    collect_shape_targets, direct_child_span, direct_children, element_attr_i64,
+    collect_shape_targets, direct_child_span, direct_children, element_attr, element_attr_i64,
     element_content_bounds, find_descendant_element_spans, find_first_element_span, pptx_slide_ref,
     pptx_slide_refs_resolved,
 };
 use crate::{
-    CliError, CliResult, copy_zip_with_part_override, copy_zip_with_part_overrides, has_flag,
-    package_type, parse_i64_flag, parse_string_flag, remove_xml_span, replace_xml_span,
-    validate_xlsx_mutation_output_flags, xml_attr_escape, xml_escape, zip_text,
+    CliError, CliResult, copy_zip_with_part_overrides, has_flag, package_type, parse_i64_flag,
+    parse_string_flag, remove_xml_span, replace_xml_span, validate_xlsx_mutation_output_flags,
+    xml_attr_escape, xml_escape, zip_entry_names, zip_text,
 };
 
 mod output;
@@ -1099,12 +1099,12 @@ fn stage_animation_part_mutation(
         .as_deref()
         .filter(|value| !value.trim().is_empty());
     let write_path = crate::mutation_staging_path(file, output_path, "pptx-animations");
-    copy_zip_with_part_override(
-        file,
-        &write_path,
-        slide_part.trim_start_matches('/'),
-        updated_xml,
-    )?;
+    let requested = BTreeMap::from_iter([(
+        slide_part.trim_start_matches('/').to_string(),
+        updated_xml.to_string(),
+    )]);
+    let overrides = normalized_animation_build_overrides(file, &requested)?;
+    copy_zip_with_part_overrides(file, &write_path, &overrides)?;
     if !options.no_validate {
         crate::validate_owned_mutation_output(&write_path)?;
     }
@@ -1121,11 +1121,76 @@ fn stage_animation_package_mutation(
         .as_deref()
         .filter(|value| !value.trim().is_empty());
     let write_path = crate::mutation_staging_path(file, output_path, "pptx-animations");
-    copy_zip_with_part_overrides(file, &write_path, overrides)?;
+    let overrides = normalized_animation_build_overrides(file, overrides)?;
+    copy_zip_with_part_overrides(file, &write_path, &overrides)?;
     if !options.no_validate {
         crate::validate_owned_mutation_output(&write_path)?;
     }
     Ok(write_path)
+}
+
+fn normalized_animation_build_overrides(
+    file: &str,
+    requested: &BTreeMap<String, String>,
+) -> CliResult<BTreeMap<String, String>> {
+    let mut part_names = zip_entry_names(file)?
+        .into_iter()
+        .filter(|name| is_slide_xml_part(name))
+        .collect::<BTreeSet<_>>();
+    part_names.extend(
+        requested
+            .keys()
+            .filter(|name| is_slide_xml_part(name))
+            .cloned(),
+    );
+
+    let mut overrides = requested.clone();
+    for part_name in part_names {
+        let source = match requested.get(&part_name) {
+            Some(source) => source.clone(),
+            None => zip_text(file, &part_name)?,
+        };
+        let normalized = normalize_paragraph_build_values(&source)?;
+        if requested.contains_key(&part_name) || normalized != source {
+            overrides.insert(part_name, normalized);
+        }
+    }
+    Ok(overrides)
+}
+
+fn is_slide_xml_part(name: &str) -> bool {
+    name.starts_with("ppt/slides/slide") && name.ends_with(".xml")
+}
+
+fn normalize_paragraph_build_values(xml: &str) -> CliResult<String> {
+    let mut output = xml.to_string();
+    for span in find_descendant_element_spans(xml, "bldP")?
+        .into_iter()
+        .rev()
+    {
+        let fragment = &output[span.start..span.end];
+        let Some(value) = element_attr(fragment, "build") else {
+            continue;
+        };
+        let normalized = paragraph_build_schema_value(&value)?;
+        if normalized != value {
+            let replacement = replace_or_insert_attr(fragment, "build", normalized)?;
+            output = replace_xml_span(&output, span.start, span.end, &replacement);
+        }
+    }
+    Ok(output)
+}
+
+fn paragraph_build_schema_value(value: &str) -> CliResult<&'static str> {
+    match value {
+        "byParagraph" | "p" => Ok("p"),
+        "allAtOnce" => Ok("allAtOnce"),
+        "cust" => Ok("cust"),
+        "whole" => Ok("whole"),
+        _ => Err(CliError::invalid_args(format!(
+            "unsupported paragraph animation build value {value:?}; use byParagraph, allAtOnce, cust, or whole"
+        ))),
+    }
 }
 
 fn finish_animation_mutation(
@@ -1299,5 +1364,26 @@ fn node_type_for_start(start: &str) -> &'static str {
         "withPrevious" => "withEffect",
         "afterPrevious" => "afterEffect",
         _ => "clickEffect",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_by_paragraph_maps_to_the_schema_p_enum() {
+        assert_eq!(paragraph_build_schema_value("byParagraph").unwrap(), "p");
+        assert_eq!(paragraph_build_schema_value("p").unwrap(), "p");
+        assert!(paragraph_build_schema_value("by-paragraph").is_err());
+    }
+
+    #[test]
+    fn every_paragraph_build_in_a_slide_is_normalized() {
+        let xml = r#"<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:timing><p:bldLst><p:bldP spid="2" build="byParagraph"/><p:bldP spid="3" build="allAtOnce"/></p:bldLst></p:timing></p:sld>"#;
+        let normalized = normalize_paragraph_build_values(xml).unwrap();
+        assert!(normalized.contains("spid=\"2\" build=\"p\""));
+        assert!(normalized.contains("spid=\"3\" build=\"allAtOnce\""));
+        assert!(!normalized.contains("build=\"byParagraph\""));
     }
 }

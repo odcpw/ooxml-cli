@@ -510,7 +510,10 @@ fn collect_builds(xml: &str, timing: XmlSpan, shape_index: &ShapeIndex) -> CliRe
         if let Some(shape_name) = shape_index.names.get(&spid) {
             out.insert("shapeName".to_string(), json!(shape_name));
         }
-        out.insert("build".to_string(), json!(build));
+        out.insert(
+            "build".to_string(),
+            json!(paragraph_build_cli_value(&build)),
+        );
         if !grp_id.is_empty() {
             out.insert("grpId".to_string(), json!(grp_id));
         }
@@ -522,6 +525,13 @@ fn collect_builds(xml: &str, timing: XmlSpan, shape_index: &ShapeIndex) -> CliRe
         builds.push(Value::Object(out));
     }
     Ok(builds)
+}
+
+fn paragraph_build_cli_value(value: &str) -> &str {
+    match value {
+        "p" | "byParagraph" => "byParagraph",
+        value => value,
+    }
 }
 
 fn collect_media(
@@ -977,5 +987,17 @@ fn normalize_ppt_target(target: &str) -> String {
         target.to_string()
     } else {
         format!("ppt/{}", target.trim_start_matches("../"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::paragraph_build_cli_value;
+
+    #[test]
+    fn schema_p_build_value_is_reported_in_cli_vocabulary() {
+        assert_eq!(paragraph_build_cli_value("p"), "byParagraph");
+        assert_eq!(paragraph_build_cli_value("byParagraph"), "byParagraph");
+        assert_eq!(paragraph_build_cli_value("allAtOnce"), "allAtOnce");
     }
 }

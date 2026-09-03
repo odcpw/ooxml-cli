@@ -32,8 +32,8 @@ const CONTENT_TYPE_CHART: &str =
 const CONTENT_TYPE_EMBEDDED_XLSX: &str =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const EMU_PER_INCH: i64 = 914_400;
-const CAT_AXIS_ID: i64 = 111_111_111;
-const VAL_AXIS_ID: i64 = 222_222_222;
+const CAT_AXIS_ID: u32 = 111_111_111;
+const VAL_AXIS_ID: u32 = 222_222_222;
 
 const CHART_CHILD_ORDER: &[&str] = &[
     "title",

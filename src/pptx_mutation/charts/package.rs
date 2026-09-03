@@ -359,6 +359,7 @@ pub(super) fn stage_chart_package_mutation(
     binary_overrides: &BTreeMap<String, Vec<u8>>,
     options: &PptxChartMutationOptions,
 ) -> CliResult<String> {
+    let text_overrides = normalized_chart_axis_overrides(file, text_overrides)?;
     let output_path = options
         .out
         .as_deref()
@@ -367,7 +368,7 @@ pub(super) fn stage_chart_package_mutation(
     copy_zip_with_binary_part_overrides_and_removals(
         file,
         &write_path,
-        text_overrides,
+        &text_overrides,
         binary_overrides,
         &BTreeSet::new(),
     )?;
@@ -375,6 +376,85 @@ pub(super) fn stage_chart_package_mutation(
         crate::validate_owned_mutation_output(&write_path)?;
     }
     Ok(write_path)
+}
+
+fn normalized_chart_axis_overrides(
+    file: &str,
+    requested: &BTreeMap<String, String>,
+) -> CliResult<BTreeMap<String, String>> {
+    let mut part_names = zip_entry_names(file)?
+        .into_iter()
+        .filter(|name| is_chart_xml_part(name))
+        .collect::<BTreeSet<_>>();
+    part_names.extend(
+        requested
+            .keys()
+            .filter(|name| is_chart_xml_part(name))
+            .cloned(),
+    );
+
+    let mut overrides = requested.clone();
+    for part_name in part_names {
+        let source = match requested.get(&part_name) {
+            Some(source) => source.clone(),
+            None => zip_text(file, &part_name)?,
+        };
+        let normalized = normalize_chart_axis_ids(&source)?;
+        if requested.contains_key(&part_name) || normalized != source {
+            overrides.insert(part_name, normalized);
+        }
+    }
+    Ok(overrides)
+}
+
+fn is_chart_xml_part(name: &str) -> bool {
+    name.starts_with("ppt/charts/chart") && name.ends_with(".xml")
+}
+
+fn normalize_chart_axis_ids(xml: &str) -> CliResult<String> {
+    let mut chart = parse_chart_xml(xml)?;
+    let changed = normalize_axis_id_nodes(&mut chart.root)?;
+    Ok(if changed {
+        serialize_xml(&chart.root)
+    } else {
+        xml.to_string()
+    })
+}
+
+fn normalize_axis_id_nodes(node: &mut XmlNode) -> CliResult<bool> {
+    let mut changed = false;
+    if matches!(node.local(), "axId" | "crossAx")
+        && let Some(value) = node.attr("val")
+    {
+        let normalized = normalize_axis_id(value)?;
+        if normalized != value {
+            node.set_attr("val", &normalized);
+            changed = true;
+        }
+    }
+    for child in &mut node.children {
+        changed |= normalize_axis_id_nodes(child)?;
+    }
+    Ok(changed)
+}
+
+fn normalize_axis_id(value: &str) -> CliResult<String> {
+    if let Ok(value) = value.parse::<u32>()
+        && value <= i32::MAX as u32
+    {
+        return Ok(value.to_string());
+    }
+    if let Ok(value) = value.parse::<i32>()
+        && value < 0
+    {
+        // Although the package schema names this an unsigned integer, the
+        // Office 2019 validator also applies a signed-32 maxInclusive bound.
+        // Preserve the stable hash magnitude inside that interoperable range.
+        return Ok(value.checked_abs().unwrap_or(i32::MAX).to_string());
+    }
+    Err(CliError::invalid_args(format!(
+        "chart axis id {value:?} is outside the unsigned 32-bit range"
+    )))
 }
 
 pub(super) fn finish_chart_mutation(
@@ -444,4 +524,27 @@ pub(super) fn chart_mutation_result_json(input: ChartMutationResultInput<'_>) ->
         )),
     );
     Value::Object(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signed_axis_hashes_are_reinterpreted_as_stable_u32_values() {
+        assert_eq!(normalize_axis_id("-2068027336").unwrap(), "2068027336");
+        assert_eq!(normalize_axis_id("-2113994440").unwrap(), "2113994440");
+        assert_eq!(normalize_axis_id("2147483647").unwrap(), "2147483647");
+        assert!(normalize_axis_id("2147483648").is_err());
+        assert!(normalize_axis_id("4294967296").is_err());
+    }
+
+    #[test]
+    fn every_axis_reference_in_a_chart_part_is_normalized() {
+        let xml = r#"<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart><c:plotArea><c:barChart><c:axId val="-2068027336"/><c:axId val="-2113994440"/></c:barChart><c:catAx><c:axId val="-2068027336"/><c:crossAx val="-2113994440"/></c:catAx></c:plotArea></c:chart></c:chartSpace>"#;
+        let normalized = normalize_chart_axis_ids(xml).unwrap();
+        assert_eq!(normalized.matches("val=\"2068027336\"").count(), 2);
+        assert_eq!(normalized.matches("val=\"2113994440\"").count(), 2);
+        assert!(!normalized.contains("val=\"-"));
+    }
 }
