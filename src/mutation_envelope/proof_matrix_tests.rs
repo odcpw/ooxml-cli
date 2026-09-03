@@ -195,6 +195,29 @@ fn powershell_generic_lists_are_materialized_before_array_binding() {
     );
 }
 
+#[test]
+fn powershell_smoke_has_cross_platform_data_root_fallbacks() {
+    let smoke = include_str!("../../tools/windows-office-edit-smoke.ps1");
+    assert!(smoke.contains("[System.IO.Path]::GetTempPath()"));
+    assert!(smoke.contains("[string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)"));
+    assert!(smoke.contains("[string]::IsNullOrWhiteSpace($env:APPDATA)"));
+    assert!(!smoke.contains("Join-Path $env:TEMP"));
+
+    let backslash_join_paths = smoke
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| {
+            line.find("Join-Path")
+                .is_some_and(|offset| line[offset..].contains('\\'))
+        })
+        .map(|(index, line)| format!("{}: {line}", index + 1))
+        .collect::<Vec<_>>();
+    assert!(
+        backslash_join_paths.is_empty(),
+        "Join-Path child arguments must be platform-native path components: {backslash_join_paths:?}"
+    );
+}
+
 fn unbraced_variable_colons_in_double_quotes(source: &str) -> Vec<usize> {
     const VALID_SCOPES: &[&str] = &["env", "global", "local", "private", "script", "using"];
     let bytes = source.as_bytes();

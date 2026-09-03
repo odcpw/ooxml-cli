@@ -1046,10 +1046,28 @@ function New-PptxSlideExtLstFixture {
 }
 
 $root = (Resolve-Path -LiteralPath $RepoRoot).Path
+$tempRoot = if ([string]::IsNullOrWhiteSpace($env:TEMP)) {
+    [System.IO.Path]::GetTempPath()
+}
+else {
+    $env:TEMP
+}
+$userHome = if (-not [string]::IsNullOrWhiteSpace($HOME)) {
+    $HOME
+}
+else {
+    [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::UserProfile)
+}
+if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    $env:LOCALAPPDATA = Join-Path (Join-Path $userHome ".local") "share"
+}
+if ([string]::IsNullOrWhiteSpace($env:APPDATA)) {
+    $env:APPDATA = Join-Path $userHome ".config"
+}
 if ($OutputDir -eq "") {
     # Keep Office-open proof artifacts under the repo tree. Excel COM can
     # treat byte-identical minimal workbooks differently from %TEMP%.
-    $OutputDir = Join-Path $root "target\ooxml-office-edit-smoke"
+    $OutputDir = Join-Path (Join-Path $root "target") "ooxml-office-edit-smoke"
 }
 $outRoot = [System.IO.Path]::GetFullPath($OutputDir)
 $caseDir = Join-Path $outRoot "outputs"
@@ -1062,18 +1080,18 @@ Remove-Item -LiteralPath $outRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $caseDir, $binDir, $oracleDir | Out-Null
 
 if ($GoCache -eq "") {
-    $GoCache = Join-Path $env:TEMP "ooxml-go-build-cache"
+    $GoCache = Join-Path $tempRoot "ooxml-go-build-cache"
 }
 New-Item -ItemType Directory -Force -Path $GoCache | Out-Null
 $env:GOCACHE = $GoCache
 
 if ($env:NUGET_PACKAGES -eq $null -or $env:NUGET_PACKAGES -eq "") {
-    $env:NUGET_PACKAGES = Join-Path $env:TEMP "ooxml-nuget-packages"
+    $env:NUGET_PACKAGES = Join-Path $tempRoot "ooxml-nuget-packages"
 }
 New-Item -ItemType Directory -Force -Path $env:NUGET_PACKAGES | Out-Null
 
 if ($env:DOTNET_CLI_HOME -eq $null -or $env:DOTNET_CLI_HOME -eq "") {
-    $env:DOTNET_CLI_HOME = Join-Path $env:TEMP "ooxml-dotnet-home"
+    $env:DOTNET_CLI_HOME = Join-Path $tempRoot "ooxml-dotnet-home"
 }
 New-Item -ItemType Directory -Force -Path $env:DOTNET_CLI_HOME | Out-Null
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
@@ -1142,7 +1160,7 @@ elseif (-not (Test-Path -LiteralPath $BinaryPath -PathType Leaf)) {
 
 $dotnet = Resolve-DotNetExe -Requested $DotNetExe
 if ($OpenXmlValidatorProject -eq "") {
-    $OpenXmlValidatorProject = Join-Path $root "tools\openxml-validator\openxml-validator.csproj"
+    $OpenXmlValidatorProject = Join-Path (Join-Path (Join-Path $root "tools") "openxml-validator") "openxml-validator.csproj"
 }
 
 $runOpenXmlSdk = $false
@@ -1157,7 +1175,7 @@ if (-not $SkipOpenXmlSdk) {
     }
     else {
         $validatorRoot = Split-Path -Parent $OpenXmlValidatorProject
-        $openXmlValidatorDll = Join-Path $validatorRoot "bin\Release\net8.0\openxml-validator.dll"
+        $openXmlValidatorDll = Join-Path (Join-Path (Join-Path (Join-Path $validatorRoot "bin") "Release") "net8.0") "openxml-validator.dll"
         $nugetConfig = Join-Path $outRoot "NuGet.Config"
         Set-Content -LiteralPath $nugetConfig -Encoding UTF8 -Value @(
             '<?xml version="1.0" encoding="utf-8"?>',
@@ -1200,20 +1218,24 @@ if (-not $SkipOpenXmlSdk) {
     }
 }
 
-$xlsxMinimal = Join-Path $root "testdata\xlsx\minimal-workbook\workbook.xlsx"
-$pptxMinimal = Join-Path $root "testdata\pptx\minimal-title\presentation.pptx"
-$pptxSlideAssemblyTarget = Join-Path $root "testdata\pptx\slide-assembly-multi\presentation.pptx"
-$pptxSlideAssemblySource = Join-Path $root "testdata\pptx\slide-assembly-notes-media\presentation.pptx"
-$pptxPicturePlaceholder = Join-Path $root "testdata\pptx\picture-placeholder\presentation.pptx"
-$pptxTableSlide = Join-Path $root "testdata\pptx\table-slide\presentation.pptx"
-$pptxHeaderFooter = Join-Path $root "testdata\pptx\header-footer\presentation.pptx"
-$docxMinimal = Join-Path $root "testdata\docx\minimal\document.docx"
-$docxApplyStyles = Join-Path $root "testdata\docx\apply-styles\document.docx"
-$docxTable = Join-Path $root "testdata\docx\table\document.docx"
-$docxWithFields = Join-Path $root "testdata\docx\with-fields\document.docx"
-$docxWithImage = Join-Path $root "testdata\docx\with-image\document.docx"
-$docxWithComments = Join-Path $root "testdata\docx\with-comments\document.docx"
-$imageFixture = Join-Path $root "testdata\pptx\template-branded\test-image.png"
+$testdataRoot = Join-Path $root "testdata"
+$xlsxTestdata = Join-Path $testdataRoot "xlsx"
+$pptxTestdata = Join-Path $testdataRoot "pptx"
+$docxTestdata = Join-Path $testdataRoot "docx"
+$xlsxMinimal = Join-Path (Join-Path $xlsxTestdata "minimal-workbook") "workbook.xlsx"
+$pptxMinimal = Join-Path (Join-Path $pptxTestdata "minimal-title") "presentation.pptx"
+$pptxSlideAssemblyTarget = Join-Path (Join-Path $pptxTestdata "slide-assembly-multi") "presentation.pptx"
+$pptxSlideAssemblySource = Join-Path (Join-Path $pptxTestdata "slide-assembly-notes-media") "presentation.pptx"
+$pptxPicturePlaceholder = Join-Path (Join-Path $pptxTestdata "picture-placeholder") "presentation.pptx"
+$pptxTableSlide = Join-Path (Join-Path $pptxTestdata "table-slide") "presentation.pptx"
+$pptxHeaderFooter = Join-Path (Join-Path $pptxTestdata "header-footer") "presentation.pptx"
+$docxMinimal = Join-Path (Join-Path $docxTestdata "minimal") "document.docx"
+$docxApplyStyles = Join-Path (Join-Path $docxTestdata "apply-styles") "document.docx"
+$docxTable = Join-Path (Join-Path $docxTestdata "table") "document.docx"
+$docxWithFields = Join-Path (Join-Path $docxTestdata "with-fields") "document.docx"
+$docxWithImage = Join-Path (Join-Path $docxTestdata "with-image") "document.docx"
+$docxWithComments = Join-Path (Join-Path $docxTestdata "with-comments") "document.docx"
+$imageFixture = Join-Path (Join-Path $pptxTestdata "template-branded") "test-image.png"
 $audioFixture = Join-Path $outRoot "smoke-audio.wav"
 New-SmokeWavFile -Path $audioFixture
 
@@ -1762,7 +1784,7 @@ for ($i = 0; $i -lt $scenarios.Count; $i++) {
 Write-Host ("[scenarios] running {0} mutation/validation scenario(s) with parallelism {1}" -f $scenarios.Count, $MutationParallelism)
 $results = @(Invoke-ScenarioSet -Scenarios $scenarios -BinaryPath $BinaryPath -DotNetExe $dotnet -OpenXmlValidatorDll $openXmlValidatorDll -RunOpenXmlSdk $runOpenXmlSdk -RunConformance ([bool]$RunConformance) -RequireOpenXmlSdk ([bool]$RequireOpenXmlSdk) -Parallelism $MutationParallelism)
 
-$oracle = Join-Path $root "tools\windows-office-oracle.ps1"
+$oracle = Join-Path (Join-Path $root "tools") "windows-office-oracle.ps1"
 $oracleInputs = @($results | Where-Object {
     $_.mutation.status -eq "passed" -and
     $_.validation.status -eq "passed" -and
