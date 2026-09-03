@@ -202,6 +202,10 @@ fn powershell_smoke_has_cross_platform_data_root_fallbacks() {
     assert!(smoke.contains("[string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)"));
     assert!(smoke.contains("[string]::IsNullOrWhiteSpace($env:APPDATA)"));
     assert!(!smoke.contains("Join-Path $env:TEMP"));
+    assert!(
+        smoke.contains("[System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName")
+    );
+    assert!(!smoke.contains("& powershell.exe @matrixArgs"));
 
     let backslash_join_paths = smoke
         .lines()

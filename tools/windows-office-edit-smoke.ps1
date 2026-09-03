@@ -1998,10 +1998,14 @@ if ($WriteArtifactProofMatrix -or $FailOnArtifactProofGap) {
 
     $artifactProofMatrix.json = $ArtifactProofMatrixJson
     $artifactProofMatrix.markdown = $ArtifactProofMatrixMarkdown
-    $artifactProofMatrix.command = Format-CommandLine -FilePath "powershell.exe" -Arguments $matrixArgs
+    $powershellHost = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    if ([string]::IsNullOrWhiteSpace($powershellHost)) {
+        throw "Could not resolve the current PowerShell host executable."
+    }
+    $artifactProofMatrix.command = Format-CommandLine -FilePath $powershellHost -Arguments $matrixArgs
 
     Write-Host ("[artifact-proof-matrix] {0}" -f $artifactProofMatrix.command)
-    & powershell.exe @matrixArgs
+    & $powershellHost @matrixArgs
     $matrixExitCode = $LASTEXITCODE
     $artifactProofMatrix.exitCode = $matrixExitCode
     $artifactProofMatrix.status = if ($matrixExitCode -eq 0) { "written" } else { "failed" }
