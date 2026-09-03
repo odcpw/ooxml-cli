@@ -42,6 +42,7 @@ mod inspect;
 mod json_util;
 mod mcp;
 mod mcp_support;
+mod mutation_envelope;
 mod opc;
 mod outline;
 mod package_discovery;
@@ -348,17 +349,28 @@ pub fn run_process(raw_args: &[String]) -> i32 {
         }
     }
     match parsed.and_then(|(flags, args, aliases_applied)| {
-        run(flags, args).map(|output| (output, aliases_applied))
-    }) {
-        Ok((mut output, aliases_applied)) => {
-            if !aliases_applied.is_empty()
-                && let DispatchBody::Json(Value::Object(body)) = &mut output.body
+        let command_args = args.clone();
+        run(flags, args).and_then(|mut output| {
+            if output.exit_code == EXIT_SUCCESS
+                && let DispatchBody::Json(body) = &mut output.body
             {
-                body.insert(
-                    "aliasesApplied".to_string(),
-                    serde_json::to_value(aliases_applied).expect("serialize applied flag aliases"),
-                );
+                let aliases_value =
+                    serde_json::to_value(&aliases_applied).expect("serialize applied flag aliases");
+                if !aliases_applied.is_empty()
+                    && let Value::Object(object) = body
+                {
+                    object.insert("aliasesApplied".to_string(), aliases_value.clone());
+                }
+                mutation_envelope::attach_cli_mutation_envelope(
+                    &command_args,
+                    aliases_value.as_array().cloned().unwrap_or_default(),
+                    body,
+                )?;
             }
+            Ok(output)
+        })
+    }) {
+        Ok(output) => {
             match output.body {
                 DispatchBody::Json(value) => {
                     println!(
@@ -451,6 +463,16 @@ fn run(flags: GlobalFlags, args: Vec<String>) -> CliResult<RunOutput> {
         return Err(CliError::invalid_args(
             "text output is not supported for this command; use --json or --format json",
         ));
+    }
+    if let [cmd, schema_flag, schema, rest @ ..] = args.as_slice()
+        && cmd == "capabilities"
+        && schema_flag == "--schema"
+        && schema == "mutation-envelope"
+    {
+        return Ok(RunOutput {
+            body: DispatchBody::Json(mutation_envelope::schema_command(rest)?),
+            exit_code: EXIT_SUCCESS,
+        });
     }
     if let [cmd, rest @ ..] = args.as_slice()
         && cmd == "validate"
