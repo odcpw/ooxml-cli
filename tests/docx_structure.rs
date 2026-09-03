@@ -355,6 +355,189 @@ fn toc_field_has_placeholder_update_fields_and_readback_warning() {
     fs::remove_dir_all(temp).unwrap();
 }
 
+#[test]
+fn footer_page_numbers_use_page_and_numpages_fields() {
+    let temp = temp_dir("page-numbers");
+    let source = temp.join("source.docx");
+    let output = temp.join("numbered.docx");
+    run_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path(&source),
+        "--text",
+        "Quarterly report",
+    ]);
+    let report = run_ok(&[
+        "--json",
+        "docx",
+        "footers",
+        "set-text",
+        path(&source),
+        "--page-numbers",
+        "--out",
+        path(&output),
+    ]);
+    assert_eq!(report["pageNumbers"], true);
+    assert_eq!(report["text"], "Page 1 of 1");
+    assert!(
+        report["documentHash"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:")
+    );
+    let footer = zip_text(&output, "word/footer1.xml");
+    assert!(footer.contains(r#"w:instr=" PAGE ""#));
+    assert!(footer.contains(r#"w:instr=" NUMPAGES ""#));
+    assert!(footer.contains("Page "));
+    assert!(footer.contains(" of "));
+    let fields = run_ok(&["--json", "docx", "fields", "list", path(&output)]);
+    assert_eq!(fields["fields"].as_array().unwrap().len(), 2);
+    for package in [&source, &output] {
+        assert_all_proofs(package);
+    }
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn quarterly_report_recipe_renders_all_structure_features() {
+    let temp = temp_dir("quarterly-report");
+    let mut produced = Vec::new();
+    let scaffold = temp.join("00-scaffold.docx");
+    run_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path(&scaffold),
+        "--text",
+        "Quarterly Report",
+    ]);
+    produced.push(scaffold.clone());
+    let numbered = temp.join("01-numbered.docx");
+    run_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "append",
+        path(&scaffold),
+        "--text",
+        "Executive summary",
+        "--list",
+        "number",
+        "--restart",
+        "--out",
+        path(&numbered),
+    ]);
+    produced.push(numbered.clone());
+    let bullet = temp.join("02-bullet.docx");
+    run_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "append",
+        path(&numbered),
+        "--text",
+        "Delivery remained on plan",
+        "--list",
+        "bullet",
+        "--out",
+        path(&bullet),
+    ]);
+    produced.push(bullet.clone());
+
+    let mut rows = vec![serde_json::json!(["Metric", "Value", "Status"])];
+    for index in 1..=90 {
+        rows.push(serde_json::json!([
+            format!("Quarterly metric {index}"),
+            index * 100,
+            "On plan"
+        ]));
+    }
+    let values = serde_json::to_string(&rows).unwrap();
+    let table = temp.join("03-table.docx");
+    let report = run_owned_ok(vec![
+        "--json".into(),
+        "docx".into(),
+        "tables".into(),
+        "create".into(),
+        path(&bullet).into(),
+        "--values".into(),
+        values,
+        "--style".into(),
+        "TableLight".into(),
+        "--header-row".into(),
+        "--widths".into(),
+        "3in,1in,1.5in".into(),
+        "--caption".into(),
+        "Quarterly metrics".into(),
+        "--out".into(),
+        path(&table).into(),
+    ]);
+    produced.push(table.clone());
+    let image_after = report["blockHashes"].as_array().unwrap().len();
+    let image_hash = report["blockHashes"][image_after - 1]["contentHash"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let image_file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/test_image.png");
+    let image = temp.join("04-image.docx");
+    run_owned_ok(vec![
+        "--json".into(),
+        "docx".into(),
+        "images".into(),
+        "insert".into(),
+        path(&table).into(),
+        "--after".into(),
+        image_after.to_string(),
+        "--expect-hash".into(),
+        image_hash,
+        "--file".into(),
+        path(&image_file).into(),
+        "--width".into(),
+        "2in".into(),
+        "--height".into(),
+        "1in".into(),
+        "--caption".into(),
+        "Quarterly trend".into(),
+        "--align".into(),
+        "center".into(),
+        "--out".into(),
+        path(&image).into(),
+    ]);
+    produced.push(image.clone());
+    let toc = temp.join("05-toc.docx");
+    run_ok(&[
+        "--json",
+        "docx",
+        "fields",
+        "insert",
+        path(&image),
+        "--toc",
+        "--levels",
+        "1-3",
+        "--out",
+        path(&toc),
+    ]);
+    produced.push(toc.clone());
+    let final_docx = temp.join("quarterly-report.docx");
+    run_ok(&[
+        "--json",
+        "docx",
+        "footers",
+        "set-text",
+        path(&toc),
+        "--page-numbers",
+        "--out",
+        path(&final_docx),
+    ]);
+    produced.push(final_docx.clone());
+    for package in &produced {
+        assert_all_proofs(package);
+    }
+    assert_quarterly_report_render(&final_docx, &temp);
+    fs::remove_dir_all(temp).unwrap();
+}
+
 fn build_list_document(temp: &Path, label: &str) -> PathBuf {
     let mut current = temp.join(format!("{label}-0.docx"));
     run_ok(&[
@@ -428,6 +611,79 @@ fn run_ok(args: &[&str]) -> Value {
     let (output, report) = run(args);
     assert!(output.status.success(), "{args:?}: {report}");
     report
+}
+
+fn run_owned_ok(args: Vec<String>) -> Value {
+    let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    run_ok(&refs)
+}
+
+fn assert_quarterly_report_render(package: &Path, temp: &Path) {
+    if !Path::new("/usr/bin/soffice").is_file() {
+        println!("SKIP LibreOffice quarterly report render: /usr/bin/soffice unavailable");
+        return;
+    }
+    let output_dir = temp.join("rendered");
+    fs::create_dir_all(&output_dir).unwrap();
+    let profile = temp.join("lo-profile");
+    let profile_url = format!("-env:UserInstallation=file://{}", path(&profile));
+    let output = Command::new("/usr/bin/soffice")
+        .args([
+            "--headless",
+            &profile_url,
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            path(&output_dir),
+            path(package),
+        ])
+        .output()
+        .expect("run LibreOffice");
+    assert!(
+        output.status.success(),
+        "LibreOffice: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let pdf = output_dir.join("quarterly-report.pdf");
+    assert!(
+        pdf.is_file(),
+        "LibreOffice did not produce {}",
+        pdf.display()
+    );
+    let info = Command::new("pdfinfo")
+        .arg(&pdf)
+        .output()
+        .expect("run pdfinfo");
+    assert!(info.status.success());
+    let info = String::from_utf8_lossy(&info.stdout);
+    let pages = info
+        .lines()
+        .find_map(|line| line.strip_prefix("Pages:"))
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(0);
+    assert!(pages >= 2, "quarterly report should span pages: {info}");
+    let text_file = temp.join("quarterly-report.txt");
+    let extracted = Command::new("pdftotext")
+        .args([pdf.as_os_str(), text_file.as_os_str()])
+        .output()
+        .expect("run pdftotext");
+    assert!(extracted.status.success());
+    let text = fs::read_to_string(text_file).unwrap();
+    assert!(
+        text.matches("Metric").count() >= 2,
+        "repeating table header missing: {text}"
+    );
+    for expected in [
+        "Executive summary",
+        "Delivery remained on plan",
+        "Quarterly trend",
+        "Page",
+    ] {
+        assert!(
+            text.contains(expected),
+            "rendered report missing {expected:?}"
+        );
+    }
 }
 
 fn assert_all_proofs(package: &Path) {

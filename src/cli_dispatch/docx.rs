@@ -442,7 +442,7 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                     "--out",
                     "--backup",
                 ],
-                &["--dry-run", "--in-place", "--no-validate"],
+                &["--page-numbers", "--dry-run", "--in-place", "--no-validate"],
             )?;
             let id = parse_string_flag(rest, "--id")?.unwrap_or_default();
             let ref_type =
@@ -470,12 +470,24 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
             }
             let text = parse_string_flag(rest, "--text")?;
             let text_file = parse_string_flag(rest, "--text-file")?;
-            let text = resolve_required_docx_table_text(
-                text.as_deref(),
-                text_file.as_deref(),
-                parse_string_flag(rest, "--text")?.is_some(),
-                parse_string_flag(rest, "--text-file")?.is_some(),
-            )?;
+            let page_numbers = has_flag(rest, "--page-numbers");
+            let text_set = parse_string_flag(rest, "--text")?.is_some();
+            let text_file_set = parse_string_flag(rest, "--text-file")?.is_some();
+            let text = if page_numbers {
+                if group != "footers" || text_set || text_file_set {
+                    return Err(CliError::invalid_args(
+                        "--page-numbers is footer-only and cannot be combined with --text or --text-file",
+                    ));
+                }
+                "Page 1 of 1".to_string()
+            } else {
+                resolve_required_docx_table_text(
+                    text.as_deref(),
+                    text_file.as_deref(),
+                    text_set,
+                    text_file_set,
+                )?
+            };
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             let dry_run = has_flag(rest, "--dry-run");
@@ -493,6 +505,7 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                     selector_given: selector.is_some(),
                     index_given: parse_string_flag(rest, "--index")?.is_some(),
                     text: &text,
+                    page_numbers,
                     out: out.as_deref(),
                     backup: backup.as_deref(),
                     dry_run,

@@ -1,10 +1,11 @@
 use serde_json::{Value, json};
 
-use super::super::super::op::{ServeOp, push_serve_plan_string_flag};
+use super::super::super::op::{ServeOp, push_serve_plan_bool_flag, push_serve_plan_string_flag};
 use crate::command_manifest::DocxCommandId;
 use crate::{
-    CliError, CliResult, DocxHeaderFooterSetTextOptions, docx_headers_footers_set_text, json_i64,
-    json_optional_string, normalize_docx_header_footer_show_type, resolve_required_docx_table_text,
+    CliError, CliResult, DocxHeaderFooterSetTextOptions, docx_headers_footers_set_text, json_bool,
+    json_i64, json_optional_string, normalize_docx_header_footer_show_type,
+    resolve_required_docx_table_text,
 };
 
 pub(super) fn serve_docx_headers_footers_op(
@@ -34,12 +35,24 @@ pub(super) fn serve_docx_headers_footers_op(
                 .or_else(|| json_optional_string(args, "textFile"));
             let text_set = args.get("text").is_some();
             let text_file_set = args.get("text-file").is_some() || args.get("textFile").is_some();
-            let text = resolve_required_docx_table_text(
-                text.as_deref(),
-                text_file.as_deref(),
-                text_set,
-                text_file_set,
-            )?;
+            let page_numbers = json_bool(args, "page-numbers")
+                .or_else(|| json_bool(args, "pageNumbers"))
+                .unwrap_or(false);
+            let text = if page_numbers {
+                if kind != "footer" || text_set || text_file_set {
+                    return Err(CliError::invalid_args(
+                        "page-numbers is footer-only and cannot be combined with text or text-file",
+                    ));
+                }
+                "Page 1 of 1".to_string()
+            } else {
+                resolve_required_docx_table_text(
+                    text.as_deref(),
+                    text_file.as_deref(),
+                    text_set,
+                    text_file_set,
+                )?
+            };
             let readback = docx_headers_footers_set_text(
                 working,
                 kind,
@@ -52,6 +65,7 @@ pub(super) fn serve_docx_headers_footers_op(
                     selector_given: selector.is_some(),
                     index_given: index_value.is_some(),
                     text: &text,
+                    page_numbers,
                     out: None,
                     backup: None,
                     dry_run: false,
@@ -60,6 +74,11 @@ pub(super) fn serve_docx_headers_footers_op(
                 },
             )?;
             let mut plan_flags = Vec::new();
+            push_serve_plan_bool_flag(
+                &mut plan_flags,
+                "--page-numbers",
+                page_numbers.then_some(true),
+            );
             push_serve_plan_string_flag(
                 &mut plan_flags,
                 "--id",

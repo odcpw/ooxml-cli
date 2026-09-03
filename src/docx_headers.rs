@@ -16,7 +16,7 @@ use selectors::{
     resolve_docx_header_footer_selector,
 };
 pub(crate) use text_mutation::docx_header_footer_root_tag;
-use text_mutation::set_docx_header_footer_text_xml;
+use text_mutation::{set_docx_footer_page_numbers_xml, set_docx_header_footer_text_xml};
 
 use quick_xml::NsReader;
 use quick_xml::events::Event;
@@ -53,6 +53,7 @@ pub(crate) struct DocxHeaderFooterSetTextOptions<'a> {
     pub(crate) selector_given: bool,
     pub(crate) index_given: bool,
     pub(crate) text: &'a str,
+    pub(crate) page_numbers: bool,
     pub(crate) out: Option<&'a str>,
     pub(crate) backup: Option<&'a str>,
     pub(crate) dry_run: bool,
@@ -205,12 +206,21 @@ pub(crate) fn docx_headers_footers_set_text(
             CliError::target_not_found(format!("{kind} part not found: {}", reference.part_uri))
         })?
     };
-    let mutation = set_docx_header_footer_text_xml(
-        &part_xml,
-        &reference.part_uri,
-        options.index,
-        options.text,
-    )?;
+    if options.page_numbers && kind != "footer" {
+        return Err(CliError::invalid_args(
+            "--page-numbers is supported only for footers set-text",
+        ));
+    }
+    let mutation = if options.page_numbers {
+        set_docx_footer_page_numbers_xml(&part_xml, &reference.part_uri, options.index)?
+    } else {
+        set_docx_header_footer_text_xml(
+            &part_xml,
+            &reference.part_uri,
+            options.index,
+            options.text,
+        )?
+    };
 
     let mut overrides = BTreeMap::new();
     if let Some(xml) = document_override.filter(|xml| xml != &document_xml) {
@@ -284,6 +294,7 @@ pub(crate) fn docx_headers_footers_set_text(
     );
     result.insert("previousText".to_string(), json!(mutation.previous_text));
     result.insert("text".to_string(), json!(options.text));
+    result.insert("pageNumbers".to_string(), json!(options.page_numbers));
     result.insert("createdPart".to_string(), json!(created_part));
     result.insert("createdRef".to_string(), json!(created_ref));
     add_docx_header_footer_readback_commands(

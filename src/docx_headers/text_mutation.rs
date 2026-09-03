@@ -60,6 +60,66 @@ pub(super) fn set_docx_header_footer_text_xml(
     })
 }
 
+pub(super) fn set_docx_footer_page_numbers_xml(
+    xml: &str,
+    part_uri: &str,
+    index: i64,
+) -> CliResult<DocxHeaderFooterTextMutation> {
+    let root_tag = docx_header_footer_root_tag(xml, part_uri)?;
+    let root_start = xml
+        .find(&format!("<{root_tag}"))
+        .ok_or_else(|| CliError::unexpected(format!("part {part_uri} is not a footer")))?;
+    let root_open_end = xml[root_start..]
+        .find('>')
+        .map(|offset| root_start + offset)
+        .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?;
+    let root_close_start = xml
+        .rfind(&format!("</{root_tag}>"))
+        .ok_or_else(|| CliError::unexpected("invalid DOCX XML"))?;
+    let paragraphs: Vec<XmlNamedRange> =
+        xml_direct_child_ranges(xml, root_open_end + 1, root_close_start)?
+            .into_iter()
+            .filter(|child| child.kind == "p")
+            .collect();
+    let paragraph = paragraphs.get(index as usize - 1).ok_or_else(|| {
+        CliError::target_not_found(format!("target not found: footer paragraph {index}"))
+    })?;
+    let fragment = &xml[paragraph.start..paragraph.end];
+    let previous_text = docx_paragraph_fragment_text(fragment);
+    let updated_paragraph = replace_docx_footer_page_numbers_fragment(fragment)?;
+    let mut out = String::with_capacity(xml.len() + updated_paragraph.len());
+    out.push_str(&xml[..paragraph.start]);
+    out.push_str(&updated_paragraph);
+    out.push_str(&xml[paragraph.end..]);
+    Ok(DocxHeaderFooterTextMutation {
+        xml: out,
+        index,
+        previous_text,
+    })
+}
+
+fn replace_docx_footer_page_numbers_fragment(fragment: &str) -> CliResult<String> {
+    let (open_end, tag_name, close_start, self_closing) = xml_fragment_bounds(fragment)?;
+    let prefix = xml_tag_prefix(&tag_name);
+    let mut paragraph_properties = String::new();
+    if !self_closing {
+        for child in xml_direct_child_ranges(fragment, open_end + 1, close_start)? {
+            if child.kind == "pPr" {
+                paragraph_properties.push_str(&fragment[child.start..child.end]);
+                break;
+            }
+        }
+    }
+    let r = word_xml_tag(&prefix, "r");
+    let t = word_xml_tag(&prefix, "t");
+    let fld = word_xml_tag(&prefix, "fldSimple");
+    let instr = word_xml_tag(&prefix, "instr");
+    Ok(format!(
+        r#"{}{paragraph_properties}<{r}><{t} xml:space="preserve">Page </{t}></{r}><{fld} {instr}=" PAGE "><{r}><{t}>1</{t}></{r}></{fld}><{r}><{t} xml:space="preserve"> of </{t}></{r}><{fld} {instr}=" NUMPAGES "><{r}><{t}>1</{t}></{r}></{fld}></{tag_name}>"#,
+        xml_open_tag_from_start(&fragment[..=open_end])
+    ))
+}
+
 fn replace_docx_header_footer_paragraph_fragment(fragment: &str, text: &str) -> CliResult<String> {
     let (open_end, tag_name, close_start, self_closing) = xml_fragment_bounds(fragment)?;
     let start_tag = &fragment[..=open_end];
