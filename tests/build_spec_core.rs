@@ -62,6 +62,31 @@ fn capabilities_publishes_each_pinned_build_schema() {
         let actual: Value = serde_json::from_slice(&output.stdout).expect("schema JSON stdout");
         assert_eq!(actual, schema_by_name(family.schema_name()).unwrap());
     }
+
+    let output = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args(["--json", "capabilities"])
+        .output()
+        .expect("run capabilities inventory");
+    assert!(output.status.success());
+    let capabilities: Value = serde_json::from_slice(&output.stdout).expect("capabilities JSON");
+    let command = capabilities["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|command| command["path"] == "ooxml capabilities")
+        .expect("capabilities command row");
+    let schema_flag = command["localFlags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|flag| flag["name"] == "--schema")
+        .expect("capabilities schema flag");
+    for name in ["brand", "pptx-build", "xlsx-build", "docx-build"] {
+        assert!(
+            schema_flag["description"].as_str().unwrap().contains(name),
+            "schema flag must document {name}"
+        );
+    }
 }
 
 #[test]

@@ -60,7 +60,7 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
         spec(
             CoreCommandId::Capabilities,
             &["capabilities"],
-            "capabilities [--for <filter>|--schema brand]",
+            "capabilities [--for <filter>|--schema <name>]",
             "Emit the Rust-supported machine-readable command and object inventory.",
             &[],
             direct("read-only self-description command"),
@@ -75,7 +75,7 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "--schema",
                     "schema",
                     "string",
-                    "print a published input schema; supported value: brand",
+                    "print a published input schema; supported values: brand, pptx-build, xlsx-build, docx-build",
                 ),
             ],
         ),
