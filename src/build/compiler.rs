@@ -331,16 +331,14 @@ fn copy_brand_arg(document: &Map<String, Value>, args: &mut Map<String, Value>) 
 }
 
 fn validate_op_id(op_id: &str) -> Result<(), String> {
-    let mut chars = op_id.chars();
-    let Some(first) = chars.next() else {
-        return Err("build operation id must not be empty".to_string());
-    };
-    if !first.is_ascii_alphabetic()
-        || !chars
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    if op_id.is_empty()
+        || op_id.len() > 128
+        || !op_id.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | ':')
+        })
     {
         return Err(format!(
-            "build operation id {op_id:?} must start with an ASCII letter and contain only letters, digits, '-' or '_'"
+            "build operation id {op_id:?} must contain 1-128 ASCII letters, digits, '-', '_' or ':'"
         ));
     }
     Ok(())
@@ -376,7 +374,25 @@ fn validate_args(args: &Map<String, Value>) -> Result<(), String> {
             .collect::<String>();
         if matches!(
             normalized.as_str(),
-            "file" | "out" | "inplace" | "dryrun" | "novalidate" | "backup" | "session"
+            "file"
+                | "out"
+                | "output"
+                | "inplace"
+                | "dryrun"
+                | "backup"
+                | "novalidate"
+                | "session"
+                | "json"
+                | "pretty"
+                | "nocolor"
+                | "keeptemp"
+                | "tempdir"
+                | "verbosity"
+                | "strict"
+                | "help"
+                | "h"
+                | "o"
+                | "v"
         ) {
             return Err(format!(
                 "operation arg {key:?} is session-owned and must be omitted from a build plan"

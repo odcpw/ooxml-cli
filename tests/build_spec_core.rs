@@ -311,4 +311,21 @@ fn compiler_preserves_recursive_refs_and_rejects_unsafe_or_unresolved_ops() {
     assert_eq!(error.path, "/sheets/0");
     assert_eq!(error.op_id.as_deref(), Some("sheet"));
     assert!(error.message.contains("session-owned"), "{error:?}");
+
+    assert_eq!(
+        operation_reference("slide:1", "destination.primarySelector").unwrap(),
+        json!({"$ref": "slide:1.destination.primarySelector"})
+    );
+    let error = unsafe_args
+        .push_operation(
+            "/sheets/1",
+            None,
+            "sheet:2",
+            "xlsx sheets add",
+            Map::from_iter([("pretty".to_string(), json!(true))]),
+            "destination.primarySelector",
+        )
+        .expect_err("global formatting arg must remain session-owned");
+    assert_eq!(error.path, "/sheets/1");
+    assert!(error.message.contains("session-owned"), "{error:?}");
 }
