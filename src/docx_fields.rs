@@ -18,6 +18,93 @@ use crate::{
     zip_entry_names, zip_text,
 };
 
+pub(crate) fn docx_fields_insert_toc(
+    file: &str,
+    levels: &str,
+    options: DocxParagraphMutationOptions<'_>,
+) -> CliResult<Value> {
+    let (first, last) = parse_toc_levels(levels)?;
+    validate_xlsx_mutation_output_flags(
+        options.out,
+        options.in_place,
+        options.backup,
+        options.dry_run,
+    )?;
+    let entries = zip_entry_names(file)?;
+    ensure_docx_package_kind(file, &entries)?;
+    let document_part = find_docx_document_part(file, &entries)?;
+    let xml = zip_text(file, &document_part)?;
+    let body_tag = docx_body_tag(&xml)?;
+    let prefix = crate::docx_body_prefix(&body_tag);
+    let (_, body_end) = crate::docx_body_content_bounds(&xml, &body_tag)?;
+    let insert_at = crate::docx_headers::docx_section_ranges(&xml)?
+        .last()
+        .filter(|range| range.end == body_end)
+        .map_or(body_end, |range| range.start);
+    let instruction = format!(r#"TOC \o "{first}-{last}" \h \z \u"#);
+    let p = word_xml_tag(&prefix, "p");
+    let field = render_docx_simple_field(
+        &prefix,
+        &instruction,
+        "Table of contents — update field to refresh",
+    );
+    let paragraph = format!("<{p}>{field}</{p}>");
+    let mut updated = String::with_capacity(xml.len() + paragraph.len());
+    updated.push_str(&xml[..insert_at]);
+    updated.push_str(&paragraph);
+    updated.push_str(&xml[insert_at..]);
+    let settings_part = "word/settings.xml";
+    let settings = zip_text(file, settings_part).map_err(|_| {
+        CliError::invalid_args("--toc requires word/settings.xml; use a DOCX scaffold")
+    })?;
+    let settings = enable_docx_update_fields(&settings)?;
+    let mut overrides = BTreeMap::new();
+    overrides.insert(document_part, updated);
+    overrides.insert(settings_part.to_string(), settings);
+    let output_path = docx_mutation_output_path_for_result(file, &options);
+    write_docx_package_mutation_output(file, &overrides, options)?;
+    Ok(json!({
+        "file": file, "operation": "inserted", "fieldType": "simple", "instruction": instruction,
+        "cachedResult": "Table of contents — update field to refresh", "levels": format!("{first}-{last}"),
+        "updateFields": true, "output": output_path,
+        "warnings": [{"code": "DOCX_FIELD_UPDATE_REQUIRED", "message": "TOC contents are cached until an Office application updates fields"}]
+    }))
+}
+
+fn parse_toc_levels(raw: &str) -> CliResult<(u32, u32)> {
+    let (first, last) = raw
+        .trim()
+        .split_once('-')
+        .ok_or_else(|| CliError::invalid_args("--levels must be a range such as 1-3"))?;
+    let first = first.parse::<u32>().ok();
+    let last = last.parse::<u32>().ok();
+    match (first, last) {
+        (Some(first), Some(last)) if first >= 1 && last <= 9 && first <= last => Ok((first, last)),
+        _ => Err(CliError::invalid_args(
+            "--levels must be an ascending range from 1-1 through 1-9",
+        )),
+    }
+}
+
+fn enable_docx_update_fields(xml: &str) -> CliResult<String> {
+    if xml.contains(r#"<w:updateFields w:val="true"/>"#) {
+        return Ok(xml.to_string());
+    }
+    if xml.contains(r#"<w:updateFields w:val="false"/>"#) {
+        return Ok(xml.replacen(
+            r#"<w:updateFields w:val="false"/>"#,
+            r#"<w:updateFields w:val="true"/>"#,
+            1,
+        ));
+    }
+    let insert_at = xml
+        .rfind("</w:settings>")
+        .ok_or_else(|| CliError::unexpected("invalid DOCX settings XML"))?;
+    let mut updated = xml.to_string();
+    updated.insert_str(insert_at, r#"<w:updateFields w:val="true"/>"#);
+    Ok(updated)
+}
+
 fn docx_field_code_base(code: &str) -> String {
     code.split_whitespace()
         .next()
@@ -707,7 +794,16 @@ fn normalize_docx_field_instruction(code: &str) -> CliResult<String> {
 fn is_known_docx_field_code(code: &str) -> bool {
     matches!(
         docx_field_code_base(code).as_str(),
-        "PAGE" | "NUMPAGES" | "DATE" | "TIME" | "FILENAME" | "AUTHOR" | "SUBJECT" | "TITLE"
+        "PAGE"
+            | "NUMPAGES"
+            | "DATE"
+            | "TIME"
+            | "FILENAME"
+            | "AUTHOR"
+            | "SUBJECT"
+            | "TITLE"
+            | "TOC"
+            | "SEQ"
     )
 }
 

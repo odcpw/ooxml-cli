@@ -56,11 +56,19 @@ pub(crate) fn docx_fields_list(file: &str, type_filter: Option<&str>) -> CliResu
         fields.retain(|field| docx_field_code_base(&field.instruction) == wanted);
     }
     let fields = fields.iter().map(docx_field_json).collect::<Vec<_>>();
-    Ok(json!({
+    let mut result = json!({
         "file": file,
         "documentPartUri": document_uri,
         "fields": fields,
-    }))
+    });
+    if fields.iter().any(|field| {
+        field["instruction"]
+            .as_str()
+            .is_some_and(|value| value.trim_start().starts_with("TOC"))
+    }) {
+        result["warnings"] = json!([{"code": "DOCX_FIELD_UPDATE_REQUIRED", "message": "TOC contents are cached until an Office application updates fields"}]);
+    }
+    Ok(result)
 }
 
 #[derive(Clone, Default)]

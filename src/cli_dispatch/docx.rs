@@ -318,38 +318,56 @@ fn dispatch_docx_inner(args: &[String]) -> CliResult<Value> {
                     "--location",
                     "--field-code",
                     "--result",
+                    "--levels",
                     "--out",
                     "--backup",
                 ],
-                &["--dry-run", "--in-place", "--no-validate"],
+                &["--toc", "--dry-run", "--in-place", "--no-validate"],
             )?;
-            let location = parse_string_flag(rest, "--location")?.ok_or_else(|| {
-                CliError::invalid_args("--location is required (e.g. body:2 or header1:1)")
-            })?;
-            let field_code = parse_string_flag(rest, "--field-code")?
-                .ok_or_else(|| CliError::invalid_args("--field-code is required (e.g. PAGE)"))?;
-            let result = parse_string_flag(rest, "--result")?.unwrap_or_default();
+            let location = parse_string_flag(rest, "--location")?;
+            let field_code = parse_string_flag(rest, "--field-code")?;
+            let result = parse_string_flag(rest, "--result")?;
+            let levels = parse_string_flag(rest, "--levels")?;
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             let dry_run = has_flag(rest, "--dry-run");
             let in_place = has_flag(rest, "--in-place");
             let no_validate = has_flag(rest, "--no-validate");
-            docx_fields_insert(
-                file,
-                &location,
-                &field_code,
-                &result,
-                DocxParagraphMutationOptions {
-                    text: None,
-                    text_file: None,
-                    style: "",
-                    out: out.as_deref(),
-                    backup: backup.as_deref(),
-                    dry_run,
-                    in_place,
-                    no_validate,
-                },
-            )
+            let mutation = DocxParagraphMutationOptions {
+                text: None,
+                text_file: None,
+                style: "",
+                out: out.as_deref(),
+                backup: backup.as_deref(),
+                dry_run,
+                in_place,
+                no_validate,
+            };
+            if has_flag(rest, "--toc") {
+                if location.is_some() || field_code.is_some() || result.is_some() {
+                    return Err(CliError::invalid_args(
+                        "--toc cannot be combined with --location, --field-code, or --result",
+                    ));
+                }
+                docx_fields_insert_toc(file, levels.as_deref().unwrap_or("1-3"), mutation)
+            } else {
+                if levels.is_some() {
+                    return Err(CliError::invalid_args("--levels requires --toc"));
+                }
+                let location = location.ok_or_else(|| {
+                    CliError::invalid_args("--location is required (e.g. body:2 or header1:1)")
+                })?;
+                let field_code = field_code.ok_or_else(|| {
+                    CliError::invalid_args("--field-code is required (e.g. PAGE)")
+                })?;
+                docx_fields_insert(
+                    file,
+                    &location,
+                    &field_code,
+                    result.as_deref().unwrap_or(""),
+                    mutation,
+                )
+            }
         }
         [cmd, group, verb, file, rest @ ..]
             if cmd == "docx" && group == "fields" && verb == "set-result" =>

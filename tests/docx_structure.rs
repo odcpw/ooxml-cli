@@ -302,6 +302,59 @@ fn image_caption_uses_caption_style_seq_field_and_alignment() {
     fs::remove_dir_all(temp).unwrap();
 }
 
+#[test]
+fn toc_field_has_placeholder_update_fields_and_readback_warning() {
+    let temp = temp_dir("toc");
+    let source = temp.join("source.docx");
+    let output = temp.join("toc.docx");
+    run_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path(&source),
+        "--text",
+        "Quarterly report",
+    ]);
+    let inserted = run_ok(&[
+        "--json",
+        "docx",
+        "fields",
+        "insert",
+        path(&source),
+        "--toc",
+        "--levels",
+        "1-3",
+        "--out",
+        path(&output),
+    ]);
+    assert_eq!(inserted["levels"], "1-3");
+    assert_eq!(inserted["updateFields"], true);
+    assert_eq!(
+        inserted["warnings"][0]["code"],
+        "DOCX_FIELD_UPDATE_REQUIRED"
+    );
+    let settings = zip_text(&output, "word/settings.xml");
+    assert!(settings.contains(r#"<w:updateFields w:val="true"/>"#));
+    let xml = zip_text(&output, "word/document.xml");
+    assert!(xml.contains(r#"w:instr="TOC \o &quot;1-3&quot; \h \z \u""#));
+    assert!(xml.contains("Table of contents — update field to refresh"));
+    let fields = run_ok(&[
+        "--json",
+        "docx",
+        "fields",
+        "list",
+        path(&output),
+        "--type",
+        "TOC",
+    ]);
+    assert_eq!(fields["fields"].as_array().unwrap().len(), 1);
+    assert_eq!(fields["warnings"][0]["code"], "DOCX_FIELD_UPDATE_REQUIRED");
+    for package in [&source, &output] {
+        assert_all_proofs(package);
+    }
+    fs::remove_dir_all(temp).unwrap();
+}
+
 fn build_list_document(temp: &Path, label: &str) -> PathBuf {
     let mut current = temp.join(format!("{label}-0.docx"));
     run_ok(&[
