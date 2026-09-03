@@ -519,6 +519,9 @@ fn pptx_shapes(shapes: &[Shape]) -> Vec<Value> {
             if !shape.text.is_empty() {
                 map.insert("textContent".to_string(), json!(shape.text));
             }
+            if shape.has_text_body {
+                map.insert("paragraphs".to_string(), paragraph_readback(shape));
+            }
             if let Some(table) = shape.table.as_ref() {
                 map.insert("tableInfo".to_string(), table_info_json(table));
             }
@@ -563,6 +566,8 @@ fn pptx_shape_show_entries(
             }
             if !include_text {
                 entry.remove("textPreview");
+            } else if shape.has_text_body {
+                entry.insert("paragraphs".to_string(), paragraph_readback(shape));
             }
             if include_bounds && let Some(bounds) = shape.bounds.as_ref() {
                 entry.insert("bounds".to_string(), bounds_json(bounds));
@@ -591,6 +596,31 @@ fn pptx_shape_show_entries(
             Value::Object(entry)
         })
         .collect()
+}
+
+fn paragraph_readback(shape: &Shape) -> Value {
+    let inherited_body_bullet =
+        shape.placeholder.as_ref().is_some_and(|placeholder| {
+            matches!(placeholder.resolved_type.as_str(), "body" | "obj")
+        }) || (shape.is_placeholder
+            && shape
+                .name
+                .to_ascii_lowercase()
+                .contains("content placeholder"));
+    let paragraphs = shape
+        .paragraphs
+        .iter()
+        .enumerate()
+        .map(|(index, runs)| {
+            let properties = shape.paragraph_properties.get(index);
+            json!({
+                "level": properties.map(|properties| properties.level).unwrap_or_default(),
+                "bullet": properties.and_then(|properties| properties.bullet).unwrap_or(inherited_body_bullet),
+                "text": runs.join(""),
+            })
+        })
+        .collect::<Vec<_>>();
+    Value::Array(paragraphs)
 }
 
 fn select_pptx_shape_entry(shapes: &[Value], target: &str) -> Option<Value> {

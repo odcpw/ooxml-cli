@@ -1,4 +1,59 @@
 #[test]
+fn pptx_new_slide_set_text_reports_independent_bullet_paragraphs() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let output = std::env::temp_dir().join(format!(
+        "ooxml-rust-new-slide-paragraphs-{}-{suffix}.pptx",
+        std::process::id()
+    ));
+    let output_str = output.to_str().expect("paragraph output path");
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "new-slide-from-layout",
+        "testdata/pptx/multi-layout/presentation.pptx",
+        "--layout",
+        "Title and Content",
+        "--set-text",
+        "body=- Alpha\n- Beta\n\t* Nested",
+        "--out",
+        output_str,
+    ]);
+    assert_eq!(code, 0, "new-slide paragraph exit");
+    assert_eq!(stderr, None, "new-slide paragraph stderr");
+    let result = stdout.expect("new-slide paragraph stdout");
+    assert_eq!(result["newSlideNumber"], 5);
+    assert_rust_emitted_ooxml_command_succeeds(&result, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&result, "validateCommand");
+
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "get",
+        output_str,
+        "--slide",
+        "5",
+        "--target",
+        "body",
+        "--include-text",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, None);
+    let paragraphs = stdout.expect("paragraph readback")["shapes"][0]["paragraphs"]
+        .as_array()
+        .cloned()
+        .expect("paragraph array");
+    assert_eq!(paragraphs.len(), 3);
+    assert_eq!(paragraphs[0]["text"], "Alpha");
+    assert_eq!(paragraphs[0]["bullet"], true);
+    assert_eq!(paragraphs[2]["level"], 1);
+    assert_strict_validate_succeeds(output_str, "new-slide paragraph output");
+}
+
+#[test]
 fn pptx_clone_slide_clones_notes_part_and_backlink_like_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -788,4 +843,3 @@ fn pptx_slides_lifecycle_saved_dry_run_readback_and_errors_match_rust_baseline()
         assert_baseline_rust_json_match(&args, label);
     }
 }
-

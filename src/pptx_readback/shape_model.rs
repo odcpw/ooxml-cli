@@ -13,11 +13,18 @@ pub(crate) struct Shape {
     pub(super) has_text_body: bool,
     pub(super) text: String,
     pub(super) paragraphs: Vec<Vec<String>>,
+    pub(super) paragraph_properties: Vec<ParagraphProperties>,
     pub(crate) bounds: Option<Bounds>,
     pub(crate) bounds_source: Option<BoundsSource>,
     pub(super) placeholder: Option<Placeholder>,
     pub(super) image_rel_id: String,
     pub(super) table: Option<TableInfo>,
+}
+
+#[derive(Clone, Default)]
+pub(super) struct ParagraphProperties {
+    pub(super) level: u8,
+    pub(super) bullet: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -349,6 +356,7 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
     let mut current_row: Option<TableRow> = None;
     let mut current_cell: Option<TableCell> = None;
     let mut current_paragraph: Option<Vec<String>> = None;
+    let mut current_paragraph_properties: Option<ParagraphProperties> = None;
     loop {
         let event = reader.read_event();
         let start_name = match &event {
@@ -430,10 +438,38 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
             }
             Ok(Event::Start(_)) if in_shape_text_body && start_name.as_deref() == Some("p") => {
                 current_paragraph = Some(Vec::new());
+                current_paragraph_properties = Some(ParagraphProperties::default());
             }
             Ok(Event::Empty(_)) if in_shape_text_body && start_name.as_deref() == Some("p") => {
                 if let Some(shape) = current.as_mut() {
                     shape.paragraphs.push(Vec::new());
+                    shape
+                        .paragraph_properties
+                        .push(ParagraphProperties::default());
+                }
+            }
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if in_shape_text_body && start_name.as_deref() == Some("pPr") =>
+            {
+                if let Some(properties) = current_paragraph_properties.as_mut() {
+                    properties.level = attr(&e, "lvl")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or_default();
+                }
+            }
+            Ok(Event::Start(_)) | Ok(Event::Empty(_))
+                if in_shape_text_body
+                    && matches!(start_name.as_deref(), Some("buChar" | "buAutoNum")) =>
+            {
+                if let Some(properties) = current_paragraph_properties.as_mut() {
+                    properties.bullet = Some(true);
+                }
+            }
+            Ok(Event::Start(_)) | Ok(Event::Empty(_))
+                if in_shape_text_body && start_name.as_deref() == Some("buNone") =>
+            {
+                if let Some(properties) = current_paragraph_properties.as_mut() {
+                    properties.bullet = Some(false);
                 }
             }
             Ok(Event::Start(e)) | Ok(Event::Empty(e))
@@ -536,6 +572,9 @@ pub(super) fn pptx_shape_models(xml: &str) -> Vec<Shape> {
                     && let Some(shape) = current.as_mut()
                 {
                     shape.paragraphs.push(paragraph);
+                    shape
+                        .paragraph_properties
+                        .push(current_paragraph_properties.take().unwrap_or_default());
                 }
             }
             Ok(Event::End(_)) if in_shape_text_body && end_name.as_deref() == Some("txBody") => {

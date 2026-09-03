@@ -6,6 +6,10 @@ use std::fs;
 use std::path::Path;
 
 use crate::cli_args::value_flag_present;
+use crate::pptx_mutation::paragraphs::{
+    Paragraph, ParagraphContext, ParagraphDefaults, paragraphs_from_file, paragraphs_from_text,
+    render_paragraphs,
+};
 use crate::{
     CliError, CliResult, XlsxRangeExportOptions, add_relationship_to_xml, allocate_relationship_id,
     attr, check_range_max_cells, copy_zip_with_binary_part_overrides_and_removals,
@@ -60,16 +64,9 @@ struct PlacementStage {
 
 struct TextboxRequest {
     slide: u32,
-    text: String,
+    paragraphs: Vec<Paragraph>,
     bounds: Bounds,
     name: String,
-    font_size: f64,
-    font_family: String,
-    bold: bool,
-    italic: bool,
-    color: String,
-    level: i64,
-    align: String,
 }
 
 struct ImageRequest {
@@ -307,33 +304,52 @@ pub(crate) fn pptx_place_table_from_xlsx(file: &str, args: &[String]) -> CliResu
 }
 
 fn parse_add_textbox_request(file: &str, args: &[String]) -> CliResult<TextboxRequest> {
-    require_value_flags(args, &["--slide", "--text"])?;
+    require_value_flags(args, &["--slide"])?;
     require_explicit_geometry_without_slot(args, &["--cx", "--cy"])?;
     let slide = parse_i64_flag(args, "--slide")?.unwrap_or(0);
     if slide < 1 {
         return Err(CliError::invalid_args("--slide must be >= 1"));
     }
-    let text = parse_string_flag(args, "--text")?.unwrap_or_default();
-    if text.is_empty() {
-        return Err(CliError::invalid_args("--text is required"));
+    let text = parse_string_flag(args, "--text")?;
+    let paragraphs_file = parse_string_flag(args, "--paragraphs-file")?;
+    if text.is_some() && paragraphs_file.is_some() {
+        return Err(CliError::invalid_args(
+            "--text and --paragraphs-file are mutually exclusive",
+        ));
+    }
+    if text.as_deref().is_none_or(str::is_empty) && paragraphs_file.is_none() {
+        return Err(CliError::invalid_args(
+            "one of --text or --paragraphs-file is required",
+        ));
     }
     let bounds = resolve_placement_bounds(file, slide as u32, args, true, None)?;
     let font_size = parse_f64_flag(args, "--font-size")?.unwrap_or(18.0);
     let font_family = parse_string_flag(args, "--font")?
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "Calibri".to_string());
+    let level = parse_i64_flag(args, "--level")?.unwrap_or(0);
+    if !(0..=8).contains(&level) {
+        return Err(CliError::invalid_args("--level must be in the range 0..=8"));
+    }
+    let defaults = ParagraphDefaults {
+        level: level as u8,
+        bold: crate::has_flag(args, "--bold").then_some(true),
+        italic: crate::has_flag(args, "--italic").then_some(true),
+        size: Some(font_size),
+        color: parse_string_flag(args, "--color")?.filter(|value| !value.is_empty()),
+        align: parse_string_flag(args, "--align")?.filter(|value| !value.is_empty()),
+        font_family: Some(font_family),
+    };
+    let paragraphs = if let Some(path) = paragraphs_file.as_deref() {
+        paragraphs_from_file(path, &defaults)?
+    } else {
+        paragraphs_from_text(text.as_deref().unwrap_or_default(), &defaults)?
+    };
     Ok(TextboxRequest {
         slide: slide as u32,
-        text,
+        paragraphs,
         bounds,
         name: parse_string_flag(args, "--name")?.unwrap_or_default(),
-        font_size,
-        font_family,
-        bold: crate::has_flag(args, "--bold"),
-        italic: crate::has_flag(args, "--italic"),
-        color: parse_string_flag(args, "--color")?.unwrap_or_default(),
-        level: parse_i64_flag(args, "--level")?.unwrap_or(0),
-        align: parse_string_flag(args, "--align")?.unwrap_or_default(),
     })
 }
 
@@ -889,7 +905,7 @@ fn build_textbox_mutation(file: &str, request: &TextboxRequest) -> CliResult<Tex
     } else {
         request.name.clone()
     };
-    let shape_xml = textbox_shape_xml(shape_id, &shape_name, request);
+    let shape_xml = textbox_shape_xml(shape_id, &shape_name, request)?;
     let updated_slide_xml = insert_shape_into_sp_tree(&slide_xml, &shape_xml)?;
     Ok(TextboxMutation {
         slide: request.slide,
@@ -1032,69 +1048,21 @@ fn insert_shape_into_sp_tree(slide_xml: &str, shape_xml: &str) -> CliResult<Stri
     Ok(insert_xml_at(slide_xml, insert_at, shape_xml))
 }
 
-fn textbox_shape_xml(shape_id: u32, shape_name: &str, request: &TextboxRequest) -> String {
-    let mut paragraph = String::new();
-    paragraph.push_str("<a:p>");
-    if request.level > 0 || !request.align.is_empty() {
-        paragraph.push_str("<a:pPr");
-        if !request.align.is_empty() {
-            paragraph.push_str(&format!(r#" algn="{}""#, xml_attr_escape(&request.align)));
-        }
-        if request.level > 0 {
-            paragraph.push_str(&format!(r#" lvl="{}""#, request.level));
-        }
-        paragraph.push_str("/>");
-    }
-    paragraph.push_str("<a:r>");
-    paragraph.push_str(&run_properties_xml(
-        request.font_size,
-        &request.font_family,
-        request.bold,
-        request.italic,
-        &request.color,
-    ));
-    paragraph.push_str(&text_element_xml(&request.text));
-    paragraph.push_str("</a:r><a:endParaRPr lang=\"en-US\" sz=\"1800\"/></a:p>");
-    format!(
+fn textbox_shape_xml(
+    shape_id: u32,
+    shape_name: &str,
+    request: &TextboxRequest,
+) -> CliResult<String> {
+    let paragraphs = render_paragraphs(&request.paragraphs, ParagraphContext::Textbox)?;
+    Ok(format!(
         r#"<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="{}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="{}" y="{}"/><a:ext cx="{}" cy="{}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr anchor="t" anchorCtr="false" wrap="square" rtlCol="false"/><a:lstStyle/>{paragraph}</p:txBody></p:sp>"#,
         xml_attr_escape(shape_name),
         request.bounds.x,
         request.bounds.y,
         request.bounds.cx,
-        request.bounds.cy
-    )
-}
-
-fn run_properties_xml(
-    font_size: f64,
-    font_family: &str,
-    bold: bool,
-    italic: bool,
-    color: &str,
-) -> String {
-    let size = (font_size * 100.0) as i64;
-    let mut xml = format!(r#"<a:rPr lang="en-US" sz="{size}""#);
-    if bold {
-        xml.push_str(r#" b="1""#);
-    }
-    if italic {
-        xml.push_str(r#" i="1""#);
-    }
-    xml.push('>');
-    if !color.is_empty() {
-        xml.push_str(&format!(
-            r#"<a:solidFill><a:srgbClr val="{}"/></a:solidFill>"#,
-            xml_attr_escape(color)
-        ));
-    }
-    if !font_family.is_empty() {
-        xml.push_str(&format!(
-            r#"<a:latin typeface="{}"/>"#,
-            xml_attr_escape(font_family)
-        ));
-    }
-    xml.push_str("</a:rPr>");
-    xml
+        request.bounds.cy,
+        paragraph = paragraphs,
+    ))
 }
 
 fn text_element_xml(text: &str) -> String {

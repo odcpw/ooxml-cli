@@ -4,6 +4,10 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
 use crate::cli_args::{parse_bool_flag, value_flag_present};
+use crate::pptx_mutation::paragraphs::{
+    Paragraph, ParagraphContext, ParagraphDefaults, paragraphs_from_file, paragraphs_from_text,
+    render_paragraphs,
+};
 use crate::pptx_readback::{pptx_shape_entry_matches, pptx_shapes_get, pptx_shapes_show};
 use crate::{
     CliError, CliResult, RelationshipEntry, allocate_relationship_id, append_xml_text_event, attr,
@@ -74,6 +78,12 @@ struct TextSetMutation {
     applied_runs: Vec<usize>,
     old_properties: Vec<Value>,
     new_properties: Vec<Value>,
+    content: Option<ContentMutationSummary>,
+}
+
+struct ContentMutationSummary {
+    paragraph_count: usize,
+    append: bool,
 }
 
 pub(crate) fn pptx_text_set(file: &str, args: &[String]) -> CliResult<Value> {
@@ -85,6 +95,31 @@ pub(crate) fn pptx_text_set(file: &str, args: &[String]) -> CliResult<Value> {
         .ok_or_else(|| CliError::invalid_args("--target is required"))?;
     if target.trim().is_empty() {
         return Err(CliError::invalid_args("--target is required"));
+    }
+    let text = parse_string_flag(args, "--text")?;
+    let paragraphs_file = parse_string_flag(args, "--paragraphs-file")?;
+    if text.is_some() && paragraphs_file.is_some() {
+        return Err(CliError::invalid_args(
+            "--text and --paragraphs-file are mutually exclusive",
+        ));
+    }
+    if text.is_some() || paragraphs_file.is_some() {
+        reject_run_only_content_flags(args)?;
+        let defaults = paragraph_defaults_from_text_flags(args)?;
+        let paragraphs = if let Some(path) = paragraphs_file.as_deref() {
+            paragraphs_from_file(path, &defaults)?
+        } else {
+            paragraphs_from_text(text.as_deref().unwrap_or_default(), &defaults)?
+        };
+        let options = parse_text_mutation_options(args)?;
+        return set_pptx_text_content(
+            file,
+            slide as u32,
+            &target,
+            &paragraphs,
+            crate::has_flag(args, "--append"),
+            options,
+        );
     }
     let paragraph = parse_i64_flag(args, "--paragraph")?.unwrap_or(0);
     if paragraph < 0 {
@@ -114,6 +149,47 @@ pub(crate) fn pptx_text_set(file: &str, args: &[String]) -> CliResult<Value> {
         &mut run_options,
         options,
     )
+}
+
+fn reject_run_only_content_flags(args: &[String]) -> CliResult<()> {
+    for flag in [
+        "--paragraph",
+        "--run-index",
+        "--underline",
+        "--hyperlink",
+        "--remove-bold",
+        "--remove-italic",
+        "--remove-underline",
+        "--remove-font-size",
+        "--remove-color",
+        "--remove-font-family",
+        "--remove-hyperlink",
+    ] {
+        if flag_changed(args, flag) {
+            return Err(CliError::invalid_args(format!(
+                "{flag} cannot be combined with --text or --paragraphs-file"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn paragraph_defaults_from_text_flags(args: &[String]) -> CliResult<ParagraphDefaults> {
+    let size = parse_string_flag(args, "--font-size")?
+        .map(|value| {
+            value
+                .parse::<f64>()
+                .map_err(|_| CliError::invalid_args("--font-size must be a number"))
+        })
+        .transpose()?;
+    Ok(ParagraphDefaults {
+        bold: parse_bool_flag(args, "--bold")?,
+        italic: parse_bool_flag(args, "--italic")?,
+        size,
+        color: parse_string_flag(args, "--color")?,
+        font_family: parse_string_flag(args, "--font-family")?,
+        ..ParagraphDefaults::default()
+    })
 }
 
 fn parse_text_mutation_options(args: &[String]) -> CliResult<PptxTextMutationOptions> {
@@ -318,6 +394,167 @@ fn set_pptx_text_run_properties(
     Ok(result)
 }
 
+fn set_pptx_text_content(
+    file: &str,
+    slide: u32,
+    target: &str,
+    paragraphs: &[Paragraph],
+    append: bool,
+    options: PptxTextMutationOptions,
+) -> CliResult<Value> {
+    ensure_pptx_package(file)?;
+    let mutation = build_text_content_mutation(file, slide, target, paragraphs, append)?;
+    let output_path = text_mutation_output_path(file, &options);
+    let staged_path = stage_text_mutation(file, &mutation, &options)?;
+    let destination = read_shape_destination(
+        &staged_path,
+        mutation.slide,
+        &mutation.target,
+        output_path.as_deref(),
+        true,
+    )?;
+    let result = text_set_result_json(file, &mutation, output_path.as_deref(), destination);
+    finish_text_mutation(file, &staged_path, &options, output_path.as_deref())?;
+    Ok(result)
+}
+
+fn build_text_content_mutation(
+    file: &str,
+    slide: u32,
+    target: &str,
+    paragraphs: &[Paragraph],
+    append: bool,
+) -> CliResult<TextSetMutation> {
+    let show = pptx_shapes_show(file, slide, true, false)?;
+    let part_uri = show
+        .get("partUri")
+        .and_then(Value::as_str)
+        .ok_or_else(|| CliError::unexpected("PPTX shape readback missing partUri"))?
+        .to_string();
+    let shapes = show
+        .get("shapes")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let matches = shapes
+        .iter()
+        .filter(|shape| pptx_shape_entry_matches(shape, target))
+        .cloned()
+        .collect::<Vec<_>>();
+    let entry = match matches.as_slice() {
+        [entry] => entry.clone(),
+        [] => return Err(shape_not_found_with_candidates(slide, target, &shapes)),
+        _ => {
+            return Err(CliError::invalid_args(format!(
+                "ambiguous target: {target}"
+            )));
+        }
+    };
+    if !entry
+        .get("textCapable")
+        .and_then(Value::as_bool)
+        .unwrap_or_default()
+    {
+        return Err(CliError::invalid_args(format!(
+            "target {target} resolves to a non-text shape"
+        )));
+    }
+    let shape_id = entry
+        .get("shapeId")
+        .and_then(Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or_else(|| CliError::unexpected("shape readback missing shapeId"))?;
+    let shape_name = entry
+        .get("shapeName")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let shape_type = entry
+        .get("shapeType")
+        .and_then(Value::as_str)
+        .unwrap_or("sp")
+        .to_string();
+    let primary = entry
+        .get("primarySelector")
+        .and_then(Value::as_str)
+        .unwrap_or(target)
+        .to_string();
+    let context = if entry.get("placeholder").is_some()
+        || matches!(
+            entry.get("targetKind").and_then(Value::as_str),
+            Some("title" | "subtitle" | "body" | "placeholder")
+        ) {
+        ParagraphContext::Placeholder
+    } else {
+        ParagraphContext::Textbox
+    };
+    let slide_part = part_uri.trim_start_matches('/').to_string();
+    let slide_xml = zip_text(file, &slide_part)?;
+    let shape = find_shape_span_by_id(&slide_xml, shape_id)?
+        .ok_or_else(|| CliError::target_not_found(format!("target not found: shape:{shape_id}")))?;
+    let shape_fragment = &slide_xml[shape.start..shape.end];
+    let tx_body = direct_child_range(shape_fragment, "txBody")?
+        .ok_or_else(|| CliError::invalid_args(format!("target {target} has no text body")))?;
+    let tx_body_fragment = &shape_fragment[tx_body.start..tx_body.end];
+    let rendered = render_paragraphs(paragraphs, context)?;
+    let updated_tx_body = replace_text_body_paragraphs(tx_body_fragment, &rendered, append)?;
+    let updated_shape =
+        replace_xml_span(shape_fragment, tx_body.start, tx_body.end, &updated_tx_body);
+    let updated_slide_xml = replace_xml_span(&slide_xml, shape.start, shape.end, &updated_shape);
+    Ok(TextSetMutation {
+        slide_part: slide_part.clone(),
+        rels_part: relationships_part_for(&slide_part),
+        updated_slide_xml,
+        updated_rels_xml: None,
+        slide,
+        part_uri,
+        shape_id,
+        shape_name,
+        shape_type,
+        target: primary,
+        paragraph_index: 0,
+        run_index: None,
+        applied_runs: Vec::new(),
+        old_properties: Vec::new(),
+        new_properties: Vec::new(),
+        content: Some(ContentMutationSummary {
+            paragraph_count: paragraphs.len(),
+            append,
+        }),
+    })
+}
+
+fn replace_text_body_paragraphs(tx_body: &str, rendered: &str, append: bool) -> CliResult<String> {
+    let (content_start, content_end) = element_content_bounds(tx_body)?;
+    let children = xml_direct_child_ranges(tx_body, content_start, content_end)?;
+    let paragraphs = children
+        .iter()
+        .filter(|child| child.kind == "p")
+        .collect::<Vec<_>>();
+    if append {
+        let insert_at = paragraphs
+            .last()
+            .map(|paragraph| paragraph.end)
+            .or_else(|| {
+                children
+                    .iter()
+                    .find(|child| child.kind == "extLst")
+                    .map(|child| child.start)
+            })
+            .unwrap_or(content_end);
+        return Ok(insert_xml_at(tx_body, insert_at, rendered));
+    }
+    if let (Some(first), Some(last)) = (paragraphs.first(), paragraphs.last()) {
+        return Ok(replace_xml_span(tx_body, first.start, last.end, rendered));
+    }
+    let insert_at = children
+        .iter()
+        .find(|child| child.kind == "extLst")
+        .map(|child| child.start)
+        .unwrap_or(content_end);
+    Ok(insert_xml_at(tx_body, insert_at, rendered))
+}
+
 fn build_text_set_mutation(
     file: &str,
     slide: u32,
@@ -502,6 +739,7 @@ fn build_text_set_mutation(
         applied_runs,
         old_properties,
         new_properties,
+        content: None,
     })
 }
 
@@ -568,6 +806,7 @@ fn read_shape_destination(
         "handle",
         "selectors",
         "textPreview",
+        "paragraphs",
     ] {
         if let Some(value) = entry.get(key) {
             out.insert(key.to_string(), value.clone());
@@ -596,22 +835,28 @@ fn text_set_result_json(
     result.insert("shapeName".to_string(), json!(mutation.shape_name));
     result.insert("shapeType".to_string(), json!(mutation.shape_type));
     result.insert("target".to_string(), json!(mutation.target));
-    result.insert(
-        "paragraphIndex".to_string(),
-        json!(mutation.paragraph_index),
-    );
-    if let Some(run_index) = mutation.run_index {
-        result.insert("runIndex".to_string(), json!(run_index));
+    if let Some(content) = mutation.content.as_ref() {
+        result.insert("mode".to_string(), json!("paragraph-content"));
+        result.insert("paragraphCount".to_string(), json!(content.paragraph_count));
+        result.insert("append".to_string(), json!(content.append));
+    } else {
+        result.insert(
+            "paragraphIndex".to_string(),
+            json!(mutation.paragraph_index),
+        );
+        if let Some(run_index) = mutation.run_index {
+            result.insert("runIndex".to_string(), json!(run_index));
+        }
+        result.insert("appliedRuns".to_string(), json!(mutation.applied_runs));
+        result.insert(
+            "oldProperties".to_string(),
+            Value::Array(mutation.old_properties.clone()),
+        );
+        result.insert(
+            "newProperties".to_string(),
+            Value::Array(mutation.new_properties.clone()),
+        );
     }
-    result.insert("appliedRuns".to_string(), json!(mutation.applied_runs));
-    result.insert(
-        "oldProperties".to_string(),
-        Value::Array(mutation.old_properties.clone()),
-    );
-    result.insert(
-        "newProperties".to_string(),
-        Value::Array(mutation.new_properties.clone()),
-    );
     Value::Object(result)
 }
 

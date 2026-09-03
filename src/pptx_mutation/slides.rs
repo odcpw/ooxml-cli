@@ -6,14 +6,19 @@ use std::fs;
 use std::path::Path;
 
 use crate::cli_args::{parse_string_flags, value_flag_present};
+use crate::pptx_mutation::paragraphs::{
+    Paragraph, ParagraphContext, ParagraphDefaults, paragraphs_from_file, paragraphs_from_text,
+    text_body_xml,
+};
+use crate::pptx_readback::pptx_shapes_get;
 use crate::{
     CliError, CliResult, RelationshipEntry, add_relationship_to_xml, allocate_relationship_id,
     attr, attr_exact, copy_zip_with_binary_part_overrides_and_removals,
     copy_zip_with_part_overrides_and_removals, ensure_content_type_override, local_name,
     package_type, relationship_entries_from_xml, relationship_target_from_source_to_target,
     relationships_part_for, replace_xml_span, resolve_relationship_target,
-    validate_xlsx_mutation_output_flags, xml_attr_escape, xml_direct_child_ranges, xml_escape,
-    zip_entry_names, zip_text,
+    validate_xlsx_mutation_output_flags, xml_attr_escape, xml_direct_child_ranges, zip_entry_names,
+    zip_text,
 };
 
 mod output;
@@ -122,6 +127,11 @@ struct ImageSlotAssignment {
     image_path: String,
 }
 
+struct TextAssignment {
+    target: String,
+    paragraphs: Vec<Paragraph>,
+}
+
 struct ImageSlotPayload {
     image_part: String,
     content_type: String,
@@ -182,7 +192,11 @@ pub(crate) fn pptx_new_slide_from_layout(file: &str, args: &[String]) -> CliResu
     }
     reject_deferred_new_slide_flags(args)?;
     let insert_after = crate::parse_i64_flag(args, "--insert-after")?.unwrap_or(0);
-    let set_texts = parse_text_assignments(&parse_string_flags(args, "--set-text")?)?;
+    let mut set_texts = parse_text_assignments(&parse_string_flags(args, "--set-text")?)?;
+    set_texts.extend(parse_paragraph_file_assignments(&parse_string_flags(
+        args,
+        "--paragraphs-file",
+    )?)?);
     let image_slots = parse_image_slot_assignments(&parse_string_flags(args, "--set-image-slot")?)?;
     let image_fit = normalize_image_fit(
         crate::parse_string_flag(args, "--image-fit")?
@@ -557,7 +571,7 @@ fn build_new_slide_from_layout_mutation(
     file: &str,
     layout_selector: &str,
     insert_after: i64,
-    set_texts: &[(String, String)],
+    set_texts: &[TextAssignment],
     image_slots: &[ImageSlotAssignment],
     image_fit: &str,
 ) -> CliResult<NewSlideFromLayoutMutation> {
@@ -584,9 +598,10 @@ fn build_new_slide_from_layout_mutation(
         let mut cloned = build_clone_slide_mutation(file, template_slide, insert_after)?;
         let new_slide_part = cloned.new_slide_uri.trim_start_matches('/').to_string();
         let template_part = &refs[template_slide as usize - 1].part;
+        let resolved_texts = resolve_template_text_assignments(file, template_slide, set_texts)?;
         let mut slide_xml = reset_slide_text_bodies(&zip_text(file, template_part)?)?;
-        for (target, text) in set_texts {
-            slide_xml = set_text_target(&slide_xml, target, text)?;
+        for assignment in &resolved_texts {
+            slide_xml = set_text_target(&slide_xml, assignment)?;
         }
         let mut slide_rels_xml = cloned
             .package
@@ -646,8 +661,8 @@ fn build_new_slide_from_layout_mutation(
     let mut slide_xml =
         build_slide_xml_from_layout_common_data(&layout_xml[c_sld.start..c_sld.end]);
     slide_xml = reset_slide_text_bodies(&slide_xml)?;
-    for (target, text) in set_texts {
-        slide_xml = set_text_target(&slide_xml, target, text)?;
+    for assignment in set_texts {
+        slide_xml = set_text_target(&slide_xml, assignment)?;
     }
 
     let new_slide_id = next_presentation_slide_id(&presentation_xml);
@@ -1205,7 +1220,7 @@ fn build_slide_xml_from_layout_common_data(c_sld_xml: &str) -> String {
     )
 }
 
-fn parse_text_assignments(values: &[String]) -> CliResult<Vec<(String, String)>> {
+fn parse_text_assignments(values: &[String]) -> CliResult<Vec<TextAssignment>> {
     let mut assignments = Vec::new();
     for value in values {
         if value.trim().is_empty() || value == "[]" {
@@ -1222,7 +1237,36 @@ fn parse_text_assignments(values: &[String]) -> CliResult<Vec<(String, String)>>
                 "invalid --set-text value {value:?} (expected key=value)"
             )));
         }
-        assignments.push((key.to_string(), text.to_string()));
+        assignments.push(TextAssignment {
+            target: key.to_string(),
+            paragraphs: paragraphs_from_text(text, &ParagraphDefaults::default())?,
+        });
+    }
+    Ok(assignments)
+}
+
+fn parse_paragraph_file_assignments(values: &[String]) -> CliResult<Vec<TextAssignment>> {
+    let mut assignments = Vec::new();
+    for value in values {
+        if value.trim().is_empty() || value == "[]" {
+            continue;
+        }
+        let Some((key, path)) = value.split_once('=') else {
+            return Err(CliError::invalid_args(format!(
+                "invalid --paragraphs-file value {value:?} (expected key=path)"
+            )));
+        };
+        let key = key.trim();
+        let path = path.trim();
+        if key.is_empty() || path.is_empty() {
+            return Err(CliError::invalid_args(format!(
+                "invalid --paragraphs-file value {value:?} (expected key=path)"
+            )));
+        }
+        assignments.push(TextAssignment {
+            target: key.to_string(),
+            paragraphs: paragraphs_from_file(path, &ParagraphDefaults::default())?,
+        });
     }
     Ok(assignments)
 }
@@ -1476,13 +1520,21 @@ fn reset_slide_text_bodies(xml: &str) -> CliResult<String> {
     let shapes = text_shape_targets(xml)?;
     for shape in shapes.into_iter().rev() {
         if let Some(tx_body) = shape.tx_body {
-            out = replace_xml_span(&out, tx_body.start, tx_body.end, &text_body_xml(""));
+            let empty = vec![Paragraph::default()];
+            let context = paragraph_context_for_target(&shape);
+            out = replace_xml_span(
+                &out,
+                tx_body.start,
+                tx_body.end,
+                &text_body_xml(&empty, context, "<a:bodyPr/>")?,
+            );
         }
     }
     Ok(out)
 }
 
-fn set_text_target(xml: &str, target: &str, text: &str) -> CliResult<String> {
+fn set_text_target(xml: &str, assignment: &TextAssignment) -> CliResult<String> {
+    let target = &assignment.target;
     let shapes = text_shape_targets(xml)?;
     let matches = shapes
         .iter()
@@ -1502,7 +1554,11 @@ fn set_text_target(xml: &str, target: &str, text: &str) -> CliResult<String> {
             )));
         }
     };
-    let replacement = text_body_xml(text);
+    let replacement = text_body_xml(
+        &assignment.paragraphs,
+        paragraph_context_for_target(shape),
+        "<a:bodyPr/>",
+    )?;
     if let Some(tx_body) = shape.tx_body {
         return Ok(replace_xml_span(
             xml,
@@ -1517,6 +1573,38 @@ fn set_text_target(xml: &str, target: &str, text: &str) -> CliResult<String> {
         .checked_sub(close_tag_len(xml, shape.span.end)?)
         .ok_or_else(|| CliError::unexpected("invalid shape span"))?;
     Ok(insert_xml_at(xml, insert_at, &replacement))
+}
+
+fn paragraph_context_for_target(shape: &TextShapeTarget) -> ParagraphContext {
+    if !shape.placeholder_type.is_empty() || shape.placeholder_index.is_some() {
+        ParagraphContext::Placeholder
+    } else {
+        ParagraphContext::Textbox
+    }
+}
+
+fn resolve_template_text_assignments(
+    file: &str,
+    slide: i64,
+    assignments: &[TextAssignment],
+) -> CliResult<Vec<TextAssignment>> {
+    assignments
+        .iter()
+        .map(|assignment| {
+            let get = pptx_shapes_get(file, slide as u32, &assignment.target, false, false)?;
+            let shape_id = get
+                .get("shapes")
+                .and_then(Value::as_array)
+                .and_then(|shapes| shapes.first())
+                .and_then(|shape| shape.get("shapeId"))
+                .and_then(Value::as_u64)
+                .ok_or_else(|| CliError::unexpected("shape readback missing shapeId"))?;
+            Ok(TextAssignment {
+                target: format!("shape:{shape_id}"),
+                paragraphs: assignment.paragraphs.clone(),
+            })
+        })
+        .collect()
 }
 
 fn text_shape_targets(xml: &str) -> CliResult<Vec<TextShapeTarget>> {
@@ -1639,13 +1727,6 @@ fn placeholder_role(literal_type: &str) -> String {
         other => other,
     }
     .to_string()
-}
-
-fn text_body_xml(text: &str) -> String {
-    format!(
-        "<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>{}</a:t></a:r></a:p></p:txBody>",
-        xml_escape(text)
-    )
 }
 
 fn insert_xml_at(xml: &str, index: usize, insert: &str) -> String {

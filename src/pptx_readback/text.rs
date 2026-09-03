@@ -106,7 +106,25 @@ fn pptx_extract_text_shape_key(shape: &Shape, target: &Value) -> String {
 }
 
 fn pptx_extract_text_body(shape: &Shape) -> Value {
-    pptx_text_block_from_paragraphs(&shape.paragraphs, true, true)
+    let mut block = pptx_text_block_from_paragraphs(&shape.paragraphs, true, true);
+    let details = super::paragraph_readback(shape)
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if let Some(paragraphs) = block.get_mut("paragraphs").and_then(Value::as_array_mut) {
+        for (paragraph, details) in paragraphs.iter_mut().zip(details) {
+            if let (Some(paragraph), Some(details)) =
+                (paragraph.as_object_mut(), details.as_object())
+            {
+                for key in ["level", "bullet"] {
+                    if let Some(value) = details.get(key) {
+                        paragraph.insert(key.to_string(), value.clone());
+                    }
+                }
+            }
+        }
+    }
+    block
 }
 
 pub(super) fn pptx_text_block_from_paragraphs(

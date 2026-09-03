@@ -5,6 +5,8 @@ mod fields;
 mod import_merge;
 mod layouts;
 mod notes;
+#[path = "pptx_paragraphs.rs"]
+pub(crate) mod paragraphs;
 mod placement;
 mod replace;
 mod shapes;

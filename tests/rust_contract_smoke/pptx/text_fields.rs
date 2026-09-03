@@ -1,4 +1,76 @@
 #[test]
+fn pptx_text_set_content_and_paragraph_file_contracts_are_actionable() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-rust-text-content-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("text content temp dir");
+    let paragraphs_file = temp_dir.join("paragraphs.json");
+    std::fs::write(
+        &paragraphs_file,
+        r#"[{"text":"Lead","bold":true},{"text":"Detail","level":1,"bullet":true}]"#,
+    )
+    .expect("write paragraphs JSON");
+    let output = temp_dir.join("content.pptx");
+    let output_str = output.to_str().expect("text content output path");
+    let (code, stdout, stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "text",
+        "set",
+        "testdata/pptx/multi-layout/presentation.pptx",
+        "--slide",
+        "2",
+        "--target",
+        "body",
+        "--paragraphs-file",
+        paragraphs_file.to_str().expect("paragraphs path"),
+        "--out",
+        output_str,
+    ]);
+    assert_eq!(code, 0, "text content exit");
+    assert_eq!(stderr, None, "text content stderr");
+    let result = stdout.expect("text content stdout");
+    assert_eq!(result["mode"], "paragraph-content");
+    assert_eq!(result["paragraphCount"], 2);
+    assert_eq!(result["destination"]["paragraphs"][0]["text"], "Lead");
+    assert_eq!(result["destination"]["paragraphs"][1]["level"], 1);
+    assert_rust_emitted_ooxml_command_succeeds(&result, "readbackCommand");
+    assert_rust_emitted_ooxml_command_exits_zero(&result, "validateCommand");
+    assert_strict_validate_succeeds(output_str, "text content output");
+
+    let (code, _, stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "text",
+        "set",
+        "testdata/pptx/multi-layout/presentation.pptx",
+        "--slide",
+        "2",
+        "--target",
+        "body",
+        "--text",
+        "plain",
+        "--paragraphs-file",
+        paragraphs_file.to_str().expect("paragraphs path"),
+        "--dry-run",
+    ]);
+    assert_eq!(code, 2, "mutually exclusive content sources exit");
+    assert!(
+        stderr
+            .as_ref()
+            .is_some_and(|error| error["error"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("mutually exclusive"))),
+        "mutual exclusion error must be actionable: {stderr:?}"
+    );
+}
+
+#[test]
 fn pptx_text_set_saved_readback_dry_run_hyperlink_and_errors_match_rust_baseline() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -552,4 +624,3 @@ fn pptx_fields_set_synthesizes_missing_footer_placeholders() {
         );
     }
 }
-

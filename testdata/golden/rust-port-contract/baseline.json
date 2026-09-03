@@ -98,6 +98,13 @@
                 "boundsSource": "layout",
                 "id": 2,
                 "isPlaceholder": true,
+                "paragraphs": [
+                  {
+                    "bullet": false,
+                    "level": 0,
+                    "text": "Minimal Title Slide"
+                  }
+                ],
                 "shapeName": "Title 1",
                 "textContent": "Minimal Title Slide",
                 "type": "sp"
@@ -118,6 +125,13 @@
                 "boundsSource": "layout",
                 "id": 3,
                 "isPlaceholder": true,
+                "paragraphs": [
+                  {
+                    "bullet": false,
+                    "level": 0,
+                    "text": ""
+                  }
+                ],
                 "shapeName": "Subtitle 2",
                 "type": "sp"
               }
