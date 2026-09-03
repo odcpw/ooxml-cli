@@ -513,6 +513,13 @@ pub(super) struct ChartCreateSource {
     pub(super) range: String,
     pub(super) bounds: RangeBounds,
     pub(super) cells: Vec<Vec<ChartSourceCell>>,
+    pub(super) explicit_categories: Option<ChartExplicitCategories>,
+}
+
+pub(super) struct ChartExplicitCategories {
+    pub(super) range: String,
+    pub(super) bounds: RangeBounds,
+    pub(super) cells: Vec<Vec<ChartSourceCell>>,
 }
 
 pub(super) struct BuiltChartSeries {

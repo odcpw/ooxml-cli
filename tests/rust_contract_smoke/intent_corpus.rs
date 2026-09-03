@@ -38,6 +38,8 @@ struct FrozenProcessMatrix {
 struct IntentManifest {
     commands: Vec<IntentCommand>,
     #[serde(default)]
+    command_aliases: Vec<IntentCommandAliasRecord>,
+    #[serde(default)]
     flag_aliases: Vec<IntentAliasRecord>,
 }
 
@@ -46,7 +48,11 @@ struct IntentManifest {
 struct IntentCommand {
     path: String,
     #[serde(default)]
+    aliases: Vec<String>,
+    #[serde(default)]
     local_flags: Vec<IntentFlag>,
+    #[serde(default)]
+    op_ineligible_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,6 +71,13 @@ struct IntentAliasRecord {
     path: String,
     alias: String,
     canonical_flags: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IntentCommandAliasRecord {
+    alias: String,
+    canonical_command: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -119,6 +132,82 @@ fn refresh_frozen_case(case: &mut FrozenProcessCase) {
     case.stderr = String::from_utf8(actual.stderr).expect("stderr UTF-8");
 }
 
+fn sync_frozen_help_capability_cases(help: &mut FrozenHelpCorpus, manifest: &IntentManifest) {
+    let existing = help
+        .cases
+        .iter()
+        .filter(|case| matches!(case.category.as_str(), "canonical-group" | "canonical-leaf"))
+        .map(|case| case.argv.clone())
+        .collect::<BTreeSet<_>>();
+    let mut groups = Vec::new();
+    let mut leaves = Vec::new();
+    for command in &manifest.commands {
+        let topic = command
+            .path
+            .split_whitespace()
+            .skip_while(|token| *token == "ooxml")
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let argv = std::iter::once("help".to_string())
+            .chain(topic.iter().cloned())
+            .collect::<Vec<_>>();
+        if existing.contains(&argv) {
+            continue;
+        }
+        let group = command.op_ineligible_reason.as_deref()
+            == Some("it is a command group, not a leaf mutation command");
+        let case = FrozenProcessCase {
+            name: format!(
+                "{}:{}",
+                if group { "group" } else { "leaf" },
+                topic.join(" ")
+            ),
+            category: if group {
+                "canonical-group".to_string()
+            } else {
+                "canonical-leaf".to_string()
+            },
+            argv,
+            status: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+        if group {
+            groups.push(case);
+        } else {
+            leaves.push(case);
+        }
+    }
+
+    let group_insert = help
+        .cases
+        .iter()
+        .position(|case| case.category == "canonical-leaf")
+        .unwrap_or(help.cases.len());
+    help.cases.splice(group_insert..group_insert, groups);
+    let leaf_insert = help
+        .cases
+        .iter()
+        .position(|case| {
+            !matches!(
+                case.category.as_str(),
+                "root" | "canonical-group" | "canonical-leaf"
+            )
+        })
+        .unwrap_or(help.cases.len());
+    help.cases.splice(leaf_insert..leaf_insert, leaves);
+    help.group_count = help
+        .cases
+        .iter()
+        .filter(|case| case.category == "canonical-group")
+        .count();
+    help.leaf_count = help
+        .cases
+        .iter()
+        .filter(|case| case.category == "canonical-leaf")
+        .count();
+}
+
 fn write_reviewed_golden(path: &str, document: &impl Serialize) {
     let mut bytes = serde_json::to_vec_pretty(document).expect("serialize process corpus");
     bytes.push(b'\n');
@@ -168,6 +257,17 @@ fn explicit_json_success(args: &[String]) -> Value {
     serde_json::from_str(&text).expect("structured success JSON")
 }
 
+fn assert_intent_output_strict_valid(path: &str, label: &str) {
+    let (code, stdout, stderr) = run_ooxml(&["--json", "validate", "--strict", path]);
+    assert_eq!(code, 0, "{label} strict validation exit: {stderr:?}");
+    assert_eq!(stderr, None, "{label} strict validation stderr");
+    assert_eq!(
+        stdout.expect("strict validation JSON")["valid"],
+        true,
+        "{label}"
+    );
+}
+
 fn assert_alias_readback(args: &[&str], expected: Value) -> Value {
     let args = args
         .iter()
@@ -183,7 +283,7 @@ fn every_documented_flag_alias_reaches_its_leaf_parser() {
     let manifest = live_intent_manifest();
     assert_eq!(
         manifest.flag_aliases.len(),
-        28,
+        29,
         "explicit registry denominator changed; review and update this contract"
     );
 
@@ -288,6 +388,40 @@ fn every_documented_flag_alias_reaches_its_leaf_parser() {
         );
     }
 
+    assert_eq!(manifest.command_aliases.len(), 1);
+    for record in &manifest.command_aliases {
+        let command = manifest
+            .commands
+            .iter()
+            .find(|command| command.path == record.canonical_command)
+            .unwrap_or_else(|| {
+                panic!(
+                    "command alias {} maps to absent command {}",
+                    record.alias, record.canonical_command
+                )
+            });
+        assert!(
+            command.aliases.contains(&record.alias),
+            "{} omits command alias {}",
+            record.canonical_command,
+            record.alias
+        );
+        let help_args = record
+            .alias
+            .split_whitespace()
+            .skip_while(|token| *token == "ooxml")
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let help_args = std::iter::once("help".to_string())
+            .chain(help_args)
+            .collect::<Vec<_>>();
+        let refs = help_args.iter().map(String::as_str).collect::<Vec<_>>();
+        let help = run_ooxml_process(&refs);
+        assert_eq!(help.code, 0, "alias help: {}", record.alias);
+        let help = String::from_utf8(help.stdout).expect("alias help UTF-8");
+        assert!(help.contains(&record.alias), "{help}");
+    }
+
     let robot_docs = explicit_json_success(
         &["--json", "robot-docs", "guide"]
             .into_iter()
@@ -310,6 +444,11 @@ fn every_documented_flag_alias_reaches_its_leaf_parser() {
             record.alias
         );
     }
+    assert_eq!(
+        robot_docs["commandAliases"],
+        serde_json::to_value(&manifest.command_aliases)
+            .expect("serialize command aliases for comparison")
+    );
 }
 
 #[test]
@@ -467,7 +606,216 @@ fn flag_aliases_execute_and_report_canonical_readback() {
         serde_json::json!([{"alias": "--index", "canonicalFlags": ["--block"]}]),
     );
 
+    let chart_output = temp_dir.join("two-range-chart.xlsx");
+    let chart_output = chart_output.to_str().expect("chart output path");
+    let chart = assert_alias_readback(
+        &[
+            "--json",
+            "xlsx",
+            "charts",
+            "create",
+            "testdata/xlsx/chart-workbook/workbook.xlsx",
+            "--type",
+            "bar",
+            "--sheet",
+            "Data",
+            "--values",
+            "B2:B4",
+            "--categories",
+            "A2:A4",
+            "--out",
+            chart_output,
+        ],
+        serde_json::json!([{"alias": "--values", "canonicalFlags": ["--range"]}]),
+    );
+    assert_eq!(chart["sourceRange"], "B2:B4");
+    assert_eq!(chart["categoriesRange"], "A2:A4");
+    assert_eq!(chart["seriesCount"], 1);
+    assert_eq!(chart["categories"], 3);
+    assert_intent_output_strict_valid(chart_output, "two-range chart alias output");
+    let (_, shown, stderr) = run_ooxml(&[
+        "--json",
+        "xlsx",
+        "charts",
+        "show",
+        chart_output,
+        "--chart",
+        "chart:2",
+    ]);
+    assert_eq!(stderr, None);
+    let shown = shown.expect("two-range chart readback");
+    assert_eq!(
+        shown["charts"][0]["series"][0]["categories"]["formula"],
+        "'Data'!$A$2:$A$4"
+    );
+    assert_eq!(
+        shown["charts"][0]["series"][0]["values"]["formula"],
+        "'Data'!$B$2:$B$4"
+    );
+
+    assert_alias_readback(
+        &[
+            "--json",
+            "pptx",
+            "slides",
+            "add",
+            "testdata/pptx/multi-layout/presentation.pptx",
+            "--layout",
+            "Title and Content",
+            "--set-text",
+            "title=Alias title",
+            "--dry-run",
+        ],
+        serde_json::json!([{
+            "alias": "ooxml pptx slides add",
+            "canonicalCommand": "ooxml pptx new-slide-from-layout"
+        }]),
+    );
+
     std::fs::remove_dir_all(&temp_dir).expect("remove alias test directory");
+}
+
+#[test]
+fn pptx_text_set_accepts_first_guess_text_and_replaces_paragraphs() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock after epoch")
+        .as_nanos();
+    let output = std::env::temp_dir().join(format!(
+        "ooxml-text-set-intent-{}-{suffix}.pptx",
+        std::process::id()
+    ));
+    let output = output.to_str().expect("text-set output path");
+    let value = explicit_json_success(
+        &[
+            "--json",
+            "pptx",
+            "text",
+            "set",
+            "testdata/pptx/multi-layout/presentation.pptx",
+            "--slide",
+            "2",
+            "--target",
+            "body",
+            "--text",
+            "Alpha\nBeta",
+            "--out",
+            output,
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>(),
+    );
+    assert_eq!(value["mode"], "paragraph-content");
+    assert_eq!(value["paragraphCount"], 2);
+    assert_intent_output_strict_valid(output, "pptx text set --text output");
+
+    let (_, shown, stderr) = run_ooxml(&[
+        "--json",
+        "pptx",
+        "shapes",
+        "get",
+        output,
+        "--slide",
+        "2",
+        "--target",
+        "body",
+        "--include-text",
+    ]);
+    assert_eq!(stderr, None);
+    let paragraphs = shown.expect("text-set readback")["shapes"][0]["paragraphs"]
+        .as_array()
+        .cloned()
+        .expect("paragraph readback array");
+    assert_eq!(paragraphs.len(), 2);
+    assert_eq!(paragraphs[0]["text"], "Alpha");
+    assert_eq!(paragraphs[1]["text"], "Beta");
+    std::fs::remove_file(output).expect("remove text-set output");
+}
+
+#[test]
+fn folded_manifest_rows_are_live_and_theme_derive_is_deterministic() {
+    let manifest = live_intent_manifest();
+    let command = |path: &str| {
+        manifest
+            .commands
+            .iter()
+            .find(|command| command.path == path)
+            .unwrap_or_else(|| panic!("missing capability command {path}"))
+    };
+    let flags = |path: &str| {
+        command(path)
+            .local_flags
+            .iter()
+            .map(|flag| flag.name.as_str())
+            .collect::<BTreeSet<_>>()
+    };
+
+    assert!(flags("ooxml render").is_superset(&BTreeSet::from([
+        "--out", "--dpi", "--pages", "--sheet", "--format"
+    ])));
+    assert_eq!(flags("ooxml pptx theme derive"), BTreeSet::from(["--seed"]));
+    assert!(flags("ooxml pptx scaffold").contains("--theme-seed"));
+    assert!(flags("ooxml docx scaffold").is_superset(&BTreeSet::from([
+        "--theme",
+        "--theme-seed",
+        "--template"
+    ])));
+    assert!(flags("ooxml pptx text set").is_superset(&BTreeSet::from([
+        "--text",
+        "--paragraphs-file",
+        "--append"
+    ])));
+    assert!(flags("ooxml pptx add-textbox").contains("--paragraphs-file"));
+    assert!(flags("ooxml pptx new-slide-from-layout").contains("--paragraphs-file"));
+    for path in [
+        "ooxml pptx add-textbox",
+        "ooxml pptx place image",
+        "ooxml pptx place table",
+        "ooxml pptx place table-from-xlsx",
+        "ooxml pptx charts create",
+        "ooxml pptx media add",
+    ] {
+        assert!(
+            flags(path).is_superset(&BTreeSet::from(["--slot", "--inset", "--aspect"])),
+            "slot vocabulary missing from {path}"
+        );
+    }
+    for path in [
+        "ooxml docx paragraphs append",
+        "ooxml docx paragraphs insert",
+        "ooxml docx blocks replace",
+        "ooxml docx blocks insert-after",
+        "ooxml docx styles apply",
+    ] {
+        assert!(flags(path).contains("--create-style"), "{path}");
+    }
+
+    let first = explicit_json_success(
+        &["--json", "pptx", "theme", "derive", "--seed", "1F4E79"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>(),
+    );
+    let second = explicit_json_success(
+        &["--json", "pptx", "theme", "derive", "--seed", "#1f4e79"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>(),
+    );
+    assert_eq!(first, second);
+    assert_eq!(first.as_object().expect("palette object").len(), 12);
+    for key in [
+        "dk1", "lt1", "dk2", "lt2", "accent1", "accent6", "hlink", "folHlink",
+    ] {
+        assert!(
+            first[key].as_str().is_some_and(
+                |color| color.len() == 6 && color.bytes().all(|byte| byte.is_ascii_hexdigit())
+            ),
+            "invalid palette color {key}: {}",
+            first[key]
+        );
+    }
 }
 
 fn transpose_flag(flag: &str) -> Option<String> {
@@ -707,10 +1055,25 @@ fn manifest_derived_intent_cases(manifest: &IntentManifest) -> Vec<GeneratedInte
         ),
         (
             "sibling-chart-values",
-            &["--json", "xlsx", "charts", "create", "--values", "[]"][..],
+            &[
+                "--json",
+                "xlsx",
+                "charts",
+                "create",
+                "testdata/xlsx/chart-workbook/workbook.xlsx",
+                "--type",
+                "bar",
+                "--sheet",
+                "Data",
+                "--values",
+                "B2:B4",
+                "--categories",
+                "A2:A4",
+                "--dry-run",
+            ][..],
             "--values",
             "--range",
-            false,
+            true,
         ),
         (
             "sibling-docx-block",
@@ -734,10 +1097,23 @@ fn manifest_derived_intent_cases(manifest: &IntentManifest) -> Vec<GeneratedInte
         ),
         (
             "sibling-pptx-text",
-            &["--json", "pptx", "text", "set", "--text", "X"][..],
+            &[
+                "--json",
+                "pptx",
+                "text",
+                "set",
+                "testdata/pptx/multi-layout/presentation.pptx",
+                "--slide",
+                "2",
+                "--target",
+                "body",
+                "--text",
+                "X",
+                "--dry-run",
+            ][..],
             "--text",
-            "pptx replace text",
-            false,
+            "--text",
+            true,
         ),
     ] {
         let argv: Vec<String> = argv.iter().map(|value| (*value).to_string()).collect();
@@ -1073,47 +1449,6 @@ fn corrected_command_reparses_and_dry_runs_a_manifest_mutation() {
 }
 
 #[test]
-fn invalid_args_envelope_redirects_the_remaining_known_first_guess_failures() {
-    let cases = [
-        (
-            vec!["--json", "xlsx", "charts", "create", "--values", "[]"],
-            serde_json::json!(["--range", "--table"]),
-            None,
-        ),
-        (
-            vec!["--json", "pptx", "text", "set", "--text", "X"],
-            serde_json::json!(["ooxml pptx replace text"]),
-            None,
-        ),
-    ];
-
-    for (args, suggestions, corrected) in cases {
-        let value = explicit_json_error(&args);
-        let error = &value["error"];
-        assert_eq!(error["code"], "invalid_args", "{args:?}");
-        assert_eq!(error["exitCode"], 2, "{args:?}");
-        assert_eq!(error["didYouMean"], suggestions, "{args:?}");
-        assert!(
-            error["validFlags"]
-                .as_array()
-                .is_some_and(|flags| !flags.is_empty()),
-            "{args:?}: {error:?}"
-        );
-        assert!(
-            error["helpCommand"]
-                .as_str()
-                .is_some_and(|command| command.starts_with("ooxml help ")),
-            "{args:?}: {error:?}"
-        );
-        assert!(
-            error["hint"].as_str().is_some_and(|hint| !hint.is_empty()),
-            "{args:?}: {error:?}"
-        );
-        assert_eq!(error["correctedCommand"].as_str(), corrected, "{args:?}");
-    }
-}
-
-#[test]
 fn invalid_args_text_mode_prints_the_same_recovery_fields_on_stderr() {
     let output = run_ooxml_process(&["--format", "text", "capabilities", "--fro", "xlsx"]);
     assert_eq!(output.code, 2);
@@ -1256,6 +1591,10 @@ fn frozen_corpora_track_structured_errors_and_alias_help() {
     let mut help: FrozenHelpCorpus =
         serde_json::from_slice(&std::fs::read(help_path).expect("read frozen help corpus"))
             .expect("parse frozen help corpus");
+    if std::env::var_os("UPDATE_GOLDENS").is_some() {
+        let manifest = live_intent_manifest();
+        sync_frozen_help_capability_cases(&mut help, &manifest);
+    }
     for case in &mut help.cases {
         refresh_frozen_case(case);
     }

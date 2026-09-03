@@ -2,6 +2,7 @@ pub(crate) struct XlsxChartCreateOptions<'a> {
     pub(crate) chart_type: Option<&'a str>,
     pub(crate) sheet: Option<&'a str>,
     pub(crate) range: Option<&'a str>,
+    pub(crate) categories: Option<&'a str>,
     pub(crate) table: Option<&'a str>,
     pub(crate) title: Option<&'a str>,
     pub(crate) anchor: Option<&'a str>,

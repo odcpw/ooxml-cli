@@ -1,7 +1,7 @@
 use super::{ExecutionSupport, XlsxCommandId, flag, spec};
 
 pub(super) const COMMAND_COUNT: usize = 12;
-pub(super) const LEGACY_START: usize = 180;
+pub(super) const LEGACY_START: usize = 182;
 
 pub(super) fn command_specs() -> Vec<super::CommandSpec> {
     vec![
@@ -37,8 +37,8 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
         spec(
             XlsxCommandId::ChartsCreate,
             &["xlsx", "charts", "create"],
-            "create <file> --type <bar|line|area|pie|scatter> --range <A1:C5>",
-            "Create an embedded worksheet chart from a range or table source.",
+            "create <file> --type <bar|line|area|pie|scatter> (--range <A1:C5>|--values <range> [--categories <range>])",
+            "Create an embedded worksheet chart from a combined range, explicit values/categories ranges, or table source.",
             &["chart"],
             vec![
                 flag(
@@ -49,6 +49,12 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                 ),
                 flag("--sheet", "sheet", "string", "target/source sheet selector"),
                 flag("--range", "range", "string", "source range"),
+                flag(
+                    "--categories",
+                    "categories",
+                    "string",
+                    "one-row or one-column category range paired with --values",
+                ),
                 flag("--table", "table", "string", "source table selector"),
                 flag("--title", "title", "string", "chart title"),
                 flag("--anchor", "anchor", "string", "chart anchor top-left cell"),

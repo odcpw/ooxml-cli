@@ -178,6 +178,12 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                     "repeatable placeholder text assignment key=value",
                 ),
                 flag(
+                    "--paragraphs-file",
+                    "paragraphsFile",
+                    "string",
+                    "repeatable placeholder assignment key=path where path contains a JSON paragraph array with text, level, bullet, bold, italic, size, color, align, and runs",
+                ),
+                flag(
                     "--insert-after",
                     "insertAfter",
                     "int",
@@ -185,7 +191,7 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                 ),
             ]),
             direct(
-                "Rust port slice supports --set-text; rich text, image fills, and bullet formatting are deferred",
+                "Rust port slice supports --set-text and --paragraphs-file through the shared paragraph builder; image fills are deferred",
             ),
             None,
         ),

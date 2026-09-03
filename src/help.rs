@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde_json::Value;
 
@@ -381,7 +381,7 @@ fn canonicalize_topic(topic: &[String]) -> Vec<String> {
             canonical[alias_index] = path[alias_index].to_string();
         }
     }
-    canonical
+    crate::agent_aliases::canonicalize_command_alias_path(&canonical)
 }
 
 fn is_known_topic(args: &[String]) -> bool {
@@ -502,6 +502,12 @@ fn leaf_help(topic: &[String], command: &HelpProjection) -> String {
     let short = command.short();
     let usage = leaf_usage(topic, use_text);
     let mut out = format!("{short}\n\nUsage:\n  ooxml {usage}\n");
+    if !command.aliases().is_empty() {
+        out.push_str("\nAliases:\n");
+        for alias in command.aliases() {
+            out.push_str(&format!("  {alias}\n"));
+        }
+    }
     append_local_flags(&mut out, command);
     if topic == ["vba", "create"] {
         append_vba_create_mode_guide(&mut out);
@@ -572,11 +578,30 @@ fn leaf_usage(topic: &[String], use_text: &str) -> String {
 
 fn available_children(topic: &[String]) -> Vec<(String, String)> {
     let mut children = BTreeMap::<String, String>::new();
-    let mut seen = BTreeSet::<String>::new();
     for command in capability_commands() {
         let Some(path) = command["path"].as_str() else {
             continue;
         };
+        for alias in command["aliases"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+        {
+            let words = alias
+                .strip_prefix("ooxml ")
+                .unwrap_or(alias)
+                .split_whitespace()
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>();
+            if !starts_with_topic(&words, topic) || words.len() <= topic.len() {
+                continue;
+            }
+            let child = words[topic.len()].clone();
+            children
+                .entry(child)
+                .or_insert_with(|| format!("Alias for {path}."));
+        }
         let words = path
             .strip_prefix("ooxml ")
             .unwrap_or(path)
@@ -587,9 +612,6 @@ fn available_children(topic: &[String]) -> Vec<(String, String)> {
             continue;
         }
         let child = words[topic.len()].clone();
-        if !seen.insert(child.clone()) {
-            continue;
-        }
         let child_path = topic
             .iter()
             .cloned()
@@ -603,7 +625,7 @@ fn available_children(topic: &[String]) -> Vec<(String, String)> {
                     .unwrap_or("Rust-supported command.")
                     .to_string()
             });
-        children.insert(child, description);
+        children.entry(child).or_insert(description);
     }
     if topic.is_empty() {
         children.insert(

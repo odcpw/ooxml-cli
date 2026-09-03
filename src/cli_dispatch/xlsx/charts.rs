@@ -38,6 +38,7 @@ pub(super) fn dispatch_xlsx_charts(args: &[String]) -> CliResult<Value> {
                     "--type",
                     "--sheet",
                     "--range",
+                    "--categories",
                     "--table",
                     "--title",
                     "--anchor",
@@ -51,6 +52,7 @@ pub(super) fn dispatch_xlsx_charts(args: &[String]) -> CliResult<Value> {
             let chart_type = parse_string_flag(rest, "--type")?;
             let sheet = parse_string_flag(rest, "--sheet")?;
             let range = parse_string_flag(rest, "--range")?;
+            let categories = parse_string_flag(rest, "--categories")?;
             let table = parse_string_flag(rest, "--table")?;
             let title = parse_string_flag(rest, "--title")?;
             let anchor = parse_string_flag(rest, "--anchor")?;
@@ -64,6 +66,7 @@ pub(super) fn dispatch_xlsx_charts(args: &[String]) -> CliResult<Value> {
                     chart_type: chart_type.as_deref(),
                     sheet: sheet.as_deref(),
                     range: range.as_deref(),
+                    categories: categories.as_deref(),
                     table: table.as_deref(),
                     title: title.as_deref(),
                     anchor: anchor.as_deref(),

@@ -9,6 +9,17 @@ enum FlagAliasTransform {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CommandAliasSpec {
+    alias_path: &'static [&'static str],
+    canonical_path: &'static [&'static str],
+}
+
+const COMMAND_ALIASES: &[CommandAliasSpec] = &[CommandAliasSpec {
+    alias_path: &["pptx", "slides", "add"],
+    canonical_path: &["pptx", "new-slide-from-layout"],
+}];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct FlagAliasSpec {
     path: &'static [&'static str],
     alias: &'static str,
@@ -70,6 +81,7 @@ const FLAG_ALIASES: &[FlagAliasSpec] = &[
     rename_alias!(&["xlsx", "colwidths", "set"], "--cols", "--range"),
     rename_alias!(&["xlsx", "cells", "extract"], "--cell", "--range"),
     rename_alias!(&["xlsx", "cells", "clear"], "--cell", "--ref"),
+    rename_alias!(&["xlsx", "charts", "create"], "--values", "--range"),
     FlagAliasSpec {
         path: &["xlsx", "freeze", "set"],
         alias: "--at",
@@ -91,10 +103,93 @@ pub(crate) struct AppliedFlagAlias {
     pub(crate) canonical_flags: &'static [&'static str],
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AppliedCommandAlias {
+    pub(crate) alias: String,
+    pub(crate) canonical_command: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(untagged)]
+pub(crate) enum AppliedAlias {
+    Flag(AppliedFlagAlias),
+    Command(AppliedCommandAlias),
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct NormalizedFlagArgs {
     pub(crate) args: Vec<String>,
-    pub(crate) applied: Vec<AppliedFlagAlias>,
+    pub(crate) applied: Vec<AppliedAlias>,
+}
+
+pub(crate) fn command_aliases_for(command_path: &[&str]) -> Vec<String> {
+    let mut aliases = COMMAND_ALIASES
+        .iter()
+        .filter(|spec| spec.canonical_path == command_path)
+        .map(|spec| format!("ooxml {}", spec.alias_path.join(" ")))
+        .collect::<Vec<_>>();
+    aliases.sort();
+    aliases.dedup();
+    aliases
+}
+
+pub(crate) fn command_alias_registry_json() -> Value {
+    json!(
+        COMMAND_ALIASES
+            .iter()
+            .map(|spec| json!({
+                "alias": format!("ooxml {}", spec.alias_path.join(" ")),
+                "canonicalCommand": format!("ooxml {}", spec.canonical_path.join(" ")),
+            }))
+            .collect::<Vec<_>>()
+    )
+}
+
+pub(crate) fn canonicalize_command_alias_path(path: &[String]) -> Vec<String> {
+    COMMAND_ALIASES
+        .iter()
+        .find(|spec| {
+            spec.alias_path.len() == path.len()
+                && spec
+                    .alias_path
+                    .iter()
+                    .copied()
+                    .eq(path.iter().map(String::as_str))
+        })
+        .map(|spec| {
+            spec.canonical_path
+                .iter()
+                .map(|part| (*part).to_string())
+                .collect()
+        })
+        .unwrap_or_else(|| path.to_vec())
+}
+
+fn normalize_command_alias(args: &[String]) -> (Vec<String>, Option<AppliedCommandAlias>) {
+    let Some(spec) = COMMAND_ALIASES.iter().find(|spec| {
+        args.get(..spec.alias_path.len()).is_some_and(|actual| {
+            actual
+                .iter()
+                .map(String::as_str)
+                .eq(spec.alias_path.iter().copied())
+        })
+    }) else {
+        return (args.to_vec(), None);
+    };
+    let normalized = spec
+        .canonical_path
+        .iter()
+        .map(|part| (*part).to_string())
+        .chain(args.iter().skip(spec.alias_path.len()).cloned())
+        .collect();
+    (
+        normalized,
+        Some(AppliedCommandAlias {
+            alias: format!("ooxml {}", spec.alias_path.join(" ")),
+            canonical_command: format!("ooxml {}", spec.canonical_path.join(" ")),
+        }),
+    )
 }
 
 pub(crate) fn flag_aliases_for(command_path: &[&str], canonical_flag: &str) -> Vec<&'static str> {
@@ -164,17 +259,23 @@ fn matching_aliases(args: &[String]) -> Vec<&'static FlagAliasSpec> {
 }
 
 pub(crate) fn normalize_flag_aliases(args: &[String]) -> CliResult<NormalizedFlagArgs> {
-    let aliases = matching_aliases(args);
+    let (mut normalized, command_alias) = normalize_command_alias(args);
+    let aliases = matching_aliases(&normalized);
     if aliases.is_empty() {
         return Ok(NormalizedFlagArgs {
-            args: args.to_vec(),
-            applied: Vec::new(),
+            args: normalized,
+            applied: command_alias
+                .into_iter()
+                .map(AppliedAlias::Command)
+                .collect(),
         });
     }
 
-    let mut normalized = args.to_vec();
-    let local_value_flags = crate::command_manifest::local_value_flag_names_for_argv(args);
-    let mut applied = Vec::new();
+    let local_value_flags = crate::command_manifest::local_value_flag_names_for_argv(&normalized);
+    let mut applied = command_alias
+        .into_iter()
+        .map(AppliedAlias::Command)
+        .collect::<Vec<_>>();
     let mut index = aliases[0].path.len();
     while index < normalized.len() {
         let name = flag_name(&normalized[index]);
@@ -230,10 +331,10 @@ pub(crate) fn normalize_flag_aliases(args: &[String]) -> CliResult<NormalizedFla
                 index += 4;
             }
         }
-        applied.push(AppliedFlagAlias {
+        applied.push(AppliedAlias::Flag(AppliedFlagAlias {
             alias: spec.alias,
             canonical_flags: spec.canonical_flags,
-        });
+        }));
     }
     Ok(NormalizedFlagArgs {
         args: normalized,
@@ -246,24 +347,7 @@ pub(crate) struct InvalidArgsIntentHint {
     pub(crate) hint: &'static str,
 }
 
-const INVALID_ARGS_INTENT_HINTS: &[(&[&str], &str, InvalidArgsIntentHint)] = &[
-    (
-        &["xlsx", "charts", "create"],
-        "--values",
-        InvalidArgsIntentHint {
-            did_you_mean: &["--range", "--table"],
-            hint: "chart data is selected with --range or --table; write cell values with xlsx ranges set first",
-        },
-    ),
-    (
-        &["pptx", "text", "set"],
-        "--text",
-        InvalidArgsIntentHint {
-            did_you_mean: &["ooxml pptx replace text"],
-            hint: "pptx text set changes run styling; use ooxml pptx replace text to change text content",
-        },
-    ),
-];
+const INVALID_ARGS_INTENT_HINTS: &[(&[&str], &str, InvalidArgsIntentHint)] = &[];
 
 pub(crate) fn invalid_args_intent_hint(
     command_path: &[&str],
@@ -483,10 +567,10 @@ mod tests {
             let normalized = normalize_flag_aliases(&args).expect("normalize registered alias");
             assert_eq!(
                 normalized.applied,
-                vec![AppliedFlagAlias {
+                vec![AppliedAlias::Flag(AppliedFlagAlias {
                     alias: spec.alias,
                     canonical_flags: spec.canonical_flags,
-                }],
+                })],
                 "{} {}",
                 spec.path.join(" "),
                 spec.alias
@@ -561,5 +645,58 @@ mod tests {
         let normalized = normalize_flag_aliases(&args).expect("preserve alias-like value");
         assert_eq!(normalized.args, args);
         assert!(normalized.applied.is_empty());
+    }
+
+    #[test]
+    fn command_alias_normalizes_before_its_flags_and_reports_both_aliases() {
+        let normalized = normalize_flag_aliases(&[
+            "pptx".to_string(),
+            "slides".to_string(),
+            "add".to_string(),
+            "deck.pptx".to_string(),
+            "--after".to_string(),
+            "2".to_string(),
+        ])
+        .expect("normalize command and flag aliases");
+        assert_eq!(
+            normalized.args,
+            [
+                "pptx",
+                "new-slide-from-layout",
+                "deck.pptx",
+                "--insert-after",
+                "2"
+            ]
+        );
+        assert_eq!(
+            normalized.applied,
+            vec![
+                AppliedAlias::Command(AppliedCommandAlias {
+                    alias: "ooxml pptx slides add".to_string(),
+                    canonical_command: "ooxml pptx new-slide-from-layout".to_string(),
+                }),
+                AppliedAlias::Flag(AppliedFlagAlias {
+                    alias: "--after",
+                    canonical_flags: &["--insert-after"],
+                }),
+            ]
+        );
+    }
+
+    #[test]
+    fn command_alias_registry_is_unique_and_canonical() {
+        let mut aliases = BTreeSet::new();
+        for spec in COMMAND_ALIASES {
+            assert!(
+                aliases.insert(spec.alias_path),
+                "duplicate command alias {}",
+                spec.alias_path.join(" ")
+            );
+            assert_ne!(spec.alias_path, spec.canonical_path);
+        }
+        assert_eq!(
+            command_aliases_for(&["pptx", "new-slide-from-layout"]),
+            ["ooxml pptx slides add"]
+        );
     }
 }

@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::agent_aliases::{
     CAPABILITY_OBJECT_KINDS, capability_filter_aliases_json, capability_filter_suggestions,
-    flag_alias_registry_json, is_command_family_filter, normalize_capability_filter,
+    command_alias_registry_json, flag_alias_registry_json, is_command_family_filter,
+    normalize_capability_filter,
 };
 use crate::{
     CliError, CliResult, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS, EXIT_RENDER_FAILED, EXIT_SUCCESS,
@@ -78,6 +79,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
         "commands": commands,
         "objectKinds": CAPABILITY_OBJECT_KINDS,
         "filterAliases": capability_filter_aliases_json(),
+        "commandAliases": command_alias_registry_json(),
         "flagAliases": flag_alias_registry_json(),
         "objectKindsIndex": object_kinds_index,
         "exitCodes": [

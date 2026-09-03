@@ -64,6 +64,7 @@ pub(crate) enum PptxCommandId {
     FieldsInspect,
     FieldsSet,
     ThemeUpdate,
+    ThemeDerive,
     TranslateExport,
     TranslateApply,
     PlaceImage,

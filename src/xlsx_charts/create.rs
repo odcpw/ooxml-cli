@@ -29,6 +29,7 @@ pub(super) fn resolve_chart_create_source(
 ) -> CliResult<ChartCreateSource> {
     let source_sheet = options.sheet.unwrap_or_default().trim().to_string();
     let source_range = options.range.unwrap_or_default().trim().to_string();
+    let categories_range = options.categories.unwrap_or_default().trim().to_string();
     let source_table = options.table.unwrap_or_default().trim().to_string();
     if !source_range.is_empty() && !source_table.is_empty() {
         return Err(CliError::invalid_args(
@@ -37,6 +38,11 @@ pub(super) fn resolve_chart_create_source(
     }
     if source_range.is_empty() && source_table.is_empty() {
         return Err(CliError::invalid_args("must specify --range or --table"));
+    }
+    if !categories_range.is_empty() && !source_table.is_empty() {
+        return Err(CliError::invalid_args(
+            "--categories can be combined with --values/--range, not --table",
+        ));
     }
     let (sheet, range) = if !source_table.is_empty() {
         let tables = xlsx_tables(
@@ -89,12 +95,49 @@ pub(super) fn resolve_chart_create_source(
         .to_string();
     let cells =
         chart_cells_from_range_export(&exported, xlsx_workbook_waiting_for_formula_recalc(file)?)?;
+    let explicit_categories = if categories_range.is_empty() {
+        None
+    } else {
+        let category_bounds = parse_range(&categories_range)
+            .map_err(|err| {
+                CliError::invalid_args(format!("invalid --categories: {}", err.message))
+            })?
+            .normalized();
+        check_range_max_cells(&categories_range, category_bounds, options.max_cells)?;
+        let category_export = xlsx_range_export_with_options(
+            file,
+            &canonical_sheet,
+            &categories_range,
+            XlsxRangeExportOptions {
+                include_types: true,
+                include_formulas: true,
+                include_formats: false,
+                data_out: None,
+                max_cells: options.max_cells,
+            },
+        )?;
+        let canonical_categories_range = category_export
+            .get("range")
+            .and_then(Value::as_str)
+            .unwrap_or(&categories_range)
+            .to_string();
+        let category_cells = chart_cells_from_range_export(
+            &category_export,
+            xlsx_workbook_waiting_for_formula_recalc(file)?,
+        )?;
+        Some(ChartExplicitCategories {
+            range: canonical_categories_range,
+            bounds: category_bounds,
+            cells: category_cells,
+        })
+    };
     Ok(ChartCreateSource {
         sheet: canonical_sheet,
         sheet_number,
         range: canonical_range,
         bounds,
         cells,
+        explicit_categories,
     })
 }
 
@@ -370,6 +413,9 @@ pub(super) fn build_chart_part_xml(
 pub(super) fn build_chart_series(
     source: &ChartCreateSource,
 ) -> CliResult<(Vec<BuiltChartSeries>, usize, Vec<String>)> {
+    if let Some(categories) = source.explicit_categories.as_ref() {
+        return build_explicit_two_range_series(source, categories);
+    }
     if source.cells.is_empty() {
         return Err(CliError::invalid_args("source range is empty"));
     }
@@ -438,6 +484,87 @@ pub(super) fn build_chart_series(
         warnings.push(format!("{coerced} non-numeric value(s) treated as 0"));
     }
     Ok((series, cats.len(), warnings))
+}
+
+fn build_explicit_two_range_series(
+    source: &ChartCreateSource,
+    categories: &ChartExplicitCategories,
+) -> CliResult<(Vec<BuiltChartSeries>, usize, Vec<String>)> {
+    for (name, bounds) in [
+        ("--values", source.bounds),
+        ("--categories", categories.bounds),
+    ] {
+        if bounds.row_count() > 1 && bounds.col_count() > 1 {
+            return Err(CliError::invalid_args(format!(
+                "{name} must select one row or one column when used as a two-range chart series"
+            )));
+        }
+    }
+    let category_cells = flatten_one_dimensional_cells(&categories.cells, categories.bounds);
+    let value_cells = flatten_one_dimensional_cells(&source.cells, source.bounds);
+    if category_cells.len() != value_cells.len() {
+        return Err(CliError::invalid_args(format!(
+            "--categories and --values must contain the same number of points ({} vs {})",
+            category_cells.len(),
+            value_cells.len()
+        )));
+    }
+    if value_cells.is_empty() {
+        return Err(CliError::invalid_args(
+            "--categories and --values ranges must not be empty",
+        ));
+    }
+    let mut coerced = 0;
+    let values = value_cells
+        .iter()
+        .map(|cell| {
+            let (value, was_coerced) = numeric_text_coerced(cell);
+            coerced += usize::from(was_coerced);
+            value
+        })
+        .collect::<Vec<_>>();
+    let mut warnings = Vec::new();
+    if coerced > 0 {
+        warnings.push(format!("{coerced} non-numeric value(s) treated as 0"));
+    }
+    Ok((
+        vec![BuiltChartSeries {
+            name: String::new(),
+            name_ref: String::new(),
+            cats: category_cells
+                .iter()
+                .map(|cell| cell.value.clone())
+                .collect(),
+            cat_ref: absolute_chart_ref(
+                &source.sheet,
+                categories.bounds.min_col(),
+                categories.bounds.min_row(),
+                categories.bounds.max_col(),
+                categories.bounds.max_row(),
+            ),
+            values,
+            val_ref: absolute_chart_ref(
+                &source.sheet,
+                source.bounds.min_col(),
+                source.bounds.min_row(),
+                source.bounds.max_col(),
+                source.bounds.max_row(),
+            ),
+        }],
+        category_cells.len(),
+        warnings,
+    ))
+}
+
+fn flatten_one_dimensional_cells(
+    cells: &[Vec<ChartSourceCell>],
+    bounds: RangeBounds,
+) -> Vec<&ChartSourceCell> {
+    if bounds.row_count() == 1 {
+        cells.first().into_iter().flatten().collect()
+    } else {
+        cells.iter().filter_map(|row| row.first()).collect()
+    }
 }
 
 pub(super) fn chart_cell_at(source: &ChartCreateSource, row: u32, col: u32) -> ChartSourceCell {
@@ -948,6 +1075,9 @@ pub(super) fn xlsx_chart_create_result(
     result.insert("anchor".to_string(), json!(artifacts.anchor));
     result.insert("sourceSheet".to_string(), json!(source.sheet));
     result.insert("sourceRange".to_string(), json!(source.range));
+    if let Some(categories) = source.explicit_categories.as_ref() {
+        result.insert("categoriesRange".to_string(), json!(categories.range));
+    }
     if !artifacts.warnings.is_empty() {
         result.insert("warnings".to_string(), json!(artifacts.warnings));
     }

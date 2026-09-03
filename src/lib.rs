@@ -39,6 +39,7 @@ mod mcp;
 mod mcp_support;
 mod opc;
 mod package_discovery;
+pub mod palette;
 mod pptx_authoring;
 mod pptx_layout_qa;
 mod pptx_media;

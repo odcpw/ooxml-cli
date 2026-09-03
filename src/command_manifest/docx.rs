@@ -3,7 +3,7 @@ use serde_json::Value;
 use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 
 pub(super) const COMMAND_COUNT: usize = 45;
-pub(super) const LEGACY_START: usize = 248;
+pub(super) const LEGACY_START: usize = 250;
 
 command_id_enum! {
 pub(crate) enum DocxCommandId {
@@ -190,6 +190,24 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "path to optional initial paragraph text",
                 ),
                 flag(
+                    "--theme",
+                    "theme",
+                    "string",
+                    "built-in theme name: neutral, corporate-blue, warm, or dark",
+                ),
+                flag(
+                    "--theme-seed",
+                    "themeSeed",
+                    "string",
+                    "RRGGBB or #RRGGBB brand color used to derive the document theme",
+                ),
+                flag(
+                    "--template",
+                    "template",
+                    "string",
+                    "DOCX template whose styles, supporting parts, headers, footers, and page setup are inherited",
+                ),
+                flag(
                     "--force",
                     "force",
                     "bool",
@@ -281,6 +299,12 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "string",
                     "optional paragraph style ID; default preserves paragraph style when replacing a paragraph",
                 ),
+                flag(
+                    "--create-style",
+                    "createStyle",
+                    "bool",
+                    "add the requested built-in style definition when it is not present",
+                ),
                 flag("--text", "text", "string", "replacement paragraph text"),
                 flag(
                     "--text-file",
@@ -355,6 +379,12 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                 ),
                 flag("--out", "out", "string", "output file path"),
                 flag("--style", "style", "string", "optional paragraph style ID"),
+                flag(
+                    "--create-style",
+                    "createStyle",
+                    "bool",
+                    "add the requested built-in style definition when it is not present",
+                ),
                 flag("--text", "text", "string", "paragraph text"),
                 flag(
                     "--text-file",
@@ -381,6 +411,12 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "path to paragraph text",
                 ),
                 flag("--style", "style", "string", "optional paragraph style ID"),
+                flag(
+                    "--create-style",
+                    "createStyle",
+                    "bool",
+                    "add the requested built-in style definition when it is not present",
+                ),
                 flag("--out", "out", "string", "output file path"),
                 flag(
                     "--in-place",
@@ -421,6 +457,12 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "path to paragraph text",
                 ),
                 flag("--style", "style", "string", "optional paragraph style ID"),
+                flag(
+                    "--create-style",
+                    "createStyle",
+                    "bool",
+                    "add the requested built-in style definition when it is not present",
+                ),
                 flag("--out", "out", "string", "output file path"),
                 flag(
                     "--in-place",
@@ -576,6 +618,12 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "style",
                     "string",
                     "styleId or H:docx/pt:styles/style:n:<styleId> handle",
+                ),
+                flag(
+                    "--create-style",
+                    "createStyle",
+                    "bool",
+                    "add the requested built-in style definition when it is not present",
                 ),
                 flag(
                     "--expect-hash",

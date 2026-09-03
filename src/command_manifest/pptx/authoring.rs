@@ -1,6 +1,6 @@
 use super::{PptxCommandId, direct, flag, inspect, mutation, spec};
 
-pub(super) const COMMAND_COUNT: usize = 15;
+pub(super) const COMMAND_COUNT: usize = 16;
 
 pub(super) fn command_specs() -> Vec<super::CommandSpec> {
     vec![
@@ -19,6 +19,12 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                 ),
                 flag("--title", "title", "string", "initial title text"),
                 flag("--subtitle", "subtitle", "string", "initial subtitle text"),
+                flag(
+                    "--theme-seed",
+                    "themeSeed",
+                    "string",
+                    "derive the generated presentation theme from a six-digit sRGB seed color",
+                ),
                 flag(
                     "--force",
                     "force",
@@ -98,10 +104,54 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
             with_output_flags(vec![
                 flag("--slide", "slide", "int", "1-based slide number"),
                 flag("--text", "text", "string", "text box content"),
-                flag("--x", "x", "int", "left position in EMUs"),
-                flag("--y", "y", "int", "top position in EMUs"),
-                flag("--cx", "cx", "int", "width in EMUs"),
-                flag("--cy", "cy", "int", "height in EMUs"),
+                flag(
+                    "--paragraphs-file",
+                    "paragraphsFile",
+                    "string",
+                    "JSON paragraph array alternative to --text, with text, level, bullet, bold, italic, size, color, align, and runs",
+                ),
+                flag(
+                    "--x",
+                    "x",
+                    "string",
+                    "left position: in, cm, mm, pt, px, emu, or % of slide width; bare numbers are EMUs",
+                ),
+                flag(
+                    "--y",
+                    "y",
+                    "string",
+                    "top position: in, cm, mm, pt, px, emu, or % of slide height; bare numbers are EMUs",
+                ),
+                flag(
+                    "--cx",
+                    "cx",
+                    "string",
+                    "width: in, cm, mm, pt, px, emu, or % of slide width; bare numbers are EMUs",
+                ),
+                flag(
+                    "--cy",
+                    "cy",
+                    "string",
+                    "height: in, cm, mm, pt, px, emu, or % of slide height; bare numbers are EMUs",
+                ),
+                flag(
+                    "--slot",
+                    "slot",
+                    "string",
+                    "named layout slot: body, halves, thirds, grid:RxC:i, caption, full-bleed, or title-area",
+                ),
+                flag(
+                    "--inset",
+                    "inset",
+                    "string",
+                    "slot inset length; % uses the smaller slot dimension",
+                ),
+                flag(
+                    "--aspect",
+                    "aspect",
+                    "string",
+                    "slot aspect handling: keep or fill",
+                ),
                 flag("--name", "name", "string", "optional shape name"),
                 flag("--font-size", "fontSize", "number", "font size in points"),
                 flag("--font", "font", "string", "Latin font family"),
@@ -118,7 +168,7 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
             PptxCommandId::TextSet,
             &["pptx", "text", "set"],
             "set <file>",
-            "Set run-level text styling on a slide shape paragraph/run.",
+            "Set paragraph content or run-level text styling on a slide shape.",
             &["slide", "shape", "style", "hyperlink"],
             with_output_flags(vec![
                 flag("--slide", "slide", "int", "1-based slide number"),
@@ -127,6 +177,24 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                     "target",
                     "string",
                     "shape selector such as title, body, shape:3, or ~Shape Name",
+                ),
+                flag(
+                    "--text",
+                    "text",
+                    "string",
+                    "replacement text; each newline becomes a paragraph, leading tabs set level, and - or * marks a bullet",
+                ),
+                flag(
+                    "--paragraphs-file",
+                    "paragraphsFile",
+                    "string",
+                    "JSON paragraph array with text, level, bullet, bold, italic, size, color, align, and runs",
+                ),
+                flag(
+                    "--append",
+                    "append",
+                    "bool",
+                    "append content paragraphs instead of replacing existing paragraphs",
                 ),
                 flag(
                     "--paragraph",
@@ -186,6 +254,21 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                 ),
             ]),
             direct("direct CLI mutation; serve/MCP op support is not wired yet"),
+            None,
+        ),
+        spec(
+            PptxCommandId::ThemeDerive,
+            &["pptx", "theme", "derive"],
+            "derive --seed <RRGGBB>",
+            "Derive deterministic accessible Office theme colors from an sRGB seed using OKLCH.",
+            &["theme"],
+            vec![flag(
+                "--seed",
+                "seed",
+                "string",
+                "six-digit sRGB seed color (RRGGBB or #RRGGBB)",
+            )],
+            direct("read-only palette derivation command; not a mutation op"),
             None,
         ),
         spec(
@@ -343,10 +426,48 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
             with_output_flags(vec![
                 flag("--slide", "slide", "int", "1-based slide number"),
                 flag("--image", "image", "string", "local image file path"),
-                flag("--x", "x", "int", "left position in EMUs"),
-                flag("--y", "y", "int", "top position in EMUs"),
-                flag("--cx", "cx", "int", "width in EMUs"),
-                flag("--cy", "cy", "int", "height in EMUs"),
+                flag(
+                    "--x",
+                    "x",
+                    "string",
+                    "left position: in, cm, mm, pt, px, emu, or % of slide width; bare numbers are EMUs",
+                ),
+                flag(
+                    "--y",
+                    "y",
+                    "string",
+                    "top position: in, cm, mm, pt, px, emu, or % of slide height; bare numbers are EMUs",
+                ),
+                flag(
+                    "--cx",
+                    "cx",
+                    "string",
+                    "width: in, cm, mm, pt, px, emu, or % of slide width; bare numbers are EMUs",
+                ),
+                flag(
+                    "--cy",
+                    "cy",
+                    "string",
+                    "height: in, cm, mm, pt, px, emu, or % of slide height; bare numbers are EMUs",
+                ),
+                flag(
+                    "--slot",
+                    "slot",
+                    "string",
+                    "named layout slot: body, halves, thirds, grid:RxC:i, caption, full-bleed, or title-area",
+                ),
+                flag(
+                    "--inset",
+                    "inset",
+                    "string",
+                    "slot inset length; % uses the smaller slot dimension",
+                ),
+                flag(
+                    "--aspect",
+                    "aspect",
+                    "string",
+                    "image aspect handling in a slot: keep or fill",
+                ),
                 flag("--name", "name", "string", "optional picture shape name"),
                 flag(
                     "--fit-mode",
@@ -503,14 +624,47 @@ fn place_table_flags() -> Vec<super::FlagSpec> {
 
 fn place_table_layout_flags() -> Vec<super::FlagSpec> {
     vec![
-        flag("--x", "x", "int", "left position in EMUs"),
-        flag("--y", "y", "int", "top position in EMUs"),
-        flag("--cx", "cx", "int", "width in EMUs"),
+        flag(
+            "--x",
+            "x",
+            "string",
+            "left position: in, cm, mm, pt, px, emu, or % of slide width; bare numbers are EMUs",
+        ),
+        flag(
+            "--y",
+            "y",
+            "string",
+            "top position: in, cm, mm, pt, px, emu, or % of slide height; bare numbers are EMUs",
+        ),
+        flag(
+            "--cx",
+            "cx",
+            "string",
+            "width: in, cm, mm, pt, px, emu, or % of slide width; bare numbers are EMUs",
+        ),
         flag(
             "--cy",
             "cy",
-            "int",
-            "height in EMUs; calculated from row count when omitted or zero",
+            "string",
+            "height in in/cm/mm/pt/px/emu or % of slide height; bare zero or omission calculates from row count",
+        ),
+        flag(
+            "--slot",
+            "slot",
+            "string",
+            "named layout slot: body, halves, thirds, grid:RxC:i, caption, full-bleed, or title-area",
+        ),
+        flag(
+            "--inset",
+            "inset",
+            "string",
+            "slot inset length; % uses the smaller slot dimension",
+        ),
+        flag(
+            "--aspect",
+            "aspect",
+            "string",
+            "slot aspect handling: keep or fill",
         ),
         flag("--name", "name", "string", "optional table shape name"),
         flag("--header", "header", "bool", "treat first row as a header"),
