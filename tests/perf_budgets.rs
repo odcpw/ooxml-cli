@@ -343,10 +343,11 @@ fn release_perf_enabled() -> bool {
         );
         return false;
     }
-    assert!(
-        !cfg!(debug_assertions),
+    #[cfg(debug_assertions)]
+    panic!(
         "{PERF_ENV}=1 requires cargo test --release so debug builds do not create misleading baselines"
     );
+    #[cfg(not(debug_assertions))]
     true
 }
 
