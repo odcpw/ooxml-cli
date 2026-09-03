@@ -322,8 +322,9 @@ mod tests {
             bullet: true,
             ..Paragraph::default()
         };
-        let placeholder = render_paragraphs(&[paragraph.clone()], ParagraphContext::Placeholder)
-            .expect("placeholder XML");
+        let placeholder =
+            render_paragraphs(std::slice::from_ref(&paragraph), ParagraphContext::Placeholder)
+                .expect("placeholder XML");
         let textbox =
             render_paragraphs(&[paragraph], ParagraphContext::Textbox).expect("textbox XML");
         assert!(!placeholder.contains("buChar"));
