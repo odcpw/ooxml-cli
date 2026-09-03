@@ -288,6 +288,75 @@ fn brand_apply_preserves_content_and_limits_changes_to_theme_style_parts() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn committed_deck_brand_extract_round_trips_colors_and_fonts() {
+    let root = temp_dir("committed-brand-roundtrip");
+    let extracted_path = root.join("committed-brand.json");
+    let extracted = run_json(&args(&[
+        "--json",
+        "template",
+        "brand",
+        "extract",
+        "testdata/pptx/template-branded/presentation.pptx",
+        "--name",
+        "Committed Deck",
+        "--out",
+        extracted_path.to_str().unwrap(),
+    ]));
+    assert_eq!(extracted["brand"]["name"], "Committed Deck");
+    assert_eq!(extracted["brand"]["colors"].as_object().unwrap().len(), 12);
+    assert!(
+        !extracted["brand"]["fonts"]["heading"]
+            .as_str()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !extracted["brand"]["fonts"]["body"]
+            .as_str()
+            .unwrap()
+            .is_empty()
+    );
+
+    let source = root.join("source.pptx");
+    let branded = root.join("branded.pptx");
+    run_json(&args(&[
+        "--json",
+        "pptx",
+        "scaffold",
+        source.to_str().unwrap(),
+        "--title",
+        "Round-trip sentinel",
+    ]));
+    run_json(&args(&[
+        "--json",
+        "template",
+        "apply",
+        source.to_str().unwrap(),
+        "--brand",
+        extracted_path.to_str().unwrap(),
+        "--out",
+        branded.to_str().unwrap(),
+    ]));
+    strict_and_sdk(&branded);
+    let extracted_again = run_json(&args(&[
+        "--json",
+        "template",
+        "brand",
+        "extract",
+        branded.to_str().unwrap(),
+    ]));
+    assert_eq!(
+        extracted_again["brand"]["colors"],
+        extracted["brand"]["colors"]
+    );
+    assert_eq!(
+        extracted_again["brand"]["fonts"],
+        extracted["brand"]["fonts"]
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn make_branded_chart(root: &Path, family: &str) -> PathBuf {
     match family {
         "pptx" => {
