@@ -3,12 +3,30 @@ use serde_json::Value;
 use crate::cli_dispatch::units::{parse_length, presentation_slide_size};
 use crate::{CliError, CliResult, parse_string_flag, pptx_shapes_show};
 
-#[derive(Clone, Copy)]
+#[path = "pptx_compose.rs"]
+pub(crate) mod compose;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct SlotBounds {
     pub(crate) x: i64,
     pub(crate) y: i64,
     pub(crate) cx: i64,
     pub(crate) cy: i64,
+}
+
+pub(crate) fn body_bounds(file: &str, slide: u32) -> CliResult<SlotBounds> {
+    let (slide_cx, slide_cy) = presentation_slide_size(file)?;
+    let shapes = pptx_shapes_show(file, slide, false, true)?;
+    Ok(body_bounds_from_shapes(&shapes, slide_cx, slide_cy))
+}
+
+fn body_bounds_from_shapes(shapes: &Value, slide_cx: i64, slide_cy: i64) -> SlotBounds {
+    shape_bounds(shapes, "body").unwrap_or(SlotBounds {
+        x: slide_cx / 20,
+        y: slide_cy / 5,
+        cx: slide_cx * 9 / 10,
+        cy: slide_cy * 7 / 10,
+    })
 }
 
 pub(crate) fn resolve(
@@ -37,12 +55,7 @@ pub(crate) fn resolve(
     }
     let (slide_cx, slide_cy) = presentation_slide_size(file)?;
     let shapes = pptx_shapes_show(file, slide, false, true)?;
-    let body = shape_bounds(&shapes, "body").unwrap_or(SlotBounds {
-        x: slide_cx / 20,
-        y: slide_cy / 5,
-        cx: slide_cx * 9 / 10,
-        cy: slide_cy * 7 / 10,
-    });
+    let body = body_bounds_from_shapes(&shapes, slide_cx, slide_cy);
     let title = shape_bounds(&shapes, "title").unwrap_or(SlotBounds {
         x: slide_cx / 20,
         y: slide_cy / 20,
