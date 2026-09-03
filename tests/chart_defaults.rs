@@ -338,10 +338,10 @@ fn default_recipes_for_every_chart_type_are_schema_clean_renderable_and_golden()
                 .output()
                 .expect("extract rendered chart text");
             assert!(text.status.success(), "pdftotext failed");
+            let rendered_text = String::from_utf8_lossy(&text.stdout);
             assert!(
-                String::from_utf8_lossy(&text.stdout).contains('$'),
-                "LibreOffice-rendered value axis must retain the inferred currency format: {}",
-                String::from_utf8_lossy(&text.stdout)
+                rendered_text.contains("$3,000.00"),
+                "LibreOffice-rendered value axis must retain the inferred currency format; the source data never contains 3000: {rendered_text}"
             );
         }
     }
