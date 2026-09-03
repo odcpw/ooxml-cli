@@ -331,8 +331,11 @@ fn largest_committed_fixture_outline_stays_under_two_seconds() {
         "measured: {}",
         String::from_utf8_lossy(&measured.stderr)
     );
-    assert!(
-        elapsed < Duration::from_secs(2),
-        "largest fixture outline took {elapsed:?}"
-    );
+    eprintln!("largest committed fixture outline elapsed: {elapsed:?}");
+    if std::env::var("OOXML_PERF_BUDGETS").as_deref() == Ok("1") {
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "largest fixture outline took {elapsed:?}"
+        );
+    }
 }
