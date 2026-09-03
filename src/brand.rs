@@ -1,15 +1,15 @@
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
 use crate::palette::{Srgb, ThemePalette};
 use crate::{
-    CliError, CliResult, attr, copy_zip_with_part_overrides, local_name, package_type,
-    parse_string_flag, reject_unknown_flags, validate_xlsx_mutation_output_flags, xml_attr_escape,
-    zip_entry_names, zip_text,
+    CliError, CliResult, attr, copy_zip_with_binary_part_overrides_and_removals, local_name,
+    package_type, parse_string_flag, reject_unknown_flags, validate_xlsx_mutation_output_flags,
+    xml_attr_escape, zip_entry_names, zip_text,
 };
 
 #[allow(dead_code)]
@@ -65,6 +65,8 @@ pub(crate) struct BrandApplyOptions<'a> {
     pub(crate) in_place: bool,
     pub(crate) no_validate: bool,
 }
+
+type BrandPartOverrides = (BTreeMap<String, String>, BTreeMap<String, Vec<u8>>);
 
 impl BrandKit {
     pub(crate) fn load(path: &str) -> CliResult<Self> {
@@ -272,10 +274,18 @@ pub(crate) fn template_apply_brand(
     let kit = BrandKit::load(brand_path)?;
     let family = package_type(file)?;
     ensure_brand_family(family)?;
-    let overrides = brand_overrides(file, family, &kit)?;
-    let changed_parts = overrides.keys().cloned().collect::<Vec<_>>();
+    let (overrides, binary_overrides) = brand_overrides(file, family, &kit)?;
+    let mut changed_parts = overrides.keys().cloned().collect::<Vec<_>>();
+    changed_parts.extend(binary_overrides.keys().cloned());
+    changed_parts.sort();
     let stage = crate::mutation_staging_path(file, options.out, "brand-apply");
-    copy_zip_with_part_overrides(file, &stage, &overrides)?;
+    copy_zip_with_binary_part_overrides_and_removals(
+        file,
+        &stage,
+        &overrides,
+        &binary_overrides,
+        &BTreeSet::new(),
+    )?;
     if let Err(err) = apply_post_rewrite_features(&stage, family, &kit) {
         let _ = fs::remove_file(&stage);
         return Err(err);
@@ -309,9 +319,15 @@ pub(crate) fn apply_to_staged_package(file: &str, brand_path: &str) -> CliResult
     let kit = BrandKit::load(brand_path)?;
     let family = package_type(file)?;
     ensure_brand_family(family)?;
-    let overrides = brand_overrides(file, family, &kit)?;
+    let (overrides, binary_overrides) = brand_overrides(file, family, &kit)?;
     let replacement = crate::mutation_staging_path(file, None, "brand-scaffold");
-    copy_zip_with_part_overrides(file, &replacement, &overrides)?;
+    copy_zip_with_binary_part_overrides_and_removals(
+        file,
+        &replacement,
+        &overrides,
+        &binary_overrides,
+        &BTreeSet::new(),
+    )?;
     fs::rename(&replacement, file).map_err(|err| {
         let _ = fs::remove_file(&replacement);
         CliError::unexpected(format!("failed to install branded scaffold stage: {err}"))
@@ -320,11 +336,7 @@ pub(crate) fn apply_to_staged_package(file: &str, brand_path: &str) -> CliResult
     Ok(kit)
 }
 
-fn brand_overrides(
-    file: &str,
-    family: &str,
-    kit: &BrandKit,
-) -> CliResult<BTreeMap<String, String>> {
+fn brand_overrides(file: &str, family: &str, kit: &BrandKit) -> CliResult<BrandPartOverrides> {
     let mut overrides = crate::template_workflow::brand_theme_overrides(
         file,
         family,
@@ -333,13 +345,14 @@ fn brand_overrides(
         &kit.fonts.heading,
         &kit.fonts.body,
     )?;
+    let mut binary_overrides = BTreeMap::new();
     match family {
         "docx" => add_docx_overrides(file, kit, &mut overrides)?,
-        "xlsx" => add_xlsx_overrides(file, kit, &mut overrides)?,
+        "xlsx" => add_xlsx_overrides(file, kit, &mut overrides, &mut binary_overrides)?,
         "pptx" => add_pptx_overrides(file, kit, &mut overrides)?,
         _ => unreachable!("family checked before override generation"),
     }
-    Ok(overrides)
+    Ok((overrides, binary_overrides))
 }
 
 fn add_docx_overrides(
@@ -370,6 +383,7 @@ fn add_xlsx_overrides(
     file: &str,
     kit: &BrandKit,
     overrides: &mut BTreeMap<String, String>,
+    binary_overrides: &mut BTreeMap<String, Vec<u8>>,
 ) -> CliResult<()> {
     if zip_entry_names(file)?
         .iter()
@@ -407,6 +421,9 @@ fn add_xlsx_overrides(
             overrides.insert(part, updated);
         }
     }
+    if let Some(logo) = kit.logo.as_ref() {
+        add_xlsx_logo(file, logo, overrides, binary_overrides)?;
+    }
     Ok(())
 }
 
@@ -434,6 +451,248 @@ fn add_pptx_overrides(
         }
     }
     Ok(())
+}
+
+fn add_xlsx_logo(
+    file: &str,
+    logo: &BrandLogo,
+    overrides: &mut BTreeMap<String, String>,
+    binary_overrides: &mut BTreeMap<String, Vec<u8>>,
+) -> CliResult<()> {
+    let entries = zip_entry_names(file)?;
+    let worksheet_part = entries
+        .iter()
+        .filter(|part| part.starts_with("xl/worksheets/") && part.ends_with(".xml"))
+        .min()
+        .cloned()
+        .ok_or_else(|| CliError::unexpected("XLSX brand logo requires a worksheet"))?;
+    let worksheet_uri = format!("/{}", worksheet_part.trim_start_matches('/'));
+    let worksheet_rels_part = crate::relationships_part_for(&worksheet_part);
+    let mut worksheet = overrides
+        .get(&worksheet_part)
+        .cloned()
+        .unwrap_or(zip_text(file, &worksheet_part)?);
+    let mut worksheet_rels = if entries.iter().any(|part| part == &worksheet_rels_part) {
+        zip_text(file, &worksheet_rels_part)?
+    } else {
+        relationships_template()
+    };
+
+    let (drawing_part, drawing_rel_id, existing_drawing) =
+        if let Some((drawing_start, drawing_end)) = find_start_tag(&worksheet, "drawing", 0) {
+            let id = tag_attr(&worksheet[drawing_start..drawing_end], "id")
+                .ok_or_else(|| CliError::unexpected("XLSX drawing has no relationship id"))?;
+            let relationship = crate::relationship_entries_from_xml(&worksheet_rels)
+                .into_iter()
+                .find(|relationship| relationship.id == id)
+                .ok_or_else(|| {
+                    CliError::unexpected(format!(
+                        "XLSX drawing relationship {id} is missing from /{worksheet_rels_part}"
+                    ))
+                })?;
+            (
+                crate::resolve_relationship_target(&worksheet_uri, &relationship.target)
+                    .trim_start_matches('/')
+                    .to_string(),
+                id,
+                true,
+            )
+        } else {
+            let part = next_numbered_part(&entries, "xl/drawings/drawing", ".xml");
+            let id = crate::allocate_relationship_id(&crate::relationship_entries_from_xml(
+                &worksheet_rels,
+            ));
+            let target = crate::relationship_target_from_source_to_target(
+                &worksheet_uri,
+                &format!("/{part}"),
+            );
+            worksheet_rels = crate::add_relationship_to_xml(
+                worksheet_rels,
+                &id,
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing",
+                &target,
+            );
+            let root = find_start_tag(&worksheet, "worksheet", 0)
+                .ok_or_else(|| CliError::unexpected("worksheet root not found"))?;
+            let root_tag = &worksheet[root.0..root.1];
+            if tag_attr(root_tag, "r").is_none() && !root_tag.contains("xmlns:r=") {
+                worksheet = replace_range(
+                    &worksheet,
+                    root.0,
+                    root.1,
+                    &set_tag_attr(
+                        root_tag,
+                        "xmlns:r",
+                        "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+                    )?,
+                );
+            }
+            let insert_at = worksheet_insert_position(&worksheet, "drawing")?;
+            worksheet.insert_str(insert_at, &format!("<drawing r:id=\"{id}\"/>"));
+            (part, id, false)
+        };
+
+    let drawing_rels_part = crate::relationships_part_for(&drawing_part);
+    let mut drawing = if existing_drawing {
+        zip_text(file, &drawing_part)?
+    } else {
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"></xdr:wsDr>"#.to_string()
+    };
+    let mut drawing_rels =
+        if existing_drawing && entries.iter().any(|part| part == &drawing_rels_part) {
+            zip_text(file, &drawing_rels_part)?
+        } else {
+            relationships_template()
+        };
+    let image_rel_id =
+        crate::allocate_relationship_id(&crate::relationship_entries_from_xml(&drawing_rels));
+    let (extension, content_type) = image_type(&logo.path)?;
+    let media_part = next_numbered_part(&entries, "xl/media/brandLogo", &format!(".{extension}"));
+    let drawing_uri = format!("/{}", drawing_part.trim_start_matches('/'));
+    let media_target =
+        crate::relationship_target_from_source_to_target(&drawing_uri, &format!("/{media_part}"));
+    drawing_rels = crate::add_relationship_to_xml(
+        drawing_rels,
+        &image_rel_id,
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+        &media_target,
+    );
+    let shape_id = next_drawing_shape_id(&drawing);
+    let anchor = xlsx_logo_anchor_xml(logo, &image_rel_id, shape_id);
+    let close = find_end_tag(&drawing, "wsDr", 0)
+        .ok_or_else(|| CliError::unexpected("unterminated XLSX drawing root"))?
+        .0;
+    drawing.insert_str(close, &anchor);
+
+    let mut content_types = overrides
+        .get("[Content_Types].xml")
+        .cloned()
+        .unwrap_or(zip_text(file, "[Content_Types].xml")?);
+    content_types = crate::ensure_content_type_override(
+        content_types,
+        &drawing_part,
+        "application/vnd.openxmlformats-officedocument.drawing+xml",
+    )?;
+    content_types = ensure_default_content_type(content_types, extension, content_type)?;
+    overrides.insert(worksheet_part, worksheet);
+    overrides.insert(worksheet_rels_part, worksheet_rels);
+    overrides.insert(drawing_part, drawing);
+    overrides.insert(drawing_rels_part, drawing_rels);
+    overrides.insert("[Content_Types].xml".to_string(), content_types);
+    binary_overrides.insert(
+        media_part,
+        fs::read(&logo.path).map_err(|err| {
+            CliError::unexpected(format!("failed to read brand logo {:?}: {err}", logo.path))
+        })?,
+    );
+    let _ = drawing_rel_id;
+    Ok(())
+}
+
+fn relationships_template() -> String {
+    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
+}
+
+fn next_numbered_part(entries: &[String], prefix: &str, suffix: &str) -> String {
+    let mut number = 1_u32;
+    loop {
+        let candidate = format!("{prefix}{number}{suffix}");
+        if !entries
+            .iter()
+            .any(|entry| entry.eq_ignore_ascii_case(&candidate))
+        {
+            return candidate;
+        }
+        number += 1;
+    }
+}
+
+fn image_type(path: &str) -> CliResult<(&'static str, &'static str)> {
+    match Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "png" => Ok(("png", "image/png")),
+        "jpg" | "jpeg" => Ok(("jpeg", "image/jpeg")),
+        "gif" => Ok(("gif", "image/gif")),
+        _ => Err(CliError::invalid_args(
+            "brand logo must be a PNG, JPEG, or GIF image",
+        )),
+    }
+}
+
+fn next_drawing_shape_id(xml: &str) -> u32 {
+    let mut reader = Reader::from_str(xml);
+    let mut maximum = 0_u32;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(element)) | Ok(Event::Empty(element))
+                if local_name(element.name().as_ref()) == "cNvPr" =>
+            {
+                maximum = maximum.max(
+                    attr(&element, "id")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(0),
+                );
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    maximum.saturating_add(1).max(1)
+}
+
+fn xlsx_logo_anchor_xml(logo: &BrandLogo, relationship_id: &str, shape_id: u32) -> String {
+    let right = logo.placement.ends_with("right");
+    let bottom = logo.placement.starts_with("bottom");
+    let col = if right { 7 } else { 0 };
+    let row = if bottom { 20 } else { 0 };
+    let width = logo.width_emu.unwrap_or(1_200_000);
+    let height = logo.height_emu.unwrap_or(400_000);
+    format!(
+        r#"<xdr:oneCellAnchor><xdr:from><xdr:col>{col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="{width}" cy="{height}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="{shape_id}" name="Brand Logo" descr="Brand logo"/><xdr:cNvPicPr/></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="{}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>"#,
+        xml_attr_escape(relationship_id),
+    )
+}
+
+fn ensure_default_content_type(
+    xml: String,
+    extension: &str,
+    content_type: &str,
+) -> CliResult<String> {
+    let mut reader = Reader::from_str(&xml);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(element)) | Ok(Event::Empty(element))
+                if local_name(element.name().as_ref()) == "Default"
+                    && attr(&element, "Extension")
+                        .is_some_and(|value| value.eq_ignore_ascii_case(extension)) =>
+            {
+                return Ok(xml);
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => {
+                return Err(CliError::unexpected(format!(
+                    "invalid [Content_Types].xml: {err}"
+                )));
+            }
+            _ => {}
+        }
+    }
+    let close = xml
+        .rfind("</Types>")
+        .ok_or_else(|| CliError::unexpected("[Content_Types].xml has no Types close tag"))?;
+    let default = format!(
+        r#"<Default Extension="{}" ContentType="{}"/>"#,
+        xml_attr_escape(extension),
+        xml_attr_escape(content_type),
+    );
+    let mut updated = xml;
+    updated.insert_str(close, &default);
+    Ok(updated)
 }
 
 fn update_pptx_title_layout_slide_numbers(xml: &str) -> CliResult<String> {
@@ -478,6 +737,9 @@ fn apply_post_rewrite_features(file: &str, family: &str, kit: &BrandKit) -> CliR
         ));
         args.extend(["--in-place".to_string(), "--no-validate".to_string()]);
         crate::pptx_mutation::pptx_fields_set(file, &args)?;
+        if let Some(logo) = kit.logo.as_ref() {
+            apply_pptx_logo(file, logo)?;
+        }
     } else if family == "docx"
         && let Some(footer) = kit.footer_text.as_deref()
     {
@@ -503,6 +765,67 @@ fn apply_post_rewrite_features(file: &str, family: &str, kit: &BrandKit) -> CliR
         )?;
     }
     Ok(())
+}
+
+fn apply_pptx_logo(file: &str, logo: &BrandLogo) -> CliResult<()> {
+    let slides = crate::pptx_slides_list(file)?
+        .get("slides")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let (page_width, page_height) = pptx_page_size(file)?;
+    let width = logo.width_emu.unwrap_or(1_200_000);
+    let height = logo.height_emu.unwrap_or(400_000);
+    let margin = 228_600_i64;
+    let x = if logo.placement.ends_with("right") {
+        page_width.saturating_sub(width).saturating_sub(margin)
+    } else {
+        margin
+    };
+    let y = if logo.placement.starts_with("bottom") {
+        page_height.saturating_sub(height).saturating_sub(margin)
+    } else {
+        margin
+    };
+    for slide in 1..=slides {
+        crate::pptx_mutation::pptx_place_image(
+            file,
+            &[
+                "--slide".to_string(),
+                slide.to_string(),
+                "--image".to_string(),
+                logo.path.clone(),
+                "--x".to_string(),
+                x.to_string(),
+                "--y".to_string(),
+                y.to_string(),
+                "--cx".to_string(),
+                width.to_string(),
+                "--cy".to_string(),
+                height.to_string(),
+                "--name".to_string(),
+                "Brand Logo".to_string(),
+                "--fit".to_string(),
+                "contain".to_string(),
+                "--in-place".to_string(),
+                "--no-validate".to_string(),
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+fn pptx_page_size(file: &str) -> CliResult<(i64, i64)> {
+    let presentation = zip_text(file, "ppt/presentation.xml")?;
+    let (start, end) = find_start_tag(&presentation, "sldSz", 0)
+        .ok_or_else(|| CliError::unexpected("PPTX presentation has no slide size"))?;
+    let tag = &presentation[start..end];
+    let width = tag_attr(tag, "cx")
+        .and_then(|value| value.parse().ok())
+        .ok_or_else(|| CliError::unexpected("PPTX slide width is invalid"))?;
+    let height = tag_attr(tag, "cy")
+        .and_then(|value| value.parse().ok())
+        .ok_or_else(|| CliError::unexpected("PPTX slide height is invalid"))?;
+    Ok((width, height))
 }
 
 fn update_docx_styles(xml: &str, kit: &BrandKit) -> CliResult<String> {

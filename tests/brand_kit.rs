@@ -250,6 +250,52 @@ fn dry_run_validates_without_publishing_and_title_layout_can_hide_slide_numbers(
     fs::remove_dir_all(temp).unwrap();
 }
 
+#[test]
+fn brand_logo_is_embedded_and_positioned_in_pptx_and_xlsx() {
+    let temp = temp_dir("logo");
+    let brand = repo_path("testdata/brand/logo.json");
+    let cases = [
+        (
+            "pptx",
+            temp.join("deck.pptx"),
+            "ppt/slides/slide1.xml",
+            "Brand Logo",
+        ),
+        (
+            "xlsx",
+            temp.join("workbook.xlsx"),
+            "xl/drawings/drawing1.xml",
+            "Brand Logo",
+        ),
+    ];
+    for (family, output, part, marker) in cases {
+        run_ok(&[
+            "--json",
+            family,
+            "scaffold",
+            path(&output),
+            "--brand",
+            path(&brand),
+        ]);
+        let package_entries = zip_entries(&output);
+        assert!(
+            package_entries
+                .iter()
+                .any(|entry| entry.contains("/media/") && entry.ends_with(".png")),
+            "{family} must embed the brand logo"
+        );
+        let placement = zip_text(&output, part);
+        assert!(placement.contains(marker), "{family} logo marker missing");
+        assert!(
+            placement.contains(r#"cx="914400" cy="914400""#),
+            "{family} logo dimensions missing"
+        );
+        assert_strict_valid(&output);
+        assert_sdk_valid_if_available(&output);
+    }
+    fs::remove_dir_all(temp).unwrap();
+}
+
 fn scaffold_family_set(root: &Path, brand: &Path) -> Vec<(&'static str, PathBuf)> {
     fs::create_dir_all(root).unwrap();
     let paths = [
@@ -412,6 +458,11 @@ fn zip_text(file: &Path, part: &str) -> String {
     let mut text = String::new();
     entry.read_to_string(&mut text).unwrap();
     text
+}
+
+fn zip_entries(file: &Path) -> Vec<String> {
+    let archive = ZipArchive::new(File::open(file).unwrap()).unwrap();
+    archive.file_names().map(str::to_string).collect()
 }
 
 fn run_ok(args: &[&str]) -> Value {

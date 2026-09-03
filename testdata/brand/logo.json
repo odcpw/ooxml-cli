@@ -1,0 +1,17 @@
+{
+  "$schema": "https://ooxml-cli.dev/schemas/brand.schema.json",
+  "name": "Logo Proof",
+  "colors": {
+    "seed": "#316F8A"
+  },
+  "fonts": {
+    "heading": "Arial",
+    "body": "Liberation Sans"
+  },
+  "logo": {
+    "path": "../test_image.png",
+    "placement": "bottom-right",
+    "widthEmu": 914400,
+    "heightEmu": 914400
+  }
+}
