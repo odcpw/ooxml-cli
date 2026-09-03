@@ -83,8 +83,12 @@ struct ServeSession {
     backup: Option<String>,
     no_validate: bool,
     dry_run: bool,
+    ops_base_dir: Option<String>,
     working: String,
     ops: Vec<ServeOp>,
+    op_ids: Vec<Option<String>>,
+    resolved_args: Vec<Value>,
+    named_results: BTreeMap<String, Value>,
 }
 
 impl ServeState {
@@ -134,6 +138,7 @@ impl ServeState {
             .get("dryRun")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        let ops_base_dir = json_optional_string(params, "opsBaseDir");
         if out.is_some() && in_place {
             return Err(CliError::invalid_args(
                 "cannot specify both out and inPlace",
@@ -160,11 +165,20 @@ impl ServeState {
                 backup,
                 no_validate,
                 dry_run,
+                ops_base_dir,
                 working,
                 ops: Vec::new(),
+                op_ids: Vec::new(),
+                resolved_args: Vec::new(),
+                named_results: BTreeMap::new(),
             },
         );
-        Ok(json!({"sessionId": session_id, "type": package_type(&file)?}))
+        let package_kind = if Path::new(&file).is_file() {
+            package_type(&file)?
+        } else {
+            package_type_from_extension(&file)?
+        };
+        Ok(json!({"sessionId": session_id, "type": package_kind}))
     }
 
     fn serve_op(&mut self, params: &Value) -> CliResult<Value> {
@@ -174,18 +188,54 @@ impl ServeState {
             .get("args")
             .ok_or_else(|| CliError::invalid_args("op args are required"))?;
         let session = self.session_mut(&session_id)?;
-        let op = serve_op_command(&session.working, &command, args)?;
+        let op_id = json_optional_string(params, "id");
+        if let Some(op_id) = op_id.as_deref() {
+            validate_operation_id(op_id)?;
+            if session.named_results.contains_key(op_id) {
+                return Err(CliError::invalid_args(format!(
+                    "duplicate operation id: {op_id:?}"
+                )));
+            }
+        }
+        if !Path::new(&session.working).is_file()
+            && !(session.ops.is_empty() && is_scaffold_command(&command))
+        {
+            return Err(CliError::invalid_args(
+                "a session opened on a new path must begin with a docx, pptx, or xlsx scaffold op",
+            ));
+        }
+        let mut resolved_args = op_dispatch::resolve_refs(args, &session.named_results)?;
+        if let Some(base_dir) = session.ops_base_dir.as_deref() {
+            resolved_args =
+                op_dispatch::resolve_op_paths(&command, &resolved_args, Path::new(base_dir))?;
+        }
+        let op = serve_op_command(&session.working, &command, &resolved_args)?;
         let readback = op.readback(&session.working);
         let index = session.ops.len();
         let mutation_envelope =
             serve_mutation_envelope(&op, &session.working, &session.working, &readback, false)?;
-        session.ops.push(op);
-        let mut result = json!({"command": command, "index": index, "readback": readback});
+        let mut result = json!({
+            "command": command,
+            "index": index,
+            "readback": readback,
+            "resolvedArgs": resolved_args,
+        });
+        if let Some(op_id) = op_id.as_ref()
+            && let Value::Object(object) = &mut result
+        {
+            object.insert("id".to_string(), json!(op_id));
+        }
         if let Some(mutation_envelope) = mutation_envelope
             && let Value::Object(object) = &mut result
         {
             object.insert("mutationEnvelope".to_string(), mutation_envelope);
         }
+        if let Some(op_id) = op_id.as_ref() {
+            session.named_results.insert(op_id.clone(), result.clone());
+        }
+        session.op_ids.push(op_id);
+        session.resolved_args.push(resolved_args);
+        session.ops.push(op);
         Ok(result)
     }
 
@@ -219,11 +269,18 @@ impl ServeState {
             .iter()
             .enumerate()
             .map(|(index, op)| {
-                json!({
+                let mut item = json!({
                     "argv": op.plan_argv(&session.file),
                     "command": op.command(),
                     "index": index,
-                })
+                    "resolvedArgs": session.resolved_args[index],
+                });
+                if let Some(op_id) = &session.op_ids[index]
+                    && let Value::Object(object) = &mut item
+                {
+                    object.insert("id".to_string(), json!(op_id));
+                }
+                item
             })
             .collect();
         Ok(json!({
@@ -244,18 +301,19 @@ impl ServeState {
             session
                 .out
                 .clone()
+                .or_else(|| session.dry_run.then(|| session.file.clone()))
                 .ok_or_else(|| CliError::invalid_args("commit requires an output path"))?
         };
-        if !session.dry_run {
-            if !session.no_validate {
-                let validation = validate(&session.working, true)?;
-                if validate_exit_code(&validation, true) != EXIT_SUCCESS {
-                    return Err(CliError::validation_failed(format!(
-                        "validation failed for working copy: {}",
-                        serde_json::to_string(&validation).expect("serialize validation")
-                    )));
-                }
+        if !session.no_validate {
+            let validation = validate(&session.working, true)?;
+            if validate_exit_code(&validation, true) != EXIT_SUCCESS {
+                return Err(CliError::validation_failed(format!(
+                    "validation failed for working copy: {}",
+                    serde_json::to_string(&validation).expect("serialize validation")
+                )));
             }
+        }
+        if !session.dry_run {
             if session.in_place
                 && let Some(backup_path) = session
                     .backup
@@ -291,13 +349,19 @@ impl ServeState {
                     &session.file,
                     readback_file,
                     &readback,
-                    !session.dry_run && !session.no_validate,
+                    !session.no_validate,
                 )?;
                 let mut applied = json!({
                     "command": op.command(),
                     "index": index,
                     "readback": readback,
+                    "resolvedArgs": session.resolved_args[index],
                 });
+                if let Some(op_id) = &session.op_ids[index]
+                    && let Value::Object(object) = &mut applied
+                {
+                    object.insert("id".to_string(), json!(op_id));
+                }
                 if let Some(mutation_envelope) = mutation_envelope
                     && let Value::Object(object) = &mut applied
                 {
@@ -313,6 +377,7 @@ impl ServeState {
             "opsCount": session.ops.len(),
             "output": if session.dry_run { Value::Null } else { json!(output.clone()) },
             "schemaVersion": 1,
+            "validated": !session.no_validate,
             "validateCommand": if session.dry_run {
                 Value::Null
             } else {
@@ -356,7 +421,12 @@ fn serve_mutation_envelope(
     readback: &Value,
     validated: bool,
 ) -> CliResult<Option<Value>> {
-    let Value::Array(plan) = op.plan_argv(source_file) else {
+    let plan_file = if is_scaffold_command(op.command()) {
+        output_file
+    } else {
+        source_file
+    };
+    let Value::Array(plan) = op.plan_argv(plan_file) else {
         return Err(CliError::unexpected("serve op plan argv must be an array"));
     };
     let mut args = plan
@@ -393,8 +463,50 @@ fn make_working_copy(file: &str, session_number: usize) -> CliResult<String> {
         .and_then(|extension| extension.to_str())
         .unwrap_or("xlsx");
     let working = dir.join(format!("working.{extension}"));
-    fs::copy(file, &working).map_err(|err| CliError::unexpected(err.to_string()))?;
+    if Path::new(file).exists() {
+        if !Path::new(file).is_file() {
+            return Err(CliError::invalid_args(format!(
+                "session input is not a file: {file}"
+            )));
+        }
+        fs::copy(file, &working).map_err(|err| CliError::unexpected(err.to_string()))?;
+    }
     Ok(working.to_string_lossy().to_string())
+}
+
+fn is_scaffold_command(command: &str) -> bool {
+    matches!(command, "docx scaffold" | "pptx scaffold" | "xlsx scaffold")
+}
+
+fn package_type_from_extension(file: &str) -> CliResult<&'static str> {
+    match Path::new(file)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("docx" | "docm") => Ok("docx"),
+        Some("pptx" | "pptm") => Ok("pptx"),
+        Some("xlsx" | "xlsm") => Ok("xlsx"),
+        _ => Err(CliError::invalid_args(format!(
+            "cannot infer OOXML package type from new session path: {file}"
+        ))),
+    }
+}
+
+fn validate_operation_id(id: &str) -> CliResult<()> {
+    let valid = !id.is_empty()
+        && id.len() <= 128
+        && id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ':'));
+    if valid {
+        Ok(())
+    } else {
+        Err(CliError::invalid_args(format!(
+            "invalid operation id {id:?}; use 1-128 ASCII letters, digits, '-', '_', or ':'"
+        )))
+    }
 }
 
 fn atomic_copy_to_output(source: &str, output: &str) -> CliResult<()> {

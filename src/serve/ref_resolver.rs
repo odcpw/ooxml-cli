@@ -119,6 +119,13 @@ fn envelope_reference_view(envelope: &Value) -> Value {
         for (key, value) in summary {
             destination.entry(key).or_insert(value);
         }
+        if let Some(slide) = destination
+            .get("newSlideNumber")
+            .or_else(|| destination.get("slideNumber"))
+            .cloned()
+        {
+            destination.entry("slide").or_insert(slide);
+        }
     }
     envelope
 }
@@ -137,7 +144,7 @@ mod tests {
                 "mutationEnvelope": {
                     "destination": {
                         "primarySelector": "slide:2",
-                        "summary": {"slide": 2, "name": "Hero"}
+                        "summary": {"newSlideNumber": 2, "name": "Hero"}
                     }
                 },
                 "readback": {"slide": {"number": 2}}

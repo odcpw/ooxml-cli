@@ -1,17 +1,16 @@
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::fs;
+use std::path::Path;
 
-use crate::mutation_envelope::attach_cli_mutation_envelope;
 use crate::{
     CliError, CliResult, ServeState, command_arg, has_flag, parse_string_flag,
     reject_unknown_flags, validate_xlsx_mutation_output_flags,
 };
 
-const SCHEMA_VERSION: i64 = 1;
-
 #[derive(Clone)]
 struct ApplyOperation {
+    id: Option<String>,
     command: String,
     args: Vec<ApplyArg>,
 }
@@ -29,14 +28,18 @@ pub(crate) fn apply(file: &str, args: &[String]) -> CliResult<Value> {
         &["--ops", "--out", "--backup"],
         &["--dry-run", "--in-place", "--no-validate"],
     )?;
-    if fs::metadata(file).is_err() {
-        return Err(CliError::file_not_found(format!("file not found: {file}")));
-    }
     let ops_path = parse_string_flag(args, "--ops")?
         .ok_or_else(|| CliError::invalid_args("--ops is required"))?;
     let ops_data = fs::read(&ops_path)
         .map_err(|_| CliError::file_not_found(format!("file not found: {ops_path}")))?;
     let ops = parse_ops(&ops_data)?;
+    if fs::metadata(file).is_err()
+        && !ops
+            .first()
+            .is_some_and(|op| is_scaffold_command(&op.command))
+    {
+        return Err(CliError::file_not_found(format!("file not found: {file}")));
+    }
     validate_known_operation_commands(&ops)?;
     validate_handle_safety(&ops)?;
 
@@ -47,15 +50,15 @@ pub(crate) fn apply(file: &str, args: &[String]) -> CliResult<Value> {
     let no_validate = has_flag(args, "--no-validate");
     validate_xlsx_mutation_output_flags(out.as_deref(), in_place, backup.as_deref(), dry_run)?;
 
-    if dry_run {
-        return Ok(json!({
-            "schemaVersion": SCHEMA_VERSION,
-            "file": file,
-            "opsCount": ops.len(),
-            "dryRun": true,
-            "plan": build_plan(&ops, file)?,
-        }));
-    }
+    let ops_base_dir = Path::new(&ops_path)
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .canonicalize()
+        .map_err(|err| {
+            CliError::unexpected(format!(
+                "failed to resolve ops directory for {ops_path}: {err}"
+            ))
+        })?;
 
     let mut state = ServeState::default();
     let open = state.handle_method(
@@ -66,17 +69,20 @@ pub(crate) fn apply(file: &str, args: &[String]) -> CliResult<Value> {
             "inPlace": in_place,
             "backup": backup,
             "noValidate": no_validate,
+            "dryRun": dry_run,
+            "opsBaseDir": ops_base_dir,
         }),
     )?;
     let session = open["sessionId"]
         .as_str()
         .ok_or_else(|| CliError::unexpected("serve open returned no sessionId"))?;
     for (index, op) in ops.iter().enumerate() {
-        state
+        let operation = state
             .handle_method(
                 "op",
                 &json!({
                     "session": session,
+                    "id": op.id,
                     "command": op.command,
                     "args": args_object(op),
                 }),
@@ -85,9 +91,29 @@ pub(crate) fn apply(file: &str, args: &[String]) -> CliResult<Value> {
                 code: err.code,
                 exit_code: err.exit_code,
                 message: format!("op {index} ({}) failed: {}", op.command, err.message),
-            })?;
+            });
+        if let Err(err) = operation {
+            let _ = state.handle_method("abort", &json!({"session": session}));
+            return Err(err);
+        }
     }
-    let mut result = state.handle_method("commit", &json!({ "session": session }))?;
+    let plan = if dry_run {
+        Some(state.handle_method("plan", &json!({"session": session}))?)
+    } else {
+        None
+    };
+    let mut result = match state.handle_method("commit", &json!({ "session": session })) {
+        Ok(result) => result,
+        Err(err) => {
+            let _ = state.handle_method("abort", &json!({"session": session}));
+            return Err(err);
+        }
+    };
+    if let Some(plan) = plan
+        && let Value::Object(object) = &mut result
+    {
+        object.insert("plan".to_string(), plan["plan"].clone());
+    }
     if let Value::Object(ref mut object) = result
         && let Some(output) = object.get("output").and_then(Value::as_str)
     {
@@ -106,12 +132,13 @@ fn parse_ops(data: &[u8]) -> CliResult<Vec<ApplyOperation>> {
         .as_array()
         .ok_or_else(|| CliError::invalid_args("invalid ops JSON: expected operations array"))?;
     let mut ops = Vec::with_capacity(items.len());
+    let mut seen_ids = BTreeMap::<String, usize>::new();
     for (index, item) in items.iter().enumerate() {
         let object = item
             .as_object()
             .ok_or_else(|| CliError::invalid_args(format!("op {index}: expected object")))?;
         for key in object.keys() {
-            if key != "command" && key != "args" {
+            if key != "id" && key != "command" && key != "args" {
                 return Err(CliError::invalid_args(format!(
                     "invalid ops JSON: op {index}: unknown field {key:?}"
                 )));
@@ -128,10 +155,42 @@ fn parse_ops(data: &[u8]) -> CliResult<Vec<ApplyOperation>> {
             )));
         }
         validate_command_words(index, &command)?;
+        let id = match object.get("id") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(id)) => {
+                validate_operation_id(index, id)?;
+                if let Some(previous) = seen_ids.insert(id.clone(), index) {
+                    return Err(CliError::invalid_args(format!(
+                        "op {index}: duplicate operation id {id:?}; first used by op {previous}"
+                    )));
+                }
+                Some(id.clone())
+            }
+            Some(_) => {
+                return Err(CliError::invalid_args(format!(
+                    "op {index}: id must be a string"
+                )));
+            }
+        };
         let args = parse_op_args(index, object.get("args"))?;
-        ops.push(ApplyOperation { command, args });
+        ops.push(ApplyOperation { id, command, args });
     }
     Ok(ops)
+}
+
+fn validate_operation_id(index: usize, id: &str) -> CliResult<()> {
+    let valid = !id.is_empty()
+        && id.len() <= 128
+        && id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ':'));
+    if valid {
+        Ok(())
+    } else {
+        Err(CliError::invalid_args(format!(
+            "op {index}: invalid operation id {id:?}; use 1-128 ASCII letters, digits, '-', '_', or ':'"
+        )))
+    }
 }
 
 fn parse_op_args(index: usize, raw: Option<&Value>) -> CliResult<Vec<ApplyArg>> {
@@ -249,65 +308,6 @@ fn is_address_positional(value: &Value) -> bool {
     text.starts_with("H:xlsx/ws:") && (text.contains("/cell:") || text.contains("/comment:"))
 }
 
-fn build_plan(ops: &[ApplyOperation], file: &str) -> CliResult<Vec<Value>> {
-    ops.iter()
-        .enumerate()
-        .map(|(index, op)| -> CliResult<Value> {
-            let input = if index == 0 {
-                file.to_string()
-            } else {
-                format!("<temp.{}>", index - 1)
-            };
-            let output = format!("<temp.{index}>");
-            let argv = build_argv(op, &input, &output);
-            let mut envelope_source = json!({});
-            attach_cli_mutation_envelope(&argv, Vec::new(), &mut envelope_source)?;
-            let mut plan = json!({
-                "index": index,
-                "command": op.command,
-                "argv": argv,
-            });
-            if let Some(envelope) = envelope_source.get("mutationEnvelope").cloned()
-                && let Value::Object(object) = &mut plan
-            {
-                object.insert("mutationEnvelope".to_string(), envelope);
-            }
-            Ok(plan)
-        })
-        .collect()
-}
-
-fn build_argv(op: &ApplyOperation, input: &str, output: &str) -> Vec<String> {
-    let mut argv = op
-        .command
-        .split_whitespace()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    argv.push(input.to_string());
-    let mut args = op.args.clone();
-    args.sort_by(|left, right| left.original_key.cmp(&right.original_key));
-    for arg in args {
-        append_flag_arg(&mut argv, &arg.normalized_key, &arg.value);
-    }
-    argv.extend([
-        "--out".to_string(),
-        output.to_string(),
-        "--json".to_string(),
-        "--no-validate".to_string(),
-    ]);
-    argv
-}
-
-fn append_flag_arg(argv: &mut Vec<String>, key: &str, value: &Value) {
-    let name = format!("--{key}");
-    if let Some(value) = value.as_bool() {
-        argv.push(format!("{name}={value}"));
-    } else {
-        argv.push(name);
-        argv.push(arg_string(value));
-    }
-}
-
 fn args_object(op: &ApplyOperation) -> Value {
     let mut object = Map::new();
     for arg in &op.args {
@@ -404,4 +404,8 @@ fn is_session_owned_mutation_arg(normalized: &str) -> bool {
 
 pub(crate) fn apply_validate_command(output: &str) -> String {
     format!("ooxml validate --strict {}", command_arg(output))
+}
+
+fn is_scaffold_command(command: &str) -> bool {
+    matches!(command, "docx scaffold" | "pptx scaffold" | "xlsx scaffold")
 }
