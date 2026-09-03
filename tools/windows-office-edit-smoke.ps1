@@ -412,7 +412,7 @@ function Import-ContractEvidenceScenarios {
             }
             $output = [string]$proof.generatedOutputPath
             if (-not (Test-Path -LiteralPath $output -PathType Leaf)) {
-                throw "Contract evidence artifact does not exist for $path: $output"
+                throw "Contract evidence artifact does not exist for ${path}: $output"
             }
             if ($known.ContainsKey($path)) {
                 continue
