@@ -545,6 +545,9 @@
                 "color": {
                   "$ref": "#/$defs/color"
                 },
+                "inlineCode": {
+                  "type": "boolean"
+                },
                 "italic": {
                   "type": "boolean"
                 },
@@ -1109,6 +1112,9 @@
                 "color": {
                   "$ref": "#/$defs/color"
                 },
+                "inlineCode": {
+                  "type": "boolean"
+                },
                 "italic": {
                   "type": "boolean"
                 },
@@ -1539,6 +1545,15 @@
                 "caption": {
                   "type": "string"
                 },
+                "columnWidths": {
+                  "items": {
+                    "$ref": "#/$defs/length"
+                  },
+                  "type": "array"
+                },
+                "header": {
+                  "type": "boolean"
+                },
                 "id": {
                   "minLength": 1,
                   "type": "string"
@@ -1599,6 +1614,39 @@
               "required": [
                 "type"
               ],
+              "type": "object"
+            },
+            "docxFooters": {
+              "additionalProperties": false,
+              "properties": {
+                "default": {
+                  "type": "string"
+                },
+                "even": {
+                  "type": "string"
+                },
+                "first": {
+                  "type": "string"
+                },
+                "pageNumbers": {
+                  "type": "boolean"
+                }
+              },
+              "type": "object"
+            },
+            "docxHeaders": {
+              "additionalProperties": false,
+              "properties": {
+                "default": {
+                  "type": "string"
+                },
+                "even": {
+                  "type": "string"
+                },
+                "first": {
+                  "type": "string"
+                }
+              },
               "type": "object"
             },
             "docxSection": {
@@ -1895,6 +1943,9 @@
                 "color": {
                   "$ref": "#/$defs/color"
                 },
+                "inlineCode": {
+                  "type": "boolean"
+                },
                 "italic": {
                   "type": "boolean"
                 },
@@ -1936,10 +1987,10 @@
               "const": "docx"
             },
             "footers": {
-              "type": "object"
+              "$ref": "#/$defs/docxFooters"
             },
             "headers": {
-              "type": "object"
+              "$ref": "#/$defs/docxHeaders"
             },
             "metadata": {
               "$ref": "#/$defs/metadata"
@@ -35878,10 +35929,122 @@
                         "x-ooxml-path": true,
                         "x-ooxml-ref": true
                       },
+                      "creator": {
+                        "anyOf": [
+                          {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean",
+                              "array",
+                              "object",
+                              "null"
+                            ]
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "$ref": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "$ref"
+                            ],
+                            "type": "object"
+                          }
+                        ],
+                        "x-ooxml-ref": true
+                      },
+                      "description": {
+                        "anyOf": [
+                          {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean",
+                              "array",
+                              "object",
+                              "null"
+                            ]
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "$ref": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "$ref"
+                            ],
+                            "type": "object"
+                          }
+                        ],
+                        "x-ooxml-ref": true
+                      },
                       "force": {
                         "anyOf": [
                           {
                             "type": "boolean"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "$ref": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "$ref"
+                            ],
+                            "type": "object"
+                          }
+                        ],
+                        "x-ooxml-ref": true
+                      },
+                      "keywords": {
+                        "anyOf": [
+                          {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean",
+                              "array",
+                              "object",
+                              "null"
+                            ]
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "$ref": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "$ref"
+                            ],
+                            "type": "object"
+                          }
+                        ],
+                        "x-ooxml-ref": true
+                      },
+                      "subject": {
+                        "anyOf": [
+                          {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean",
+                              "array",
+                              "object",
+                              "null"
+                            ]
                           },
                           {
                             "additionalProperties": false,
@@ -36071,6 +36234,34 @@
                         "x-ooxml-ref": true
                       },
                       "themeSeed": {
+                        "anyOf": [
+                          {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean",
+                              "array",
+                              "object",
+                              "null"
+                            ]
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "$ref": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "$ref"
+                            ],
+                            "type": "object"
+                          }
+                        ],
+                        "x-ooxml-ref": true
+                      },
+                      "title": {
                         "anyOf": [
                           {
                             "type": [
