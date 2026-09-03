@@ -2,7 +2,7 @@ use serde_json::Value;
 
 use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 
-pub(super) const COMMAND_COUNT: usize = 51;
+pub(super) const COMMAND_COUNT: usize = 50;
 pub(super) const LEGACY_START: usize = 261;
 
 command_id_enum! {
@@ -18,7 +18,6 @@ pub(crate) enum DocxCommandId {
     Tables,
     Breaks,
     Sections,
-    Build,
     Scaffold,
     Text,
     Blocks,
@@ -195,46 +194,6 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
             None,
         ),
         spec(
-            DocxCommandId::Build,
-            &["docx", "build"],
-            "build --spec <document.json|-> --out <document.docx>",
-            "Build a complete document from a published DOCX build specification in one atomic batch.",
-            &["package", "paragraph", "table", "image", "section"],
-            vec![
-                flag(
-                    "--spec",
-                    "spec",
-                    "string",
-                    "DOCX build-spec JSON path, or - to read JSON from stdin",
-                ),
-                flag("--out", "out", "string", "output document path"),
-                flag(
-                    "--check",
-                    "check",
-                    "bool",
-                    "run check after publishing and embed its findings",
-                ),
-                flag(
-                    "--dry-run",
-                    "dryRun",
-                    "bool",
-                    "compile, execute, and strictly validate the staged batch without publishing",
-                ),
-                flag(
-                    "--force",
-                    "force",
-                    "bool",
-                    "replace an existing output after the staged build validates",
-                ),
-            ],
-            ExecutionSupport::DirectOnly {
-                reason: Some(
-                    "build is the batch orchestrator and cannot be nested inside an apply op",
-                ),
-            },
-            None,
-        ),
-        spec(
             DocxCommandId::Scaffold,
             &["docx", "scaffold"],
             "scaffold <output.docx> (or --out <output.docx>) [--brand <brand.json>]",
@@ -282,36 +241,6 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "brand",
                     "string",
                     "cross-family brand kit JSON; may be combined with --template",
-                ),
-                flag(
-                    "--title",
-                    "title",
-                    "string",
-                    "core-properties document title",
-                ),
-                flag(
-                    "--subject",
-                    "subject",
-                    "string",
-                    "core-properties document subject",
-                ),
-                flag(
-                    "--creator",
-                    "creator",
-                    "string",
-                    "core-properties document creator",
-                ),
-                flag(
-                    "--keywords",
-                    "keywords",
-                    "string",
-                    "core-properties document keywords",
-                ),
-                flag(
-                    "--description",
-                    "description",
-                    "string",
-                    "core-properties document description",
                 ),
                 flag(
                     "--force",
@@ -1492,7 +1421,11 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "skip post-write validation",
                 ),
             ],
-            ExecutionSupport::ServeMutation { reason: None },
+            ExecutionSupport::DirectOnly {
+                reason: Some(
+                    "direct CLI mutation; serve/MCP operation support is not wired for image mutations yet",
+                ),
+            },
             None,
         ),
         spec(
@@ -1934,10 +1867,7 @@ mod tests {
         let start = crate::command_manifest::core::command_specs().len()
             + crate::command_manifest::pptx::command_specs().len()
             + crate::command_manifest::xlsx::command_specs().len();
-        assert_eq!(
-            start, LEGACY_START,
-            "DOCX starts at 261 within the 327-command denominator"
-        );
+        assert_eq!(start, LEGACY_START);
         assert_eq!(specs.len(), COMMAND_COUNT);
         assert_segment_matches_frozen_contract(
             &specs,
