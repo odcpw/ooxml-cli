@@ -216,7 +216,7 @@ fn outline_pptx(
         let title = source_shapes
             .iter()
             .find(|shape| shape["targetKind"] == "title")
-            .and_then(|shape| shape_text(shape))
+            .and_then(shape_text)
             .map(|text| text_preview(&text, options.text_preview))
             .filter(|text| !text.is_empty());
         let charts = all_charts
