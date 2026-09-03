@@ -708,10 +708,10 @@ fn common_manifest(request: &RenderRequest<'_>, status: &str) -> Map<String, Val
         "doctorChecks".to_string(),
         json!(["render-engine", "fonts"]),
     );
-    result.insert(
-        "warnings".to_string(),
-        json!(crate::doctor::render_font_warnings()),
-    );
+    let warnings = crate::doctor::render_font_warnings();
+    if !warnings.is_empty() {
+        result.insert("warnings".to_string(), json!(warnings));
+    }
     result.insert(
         "limitations".to_string(),
         json!(limitations(request.family)),

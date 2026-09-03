@@ -63,7 +63,6 @@ fn render_mock_has_one_contract_for_pptx_xlsx_and_docx() {
             "dpi": 96,
             "imageFormat": "png",
             "doctorChecks": ["render-engine", "fonts"],
-            "warnings": [],
             "limitations": render_limitations(family),
             "pdfPath": out.join(format!("{stem}.pdf")).to_string_lossy().into_owned(),
             "engine": "mock",
@@ -90,6 +89,10 @@ fn render_mock_has_one_contract_for_pptx_xlsx_and_docx() {
                 json!({"name": "Types", "position": 1, "sheetId": 1}),
             );
         }
+        assert!(
+            value.get("warnings").is_none(),
+            "{family} clean render must preserve the legacy manifest shape"
+        );
         assert_eq!(value, expected, "{family} render JSON contract drifted");
     }
 
