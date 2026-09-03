@@ -731,7 +731,7 @@ mod tests {
                 .iter()
                 .filter(|spec| matches!(&spec.execution, ExecutionSupport::DirectOnly { .. }))
                 .count(),
-            13
+            14
         );
     }
 }
