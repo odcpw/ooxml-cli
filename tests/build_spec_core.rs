@@ -346,6 +346,81 @@ fn minimal_compiler_never_silently_drops_rich_family_fields() {
 }
 
 #[test]
+fn compiled_minimal_plans_are_accepted_by_apply_dry_run() {
+    let temp = std::env::temp_dir().join(format!(
+        "ooxml-build-spec-core-apply-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp);
+    std::fs::create_dir_all(&temp).expect("create build-spec test directory");
+    let cases = [
+        (
+            BuildFamily::Pptx,
+            json!({
+                "schemaVersion": 1,
+                "family": "pptx",
+                "slides": [{"layout": "Title Slide", "title": "Plan"}]
+            }),
+            "planned.pptx",
+            "pptx scaffold",
+        ),
+        (
+            BuildFamily::Xlsx,
+            json!({
+                "schemaVersion": 1,
+                "family": "xlsx",
+                "sheets": [{"name": "Plan"}]
+            }),
+            "planned.xlsx",
+            "xlsx scaffold",
+        ),
+        (
+            BuildFamily::Docx,
+            json!({
+                "schemaVersion": 1,
+                "family": "docx",
+                "blocks": [{"type": "paragraph", "text": "Plan"}]
+            }),
+            "planned.docx",
+            "docx scaffold",
+        ),
+    ];
+    for (family, source, file_name, command) in cases {
+        let spec = load_spec_str(family, &source.to_string()).expect("minimal spec loads");
+        let plan = compile_minimal_spec(&spec).expect("minimal spec compiles");
+        let ops = temp.join(format!("{family}-ops.json"));
+        std::fs::write(
+            &ops,
+            serde_json::to_vec_pretty(&plan.operations).expect("serialize compiled ops"),
+        )
+        .expect("write compiled ops");
+        let output_path = temp.join(file_name);
+        let output = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+            .args(["--json", "apply"])
+            .arg(&output_path)
+            .arg("--ops")
+            .arg(&ops)
+            .arg("--dry-run")
+            .output()
+            .expect("run compiled plan through apply");
+        assert!(
+            output.status.success(),
+            "{family} apply stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let result: Value = serde_json::from_slice(&output.stdout).expect("apply JSON");
+        assert_eq!(result["dryRun"], true);
+        assert_eq!(result["committed"], false);
+        assert_eq!(result["plan"][0]["command"], command);
+        assert!(
+            !output_path.exists(),
+            "dry-run must not publish {file_name}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(temp);
+}
+
+#[test]
 fn compiler_preserves_recursive_refs_and_rejects_unsafe_or_unresolved_ops() {
     let mut compiler = BuildCompiler::new(BuildFamily::Pptx);
     compiler

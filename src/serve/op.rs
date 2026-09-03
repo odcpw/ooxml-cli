@@ -820,6 +820,17 @@ fn generic_plan_argv(command: &str, source_file: &str, plan_parts: &[Value]) -> 
             argv.extend([json!("--out"), json!("<temp.0>"), json!("--json")]);
             return Value::Array(argv);
         }
+        "convert xlsm-to-xlsx" => {
+            argv.push(json!(source_file));
+            argv.extend(plan_parts.iter().cloned());
+            argv.extend([
+                json!("--out"),
+                json!("<temp.0.xlsx>"),
+                json!("--json"),
+                json!("--no-validate"),
+            ]);
+            return Value::Array(argv);
+        }
         _ => {
             argv.push(json!(source_file));
             argv.extend(plan_parts.iter().cloned());

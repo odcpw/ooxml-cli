@@ -7,6 +7,8 @@ mod ref_resolver;
 mod xlsx;
 
 use serde_json::{Value, json};
+use std::fs;
+use std::path::Path;
 
 use super::op::ServeOp;
 use super::op_namespace::resolve_serve_mutation_command;
@@ -106,6 +108,7 @@ pub(super) fn serve_generic_mutation_op(
         .split_whitespace()
         .map(ToString::to_string)
         .collect::<Vec<_>>();
+    let mut conversion_output = None;
     match command {
         "find" => {
             argv.extend(parsed.positionals);
@@ -124,6 +127,18 @@ pub(super) fn serve_generic_mutation_op(
                 argv.push("--force".to_string());
             }
             argv.push("--no-validate".to_string());
+        }
+        "convert xlsm-to-xlsx" => {
+            let converted = Path::new(working)
+                .with_extension("converted.xlsx")
+                .to_string_lossy()
+                .to_string();
+            argv.push(working.to_string());
+            argv.extend(plan_flags_to_cli_args(&parsed.flags)?);
+            argv.push("--out".to_string());
+            argv.push(converted.clone());
+            argv.push("--no-validate".to_string());
+            conversion_output = Some(converted);
         }
         "pptx template compile" => {
             argv.extend(parsed.positionals);
@@ -148,7 +163,7 @@ pub(super) fn serve_generic_mutation_op(
         },
         &argv,
     )?;
-    let readback = match output.body {
+    let mut readback = match output.body {
         DispatchBody::Json(value) => value,
         DispatchBody::Text(_) => {
             return Err(CliError::unexpected(format!(
@@ -156,12 +171,40 @@ pub(super) fn serve_generic_mutation_op(
             )));
         }
     };
+    if let Some(converted) = conversion_output {
+        fs::copy(&converted, working).map_err(|error| {
+            CliError::unexpected(format!(
+                "failed to adopt converted XLSX into the session stage: {error}"
+            ))
+        })?;
+        let _ = fs::remove_file(&converted);
+        readback = replace_json_path(readback, &converted, working);
+    }
     Ok(ServeOp::GenericMutationOp {
         command: command.to_string(),
         plan_flags,
         readback_file: working.to_string(),
         readback,
     })
+}
+
+fn replace_json_path(value: Value, from: &str, to: &str) -> Value {
+    match value {
+        Value::String(text) => Value::String(text.replace(from, to)),
+        Value::Array(values) => Value::Array(
+            values
+                .into_iter()
+                .map(|value| replace_json_path(value, from, to))
+                .collect(),
+        ),
+        Value::Object(object) => Value::Object(
+            object
+                .into_iter()
+                .map(|(key, value)| (key, replace_json_path(value, from, to)))
+                .collect(),
+        ),
+        scalar => scalar,
+    }
 }
 
 struct GenericOpArguments {
