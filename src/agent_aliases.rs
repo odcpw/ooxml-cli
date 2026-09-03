@@ -593,6 +593,31 @@ mod tests {
     }
 
     #[test]
+    fn registered_aliases_never_shadow_a_distinct_leaf_flag() {
+        let commands = crate::command_manifest::capability_commands();
+        for spec in FLAG_ALIASES {
+            let path = format!("ooxml {}", spec.path.join(" "));
+            let command = commands
+                .iter()
+                .find(|command| command["path"] == path)
+                .unwrap_or_else(|| panic!("alias owner is absent from manifest: {path}"));
+            let local_flags = command["localFlags"]
+                .as_array()
+                .unwrap_or_else(|| panic!("alias owner has no localFlags array: {path}"));
+            assert!(
+                !local_flags.iter().any(|flag| {
+                    flag["name"] == spec.alias && !spec.canonical_flags.contains(&spec.alias)
+                }),
+                "{} aliases {} to {}, but that leaf already defines {} with a different meaning",
+                path,
+                spec.alias,
+                spec.canonical_flags.join(" and "),
+                spec.alias
+            );
+        }
+    }
+
+    #[test]
     fn inline_alias_values_and_freeze_coordinates_are_preserved() {
         let renamed = normalize_flag_aliases(&[
             "xlsx".to_string(),

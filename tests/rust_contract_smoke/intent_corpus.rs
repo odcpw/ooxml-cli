@@ -278,6 +278,300 @@ fn assert_alias_readback(args: &[&str], expected: Value) -> Value {
     value
 }
 
+fn remove_alias_readbacks(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            object.remove("aliasesApplied");
+            for child in object.values_mut() {
+                remove_alias_readbacks(child);
+            }
+        }
+        Value::Array(array) => {
+            for child in array {
+                remove_alias_readbacks(child);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn replace_flag(args: &[String], canonical: &str, alias: &str) -> Vec<String> {
+    let mut replaced = args.to_vec();
+    let index = replaced
+        .iter()
+        .position(|arg| arg == canonical)
+        .unwrap_or_else(|| panic!("canonical invocation omitted {canonical}: {args:?}"));
+    replaced[index] = alias.to_string();
+    replaced
+}
+
+fn alias_base_invocation(
+    path: &str,
+    table_data: &str,
+    clip: &str,
+    media_deck: &str,
+    media_shape: &str,
+    block_hash: &str,
+) -> Vec<String> {
+    let args: &[&str] = match path {
+        "ooxml pptx slides import-slide" => &[
+            "pptx",
+            "slides",
+            "import-slide",
+            "testdata/pptx/multi-layout/presentation.pptx",
+            "--source",
+            "testdata/pptx/multi-layout/presentation.pptx",
+            "--slide",
+            "1",
+            "--insert-after",
+            "1",
+            "--dry-run",
+        ],
+        "ooxml pptx clone-slide" => &[
+            "pptx",
+            "clone-slide",
+            "testdata/pptx/multi-layout/presentation.pptx",
+            "--slide",
+            "1",
+            "--insert-after",
+            "1",
+            "--dry-run",
+        ],
+        "ooxml pptx new-slide-from-layout" => &[
+            "pptx",
+            "new-slide-from-layout",
+            "testdata/pptx/multi-layout/presentation.pptx",
+            "--layout",
+            "Title and Content",
+            "--insert-after",
+            "1",
+            "--dry-run",
+        ],
+        "ooxml docx paragraphs insert" => &[
+            "docx",
+            "paragraphs",
+            "insert",
+            "testdata/docx/styled-headings/document.docx",
+            "--insert-after",
+            "0",
+            "--text",
+            "Alias paragraph",
+            "--dry-run",
+        ],
+        "ooxml docx images insert" => &[
+            "docx",
+            "images",
+            "insert",
+            "testdata/docx/styled-headings/document.docx",
+            "--after",
+            "0",
+            "--file",
+            "testdata/test_image.png",
+            "--width",
+            "914400",
+            "--height",
+            "914400",
+            "--dry-run",
+        ],
+        "ooxml docx paragraphs set" => &[
+            "docx",
+            "paragraphs",
+            "set",
+            "testdata/docx/styled-headings/document.docx",
+            "--index",
+            "1",
+            "--text",
+            "Alias paragraph",
+            "--dry-run",
+        ],
+        "ooxml docx paragraphs clear" => &[
+            "docx",
+            "paragraphs",
+            "clear",
+            "testdata/docx/styled-headings/document.docx",
+            "--index",
+            "1",
+            "--dry-run",
+        ],
+        "ooxml docx styles apply" => &[
+            "docx",
+            "styles",
+            "apply",
+            "testdata/docx/apply-styles/document.docx",
+            "--index",
+            "1",
+            "--target",
+            "paragraph",
+            "--style",
+            "Heading2",
+            "--dry-run",
+        ],
+        "ooxml docx blocks" => &[
+            "docx",
+            "blocks",
+            "testdata/docx/styled-headings/document.docx",
+            "--block",
+            "1",
+        ],
+        "ooxml docx blocks replace" => &[
+            "docx",
+            "blocks",
+            "replace",
+            "testdata/docx/styled-headings/document.docx",
+            "--block",
+            "1",
+            "--expect-hash",
+            block_hash,
+            "--text",
+            "Alias replacement",
+            "--dry-run",
+        ],
+        "ooxml docx blocks delete" => &[
+            "docx",
+            "blocks",
+            "delete",
+            "testdata/docx/styled-headings/document.docx",
+            "--block",
+            "1",
+            "--expect-hash",
+            block_hash,
+            "--dry-run",
+        ],
+        "ooxml docx blocks insert-after" => &[
+            "docx",
+            "blocks",
+            "insert-after",
+            "testdata/docx/styled-headings/document.docx",
+            "--block",
+            "1",
+            "--expect-hash",
+            block_hash,
+            "--text",
+            "Alias insertion",
+            "--dry-run",
+        ],
+        "ooxml pptx place table" => &[
+            "pptx",
+            "place",
+            "table",
+            "testdata/pptx/minimal-title/presentation.pptx",
+            "--slide",
+            "1",
+            "--data",
+            table_data,
+            "--format",
+            "json",
+            "--x",
+            "0",
+            "--y",
+            "0",
+            "--cx",
+            "2000000",
+            "--dry-run",
+        ],
+        "ooxml pptx media add" => &[
+            "pptx",
+            "media",
+            "add",
+            "testdata/pptx/minimal-title/presentation.pptx",
+            "--slide",
+            "1",
+            "--file",
+            clip,
+            "--dry-run",
+        ],
+        "ooxml pptx media replace" => &[
+            "pptx",
+            "media",
+            "replace",
+            media_deck,
+            "--slide",
+            "1",
+            "--shape",
+            media_shape,
+            "--file",
+            clip,
+            "--dry-run",
+        ],
+        "ooxml xlsx colwidths show" => &[
+            "xlsx",
+            "colwidths",
+            "show",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--sheet",
+            "Sheet1",
+            "--range",
+            "A:E",
+        ],
+        "ooxml xlsx colwidths set" => &[
+            "xlsx",
+            "colwidths",
+            "set",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--sheet",
+            "Sheet1",
+            "--range",
+            "A:E",
+            "--width",
+            "12",
+            "--dry-run",
+        ],
+        "ooxml xlsx cells extract" => &[
+            "xlsx",
+            "cells",
+            "extract",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--sheet",
+            "Sheet1",
+            "--range",
+            "A1",
+        ],
+        "ooxml xlsx cells clear" => &[
+            "xlsx",
+            "cells",
+            "clear",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--sheet",
+            "Sheet1",
+            "--ref",
+            "A1",
+            "--dry-run",
+        ],
+        "ooxml xlsx charts create" => &[
+            "xlsx",
+            "charts",
+            "create",
+            "testdata/xlsx/chart-workbook/workbook.xlsx",
+            "--type",
+            "bar",
+            "--sheet",
+            "Data",
+            "--range",
+            "B2:B4",
+            "--categories",
+            "A2:A4",
+            "--dry-run",
+        ],
+        "ooxml xlsx freeze set" => &[
+            "xlsx",
+            "freeze",
+            "set",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--sheet",
+            "Sheet1",
+            "--rows",
+            "2",
+            "--cols",
+            "1",
+            "--dry-run",
+        ],
+        _ => panic!("missing successful alias fixture for {path}"),
+    };
+    std::iter::once("--json".to_string())
+        .chain(args.iter().map(|arg| (*arg).to_string()))
+        .collect()
+}
+
 #[test]
 fn every_documented_flag_alias_reaches_its_leaf_parser() {
     let manifest = live_intent_manifest();
@@ -449,6 +743,156 @@ fn every_documented_flag_alias_reaches_its_leaf_parser() {
         serde_json::to_value(&manifest.command_aliases)
             .expect("serialize command aliases for comparison")
     );
+}
+
+#[test]
+fn every_registry_alias_matches_its_canonical_binary_envelope() {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock after epoch")
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ooxml-exhaustive-aliases-{}-{suffix}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("create exhaustive alias directory");
+    let table_data = temp_dir.join("table.json");
+    std::fs::write(&table_data, r#"[["Region","Amount"],["North",42]]"#).expect("write table data");
+    let table_data = table_data.to_str().expect("table data path");
+    let clip = temp_dir.join("clip.mp4");
+    std::fs::write(&clip, b"opaque-fake-media-bytes").expect("write media clip");
+    let clip = clip.to_str().expect("media path");
+    let media_deck = temp_dir.join("media-deck.pptx");
+    let media_deck = media_deck.to_str().expect("media deck path");
+    let media = explicit_json_success(
+        &[
+            "--json",
+            "pptx",
+            "media",
+            "add",
+            "testdata/pptx/minimal-title/presentation.pptx",
+            "--slide",
+            "1",
+            "--file",
+            clip,
+            "--name",
+            "Alias Fixture",
+            "--out",
+            media_deck,
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>(),
+    );
+    let media_shape = media["shapeId"]
+        .as_u64()
+        .expect("prepared media shape id")
+        .to_string();
+    let blocks = explicit_json_success(
+        &[
+            "--json",
+            "docx",
+            "blocks",
+            "testdata/docx/styled-headings/document.docx",
+            "--block",
+            "1",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>(),
+    );
+    let block_hash = blocks["blocks"][0]["contentHash"]
+        .as_str()
+        .expect("block content hash");
+
+    let manifest = live_intent_manifest();
+    assert_eq!(manifest.flag_aliases.len(), 29, "review alias denominator");
+    for record in &manifest.flag_aliases {
+        let canonical_args = alias_base_invocation(
+            &record.path,
+            table_data,
+            clip,
+            media_deck,
+            &media_shape,
+            block_hash,
+        );
+        let alias_args = if record.canonical_flags.len() == 2 {
+            let mut args = canonical_args.clone();
+            let index = args
+                .iter()
+                .position(|arg| arg == &record.canonical_flags[0])
+                .expect("freeze canonical --rows");
+            assert_eq!(args.get(index + 2), record.canonical_flags.get(1));
+            args.splice(index..index + 4, [record.alias.clone(), "B3".to_string()]);
+            args
+        } else {
+            replace_flag(&canonical_args, &record.canonical_flags[0], &record.alias)
+        };
+
+        let mut canonical = explicit_json_success(&canonical_args);
+        let mut alias = explicit_json_success(&alias_args);
+        assert_eq!(
+            alias["aliasesApplied"],
+            serde_json::json!([{
+                "alias": record.alias,
+                "canonicalFlags": record.canonical_flags,
+            }]),
+            "{} {}",
+            record.path,
+            record.alias
+        );
+        remove_alias_readbacks(&mut canonical);
+        remove_alias_readbacks(&mut alias);
+        assert_eq!(
+            alias, canonical,
+            "{} {} diverged from {}",
+            record.path, record.alias, record.canonical_flags[0]
+        );
+    }
+
+    assert_eq!(manifest.command_aliases.len(), 1, "review command aliases");
+    for record in &manifest.command_aliases {
+        let canonical_args = alias_base_invocation(
+            &record.canonical_command,
+            table_data,
+            clip,
+            media_deck,
+            &media_shape,
+            block_hash,
+        );
+        let canonical_path = record
+            .canonical_command
+            .split_whitespace()
+            .skip(1)
+            .collect::<Vec<_>>();
+        let alias_path = record.alias.split_whitespace().skip(1).collect::<Vec<_>>();
+        let mut alias_args = vec!["--json".to_string()];
+        alias_args.extend(alias_path.into_iter().map(str::to_string));
+        alias_args.extend(canonical_args.into_iter().skip(1 + canonical_path.len()));
+
+        let canonical_args = alias_base_invocation(
+            &record.canonical_command,
+            table_data,
+            clip,
+            media_deck,
+            &media_shape,
+            block_hash,
+        );
+        let mut canonical = explicit_json_success(&canonical_args);
+        let mut alias = explicit_json_success(&alias_args);
+        assert_eq!(
+            alias["aliasesApplied"],
+            serde_json::json!([{
+                "alias": record.alias,
+                "canonicalCommand": record.canonical_command,
+            }])
+        );
+        remove_alias_readbacks(&mut canonical);
+        remove_alias_readbacks(&mut alias);
+        assert_eq!(alias, canonical, "command alias {}", record.alias);
+    }
+
+    std::fs::remove_dir_all(&temp_dir).expect("remove exhaustive alias directory");
 }
 
 #[test]
@@ -676,61 +1120,124 @@ fn flag_aliases_execute_and_report_canonical_readback() {
 }
 
 #[test]
-fn pptx_text_set_accepts_first_guess_text_and_replaces_paragraphs() {
+fn pptx_text_set_accepts_single_and_multi_paragraph_text() {
     let suffix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system clock after epoch")
         .as_nanos();
-    let output = std::env::temp_dir().join(format!(
-        "ooxml-text-set-intent-{}-{suffix}.pptx",
-        std::process::id()
-    ));
-    let output = output.to_str().expect("text-set output path");
-    let value = explicit_json_success(
-        &[
+    for (label, expected) in [
+        ("single", &["Solo paragraph"][..]),
+        ("multi", &["Alpha", "Beta"][..]),
+    ] {
+        let output = std::env::temp_dir().join(format!(
+            "ooxml-text-set-{label}-{}-{suffix}.pptx",
+            std::process::id()
+        ));
+        let output = output.to_str().expect("text-set output path");
+        let text = expected.join("\n");
+        let value = explicit_json_success(
+            &[
+                "--json",
+                "pptx",
+                "text",
+                "set",
+                "testdata/pptx/multi-layout/presentation.pptx",
+                "--slide",
+                "2",
+                "--target",
+                "body",
+                "--text",
+                &text,
+                "--out",
+                output,
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>(),
+        );
+        assert_eq!(value["mode"], "paragraph-content");
+        assert_eq!(value["paragraphCount"], expected.len());
+        assert_intent_output_strict_valid(output, "pptx text set --text output");
+
+        let (_, shown, stderr) = run_ooxml(&[
             "--json",
             "pptx",
-            "text",
-            "set",
-            "testdata/pptx/multi-layout/presentation.pptx",
+            "shapes",
+            "get",
+            output,
             "--slide",
             "2",
             "--target",
             "body",
-            "--text",
-            "Alpha\nBeta",
-            "--out",
-            output,
-        ]
-        .into_iter()
-        .map(str::to_string)
-        .collect::<Vec<_>>(),
-    );
-    assert_eq!(value["mode"], "paragraph-content");
-    assert_eq!(value["paragraphCount"], 2);
-    assert_intent_output_strict_valid(output, "pptx text set --text output");
+            "--include-text",
+        ]);
+        assert_eq!(stderr, None);
+        let paragraphs = shown.expect("text-set readback")["shapes"][0]["paragraphs"]
+            .as_array()
+            .cloned()
+            .expect("paragraph readback array");
+        assert_eq!(paragraphs.len(), expected.len());
+        assert_eq!(
+            paragraphs
+                .iter()
+                .map(|paragraph| paragraph["text"].as_str().expect("paragraph text"))
+                .collect::<Vec<_>>(),
+            expected
+        );
+        std::fs::remove_file(output).expect("remove text-set output");
+    }
+}
 
-    let (_, shown, stderr) = run_ooxml(&[
-        "--json",
-        "pptx",
-        "shapes",
-        "get",
-        output,
-        "--slide",
-        "2",
-        "--target",
-        "body",
-        "--include-text",
-    ]);
-    assert_eq!(stderr, None);
-    let paragraphs = shown.expect("text-set readback")["shapes"][0]["paragraphs"]
-        .as_array()
-        .cloned()
-        .expect("paragraph readback array");
-    assert_eq!(paragraphs.len(), 2);
-    assert_eq!(paragraphs[0]["text"], "Alpha");
-    assert_eq!(paragraphs[1]["text"], "Beta");
-    std::fs::remove_file(output).expect("remove text-set output");
+#[test]
+fn xlsx_freeze_at_maps_cells_and_rejects_invalid_coordinates() {
+    for (cell, rows, cols) in [("A2", 1, 0), ("B1", 0, 1), ("C3", 2, 2)] {
+        let value = assert_alias_readback(
+            &[
+                "--json",
+                "xlsx",
+                "freeze",
+                "set",
+                "testdata/xlsx/minimal-workbook/workbook.xlsx",
+                "--sheet",
+                "Sheet1",
+                "--at",
+                cell,
+                "--dry-run",
+            ],
+            serde_json::json!([{
+                "alias": "--at",
+                "canonicalFlags": ["--rows", "--cols"]
+            }]),
+        );
+        assert_eq!(value["state"]["rows"], rows, "{cell}");
+        assert_eq!(value["state"]["cols"], cols, "{cell}");
+        assert_eq!(value["state"]["topLeftCell"], cell, "{cell}");
+    }
+
+    for cell in ["A0", "0A", "A2:B3"] {
+        let output = run_ooxml_process(&[
+            "--json",
+            "xlsx",
+            "freeze",
+            "set",
+            "testdata/xlsx/minimal-workbook/workbook.xlsx",
+            "--sheet",
+            "Sheet1",
+            "--at",
+            cell,
+            "--dry-run",
+        ]);
+        assert_eq!(output.code, 2, "{cell}");
+        assert!(output.stdout.is_empty(), "{cell}");
+        let value: Value = serde_json::from_slice(&output.stderr).expect("JSON error on stderr");
+        assert_eq!(value["error"]["code"], "invalid_args", "{cell}");
+        assert!(
+            value["error"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("invalid --at")),
+            "{cell}: {value:?}"
+        );
+    }
 }
 
 #[test]
@@ -1036,7 +1543,7 @@ fn manifest_derived_intent_cases(manifest: &IntentManifest) -> Vec<GeneratedInte
             true,
         ),
         (
-            "sibling-freeze-cell",
+            "sibling-freeze-at",
             &[
                 "--json",
                 "xlsx",
@@ -1045,12 +1552,12 @@ fn manifest_derived_intent_cases(manifest: &IntentManifest) -> Vec<GeneratedInte
                 "testdata/xlsx/minimal-workbook/workbook.xlsx",
                 "--sheet",
                 "Sheet1",
-                "--cell",
+                "--at",
                 "A2",
                 "--dry-run",
             ][..],
-            "--cell",
             "--at",
+            "--rows/--cols",
             true,
         ),
         (
@@ -1113,6 +1620,22 @@ fn manifest_derived_intent_cases(manifest: &IntentManifest) -> Vec<GeneratedInte
             ][..],
             "--text",
             "--text",
+            true,
+        ),
+        (
+            "sibling-pptx-slides-add",
+            &[
+                "--json",
+                "pptx",
+                "slides",
+                "add",
+                "testdata/pptx/multi-layout/presentation.pptx",
+                "--layout",
+                "Title and Content",
+                "--dry-run",
+            ][..],
+            "slides add",
+            "new-slide-from-layout",
             true,
         ),
     ] {
@@ -1358,6 +1881,28 @@ fn manifest_derived_wrong_invocations_are_never_silent_or_useless() {
         }
     }
     log.flush().expect("flush intent corpus JSONL");
+
+    let expected_inferred = cases.iter().filter(|case| case.expected_alias).count();
+    assert_eq!(
+        expected_inferred, 6,
+        "review the explicit first-guess intent denominator"
+    );
+    assert_eq!(
+        outcomes
+            .get(&IntentOutcome::Inferred)
+            .copied()
+            .unwrap_or_default(),
+        expected_inferred,
+        "all accepted first-guess forms must classify as inferred"
+    );
+    assert_eq!(
+        outcomes
+            .get(&IntentOutcome::UsefulHint)
+            .copied()
+            .unwrap_or_default(),
+        cases.len() - expected_inferred,
+        "all remaining wrong invocations must retain useful recovery hints"
+    );
 
     eprintln!("intent corpus classification ({} cases)", cases.len());
     for outcome in [
