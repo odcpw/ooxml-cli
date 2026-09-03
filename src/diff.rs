@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::pptx_render::shared::{LIBREOFFICE_REMEDIATION, render_for_diff};
+use crate::render::{LIBREOFFICE_REMEDIATION, render_for_diff};
 use crate::{
     CliError, CliResult, DocxRichBlockReport, EXIT_DIFF_THRESHOLD, EXIT_PARTIAL_SUCCESS,
     EXIT_RENDER_FAILED, EXIT_SUCCESS, EXIT_UNEXPECTED, GlobalFlags, InspectPackageKind,

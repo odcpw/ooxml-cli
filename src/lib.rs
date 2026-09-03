@@ -48,6 +48,7 @@ mod pptx_render;
 mod pptx_template;
 mod pptx_translate;
 mod pptx_xlsx_bindings;
+mod render;
 mod repair;
 mod robot_docs;
 mod runtime_util;

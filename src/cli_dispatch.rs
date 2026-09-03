@@ -14,15 +14,15 @@ use crate::inspect::inspect;
 use crate::pptx_mutation::*;
 use crate::pptx_readback::*;
 use crate::pptx_render::pptx_render;
-use crate::pptx_render::shared::render_command;
 use crate::vba::*;
 use crate::verify::verify;
 use crate::{
     PptxScaffoldOptions, apply, command_arg, diff_command, pptx_diff_command, pptx_diff_dispatch,
     pptx_media_add, pptx_media_list, pptx_media_replace, pptx_scaffold, pptx_template_capture,
     pptx_template_compile, pptx_template_inspect, pptx_translate_apply, pptx_translate_export,
-    pptx_validate_layout, pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan, repair_normalize,
-    template_apply, template_profile_inspect, template_profile_save, template_tokens,
+    pptx_validate_layout, pptx_xlsx_bindings_apply, pptx_xlsx_bindings_plan,
+    render::render_command, repair_normalize, template_apply, template_profile_inspect,
+    template_profile_save, template_tokens,
 };
 
 pub(crate) enum DispatchBody {
