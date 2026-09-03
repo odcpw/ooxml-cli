@@ -40,6 +40,24 @@ fn paragraph_lists_support_three_levels_restart_insert_and_determinism() {
         assert!(block["numId"].is_number());
         assert!(block["listLevel"].is_number());
     }
+    let outline = run_ok(&["--json", "outline", path(&first), "--text-preview", "120"]);
+    assert_sha256(&outline["documentHash"]);
+    for (text, num_id, level) in [
+        ("Bullet zero", 1, 0),
+        ("Bullet one", 1, 1),
+        ("Bullet two", 1, 2),
+        ("Restart one", 3, 0),
+    ] {
+        let block = outline["blocks"]
+            .as_array()
+            .expect("outline blocks")
+            .iter()
+            .find(|block| block["textPreview"] == text)
+            .unwrap_or_else(|| panic!("outline missing list block {text:?}"));
+        assert_eq!(block["numId"], num_id);
+        assert_eq!(block["listLevel"], level);
+        assert_sha256(&block["contentHash"]);
+    }
     fs::remove_dir_all(temp).unwrap();
 }
 
@@ -50,7 +68,7 @@ fn page_and_section_breaks_are_schema_clean_and_hash_visible() {
     let page = temp.join("page.docx");
     let page_again = temp.join("page-again.docx");
     let section = temp.join("section.docx");
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "scaffold",
@@ -58,7 +76,7 @@ fn page_and_section_breaks_are_schema_clean_and_hash_visible() {
         "--text",
         "First page",
     ]);
-    let page_report = run_ok(&[
+    let page_report = run_docx_mutation_ok(&[
         "--json",
         "docx",
         "breaks",
@@ -68,7 +86,7 @@ fn page_and_section_breaks_are_schema_clean_and_hash_visible() {
         "--out",
         path(&page),
     ]);
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "breaks",
@@ -86,7 +104,7 @@ fn page_and_section_breaks_are_schema_clean_and_hash_visible() {
             .unwrap()
             .starts_with("sha256:")
     );
-    let section_report = run_ok(&[
+    let section_report = run_docx_mutation_ok(&[
         "--json",
         "docx",
         "breaks",
@@ -123,7 +141,7 @@ fn indexed_sections_set_size_orientation_and_margins_in_schema_order() {
     let first = temp.join("first.docx");
     let first_again = temp.join("first-again.docx");
     let second = temp.join("second.docx");
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "scaffold",
@@ -131,7 +149,7 @@ fn indexed_sections_set_size_orientation_and_margins_in_schema_order() {
         "--text",
         "Section one",
     ]);
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "breaks",
@@ -141,7 +159,7 @@ fn indexed_sections_set_size_orientation_and_margins_in_schema_order() {
         "--out",
         path(&split),
     ]);
-    let first_report = run_ok(&[
+    let first_report = run_docx_mutation_ok(&[
         "--json",
         "docx",
         "sections",
@@ -158,7 +176,7 @@ fn indexed_sections_set_size_orientation_and_margins_in_schema_order() {
         "--out",
         path(&first),
     ]);
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "sections",
@@ -177,7 +195,7 @@ fn indexed_sections_set_size_orientation_and_margins_in_schema_order() {
     ]);
     assert_eq!(fs::read(&first).unwrap(), fs::read(&first_again).unwrap());
     assert_eq!(first_report["marginsTwips"]["top"], 720);
-    let second_report = run_ok(&[
+    let second_report = run_docx_mutation_ok(&[
         "--json",
         "docx",
         "sections",
@@ -198,6 +216,14 @@ fn indexed_sections_set_size_orientation_and_margins_in_schema_order() {
     let xml = zip_text(&second, "word/document.xml");
     assert!(xml.contains(r#"<w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="720" w:right="1080" w:bottom="1440" w:left="1800"/>"#));
     assert!(xml.contains(r#"<w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/>"#));
+    let outline = run_ok(&["--json", "outline", path(&second)]);
+    let sections = outline["sections"].as_array().expect("outline sections");
+    assert_eq!(sections.len(), 2);
+    assert_eq!(sections[0]["pageSetup"]["pageSize"]["widthTwips"], 16_838);
+    assert_eq!(sections[0]["pageSetup"]["pageSize"]["heightTwips"], 11_906);
+    assert_eq!(sections[0]["pageSetup"]["margins"]["leftTwips"], 1_800);
+    assert_eq!(sections[1]["pageSetup"]["pageSize"]["widthTwips"], 12_240);
+    assert_eq!(sections[1]["pageSetup"]["pageSize"]["heightTwips"], 15_840);
     for package in [&source, &split, &first, &first_again, &second] {
         assert_all_proofs(package);
     }
@@ -211,7 +237,7 @@ fn styled_tables_have_widths_repeating_headers_numeric_alignment_and_set_style()
     let created = temp.join("created.docx");
     let created_again = temp.join("created-again.docx");
     let restyled = temp.join("restyled.docx");
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "scaffold",
@@ -219,7 +245,7 @@ fn styled_tables_have_widths_repeating_headers_numeric_alignment_and_set_style()
         "--text",
         "Quarterly data",
     ]);
-    let create = run_ok(&[
+    let create = run_docx_mutation_ok(&[
         "--json",
         "docx",
         "tables",
@@ -239,7 +265,7 @@ fn styled_tables_have_widths_repeating_headers_numeric_alignment_and_set_style()
         "--out",
         path(&created),
     ]);
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "tables",
@@ -281,7 +307,7 @@ fn styled_tables_have_widths_repeating_headers_numeric_alignment_and_set_style()
     ] {
         assert!(created_xml.contains(wanted), "missing {wanted}");
     }
-    let set = run_ok(&[
+    let set = run_docx_mutation_ok(&[
         "--json",
         "docx",
         "tables",
@@ -312,7 +338,7 @@ fn image_caption_uses_caption_style_seq_field_and_alignment() {
     let source = temp.join("source.docx");
     let output = temp.join("captioned.docx");
     let output_again = temp.join("captioned-again.docx");
-    let scaffold = run_ok(&[
+    let scaffold = run_docx_mutation_ok(&[
         "--json",
         "docx",
         "scaffold",
@@ -322,7 +348,7 @@ fn image_caption_uses_caption_style_seq_field_and_alignment() {
     ]);
     let anchor = scaffold["blockHashes"][0]["contentHash"].as_str().unwrap();
     let image = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/test_image.png");
-    let report = run_ok(&[
+    let report = run_docx_mutation_ok(&[
         "--json",
         "docx",
         "images",
@@ -345,7 +371,7 @@ fn image_caption_uses_caption_style_seq_field_and_alignment() {
         "--out",
         path(&output),
     ]);
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "images",
@@ -377,6 +403,13 @@ fn image_caption_uses_caption_style_seq_field_and_alignment() {
     assert!(xml.contains(r#"<w:pStyle w:val="Caption"/><w:jc w:val="center"/>"#));
     assert!(xml.contains(r#"w:instr=" SEQ Figure \* ARABIC ""#));
     assert!(xml.contains("Quarterly trend"));
+    let drawing = xml.find("<w:drawing>").expect("image drawing");
+    let sequence = xml.find("SEQ Figure").expect("caption sequence field");
+    let caption = xml.find("Quarterly trend").expect("caption text");
+    assert!(
+        drawing < sequence && sequence < caption,
+        "caption field/text must follow the image drawing"
+    );
     for package in [&source, &output, &output_again] {
         assert_all_proofs(package);
     }
@@ -389,7 +422,7 @@ fn toc_field_has_placeholder_update_fields_and_readback_warning() {
     let source = temp.join("source.docx");
     let output = temp.join("toc.docx");
     let output_again = temp.join("toc-again.docx");
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "scaffold",
@@ -397,7 +430,7 @@ fn toc_field_has_placeholder_update_fields_and_readback_warning() {
         "--text",
         "Quarterly report",
     ]);
-    let inserted = run_ok(&[
+    let inserted = run_docx_mutation_ok(&[
         "--json",
         "docx",
         "fields",
@@ -409,7 +442,7 @@ fn toc_field_has_placeholder_update_fields_and_readback_warning() {
         "--out",
         path(&output),
     ]);
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "fields",
@@ -456,7 +489,7 @@ fn footer_page_numbers_use_page_and_numpages_fields() {
     let source = temp.join("source.docx");
     let output = temp.join("numbered.docx");
     let output_again = temp.join("numbered-again.docx");
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "scaffold",
@@ -464,7 +497,7 @@ fn footer_page_numbers_use_page_and_numpages_fields() {
         "--text",
         "Quarterly report",
     ]);
-    let report = run_ok(&[
+    let report = run_docx_mutation_ok(&[
         "--json",
         "docx",
         "footers",
@@ -474,7 +507,7 @@ fn footer_page_numbers_use_page_and_numpages_fields() {
         "--out",
         path(&output),
     ]);
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "footers",
@@ -507,11 +540,153 @@ fn footer_page_numbers_use_page_and_numpages_fields() {
 }
 
 #[test]
+fn op_compatible_structure_sequence_matches_direct_cli_bytes() {
+    let temp = temp_dir("apply-parity");
+    let seed = temp.join("seed.docx");
+    run_docx_mutation_ok(&[
+        "--json",
+        "docx",
+        "scaffold",
+        path(&seed),
+        "--text",
+        "Batch parity",
+    ]);
+
+    let numbered = temp.join("01-numbered.docx");
+    run_docx_mutation_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "append",
+        path(&seed),
+        "--text",
+        "First batched paragraph",
+        "--out",
+        path(&numbered),
+    ]);
+    let nested = temp.join("02-nested.docx");
+    run_docx_mutation_ok(&[
+        "--json",
+        "docx",
+        "paragraphs",
+        "insert",
+        path(&numbered),
+        "--after",
+        "2",
+        "--text",
+        "Second batched paragraph",
+        "--out",
+        path(&nested),
+    ]);
+    let table = temp.join("03-table.docx");
+    run_docx_mutation_ok(&[
+        "--json",
+        "docx",
+        "tables",
+        "create",
+        path(&nested),
+        "--values",
+        r#"[["Metric","Value"],["Revenue",1200]]"#,
+        "--out",
+        path(&table),
+    ]);
+    let field = temp.join("04-field.docx");
+    run_docx_mutation_ok(&[
+        "--json",
+        "docx",
+        "fields",
+        "insert",
+        path(&table),
+        "--location",
+        "body:1",
+        "--field-code",
+        "PAGE",
+        "--result",
+        "1",
+        "--out",
+        path(&field),
+    ]);
+    let direct = temp.join("direct.docx");
+    run_docx_mutation_ok(&[
+        "--json",
+        "docx",
+        "footers",
+        "set-text",
+        path(&field),
+        "--text",
+        "Batch footer",
+        "--out",
+        path(&direct),
+    ]);
+
+    let operations = serde_json::json!([
+        {
+            "command": "docx paragraphs append",
+            "args": {"text": "First batched paragraph"}
+        },
+        {
+            "command": "docx paragraphs insert",
+            "args": {"insertAfter": 2, "text": "Second batched paragraph"}
+        },
+        {
+            "command": "docx tables create",
+            "args": {"values": r#"[["Metric","Value"],["Revenue",1200]]"#}
+        },
+        {
+            "command": "docx fields insert",
+            "args": {"location": "body:1", "fieldCode": "PAGE", "result": "1"}
+        },
+        {
+            "command": "docx footers set-text",
+            "args": {"text": "Batch footer"}
+        }
+    ]);
+    let ops = temp.join("structure-ops.json");
+    fs::write(&ops, serde_json::to_vec_pretty(&operations).unwrap()).unwrap();
+    let batched = temp.join("batched.docx");
+    let apply = run_ok(&[
+        "--json",
+        "apply",
+        path(&seed),
+        "--ops",
+        path(&ops),
+        "--out",
+        path(&batched),
+    ]);
+    assert_eq!(apply["opsCount"], operations.as_array().unwrap().len());
+    assert_eq!(
+        apply["applied"]
+            .as_array()
+            .expect("applied operations")
+            .len(),
+        operations.as_array().unwrap().len()
+    );
+    assert_eq!(
+        fs::read(&direct).unwrap(),
+        fs::read(&batched).unwrap(),
+        "apply --ops output must be byte-identical to the direct CLI chain"
+    );
+    for package in [&seed, &numbered, &nested, &table, &field, &direct, &batched] {
+        assert_all_proofs(package);
+    }
+    let outline = run_ok(&["--json", "outline", path(&batched)]);
+    assert_sha256(&outline["documentHash"]);
+    assert!(
+        outline["fields"]
+            .as_array()
+            .expect("outline fields")
+            .iter()
+            .any(|item| item["instruction"] == "PAGE")
+    );
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
 fn quarterly_report_recipe_renders_all_structure_features() {
     let temp = temp_dir("quarterly-report");
     let mut produced = Vec::new();
     let scaffold = temp.join("00-scaffold.docx");
-    run_ok(&[
+    let scaffold_report = run_docx_mutation_ok(&[
         "--json",
         "docx",
         "scaffold",
@@ -519,9 +694,10 @@ fn quarterly_report_recipe_renders_all_structure_features() {
         "--text",
         "Quarterly Report",
     ]);
+    assert_eq!(scaffold_report["initialBlockCount"], 1);
     produced.push(scaffold.clone());
     let numbered = temp.join("01-numbered.docx");
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "paragraphs",
@@ -537,7 +713,7 @@ fn quarterly_report_recipe_renders_all_structure_features() {
     ]);
     produced.push(numbered.clone());
     let bullet = temp.join("02-bullet.docx");
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "paragraphs",
@@ -562,7 +738,7 @@ fn quarterly_report_recipe_renders_all_structure_features() {
     }
     let values = serde_json::to_string(&rows).unwrap();
     let table = temp.join("03-table.docx");
-    let report = run_owned_ok(vec![
+    let report = run_owned_docx_mutation_ok(vec![
         "--json".into(),
         "docx".into(),
         "tables".into(),
@@ -588,7 +764,7 @@ fn quarterly_report_recipe_renders_all_structure_features() {
         .to_string();
     let image_file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/test_image.png");
     let image = temp.join("04-image.docx");
-    run_owned_ok(vec![
+    run_owned_docx_mutation_ok(vec![
         "--json".into(),
         "docx".into(),
         "images".into(),
@@ -613,7 +789,7 @@ fn quarterly_report_recipe_renders_all_structure_features() {
     ]);
     produced.push(image.clone());
     let toc = temp.join("05-toc.docx");
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "fields",
@@ -627,7 +803,7 @@ fn quarterly_report_recipe_renders_all_structure_features() {
     ]);
     produced.push(toc.clone());
     let final_docx = temp.join("quarterly-report.docx");
-    run_ok(&[
+    let final_report = run_docx_mutation_ok(&[
         "--json",
         "docx",
         "footers",
@@ -637,17 +813,19 @@ fn quarterly_report_recipe_renders_all_structure_features() {
         "--out",
         path(&final_docx),
     ]);
+    assert_sha256(&final_report["documentHash"]);
     produced.push(final_docx.clone());
     for package in &produced {
         assert_all_proofs(package);
     }
+    assert_structure_outline(&final_docx);
     assert_quarterly_report_render(&final_docx, &temp);
     fs::remove_dir_all(temp).unwrap();
 }
 
 fn build_list_document(temp: &Path, label: &str) -> PathBuf {
     let mut current = temp.join(format!("{label}-0.docx"));
-    run_ok(&[
+    run_docx_mutation_ok(&[
         "--json",
         "docx",
         "scaffold",
@@ -683,7 +861,7 @@ fn build_list_document(temp: &Path, label: &str) -> PathBuf {
             args.push("--restart");
         }
         args.extend(["--out", path(&output)]);
-        let report = run_ok(&args);
+        let report = run_docx_mutation_ok(&args);
         assert_eq!(report["list"], kind);
         assert_eq!(report["listLevel"], level.parse::<u32>().unwrap());
         assert!(
@@ -720,9 +898,75 @@ fn run_ok(args: &[&str]) -> Value {
     report
 }
 
-fn run_owned_ok(args: Vec<String>) -> Value {
+fn run_docx_mutation_ok(args: &[&str]) -> Value {
+    let report = run_ok(args);
+    assert_docx_mutation_hashes(&report, args);
+    report
+}
+
+fn run_owned_docx_mutation_ok(args: Vec<String>) -> Value {
     let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-    run_ok(&refs)
+    run_docx_mutation_ok(&refs)
+}
+
+fn assert_docx_mutation_hashes(report: &Value, args: &[&str]) {
+    assert_sha256(&report["documentHash"]);
+    let blocks = report["blockHashes"]
+        .as_array()
+        .unwrap_or_else(|| panic!("DOCX mutation omitted blockHashes: {args:?}: {report}"));
+    assert!(!blocks.is_empty(), "DOCX mutation returned no block hashes");
+    for block in blocks {
+        assert!(block["index"].is_number());
+        assert_sha256(&block["contentHash"]);
+    }
+}
+
+fn assert_sha256(value: &Value) {
+    let hash = value.as_str().expect("sha256 string");
+    assert_eq!(hash.len(), "sha256:".len() + 64, "invalid hash: {hash}");
+    assert!(hash.starts_with("sha256:"), "invalid hash: {hash}");
+    assert!(
+        hash["sha256:".len()..]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit()),
+        "invalid hash: {hash}"
+    );
+}
+
+fn assert_structure_outline(package: &Path) {
+    let outline = run_ok(&["--json", "outline", path(package), "--text-preview", "120"]);
+    assert_sha256(&outline["documentHash"]);
+    let blocks = outline["blocks"].as_array().expect("outline blocks");
+    assert!(blocks.iter().all(|block| {
+        block["contentHash"]
+            .as_str()
+            .is_some_and(|hash| hash.starts_with("sha256:"))
+    }));
+    assert!(
+        blocks
+            .iter()
+            .any(|block| block["styleId"] == "ListNumber" && block["listLevel"] == 0)
+    );
+    assert!(
+        blocks
+            .iter()
+            .any(|block| block["styleId"] == "ListBullet" && block["listLevel"] == 0)
+    );
+    assert!(outline["sections"][0]["pageSetup"].is_object());
+    let instructions = outline["fields"]
+        .as_array()
+        .expect("outline fields")
+        .iter()
+        .filter_map(|field| field["instruction"].as_str())
+        .collect::<Vec<_>>();
+    for field in ["SEQ Figure", "TOC", "PAGE", "NUMPAGES"] {
+        assert!(
+            instructions
+                .iter()
+                .any(|instruction| instruction.starts_with(field)),
+            "outline missing field {field:?}: {instructions:?}"
+        );
+    }
 }
 
 fn assert_quarterly_report_render(package: &Path, temp: &Path) {
@@ -771,14 +1015,23 @@ fn assert_quarterly_report_render(package: &Path, temp: &Path) {
     assert!(pages >= 2, "quarterly report should span pages: {info}");
     let text_file = temp.join("quarterly-report.txt");
     let extracted = Command::new("pdftotext")
-        .args([pdf.as_os_str(), text_file.as_os_str()])
+        .args(["-layout".as_ref(), pdf.as_os_str(), text_file.as_os_str()])
         .output()
         .expect("run pdftotext");
     assert!(extracted.status.success());
     let text = fs::read_to_string(text_file).unwrap();
+    let pages = text.split('\u{c}').collect::<Vec<_>>();
+    assert!(pages.len() > 2, "expected page-delimited PDF text: {text}");
     assert!(
-        text.matches("Metric").count() >= 2,
-        "repeating table header missing: {text}"
+        pages[1].contains("Metric") && pages[1].contains("Value") && pages[1].contains("Status"),
+        "repeating table header missing from page 2: {}",
+        pages[1]
+    );
+    let last_table_row = text.find("Quarterly metric 90").expect("last table row");
+    let caption = text.find("Quarterly trend").expect("rendered caption");
+    assert!(
+        last_table_row < caption,
+        "caption must follow the rendered table/image content: {text}"
     );
     for expected in [
         "Executive summary",
@@ -805,6 +1058,16 @@ fn assert_all_proofs(package: &Path) {
         output.status.success(),
         "child-order/style integrity rejected {}: {report}",
         package.display()
+    );
+    assert_eq!(report["summary"]["errors"], 0, "{report}");
+    assert_eq!(report["summary"]["warnings"], 0, "{report}");
+    assert!(
+        report["checks"]
+            .as_array()
+            .expect("conformance checks")
+            .iter()
+            .any(|check| check["name"] == "repo-validation" && check["status"] == "passed"),
+        "strict child-order/style-integrity check missing: {report}"
     );
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
         return;
