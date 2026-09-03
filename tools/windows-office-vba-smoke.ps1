@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path,
+    [string]$RepoRoot = "",
 
     [string]$OutputDir = (Join-Path ([System.IO.Path]::GetTempPath()) ("ooxml-office-vba-smoke-" + [guid]::NewGuid().ToString("N"))),
 
@@ -43,6 +43,17 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ($RepoRoot -eq "") {
+    $scriptRoot = $PSScriptRoot
+    if (($scriptRoot -eq $null -or $scriptRoot -eq "") -and $MyInvocation.MyCommand.Path -ne $null -and $MyInvocation.MyCommand.Path -ne "") {
+        $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+    }
+    if ($scriptRoot -eq $null -or $scriptRoot -eq "") {
+        throw "RepoRoot was not provided and the script root could not be determined."
+    }
+    $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $scriptRoot "..")).Path
+}
 
 function Resolve-GoExe {
     param([string]$Requested)
