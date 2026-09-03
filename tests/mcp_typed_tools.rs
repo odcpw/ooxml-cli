@@ -61,6 +61,40 @@ fn tools_list_pins_typed_schemas_and_matches_cli_contracts() {
     }
 
     let capabilities = run_cli_json(&strings(&["--json", "capabilities"]), &[]);
+    assert_eq!(capabilities["mcp"]["typedTools"], json!(TYPED_NAMES));
+    assert_eq!(
+        capabilities["mcp"]["genericTools"],
+        json!([
+            "open", "op", "inspect", "validate", "plan", "commit", "abort"
+        ])
+    );
+    assert!(
+        capabilities["mcp"]["resources"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("resource://schema/pptx-build"))
+    );
+    let mcp_command = capabilities["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|command| command["path"] == "ooxml mcp")
+        .expect("MCP command manifest row");
+    assert!(
+        mcp_command["short"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("typed build, edit, outline, check")
+    );
+    let guide = run_cli_json(&strings(&["--json", "robot-docs", "guide"]), &[]);
+    assert!(guide["sections"].as_array().unwrap().iter().any(|section| {
+        section["name"] == "MCP one-call typed intents"
+            && section["commands"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|command| command == "MCP edit_package -> ordered manifest-derived mutation batch with named $ref results")
+    }));
     let command_contracts = capabilities["commands"]
         .as_array()
         .unwrap()
@@ -107,6 +141,19 @@ fn tools_list_pins_typed_schemas_and_matches_cli_contracts() {
             &[],
         );
         assert_eq!(tool["inputSchema"]["properties"]["spec"], schema);
+        assert_eq!(
+            tool["inputSchema"]["allOf"][0]["oneOf"][0]["required"],
+            json!(["spec"])
+        );
+        assert_eq!(
+            tool["inputSchema"]["allOf"][0]["oneOf"][1]["required"],
+            json!(["markdown"])
+        );
+        assert!(
+            tool["inputSchema"]["properties"]["markdown"]["description"]
+                .as_str()
+                .is_some_and(|description| description.contains("Inline Markdown source"))
+        );
     }
 
     let actual = format!(
@@ -121,6 +168,48 @@ fn tools_list_pins_typed_schemas_and_matches_cli_contracts() {
         actual,
         std::fs::read_to_string(GOLDEN).expect("typed tools golden")
     );
+}
+
+#[test]
+fn resources_list_publishes_build_schemas_and_the_real_typed_recipe_guide() {
+    let responses = mcp(
+        &[
+            rpc(1, "resources/list", json!({})),
+            rpc(
+                2,
+                "resources/read",
+                json!({"uri": "resource://agent-guide"}),
+            ),
+        ],
+        &[],
+    );
+    let resources = responses[0]["result"]["resources"].as_array().unwrap();
+    for uri in [
+        "resource://agent-guide",
+        "resource://schema/pptx-build",
+        "resource://schema/xlsx-build",
+        "resource://schema/docx-build",
+    ] {
+        assert!(
+            resources.iter().any(|resource| resource["uri"] == uri),
+            "missing MCP resource {uri}"
+        );
+    }
+    let guide_text = responses[1]["result"]["contents"][0]["text"]
+        .as_str()
+        .expect("agent guide resource text");
+    let guide: Value = serde_json::from_str(guide_text).expect("agent guide JSON");
+    let typed = guide["sections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|section| section["name"] == "MCP one-call typed intents")
+        .expect("typed MCP recipe section");
+    assert!(typed["commands"].as_array().unwrap().iter().any(|command| {
+        command.as_str().is_some_and(|command| {
+            command.contains("build_presentation|build_workbook|build_document")
+        })
+    }));
 }
 
 #[test]
@@ -163,20 +252,13 @@ fn typed_build_tools_create_three_strictly_valid_recipe_outputs() {
     ]) {
         assert!(response.get("error").is_none(), "{response:#}");
         let result = &response["result"]["structuredContent"];
-        if family == "pptx" {
-            assert_eq!(result["schemaVersion"], "ooxml-cli.pptx-build.v1");
-            assert_eq!(result["output"], output.to_string_lossy().as_ref());
-            assert_eq!(result["outline"]["type"], family);
-            assert_eq!(result["validated"], true);
-        } else {
-            assert_eq!(result["family"], family);
-            assert_eq!(
-                result["commit"]["output"],
-                output.to_string_lossy().as_ref()
-            );
-            assert_eq!(result["outline"]["type"], family);
-            assert_eq!(result["commit"]["validated"], true);
-        }
+        assert_eq!(
+            result["schemaVersion"],
+            format!("ooxml-cli.{family}-build.v1")
+        );
+        assert_eq!(result["output"], output.to_string_lossy().as_ref());
+        assert_eq!(result["outline"]["type"], family);
+        assert_eq!(result["validated"], true);
         assert!(output.is_file(), "missing built {family} output");
         let validation = run_cli_json(
             &[
@@ -193,70 +275,401 @@ fn typed_build_tools_create_three_strictly_valid_recipe_outputs() {
 }
 
 #[test]
-fn typed_presentation_build_matches_the_family_cli_contract() {
+fn typed_build_tools_match_the_family_cli_contracts() {
     let dir = temp_dir("build-parity");
-    let mcp_output = dir.join("typed.pptx");
-    let cli_output = dir.join("cli.pptx");
-    let spec_path = dir.join("deck.json");
-    let spec = json!({
-        "schemaVersion": 1,
-        "family": "pptx",
-        "slides": [{
-            "layout": "Title Slide",
-            "title": "Typed parity",
-            "subtitle": "One schema and one builder",
-        }],
-    });
-    std::fs::write(
-        &spec_path,
-        format!("{}\n", serde_json::to_string_pretty(&spec).unwrap()),
-    )
-    .unwrap();
-
-    let response = mcp(
-        &[tool_call(
-            1,
+    let cases = [
+        (
+            "pptx",
             "build_presentation",
-            json!({"output": mcp_output, "spec": spec}),
+            "pptx",
+            json!({
+                "schemaVersion": 1,
+                "family": "pptx",
+                "slides": [{
+                    "layout": "Title Slide",
+                    "title": "Typed parity",
+                    "subtitle": "One schema and one builder",
+                }],
+            }),
+        ),
+        (
+            "xlsx",
+            "build_workbook",
+            "xlsx",
+            json!({
+                "schemaVersion": 1,
+                "family": "xlsx",
+                "sheets": [{"name": "Data"}],
+            }),
+        ),
+        (
+            "docx",
+            "build_document",
+            "docx",
+            json!({
+                "schemaVersion": 1,
+                "family": "docx",
+                "blocks": [{"type": "paragraph", "text": "Typed parity"}],
+            }),
+        ),
+    ];
+    for (family, tool, extension, spec) in cases {
+        let mcp_output = dir.join(format!("typed.{extension}"));
+        let cli_output = dir.join(format!("cli.{extension}"));
+        let spec_path = dir.join(format!("{family}.json"));
+        std::fs::write(
+            &spec_path,
+            format!("{}\n", serde_json::to_string_pretty(&spec).unwrap()),
+        )
+        .unwrap();
+
+        let response = mcp(
+            &[tool_call(
+                1,
+                tool,
+                json!({"output": mcp_output, "spec": spec}),
+            )],
+            &[],
+        )
+        .remove(0);
+        assert!(response.get("error").is_none(), "{response:#}");
+        let mut actual = response["result"]["structuredContent"].clone();
+        actual.as_object_mut().unwrap().remove("next_actions");
+        normalize_strings(
+            &mut actual,
+            &[
+                (mcp_output.to_string_lossy().as_ref(), "<output>"),
+                ("inline", "<spec>"),
+            ],
+        );
+
+        let mut expected = run_cli_json(
+            &[
+                "--json".to_string(),
+                family.to_string(),
+                "build".to_string(),
+                "--spec".to_string(),
+                spec_path.to_string_lossy().into_owned(),
+                "--out".to_string(),
+                cli_output.to_string_lossy().into_owned(),
+            ],
+            &[],
+        );
+        normalize_strings(
+            &mut expected,
+            &[
+                (cli_output.to_string_lossy().as_ref(), "<output>"),
+                (spec_path.to_string_lossy().as_ref(), "<spec>"),
+                (&format!("<spec-dir>/cli.{extension}"), "<output>"),
+                (&format!("<spec-dir>/{family}.json"), "<spec>"),
+            ],
+        );
+        assert_eq!(actual, expected, "{family} MCP/CLI build parity drifted");
+        assert_eq!(
+            std::fs::read(mcp_output).unwrap(),
+            std::fs::read(cli_output).unwrap(),
+            "{family} MCP/CLI artifacts differ"
+        );
+    }
+}
+
+#[test]
+fn typed_markdown_builds_match_family_cli_and_xlsx_refuses_with_a_teaching_error() {
+    let dir = temp_dir("markdown-build-parity");
+    let cases = [
+        (
+            "pptx",
+            "build_presentation",
+            "pptx",
+            "# Typed review\n\n---\n\n## Delivery\n\nThe release is on track.\n",
+        ),
+        (
+            "docx",
+            "build_document",
+            "docx",
+            "# Typed report\n\nThe release is on track.\n\n- Proof is recorded\n- Follow-up is explicit\n",
+        ),
+    ];
+    for (family, tool, extension, markdown) in cases {
+        let mcp_output = dir.join(format!("typed-markdown.{extension}"));
+        let cli_output = dir.join(format!("cli-markdown.{extension}"));
+        let markdown_path = dir.join(format!("{family}.md"));
+        std::fs::write(&markdown_path, markdown).unwrap();
+
+        let response = mcp(
+            &[tool_call(
+                1,
+                tool,
+                json!({"output": mcp_output, "markdown": markdown}),
+            )],
+            &[],
+        )
+        .remove(0);
+        assert!(response.get("error").is_none(), "{response:#}");
+        assert_ne!(response["result"]["isError"], true, "{response:#}");
+        let mut actual = response["result"]["structuredContent"].clone();
+        actual.as_object_mut().unwrap().remove("next_actions");
+        normalize_strings(
+            &mut actual,
+            &[(mcp_output.to_string_lossy().as_ref(), "<output>")],
+        );
+
+        let mut expected = run_cli_json(
+            &[
+                "--json".to_string(),
+                family.to_string(),
+                "build".to_string(),
+                "--from-markdown".to_string(),
+                markdown_path.to_string_lossy().into_owned(),
+                "--out".to_string(),
+                cli_output.to_string_lossy().into_owned(),
+            ],
+            &[],
+        );
+        normalize_strings(
+            &mut expected,
+            &[
+                (cli_output.to_string_lossy().as_ref(), "<output>"),
+                (markdown_path.to_string_lossy().as_ref(), "inline"),
+                (&format!("<spec-dir>/cli-markdown.{extension}"), "<output>"),
+            ],
+        );
+        assert_eq!(actual, expected, "{family} Markdown MCP/CLI parity drifted");
+        assert_eq!(
+            std::fs::read(&mcp_output).unwrap(),
+            std::fs::read(&cli_output).unwrap(),
+            "{family} Markdown artifacts differ"
+        );
+        let validation = run_cli_json(
+            &[
+                "--json".to_string(),
+                "--strict".to_string(),
+                "validate".to_string(),
+                mcp_output.to_string_lossy().into_owned(),
+            ],
+            &[],
+        );
+        assert_eq!(validation["valid"], true, "{validation:#}");
+    }
+
+    let unsupported = mcp(
+        &[tool_call(
+            2,
+            "build_workbook",
+            json!({
+                "output": dir.join("unsupported.xlsx"),
+                "markdown": "# Tabular data\n",
+            }),
         )],
         &[],
     )
     .remove(0);
-    assert!(response.get("error").is_none(), "{response:#}");
-    let mut actual = response["result"]["structuredContent"].clone();
-    actual.as_object_mut().unwrap().remove("next_actions");
-    normalize_strings(
-        &mut actual,
-        &[
-            (mcp_output.to_string_lossy().as_ref(), "<output>"),
-            ("inline", "<spec>"),
-        ],
+    let error = &unsupported["result"]["structuredContent"]["error"];
+    assert_eq!(unsupported["result"]["isError"], true);
+    assert_eq!(error["code"], "invalid_args");
+    assert_eq!(error["diagnostics"]["code"], "MARKDOWN_FAMILY_UNSUPPORTED");
+    assert!(
+        error["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("not xlsx")),
+        "{error:#}"
     );
+    assert_eq!(error["schemaResource"], "resource://schema/xlsx-build");
+}
 
-    let mut expected = run_cli_json(
+#[test]
+fn typed_build_tools_reject_ambiguous_or_inapplicable_fields_instead_of_dropping_them() {
+    let dir = temp_dir("build-fields");
+    let workbook_spec = json!({
+        "schemaVersion": 1,
+        "family": "xlsx",
+        "sheets": [{"name": "Data"}],
+    });
+    let document_spec = json!({
+        "schemaVersion": 1,
+        "family": "docx",
+        "blocks": [{"type": "paragraph", "text": "No silent drops"}],
+    });
+    let responses = mcp(
         &[
-            "--json".to_string(),
-            "pptx".to_string(),
-            "build".to_string(),
-            "--spec".to_string(),
-            spec_path.to_string_lossy().into_owned(),
-            "--out".to_string(),
-            cli_output.to_string_lossy().into_owned(),
+            tool_call(
+                1,
+                "build_workbook",
+                json!({
+                    "spec": workbook_spec.clone(),
+                    "output": dir.join("ambiguous.xlsx"),
+                    "session": "existing-session",
+                }),
+            ),
+            tool_call(
+                2,
+                "build_document",
+                json!({
+                    "spec": document_spec,
+                    "session": "existing-session",
+                    "check": true,
+                }),
+            ),
+            tool_call(
+                3,
+                "build_workbook",
+                json!({
+                    "spec": workbook_spec,
+                    "output": dir.join("typo.xlsx"),
+                    "chek": true,
+                }),
+            ),
+            tool_call(
+                4,
+                "build_document",
+                json!({
+                    "spec": {
+                        "schemaVersion": 1,
+                        "family": "docx",
+                        "blocks": [{"type": "paragraph", "text": "ambiguous"}],
+                    },
+                    "markdown": "# Ambiguous\n",
+                    "output": dir.join("ambiguous.docx"),
+                }),
+            ),
         ],
         &[],
     );
-    normalize_strings(
-        &mut expected,
-        &[
-            (cli_output.to_string_lossy().as_ref(), "<output>"),
-            (spec_path.to_string_lossy().as_ref(), "<spec>"),
-        ],
-    );
-    assert_eq!(actual, expected);
+
+    let ambiguous = &responses[0]["result"];
+    assert_eq!(ambiguous["isError"], true);
     assert_eq!(
-        std::fs::read(mcp_output).unwrap(),
-        std::fs::read(cli_output).unwrap()
+        ambiguous["structuredContent"]["error"]["message"],
+        "exactly one of output or session is required"
     );
+    let session_flag = &responses[1]["result"];
+    assert_eq!(session_flag["isError"], true);
+    assert!(
+        session_flag["structuredContent"]["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("check, dryRun, and force apply only"))
+    );
+    let typo = &responses[2]["result"];
+    assert_eq!(typo["isError"], true);
+    assert_eq!(
+        typo["structuredContent"]["error"]["didYouMean"],
+        json!(["check"])
+    );
+    assert!(
+        typo["structuredContent"]["error"]["validFields"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("check"))
+    );
+    let ambiguous_source = &responses[3]["result"];
+    assert_eq!(ambiguous_source["isError"], true);
+    assert_eq!(
+        ambiguous_source["structuredContent"]["error"]["message"],
+        "exactly one of spec or markdown is required"
+    );
+}
+
+#[test]
+fn typed_build_can_apply_a_full_family_plan_to_a_session_and_commit_it() {
+    let dir = temp_dir("build-session");
+    let source = dir.join("new-presentation.pptx");
+    let output = dir.join("session-built.pptx");
+    let responses = mcp(
+        &[
+            tool_call(1, "open", json!({"file": source, "out": output})),
+            tool_call(
+                2,
+                "build_presentation",
+                json!({
+                    "session": "rust-session-1",
+                    "spec": {
+                        "schemaVersion": 1,
+                        "family": "pptx",
+                        "slides": [
+                            {"layout": "Title Slide", "title": "First", "subtitle": "Built in session"},
+                            {"layout": "Title Slide", "title": "Second", "subtitle": "The family compiler keeps this second slide."},
+                        ],
+                    },
+                }),
+            ),
+            tool_call(3, "commit", json!({"session": "rust-session-1"})),
+        ],
+        &[],
+    );
+    for response in &responses {
+        assert!(response.get("error").is_none(), "{response:#}");
+        assert_ne!(response["result"]["isError"], true, "{response:#}");
+    }
+    let build = &responses[1]["result"]["structuredContent"];
+    assert_eq!(build["family"], "pptx");
+    assert_eq!(build["committed"], false);
+    assert!(
+        build["operations"]
+            .as_array()
+            .is_some_and(|operations| operations.len() >= 3),
+        "full two-slide plan was not applied: {build:#}"
+    );
+    let commit = &responses[2]["result"]["structuredContent"];
+    assert_eq!(commit["validated"], true);
+    assert_eq!(commit["output"], output.to_string_lossy().as_ref());
+    let outline = run_cli_json(
+        &[
+            "--json".to_string(),
+            "outline".to_string(),
+            output.to_string_lossy().into_owned(),
+        ],
+        &[],
+    );
+    assert_eq!(outline["summary"]["slides"], 2);
+}
+
+#[test]
+fn typed_markdown_can_apply_a_compiled_plan_to_a_session() {
+    let dir = temp_dir("markdown-session");
+    let source = dir.join("new-document.docx");
+    let output = dir.join("session-markdown.docx");
+    let responses = mcp(
+        &[
+            tool_call(1, "open", json!({"file": source, "out": output})),
+            tool_call(
+                2,
+                "build_document",
+                json!({
+                    "session": "rust-session-1",
+                    "markdown": "# Session report\n\nBuilt from Markdown without an intermediate spec file.\n",
+                }),
+            ),
+            tool_call(3, "commit", json!({"session": "rust-session-1"})),
+        ],
+        &[],
+    );
+    for response in &responses {
+        assert!(response.get("error").is_none(), "{response:#}");
+        assert_ne!(response["result"]["isError"], true, "{response:#}");
+    }
+    let build = &responses[1]["result"]["structuredContent"];
+    assert_eq!(build["family"], "docx");
+    assert_eq!(build["markdown"], "inline");
+    assert_eq!(build["committed"], false);
+    assert!(
+        build["operations"]
+            .as_array()
+            .is_some_and(|operations| operations.len() >= 4),
+        "full Markdown plan was not applied: {build:#}"
+    );
+    assert_eq!(
+        responses[2]["result"]["structuredContent"]["validated"],
+        true
+    );
+    let outline = run_cli_json(
+        &[
+            "--json".to_string(),
+            "outline".to_string(),
+            output.to_string_lossy().into_owned(),
+        ],
+        &[],
+    );
+    assert_eq!(outline["summary"]["paragraphs"], 2);
 }
 
 #[test]
@@ -369,6 +782,13 @@ fn typed_edit_replace_and_errors_are_one_call_and_teaching() {
     let input = "testdata/xlsx/minimal-workbook/workbook.xlsx";
     let edited = dir.join("edited.xlsx");
     let replaced = dir.join("replaced.xlsx");
+    let direct_edit = dir.join("direct-edited.xlsx");
+    let direct_replace = dir.join("direct-replaced.xlsx");
+    let edit_operations = json!([{
+        "id": "changed_cell",
+        "command": "xlsx cells set",
+        "args": {"sheet": "1", "cell": "A1", "value": "Edited by typed MCP"},
+    }]);
     let responses = mcp(
         &[
             tool_call(
@@ -377,11 +797,7 @@ fn typed_edit_replace_and_errors_are_one_call_and_teaching() {
                 json!({
                     "file": input,
                     "output": edited,
-                    "operations": [{
-                        "id": "changed_cell",
-                        "command": "xlsx cells set",
-                        "args": {"sheet": "1", "cell": "A1", "value": "Edited by typed MCP"},
-                    }],
+                    "operations": edit_operations,
                 }),
             ),
             tool_call(
@@ -420,6 +836,97 @@ fn typed_edit_replace_and_errors_are_one_call_and_teaching() {
     assert!(replaced.is_file());
     assert_eq!(xlsx_a1(&edited), "Edited by typed MCP");
     assert_eq!(xlsx_a1(&replaced), "Replaced by typed MCP");
+
+    let ops_path = dir.join("ops.json");
+    std::fs::write(
+        &ops_path,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&edit_operations).unwrap()
+        ),
+    )
+    .unwrap();
+    let mut direct_edit_result = run_cli_json(
+        &[
+            "--json".to_string(),
+            "apply".to_string(),
+            input.to_string(),
+            "--ops".to_string(),
+            ops_path.to_string_lossy().into_owned(),
+            "--out".to_string(),
+            direct_edit.to_string_lossy().into_owned(),
+        ],
+        &[],
+    );
+    let direct_outer_envelope = direct_edit_result
+        .as_object_mut()
+        .unwrap()
+        .remove("mutationEnvelope")
+        .expect("CLI apply outer mutation envelope");
+    assert_eq!(direct_outer_envelope["validated"], true);
+    assert_eq!(direct_outer_envelope["destination"]["kind"], "batch");
+    assert_eq!(
+        direct_outer_envelope["destination"]["primarySelector"],
+        edit["commit"]["applied"][0]["mutationEnvelope"]["destination"]["primarySelector"]
+    );
+    let mut typed_edit_commit = edit["commit"].clone();
+    normalize_strings(
+        &mut typed_edit_commit,
+        &[(edited.to_string_lossy().as_ref(), "<output>")],
+    );
+    normalize_strings(
+        &mut direct_edit_result,
+        &[(direct_edit.to_string_lossy().as_ref(), "<output>")],
+    );
+    assert_eq!(typed_edit_commit, direct_edit_result);
+    assert_eq!(
+        std::fs::read(&edited).unwrap(),
+        std::fs::read(&direct_edit).unwrap()
+    );
+
+    let mut direct_replace_result = run_cli_json(
+        &[
+            "--json".to_string(),
+            "find".to_string(),
+            "Hello".to_string(),
+            input.to_string(),
+            "--replace".to_string(),
+            "Replaced by typed MCP".to_string(),
+            "--apply".to_string(),
+            "--out".to_string(),
+            direct_replace.to_string_lossy().into_owned(),
+        ],
+        &[],
+    );
+    let mut typed_replace_result = responses[1]["result"]["structuredContent"].clone();
+    typed_replace_result
+        .as_object_mut()
+        .unwrap()
+        .remove("next_actions");
+    let direct_replace_outer = direct_replace_result
+        .as_object_mut()
+        .unwrap()
+        .remove("mutationEnvelope")
+        .expect("CLI find --apply outer mutation envelope");
+    assert_eq!(direct_replace_outer["validated"], true);
+    assert_eq!(direct_replace_outer["destination"]["kind"], "text-match");
+    assert_eq!(
+        direct_replace_outer["destination"]["primarySelector"],
+        typed_replace_result["applied"][0]["mutationEnvelope"]["destination"]["primarySelector"]
+    );
+    normalize_strings(
+        &mut typed_replace_result,
+        &[(replaced.to_string_lossy().as_ref(), "<output>")],
+    );
+    normalize_strings(
+        &mut direct_replace_result,
+        &[(direct_replace.to_string_lossy().as_ref(), "<output>")],
+    );
+    assert_eq!(typed_replace_result, direct_replace_result);
+    assert_eq!(
+        std::fs::read(&replaced).unwrap(),
+        std::fs::read(&direct_replace).unwrap()
+    );
 
     let typo = &responses[2]["result"];
     assert_eq!(typo["isError"], true);

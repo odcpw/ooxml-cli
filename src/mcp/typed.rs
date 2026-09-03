@@ -3,7 +3,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::build::{BuildFamily, compile_minimal_spec, load_spec_str};
+use crate::build::{
+    BuildFamily, BuildSpec, CompiledBuildPlan, compile_docx_spec, compile_pptx_spec,
+    compile_xlsx_spec, load_spec_str, markdown_to_spec,
+};
 use crate::cli_dispatch::{DispatchBody, DispatchOutput};
 use crate::{
     CliError, CliResult, GlobalFlags, OutlineOptions, ServeState, json_bool, json_optional_string,
@@ -22,6 +25,10 @@ const TYPED_TOOL_NAMES: [&str; 10] = [
     "find_text",
     "replace_text",
 ];
+
+pub(super) const fn tool_names() -> &'static [&'static str] {
+    &TYPED_TOOL_NAMES
+}
 
 pub(super) fn is_typed_tool(name: &str) -> bool {
     TYPED_TOOL_NAMES.contains(&name)
@@ -134,9 +141,9 @@ pub(super) fn call(engine: &mut ServeState, name: &str, arguments: &Value) -> Va
 fn call_inner(engine: &mut ServeState, name: &str, arguments: &Value) -> CliResult<Value> {
     reject_unknown_arguments(name, arguments)?;
     match name {
-        "build_presentation" => call_build(engine, name, BuildFamily::Pptx, arguments),
-        "build_workbook" => call_build(engine, name, BuildFamily::Xlsx, arguments),
-        "build_document" => call_build(engine, name, BuildFamily::Docx, arguments),
+        "build_presentation" => call_build(engine, BuildFamily::Pptx, arguments),
+        "build_workbook" => call_build(engine, BuildFamily::Xlsx, arguments),
+        "build_document" => call_build(engine, BuildFamily::Docx, arguments),
         "edit_package" => call_edit(engine, arguments),
         "outline_package" => call_outline(arguments),
         "check_package" => call_check(arguments),
@@ -150,123 +157,175 @@ fn call_inner(engine: &mut ServeState, name: &str, arguments: &Value) -> CliResu
     }
 }
 
-fn call_build(
-    engine: &mut ServeState,
-    tool: &str,
-    family: BuildFamily,
-    arguments: &Value,
-) -> CliResult<Value> {
-    if arguments.get("markdown").is_some() {
-        return Err(CliError::invalid_args(format!(
-            "{tool} Markdown input is not available until the shared Markdown-to-build-spec converter lands; pass spec using resource://schema/{}",
-            family.schema_name()
-        )));
-    }
-    let spec_value = arguments
-        .get("spec")
-        .ok_or_else(|| CliError::invalid_args("spec is required"))?;
-    let spec_source = serde_json::to_string(spec_value)
-        .map_err(|error| CliError::invalid_args(format!("spec must be valid JSON: {error}")))?;
+fn call_build(engine: &mut ServeState, family: BuildFamily, arguments: &Value) -> CliResult<Value> {
+    let (spec_source, markdown_source, markdown_warnings) =
+        match (arguments.get("spec"), arguments.get("markdown")) {
+            (Some(_), Some(_)) | (None, None) => {
+                return Err(CliError::invalid_args(
+                    "exactly one of spec or markdown is required",
+                ));
+            }
+            (Some(spec), None) => (
+                serde_json::to_string(spec).map_err(|error| {
+                    CliError::invalid_args(format!("spec must be valid JSON: {error}"))
+                })?,
+                None,
+                Vec::new(),
+            ),
+            (None, Some(_)) => {
+                let markdown = json_string(arguments, "markdown")?;
+                let conversion = markdown_to_spec(family, &markdown, "inline.md")
+                    .map_err(markdown_conversion_error)?;
+                let spec_source = serde_json::to_string(&conversion.spec).map_err(|error| {
+                    CliError::invalid_args(format!(
+                        "converted Markdown spec must be valid JSON: {error}"
+                    ))
+                })?;
+                (spec_source, Some(markdown), conversion.warnings)
+            }
+        };
     let spec = load_spec_str(family, &spec_source).map_err(|error| {
         CliError::invalid_args(format!(
             "build spec validation failed: {}",
             serde_json::to_string(&error.diagnostics).expect("serialize build diagnostics")
         ))
     })?;
-    if family == BuildFamily::Pptx && json_optional_string(arguments, "session").is_none() {
-        return call_pptx_build(&spec_source, arguments);
+    let has_output = json_optional_string(arguments, "output").is_some();
+    let has_session = json_optional_string(arguments, "session").is_some();
+    if has_output == has_session {
+        return Err(CliError::invalid_args(
+            "exactly one of output or session is required",
+        ));
     }
-    let plan = compile_minimal_spec(&spec).map_err(|error| {
-        CliError::invalid_args(format!(
-            "build spec compilation failed: {}",
-            serde_json::to_string(&error).expect("serialize build compilation diagnostic")
-        ))
-    })?;
-    let operations = plan.operations_json();
+    if has_output {
+        return call_family_build(family, &spec_source, markdown_source.as_deref(), arguments);
+    }
+    if ["check", "dryRun", "force"]
+        .iter()
+        .any(|field| json_bool(arguments, field).unwrap_or(false))
+    {
+        return Err(CliError::invalid_args(
+            "check, dryRun, and force apply only when output is selected; omit them when applying a build spec to an existing session",
+        ));
+    }
+    let plan = compile_session_plan(family, &spec)?;
+    let mut operations = plan.operations_json();
+    if let Some(operations) = operations.as_array_mut() {
+        for operation in operations {
+            operation
+                .as_object_mut()
+                .expect("compiled build operations are objects")
+                .entry("args")
+                .or_insert_with(|| json!({}));
+        }
+    }
     let node_map = serde_json::to_value(&plan.node_map).expect("serialize build node map");
-
-    if let Some(session) = json_optional_string(arguments, "session") {
-        let applied = apply_operations(engine, &session, &operations)?;
-        return Ok(json!({
-            "schemaVersion": "ooxml-cli.typed-build.v1",
-            "family": family,
-            "schemaResource": format!("resource://schema/{}", family.schema_name()),
-            "sessionId": session,
-            "committed": false,
-            "operations": operations,
-            "nodeMap": node_map,
-            "applied": applied,
-        }));
-    }
-
-    let output = json_string(arguments, "output")?;
-    let open = json!({
-        "file": output,
-        "out": output,
-        "noValidate": json_bool(arguments, "noValidate").unwrap_or(false),
-        "dryRun": json_bool(arguments, "dryRun").unwrap_or(false),
+    let session = json_string(arguments, "session")?;
+    let applied = apply_operations(engine, &session, &operations)?;
+    let mut result = json!({
+        "schemaVersion": "ooxml-cli.typed-build.v1",
+        "family": family,
+        "schemaResource": format!("resource://schema/{}", family.schema_name()),
+        "sessionId": session,
+        "committed": false,
+        "operations": operations,
+        "nodeMap": node_map,
+        "applied": applied,
     });
-    let session = open_session(engine, &open)?;
-    let result = (|| {
-        let applied = apply_operations(engine, &session, &operations)?;
-        let commit = engine.handle_method("commit", &json!({"session": session}))?;
-        let outline = if commit["dryRun"] == true {
-            Value::Null
-        } else {
-            crate::outline(
-                &output,
-                OutlineOptions {
-                    depth: 3,
-                    text_preview: 80,
-                    slide: None,
-                    sheet: None,
-                    section: None,
-                },
-            )?
-        };
-        Ok(json!({
-            "schemaVersion": "ooxml-cli.typed-build.v1",
-            "family": family,
-            "schemaResource": format!("resource://schema/{}", family.schema_name()),
-            "sessionId": session,
-            "operations": operations,
-            "nodeMap": node_map,
-            "applied": applied,
-            "commit": commit,
-            "outline": outline,
-        }))
-    })();
-    if result.is_err() {
-        let _ = engine.handle_method("abort", &json!({"session": session}));
+    if markdown_source.is_some() {
+        result["markdown"] = json!("inline");
     }
-    result
+    if !markdown_warnings.is_empty() {
+        result["warnings"] =
+            serde_json::to_value(markdown_warnings).expect("Markdown warnings serialize");
+    }
+    Ok(result)
 }
 
-fn call_pptx_build(spec_source: &str, arguments: &Value) -> CliResult<Value> {
-    let spec_path = temporary_spec_path("pptx")?;
-    fs::write(&spec_path, spec_source).map_err(|error| {
+fn compile_session_plan(family: BuildFamily, spec: &BuildSpec) -> CliResult<CompiledBuildPlan> {
+    let plan = match family {
+        BuildFamily::Pptx => {
+            let compiled = compile_pptx_spec(spec).map_err(build_compilation_error)?;
+            if !compiled.assets.is_empty() {
+                return Err(CliError::invalid_args(
+                    "presentation specs with generated chart or table assets require output mode; pass output instead of session",
+                ));
+            }
+            compiled.plan
+        }
+        BuildFamily::Xlsx => {
+            compile_xlsx_spec(spec)
+                .map_err(build_compilation_error)?
+                .plan
+        }
+        BuildFamily::Docx => {
+            compile_docx_spec(spec)
+                .map_err(build_compilation_error)?
+                .plan
+        }
+    };
+    Ok(plan)
+}
+
+fn build_compilation_error(error: crate::build::BuildCompileError) -> CliError {
+    CliError::invalid_args(format!(
+        "build spec compilation failed: {}",
+        serde_json::to_string(&error).expect("serialize build compilation diagnostic")
+    ))
+}
+
+fn markdown_conversion_error(error: crate::build::MarkdownError) -> CliError {
+    CliError::invalid_args(format!(
+        "Markdown conversion failed: {}",
+        serde_json::to_string(&error).expect("serialize Markdown diagnostic")
+    ))
+}
+
+fn call_family_build(
+    family: BuildFamily,
+    spec_source: &str,
+    markdown_source: Option<&str>,
+    arguments: &Value,
+) -> CliResult<Value> {
+    let (source, input_flag, extension, result_field) = match markdown_source {
+        Some(markdown) => (markdown, "--from-markdown", "md", "markdown"),
+        None => (spec_source, "--spec", "json", "spec"),
+    };
+    let input_path = temporary_input_path(family.as_str(), extension)?;
+    fs::write(&input_path, source).map_err(|error| {
         CliError::unexpected(format!(
-            "failed to stage typed PPTX build spec {}: {error}",
-            spec_path.display()
+            "failed to stage typed {family} build input {}: {error}",
+            input_path.display()
         ))
     })?;
     let mut args = vec![
-        "--spec".to_string(),
-        spec_path.to_string_lossy().to_string(),
+        family.as_str().to_string(),
+        "build".to_string(),
+        input_flag.to_string(),
+        input_path.to_string_lossy().to_string(),
         "--out".to_string(),
         json_string(arguments, "output")?,
     ];
+    push_bool_flag(arguments, "check", "--check", &mut args);
     push_bool_flag(arguments, "dryRun", "--dry-run", &mut args);
     push_bool_flag(arguments, "force", "--force", &mut args);
-    let result = crate::build::pptx_build(&args).map(|mut result| {
-        result["spec"] = json!("inline");
+    let result = crate::dispatch(
+        &GlobalFlags {
+            json: true,
+            ..GlobalFlags::default()
+        },
+        &args,
+    )
+    .and_then(dispatch_json)
+    .map(|mut result| {
+        result[result_field] = json!("inline");
         result
     });
-    let _ = fs::remove_file(spec_path);
+    let _ = fs::remove_file(input_path);
     result
 }
 
-fn temporary_spec_path(family: &str) -> CliResult<PathBuf> {
+fn temporary_input_path(family: &str, extension: &str) -> CliResult<PathBuf> {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| CliError::unexpected(format!("system clock before epoch: {error}")))?
@@ -275,8 +334,8 @@ fn temporary_spec_path(family: &str) -> CliResult<PathBuf> {
         CliError::unexpected(format!("failed to resolve MCP working directory: {error}"))
     })?;
     Ok(directory.join(format!(
-        ".ooxml-mcp-{family}-build-{}-{nanos}.json",
-        std::process::id()
+        ".ooxml-mcp-{family}-build-{}-{nanos}.{extension}",
+        std::process::id(),
     )))
 }
 
@@ -527,7 +586,7 @@ fn build_tool(name: &str, family: BuildFamily) -> Value {
             json!({
                 "type": "string",
                 "minLength": 1,
-                "description": "Reserved for the shared Markdown-to-build-spec converter; unsupported builds return a teaching error until that converter is available."
+                "description": "Inline Markdown source for PPTX or DOCX. Relative asset paths resolve from the MCP server working directory. XLSX returns a teaching error because its tabular build spec is the unambiguous input."
             }),
         ),
         (
@@ -543,6 +602,10 @@ fn build_tool(name: &str, family: BuildFamily) -> Value {
             json!({"type": "boolean", "default": false}),
         ),
         (
+            "check".to_string(),
+            json!({"type": "boolean", "default": false}),
+        ),
+        (
             "force".to_string(),
             json!({"type": "boolean", "default": false}),
         ),
@@ -550,10 +613,15 @@ fn build_tool(name: &str, family: BuildFamily) -> Value {
     let input_schema = json!({
         "type": "object",
         "properties": Value::Object(std::mem::take(&mut properties)),
-        "required": ["spec"],
-        "oneOf": [
-            {"required": ["output"], "not": {"required": ["session"]}},
-            {"required": ["session"], "not": {"required": ["output"]}},
+        "allOf": [
+            {"oneOf": [
+                {"required": ["spec"], "not": {"required": ["markdown"]}},
+                {"required": ["markdown"], "not": {"required": ["spec"]}},
+            ]},
+            {"oneOf": [
+                {"required": ["output"], "not": {"required": ["session"]}},
+                {"required": ["session"], "not": {"required": ["output"]}},
+            ]},
         ],
         "additionalProperties": false,
     });
@@ -690,6 +758,7 @@ fn typed_tool_error(tool: &str, error: CliError) -> Value {
     for prefix in [
         "build spec validation failed: ",
         "build spec compilation failed: ",
+        "Markdown conversion failed: ",
     ] {
         if let Some(serialized) = detail["message"]
             .as_str()
@@ -748,9 +817,9 @@ fn schema_resource(tool: &str) -> Option<&'static str> {
 
 fn valid_fields(tool: &str) -> &'static [&'static str] {
     match tool {
-        "build_presentation" | "build_workbook" | "build_document" => {
-            &["spec", "markdown", "output", "session", "dryRun", "force"]
-        }
+        "build_presentation" | "build_workbook" | "build_document" => &[
+            "spec", "markdown", "output", "session", "check", "dryRun", "force",
+        ],
         "edit_package" => &[
             "file",
             "output",

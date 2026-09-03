@@ -59,7 +59,7 @@ fn wants_json(flags: &GlobalFlags, args: &[String]) -> bool {
             .any(|arg| arg == "--format=json" || arg == "-f=json")
 }
 
-fn guide_json() -> Value {
+pub(crate) fn guide_json() -> Value {
     json!({
         "tool": "ooxml",
         "version": env!("CARGO_PKG_VERSION"),
@@ -111,6 +111,17 @@ fn guide_json() -> Value {
                     "ooxml --json conformance coverage",
                     "ooxml --json conformance check <file>",
                     "ooxml --json repair normalize <file> --out <normalized-file>"
+                ]
+            },
+            {
+                "name": "MCP one-call typed intents",
+                "commands": [
+                    "ooxml mcp",
+                    "MCP tools/list -> inspect exact JSON Schemas before calling a tool",
+                    "MCP resources/read resource://schema/pptx-build|xlsx-build|docx-build",
+                    "MCP build_presentation|build_workbook|build_document -> complete strictly validated package",
+                    "MCP edit_package -> ordered manifest-derived mutation batch with named $ref results",
+                    "MCP outline_package|check_package|validate_package|render_preview|find_text|replace_text -> CLI-equivalent structured envelopes"
                 ]
             },
             {

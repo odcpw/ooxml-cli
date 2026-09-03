@@ -81,6 +81,19 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
             {"name": "--strict", "argName": "strict", "type": "bool", "default": "false", "description": "enable strict validation mode"}
         ],
         "commands": commands,
+        "mcp": {
+            "transport": "stdio JSON-RPC 2.0",
+            "genericTools": ["open", "op", "inspect", "validate", "plan", "commit", "abort"],
+            "typedTools": crate::mcp::typed_tool_names(),
+            "resources": [
+                "resource://capabilities",
+                "resource://agent-guide",
+                "resource://schema/pptx-build",
+                "resource://schema/xlsx-build",
+                "resource://schema/docx-build"
+            ],
+            "contract": "call tools/list for exact schemas; typed build, edit, outline, check, validate, render, find, and replace intents preserve the corresponding CLI envelopes"
+        },
         "objectKinds": CAPABILITY_OBJECT_KINDS,
         "filterAliases": capability_filter_aliases_json(),
         "commandAliases": command_alias_registry_json(),

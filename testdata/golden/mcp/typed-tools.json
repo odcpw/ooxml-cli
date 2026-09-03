@@ -3,29 +3,61 @@
     "description": "Build one complete pptx package from the published pptx-build JSON schema in one call. The compiler emits ordered named operations, uses the shared mutation writers, strictly validates before publish, and returns a full outline for follow-up edits.",
     "inputSchema": {
       "additionalProperties": false,
-      "oneOf": [
+      "allOf": [
         {
-          "not": {
-            "required": [
-              "session"
-            ]
-          },
-          "required": [
-            "output"
+          "oneOf": [
+            {
+              "not": {
+                "required": [
+                  "markdown"
+                ]
+              },
+              "required": [
+                "spec"
+              ]
+            },
+            {
+              "not": {
+                "required": [
+                  "spec"
+                ]
+              },
+              "required": [
+                "markdown"
+              ]
+            }
           ]
         },
         {
-          "not": {
-            "required": [
-              "output"
-            ]
-          },
-          "required": [
-            "session"
+          "oneOf": [
+            {
+              "not": {
+                "required": [
+                  "session"
+                ]
+              },
+              "required": [
+                "output"
+              ]
+            },
+            {
+              "not": {
+                "required": [
+                  "output"
+                ]
+              },
+              "required": [
+                "session"
+              ]
+            }
           ]
         }
       ],
       "properties": {
+        "check": {
+          "default": false,
+          "type": "boolean"
+        },
         "dryRun": {
           "default": false,
           "type": "boolean"
@@ -35,7 +67,7 @@
           "type": "boolean"
         },
         "markdown": {
-          "description": "Reserved for the shared Markdown-to-build-spec converter; unsupported builds return a teaching error until that converter is available.",
+          "description": "Inline Markdown source for PPTX or DOCX. Relative asset paths resolve from the MCP server working directory. XLSX returns a teaching error because its tabular build spec is the unambiguous input.",
           "minLength": 1,
           "type": "string"
         },
@@ -650,9 +682,6 @@
           "type": "object"
         }
       },
-      "required": [
-        "spec"
-      ],
       "type": "object"
     },
     "name": "build_presentation"
@@ -661,29 +690,61 @@
     "description": "Build one complete xlsx package from the published xlsx-build JSON schema in one call. The compiler emits ordered named operations, uses the shared mutation writers, strictly validates before publish, and returns a full outline for follow-up edits.",
     "inputSchema": {
       "additionalProperties": false,
-      "oneOf": [
+      "allOf": [
         {
-          "not": {
-            "required": [
-              "session"
-            ]
-          },
-          "required": [
-            "output"
+          "oneOf": [
+            {
+              "not": {
+                "required": [
+                  "markdown"
+                ]
+              },
+              "required": [
+                "spec"
+              ]
+            },
+            {
+              "not": {
+                "required": [
+                  "spec"
+                ]
+              },
+              "required": [
+                "markdown"
+              ]
+            }
           ]
         },
         {
-          "not": {
-            "required": [
-              "output"
-            ]
-          },
-          "required": [
-            "session"
+          "oneOf": [
+            {
+              "not": {
+                "required": [
+                  "session"
+                ]
+              },
+              "required": [
+                "output"
+              ]
+            },
+            {
+              "not": {
+                "required": [
+                  "output"
+                ]
+              },
+              "required": [
+                "session"
+              ]
+            }
           ]
         }
       ],
       "properties": {
+        "check": {
+          "default": false,
+          "type": "boolean"
+        },
         "dryRun": {
           "default": false,
           "type": "boolean"
@@ -693,7 +754,7 @@
           "type": "boolean"
         },
         "markdown": {
-          "description": "Reserved for the shared Markdown-to-build-spec converter; unsupported builds return a teaching error until that converter is available.",
+          "description": "Inline Markdown source for PPTX or DOCX. Relative asset paths resolve from the MCP server working directory. XLSX returns a teaching error because its tabular build spec is the unambiguous input.",
           "minLength": 1,
           "type": "string"
         },
@@ -1328,9 +1389,6 @@
           "type": "object"
         }
       },
-      "required": [
-        "spec"
-      ],
       "type": "object"
     },
     "name": "build_workbook"
@@ -1339,29 +1397,61 @@
     "description": "Build one complete docx package from the published docx-build JSON schema in one call. The compiler emits ordered named operations, uses the shared mutation writers, strictly validates before publish, and returns a full outline for follow-up edits.",
     "inputSchema": {
       "additionalProperties": false,
-      "oneOf": [
+      "allOf": [
         {
-          "not": {
-            "required": [
-              "session"
-            ]
-          },
-          "required": [
-            "output"
+          "oneOf": [
+            {
+              "not": {
+                "required": [
+                  "markdown"
+                ]
+              },
+              "required": [
+                "spec"
+              ]
+            },
+            {
+              "not": {
+                "required": [
+                  "spec"
+                ]
+              },
+              "required": [
+                "markdown"
+              ]
+            }
           ]
         },
         {
-          "not": {
-            "required": [
-              "output"
-            ]
-          },
-          "required": [
-            "session"
+          "oneOf": [
+            {
+              "not": {
+                "required": [
+                  "session"
+                ]
+              },
+              "required": [
+                "output"
+              ]
+            },
+            {
+              "not": {
+                "required": [
+                  "output"
+                ]
+              },
+              "required": [
+                "session"
+              ]
+            }
           ]
         }
       ],
       "properties": {
+        "check": {
+          "default": false,
+          "type": "boolean"
+        },
         "dryRun": {
           "default": false,
           "type": "boolean"
@@ -1371,7 +1461,7 @@
           "type": "boolean"
         },
         "markdown": {
-          "description": "Reserved for the shared Markdown-to-build-spec converter; unsupported builds return a teaching error until that converter is available.",
+          "description": "Inline Markdown source for PPTX or DOCX. Relative asset paths resolve from the MCP server working directory. XLSX returns a teaching error because its tabular build spec is the unambiguous input.",
           "minLength": 1,
           "type": "string"
         },
@@ -2031,9 +2121,6 @@
           "type": "object"
         }
       },
-      "required": [
-        "spec"
-      ],
       "type": "object"
     },
     "name": "build_document"

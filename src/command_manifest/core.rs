@@ -673,7 +673,7 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
             CoreCommandId::Mcp,
             &["mcp"],
             "mcp",
-            "Run the MCP stdio server backed by the same Rust session engine.",
+            "Run the MCP stdio server with typed build, edit, outline, check, validate, render, find, and replace tools backed by the same Rust session engine.",
             &[],
             direct("MCP stdio server; use MCP tools/resources instead of op argv"),
             vec![],

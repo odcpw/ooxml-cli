@@ -9,6 +9,10 @@ use crate::{
 
 mod typed;
 
+pub(crate) const fn typed_tool_names() -> &'static [&'static str] {
+    typed::tool_names()
+}
+
 pub(crate) fn run_mcp_stdio() -> i32 {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
@@ -191,15 +195,12 @@ impl McpState {
         let text = match uri.as_str() {
             "resource://capabilities" => serde_json::to_string(&mcp_capabilities_resource())
                 .expect("serialize capabilities resource"),
-            "resource://agent-guide" => serde_json::to_string(&json!({
-                "tool": "ooxml",
-                "guide": "Open a session with tools/call open, apply one op at a time, inspect and validate before commit.",
-            }))
-            .expect("serialize agent guide"),
-            _ if uri.starts_with("resource://command/") => serde_json::to_string(
-                &mcp_command_resource_for_uri(&uri)?,
-            )
-            .expect("serialize command resource"),
+            "resource://agent-guide" => serde_json::to_string(&crate::robot_docs::guide_json())
+                .expect("serialize agent guide"),
+            _ if uri.starts_with("resource://command/") => {
+                serde_json::to_string(&mcp_command_resource_for_uri(&uri)?)
+                    .expect("serialize command resource")
+            }
             _ if uri.starts_with("resource://schema/") => {
                 let name = uri.trim_start_matches("resource://schema/");
                 let schema = crate::build::schema_by_name(name).map_err(|_| {
