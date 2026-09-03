@@ -49,12 +49,22 @@ fn frozen_serve_flow_matches_legacy_baseline() {
             "args": {"sheet": "1", "cell": "A1", "value": "serve-contract"},
         }),
     );
-    let op_response = serve_roundtrip(&mut stdin, &mut reader, &op);
+    let mut op_response = serve_roundtrip(&mut stdin, &mut reader, &op);
+    assert_session_mutation_envelope(
+        &op_response["result"]["mutationEnvelope"],
+        "xlsx",
+        "cell",
+        false,
+    );
     let working = op_response["result"]["readback"]["file"]
         .as_str()
         .expect("working package")
         .to_string();
     replacements.push((working, "[SESSION_WORKING_PACKAGE]".to_string()));
+    op_response["result"]
+        .as_object_mut()
+        .expect("serve op result")
+        .remove("mutationEnvelope");
     flow.push(flow_item("op", op, op_response, &replacements));
 
     let inspect = rpc_request(
@@ -76,7 +86,19 @@ fn frozen_serve_flow_matches_legacy_baseline() {
 
     for (id, method) in [(4, "validate"), (5, "plan"), (6, "commit")] {
         let request = rpc_request(id, method, serde_json::json!({"session": session}));
-        let response = serve_roundtrip(&mut stdin, &mut reader, &request);
+        let mut response = serve_roundtrip(&mut stdin, &mut reader, &request);
+        if method == "commit" {
+            assert_session_mutation_envelope(
+                &response["result"]["applied"][0]["mutationEnvelope"],
+                "xlsx",
+                "cell",
+                true,
+            );
+            response["result"]["applied"][0]
+                .as_object_mut()
+                .expect("serve commit applied item")
+                .remove("mutationEnvelope");
+        }
         flow.push(flow_item(method, request, response, &replacements));
     }
 
@@ -106,6 +128,34 @@ fn frozen_serve_flow_matches_legacy_baseline() {
     let status = child.wait().expect("serve exit");
     assert!(status.success());
     assert_eq!(Value::Array(flow), baseline["serve"]["flow"]);
+}
+
+pub(super) fn assert_session_mutation_envelope(
+    envelope: &Value,
+    family: &str,
+    destination_kind: &str,
+    validated: bool,
+) {
+    assert!(
+        envelope.is_object(),
+        "missing mutation envelope: {envelope}"
+    );
+    assert_eq!(envelope["family"], family);
+    assert_eq!(envelope["destination"]["kind"], destination_kind);
+    assert!(envelope["destination"]["partUri"].is_string());
+    assert!(envelope["destination"]["primarySelector"].is_string());
+    assert!(envelope["destination"]["selectors"].is_array());
+    assert!(envelope["destination"]["handle"].is_string());
+    assert!(envelope["destination"]["summary"].is_object());
+    assert!(envelope["changed"].is_array());
+    assert!(envelope["readbackCommand"].is_string());
+    assert!(envelope["validateCommand"].is_string());
+    assert!(envelope["conformanceCommand"].is_string());
+    assert!(envelope["checkCommand"].is_string());
+    assert!(envelope["renderCommand"].is_string());
+    assert_eq!(envelope["validated"], validated);
+    assert!(envelope["warnings"].is_array());
+    assert!(envelope["aliasesApplied"].is_array());
 }
 
 #[test]

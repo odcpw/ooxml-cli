@@ -2,6 +2,7 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::fs;
 
+use crate::mutation_envelope::attach_cli_mutation_envelope;
 use crate::{
     CliError, CliResult, ServeState, command_arg, has_flag, parse_string_flag,
     reject_unknown_flags, validate_xlsx_mutation_output_flags,
@@ -52,7 +53,7 @@ pub(crate) fn apply(file: &str, args: &[String]) -> CliResult<Value> {
             "file": file,
             "opsCount": ops.len(),
             "dryRun": true,
-            "plan": build_plan(&ops, file),
+            "plan": build_plan(&ops, file)?,
         }));
     }
 
@@ -248,21 +249,30 @@ fn is_address_positional(value: &Value) -> bool {
     text.starts_with("H:xlsx/ws:") && (text.contains("/cell:") || text.contains("/comment:"))
 }
 
-fn build_plan(ops: &[ApplyOperation], file: &str) -> Vec<Value> {
+fn build_plan(ops: &[ApplyOperation], file: &str) -> CliResult<Vec<Value>> {
     ops.iter()
         .enumerate()
-        .map(|(index, op)| {
+        .map(|(index, op)| -> CliResult<Value> {
             let input = if index == 0 {
                 file.to_string()
             } else {
                 format!("<temp.{}>", index - 1)
             };
             let output = format!("<temp.{index}>");
-            json!({
+            let argv = build_argv(op, &input, &output);
+            let mut envelope_source = json!({});
+            attach_cli_mutation_envelope(&argv, Vec::new(), &mut envelope_source)?;
+            let mut plan = json!({
                 "index": index,
                 "command": op.command,
-                "argv": build_argv(op, &input, &output),
-            })
+                "argv": argv,
+            });
+            if let Some(envelope) = envelope_source.get("mutationEnvelope").cloned()
+                && let Value::Object(object) = &mut plan
+            {
+                object.insert("mutationEnvelope".to_string(), envelope);
+            }
+            Ok(plan)
         })
         .collect()
 }

@@ -4,6 +4,7 @@ use std::fs;
 use std::io::{BufRead, Write};
 use std::path::Path;
 
+use crate::mutation_envelope::attach_cli_mutation_envelope;
 use crate::{
     CliError, CliResult, EXIT_SUCCESS, EXIT_UNEXPECTED, json_bool, json_optional_string,
     json_string, package_mutation_temp_path, package_type, validate, validate_exit_code,
@@ -176,8 +177,16 @@ impl ServeState {
         let op = serve_op_command(&session.working, &command, args)?;
         let readback = op.readback(&session.working);
         let index = session.ops.len();
+        let mutation_envelope =
+            serve_mutation_envelope(&op, &session.working, &session.working, &readback, false)?;
         session.ops.push(op);
-        Ok(json!({"command": command, "index": index, "readback": readback}))
+        let mut result = json!({"command": command, "index": index, "readback": readback});
+        if let Some(mutation_envelope) = mutation_envelope
+            && let Value::Object(object) = &mut result
+        {
+            object.insert("mutationEnvelope".to_string(), mutation_envelope);
+        }
+        Ok(result)
     }
 
     fn serve_inspect(&mut self, params: &Value) -> CliResult<Value> {
@@ -275,14 +284,28 @@ impl ServeState {
             .ops
             .iter()
             .enumerate()
-            .map(|(index, op)| {
-                json!({
+            .map(|(index, op)| -> CliResult<Value> {
+                let readback = op.readback(readback_file);
+                let mutation_envelope = serve_mutation_envelope(
+                    op,
+                    &session.file,
+                    readback_file,
+                    &readback,
+                    !session.dry_run && !session.no_validate,
+                )?;
+                let mut applied = json!({
                     "command": op.command(),
                     "index": index,
-                    "readback": op.readback(readback_file),
-                })
+                    "readback": readback,
+                });
+                if let Some(mutation_envelope) = mutation_envelope
+                    && let Value::Object(object) = &mut applied
+                {
+                    object.insert("mutationEnvelope".to_string(), mutation_envelope);
+                }
+                Ok(applied)
             })
-            .collect();
+            .collect::<CliResult<_>>()?;
         let mut result = json!({
             "applied": applied,
             "dryRun": session.dry_run,
@@ -324,6 +347,39 @@ impl ServeState {
             .get_mut(session_id)
             .ok_or_else(|| CliError::invalid_args(format!("session not found: {session_id}")))
     }
+}
+
+fn serve_mutation_envelope(
+    op: &ServeOp,
+    source_file: &str,
+    output_file: &str,
+    readback: &Value,
+    validated: bool,
+) -> CliResult<Option<Value>> {
+    let Value::Array(plan) = op.plan_argv(source_file) else {
+        return Err(CliError::unexpected("serve op plan argv must be an array"));
+    };
+    let mut args = plan
+        .into_iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(|text| {
+                    if text == "<temp.0>" {
+                        output_file.to_string()
+                    } else {
+                        text.to_string()
+                    }
+                })
+                .ok_or_else(|| CliError::unexpected("serve op argv must contain only strings"))
+        })
+        .collect::<CliResult<Vec<_>>>()?;
+    if validated {
+        args.retain(|arg| arg != "--no-validate");
+    }
+    let mut envelope_source = readback.clone();
+    attach_cli_mutation_envelope(&args, Vec::new(), &mut envelope_source)?;
+    Ok(envelope_source.get("mutationEnvelope").cloned())
 }
 
 fn make_working_copy(file: &str, session_number: usize) -> CliResult<String> {

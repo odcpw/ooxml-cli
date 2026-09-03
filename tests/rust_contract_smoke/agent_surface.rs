@@ -33,6 +33,12 @@ fn apply_dry_run_plan_matches_rust_baseline() {
     let (rust_code, rust_stdout, rust_stderr) = run_ooxml(&args);
     assert_eq!(rust_code, baseline_code, "apply dry-run exit");
     assert_eq!(rust_stderr, baseline_stderr, "apply dry-run stderr");
+    super::serve::assert_session_mutation_envelope(
+        &rust_stdout.as_ref().expect("apply dry-run stdout")["plan"][0]["mutationEnvelope"],
+        "xlsx",
+        "cell",
+        false,
+    );
     assert_eq!(rust_stdout, baseline_stdout, "apply dry-run stdout");
 }
 
@@ -87,6 +93,18 @@ fn apply_batch_matches_rust_baseline_and_writes_valid_xlsx() {
     assert_eq!(rust_stderr, baseline_stderr, "apply run stderr");
     let baseline_json = baseline_stdout.expect("baseline apply stdout");
     let rust_json = rust_stdout.expect("rust apply stdout");
+    super::serve::assert_session_mutation_envelope(
+        &rust_json["mutationEnvelope"],
+        "xlsx",
+        "batch",
+        true,
+    );
+    super::serve::assert_session_mutation_envelope(
+        &rust_json["applied"][0]["mutationEnvelope"],
+        "xlsx",
+        "cell",
+        true,
+    );
     assert_eq!(
         scrub_paths(rust_json.clone(), &[(rust_out_str, "[OUT_XLSX]")]),
         scrub_paths(baseline_json, &[(baseline_out_str, "[OUT_XLSX]")]),
@@ -508,12 +526,22 @@ fn frozen_mcp_discovery_and_flow_match_legacy_baseline() {
             },
         }),
     );
-    let op_response = serve_roundtrip(&mut stdin, &mut reader, &op);
+    let mut op_response = serve_roundtrip(&mut stdin, &mut reader, &op);
+    super::serve::assert_session_mutation_envelope(
+        &op_response["result"]["structuredContent"]["mutationEnvelope"],
+        "xlsx",
+        "cell",
+        false,
+    );
     let working = op_response["result"]["structuredContent"]["readback"]["file"]
         .as_str()
         .expect("working package")
         .to_string();
     replacements.push((working, "[SESSION_WORKING_PACKAGE]".to_string()));
+    op_response["result"]["structuredContent"]
+        .as_object_mut()
+        .expect("MCP op structuredContent")
+        .remove("mutationEnvelope");
     flow.push(flow_item("tools/call", op, op_response, &replacements));
 
     let inspect = rpc_request(
@@ -542,7 +570,19 @@ fn frozen_mcp_discovery_and_flow_match_legacy_baseline() {
             "tools/call",
             serde_json::json!({"name": name, "arguments": {"session": session}}),
         );
-        let response = serve_roundtrip(&mut stdin, &mut reader, &request);
+        let mut response = serve_roundtrip(&mut stdin, &mut reader, &request);
+        if name == "commit" {
+            super::serve::assert_session_mutation_envelope(
+                &response["result"]["structuredContent"]["applied"][0]["mutationEnvelope"],
+                "xlsx",
+                "cell",
+                true,
+            );
+            response["result"]["structuredContent"]["applied"][0]
+                .as_object_mut()
+                .expect("MCP commit applied item")
+                .remove("mutationEnvelope");
+        }
         flow.push(flow_item("tools/call", request, response, &replacements));
     }
 
