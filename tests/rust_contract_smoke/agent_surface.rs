@@ -575,6 +575,7 @@ fn frozen_mcp_discovery_and_flow_match_legacy_baseline() {
         "outline_package",
         "render_preview",
         "replace_text",
+        "validate_package",
     ]);
     let discovered_typed_tool_names = discovery["tools"]
         .as_array()
@@ -585,7 +586,7 @@ fn frozen_mcp_discovery_and_flow_match_legacy_baseline() {
         .collect::<BTreeSet<_>>();
     assert_eq!(
         discovered_typed_tool_names, additive_typed_tool_names,
-        "all 9 typed intent tools are additive to the frozen 7-tool legacy denominator"
+        "all 10 typed intent tools are additive to the frozen 7-tool legacy denominator"
     );
     let mut legacy_discovery = discovery.clone();
     legacy_discovery["tools"]
