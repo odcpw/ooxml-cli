@@ -42,10 +42,15 @@ pub(crate) fn xlsx_charts_create(
     let artifacts = build_chart_create_artifacts(
         file,
         &source,
-        &chart_type,
-        options.title.unwrap_or_default(),
-        anchor_from,
-        anchor_to,
+        ChartCreateRequest {
+            chart_type: &chart_type,
+            title: options.title,
+            style: options.style,
+            number_format: options.number_format,
+            data_labels: options.data_labels,
+            anchor_from,
+            anchor_to,
+        },
     )
     .map_err(|err| CliError::invalid_args(format!("failed to create chart: {}", err.message)))?;
 

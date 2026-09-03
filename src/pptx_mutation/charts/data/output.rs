@@ -48,6 +48,9 @@ pub(in crate::pptx_mutation::charts) fn chart_create_result_json(
     if !create.title.is_empty() {
         result.insert("title".to_string(), json!(create.title));
     }
+    result.insert("houseStyle".to_string(), json!(create.house_style));
+    result.insert("numberFormat".to_string(), json!(create.number_format));
+    result.insert("dataLabels".to_string(), json!(create.data_labels));
     result.insert("chartPartUri".to_string(), json!(create.chart_uri));
     result.insert(
         "chartRelationshipId".to_string(),

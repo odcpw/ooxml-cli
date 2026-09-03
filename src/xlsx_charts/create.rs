@@ -74,7 +74,7 @@ pub(super) fn resolve_chart_create_source(
         XlsxRangeExportOptions {
             include_types: true,
             include_formulas: true,
-            include_formats: false,
+            include_formats: true,
             data_out: None,
             max_cells: options.max_cells,
         },
@@ -111,7 +111,7 @@ pub(super) fn resolve_chart_create_source(
             XlsxRangeExportOptions {
                 include_types: true,
                 include_formulas: true,
-                include_formats: false,
+                include_formats: true,
                 data_out: None,
                 max_cells: options.max_cells,
             },
@@ -241,14 +241,30 @@ pub(super) fn resolve_chart_create_anchor(
     Ok(((from.0, from.1), (from.0 + 8, from.1 + 15)))
 }
 
+pub(super) struct ChartCreateRequest<'a> {
+    pub(super) chart_type: &'a str,
+    pub(super) title: Option<&'a str>,
+    pub(super) style: Option<&'a str>,
+    pub(super) number_format: Option<&'a str>,
+    pub(super) data_labels: bool,
+    pub(super) anchor_from: (u32, u32),
+    pub(super) anchor_to: (u32, u32),
+}
+
 pub(super) fn build_chart_create_artifacts(
     file: &str,
     source: &ChartCreateSource,
-    chart_type: &str,
-    title: &str,
-    anchor_from: (u32, u32),
-    anchor_to: (u32, u32),
+    request: ChartCreateRequest<'_>,
 ) -> CliResult<ChartCreateArtifacts> {
+    let ChartCreateRequest {
+        chart_type,
+        title,
+        style,
+        number_format,
+        data_labels,
+        anchor_from,
+        anchor_to,
+    } = request;
     let workbook_xml = zip_text(file, "xl/workbook.xml")?;
     let workbook_sheets = workbook_sheets(&workbook_xml)?;
     let workbook_rels = relationship_entries(file, "xl/_rels/workbook.xml.rels")?;
@@ -257,8 +273,17 @@ pub(super) fn build_chart_create_artifacts(
         CliError::unexpected(format!("sheet {:?} has no worksheet part URI", sheet.name))
     })?;
 
-    let (chart_xml, series_count, categories, warnings) =
-        build_chart_part_xml(chart_type, title, source)?;
+    let width_points = f64::from(anchor_to.0.saturating_sub(anchor_from.0)) * 48.0;
+    let (chart_xml, series_count, categories, warnings, house_style, resolved_title) =
+        build_chart_part_xml(
+            chart_type,
+            title,
+            source,
+            style,
+            number_format,
+            data_labels,
+            width_points,
+        )?;
     let mut entries = zip_entry_names(file)?.into_iter().collect::<BTreeSet<_>>();
     let chart_uri = allocate_numbered_package_part(&mut entries, "/xl/charts/chart", ".xml");
     let mut overrides = BTreeMap::new();
@@ -289,7 +314,10 @@ pub(super) fn build_chart_create_artifacts(
         chart_uri,
         drawing_uri,
         chart_type: chart_type.to_string(),
-        title: title.trim().to_string(),
+        title: resolved_title,
+        house_style: house_style.variant.as_str().to_string(),
+        number_format: house_style.value_number_format,
+        data_labels: house_style.data_labels,
         series_count,
         categories,
         anchor: format!(
@@ -378,9 +406,20 @@ pub(super) fn build_or_update_chart_drawing(
 
 pub(super) fn build_chart_part_xml(
     chart_type: &str,
-    title: &str,
+    title: Option<&str>,
     source: &ChartCreateSource,
-) -> CliResult<(String, usize, usize, Vec<String>)> {
+    style: Option<&str>,
+    number_format: Option<&str>,
+    data_labels: bool,
+    chart_width_points: f64,
+) -> CliResult<(
+    String,
+    usize,
+    usize,
+    Vec<String>,
+    crate::chart_style::ChartHouseStyle,
+    String,
+)> {
     let (mut series, categories, mut warnings) = build_chart_series(source)?;
     if series.is_empty() {
         return Err(CliError::invalid_args(
@@ -391,23 +430,60 @@ pub(super) fn build_chart_part_xml(
         series.truncate(1);
         warnings.push("pie chart uses only the first series".to_string());
     }
+    let headers = series
+        .iter()
+        .map(|item| item.name.clone())
+        .collect::<Vec<_>>();
+    let category_values = series
+        .first()
+        .map(|item| item.cats.as_slice())
+        .unwrap_or_default();
+    let value_formats = series
+        .iter()
+        .flat_map(|item| item.value_formats.iter().cloned())
+        .collect::<Vec<_>>();
+    let values = series
+        .iter()
+        .flat_map(|item| item.values.iter().cloned())
+        .collect::<Vec<_>>();
+    let house_style =
+        crate::chart_style::resolve_chart_house_style(crate::chart_style::ChartHouseStyleInput {
+            style,
+            number_format,
+            data_labels,
+            series_count: series.len(),
+            categories: category_values,
+            value_formats: &value_formats,
+            values: &values,
+            chart_width_points,
+        })?;
+    let title = crate::chart_style::resolved_chart_title(title, &headers);
     let mut xml = format!(
         r#"<c:chartSpace xmlns:c="{NS_CHART}" xmlns:a="{NS_DRAWING_MAIN}" xmlns:r="{NS_RELATIONSHIPS}"><c:chart>"#
     );
     if !title.trim().is_empty() {
-        xml.push_str(&build_chart_title_xml(title));
+        xml.push_str(&build_chart_title_xml(&title));
         xml.push_str(r#"<c:autoTitleDeleted val="0"/>"#);
     } else {
         xml.push_str(r#"<c:autoTitleDeleted val="1"/>"#);
     }
     xml.push_str(r#"<c:plotArea><c:layout/>"#);
-    xml.push_str(&build_plot_xml(chart_type, &series));
+    xml.push_str(&build_plot_xml(chart_type, &series, &house_style));
     if chart_type != "pie" {
-        xml.push_str(&build_cat_axis_xml(chart_type));
-        xml.push_str(&build_val_axis_xml());
+        xml.push_str(&build_cat_axis_xml(
+            chart_type,
+            house_style.category_label_rotation,
+        ));
+        xml.push_str(&build_val_axis_xml(&house_style));
     }
-    xml.push_str(r#"</c:plotArea><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>"#);
-    Ok((xml, series.len(), categories, warnings))
+    xml.push_str("</c:plotArea>");
+    if let Some(position) = house_style.legend_position {
+        xml.push_str(&format!(
+            r#"<c:legend><c:legendPos val="{position}"/><c:overlay val="0"/></c:legend>"#
+        ));
+    }
+    xml.push_str(r#"<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>"#);
+    Ok((xml, series.len(), categories, warnings, house_style, title))
 }
 
 pub(super) fn build_chart_series(
@@ -461,6 +537,7 @@ pub(super) fn build_chart_series(
             cat_ref: cat_ref.clone(),
             values: Vec::new(),
             val_ref: absolute_chart_ref(&source.sheet, col, data_start_row, col, bounds.max_row()),
+            value_formats: Vec::new(),
         };
         if has_header {
             item.name = chart_cell_at(source, bounds.min_row(), col).value;
@@ -468,11 +545,13 @@ pub(super) fn build_chart_series(
                 absolute_chart_ref(&source.sheet, col, bounds.min_row(), col, bounds.min_row());
         }
         for row in data_start_row..=bounds.max_row() {
-            let (value, was_coerced) = numeric_text_coerced(&chart_cell_at(source, row, col));
+            let cell = chart_cell_at(source, row, col);
+            let (value, was_coerced) = numeric_text_coerced(&cell);
             if was_coerced {
                 coerced += 1;
             }
             item.values.push(value);
+            item.value_formats.push(cell.number_format_code);
         }
         series.push(item);
     }
@@ -550,6 +629,10 @@ fn build_explicit_two_range_series(
                 source.bounds.max_col(),
                 source.bounds.max_row(),
             ),
+            value_formats: value_cells
+                .iter()
+                .map(|cell| cell.number_format_code.clone())
+                .collect(),
         }],
         category_cells.len(),
         warnings,
@@ -601,34 +684,70 @@ pub(super) fn build_chart_title_xml(title: &str) -> String {
     )
 }
 
-pub(super) fn build_plot_xml(chart_type: &str, series: &[BuiltChartSeries]) -> String {
+pub(super) fn build_plot_xml(
+    chart_type: &str,
+    series: &[BuiltChartSeries],
+    style: &crate::chart_style::ChartHouseStyle,
+) -> String {
     let mut xml = String::new();
     match chart_type {
         "bar" => {
             xml.push_str(r#"<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>"#);
             for (idx, item) in series.iter().enumerate() {
-                xml.push_str(&build_category_series_xml(idx, item));
+                xml.push_str(&build_category_series_xml(
+                    idx,
+                    item,
+                    style.series_scheme_colors[idx],
+                    &style.value_number_format,
+                ));
+            }
+            if style.data_labels {
+                xml.push_str(&build_data_labels_xml());
             }
             xml.push_str(r#"<c:axId val="111111111"/><c:axId val="222222222"/></c:barChart>"#);
         }
         "line" => {
             xml.push_str(r#"<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>"#);
             for (idx, item) in series.iter().enumerate() {
-                xml.push_str(&build_category_series_xml(idx, item));
+                xml.push_str(&build_category_series_xml(
+                    idx,
+                    item,
+                    style.series_scheme_colors[idx],
+                    &style.value_number_format,
+                ));
+            }
+            if style.data_labels {
+                xml.push_str(&build_data_labels_xml());
             }
             xml.push_str(r#"<c:marker val="1"/><c:axId val="111111111"/><c:axId val="222222222"/></c:lineChart>"#);
         }
         "area" => {
             xml.push_str(r#"<c:areaChart><c:grouping val="standard"/><c:varyColors val="0"/>"#);
             for (idx, item) in series.iter().enumerate() {
-                xml.push_str(&build_category_series_xml(idx, item));
+                xml.push_str(&build_category_series_xml(
+                    idx,
+                    item,
+                    style.series_scheme_colors[idx],
+                    &style.value_number_format,
+                ));
+            }
+            if style.data_labels {
+                xml.push_str(&build_data_labels_xml());
             }
             xml.push_str(r#"<c:axId val="111111111"/><c:axId val="222222222"/></c:areaChart>"#);
         }
         "pie" => {
             xml.push_str(r#"<c:pieChart><c:varyColors val="1"/>"#);
             for (idx, item) in series.iter().enumerate() {
-                xml.push_str(&build_category_series_xml(idx, item));
+                xml.push_str(&build_category_series_xml(
+                    idx,
+                    item,
+                    style.series_scheme_colors[idx],
+                    &style.value_number_format,
+                ));
+            }
+            if style.data_labels {
+                xml.push_str(&build_data_labels_xml());
             }
             xml.push_str(r#"<c:firstSliceAng val="0"/></c:pieChart>"#);
         }
@@ -637,7 +756,15 @@ pub(super) fn build_plot_xml(chart_type: &str, series: &[BuiltChartSeries]) -> S
                 r#"<c:scatterChart><c:scatterStyle val="lineMarker"/><c:varyColors val="0"/>"#,
             );
             for (idx, item) in series.iter().enumerate() {
-                xml.push_str(&build_scatter_series_xml(idx, item));
+                xml.push_str(&build_scatter_series_xml(
+                    idx,
+                    item,
+                    style.series_scheme_colors[idx],
+                    &style.value_number_format,
+                ));
+            }
+            if style.data_labels {
+                xml.push_str(&build_data_labels_xml());
             }
             xml.push_str(r#"<c:axId val="111111111"/><c:axId val="222222222"/></c:scatterChart>"#);
         }
@@ -646,7 +773,11 @@ pub(super) fn build_plot_xml(chart_type: &str, series: &[BuiltChartSeries]) -> S
     xml
 }
 
-pub(super) fn build_series_header_xml(idx: usize, series: &BuiltChartSeries) -> String {
+pub(super) fn build_series_header_xml(
+    idx: usize,
+    series: &BuiltChartSeries,
+    scheme_color: &str,
+) -> String {
     let mut xml = format!(r#"<c:ser><c:idx val="{idx}"/><c:order val="{idx}"/>"#);
     if !series.name_ref.is_empty() {
         xml.push_str("<c:tx>");
@@ -656,11 +787,27 @@ pub(super) fn build_series_header_xml(idx: usize, series: &BuiltChartSeries) -> 
         ));
         xml.push_str("</c:tx>");
     }
+    xml.push_str(&series_shape_properties_xml(scheme_color));
     xml
 }
 
-pub(super) fn build_category_series_xml(idx: usize, series: &BuiltChartSeries) -> String {
-    let mut xml = build_series_header_xml(idx, series);
+fn series_shape_properties_xml(scheme_color: &str) -> String {
+    format!(
+        r#"<c:spPr><a:solidFill><a:schemeClr val="{scheme_color}"/></a:solidFill><a:ln w="19050"><a:solidFill><a:schemeClr val="{scheme_color}"/></a:solidFill></a:ln></c:spPr>"#
+    )
+}
+
+fn build_data_labels_xml() -> String {
+    r#"<c:dLbls><c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/></c:dLbls>"#.to_string()
+}
+
+pub(super) fn build_category_series_xml(
+    idx: usize,
+    series: &BuiltChartSeries,
+    scheme_color: &str,
+    number_format: &str,
+) -> String {
+    let mut xml = build_series_header_xml(idx, series, scheme_color);
     if !series.cat_ref.is_empty() && !series.cats.is_empty() {
         xml.push_str("<c:cat>");
         xml.push_str(&build_str_ref_xml(&series.cat_ref, &series.cats));
@@ -670,14 +817,19 @@ pub(super) fn build_category_series_xml(idx: usize, series: &BuiltChartSeries) -
     xml.push_str(&build_num_ref_xml(
         &series.val_ref,
         &series.values,
-        "General",
+        number_format,
     ));
     xml.push_str("</c:val></c:ser>");
     xml
 }
 
-pub(super) fn build_scatter_series_xml(idx: usize, series: &BuiltChartSeries) -> String {
-    let mut xml = build_series_header_xml(idx, series);
+pub(super) fn build_scatter_series_xml(
+    idx: usize,
+    series: &BuiltChartSeries,
+    scheme_color: &str,
+    number_format: &str,
+) -> String {
+    let mut xml = build_series_header_xml(idx, series, scheme_color);
     xml.push_str("<c:xVal>");
     if !series.cat_ref.is_empty() && !series.cats.is_empty() {
         xml.push_str(&build_num_ref_xml(
@@ -696,7 +848,7 @@ pub(super) fn build_scatter_series_xml(idx: usize, series: &BuiltChartSeries) ->
     xml.push_str(&build_num_ref_xml(
         &series.val_ref,
         &series.values,
-        "General",
+        number_format,
     ));
     xml.push_str("</c:yVal></c:ser>");
     xml
@@ -749,19 +901,32 @@ pub(super) fn build_num_ref_xml(reference: &str, values: &[String], format_code:
     xml
 }
 
-pub(super) fn build_cat_axis_xml(chart_type: &str) -> String {
+pub(super) fn build_cat_axis_xml(chart_type: &str, rotation: Option<i32>) -> String {
     let axis = if chart_type == "scatter" {
         "valAx"
     } else {
         "catAx"
     };
+    let text_properties = rotation.map_or_else(String::new, |rotation| {
+        format!(
+            r#"<c:txPr><a:bodyPr rot="{rotation}"/><a:lstStyle/><a:p><a:endParaRPr lang="en-US"/></a:p></c:txPr>"#
+        )
+    });
     format!(
-        r#"<c:{axis}><c:axId val="111111111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:crossAx val="222222222"/></c:{axis}>"#
+        r#"<c:{axis}><c:axId val="111111111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/>{text_properties}<c:crossAx val="222222222"/></c:{axis}>"#
     )
 }
 
-pub(super) fn build_val_axis_xml() -> String {
-    r#"<c:valAx><c:axId val="222222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:crossAx val="111111111"/></c:valAx>"#.to_string()
+pub(super) fn build_val_axis_xml(style: &crate::chart_style::ChartHouseStyle) -> String {
+    let gridlines = if style.major_value_gridlines {
+        r#"<c:majorGridlines><c:spPr><a:ln w="9525"><a:solidFill><a:schemeClr val="tx1"><a:alpha val="15000"/></a:schemeClr></a:solidFill></a:ln></c:spPr></c:majorGridlines>"#
+    } else {
+        ""
+    };
+    format!(
+        r#"<c:valAx><c:axId val="222222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/>{gridlines}<c:numFmt formatCode="{}" sourceLinked="0"/><c:crossAx val="111111111"/></c:valAx>"#,
+        xml_escape(&style.value_number_format)
+    )
 }
 
 pub(super) fn absolute_chart_ref(
@@ -1068,6 +1233,9 @@ pub(super) fn xlsx_chart_create_result(
     result.insert("sheetNumber".to_string(), json!(source.sheet_number));
     result.insert("chartType".to_string(), json!(artifacts.chart_type));
     insert_nonempty_string(&mut result, "title", &artifacts.title);
+    result.insert("houseStyle".to_string(), json!(artifacts.house_style));
+    result.insert("numberFormat".to_string(), json!(artifacts.number_format));
+    result.insert("dataLabels".to_string(), json!(artifacts.data_labels));
     result.insert("chartPartUri".to_string(), json!(artifacts.chart_uri));
     result.insert("drawingPartUri".to_string(), json!(artifacts.drawing_uri));
     result.insert("seriesCount".to_string(), json!(artifacts.series_count));

@@ -529,6 +529,7 @@ pub(super) struct BuiltChartSeries {
     pub(super) cat_ref: String,
     pub(super) values: Vec<String>,
     pub(super) val_ref: String,
+    pub(super) value_formats: Vec<String>,
 }
 
 pub(super) struct ChartCreateArtifacts {
@@ -536,6 +537,9 @@ pub(super) struct ChartCreateArtifacts {
     pub(super) drawing_uri: String,
     pub(super) chart_type: String,
     pub(super) title: String,
+    pub(super) house_style: String,
+    pub(super) number_format: String,
+    pub(super) data_labels: bool,
     pub(super) series_count: usize,
     pub(super) categories: usize,
     pub(super) anchor: String,

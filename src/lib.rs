@@ -7,6 +7,7 @@ mod agent_triage;
 mod apply;
 mod brand;
 mod capabilities;
+mod chart_style;
 mod cli_args;
 mod cli_core;
 mod cli_dispatch;

@@ -60,7 +60,7 @@ pub(super) fn resolve_chart_create_source(args: &[String]) -> CliResult<ChartCre
             XlsxRangeExportOptions {
                 include_types: true,
                 include_formulas: false,
-                include_formats: false,
+                include_formats: true,
                 data_out: None,
                 max_cells,
             },
@@ -158,6 +158,7 @@ pub(super) fn parse_chart_inline_matrix(
                     kind: String::new(),
                     value: String::new(),
                     null: true,
+                    number_format_code: String::new(),
                 });
             out_row.push(cell);
         }
@@ -173,6 +174,7 @@ pub(super) fn chart_cell_from_json(value: &Value) -> ChartDataCell {
             kind: String::new(),
             value: String::new(),
             null: true,
+            number_format_code: String::new(),
         };
     }
     if let Some(number) = value.as_number() {
@@ -180,6 +182,7 @@ pub(super) fn chart_cell_from_json(value: &Value) -> ChartDataCell {
             kind: "number".to_string(),
             value: number.to_string(),
             null: false,
+            number_format_code: String::new(),
         };
     }
     if let Some(boolean) = value.as_bool() {
@@ -187,6 +190,7 @@ pub(super) fn chart_cell_from_json(value: &Value) -> ChartDataCell {
             kind: "boolean".to_string(),
             value: if boolean { "1" } else { "0" }.to_string(),
             null: false,
+            number_format_code: String::new(),
         };
     }
     if let Some(text) = value.as_str() {
@@ -194,12 +198,14 @@ pub(super) fn chart_cell_from_json(value: &Value) -> ChartDataCell {
             kind: "string".to_string(),
             value: text.to_string(),
             null: false,
+            number_format_code: String::new(),
         };
     }
     ChartDataCell {
         kind: "string".to_string(),
         value: value.to_string(),
         null: false,
+        number_format_code: String::new(),
     }
 }
 
@@ -209,12 +215,16 @@ pub(super) fn chart_cells_from_xlsx_export(exported: &Value) -> CliResult<Vec<Ve
         .and_then(Value::as_array)
         .ok_or_else(|| CliError::unexpected("xlsx range export missing values"))?;
     let types = exported.get("types").and_then(Value::as_array);
+    let formats = exported.get("numberFormatCodes").and_then(Value::as_array);
     let mut rows = Vec::with_capacity(values.len());
     for (row_index, row) in values.iter().enumerate() {
         let row_values = row
             .as_array()
             .ok_or_else(|| CliError::unexpected("xlsx range values must be rows"))?;
         let row_types = types
+            .and_then(|items| items.get(row_index))
+            .and_then(Value::as_array);
+        let row_formats = formats
             .and_then(|items| items.get(row_index))
             .and_then(Value::as_array);
         let mut out_row = Vec::with_capacity(row_values.len());
@@ -227,6 +237,11 @@ pub(super) fn chart_cells_from_xlsx_export(exported: &Value) -> CliResult<Vec<Ve
             if kind == "number" || kind == "boolean" || kind == "string" {
                 cell.kind = kind.to_string();
             }
+            cell.number_format_code = row_formats
+                .and_then(|items| items.get(col_index))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
             out_row.push(cell);
         }
         rows.push(out_row);
@@ -318,24 +333,45 @@ pub(super) fn range_bounds_ref_no_abs(bounds: RangeBounds) -> String {
     }
 }
 
+pub(super) struct CreateSlideChartRequest<'a> {
+    pub(super) slide: usize,
+    pub(super) chart_type: &'a str,
+    pub(super) title: Option<&'a str>,
+    pub(super) style: Option<&'a str>,
+    pub(super) number_format: Option<&'a str>,
+    pub(super) data_labels: bool,
+    pub(super) source: &'a ChartCreateSource,
+    pub(super) geometry: &'a ChartGeometry,
+}
+
 pub(super) fn create_slide_chart_package_updates(
     file: &str,
-    slide: usize,
-    chart_type: &str,
-    title: &str,
-    source: &ChartCreateSource,
-    geometry: &ChartGeometry,
+    request: CreateSlideChartRequest<'_>,
     options: &PptxChartMutationOptions,
 ) -> CliResult<StagedCreateSlideChart> {
-    let slide_ref = slide_part_for_number(file, slide)?;
-    let chart_part = allocate_numbered_part(file, "/ppt/charts/chart", ".xml")?;
-    let chart = build_chart_part(
+    let CreateSlideChartRequest {
+        slide,
         chart_type,
         title,
-        &source.sheet,
-        source.bounds,
-        &source.cells,
-    )
+        style,
+        number_format,
+        data_labels,
+        source,
+        geometry,
+    } = request;
+    let slide_ref = slide_part_for_number(file, slide)?;
+    let chart_part = allocate_numbered_part(file, "/ppt/charts/chart", ".xml")?;
+    let chart = build_chart_part(ChartPartRequest {
+        chart_type,
+        title,
+        style,
+        number_format,
+        data_labels,
+        source_sheet: &source.sheet,
+        source_range: source.bounds,
+        cells: &source.cells,
+        chart_width_points: geometry.cx as f64 / 12_700.0,
+    })
     .map_err(|err| CliError::invalid_args(format!("failed to create chart: {}", err.message)))?;
 
     let mut text_overrides = BTreeMap::new();
@@ -408,7 +444,10 @@ pub(super) fn create_slide_chart_package_updates(
             shape_id,
             shape_name,
             chart_type: chart_type.to_string(),
-            title: title.to_string(),
+            title: chart.title,
+            house_style: chart.house_style,
+            number_format: chart.number_format,
+            data_labels: chart.data_labels,
             series_count: chart.series_count,
             categories: chart.categories,
             embedded_workbook_part_uri: embedded_part,
@@ -598,13 +637,30 @@ pub(super) fn build_chart_graphic_frame(
     frame
 }
 
-pub(super) fn build_chart_part(
-    chart_type: &str,
-    title: &str,
-    source_sheet: &str,
-    source_range: RangeBounds,
-    cells: &[Vec<ChartDataCell>],
-) -> CliResult<CreateChartPartResult> {
+pub(super) struct ChartPartRequest<'a> {
+    pub(super) chart_type: &'a str,
+    pub(super) title: Option<&'a str>,
+    pub(super) style: Option<&'a str>,
+    pub(super) number_format: Option<&'a str>,
+    pub(super) data_labels: bool,
+    pub(super) source_sheet: &'a str,
+    pub(super) source_range: RangeBounds,
+    pub(super) cells: &'a [Vec<ChartDataCell>],
+    pub(super) chart_width_points: f64,
+}
+
+pub(super) fn build_chart_part(request: ChartPartRequest<'_>) -> CliResult<CreateChartPartResult> {
+    let ChartPartRequest {
+        chart_type,
+        title,
+        style,
+        number_format,
+        data_labels,
+        source_sheet,
+        source_range,
+        cells,
+        chart_width_points,
+    } = request;
     if !matches!(chart_type, "bar" | "line" | "area" | "pie" | "scatter") {
         return Err(CliError::invalid_args(format!(
             "invalid chart type {chart_type:?} (bar, line, area, pie, scatter)"
@@ -621,11 +677,43 @@ pub(super) fn build_chart_part(
         series.truncate(1);
         warnings.push("pie chart uses only the first series".to_string());
     }
-    let root = build_chart_part_xml(chart_type, title, &series);
+    let headers = series
+        .iter()
+        .map(|item| item.name.clone())
+        .collect::<Vec<_>>();
+    let categories_values = series
+        .first()
+        .map(|item| item.categories.as_slice())
+        .unwrap_or_default();
+    let value_formats = series
+        .iter()
+        .flat_map(|item| item.value_formats.iter().cloned())
+        .collect::<Vec<_>>();
+    let values = series
+        .iter()
+        .flat_map(|item| item.values.iter().cloned())
+        .collect::<Vec<_>>();
+    let house_style =
+        crate::chart_style::resolve_chart_house_style(crate::chart_style::ChartHouseStyleInput {
+            style,
+            number_format,
+            data_labels,
+            series_count: series.len(),
+            categories: categories_values,
+            value_formats: &value_formats,
+            values: &values,
+            chart_width_points,
+        })?;
+    let title = crate::chart_style::resolved_chart_title(title, &headers);
+    let root = build_chart_part_xml(chart_type, &title, &series, &house_style);
     Ok(CreateChartPartResult {
         xml: serialize_xml(&root),
         series_count: series.len(),
         categories,
+        title,
+        house_style: house_style.variant.as_str().to_string(),
+        number_format: house_style.value_number_format,
+        data_labels: house_style.data_labels,
         warnings,
     })
 }
@@ -662,6 +750,7 @@ pub(super) fn build_chart_series(
                 kind: String::new(),
                 value: String::new(),
                 null: true,
+                number_format_code: String::new(),
             })
     };
     let text =
@@ -697,17 +786,20 @@ pub(super) fn build_chart_series(
             category_ref: category_ref.clone(),
             values: Vec::new(),
             value_ref: String::new(),
+            value_formats: Vec::new(),
         };
         if has_header {
             item.name = text(cell_at(bounds.start_row, col));
             item.name_ref = abs_ref(source_sheet, col, bounds.start_row, col, bounds.start_row);
         }
         for row in data_start_row..=bounds.end_row {
-            let (value, was_coerced) = numeric_text_coerced(&cell_at(row, col));
+            let cell = cell_at(row, col);
+            let (value, was_coerced) = numeric_text_coerced(&cell);
             if was_coerced {
                 coerced += 1;
             }
             item.values.push(value);
+            item.value_formats.push(cell.number_format_code);
         }
         item.value_ref = abs_ref(source_sheet, col, data_start_row, col, bounds.end_row);
         series.push(item);
@@ -766,6 +858,7 @@ pub(super) fn build_chart_part_xml(
     chart_type: &str,
     title: &str,
     series: &[ChartSeriesData],
+    style: &crate::chart_style::ChartHouseStyle,
 ) -> XmlNode {
     let mut root = chart_cel("chartSpace");
     root.set_attr("xmlns:c", CHART_NS);
@@ -785,12 +878,22 @@ pub(super) fn build_chart_part_xml(
 
     let mut plot_area = chart_cel("plotArea");
     plot_area.children.push(chart_cel("layout"));
-    plot_area.children.push(build_plot_node(chart_type, series));
+    plot_area
+        .children
+        .push(build_plot_node(chart_type, series, style));
     if chart_type != "pie" {
-        plot_area.children.push(build_cat_axis(chart_type));
-        plot_area.children.push(build_val_axis());
+        plot_area
+            .children
+            .push(build_cat_axis(chart_type, style.category_label_rotation));
+        plot_area.children.push(build_val_axis(style));
     }
     chart.children.push(plot_area);
+    if let Some(position) = style.legend_position {
+        let mut legend = chart_cel("legend");
+        legend.children.push(chart_cel_val("legendPos", position));
+        legend.children.push(chart_cel_val("overlay", "0"));
+        chart.children.push(legend);
+    }
     chart.children.push(chart_cel_val("plotVisOnly", "1"));
     chart.children.push(chart_cel_val("dispBlanksAs", "gap"));
     root.children.push(chart);
@@ -816,7 +919,11 @@ pub(super) fn build_chart_title_node(title: &str) -> XmlNode {
     title_node
 }
 
-pub(super) fn build_plot_node(chart_type: &str, series: &[ChartSeriesData]) -> XmlNode {
+pub(super) fn build_plot_node(
+    chart_type: &str,
+    series: &[ChartSeriesData],
+    style: &crate::chart_style::ChartHouseStyle,
+) -> XmlNode {
     match chart_type {
         "bar" => {
             let mut plot = chart_cel("barChart");
@@ -824,7 +931,15 @@ pub(super) fn build_plot_node(chart_type: &str, series: &[ChartSeriesData]) -> X
             plot.children.push(chart_cel_val("grouping", "clustered"));
             plot.children.push(chart_cel_val("varyColors", "0"));
             for (idx, item) in series.iter().enumerate() {
-                plot.children.push(build_category_series(idx, item));
+                plot.children.push(build_category_series(
+                    idx,
+                    item,
+                    style.series_scheme_colors[idx],
+                    &style.value_number_format,
+                ));
+            }
+            if style.data_labels {
+                plot.children.push(build_data_labels());
             }
             plot.children.push(chart_cel_val("axId", CAT_AXIS_ID));
             plot.children.push(chart_cel_val("axId", VAL_AXIS_ID));
@@ -835,7 +950,15 @@ pub(super) fn build_plot_node(chart_type: &str, series: &[ChartSeriesData]) -> X
             plot.children.push(chart_cel_val("grouping", "standard"));
             plot.children.push(chart_cel_val("varyColors", "0"));
             for (idx, item) in series.iter().enumerate() {
-                plot.children.push(build_category_series(idx, item));
+                plot.children.push(build_category_series(
+                    idx,
+                    item,
+                    style.series_scheme_colors[idx],
+                    &style.value_number_format,
+                ));
+            }
+            if style.data_labels {
+                plot.children.push(build_data_labels());
             }
             plot.children.push(chart_cel_val("marker", "1"));
             plot.children.push(chart_cel_val("axId", CAT_AXIS_ID));
@@ -847,7 +970,15 @@ pub(super) fn build_plot_node(chart_type: &str, series: &[ChartSeriesData]) -> X
             plot.children.push(chart_cel_val("grouping", "standard"));
             plot.children.push(chart_cel_val("varyColors", "0"));
             for (idx, item) in series.iter().enumerate() {
-                plot.children.push(build_category_series(idx, item));
+                plot.children.push(build_category_series(
+                    idx,
+                    item,
+                    style.series_scheme_colors[idx],
+                    &style.value_number_format,
+                ));
+            }
+            if style.data_labels {
+                plot.children.push(build_data_labels());
             }
             plot.children.push(chart_cel_val("axId", CAT_AXIS_ID));
             plot.children.push(chart_cel_val("axId", VAL_AXIS_ID));
@@ -857,7 +988,15 @@ pub(super) fn build_plot_node(chart_type: &str, series: &[ChartSeriesData]) -> X
             let mut plot = chart_cel("pieChart");
             plot.children.push(chart_cel_val("varyColors", "1"));
             for (idx, item) in series.iter().enumerate() {
-                plot.children.push(build_category_series(idx, item));
+                plot.children.push(build_category_series(
+                    idx,
+                    item,
+                    style.series_scheme_colors[idx],
+                    &style.value_number_format,
+                ));
+            }
+            if style.data_labels {
+                plot.children.push(build_data_labels());
             }
             plot.children.push(chart_cel_val("firstSliceAng", "0"));
             plot
@@ -868,7 +1007,15 @@ pub(super) fn build_plot_node(chart_type: &str, series: &[ChartSeriesData]) -> X
                 .push(chart_cel_val("scatterStyle", "lineMarker"));
             plot.children.push(chart_cel_val("varyColors", "0"));
             for (idx, item) in series.iter().enumerate() {
-                plot.children.push(build_scatter_series(idx, item));
+                plot.children.push(build_scatter_series(
+                    idx,
+                    item,
+                    style.series_scheme_colors[idx],
+                    &style.value_number_format,
+                ));
+            }
+            if style.data_labels {
+                plot.children.push(build_data_labels());
             }
             plot.children.push(chart_cel_val("axId", CAT_AXIS_ID));
             plot.children.push(chart_cel_val("axId", VAL_AXIS_ID));
@@ -878,7 +1025,11 @@ pub(super) fn build_plot_node(chart_type: &str, series: &[ChartSeriesData]) -> X
     }
 }
 
-pub(super) fn build_series_header(idx: usize, series: &ChartSeriesData) -> XmlNode {
+pub(super) fn build_series_header(
+    idx: usize,
+    series: &ChartSeriesData,
+    scheme_color: &str,
+) -> XmlNode {
     let mut ser = chart_cel("ser");
     ser.children.push(chart_cel_val("idx", idx));
     ser.children.push(chart_cel_val("order", idx));
@@ -890,11 +1041,45 @@ pub(super) fn build_series_header(idx: usize, series: &ChartSeriesData) -> XmlNo
         ));
         ser.children.push(tx);
     }
+    ser.children
+        .push(build_series_shape_properties(scheme_color));
     ser
 }
 
-pub(super) fn build_category_series(idx: usize, series: &ChartSeriesData) -> XmlNode {
-    let mut ser = build_series_header(idx, series);
+fn build_series_shape_properties(scheme_color: &str) -> XmlNode {
+    let mut sp_pr = chart_cel("spPr");
+    let mut fill = drawing_cel("solidFill");
+    let mut fill_color = drawing_cel("schemeClr");
+    fill_color.set_attr("val", scheme_color);
+    fill.children.push(fill_color);
+    sp_pr.children.push(fill);
+    let mut line = drawing_cel("ln");
+    line.set_attr("w", "19050");
+    let mut line_fill = drawing_cel("solidFill");
+    let mut line_color = drawing_cel("schemeClr");
+    line_color.set_attr("val", scheme_color);
+    line_fill.children.push(line_color);
+    line.children.push(line_fill);
+    sp_pr.children.push(line);
+    sp_pr
+}
+
+fn build_data_labels() -> XmlNode {
+    let mut labels = chart_cel("dLbls");
+    labels.children.push(chart_cel_val("showLegendKey", "0"));
+    labels.children.push(chart_cel_val("showVal", "1"));
+    labels.children.push(chart_cel_val("showCatName", "0"));
+    labels.children.push(chart_cel_val("showSerName", "0"));
+    labels
+}
+
+pub(super) fn build_category_series(
+    idx: usize,
+    series: &ChartSeriesData,
+    scheme_color: &str,
+    number_format: &str,
+) -> XmlNode {
+    let mut ser = build_series_header(idx, series, scheme_color);
     if !series.category_ref.is_empty() && !series.categories.is_empty() {
         let mut cat = chart_cel("cat");
         cat.children
@@ -902,30 +1087,43 @@ pub(super) fn build_category_series(idx: usize, series: &ChartSeriesData) -> Xml
         ser.children.push(cat);
     }
     let mut val = chart_cel("val");
-    val.children
-        .push(build_num_ref(&series.value_ref, &series.values));
+    val.children.push(build_num_ref(
+        &series.value_ref,
+        &series.values,
+        number_format,
+    ));
     ser.children.push(val);
     ser
 }
 
-pub(super) fn build_scatter_series(idx: usize, series: &ChartSeriesData) -> XmlNode {
-    let mut ser = build_series_header(idx, series);
+pub(super) fn build_scatter_series(
+    idx: usize,
+    series: &ChartSeriesData,
+    scheme_color: &str,
+    number_format: &str,
+) -> XmlNode {
+    let mut ser = build_series_header(idx, series, scheme_color);
     let mut x_val = chart_cel("xVal");
     if !series.category_ref.is_empty() && !series.categories.is_empty() {
         x_val.children.push(build_num_ref(
             &series.category_ref,
             &numeric_axis(&series.categories),
+            "General",
         ));
     } else {
-        x_val
-            .children
-            .push(build_num_ref(&series.value_ref, &series.values));
+        x_val.children.push(build_num_ref(
+            &series.value_ref,
+            &series.values,
+            number_format,
+        ));
     }
     ser.children.push(x_val);
     let mut y_val = chart_cel("yVal");
-    y_val
-        .children
-        .push(build_num_ref(&series.value_ref, &series.values));
+    y_val.children.push(build_num_ref(
+        &series.value_ref,
+        &series.values,
+        number_format,
+    ));
     ser.children.push(y_val);
     ser
 }
@@ -958,14 +1156,14 @@ pub(super) fn build_str_ref(reference: &str, values: &[String]) -> XmlNode {
     str_ref
 }
 
-pub(super) fn build_num_ref(reference: &str, values: &[String]) -> XmlNode {
+pub(super) fn build_num_ref(reference: &str, values: &[String], number_format: &str) -> XmlNode {
     let mut num_ref = chart_cel("numRef");
     let mut formula = chart_cel("f");
     formula.text = reference.to_string();
     num_ref.children.push(formula);
     num_ref
         .children
-        .push(build_cache_element("numCache", values, Some("General")));
+        .push(build_cache_element("numCache", values, Some(number_format)));
     num_ref
 }
 
@@ -996,7 +1194,7 @@ pub(super) fn build_cache_point(idx: usize, value: &str) -> XmlNode {
     point
 }
 
-pub(super) fn build_cat_axis(chart_type: &str) -> XmlNode {
+pub(super) fn build_cat_axis(chart_type: &str, rotation: Option<i32>) -> XmlNode {
     let mut axis = if chart_type == "scatter" {
         chart_cel("valAx")
     } else {
@@ -1010,11 +1208,24 @@ pub(super) fn build_cat_axis(chart_type: &str) -> XmlNode {
     axis.children.push(scaling);
     axis.children.push(chart_cel_val("delete", "0"));
     axis.children.push(chart_cel_val("axPos", "b"));
+    if let Some(rotation) = rotation {
+        let mut tx_pr = chart_cel("txPr");
+        let mut body_pr = drawing_cel("bodyPr");
+        body_pr.set_attr("rot", &rotation.to_string());
+        tx_pr.children.push(body_pr);
+        tx_pr.children.push(drawing_cel("lstStyle"));
+        let mut paragraph = drawing_cel("p");
+        let mut end = drawing_cel("endParaRPr");
+        end.set_attr("lang", "en-US");
+        paragraph.children.push(end);
+        tx_pr.children.push(paragraph);
+        axis.children.push(tx_pr);
+    }
     axis.children.push(chart_cel_val("crossAx", VAL_AXIS_ID));
     axis
 }
 
-pub(super) fn build_val_axis() -> XmlNode {
+pub(super) fn build_val_axis(style: &crate::chart_style::ChartHouseStyle) -> XmlNode {
     let mut axis = chart_cel("valAx");
     axis.children.push(chart_cel_val("axId", VAL_AXIS_ID));
     let mut scaling = chart_cel("scaling");
@@ -1024,6 +1235,27 @@ pub(super) fn build_val_axis() -> XmlNode {
     axis.children.push(scaling);
     axis.children.push(chart_cel_val("delete", "0"));
     axis.children.push(chart_cel_val("axPos", "l"));
+    if style.major_value_gridlines {
+        let mut gridlines = chart_cel("majorGridlines");
+        let mut sp_pr = chart_cel("spPr");
+        let mut line = drawing_cel("ln");
+        line.set_attr("w", "9525");
+        let mut fill = drawing_cel("solidFill");
+        let mut color = drawing_cel("schemeClr");
+        color.set_attr("val", "tx1");
+        let mut alpha = drawing_cel("alpha");
+        alpha.set_attr("val", "15000");
+        color.children.push(alpha);
+        fill.children.push(color);
+        line.children.push(fill);
+        sp_pr.children.push(line);
+        gridlines.children.push(sp_pr);
+        axis.children.push(gridlines);
+    }
+    let mut number_format = chart_cel("numFmt");
+    number_format.set_attr("formatCode", &style.value_number_format);
+    number_format.set_attr("sourceLinked", "0");
+    axis.children.push(number_format);
     axis.children.push(chart_cel_val("crossAx", CAT_AXIS_ID));
     axis
 }

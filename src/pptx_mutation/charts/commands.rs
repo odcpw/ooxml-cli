@@ -26,18 +26,26 @@ pub(crate) fn pptx_charts_create(file: &str, args: &[String]) -> CliResult<Value
             "failed to create chart: invalid chart type {chart_type:?} (bar, line, area, pie, scatter)"
         )));
     }
-    let title = parse_string_flag(args, "--title")?.unwrap_or_default();
+    let title = parse_string_flag(args, "--title")?;
+    let house_style = parse_string_flag(args, "--style")?;
+    let number_format = parse_string_flag(args, "--number-format")?;
+    let data_labels = crate::has_flag(args, "--data-labels");
     let source = resolve_chart_create_source(args)?;
     let geometry = resolve_chart_create_geometry(file, args)?;
     let options = parse_chart_mutation_options(args)?;
 
     let create = create_slide_chart_package_updates(
         file,
-        slide as usize,
-        &chart_type,
-        &title,
-        &source,
-        &geometry,
+        CreateSlideChartRequest {
+            slide: slide as usize,
+            chart_type: &chart_type,
+            title: title.as_deref(),
+            style: house_style.as_deref(),
+            number_format: number_format.as_deref(),
+            data_labels,
+            source: &source,
+            geometry: &geometry,
+        },
         &options,
     )?;
 

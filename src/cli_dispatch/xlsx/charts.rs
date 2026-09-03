@@ -41,13 +41,15 @@ pub(super) fn dispatch_xlsx_charts(args: &[String]) -> CliResult<Value> {
                     "--categories",
                     "--table",
                     "--title",
+                    "--style",
+                    "--number-format",
                     "--anchor",
                     "--expect-source-range",
                     "--max-cells",
                     "--out",
                     "--backup",
                 ],
-                &["--dry-run", "--no-validate", "--in-place"],
+                &["--data-labels", "--dry-run", "--no-validate", "--in-place"],
             )?;
             let chart_type = parse_string_flag(rest, "--type")?;
             let sheet = parse_string_flag(rest, "--sheet")?;
@@ -55,6 +57,8 @@ pub(super) fn dispatch_xlsx_charts(args: &[String]) -> CliResult<Value> {
             let categories = parse_string_flag(rest, "--categories")?;
             let table = parse_string_flag(rest, "--table")?;
             let title = parse_string_flag(rest, "--title")?;
+            let style = parse_string_flag(rest, "--style")?;
+            let number_format = parse_string_flag(rest, "--number-format")?;
             let anchor = parse_string_flag(rest, "--anchor")?;
             let expect_source_range = parse_string_flag(rest, "--expect-source-range")?;
             let max_cells = parse_i64_flag(rest, "--max-cells")?.unwrap_or(100000);
@@ -69,6 +73,9 @@ pub(super) fn dispatch_xlsx_charts(args: &[String]) -> CliResult<Value> {
                     categories: categories.as_deref(),
                     table: table.as_deref(),
                     title: title.as_deref(),
+                    style: style.as_deref(),
+                    number_format: number_format.as_deref(),
+                    data_labels: has_flag(rest, "--data-labels"),
                     anchor: anchor.as_deref(),
                     expect_source_range: expect_source_range.as_deref(),
                     max_cells,

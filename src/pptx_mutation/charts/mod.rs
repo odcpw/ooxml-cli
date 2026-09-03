@@ -217,6 +217,7 @@ struct ChartDataCell {
     kind: String,
     value: String,
     null: bool,
+    number_format_code: String,
 }
 
 struct ChartCreateSource {
@@ -233,6 +234,10 @@ struct CreateChartPartResult {
     xml: String,
     series_count: usize,
     categories: usize,
+    title: String,
+    house_style: String,
+    number_format: String,
+    data_labels: bool,
     warnings: Vec<String>,
 }
 
@@ -243,6 +248,9 @@ struct CreateSlideChartResult {
     shape_name: String,
     chart_type: String,
     title: String,
+    house_style: String,
+    number_format: String,
+    data_labels: bool,
     series_count: usize,
     categories: usize,
     embedded_workbook_part_uri: String,
@@ -262,6 +270,7 @@ struct ChartSeriesData {
     category_ref: String,
     values: Vec<String>,
     value_ref: String,
+    value_formats: Vec<String>,
 }
 
 struct ChartGeometry {
