@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "groupCount": 64,
-  "leafCount": 264,
+  "leafCount": 265,
   "groupTopicRows": 52,
   "aliasOwnerRecords": 37,
   "aliasArgvCount": 35,
@@ -196,7 +196,7 @@
         "pptx"
       ],
       "status": 0,
-      "stdout": "Commands for inspecting, modifying, and analyzing PPTX presentations where Rust parity has been proven.\n\nUsage:\n  ooxml pptx [command]\n\nAvailable Commands:\n  add-textbox            Insert a text box shape on a slide at explicit EMU bounds.\n  animations             Inspect and mutate PPTX animations.\n  charts                 Inspect and mutate PPTX slide charts.\n  clone-slide            Clone a slide within a PowerPoint presentation, including notes when present.\n  comments               Inspect and mutate PPTX slide comments.\n  diff                   Compare two PPTX presentations\n  extract                Extract PPTX resources.\n  fields                 Inspect and set header/footer/slide-number/date fields\n  layouts                Inspect and mutate PPTX slide layouts.\n  masters                Inspect and mutate PPTX slide masters.\n  media                  Inspect and mutate PPTX media.\n  new-slide-from-layout  Create a new slide from an existing layout and optionally fill text placeholders.\n  notes                  Inspect and mutate PPTX speaker notes.\n  place                  Place content on PPTX slides.\n  render                 Render a PPTX to PDF and PNG pages when local tools are installed.\n  replace                Replace PPTX content.\n  scaffold               Create a minimal PowerPoint presentation from scratch.\n  shapes                 Inspect and mutate PPTX shapes.\n  slides                 Inspect and mutate PPTX slides.\n  tables                 Inspect and mutate PPTX tables\n  template               Work with template manifests and compilation.\n  text                   Set PPTX text run styling.\n  theme                  Inspect and modify presentation themes\n  translate              Export and manage translations\n  validate-layout        Validate slide layout for overflow, collisions, and density.\n  xlsx-bindings          Plan and apply workbook-driven PPTX updates\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nWork with Rust-supported PPTX presentation commands.\n",
+      "stdout": "Commands for inspecting, modifying, and analyzing PPTX presentations where Rust parity has been proven.\n\nUsage:\n  ooxml pptx [command]\n\nAvailable Commands:\n  add-textbox            Insert a text box shape on a slide at explicit EMU bounds.\n  animations             Inspect and mutate PPTX animations.\n  build                  Build a complete presentation from a published PPTX build specification in one atomic batch.\n  charts                 Inspect and mutate PPTX slide charts.\n  clone-slide            Clone a slide within a PowerPoint presentation, including notes when present.\n  comments               Inspect and mutate PPTX slide comments.\n  diff                   Compare two PPTX presentations\n  extract                Extract PPTX resources.\n  fields                 Inspect and set header/footer/slide-number/date fields\n  layouts                Inspect and mutate PPTX slide layouts.\n  masters                Inspect and mutate PPTX slide masters.\n  media                  Inspect and mutate PPTX media.\n  new-slide-from-layout  Create a new slide from an existing layout and optionally fill text placeholders.\n  notes                  Inspect and mutate PPTX speaker notes.\n  place                  Place content on PPTX slides.\n  render                 Render a PPTX to PDF and PNG pages when local tools are installed.\n  replace                Replace PPTX content.\n  scaffold               Create a minimal PowerPoint presentation from scratch.\n  shapes                 Inspect and mutate PPTX shapes.\n  slides                 Inspect and mutate PPTX slides.\n  tables                 Inspect and mutate PPTX tables\n  template               Work with template manifests and compilation.\n  text                   Set PPTX text run styling.\n  theme                  Inspect and modify presentation themes\n  translate              Export and manage translations\n  validate-layout        Validate slide layout for overflow, collisions, and density.\n  xlsx-bindings          Plan and apply workbook-driven PPTX updates\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nWork with Rust-supported PPTX presentation commands.\n",
       "stderr": ""
     },
     {
@@ -4131,6 +4131,18 @@
       ],
       "status": 0,
       "stdout": "Derive a portable brand kit from a PPTX, XLSX, or DOCX theme.\n\nUsage:\n  ooxml template brand extract <file> [--out <brand.json>] [--name <name>]\n\nFlags:\n  --out                    brand JSON output path\n  --name                   override extracted brand name\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stderr": ""
+    },
+    {
+      "name": "leaf:pptx build",
+      "category": "canonical-leaf",
+      "argv": [
+        "help",
+        "pptx",
+        "build"
+      ],
+      "status": 0,
+      "stdout": "Build a complete presentation from a published PPTX build specification in one atomic batch.\n\nUsage:\n  ooxml pptx build --spec <deck.json|-> --out <deck.pptx>\n\nFlags:\n  --spec                   PPTX build-spec JSON path, or - to read JSON from stdin\n  --out                    output presentation path\n  --check                  run check after publishing and embed its findings\n  --dry-run                compile, execute, and strictly validate the staged batch without publishing\n  --force                  replace an existing output after the staged build validates\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
