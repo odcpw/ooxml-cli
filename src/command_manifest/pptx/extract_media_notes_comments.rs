@@ -4,12 +4,28 @@ pub(super) const COMMAND_COUNT: usize = 14;
 
 pub(super) fn command_specs() -> Vec<super::CommandSpec> {
     vec![
-        extract_spec(
+        spec(
             PptxCommandId::ExtractText,
             &["pptx", "extract", "text"],
-            "text <file>",
-            "Extract slide text grouped by shape.",
+            "text <file> [--slide <n>] [--format markdown]",
+            "Extract slide content as structured JSON or readable CommonMark.",
             &["slide", "shape"],
+            vec![
+                flag(
+                    "--slide",
+                    "slide",
+                    "int",
+                    "1-based slide number; repeatable",
+                ),
+                flag(
+                    "--format",
+                    "format",
+                    "string",
+                    "output format; markdown preserves slide separators, titles, bullets, tables, and speaker notes",
+                ),
+            ],
+            inspect("read-only command; call via inspect in serve/MCP"),
+            None,
         ),
         extract_spec(
             PptxCommandId::ExtractNotes,

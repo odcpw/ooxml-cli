@@ -91,6 +91,7 @@ fn guide_json() -> Value {
                     "ooxml agent-triage",
                     "ooxml robot-docs guide",
                     "ooxml --json inspect <file>",
+                    "ooxml outline <file> --format markdown",
                     "ooxml --json find <query> <file>",
                     "ooxml --json doctor health"
                 ],
@@ -120,6 +121,7 @@ fn guide_json() -> Value {
                     "ooxml --json pptx tables show <file> --slide <n>",
                     "ooxml --json pptx charts list <file>",
                     "ooxml --json pptx extract text <file>",
+                    "ooxml pptx extract text <file> --format markdown",
                     "ooxml --json pptx extract notes <file>"
                 ]
             },
@@ -138,6 +140,7 @@ fn guide_json() -> Value {
                     "ooxml --json xlsx sheets list <file>",
                     "ooxml --json xlsx cells extract <file>",
                     "ooxml --json xlsx ranges export <file> --sheet <sheet> --range <range>",
+                    "ooxml xlsx ranges export <file> --sheet <sheet> --range <range> --format markdown --formatted",
                     "ooxml --json xlsx names list <file>",
                     "ooxml --json xlsx tables list <file>",
                     "ooxml --json xlsx charts list <file>"
@@ -156,6 +159,7 @@ fn guide_json() -> Value {
                 "name": "DOCX read",
                 "commands": [
                     "ooxml --json docx text <file>",
+                    "ooxml docx text <file> --format markdown",
                     "ooxml --json docx blocks show <file>",
                     "ooxml --json docx tables show <file>",
                     "ooxml --json docx comments list <file>",

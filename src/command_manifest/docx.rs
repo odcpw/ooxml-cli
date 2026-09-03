@@ -263,10 +263,15 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
         spec(
             DocxCommandId::Text,
             &["docx", "text"],
-            "text <file>",
-            "Extract DOCX paragraph text.",
+            "text <file> [--format markdown]",
+            "Extract DOCX content as structured JSON or readable CommonMark.",
             &["package"],
-            vec![],
+            vec![flag(
+                "--format",
+                "format",
+                "string",
+                "output format; markdown preserves headings, lists, tables, emphasis, links, and image references",
+            )],
             ExecutionSupport::ServeInspect {
                 reason: Some("read-only command"),
             },

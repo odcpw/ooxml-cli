@@ -8,8 +8,8 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
         spec(
             XlsxCommandId::RangesExport,
             &["xlsx", "ranges", "export"],
-            "export <file>",
-            "Export decoded worksheet cells from a range.",
+            "export <file> [--format markdown] [--formatted]",
+            "Export decoded worksheet cells as structured JSON or a CommonMark pipe table.",
             &["sheet", "range"],
             vec![
                 flag("--sheet", "sheet", "string", "sheet selector"),
@@ -43,6 +43,18 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                     "maxCells",
                     "number",
                     "maximum cells to export",
+                ),
+                flag(
+                    "--format",
+                    "format",
+                    "string",
+                    "output format; markdown emits a pipe table with the first row as its header",
+                ),
+                flag(
+                    "--formatted",
+                    "formatted",
+                    "bool",
+                    "apply supported worksheet number formats to Markdown cell values",
                 ),
             ],
             ExecutionSupport::ServeInspect {

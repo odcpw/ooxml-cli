@@ -684,8 +684,8 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
         spec(
             CoreCommandId::Outline,
             &["outline"],
-            "outline <file> [--depth <0..3>] [--text-preview <chars>] [--slide <n>|--sheet <selector>|--section <n>]",
-            "Return one compact, deterministic, family-aware orientation tree for a PPTX, XLSX, or DOCX package.",
+            "outline <file> [--depth <0..3>] [--text-preview <chars>] [--slide <n>|--sheet <selector>|--section <n>] [--format markdown]",
+            "Return one compact, deterministic, family-aware orientation tree as JSON or readable CommonMark.",
             &[
                 "package", "slide", "shape", "sheet", "table", "chart", "pivot", "block", "field",
                 "header", "footer", "image",
@@ -725,6 +725,12 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "section",
                     "integer",
                     "limit a DOCX outline to one 1-based section number",
+                ),
+                flag(
+                    "--format",
+                    "format",
+                    "string",
+                    "output format; markdown emits a compact human-readable family summary",
                 ),
             ],
         ),

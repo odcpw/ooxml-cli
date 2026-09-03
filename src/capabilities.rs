@@ -70,9 +70,13 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
         "version": env!("CARGO_PKG_VERSION"),
         "contractVersion": "ooxml-cli.agent-capabilities.v4",
         "packageTypes": ["pptx", "xlsx", "docx"],
-        "outputModes": ["json via --json or --format json"],
+        "outputModes": [
+            "json via --json or --format json",
+            "text for text utility commands via --format text",
+            "markdown for docx text, pptx extract text, xlsx ranges export, and outline via --format markdown"
+        ],
         "globalFlags": [
-            {"name": "--format", "argName": "format", "shorthand": "f", "type": "string", "default": "json", "description": "output format: \"json\"; \"text\" is accepted only for text utility commands"},
+            {"name": "--format", "argName": "format", "shorthand": "f", "type": "string", "default": "json", "description": "output format: \"json\" by default; \"text\" is accepted only for text utility commands; \"markdown\" is supported by docx text, pptx extract text, xlsx ranges export, and outline"},
             {"name": "--json", "argName": "json", "type": "bool", "default": "false", "description": "emit JSON output"},
             {"name": "--strict", "argName": "strict", "type": "bool", "default": "false", "description": "enable strict validation mode"}
         ],

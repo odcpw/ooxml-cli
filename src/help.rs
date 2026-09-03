@@ -694,7 +694,7 @@ fn render_children(children: &[(String, String)]) -> String {
 }
 
 fn global_flags_text() -> &'static str {
-    "  -f, --format json          emit JSON output for JSON-capable commands\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n"
+    "  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n"
 }
 
 #[cfg(test)]

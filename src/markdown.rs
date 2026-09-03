@@ -431,6 +431,9 @@ fn render_pptx(file: &str, rest: &[String], value: &Value) -> CliResult<String> 
     let mut output = String::new();
     for (position, slide) in slides.iter().enumerate() {
         if position > 0 {
+            if !output.ends_with("\n\n") {
+                output.push('\n');
+            }
             output.push_str("---\n\n");
         }
         let number = slide["slide"].as_u64().unwrap_or(position as u64 + 1);
