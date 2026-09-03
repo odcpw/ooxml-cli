@@ -190,14 +190,19 @@ fn expected_usize_flag(args: &[&str], flag: &str, default: usize) -> usize {
 }
 
 #[test]
-fn json_golden_contracts_are_lf_only_on_every_runner() {
-    for directory in ["outline", "check", "design-check"] {
-        let path = format!("testdata/golden/{directory}/attribute-contract.json");
+fn text_golden_contracts_are_lf_only_on_every_runner() {
+    let attribute_contracts = [
+        "testdata/golden/outline/attribute-contract.json",
+        "testdata/golden/check/attribute-contract.json",
+        "testdata/golden/design-check/attribute-contract.json",
+        "testdata/golden/markdown-read/attribute-contract.md",
+    ];
+    for path in attribute_contracts {
         let output = Command::new("git")
-            .args(["check-attr", "text", "eol", "--", &path])
+            .args(["check-attr", "text", "eol", "--", path])
             .current_dir(env!("CARGO_MANIFEST_DIR"))
             .output()
-            .expect("run git check-attr for JSON golden");
+            .expect("run git check-attr for text golden");
         assert!(
             output.status.success(),
             "git check-attr failed for {path}: {}",

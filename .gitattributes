@@ -27,5 +27,6 @@ testdata/golden/command-manifest-contract/** text eol=lf
 
 # JSON fixtures and goldens are text contracts and must not be rewritten on Windows.
 testdata/golden/**/*.json text eol=lf
+testdata/golden/**/*.md text eol=lf
 testdata/**/*.json text eol=lf
 tests/**/*.json text eol=lf
