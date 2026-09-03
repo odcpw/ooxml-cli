@@ -75,6 +75,24 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  performance-budgets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OOXML_PERF_BUDGETS: "1"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run release-mode performance budgets
+        run: cargo test --release --test perf_budgets -- --nocapture --test-threads=1
+
   openxml-sdk-schema-linux:
     runs-on: ubuntu-latest
     timeout-minutes: 30

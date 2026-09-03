@@ -103,6 +103,36 @@ pub(crate) fn set_xlsx_range_in_sheet_xml(
     null_policy: &str,
     overwrite_formulas: bool,
 ) -> CliResult<(String, XlsxRangeSetStats)> {
+    set_xlsx_range_in_sheet_xml_impl(
+        xml,
+        bounds,
+        rows.iter().map(Vec::as_slice),
+        null_policy,
+        overwrite_formulas,
+    )
+}
+
+pub(crate) fn set_xlsx_range_in_sheet_xml_owned(
+    xml: &str,
+    bounds: RangeBounds,
+    rows: Vec<Vec<XlsxMatrixCell>>,
+    null_policy: &str,
+    overwrite_formulas: bool,
+) -> CliResult<(String, XlsxRangeSetStats)> {
+    set_xlsx_range_in_sheet_xml_impl(xml, bounds, rows, null_policy, overwrite_formulas)
+}
+
+fn set_xlsx_range_in_sheet_xml_impl<I, R>(
+    xml: &str,
+    bounds: RangeBounds,
+    rows: I,
+    null_policy: &str,
+    overwrite_formulas: bool,
+) -> CliResult<(String, XlsxRangeSetStats)>
+where
+    I: IntoIterator<Item = R>,
+    R: AsRef<[XlsxMatrixCell]>,
+{
     reject_xlsx_merged_cell_intersection(xml, bounds)?;
     let sheet_data = xlsx_sheet_data_span(xml)?;
     let row_spans = parse_xlsx_row_spans(xml, sheet_data.as_ref())?;
@@ -114,7 +144,8 @@ pub(crate) fn set_xlsx_range_in_sheet_xml(
     let mut stats = XlsxRangeSetStats::default();
     let mut changed_rows = BTreeMap::<u32, String>::new();
     let write_bounds = bounds.normalized();
-    for (row_offset, row) in rows.iter().enumerate() {
+    for (row_offset, row) in rows.into_iter().enumerate() {
+        let row = row.as_ref();
         let row_number = write_bounds.start_row + row_offset as u32;
         let existing_row = row_spans.get(&row_number);
         let mut rendered_cells = existing_row

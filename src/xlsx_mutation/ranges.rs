@@ -1,12 +1,16 @@
+use serde::Deserialize;
+use serde::de::{self, Deserializer, IgnoredAny, MapAccess, Visitor};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::fs;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 
 use super::{
     XlsxMatrixCell, add_xlsx_range_mutation_commands, resolve_xlsx_sheet_context,
-    set_xlsx_range_in_sheet_xml, validate_xlsx_mutation_output_flags, xlsx_range_destination_json,
+    set_xlsx_range_in_sheet_xml_owned, validate_xlsx_mutation_output_flags,
+    xlsx_range_destination_json,
 };
 use crate::{
     CliError, CliResult, RangeBounds, add_xlsx_formula_recalc_package_updates,
@@ -45,8 +49,8 @@ pub(crate) fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> 
         return Err(CliError::file_not_found(format!("file not found: {file}")));
     }
     let data_format = normalize_xlsx_ranges_set_data_format(options.data_format)?;
-    let data = resolve_xlsx_ranges_set_values(options.values, options.values_file)?;
-    let mut matrix = parse_xlsx_range_set_matrix(&data, &data_format)?;
+    let mut matrix =
+        resolve_xlsx_ranges_set_matrix(options.values, options.values_file, &data_format)?;
     rectangularize_xlsx_matrix(&mut matrix.rows, options.ragged.unwrap_or("reject"))?;
     let null_policy = options
         .null_policy
@@ -72,10 +76,11 @@ pub(crate) fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> 
 
     let (sheet, sheet_part) = resolve_xlsx_sheet_context(file, options.sheet)?;
     let sheet_xml = zip_text(file, &sheet_part)?;
-    let (updated_xml, stats) = set_xlsx_range_in_sheet_xml(
+    let major_dimension = matrix.major_dimension;
+    let (updated_xml, stats) = set_xlsx_range_in_sheet_xml_owned(
         &sheet_xml,
         bounds,
-        &matrix.rows,
+        matrix.rows,
         &null_policy,
         options.overwrite_formulas,
     )?;
@@ -136,7 +141,7 @@ pub(crate) fn xlsx_ranges_set(file: &str, options: XlsxRangesSetOptions<'_>) -> 
     result.insert("formulaCount".to_string(), json!(stats.formula_count));
     result.insert("dataFormat".to_string(), json!(data_format));
     result.insert("nullPolicy".to_string(), json!(null_policy));
-    result.insert("majorDimension".to_string(), json!(matrix.major_dimension));
+    result.insert("majorDimension".to_string(), json!(major_dimension));
     if let Some(commit_path) = commit_path {
         result.insert("output".to_string(), json!(commit_path));
     }
@@ -169,6 +174,214 @@ pub(crate) fn resolve_xlsx_ranges_set_values(
         }
         (None, Some(path)) => fs::read_to_string(path)
             .map_err(|_| CliError::file_not_found(format!("file not found: {path}"))),
+    }
+}
+
+fn resolve_xlsx_ranges_set_matrix(
+    values: Option<&str>,
+    values_file: Option<&str>,
+    data_format: &str,
+) -> CliResult<XlsxRangeSetMatrix> {
+    match (values, values_file) {
+        (Some(_), Some(_)) | (None, None) => Err(CliError::invalid_args(
+            "must specify exactly one of --values or --values-file",
+        )),
+        (Some(values), None) => parse_xlsx_range_set_matrix(values, data_format),
+        (None, Some("-")) if data_format == "json" => {
+            parse_xlsx_range_set_json_reader(BufReader::new(std::io::stdin().lock()))
+        }
+        (None, Some(path)) if data_format == "json" => {
+            let file = fs::File::open(path)
+                .map_err(|_| CliError::file_not_found(format!("file not found: {path}")))?;
+            parse_xlsx_range_set_json_reader(BufReader::new(file))
+        }
+        _ => {
+            let data = resolve_xlsx_ranges_set_values(values, values_file)?;
+            parse_xlsx_range_set_matrix(&data, data_format)
+        }
+    }
+}
+
+fn parse_xlsx_range_set_json_reader<R: BufRead>(mut reader: R) -> CliResult<XlsxRangeSetMatrix> {
+    let first_token = loop {
+        let buffer = reader
+            .fill_buf()
+            .map_err(|err| CliError::unexpected(format!("failed to read values: {err}")))?;
+        if buffer.is_empty() {
+            break None;
+        }
+        if let Some(offset) = buffer.iter().position(|byte| !byte.is_ascii_whitespace()) {
+            break Some(buffer[offset]);
+        }
+        let consumed = buffer.len();
+        reader.consume(consumed);
+    };
+    if first_token == Some(b'[') {
+        let rows: Vec<Vec<OwnedMatrixCell>> = serde_json::from_reader(reader)
+            .map_err(|err| CliError::invalid_args(format!("invalid json values: {err}")))?;
+        return Ok(XlsxRangeSetMatrix {
+            range: None,
+            null_policy: None,
+            major_dimension: "rows".to_string(),
+            rows: rows
+                .into_iter()
+                .map(|row| row.into_iter().map(|cell| cell.0).collect())
+                .collect(),
+        });
+    }
+
+    let raw = serde_json::from_reader(reader)
+        .map_err(|err| CliError::invalid_args(format!("invalid json values: {err}")))?;
+    parse_xlsx_range_set_json_value_owned(raw)
+}
+
+struct OwnedMatrixCell(XlsxMatrixCell);
+
+impl<'de> Deserialize<'de> for OwnedMatrixCell {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(OwnedMatrixCellVisitor)
+    }
+}
+
+struct OwnedMatrixCellVisitor;
+
+impl<'de> Visitor<'de> for OwnedMatrixCellVisitor {
+    type Value = OwnedMatrixCell;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a null, string, number, boolean, or typed XLSX cell object")
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OwnedMatrixCell(XlsxMatrixCell {
+            kind: "empty".to_string(),
+            value: String::new(),
+            formula: String::new(),
+            null: true,
+        }))
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.visit_unit()
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OwnedMatrixCell(XlsxMatrixCell {
+            kind: "string".to_string(),
+            value,
+            formula: String::new(),
+            null: false,
+        }))
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.visit_string(value.to_string())
+    }
+
+    fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OwnedMatrixCell(XlsxMatrixCell {
+            kind: "boolean".to_string(),
+            value: value.to_string(),
+            formula: String::new(),
+            null: false,
+        }))
+    }
+
+    fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.number(value.to_string())
+    }
+
+    fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.number(value.to_string())
+    }
+
+    fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.number(
+            serde_json::Number::from_f64(value)
+                .expect("JSON numbers are finite")
+                .to_string(),
+        )
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut formula = None;
+        let mut value = None;
+        let mut kind = None;
+        while let Some(key) = map.next_key::<String>()? {
+            match key.as_str() {
+                "formula" => formula = Some(map.next_value::<String>()?),
+                "value" => value = Some(map.next_value::<OwnedMatrixCell>()?),
+                "type" => kind = Some(map.next_value::<String>()?),
+                _ => {
+                    map.next_value::<IgnoredAny>()?;
+                }
+            }
+        }
+        if let Some(formula) = formula {
+            if formula.trim().is_empty() {
+                return Err(de::Error::custom("formula cannot be empty"));
+            }
+            return Ok(OwnedMatrixCell(XlsxMatrixCell {
+                kind: "formula".to_string(),
+                value: formula.clone(),
+                formula,
+                null: false,
+            }));
+        }
+        let mut cell = value
+            .ok_or_else(|| de::Error::custom("object cell must contain value or formula"))?
+            .0;
+        if let Some(kind) = kind {
+            cell.kind = kind.trim().to_ascii_lowercase();
+            if cell.kind == "formula" {
+                cell.formula = cell.value.clone();
+            }
+        }
+        Ok(OwnedMatrixCell(cell))
+    }
+}
+
+impl OwnedMatrixCellVisitor {
+    fn number<E>(self, value: String) -> Result<OwnedMatrixCell, E>
+    where
+        E: de::Error,
+    {
+        Ok(OwnedMatrixCell(XlsxMatrixCell {
+            kind: "number".to_string(),
+            value,
+            formula: String::new(),
+            null: false,
+        }))
     }
 }
 
@@ -235,6 +448,138 @@ fn parse_xlsx_range_set_json_matrix(data: &str) -> CliResult<XlsxRangeSetMatrix>
         major_dimension,
         rows,
     })
+}
+
+fn parse_xlsx_range_set_json_value_owned(raw: Value) -> CliResult<XlsxRangeSetMatrix> {
+    let (range, null_policy, major_dimension, values) = match raw {
+        Value::Object(mut object) if object.contains_key("values") => {
+            let range = object.remove("range").and_then(into_json_string);
+            let null_policy = object.remove("nullPolicy").and_then(into_json_string);
+            let major_dimension = object
+                .remove("majorDimension")
+                .and_then(into_json_string)
+                .unwrap_or_else(|| "rows".to_string());
+            let values = object
+                .remove("values")
+                .ok_or_else(|| CliError::invalid_args("JSON object must contain values"))?;
+            (range, null_policy, major_dimension, values)
+        }
+        raw => (None, None, "rows".to_string(), raw),
+    };
+    let mut rows = parse_xlsx_matrix_rows_owned(values)?;
+    let major_dimension = match major_dimension.trim().to_ascii_lowercase().as_str() {
+        "" | "rows" => "rows".to_string(),
+        "columns" => {
+            rows = transpose_xlsx_matrix(rows)?;
+            "columns".to_string()
+        }
+        _ => {
+            return Err(CliError::invalid_args(
+                "majorDimension must be rows or columns",
+            ));
+        }
+    };
+    Ok(XlsxRangeSetMatrix {
+        range,
+        null_policy,
+        major_dimension,
+        rows,
+    })
+}
+
+fn into_json_string(value: Value) -> Option<String> {
+    match value {
+        Value::String(value) => Some(value),
+        _ => None,
+    }
+}
+
+fn parse_xlsx_matrix_rows_owned(value: Value) -> CliResult<Vec<Vec<XlsxMatrixCell>>> {
+    let Value::Array(rows) = value else {
+        return Err(CliError::invalid_args("values must be an array of arrays"));
+    };
+    rows.into_iter()
+        .enumerate()
+        .map(|(row_idx, row)| {
+            let Value::Array(cells) = row else {
+                return Err(CliError::invalid_args(format!(
+                    "values[{row_idx}] must be an array"
+                )));
+            };
+            cells
+                .into_iter()
+                .enumerate()
+                .map(|(col_idx, cell)| {
+                    parse_xlsx_matrix_cell_owned(cell).map_err(|err| {
+                        CliError::invalid_args(format!(
+                            "values[{row_idx}][{col_idx}]: {}",
+                            err.message
+                        ))
+                    })
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn parse_xlsx_matrix_cell_owned(value: Value) -> CliResult<XlsxMatrixCell> {
+    match value {
+        Value::Null => Ok(XlsxMatrixCell {
+            kind: "empty".to_string(),
+            value: String::new(),
+            formula: String::new(),
+            null: true,
+        }),
+        Value::String(value) => Ok(XlsxMatrixCell {
+            kind: "string".to_string(),
+            value,
+            formula: String::new(),
+            null: false,
+        }),
+        Value::Number(value) => Ok(XlsxMatrixCell {
+            kind: "number".to_string(),
+            value: value.to_string(),
+            formula: String::new(),
+            null: false,
+        }),
+        Value::Bool(value) => Ok(XlsxMatrixCell {
+            kind: "boolean".to_string(),
+            value: value.to_string(),
+            formula: String::new(),
+            null: false,
+        }),
+        Value::Object(mut object) => {
+            if let Some(formula) = object.remove("formula") {
+                let Value::String(formula) = formula else {
+                    return Err(CliError::invalid_args("formula must be a string"));
+                };
+                if formula.trim().is_empty() {
+                    return Err(CliError::invalid_args("formula cannot be empty"));
+                }
+                return Ok(XlsxMatrixCell {
+                    kind: "formula".to_string(),
+                    value: formula.clone(),
+                    formula,
+                    null: false,
+                });
+            }
+            let raw_value = object.remove("value").ok_or_else(|| {
+                CliError::invalid_args("object cell must contain value or formula")
+            })?;
+            let mut cell = parse_xlsx_matrix_cell_owned(raw_value)?;
+            if let Some(raw_kind) = object.remove("type") {
+                let Value::String(kind) = raw_kind else {
+                    return Err(CliError::invalid_args("type must be a string"));
+                };
+                cell.kind = kind.trim().to_ascii_lowercase();
+                if cell.kind == "formula" {
+                    cell.formula = cell.value.clone();
+                }
+            }
+            Ok(cell)
+        }
+        _ => Err(CliError::invalid_args("unsupported JSON cell type")),
+    }
 }
 
 fn parse_xlsx_delimited_matrix(data: &str, delimiter: char) -> CliResult<XlsxRangeSetMatrix> {
@@ -552,4 +897,53 @@ fn resolve_xlsx_ranges_set_bounds(
         )));
     }
     Ok(bounds)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn streamed_json_matrix_matches_the_existing_inline_contract() {
+        let input =
+            r#"[[null,"text",1.0,true,{"formula":"SUM(A1:A2)"},{"value":"42","type":"number"}]]"#;
+        let streamed = parse_xlsx_range_set_json_reader(Cursor::new(input.as_bytes()))
+            .expect("streamed matrix");
+        let inline = parse_xlsx_range_set_matrix(input, "json").expect("inline matrix");
+
+        assert_eq!(streamed.range, inline.range);
+        assert_eq!(streamed.null_policy, inline.null_policy);
+        assert_eq!(streamed.major_dimension, inline.major_dimension);
+        assert_eq!(streamed.rows.len(), inline.rows.len());
+        for (streamed_row, inline_row) in streamed.rows.iter().zip(&inline.rows) {
+            assert_eq!(streamed_row.len(), inline_row.len());
+            for (streamed_cell, inline_cell) in streamed_row.iter().zip(inline_row) {
+                assert_eq!(streamed_cell.kind, inline_cell.kind);
+                assert_eq!(streamed_cell.value, inline_cell.value);
+                assert_eq!(streamed_cell.formula, inline_cell.formula);
+                assert_eq!(streamed_cell.null, inline_cell.null);
+            }
+        }
+    }
+
+    #[test]
+    fn streamed_json_object_keeps_range_metadata_and_column_orientation() {
+        let input = r#"{
+            "range":"A1:B2",
+            "nullPolicy":"clear",
+            "majorDimension":"columns",
+            "values":[["A","B"],[1,2]]
+        }"#;
+        let streamed = parse_xlsx_range_set_json_reader(Cursor::new(input.as_bytes()))
+            .expect("streamed object matrix");
+
+        assert_eq!(streamed.range.as_deref(), Some("A1:B2"));
+        assert_eq!(streamed.null_policy.as_deref(), Some("clear"));
+        assert_eq!(streamed.major_dimension, "columns");
+        assert_eq!(streamed.rows[0][0].value, "A");
+        assert_eq!(streamed.rows[0][1].value, "1");
+        assert_eq!(streamed.rows[1][0].value, "B");
+        assert_eq!(streamed.rows[1][1].value, "2");
+    }
 }

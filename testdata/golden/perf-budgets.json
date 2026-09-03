@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "maxRegressionPercent": 25,
+  "measurements": {
+    "pptxBuild50Slides": {
+      "baselineMs": 8000,
+      "hardLimitMs": 10000,
+      "workload": "50-slide PPTX build spec"
+    },
+    "xlsxRangesSet100kCells": {
+      "baselineMs": 2000,
+      "hardLimitMs": 2500,
+      "maxRssMiB": 300,
+      "workload": "100,000 cells from a generated 50 MB JSON values file"
+    },
+    "outlineLargestCommittedWorkbook": {
+      "baselineMs": 400,
+      "hardLimitMs": 500,
+      "workload": "outline on the largest committed XLSX fixture"
+    },
+    "checkLargestCommittedWorkbook": {
+      "baselineMs": 800,
+      "hardLimitMs": 1000,
+      "workload": "check without render or Open XML SDK on the largest committed XLSX fixture"
+    }
+  }
+}

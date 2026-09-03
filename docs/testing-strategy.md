@@ -44,6 +44,41 @@ cargo test --test rust_contract_smoke <filter> -- --nocapture
 cargo test --lib <module_filter> -- --nocapture
 ```
 
+## Performance Budgets
+
+Performance budgets are opt-in locally and always run with optimized code. The
+Ubuntu `performance-budgets` CI job uses the same command and serializes the
+workloads so they do not contend with one another:
+
+```bash
+OOXML_PERF_BUDGETS=1 cargo test --release --test perf_budgets -- --nocapture --test-threads=1
+```
+
+Setting `OOXML_PERF_BUDGETS=1` on a debug test binary is an error. Without the
+variable, the baseline-contract test still runs but the timed workloads report
+a clean skip. `testdata/golden/perf-budgets.json` is the reviewed baseline: a
+measurement fails when it exceeds the stored baseline by more than 25 percent,
+and the ranges-set case also fails above 300 MiB peak resident memory. On Linux,
+the harness samples `VmHWM`/`VmRSS` from `/proc` while the CLI child runs.
+
+The initial release-mode profile on 2026-09-04 recorded:
+
+- 50 titled PPTX slides built in 2.662 to 7.158 seconds under concurrent local
+  runner load, with 23 to 24 MiB peak RSS; the shared-runner ceiling is 10
+  seconds.
+- 100,000 XLSX cells loaded from a generated 50 MB JSON values file in 0.725
+  to 1.330 seconds. Consuming JSON rows while rendering reduced peak RSS from
+  387 MiB to 284 MiB; the gates are 2.5 seconds and 300 MiB.
+- `outline` on the largest committed XLSX fixture in 24 ms, against a 500 ms
+  ceiling.
+- `check --openxml-sdk skip` on that fixture, without render, in 52 ms, against
+  a 1 second ceiling.
+
+The values printed by the test are diagnostic measurements, not cross-machine
+microbenchmark claims. Baseline changes require an intentional JSON diff plus
+an updated profiling note; normal CI failures are not resolved by silently
+regenerating or widening the baseline.
+
 Windows Office proof:
 
 ```powershell
