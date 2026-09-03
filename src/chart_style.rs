@@ -98,9 +98,8 @@ pub(crate) fn resolve_chart_house_style(
 }
 
 pub(crate) fn resolved_chart_title(explicit: Option<&str>, series_headers: &[String]) -> String {
-    let explicit = explicit.map(str::trim).unwrap_or_default();
-    if !explicit.is_empty() {
-        return explicit.to_string();
+    if let Some(explicit) = explicit {
+        return explicit.trim().to_string();
     }
     series_headers
         .iter()
@@ -290,5 +289,6 @@ mod tests {
             resolved_chart_title(Some(" Explicit "), &headers),
             "Explicit"
         );
+        assert_eq!(resolved_chart_title(Some(""), &headers), "");
     }
 }

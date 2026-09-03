@@ -341,6 +341,8 @@ fn xlsx_rule_set_uses_real_cells_styles_charts_tables_and_freeze_state() {
         "A1:B3",
         "--anchor",
         "D2",
+        "--title",
+        "",
         "--in-place",
     ]);
     fs::write(
