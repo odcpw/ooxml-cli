@@ -133,6 +133,8 @@ pub(crate) fn pptx_build(args: &[String]) -> crate::CliResult<Value> {
     };
 
     let compiled = compile_pptx_spec(&spec).map_err(build_compile_cli_error)?;
+    validate_operation_sources(&compiled.plan.operations, &spec_base)
+        .map_err(|error| super::compiler::execution_error_with_spec_path(&compiled.plan, error))?;
     if let Some(path) = emit_spec_path.as_deref() {
         write_emitted_spec(path, spec.document())?;
     }
@@ -430,6 +432,54 @@ fn materialize_operations(
         .collect()
 }
 
+fn validate_operation_sources(
+    operations: &[super::BuildOperation],
+    spec_base: &Path,
+) -> crate::CliResult<()> {
+    for (operation_index, operation) in operations.iter().enumerate() {
+        for (key, value) in &operation.args {
+            if is_path_arg(&operation.command, key) {
+                validate_path_value(value, key, spec_base, operation_index)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_path_value(
+    value: &Value,
+    key: &str,
+    spec_base: &Path,
+    operation_index: usize,
+) -> crate::CliResult<()> {
+    match value {
+        Value::String(value) => {
+            let (_, path) = path_assignment(value, key);
+            if path.starts_with(GENERATED_PREFIX) {
+                return Ok(());
+            }
+            let source = resolve_source_path(path, spec_base);
+            match fs::metadata(&source) {
+                Ok(metadata) if metadata.is_file() => Ok(()),
+                Ok(_) => Err(crate::CliError::file_not_found(format!(
+                    "op {operation_index} build source is not a file: {}",
+                    source.display()
+                ))),
+                Err(cause) => Err(crate::CliError::file_not_found(format!(
+                    "op {operation_index} cannot read build source {}: {cause}",
+                    source.display()
+                ))),
+            }
+        }
+        Value::Array(values) => values
+            .iter()
+            .try_for_each(|value| validate_path_value(value, key, spec_base, operation_index)),
+        _ => Err(crate::CliError::invalid_args(format!(
+            "build path field {key:?} must be a string or string array"
+        ))),
+    }
+}
+
 fn is_path_arg(command: &str, key: &str) -> bool {
     matches!(
         key,
@@ -471,22 +521,11 @@ fn materialize_path_string(
     operation_index: usize,
     source_index: &mut usize,
 ) -> crate::CliResult<String> {
-    let (assignment, path) = if key == "paragraphsFile" {
-        value
-            .split_once('=')
-            .map(|(target, path)| (Some(target), path))
-            .unwrap_or((None, value))
-    } else {
-        (None, value)
-    };
+    let (assignment, path) = path_assignment(value, key);
     let rendered = if let Some(relative) = path.strip_prefix(GENERATED_PREFIX) {
         PathBuf::from("generated").join(relative)
     } else {
-        let source = if Path::new(path).is_absolute() {
-            PathBuf::from(path)
-        } else {
-            spec_base.join(path)
-        };
+        let source = resolve_source_path(path, spec_base);
         let index = *source_index;
         *source_index += 1;
         stage_build_source(&source, temp, operation_index, key, index)?
@@ -496,6 +535,25 @@ fn materialize_path_string(
         Some(target) => format!("{target}={rendered}"),
         None => rendered.into_owned(),
     })
+}
+
+fn path_assignment<'a>(value: &'a str, key: &str) -> (Option<&'a str>, &'a str) {
+    if key == "paragraphsFile" {
+        value
+            .split_once('=')
+            .map(|(target, path)| (Some(target), path))
+            .unwrap_or((None, value))
+    } else {
+        (None, value)
+    }
+}
+
+fn resolve_source_path(path: &str, spec_base: &Path) -> PathBuf {
+    if Path::new(path).is_absolute() {
+        PathBuf::from(path)
+    } else {
+        spec_base.join(path)
+    }
 }
 
 fn stage_build_source(
