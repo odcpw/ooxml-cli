@@ -8,6 +8,7 @@ mod apply;
 mod brand;
 mod capabilities;
 mod chart_style;
+mod check;
 mod cli_args;
 mod cli_core;
 mod cli_dispatch;
@@ -601,6 +602,7 @@ fn is_text_utility_command(args: &[String]) -> bool {
     }
     match args {
         [cmd, ..] if cmd == "capabilities" => true,
+        [cmd, ..] if cmd == "check" => true,
         [cmd, ..] if cmd == "agent-triage" => true,
         [cmd, ..] if cmd == "version" => true,
         [cmd, ..] if cmd == "doctor" => true,

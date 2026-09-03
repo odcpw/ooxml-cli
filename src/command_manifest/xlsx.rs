@@ -173,12 +173,12 @@ pub(super) fn front_command_specs() -> Vec<CommandSpec> {
                 "string",
                 "RRGGBB or #RRGGBB brand color used to derive the workbook theme",
             ),
-            flag(
-                "--brand",
-                "brand",
-                "string",
-                "brand JSON file used to derive the workbook theme",
-            ),
+                flag(
+                    "--brand",
+                    "brand",
+                    "string",
+                    "cross-family brand kit JSON; may be combined with --template",
+                ),
             flag(
                 "--force",
                 "force",

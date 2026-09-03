@@ -21,6 +21,7 @@ const CONDITIONAL_FORMAT_SHOW_ALIASES: &[&str] = &[
 
 const SERVE_INSPECT_SPECS: &[ServeInspectSpec] = &[
     spec(CommandId::Core(CoreCommandId::Outline), "outline", &[]),
+    spec(CommandId::Core(CoreCommandId::Check), "check", &[]),
     spec(
         CommandId::Xlsx(XlsxCommandId::RangesExport),
         "xlsx ranges export",
@@ -223,6 +224,11 @@ const SERVE_INSPECT_SPECS: &[ServeInspectSpec] = &[
         "pptx shapes show",
         &[],
     ),
+    spec(
+        CommandId::Pptx(PptxCommandId::TextMeasure),
+        "pptx text measure",
+        &[],
+    ),
 ];
 
 const fn spec(
@@ -291,21 +297,21 @@ mod tests {
             .flat_map(|probe| std::iter::once(probe.canonical).chain(probe.aliases.iter().copied()))
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(SERVE_INSPECT_SPECS.len(), 43);
-        assert_eq!(probes.len(), 43);
-        assert_eq!(manifest_ids.len(), 43);
-        assert_eq!(namespace_ids.len(), 43);
-        assert_eq!(probe_ids.len(), 43);
+        assert_eq!(SERVE_INSPECT_SPECS.len(), 45);
+        assert_eq!(probes.len(), 45);
+        assert_eq!(manifest_ids.len(), 45);
+        assert_eq!(namespace_ids.len(), 45);
+        assert_eq!(probe_ids.len(), 45);
         assert_eq!(manifest_ids, namespace_ids);
         assert_eq!(namespace_ids, probe_ids);
         assert_eq!(namespace_canonicals, probe_canonicals);
-        assert_eq!(namespace_labels.len(), 49);
+        assert_eq!(namespace_labels.len(), 51);
         assert_eq!(namespace_labels, probe_labels);
 
         let mut namespace_families = BTreeMap::new();
         let mut probe_families = BTreeMap::new();
         let mut manifest_families = BTreeMap::new();
-        for family in ["outline", "xlsx", "docx", "pptx"] {
+        for family in ["outline", "check", "xlsx", "docx", "pptx"] {
             namespace_families.insert(
                 family,
                 SERVE_INSPECT_SPECS
@@ -331,6 +337,7 @@ mod tests {
                         matches!(
                             (family, id),
                             ("outline", CommandId::Core(CoreCommandId::Outline))
+                                | ("check", CommandId::Core(CoreCommandId::Check))
                                 | ("xlsx", CommandId::Xlsx(_))
                                 | ("docx", CommandId::Docx(_))
                                 | ("pptx", CommandId::Pptx(_))
@@ -339,7 +346,13 @@ mod tests {
                     .collect::<BTreeSet<_>>(),
             );
         }
-        for (family, count) in [("outline", 1), ("xlsx", 17), ("docx", 12), ("pptx", 13)] {
+        for (family, count) in [
+            ("outline", 1),
+            ("check", 1),
+            ("xlsx", 17),
+            ("docx", 12),
+            ("pptx", 14),
+        ] {
             assert_eq!(
                 namespace_families[family], probe_families[family],
                 "exact {family} ID set"

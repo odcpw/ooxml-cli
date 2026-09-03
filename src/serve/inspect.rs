@@ -34,6 +34,7 @@ pub(super) fn serve_inspect_command(
     };
     let mut result = match command_id {
         CommandId::Core(CoreCommandId::Outline) => serve_outline(working, args),
+        CommandId::Core(CoreCommandId::Check) => crate::check::inspect(working, args),
         CommandId::Xlsx(XlsxCommandId::RangesExport) => {
             let sheet = json_string(args, "sheet")?;
             let range = json_string(args, "range")?;
@@ -319,6 +320,20 @@ pub(super) fn serve_inspect_command(
                 .or_else(|| json_bool(args, "includeBounds"))
                 .unwrap_or(false);
             pptx_shapes_show(working, slide, include_text, include_bounds)
+        }
+        CommandId::Pptx(PptxCommandId::TextMeasure) => {
+            let slide = json_u32(args, "slide")?
+                .ok_or_else(|| CliError::invalid_args("slide is required"))?;
+            let target = json_string(args, "target")?;
+            crate::text_metrics::pptx_text_measure(
+                working,
+                &[
+                    "--slide".to_string(),
+                    slide.to_string(),
+                    "--target".to_string(),
+                    target,
+                ],
+            )
         }
         _ => Err(CliError::invalid_args(format!(
             "unsupported serve inspect command: {command}"

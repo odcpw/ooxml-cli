@@ -3,9 +3,11 @@ complete -c ooxml -n '__fish_use_subcommand' -a apply
 complete -c ooxml -n '__fish_use_subcommand' -a agent
 complete -c ooxml -n '__fish_use_subcommand' -a agent-triage
 complete -c ooxml -n '__fish_use_subcommand' -a capabilities
+complete -c ooxml -n '__fish_use_subcommand' -a check
 complete -c ooxml -n '__fish_use_subcommand' -a completion
 complete -c ooxml -n '__fish_use_subcommand' -a conformance
 complete -c ooxml -n '__fish_use_subcommand' -a convert
+complete -c ooxml -n '__fish_use_subcommand' -a design-check
 complete -c ooxml -n '__fish_use_subcommand' -a diff
 complete -c ooxml -n '__fish_use_subcommand' -a doctor
 complete -c ooxml -n '__fish_use_subcommand' -a docx

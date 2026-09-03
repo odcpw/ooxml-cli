@@ -32,6 +32,15 @@ pub(crate) fn inspect_probe_cases<I>(
         ),
         probe(
             &mut resolve,
+            "check",
+            "check",
+            &[],
+            "pptx-title-content",
+            serde_json::json!({"openxml-sdk": "skip"}),
+            &["check", "{file}", "--openxml-sdk", "skip"],
+        ),
+        probe(
+            &mut resolve,
             "xlsx",
             "xlsx ranges export",
             &[],
@@ -461,6 +470,17 @@ pub(crate) fn inspect_probe_cases<I>(
                 "1",
                 "--include-text",
                 "--include-bounds",
+            ],
+        ),
+        probe(
+            &mut resolve,
+            "pptx",
+            "pptx text measure",
+            &[],
+            "pptx-title-content",
+            serde_json::json!({"slide": 1, "target": "title"}),
+            &[
+                "pptx", "text", "measure", "{file}", "--slide", "1", "--target", "title",
             ],
         ),
     ]

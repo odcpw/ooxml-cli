@@ -42,6 +42,24 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                 ),
                 flag("--title", "title", "string", "chart title"),
                 flag(
+                    "--style",
+                    "style",
+                    "string",
+                    "house style: minimal, default, or dense",
+                ),
+                flag(
+                    "--number-format",
+                    "numberFormat",
+                    "string",
+                    "value-axis and numeric-cache format override",
+                ),
+                flag(
+                    "--data-labels",
+                    "dataLabels",
+                    "bool",
+                    "show value data labels",
+                ),
+                flag(
                     "--values-json",
                     "valuesJson",
                     "string",

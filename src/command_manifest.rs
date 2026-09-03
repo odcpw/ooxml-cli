@@ -493,6 +493,10 @@ const COMPLETION_SPECS: &[CompletionSpec] = &[
         command: Some(CommandId::Core(core::CoreCommandId::Capabilities)),
     },
     CompletionSpec {
+        token: "check",
+        command: Some(CommandId::Core(core::CoreCommandId::Check)),
+    },
+    CompletionSpec {
         token: "completion",
         command: Some(CommandId::Core(core::CoreCommandId::Completion)),
     },
@@ -503,6 +507,10 @@ const COMPLETION_SPECS: &[CompletionSpec] = &[
     CompletionSpec {
         token: "convert",
         command: Some(CommandId::Core(core::CoreCommandId::ConvertXlsmToXlsx)),
+    },
+    CompletionSpec {
+        token: "design-check",
+        command: Some(CommandId::Core(core::CoreCommandId::DesignCheck)),
     },
     CompletionSpec {
         token: "diff",
@@ -673,7 +681,7 @@ mod tests {
         let root = command_specs();
         let frozen = frozen_contract_commands();
 
-        assert_eq!(core.len(), 38);
+        assert_eq!(core.len(), 42);
         assert_eq!(
             root[..core.len()]
                 .iter()
@@ -780,7 +788,7 @@ mod tests {
     #[test]
     fn complete_pptx_shadow_has_expected_execution_inventory() {
         let specs = pptx::command_specs();
-        assert_eq!(specs.len(), 109);
+        assert_eq!(specs.len(), 111);
         let inventory = specs.iter().fold(
             (0, 0, 0, 0),
             |(groups, direct, inspect, mutation), spec| match &spec.execution {
@@ -790,7 +798,7 @@ mod tests {
                 ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
             },
         );
-        assert_eq!(inventory, (20, 65, 13, 11));
+        assert_eq!(inventory, (20, 66, 14, 11));
         assert_eq!(
             specs
                 .iter()
@@ -812,12 +820,12 @@ mod tests {
         let front = xlsx::front_command_specs();
         let forms = xlsx::forms_command_specs();
 
-        assert_eq!(xlsx_start, 147);
+        assert_eq!(xlsx_start, 153);
         assert_eq!(front.len(), xlsx::FRONT_COMMAND_COUNT);
         assert_eq!(xlsx::FRONT_COMMAND_COUNT, 22);
-        assert_segment_matches_frozen_contract(&front, &frozen[xlsx_start..169]);
+        assert_segment_matches_frozen_contract(&front, &frozen[xlsx_start..175]);
         assert_eq!(forms.len(), 1);
-        assert_segment_matches_frozen_contract(&forms, &frozen[224..225]);
+        assert_segment_matches_frozen_contract(&forms, &frozen[230..231]);
     }
 
     #[test]
@@ -1018,7 +1026,7 @@ mod tests {
     fn core_ids_paths_and_repeated_builds_are_unique_and_stable() {
         let first = core::command_specs();
         let second = core::command_specs();
-        assert_eq!(first.len(), 38);
+        assert_eq!(first.len(), 42);
         assert_eq!(
             first
                 .iter()
@@ -1075,6 +1083,7 @@ mod tests {
                 CommandId::Core(core::CoreCommandId::Completion),
                 CommandId::Core(core::CoreCommandId::Conformance),
                 CommandId::Core(core::CoreCommandId::Template),
+                CommandId::Core(core::CoreCommandId::TemplateBrand),
                 CommandId::Core(core::CoreCommandId::TemplateProfile),
             ])
         );
@@ -1086,7 +1095,10 @@ mod tests {
                     _ => None,
                 })
                 .collect::<Vec<_>>(),
-            vec![CommandId::Core(core::CoreCommandId::Outline)]
+            vec![
+                CommandId::Core(core::CoreCommandId::Outline),
+                CommandId::Core(core::CoreCommandId::Check),
+            ]
         );
     }
 
@@ -1230,7 +1242,7 @@ mod tests {
         let first = command_specs();
         let second = command_specs();
         let frozen = frozen_contract_commands();
-        assert_eq!(first.len(), 320);
+        assert_eq!(first.len(), 326);
         assert_segment_matches_frozen_contract(&first, &frozen);
         assert_eq!(
             first.iter().map(capability_value).collect::<Vec<_>>(),
@@ -1241,33 +1253,33 @@ mod tests {
     #[test]
     fn complete_shadow_family_counts_and_order_are_exact() {
         let specs = command_specs();
-        assert_eq!(core::CoreCommandId::ALL.len(), 38);
-        assert_eq!(pptx::PptxCommandId::ALL.len(), 109);
+        assert_eq!(core::CoreCommandId::ALL.len(), 42);
+        assert_eq!(pptx::PptxCommandId::ALL.len(), 111);
         assert_eq!(xlsx::XlsxCommandId::ALL.len(), 107);
         assert_eq!(docx::DocxCommandId::ALL.len(), 50);
         assert_eq!(vba::VbaCommandId::ALL.len(), 16);
         assert!(
-            specs[..38]
+            specs[..42]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Core(_)))
         );
         assert!(
-            specs[38..147]
+            specs[42..153]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Pptx(_)))
         );
         assert!(
-            specs[147..254]
+            specs[153..260]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Xlsx(_)))
         );
         assert!(
-            specs[254..304]
+            specs[260..310]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Docx(_)))
         );
         assert!(
-            specs[304..320]
+            specs[310..326]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Vba(_)))
         );
@@ -1281,7 +1293,7 @@ mod tests {
         let spec_ids = specs.iter().map(|spec| spec.id).collect::<Vec<_>>();
         let spec_id_set = spec_ids.iter().copied().collect::<BTreeSet<_>>();
         let path_set = specs.iter().map(|spec| spec.path).collect::<BTreeSet<_>>();
-        assert_eq!(declared.len(), 320);
+        assert_eq!(declared.len(), 326);
         assert_eq!(declared_set.len(), declared.len());
         assert_eq!(spec_id_set, declared_set);
         assert_eq!(spec_ids.len(), spec_id_set.len());
@@ -1295,7 +1307,7 @@ mod tests {
         let mut resolved_ids = BTreeSet::new();
         let mut resolved_paths = BTreeSet::new();
 
-        assert_eq!(specs.len(), 320);
+        assert_eq!(specs.len(), 326);
         for spec in &specs {
             let resolved = command_id_for_canonical_path(spec.path);
             assert_eq!(
@@ -1329,7 +1341,7 @@ mod tests {
         }
 
         assert_eq!(resolved_ids, declared);
-        assert_eq!(resolved_paths.len(), 320);
+        assert_eq!(resolved_paths.len(), 326);
     }
 
     #[test]
@@ -1344,7 +1356,7 @@ mod tests {
                 ExecutionSupport::ServeMutation { .. } => (groups, direct, inspect, mutation + 1),
             },
         );
-        assert_eq!(inventory, (57, 147, 43, 73));
+        assert_eq!(inventory, (58, 150, 45, 73));
         assert_eq!(
             specs
                 .iter()
@@ -1460,9 +1472,11 @@ mod tests {
             "agent",
             "agent-triage",
             "capabilities",
+            "check",
             "completion",
             "conformance",
             "convert",
+            "design-check",
             "diff",
             "doctor",
             "docx",
@@ -1485,13 +1499,13 @@ mod tests {
         let specs = command_specs();
         let tokens = completion_tokens();
         assert_eq!(tokens, EXPECTED);
-        assert_eq!(COMPLETION_SPECS.len(), 25);
+        assert_eq!(COMPLETION_SPECS.len(), 27);
         assert_eq!(
             COMPLETION_SPECS
                 .iter()
                 .filter(|row| row.command.is_some())
                 .count(),
-            24
+            26
         );
         assert_eq!(
             COMPLETION_SPECS

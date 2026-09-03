@@ -7,13 +7,13 @@ use std::fs;
 use crate::inspect::inspect;
 use crate::xlsx_freeze::xlsx_freeze_show;
 use crate::{
-    CliError, CliResult, append_xml_text_event, attr, docx_block_has_section_properties,
-    docx_blocks_show, docx_body_block_ranges, docx_body_tag, docx_fields_list,
-    docx_headers_footers_list, docx_images_list, docx_tables_show, find_docx_document_part,
-    is_xml_text_event, local_name, pptx_charts_list, pptx_layouts_list, pptx_masters_list,
-    pptx_masters_show, pptx_shapes_show, pptx_slides_list, xlsx_charts_list, xlsx_comments_list,
-    xlsx_conditional_formats_list, xlsx_data_validations_list, xlsx_names_list, xlsx_pivots_list,
-    xlsx_sheets_show, xlsx_tables_list, zip_entry_names, zip_text,
+    CliError, CliResult, append_xml_text_event, attr, command_arg,
+    docx_block_has_section_properties, docx_blocks_show, docx_body_block_ranges, docx_body_tag,
+    docx_fields_list, docx_headers_footers_list, docx_images_list, docx_tables_show,
+    find_docx_document_part, is_xml_text_event, local_name, pptx_charts_list, pptx_layouts_list,
+    pptx_masters_list, pptx_masters_show, pptx_shapes_show, pptx_slides_list, xlsx_charts_list,
+    xlsx_comments_list, xlsx_conditional_formats_list, xlsx_data_validations_list, xlsx_names_list,
+    xlsx_pivots_list, xlsx_sheets_show, xlsx_tables_list, zip_entry_names, zip_text,
 };
 
 const EMU_PER_INCH: f64 = 914_400.0;
@@ -66,6 +66,10 @@ pub(crate) fn outline(file: &str, options: OutlineOptions<'_>) -> CliResult<Valu
     result.insert("depth".to_string(), json!(options.depth));
     result.insert("textPreviewChars".to_string(), json!(options.text_preview));
     result.insert("summary".to_string(), inspected["summary"].clone());
+    result.insert(
+        "checkCommand".to_string(),
+        json!(format!("ooxml --json check {}", command_arg(file))),
+    );
     if let Some(scope) = scope_json(&options) {
         result.insert("scope".to_string(), scope);
     }

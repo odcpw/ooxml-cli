@@ -79,6 +79,11 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
             exit_code: EXIT_SUCCESS,
         });
     }
+    if let [cmd, file, rest @ ..] = args
+        && cmd == "check"
+    {
+        return crate::check::dispatch(flags, file, rest);
+    }
     if let [family, group, verb, file, rest @ ..] = args
         && family == "pptx"
         && group == "slides"
@@ -1477,11 +1482,14 @@ fn dispatch_value(args: &[String]) -> CliResult<Value> {
                     "--slot",
                     "--inset",
                     "--aspect",
+                    "--style",
+                    "--number-format",
                     "--out",
                     "--backup",
                 ],
                 &[
                     "--embed-workbook",
+                    "--data-labels",
                     "--dry-run",
                     "--in-place",
                     "--no-validate",

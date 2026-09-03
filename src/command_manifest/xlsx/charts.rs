@@ -1,7 +1,7 @@
 use super::{ExecutionSupport, XlsxCommandId, flag, spec};
 
 pub(super) const COMMAND_COUNT: usize = 12;
-pub(super) const LEGACY_START: usize = 186;
+pub(super) const LEGACY_START: usize = 192;
 
 pub(super) fn command_specs() -> Vec<super::CommandSpec> {
     vec![
@@ -57,6 +57,24 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                 ),
                 flag("--table", "table", "string", "source table selector"),
                 flag("--title", "title", "string", "chart title"),
+                flag(
+                    "--style",
+                    "style",
+                    "string",
+                    "house style: minimal, default, or dense",
+                ),
+                flag(
+                    "--number-format",
+                    "numberFormat",
+                    "string",
+                    "value-axis and numeric-cache format override",
+                ),
+                flag(
+                    "--data-labels",
+                    "dataLabels",
+                    "bool",
+                    "show value data labels",
+                ),
                 flag("--anchor", "anchor", "string", "chart anchor top-left cell"),
                 flag(
                     "--expect-source-range",

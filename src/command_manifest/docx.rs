@@ -3,7 +3,7 @@ use serde_json::Value;
 use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 
 pub(super) const COMMAND_COUNT: usize = 50;
-pub(super) const LEGACY_START: usize = 254;
+pub(super) const LEGACY_START: usize = 260;
 
 command_id_enum! {
 pub(crate) enum DocxCommandId {
@@ -196,7 +196,7 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
         spec(
             DocxCommandId::Scaffold,
             &["docx", "scaffold"],
-            "scaffold <output.docx> (or --out <output.docx>)",
+            "scaffold <output.docx> (or --out <output.docx>) [--brand <brand.json>]",
             "Create a minimal DOCX package from scratch and validate it by default.",
             &["package"],
             vec![
@@ -235,6 +235,12 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "template",
                     "string",
                     "DOCX template whose styles, supporting parts, headers, footers, and page setup are inherited",
+                ),
+                flag(
+                    "--brand",
+                    "brand",
+                    "string",
+                    "cross-family brand kit JSON; may be combined with --template",
                 ),
                 flag(
                     "--force",
@@ -1289,6 +1295,30 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "int",
                     "replacement height in EMUs; 0 keeps existing height",
                 ),
+                flag(
+                    "--fit",
+                    "fit",
+                    "string",
+                    "image placement policy: contain, cover, or stretch",
+                ),
+                flag(
+                    "--max-dpi",
+                    "maxDpi",
+                    "number",
+                    "maximum embedded raster density; defaults to 220",
+                ),
+                flag(
+                    "--keep-original",
+                    "keepOriginal",
+                    "bool",
+                    "preserve original image bytes instead of downsampling",
+                ),
+                flag(
+                    "--alt",
+                    "alt",
+                    "string",
+                    "alternative text stored on the image",
+                ),
                 flag("--out", "out", "string", "output file path"),
                 flag(
                     "--in-place",
@@ -1334,6 +1364,30 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                 ),
                 flag("--width", "width", "int", "image width in EMUs"),
                 flag("--height", "height", "int", "image height in EMUs"),
+                flag(
+                    "--fit",
+                    "fit",
+                    "string",
+                    "image placement policy: contain, cover, or stretch",
+                ),
+                flag(
+                    "--max-dpi",
+                    "maxDpi",
+                    "number",
+                    "maximum embedded raster density; defaults to 220",
+                ),
+                flag(
+                    "--keep-original",
+                    "keepOriginal",
+                    "bool",
+                    "preserve original image bytes instead of downsampling",
+                ),
+                flag(
+                    "--alt",
+                    "alt",
+                    "string",
+                    "alternative text stored on the image",
+                ),
                 flag(
                     "--caption",
                     "caption",

@@ -1,6 +1,6 @@
 use super::{PptxCommandId, direct, flag, inspect, spec};
 
-pub(super) const COMMAND_COUNT: usize = 11;
+pub(super) const COMMAND_COUNT: usize = 12;
 
 pub(super) fn command_specs() -> Vec<super::CommandSpec> {
     vec![
@@ -46,6 +46,34 @@ pub(super) fn command_specs() -> Vec<super::CommandSpec> {
                 ),
             ],
             inspect("read-only command; call via inspect in serve/MCP"),
+            None,
+        ),
+        spec(
+            PptxCommandId::SlidesCompose,
+            &["pptx", "slides", "compose"],
+            "compose <file> --slide <n> --items <json> [--arrangement row|column|grid:RxC]",
+            "Compose text, image, chart, and table items into the resolved slide body area with deterministic flex-like geometry.",
+            &["slide", "shape", "image", "chart", "table"],
+            with_output_flags(vec![
+                flag("--slide", "slide", "int", "1-based slide number"),
+                flag("--items", "items", "string", "JSON composition item array"),
+                flag(
+                    "--arrangement",
+                    "arrangement",
+                    "string",
+                    "layout arrangement: row, column, or grid:RxC",
+                ),
+                flag("--gutter", "gutter", "string", "gap between composed items"),
+                flag(
+                    "--padding",
+                    "padding",
+                    "string",
+                    "inset from the resolved body area",
+                ),
+            ]),
+            direct(
+                "one-process staged composition returns its underlying placement/create operations; compose itself is not yet a serve/MCP op",
+            ),
             None,
         ),
         spec(
@@ -268,7 +296,7 @@ mod tests {
                 .iter()
                 .filter(|spec| matches!(&spec.execution, ExecutionSupport::DirectOnly { .. }))
                 .count(),
-            8
+            9
         );
     }
 }

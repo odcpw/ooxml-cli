@@ -740,30 +740,77 @@ fn apply_post_rewrite_features(file: &str, family: &str, kit: &BrandKit) -> CliR
         if let Some(logo) = kit.logo.as_ref() {
             apply_pptx_logo(file, logo)?;
         }
-    } else if family == "docx"
-        && let Some(footer) = kit.footer_text.as_deref()
-    {
-        crate::docx_headers::docx_headers_footers_set_text(
-            file,
-            "footer",
-            crate::docx_headers::DocxHeaderFooterSetTextOptions {
-                id: "",
-                ref_type: "default",
-                section: 0,
-                index: 1,
-                selector: None,
-                selector_given: false,
-                index_given: false,
-                text: footer,
-                page_numbers: false,
+    } else if family == "docx" {
+        if let Some(footer) = kit.footer_text.as_deref() {
+            crate::docx_headers::docx_headers_footers_set_text(
+                file,
+                "footer",
+                crate::docx_headers::DocxHeaderFooterSetTextOptions {
+                    id: "",
+                    ref_type: "default",
+                    section: 0,
+                    index: 1,
+                    selector: None,
+                    selector_given: false,
+                    index_given: false,
+                    text: footer,
+                    page_numbers: false,
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    in_place: true,
+                    no_validate: true,
+                },
+            )?;
+        }
+        if let Some(logo) = kit.logo.as_ref() {
+            apply_docx_logo(file, logo)?;
+        }
+    }
+    Ok(())
+}
+
+fn apply_docx_logo(file: &str, logo: &BrandLogo) -> CliResult<()> {
+    let after = if logo.placement.starts_with("bottom") {
+        let document = zip_text(file, "word/document.xml")?;
+        crate::docx_rich_block_reports(&document, false)
+            .map_err(|err| CliError::unexpected(err.message))?
+            .len()
+    } else {
+        0
+    };
+    crate::docx_images::docx_images_insert(
+        file,
+        crate::docx_images::DocxImageInsertOptions {
+            after,
+            image_file: &logo.path,
+            expected_hash: "",
+            width: logo.width_emu.unwrap_or(1_200_000),
+            height: logo.height_emu.unwrap_or(400_000),
+            caption: None,
+            align: if logo.placement.ends_with("right") {
+                "right"
+            } else {
+                "left"
+            },
+            image: crate::docx_images::DocxImagePipelineArgs {
+                fit: Some("contain"),
+                max_dpi: None,
+                keep_original: false,
+                alt: "Brand Logo",
+            },
+            mutation: crate::DocxParagraphMutationOptions {
+                text: None,
+                text_file: None,
+                style: "",
                 out: None,
                 backup: None,
                 dry_run: false,
                 in_place: true,
                 no_validate: true,
             },
-        )?;
-    }
+        },
+    )?;
     Ok(())
 }
 

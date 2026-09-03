@@ -23,11 +23,14 @@ pub(crate) enum CoreCommandId {
     Conformance,
     ConformanceCoverage,
     ConformanceCheck,
+    DesignCheck,
     Apply,
     ConvertXlsmToXlsx,
     RepairNormalize,
     Template,
     TemplateApply,
+    TemplateBrand,
+    TemplateBrandExtract,
     TemplateTokens,
     TemplateProfile,
     TemplateProfileSave,
@@ -36,6 +39,7 @@ pub(crate) enum CoreCommandId {
     Mcp,
     Inspect,
     Outline,
+    Check,
     Validate,
     Render,
     Diff,
@@ -56,16 +60,24 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
         spec(
             CoreCommandId::Capabilities,
             &["capabilities"],
-            "capabilities [--for <filter>]",
+            "capabilities [--for <filter>|--schema brand]",
             "Emit the Rust-supported machine-readable command and object inventory.",
             &[],
             direct("read-only self-description command"),
-            vec![flag(
-                "--for",
-                "for",
-                "string",
-                "filter by command family or object kind; natural plurals and group aliases such as slides, ranges, conditional-formats, and modules are accepted",
-            )],
+            vec![
+                flag(
+                    "--for",
+                    "for",
+                    "string",
+                    "filter by command family or object kind; natural plurals and group aliases such as slides, ranges, conditional-formats, and modules are accepted",
+                ),
+                flag(
+                    "--schema",
+                    "schema",
+                    "string",
+                    "print a published input schema; supported value: brand",
+                ),
+            ],
         ),
         spec(
             CoreCommandId::AgentTriage,
@@ -341,6 +353,38 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
             ],
         ),
         spec(
+            CoreCommandId::DesignCheck,
+            &["design-check"],
+            "design-check <file> [--ignore <code>] [--config <path>] | design-check --rules",
+            "Report deterministic, objective, fixable design findings for PPTX, DOCX, and XLSX packages.",
+            &[
+                "package", "slide", "shape", "sheet", "table", "chart", "block", "image",
+            ],
+            direct(
+                "read-only design analysis; findings include executable direct-CLI fix commands",
+            ),
+            vec![
+                flag(
+                    "--rules",
+                    "rules",
+                    "bool",
+                    "list the stable data-described design rule catalog",
+                ),
+                flag(
+                    "--ignore",
+                    "ignore",
+                    "string[]",
+                    "ignore a rule code; repeatable and comma-separated values are accepted",
+                ),
+                flag(
+                    "--config",
+                    "config",
+                    "string",
+                    "design policy JSON path; defaults to .ooxml-design.json adjacent to the package",
+                ),
+            ],
+        ),
+        spec(
             CoreCommandId::Apply,
             &["apply"],
             "apply <file> --ops <ops.json> (--out <file>|--in-place|--dry-run)",
@@ -453,8 +497,8 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
         spec(
             CoreCommandId::TemplateApply,
             &["template", "apply"],
-            "template apply <file> (--from <template>|--tokens <tokens.json>|--profile <profile.json>) (--out <file>|--in-place|--dry-run)",
-            "Apply proven design-token theme colors and fonts to a PPTX/XLSX package.",
+            "template apply <file> (--from <template>|--tokens <tokens.json>|--profile <profile.json>|--brand <brand.json>) (--out <file>|--in-place|--dry-run)",
+            "Apply proven design tokens or a cross-family brand kit to a PPTX/XLSX/DOCX package.",
             &["package", "style", "chart"],
             mutation(None),
             vec![
@@ -463,6 +507,12 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "backup",
                     "string",
                     "backup file path for --in-place",
+                ),
+                flag(
+                    "--brand",
+                    "brand",
+                    "string",
+                    "brand kit JSON to apply across theme and family defaults",
                 ),
                 flag(
                     "--dry-run",
@@ -525,6 +575,27 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "string",
                     "source TemplateTokens JSON dump",
                 ),
+            ],
+        ),
+        spec(
+            CoreCommandId::TemplateBrand,
+            &["template", "brand"],
+            "template brand",
+            "Extract and apply cross-family brand kits.",
+            &[],
+            group("it is a command group, not a leaf mutation command"),
+            vec![],
+        ),
+        spec(
+            CoreCommandId::TemplateBrandExtract,
+            &["template", "brand", "extract"],
+            "template brand extract <file> [--out <brand.json>] [--name <name>]",
+            "Derive a portable brand kit from a PPTX, XLSX, or DOCX theme.",
+            &["package", "style"],
+            direct("read-only artifact extraction"),
+            vec![
+                flag("--out", "out", "string", "brand JSON output path"),
+                flag("--name", "name", "string", "override extracted brand name"),
             ],
         ),
         spec(
@@ -654,6 +725,38 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
                     "section",
                     "integer",
                     "limit a DOCX outline to one 1-based section number",
+                ),
+            ],
+        ),
+        spec(
+            CoreCommandId::Check,
+            &["check"],
+            "check <file> [--render] [--openxml-sdk <auto|require|skip>] [--fail-on <error|warning>]",
+            "Run structural, strict, schema, layout, design, reference, and optional visual proof in one deterministic finding envelope.",
+            &[
+                "package", "slide", "shape", "sheet", "table", "chart", "pivot", "block", "style",
+            ],
+            ExecutionSupport::ServeInspect {
+                reason: Some("read-only unified proof command exposed through serve/MCP inspect"),
+            },
+            vec![
+                flag(
+                    "--render",
+                    "render",
+                    "bool",
+                    "add a shared-renderer visual proof pass",
+                ),
+                flag(
+                    "--openxml-sdk",
+                    "openxmlSdk",
+                    "string",
+                    "schema proof policy: auto, require, or skip",
+                ),
+                flag(
+                    "--fail-on",
+                    "failOn",
+                    "string",
+                    "exit failure threshold: error or warning",
                 ),
             ],
         ),

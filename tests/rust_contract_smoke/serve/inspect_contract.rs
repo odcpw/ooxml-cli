@@ -253,7 +253,7 @@ fn serve_and_mcp_cover_the_full_canonical_inspect_contract() {
 }
 
 fn assert_inspect_contract_inventory(cases: &[InspectProbeCase<&'static str>]) {
-    assert_eq!(cases.len(), 43);
+    assert_eq!(cases.len(), 45);
     let commands = cases
         .iter()
         .map(|case| case.canonical)
@@ -271,7 +271,13 @@ fn assert_inspect_contract_inventory(cases: &[InspectProbeCase<&'static str>]) {
         );
         assert_eq!(case.direct_argv.first().copied(), Some(case.family));
     }
-    for (family, expected) in [("outline", 1), ("xlsx", 17), ("docx", 12), ("pptx", 13)] {
+    for (family, expected) in [
+        ("outline", 1),
+        ("check", 1),
+        ("xlsx", 17),
+        ("docx", 12),
+        ("pptx", 14),
+    ] {
         assert_eq!(
             cases.iter().filter(|case| case.family == family).count(),
             expected,
@@ -287,7 +293,7 @@ fn assert_inspect_contract_inventory(cases: &[InspectProbeCase<&'static str>]) {
         6
     );
     assert_eq!(alias_set.len(), 6);
-    assert_eq!(commands.len() + alias_set.len(), 49);
+    assert_eq!(commands.len() + alias_set.len(), 51);
     assert_eq!(
         cases
             .iter()
