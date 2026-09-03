@@ -80,6 +80,7 @@ pub(crate) fn write_vba_project_manifest(
 pub(crate) fn manifest_relative_path(value: &str) -> CliResult<&Path> {
     let path = Path::new(value);
     if value.trim().is_empty()
+        || value.contains('\\')
         || path.is_absolute()
         || path.components().any(|component| {
             matches!(
@@ -89,7 +90,7 @@ pub(crate) fn manifest_relative_path(value: &str) -> CliResult<&Path> {
         })
     {
         return Err(CliError::invalid_args(format!(
-            "VBA project manifest module file must be a relative path inside --source-dir: {value:?}"
+            "VBA project manifest module file must be a relative forward-slash path inside --source-dir: {value:?}"
         )));
     }
     Ok(path)
@@ -213,6 +214,10 @@ mod tests {
 
         assert_eq!(first, second);
         assert!(first.ends_with(b"\n"));
+        assert!(
+            !first.contains(&b'\r'),
+            "manifest serialization must use LF on every platform"
+        );
         assert_eq!(parsed.modules[0].kind, "standard");
         let _ = fs::remove_dir_all(&temp_dir);
     }
@@ -223,6 +228,20 @@ mod tests {
         invalid.modules[0].file = "../Hello.bas".to_string();
         let error = validate_vba_project_manifest(&invalid, Path::new("vba-project.json"))
             .expect_err("parent traversal must fail");
+        assert_eq!(error.code, "invalid_args");
+        assert!(error.message.contains("inside --source-dir"));
+    }
+
+    #[test]
+    fn manifest_paths_are_relative_and_use_forward_slashes() {
+        let mut valid = manifest();
+        valid.modules[0].file = "modules/Hello.bas".to_string();
+        validate_vba_project_manifest(&valid, Path::new("vba-project.json"))
+            .expect("forward-slash relative manifest path");
+
+        valid.modules[0].file = "modules\\Hello.bas".to_string();
+        let error = validate_vba_project_manifest(&valid, Path::new("vba-project.json"))
+            .expect_err("backslash manifest path must fail on every platform");
         assert_eq!(error.code, "invalid_args");
         assert!(error.message.contains("inside --source-dir"));
     }

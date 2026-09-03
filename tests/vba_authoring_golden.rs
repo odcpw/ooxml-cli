@@ -30,8 +30,8 @@ const USERFORM_GOLDEN_SHA256: &str =
 const REBUILT_FIXTURE_DIR: &str = "testdata/golden/vba-authoring/xlsx-rebuilt";
 const REBUILT_GOLDEN_PACKAGE: &[u8] =
     include_bytes!("../testdata/golden/vba-authoring/xlsx-rebuilt/rebuilt.xlsm");
-const REBUILT_GOLDEN_MANIFEST: &str =
-    include_str!("../testdata/golden/vba-authoring/xlsx-rebuilt/vba-project.json");
+const REBUILT_GOLDEN_MANIFEST: &[u8] =
+    include_bytes!("../testdata/golden/vba-authoring/xlsx-rebuilt/vba-project.json");
 const REBUILT_GOLDEN_PROVENANCE: &str =
     include_str!("../testdata/golden/vba-authoring/xlsx-rebuilt/PROVENANCE.md");
 const REBUILT_GOLDEN_SHA256: &str =
@@ -885,7 +885,7 @@ fn xlsx_extract_rebuild_package_and_manifest_match_reviewed_goldens() {
             .as_ref()
     );
     let generated_manifest =
-        fs::read_to_string(source_dir.join("vba-project.json")).expect("read generated manifest");
+        fs::read(source_dir.join("vba-project.json")).expect("read generated manifest");
     assert_eq!(
         generated_manifest, REBUILT_GOLDEN_MANIFEST,
         "extract manifest drifted from reviewed golden"
