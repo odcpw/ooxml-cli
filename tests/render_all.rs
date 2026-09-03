@@ -296,8 +296,8 @@ fn real_render_diff_reports_pixel_ratio_and_structural_similarity_when_available
     let similarity = changed_page["structuralSimilarity"]
         .as_f64()
         .expect("structural similarity");
-    assert!(pixel_ratio > 0.0 && pixel_ratio <= 1.0, "{changed_page}");
-    assert!(similarity >= 0.0 && similarity < 1.0, "{changed_page}");
+    assert!((0.0..=1.0).contains(&pixel_ratio) && pixel_ratio > 0.0, "{changed_page}");
+    assert!((0.0..1.0).contains(&similarity), "{changed_page}");
     assert_eq!(changed_page["pass"], false);
     assert!(Path::new(changed_page["diffImage"].as_str().expect("diff image")).is_file());
 
