@@ -20,11 +20,19 @@ pub(super) fn serve_docx_paragraphs_op(
             let text_file = json_optional_string(args, "text-file")
                 .or_else(|| json_optional_string(args, "textFile"));
             let style = json_optional_string(args, "style").unwrap_or_default();
+            let list = json_optional_string(args, "list");
+            let level = json_i64(args, "level")?.unwrap_or(0);
+            let level = u32::try_from(level)
+                .map_err(|_| CliError::invalid_args("--level must be 0, 1, or 2"))?;
+            let restart = json_bool(args, "restart").unwrap_or(false);
             let create_style = json_bool(args, "create-style")
                 .or_else(|| json_bool(args, "createStyle"))
                 .unwrap_or(false);
             let readback = docx_paragraphs_append(
                 working,
+                list.as_deref(),
+                level,
+                restart,
                 DocxParagraphMutationOptions {
                     text: text.as_deref(),
                     text_file: text_file.as_deref(),
@@ -45,6 +53,12 @@ pub(super) fn serve_docx_paragraphs_op(
                 "--style",
                 (!style.is_empty()).then_some(style.as_str()),
             );
+            push_serve_plan_string_flag(&mut plan_flags, "--list", list.as_deref());
+            if level != 0 {
+                plan_flags.push(json!("--level"));
+                plan_flags.push(json!(level.to_string()));
+            }
+            push_serve_plan_bool_flag(&mut plan_flags, "--restart", restart.then_some(true));
             push_serve_plan_bool_flag(
                 &mut plan_flags,
                 "--create-style",
@@ -58,9 +72,12 @@ pub(super) fn serve_docx_paragraphs_op(
             }
         }
         DocxCommandId::ParagraphsInsert => {
-            let insert_after = match json_i64(args, "insert-after")? {
+            let insert_after = match json_i64(args, "after")? {
                 Some(value) => value,
-                None => json_i64(args, "insertAfter")?.unwrap_or(0),
+                None => match json_i64(args, "insert-after")? {
+                    Some(value) => value,
+                    None => json_i64(args, "insertAfter")?.unwrap_or(0),
+                },
             };
             if insert_after < 0 {
                 return Err(CliError::invalid_args("--insert-after must be >= 0"));
@@ -69,6 +86,11 @@ pub(super) fn serve_docx_paragraphs_op(
             let text_file = json_optional_string(args, "text-file")
                 .or_else(|| json_optional_string(args, "textFile"));
             let style = json_optional_string(args, "style").unwrap_or_default();
+            let list = json_optional_string(args, "list");
+            let level = json_i64(args, "level")?.unwrap_or(0);
+            let level = u32::try_from(level)
+                .map_err(|_| CliError::invalid_args("--level must be 0, 1, or 2"))?;
+            let restart = json_bool(args, "restart").unwrap_or(false);
             let create_style = json_bool(args, "create-style")
                 .or_else(|| json_bool(args, "createStyle"))
                 .unwrap_or(false);
@@ -76,6 +98,9 @@ pub(super) fn serve_docx_paragraphs_op(
                 working,
                 insert_after,
                 "",
+                list.as_deref(),
+                level,
+                restart,
                 DocxParagraphMutationOptions {
                     text: text.as_deref(),
                     text_file: text_file.as_deref(),
@@ -88,7 +113,7 @@ pub(super) fn serve_docx_paragraphs_op(
                 },
                 create_style,
             )?;
-            let mut plan_flags = vec![json!("--insert-after"), json!(insert_after.to_string())];
+            let mut plan_flags = vec![json!("--after"), json!(insert_after.to_string())];
             push_serve_plan_string_flag(&mut plan_flags, "--text", text.as_deref());
             push_serve_plan_string_flag(&mut plan_flags, "--text-file", text_file.as_deref());
             push_serve_plan_string_flag(
@@ -96,6 +121,12 @@ pub(super) fn serve_docx_paragraphs_op(
                 "--style",
                 (!style.is_empty()).then_some(style.as_str()),
             );
+            push_serve_plan_string_flag(&mut plan_flags, "--list", list.as_deref());
+            if level != 0 {
+                plan_flags.push(json!("--level"));
+                plan_flags.push(json!(level.to_string()));
+            }
+            push_serve_plan_bool_flag(&mut plan_flags, "--restart", restart.then_some(true));
             push_serve_plan_bool_flag(
                 &mut plan_flags,
                 "--create-style",

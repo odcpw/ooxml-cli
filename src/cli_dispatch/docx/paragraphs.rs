@@ -17,12 +17,28 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
         {
             reject_unknown_flags(
                 rest,
-                &["--text", "--text-file", "--style", "--out", "--backup"],
-                &["--dry-run", "--in-place", "--no-validate", "--create-style"],
+                &[
+                    "--text",
+                    "--text-file",
+                    "--style",
+                    "--list",
+                    "--level",
+                    "--out",
+                    "--backup",
+                ],
+                &[
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                    "--create-style",
+                    "--restart",
+                ],
             )?;
             let text = parse_string_flag(rest, "--text")?;
             let text_file = parse_string_flag(rest, "--text-file")?;
             let style = parse_string_flag(rest, "--style")?.unwrap_or_default();
+            let list = parse_string_flag(rest, "--list")?;
+            let level = parse_list_level(rest)?;
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             let dry_run = has_flag(rest, "--dry-run");
@@ -30,6 +46,9 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
             let no_validate = has_flag(rest, "--no-validate");
             docx_paragraphs_append(
                 file,
+                list.as_deref(),
+                level,
+                has_flag(rest, "--restart"),
                 DocxParagraphMutationOptions {
                     text: text.as_deref(),
                     text_file: text_file.as_deref(),
@@ -55,10 +74,18 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
                     "--text",
                     "--text-file",
                     "--style",
+                    "--list",
+                    "--level",
                     "--out",
                     "--backup",
                 ],
-                &["--dry-run", "--in-place", "--no-validate", "--create-style"],
+                &[
+                    "--dry-run",
+                    "--in-place",
+                    "--no-validate",
+                    "--create-style",
+                    "--restart",
+                ],
             )?;
             let after = parse_i64_flag(rest, "--after")?;
             let insert_after_alias = parse_i64_flag(rest, "--insert-after")?;
@@ -75,6 +102,8 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
             let text = parse_string_flag(rest, "--text")?;
             let text_file = parse_string_flag(rest, "--text-file")?;
             let style = parse_string_flag(rest, "--style")?.unwrap_or_default();
+            let list = parse_string_flag(rest, "--list")?;
+            let level = parse_list_level(rest)?;
             let out = parse_string_flag(rest, "--out")?;
             let backup = parse_string_flag(rest, "--backup")?;
             let dry_run = has_flag(rest, "--dry-run");
@@ -84,6 +113,9 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
                 file,
                 insert_after,
                 &expect_hash,
+                list.as_deref(),
+                level,
+                has_flag(rest, "--restart"),
                 DocxParagraphMutationOptions {
                     text: text.as_deref(),
                     text_file: text_file.as_deref(),
@@ -215,4 +247,9 @@ pub(super) fn dispatch_docx_paragraphs(args: &[String]) -> CliResult<Value> {
             args.join(" ")
         ))),
     }
+}
+
+fn parse_list_level(args: &[String]) -> CliResult<u32> {
+    let level = parse_i64_flag(args, "--level")?.unwrap_or(0);
+    u32::try_from(level).map_err(|_| CliError::invalid_args("--level must be 0, 1, or 2"))
 }

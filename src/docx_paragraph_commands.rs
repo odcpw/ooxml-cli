@@ -1,3 +1,5 @@
+use quick_xml::Reader;
+use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::fs;
 
@@ -5,14 +7,16 @@ use crate::{
     CliError, CliResult, DocxParagraphMutationOptions, DocxStyleTarget, InspectPackageKind,
     append_docx_body_paragraph_xml, copy_zip_with_part_override, copy_zip_with_part_overrides,
     detect_inspect_package_type, docx_rich_block_reports, ensure_docx_package_kind,
-    find_docx_document_part, insert_docx_body_paragraph_xml, package_type,
-    resolve_docx_paragraph_handle_index, resolve_optional_docx_paragraph_text,
-    set_or_clear_docx_body_paragraph_xml, validate_xlsx_mutation_output_flags,
-    write_docx_mutation_output, zip_entry_names, zip_text,
+    find_docx_document_part, package_type, resolve_docx_paragraph_handle_index,
+    resolve_optional_docx_paragraph_text, set_or_clear_docx_body_paragraph_xml,
+    validate_xlsx_mutation_output_flags, write_docx_mutation_output, zip_entry_names, zip_text,
 };
 
 pub(crate) fn docx_paragraphs_append(
     file: &str,
+    list: Option<&str>,
+    level: u32,
+    restart: bool,
     options: DocxParagraphMutationOptions<'_>,
     create_style: bool,
 ) -> CliResult<Value> {
@@ -39,9 +43,20 @@ pub(crate) fn docx_paragraphs_append(
 
     let document_part = find_docx_document_part(file, &entries)?;
     let xml = zip_text(file, &document_part)?;
-    let prepared = crate::docx_styles::prepare_docx_style_for_mutation(
+    let list_kind = normalize_docx_list_options(list, level, restart)?;
+    let requested_style = list_kind.map(docx_list_style_id).unwrap_or(options.style);
+    if list_kind.is_some()
+        && !options.style.is_empty()
+        && options.style != requested_style
+        && !options.style.eq_ignore_ascii_case(requested_style)
+    {
+        return Err(CliError::invalid_args(format!(
+            "--style must be {requested_style} when --list is used"
+        )));
+    }
+    let mut prepared = crate::docx_styles::prepare_docx_style_for_mutation(
         file,
-        options.style,
+        requested_style,
         DocxStyleTarget::Paragraph,
         create_style,
     )?;
@@ -50,7 +65,18 @@ pub(crate) fn docx_paragraphs_append(
             CliError::unexpected(format!("failed to read main document: {}", err.message))
         })?
         .len();
-    let updated_xml = append_docx_body_paragraph_xml(&xml, &text, &prepared.style_id)?;
+    let numbering =
+        prepare_docx_list_numbering(file, list_kind, level, restart, &mut prepared.overrides)?;
+    let updated_xml = if numbering.is_some() {
+        crate::docx_xml::append_docx_body_paragraph_xml_with_numbering(
+            &xml,
+            &text,
+            &prepared.style_id,
+            numbering,
+        )?
+    } else {
+        append_docx_body_paragraph_xml(&xml, &text, &prepared.style_id)?
+    };
 
     let output_path = options.out.filter(|value| !value.trim().is_empty());
     let readback_path = crate::mutation_staging_path(file, output_path, "docx-paragraph");
@@ -82,6 +108,7 @@ pub(crate) fn docx_paragraphs_append(
     if create_style {
         result.insert("createdStyle".to_string(), json!(prepared.created));
     }
+    add_docx_list_readback(&mut result, list_kind, numbering, restart);
     result.insert("text".to_string(), json!(text));
     Ok(Value::Object(result))
 }
@@ -90,6 +117,9 @@ pub(crate) fn docx_paragraphs_insert(
     file: &str,
     insert_after: i64,
     expected_hash: &str,
+    list: Option<&str>,
+    level: u32,
+    restart: bool,
     options: DocxParagraphMutationOptions<'_>,
     create_style: bool,
 ) -> CliResult<Value> {
@@ -137,14 +167,32 @@ pub(crate) fn docx_paragraphs_insert(
             "--expect-hash cannot be used with --after 0",
         ));
     }
-    let prepared = crate::docx_styles::prepare_docx_style_for_mutation(
+    let list_kind = normalize_docx_list_options(list, level, restart)?;
+    let requested_style = list_kind.map(docx_list_style_id).unwrap_or(options.style);
+    if list_kind.is_some()
+        && !options.style.is_empty()
+        && options.style != requested_style
+        && !options.style.eq_ignore_ascii_case(requested_style)
+    {
+        return Err(CliError::invalid_args(format!(
+            "--style must be {requested_style} when --list is used"
+        )));
+    }
+    let mut prepared = crate::docx_styles::prepare_docx_style_for_mutation(
         file,
-        options.style,
+        requested_style,
         DocxStyleTarget::Paragraph,
         create_style,
     )?;
-    let (updated_xml, index) =
-        insert_docx_body_paragraph_xml(&xml, insert_after as usize, &text, &prepared.style_id)?;
+    let numbering =
+        prepare_docx_list_numbering(file, list_kind, level, restart, &mut prepared.overrides)?;
+    let (updated_xml, index) = crate::docx_xml::insert_docx_body_paragraph_xml_with_numbering(
+        &xml,
+        insert_after as usize,
+        &text,
+        &prepared.style_id,
+        numbering,
+    )?;
 
     let output_path = options.out.filter(|value| !value.trim().is_empty());
     let readback_path = crate::mutation_staging_path(file, output_path, "docx-paragraph");
@@ -177,8 +225,130 @@ pub(crate) fn docx_paragraphs_insert(
     if create_style {
         result.insert("createdStyle".to_string(), json!(prepared.created));
     }
+    add_docx_list_readback(&mut result, list_kind, numbering, restart);
     result.insert("text".to_string(), json!(text));
     Ok(Value::Object(result))
+}
+
+fn normalize_docx_list_options(
+    list: Option<&str>,
+    level: u32,
+    restart: bool,
+) -> CliResult<Option<&'static str>> {
+    let Some(list) = list.filter(|value| !value.trim().is_empty()) else {
+        if level != 0 || restart {
+            return Err(CliError::invalid_args(
+                "--level and --restart require --list bullet|number",
+            ));
+        }
+        return Ok(None);
+    };
+    if level > 2 {
+        return Err(CliError::invalid_args("--level must be 0, 1, or 2"));
+    }
+    match list.trim().to_ascii_lowercase().as_str() {
+        "bullet" => Ok(Some("bullet")),
+        "number" | "numbered" => Ok(Some("number")),
+        _ => Err(CliError::invalid_args("--list must be bullet or number")),
+    }
+}
+
+fn docx_list_style_id(kind: &str) -> &'static str {
+    if kind == "bullet" {
+        "ListBullet"
+    } else {
+        "ListNumber"
+    }
+}
+
+fn prepare_docx_list_numbering(
+    file: &str,
+    kind: Option<&str>,
+    level: u32,
+    restart: bool,
+    overrides: &mut std::collections::BTreeMap<String, String>,
+) -> CliResult<Option<(u32, u32)>> {
+    let Some(kind) = kind else {
+        return Ok(None);
+    };
+    let base_num_id = if kind == "bullet" { 1 } else { 2 };
+    if !restart {
+        return Ok(Some((base_num_id, level)));
+    }
+
+    let part = "word/numbering.xml";
+    let xml = overrides
+        .get(part)
+        .cloned()
+        .or_else(|| zip_text(file, part).ok())
+        .ok_or_else(|| {
+            CliError::invalid_args(
+                "--restart requires a numbering part; use a DOCX scaffold or --create-style",
+            )
+        })?;
+    let next_num_id = next_docx_num_id(&xml)?;
+    let abstract_id = if kind == "bullet" { 0 } else { 1 };
+    let closing = if xml.contains("</w:numbering>") {
+        "</w:numbering>"
+    } else {
+        "</numbering>"
+    };
+    let insert_at = xml
+        .rfind(closing)
+        .ok_or_else(|| CliError::unexpected("invalid DOCX numbering XML"))?;
+    let prefix = if closing.starts_with("</w:") {
+        "w:"
+    } else {
+        ""
+    };
+    let instance = format!(
+        "<{prefix}num {prefix}numId=\"{next_num_id}\"><{prefix}abstractNumId {prefix}val=\"{abstract_id}\"/><{prefix}lvlOverride {prefix}ilvl=\"{level}\"><{prefix}startOverride {prefix}val=\"1\"/></{prefix}lvlOverride></{prefix}num>"
+    );
+    let mut updated = String::with_capacity(xml.len() + instance.len());
+    updated.push_str(&xml[..insert_at]);
+    updated.push_str(&instance);
+    updated.push_str(&xml[insert_at..]);
+    overrides.insert(part.to_string(), updated);
+    Ok(Some((next_num_id, level)))
+}
+
+fn next_docx_num_id(xml: &str) -> CliResult<u32> {
+    let mut reader = Reader::from_str(xml);
+    let mut max_id = 0u32;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(element)) | Ok(Event::Empty(element))
+                if crate::local_name(element.name().as_ref()) == "num" =>
+            {
+                if let Some(value) =
+                    crate::attr(&element, "numId").and_then(|value| value.parse::<u32>().ok())
+                {
+                    max_id = max_id.max(value);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(error) => return Err(CliError::unexpected(error.to_string())),
+            _ => {}
+        }
+    }
+    Ok(max_id.saturating_add(1).max(1))
+}
+
+fn add_docx_list_readback(
+    result: &mut Map<String, Value>,
+    kind: Option<&str>,
+    numbering: Option<(u32, u32)>,
+    restart: bool,
+) {
+    let Some(kind) = kind else {
+        return;
+    };
+    result.insert("list".to_string(), json!(kind));
+    if let Some((num_id, level)) = numbering {
+        result.insert("listLevel".to_string(), json!(level));
+        result.insert("numId".to_string(), json!(num_id));
+    }
+    result.insert("restarted".to_string(), json!(restart));
 }
 
 pub(crate) fn docx_paragraphs_set(

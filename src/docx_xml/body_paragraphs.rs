@@ -77,6 +77,15 @@ pub(crate) fn append_docx_body_paragraph_xml(
     text: &str,
     style: &str,
 ) -> CliResult<String> {
+    append_docx_body_paragraph_xml_with_numbering(xml, text, style, None)
+}
+
+pub(crate) fn append_docx_body_paragraph_xml_with_numbering(
+    xml: &str,
+    text: &str,
+    style: &str,
+    numbering: Option<(u32, u32)>,
+) -> CliResult<String> {
     let body_tag = docx_body_tag(xml)?;
     let close_tag = format!("</{body_tag}>");
     if !xml.contains(&close_tag) {
@@ -86,7 +95,7 @@ pub(crate) fn append_docx_body_paragraph_xml(
         .split_once(':')
         .map(|(prefix, _)| prefix.to_string())
         .unwrap_or_default();
-    let mut working = if prefix.is_empty() && !style.is_empty() {
+    let mut working = if prefix.is_empty() && (!style.is_empty() || numbering.is_some()) {
         ensure_docx_word_prefix(xml)?
     } else {
         xml.to_string()
@@ -95,7 +104,7 @@ pub(crate) fn append_docx_body_paragraph_xml(
         CliError::unexpected("document body element not found after namespace update")
     })?;
     let insert_at = docx_body_sectpr_start(&working[..body_close], &prefix).unwrap_or(body_close);
-    let paragraph = render_docx_paragraph(&prefix, text, style);
+    let paragraph = render_docx_paragraph_with_numbering(&prefix, text, style, numbering);
     working.insert_str(insert_at, &paragraph);
     Ok(working)
 }
@@ -106,6 +115,16 @@ pub(crate) fn insert_docx_body_paragraph_xml(
     text: &str,
     style: &str,
 ) -> CliResult<(String, usize)> {
+    insert_docx_body_paragraph_xml_with_numbering(xml, insert_after, text, style, None)
+}
+
+pub(crate) fn insert_docx_body_paragraph_xml_with_numbering(
+    xml: &str,
+    insert_after: usize,
+    text: &str,
+    style: &str,
+    numbering: Option<(u32, u32)>,
+) -> CliResult<(String, usize)> {
     let body_tag = docx_body_tag(xml)?;
     let close_tag = format!("</{body_tag}>");
     if !xml.contains(&close_tag) {
@@ -115,7 +134,7 @@ pub(crate) fn insert_docx_body_paragraph_xml(
         .split_once(':')
         .map(|(prefix, _)| prefix.to_string())
         .unwrap_or_default();
-    let mut working = if prefix.is_empty() && !style.is_empty() {
+    let mut working = if prefix.is_empty() && (!style.is_empty() || numbering.is_some()) {
         ensure_docx_word_prefix(xml)?
     } else {
         xml.to_string()
@@ -137,7 +156,7 @@ pub(crate) fn insert_docx_body_paragraph_xml(
         })?;
         (block.end, insert_after + 1)
     };
-    let paragraph = render_docx_paragraph(&prefix, text, style);
+    let paragraph = render_docx_paragraph_with_numbering(&prefix, text, style, numbering);
     working.insert_str(insert_at, &paragraph);
     Ok((working, index))
 }
@@ -219,12 +238,21 @@ fn docx_body_sectpr_start(body_prefix: &str, prefix: &str) -> Option<usize> {
 }
 
 pub(crate) fn render_docx_paragraph(prefix: &str, text: &str, style: &str) -> String {
+    render_docx_paragraph_with_numbering(prefix, text, style, None)
+}
+
+pub(crate) fn render_docx_paragraph_with_numbering(
+    prefix: &str,
+    text: &str,
+    style: &str,
+    numbering: Option<(u32, u32)>,
+) -> String {
     let p = word_xml_tag(prefix, "p");
     let mut paragraph = String::new();
     paragraph.push('<');
     paragraph.push_str(&p);
     paragraph.push('>');
-    if !style.is_empty() {
+    if !style.is_empty() || numbering.is_some() {
         let p_pr = word_xml_tag(prefix, "pPr");
         let p_style = word_xml_tag(prefix, "pStyle");
         let val_attr = if prefix.is_empty() {
@@ -235,13 +263,36 @@ pub(crate) fn render_docx_paragraph(prefix: &str, text: &str, style: &str) -> St
         paragraph.push('<');
         paragraph.push_str(&p_pr);
         paragraph.push('>');
-        paragraph.push('<');
-        paragraph.push_str(&p_style);
-        paragraph.push(' ');
-        paragraph.push_str(&val_attr);
-        paragraph.push_str("=\"");
-        paragraph.push_str(&xml_attr_escape(style));
-        paragraph.push_str("\"/>");
+        if !style.is_empty() {
+            paragraph.push('<');
+            paragraph.push_str(&p_style);
+            paragraph.push(' ');
+            paragraph.push_str(&val_attr);
+            paragraph.push_str("=\"");
+            paragraph.push_str(&xml_attr_escape(style));
+            paragraph.push_str("\"/>");
+        }
+        if let Some((num_id, level)) = numbering {
+            let num_pr = word_xml_tag(prefix, "numPr");
+            let ilvl = word_xml_tag(prefix, "ilvl");
+            let num_id_tag = word_xml_tag(prefix, "numId");
+            paragraph.push('<');
+            paragraph.push_str(&num_pr);
+            paragraph.push('>');
+            paragraph.push('<');
+            paragraph.push_str(&ilvl);
+            paragraph.push(' ');
+            paragraph.push_str(&val_attr);
+            paragraph.push_str(&format!("=\"{level}\"/>"));
+            paragraph.push('<');
+            paragraph.push_str(&num_id_tag);
+            paragraph.push(' ');
+            paragraph.push_str(&val_attr);
+            paragraph.push_str(&format!("=\"{num_id}\"/>"));
+            paragraph.push_str("</");
+            paragraph.push_str(&num_pr);
+            paragraph.push('>');
+        }
         paragraph.push_str("</");
         paragraph.push_str(&p_pr);
         paragraph.push('>');
