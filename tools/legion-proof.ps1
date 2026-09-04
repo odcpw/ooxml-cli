@@ -729,26 +729,45 @@ $recipeFailures = @($recipes | Where-Object {
 })
 $failedRequiredStages = @($stages | Where-Object { $_.status -eq "failed" }).Count
 $status = if ($requiredPrerequisiteFailures.Count -eq 0 -and $failedRequiredStages -eq 0 -and $scenarioFailures.Count -eq 0 -and $recipeFailures.Count -eq 0 -and $recipes.Count -eq 5) { "passed" } else { "failed" }
+$platform = "non-windows"
+if ($script:IsWindowsPlatform) { $platform = "windows" }
+$proofBoundary = "Strict, conformance, and Open XML SDK proof only. Microsoft Office COM was skipped."
+if (-not $SkipOffice) {
+    $proofBoundary = "Includes bounded desktop Microsoft Office COM open/save proof for the five canonical recipes and COM-open proof for contract scenarios."
+}
+$scenarioTotal = $scenarios.Count
+$recipeTotal = $recipes.Count
+$scenarioPassed = $scenarioTotal - $scenarioFailures.Count
+$recipePassed = $recipeTotal - $recipeFailures.Count
+$prerequisiteFailureCount = $requiredPrerequisiteFailures.Count
+$summaryCounts = [pscustomobject]@{
+    scenariosTotal = $scenarioTotal
+    scenariosPassed = $scenarioPassed
+    recipesTotal = $recipeTotal
+    recipesPassed = $recipePassed
+    failedRequiredStages = $failedRequiredStages
+    prerequisiteFailures = $prerequisiteFailureCount
+}
+$summaryPrerequisites = $prerequisites.ToArray()
+$summaryStages = $stages.ToArray()
+$summaryScenarios = @($scenarios)
+$summaryRecipes = $recipes.ToArray()
 $summary = [pscustomobject]@{
     schemaVersion  = "ooxml-cli.legion-proof.v1"
     generatedAtUtc = [DateTime]::UtcNow.ToString("o")
     status         = $status
     host           = [Environment]::MachineName
-    platform       = if ($script:IsWindowsPlatform) { "windows" } else { "non-windows" }
+    platform       = $platform
     skipOffice     = [bool]$SkipOffice
     outputDir      = $output
     binary         = $BinaryPath
     validator      = $validatorDll
-    prerequisites  = $prerequisites.ToArray()
-    stages         = $stages.ToArray()
-    scenarios      = @($scenarios)
-    recipes        = $recipes.ToArray()
-    counts         = [pscustomobject]@{
-        scenariosTotal = @($scenarios).Count; scenariosPassed = @($scenarios).Count - $scenarioFailures.Count
-        recipesTotal = @($recipes).Count; recipesPassed = @($recipes).Count - $recipeFailures.Count
-        failedRequiredStages = $failedRequiredStages; prerequisiteFailures = $requiredPrerequisiteFailures.Count
-    }
-    proofBoundary  = if ($SkipOffice) { "Strict, conformance, and Open XML SDK proof only. Microsoft Office COM was skipped." } else { "Includes bounded desktop Microsoft Office COM open/save proof for the five canonical recipes and COM-open proof for contract scenarios." }
+    prerequisites  = $summaryPrerequisites
+    stages         = $summaryStages
+    scenarios      = $summaryScenarios
+    recipes        = $summaryRecipes
+    counts         = $summaryCounts
+    proofBoundary  = $proofBoundary
 }
 Write-Utf8NoBom -Path $summaryPath -Content (($summary | ConvertTo-Json -Depth 12) + [Environment]::NewLine)
 Write-LegionMarkdownReport -Summary $summary -Path $ReportPath
