@@ -1163,7 +1163,7 @@ fn artifact_proof_matrix_classifies_inventory_coverage() {
     let script = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tools")
         .join("artifact-proof-matrix.ps1");
-    let output = Command::new(powershell)
+    let output = Command::new(&powershell)
         .arg("-NoProfile")
         .arg("-ExecutionPolicy")
         .arg("Bypass")
@@ -1358,7 +1358,7 @@ if (@($rows | Where-Object {{ -not $_.passed }}).Count -gt 0) {{
 "#
     );
 
-    let output = Command::new(powershell)
+    let output = Command::new(&powershell)
         .arg("-NoProfile")
         .arg("-ExecutionPolicy")
         .arg("Bypass")
@@ -1385,6 +1385,72 @@ if (@($rows | Where-Object {{ -not $_.passed }}).Count -gt 0) {{
         rows.iter()
             .all(|row| row["actual"] == row["expected"] && row["passed"] == Value::Bool(true)),
         "unexpected commandPath probe rows: {rows:#?}"
+    );
+}
+
+#[test]
+fn office_edit_smoke_json_file_writer_preserves_json_bytes() {
+    let Some(powershell) = powershell_for_windows_contract_test() else {
+        eprintln!(
+            "skipping Office edit smoke JSON file writer test because PowerShell is not available"
+        );
+        return;
+    };
+
+    let script_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tools")
+        .join("windows-office-edit-smoke.ps1");
+    let script = fs::read_to_string(&script_path).expect("read Office edit smoke script");
+    let helper = powershell_function_block(
+        &script,
+        "function Write-SmokeJsonFile",
+        "function New-SmokeWavFile",
+    );
+    let output_path = std::env::temp_dir().join(format!(
+        "ooxml-office-edit-smoke-json-{}.json",
+        std::process::id()
+    ));
+    let output_path_string = output_path.to_string_lossy().into_owned();
+    let json = r#"[["Region","Units","Notes"],["West",12,"Ready"],["North",null,"Review"]]"#;
+    let probe = format!(
+        r#"
+{helper}
+$ErrorActionPreference = "Stop"
+$path = $env:OOXML_SMOKE_JSON_PATH
+$json = $env:OOXML_SMOKE_JSON
+Write-SmokeJsonFile -Path $path -Json $json
+$actual = [System.IO.File]::ReadAllText($path)
+if ($actual -ne $json) {{ throw "JSON file writer changed the payload." }}
+$bytes = [System.IO.File]::ReadAllBytes($path)
+if ($bytes.Length -eq 0 -or $bytes[0] -eq 0xEF) {{ throw "JSON file writer emitted an empty or BOM-prefixed file." }}
+$parsed = $actual | ConvertFrom-Json
+if (@($parsed).Count -ne 3) {{ throw "JSON file writer emitted an unexpected row count." }}
+if ($parsed[0][0] -ne "Region" -or $parsed[1][1] -ne 12 -or $null -ne $parsed[2][1]) {{ throw "JSON file writer emitted an unexpected matrix." }}
+"JSON file writer self-test passed."
+"#
+    );
+
+    let output = Command::new(&powershell)
+        .arg("-NoProfile")
+        .arg("-ExecutionPolicy")
+        .arg("Bypass")
+        .arg("-Command")
+        .arg(probe)
+        .env("OOXML_SMOKE_JSON_PATH", &output_path_string)
+        .env("OOXML_SMOKE_JSON", json)
+        .output()
+        .expect("run Office edit smoke JSON file writer probe");
+    let _ = fs::remove_file(&output_path);
+    assert!(
+        output.status.success(),
+        "Office edit smoke JSON file writer probe failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("JSON file writer self-test passed."),
+        "JSON file writer probe did not report success: {}",
+        String::from_utf8_lossy(&output.stdout)
     );
 }
 
@@ -1502,7 +1568,14 @@ fn powershell_function_block(script: &str, start_marker: &str, end_marker: &str)
     script[start..end].to_string()
 }
 
-fn powershell_for_windows_contract_test() -> Option<&'static str> {
+fn powershell_for_windows_contract_test() -> Option<PathBuf> {
+    if let Some(home) = std::env::var_os("HOME") {
+        let private = PathBuf::from(home).join("pwsh/pwsh");
+        if private.is_file() {
+            return Some(private);
+        }
+    }
+
     ["powershell.exe", "powershell", "pwsh"]
         .into_iter()
         .find(|candidate| {
@@ -1516,6 +1589,7 @@ fn powershell_for_windows_contract_test() -> Option<&'static str> {
                 .map(|output| output.status.success())
                 .unwrap_or(false)
         })
+        .map(PathBuf::from)
 }
 
 fn proof_matrix_capability_command(

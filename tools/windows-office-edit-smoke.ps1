@@ -291,6 +291,19 @@ function Get-DocxCommentHash {
     return [string]$comments[0].contentHash
 }
 
+function Write-SmokeJsonFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Json
+    )
+
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Json, $encoding)
+}
+
 function New-SmokeWavFile {
     param(
         [Parameter(Mandatory = $true)]
@@ -1139,6 +1152,9 @@ Set-Content -LiteralPath $pptxTableValuesFile -Encoding ASCII -Value @(
 $pptxChartSourceValuesFile = Join-Path $outRoot "pptx-chart-source-values.json"
 Set-Content -LiteralPath $pptxChartSourceValuesFile -Encoding ASCII -Value '[["Region","Units"],["North",12],["South",8],["West",15]]'
 
+$docxTableValuesFile = Join-Path $outRoot "docx-table-create-values.json"
+Write-SmokeJsonFile -Path $docxTableValuesFile -Json '[["Region","Units","Notes"],["West",12,"Ready"],["North",null,"Review"]]'
+
 $explicitBinaryPath = $BinaryPath -ne ""
 if ($BinaryPath -eq "") {
     $BinaryPath = Join-Path $binDir "ooxml.exe"
@@ -1591,7 +1607,7 @@ $scenarios = @(
         -Family "docx" `
         -Input $docxTableCreateSeed `
         -Output (Join-Path $caseDir "docx-tables-create-from-scaffold.docx") `
-        -Arguments @("--json", "docx", "tables", "create", $docxTableCreateSeed, "--values", '[["Region","Units","Notes"],["West",12,"Ready"],["North",null,"Review"]]', "--out", (Join-Path $caseDir "docx-tables-create-from-scaffold.docx")) `
+        -Arguments @("--json", "docx", "tables", "create", $docxTableCreateSeed, "--values-file", $docxTableValuesFile, "--out", (Join-Path $caseDir "docx-tables-create-from-scaffold.docx")) `
         -InputFixtureType "scaffold-derived"),
 
     (New-Scenario `

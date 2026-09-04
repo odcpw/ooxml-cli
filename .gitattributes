@@ -31,4 +31,5 @@ testdata/golden/command-manifest-contract/** text eol=lf
 testdata/golden/**/*.json text eol=lf
 testdata/golden/**/*.md text eol=lf
 testdata/**/*.json text eol=lf
+testdata/**/*.md text eol=lf
 tests/**/*.json text eol=lf

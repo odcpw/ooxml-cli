@@ -196,6 +196,8 @@ fn text_golden_contracts_are_lf_only_on_every_runner() {
         "testdata/golden/check/attribute-contract.json",
         "testdata/golden/design-check/attribute-contract.json",
         "testdata/golden/markdown-read/attribute-contract.md",
+        "testdata/markdown/q3-review.md",
+        "testdata/markdown/quarterly-report.md",
     ];
     for path in attribute_contracts {
         let output = Command::new("git")
