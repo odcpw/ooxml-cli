@@ -1,3 +1,15 @@
+use std::path::Path;
+
+pub(super) fn path_prefix_aliases(path: &Path) -> Vec<String> {
+    let mut aliases = vec![path.to_string_lossy().into_owned()];
+    if let Ok(canonical) = path.canonicalize() {
+        aliases.push(canonical.to_string_lossy().into_owned());
+    }
+    aliases.sort_by_key(|alias| std::cmp::Reverse(alias.len()));
+    aliases.dedup();
+    aliases
+}
+
 pub(super) fn scrub_path_string(text: &str, prefix: &str, replacement: &str) -> String {
     let native = prefix.replace('/', "\\");
     let slashed = prefix.replace('\\', "/");

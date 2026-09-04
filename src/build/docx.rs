@@ -993,15 +993,17 @@ fn final_docx_selector(path: &str, selector: Value) -> Value {
 }
 
 fn scrub_paths(value: Value, temp: &Path, spec_base: &Path) -> Value {
-    let temp = temp.to_string_lossy();
+    let temp_aliases = super::path_scrub::path_prefix_aliases(temp);
     let spec_base = spec_base.to_string_lossy();
-    scrub_path_prefixes(value, temp.as_ref(), spec_base.as_ref())
+    scrub_path_prefixes(value, &temp_aliases, spec_base.as_ref())
 }
 
-fn scrub_path_prefixes(value: Value, temp: &str, spec_base: &str) -> Value {
+fn scrub_path_prefixes(value: Value, temp_aliases: &[String], spec_base: &str) -> Value {
     match value {
         Value::String(text) => {
-            let text = super::path_scrub::scrub_path_string(&text, temp, "<build-stage>");
+            let text = temp_aliases.iter().fold(text, |text, temp| {
+                super::path_scrub::scrub_path_string(&text, temp, "<build-stage>")
+            });
             Value::String(super::path_scrub::scrub_path_string(
                 &text,
                 spec_base,
@@ -1011,13 +1013,13 @@ fn scrub_path_prefixes(value: Value, temp: &str, spec_base: &str) -> Value {
         Value::Array(values) => Value::Array(
             values
                 .into_iter()
-                .map(|value| scrub_path_prefixes(value, temp, spec_base))
+                .map(|value| scrub_path_prefixes(value, temp_aliases, spec_base))
                 .collect(),
         ),
         Value::Object(values) => Value::Object(
             values
                 .into_iter()
-                .map(|(key, value)| (key, scrub_path_prefixes(value, temp, spec_base)))
+                .map(|(key, value)| (key, scrub_path_prefixes(value, temp_aliases, spec_base)))
                 .collect(),
         ),
         scalar => scalar,
@@ -1091,5 +1093,38 @@ fn error(path: &str, code: &str, message: impl Into<String>) -> BuildCompileErro
         path: path.to_string(),
         op_id: None,
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn docx_scrubber_handles_canonical_windows_temp_alias() {
+        let requested_temp = r"D:\a\_temp\ooxml-docx-build-6656".to_string();
+        let canonical_temp =
+            r"C:\Users\RUNNER~1\AppData\Local\Temp\ooxml-docx-build-6656".to_string();
+        let value = json!({
+            "command": format!(
+                r#"ooxml --json docx images insert "{canonical_temp}\new-document.docx" --file "{canonical_temp}\external\op-11-image.png""#
+            ),
+            "args": {
+                "image": format!(r"{canonical_temp}\external\op-11-image.png"),
+            },
+        });
+
+        let scrubbed = scrub_path_prefixes(
+            value,
+            &[requested_temp, canonical_temp],
+            r"D:\a\ooxml-cli\ooxml-cli\testdata\docx\build-spec",
+        );
+        let serialized = serde_json::to_string(&scrubbed).expect("serialize scrubbed DOCX value");
+        assert!(!serialized.contains("RUNNER~1"), "{serialized}");
+        assert_eq!(
+            serialized.matches("<build-stage>").count(),
+            3,
+            "{serialized}"
+        );
     }
 }
