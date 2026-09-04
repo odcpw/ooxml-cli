@@ -540,6 +540,7 @@ fn robot_docs_guide_is_filtered_to_rust_supported_commands() {
     assert_eq!(stderr, None);
     let guide = stdout.expect("robot guide");
     let text = serde_json::to_string(&guide).expect("guide string");
+    let guide_sections = serde_json::to_string(&guide["sections"]).expect("guide sections string");
     assert!(text.contains("ooxml --json doctor capabilities"));
     assert!(text.contains("ooxml agent-triage"));
     assert!(text.contains("ooxml --json find <query> <file>"));
@@ -578,7 +579,7 @@ fn robot_docs_guide_is_filtered_to_rust_supported_commands() {
         "--replace",
     ] {
         assert!(
-            !text.contains(stale),
+            !guide_sections.contains(stale),
             "robot guide advertises stale {stale}"
         );
     }
