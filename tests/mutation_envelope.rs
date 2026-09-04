@@ -1,8 +1,8 @@
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
@@ -3118,6 +3118,336 @@ fn package_mutation_commands_satisfy_the_envelope_contract() {
         .collect::<Vec<_>>();
     assert_contract_evidence(&rows, "package");
     remove_temp_dir(dir);
+}
+
+#[derive(Debug)]
+struct SdkContractArtifact {
+    scenario: &'static str,
+    path: PathBuf,
+}
+
+#[derive(Debug)]
+struct SdkValidator {
+    dotnet: PathBuf,
+    assembly: PathBuf,
+}
+
+#[test]
+fn all_152_mutation_contract_outputs_are_openxml_sdk_clean() {
+    let Some(validator) = sdk_validator_or_skip() else {
+        return;
+    };
+    let started = Instant::now();
+    let root = sdk_contract_matrix_root();
+    let schema = pinned_mutation_envelope_schema();
+    let mut artifacts = Vec::with_capacity(152);
+
+    let docx_dir = sdk_family_dir(&root, "docx");
+    let scaffold_source = docx_dir.join("docx-contract-source.docx");
+    run_json(&[
+        "--json",
+        "docx",
+        "scaffold",
+        "--out",
+        &scaffold_source.to_string_lossy(),
+        "--text",
+        "Contract source",
+    ]);
+    let docx_cases = docx_contract_cases(&docx_dir, &scaffold_source);
+    assert_eq!(docx_cases.len(), 27, "reviewed DOCX SDK denominator");
+    collect_sdk_artifacts(&docx_cases, &schema, &mut artifacts);
+
+    let xlsx_dir = sdk_family_dir(&root, "xlsx");
+    let xlsx_cases = xlsx_contract_cases(&xlsx_dir);
+    assert_eq!(xlsx_cases.len(), 60, "reviewed XLSX SDK denominator");
+    collect_sdk_artifacts(&xlsx_cases, &schema, &mut artifacts);
+
+    let pptx_dir = sdk_family_dir(&root, "pptx");
+    let pptx_cases = pptx_contract_cases(&pptx_dir);
+    assert_eq!(pptx_cases.len(), 60, "reviewed PPTX SDK denominator");
+    collect_sdk_artifacts(&pptx_cases, &schema, &mut artifacts);
+
+    let package_dir = sdk_family_dir(&root, "package");
+    let package_cases = package_contract_cases(&package_dir);
+    assert_eq!(package_cases.len(), 5, "reviewed package SDK denominator");
+    collect_sdk_artifacts(&package_cases, &schema, &mut artifacts);
+
+    assert_eq!(artifacts.len(), 152, "reviewed total SDK denominator");
+    let unique_scenarios = artifacts
+        .iter()
+        .map(|artifact| artifact.scenario)
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        unique_scenarios.len(),
+        artifacts.len(),
+        "SDK matrix command paths must be unique"
+    );
+
+    let (workers, failures) = validate_sdk_artifacts(&validator, &artifacts);
+    if !failures.is_empty() {
+        panic!(
+            "Open XML SDK rejected {}/{} mutation contract outputs:\n{}",
+            failures.len(),
+            artifacts.len(),
+            failures.join("\n")
+        );
+    }
+    println!(
+        "Open XML SDK Office2019 validated {}/{} mutation contract outputs with {workers} workers in {:.2?}",
+        artifacts.len(),
+        artifacts.len(),
+        started.elapsed()
+    );
+
+    if std::env::var_os("OOXML_CONTRACT_PROOF_DIR").is_none() {
+        fs::remove_dir_all(root).expect("remove SDK contract matrix directory");
+    }
+}
+
+fn collect_sdk_artifacts(
+    cases: &[ContractCase],
+    schema: &Value,
+    artifacts: &mut Vec<SdkContractArtifact>,
+) {
+    for case in cases {
+        let output = run_owned(&case.args);
+        assert!(
+            output.status.success(),
+            "contract scenario {} failed before SDK validation: exit={:?} stdout={} stderr={}",
+            case.path,
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let response = output_json(&output)
+            .unwrap_or_else(|error| panic!("contract scenario {}: {error}", case.path));
+        let envelope = &response["mutationEnvelope"];
+        assert!(
+            validates_pinned_schema(envelope, schema),
+            "contract scenario {} did not emit the pinned mutation envelope: {envelope}",
+            case.path
+        );
+        let path = envelope["file"]
+            .as_str()
+            .filter(|path| !path.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                panic!(
+                    "contract scenario {} omitted its published artifact path: {envelope}",
+                    case.path
+                )
+            });
+        assert!(
+            path.is_file(),
+            "contract scenario {} did not publish {}",
+            case.path,
+            path.display()
+        );
+        artifacts.push(SdkContractArtifact {
+            scenario: case.path,
+            path,
+        });
+    }
+}
+
+fn validate_sdk_artifacts(
+    validator: &SdkValidator,
+    artifacts: &[SdkContractArtifact],
+) -> (usize, Vec<String>) {
+    let workers = std::thread::available_parallelism()
+        .map(|parallelism| parallelism.get())
+        .unwrap_or(2)
+        .clamp(1, 4)
+        .min(artifacts.len());
+    let chunk_size = artifacts.len().div_ceil(workers);
+    let mut results = std::thread::scope(|scope| {
+        let handles = artifacts
+            .chunks(chunk_size)
+            .enumerate()
+            .map(|(chunk_index, chunk)| {
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .enumerate()
+                        .map(|(offset, artifact)| {
+                            (
+                                chunk_index * chunk_size + offset,
+                                validate_sdk_artifact(validator, artifact),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect::<Vec<_>>();
+        handles
+            .into_iter()
+            .flat_map(|handle| handle.join().expect("SDK validation worker panicked"))
+            .collect::<Vec<_>>()
+    });
+    results.sort_by_key(|(index, _)| *index);
+    let failures = results
+        .into_iter()
+        .filter_map(|(_, result)| result.err())
+        .collect();
+    (workers, failures)
+}
+
+fn validate_sdk_artifact(
+    validator: &SdkValidator,
+    artifact: &SdkContractArtifact,
+) -> Result<(), String> {
+    let output = Command::new(&validator.dotnet)
+        .arg(&validator.assembly)
+        .arg("--json")
+        .arg(&artifact.path)
+        .output()
+        .map_err(|error| {
+            format!(
+                "scenario={} artifact={} failed to launch SDK validator: {error}",
+                artifact.scenario,
+                artifact.path.display()
+            )
+        })?;
+    let report: Value = serde_json::from_slice(&output.stdout).map_err(|error| {
+        format!(
+            "scenario={} artifact={} returned invalid SDK JSON: {error}; stdout={} stderr={}",
+            artifact.scenario,
+            artifact.path.display(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+    })?;
+    if output.status.success()
+        && report["Valid"] == true
+        && report["ErrorCount"] == 0
+        && report["Schema"] == "Office2019"
+    {
+        return Ok(());
+    }
+
+    let errors = report["Errors"].as_array().cloned().unwrap_or_default();
+    if errors.is_empty() {
+        return Err(format!(
+            "scenario={} artifact={} SDK exit={:?} schema={} valid={} errorCount={} stderr={}",
+            artifact.scenario,
+            artifact.path.display(),
+            output.status.code(),
+            report["Schema"],
+            report["Valid"],
+            report["ErrorCount"],
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Err(format_sdk_errors(artifact, &errors))
+}
+
+fn format_sdk_errors(artifact: &SdkContractArtifact, errors: &[Value]) -> String {
+    errors
+        .iter()
+        .map(|error| {
+            format!(
+                "scenario={} artifact={} part={} xpath={} description={}",
+                artifact.scenario,
+                artifact.path.display(),
+                error["Part"].as_str().unwrap_or("<unknown>"),
+                error["XPath"].as_str().unwrap_or("<unknown>"),
+                error["Description"].as_str().unwrap_or("<unknown>")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn sdk_contract_failure_names_scenario_part_xpath_and_description() {
+    let artifact = SdkContractArtifact {
+        scenario: "ooxml pptx charts add",
+        path: PathBuf::from("contract-output.pptx"),
+    };
+    let errors = [serde_json::json!({
+        "Part": "/ppt/charts/chart1.xml",
+        "XPath": "/c:chartSpace[1]/c:chart[1]/c:plotArea[1]/c:valAx[1]/c:axId[1]",
+        "Description": "The value '-1' is invalid for unsignedInt."
+    })];
+    let diagnostic = format_sdk_errors(&artifact, &errors);
+    assert!(diagnostic.contains("scenario=ooxml pptx charts add"));
+    assert!(diagnostic.contains("part=/ppt/charts/chart1.xml"));
+    assert!(diagnostic.contains("xpath=/c:chartSpace[1]/c:chart[1]/c:plotArea[1]"));
+    assert!(diagnostic.contains("description=The value '-1' is invalid for unsignedInt."));
+}
+
+fn sdk_validator_or_skip() -> Option<SdkValidator> {
+    let assembly = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tools/openxml-validator/bin/Release/net8.0/openxml-validator.dll");
+    let dotnet = dotnet_host();
+    if assembly.is_file()
+        && let Some(dotnet) = dotnet.as_ref()
+    {
+        return Some(SdkValidator {
+            dotnet: dotnet.clone(),
+            assembly,
+        });
+    }
+
+    let required = std::env::var("OOXML_REQUIRE_OPENXML_SDK")
+        .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true"));
+    let diagnostic = format!(
+        "Open XML SDK matrix proof unavailable: dotnet={} validator={}",
+        dotnet.as_deref().map_or_else(
+            || "<missing>".to_string(),
+            |path| path.display().to_string()
+        ),
+        assembly.display()
+    );
+    assert!(!required, "OOXML_REQUIRE_OPENXML_SDK=1 but {diagnostic}");
+    println!("SKIP {diagnostic}");
+    None
+}
+
+fn dotnet_host() -> Option<PathBuf> {
+    let executable = if cfg!(windows) {
+        "dotnet.exe"
+    } else {
+        "dotnet"
+    };
+    let mut candidates = Vec::new();
+    if let Some(path) = std::env::var_os("DOTNET_HOST_PATH") {
+        candidates.push(PathBuf::from(path));
+    }
+    if let Some(root) = std::env::var_os("DOTNET_ROOT") {
+        candidates.push(PathBuf::from(root).join(executable));
+    }
+    if let Some(home) = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }) {
+        let home = PathBuf::from(home);
+        candidates.push(home.join("dotnet").join(executable));
+        candidates.push(home.join(".dotnet").join(executable));
+    }
+    if let Some(candidate) = candidates.into_iter().find(|path| path.is_file()) {
+        return Some(candidate);
+    }
+    Command::new(executable)
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|_| PathBuf::from(executable))
+}
+
+fn sdk_contract_matrix_root() -> PathBuf {
+    let parent = std::env::var_os("OOXML_CONTRACT_PROOF_DIR")
+        .or_else(|| std::env::var_os("CARGO_TARGET_DIR"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("target"));
+    let root = parent.join("openxml-sdk-contract-matrix");
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).expect("create SDK contract matrix directory");
+    root
+}
+
+fn sdk_family_dir(root: &Path, family: &str) -> PathBuf {
+    let dir = root.join(format!("{family}-contract-matrix"));
+    fs::create_dir_all(&dir).expect("create SDK family contract directory");
+    dir
 }
 
 #[test]
