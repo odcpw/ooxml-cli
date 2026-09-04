@@ -8,6 +8,7 @@ mod compiler;
 mod docx;
 mod loader;
 mod markdown;
+mod path_scrub;
 mod pptx;
 mod schema;
 mod types;

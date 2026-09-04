@@ -1440,10 +1440,14 @@ fn scrub_build_paths(value: Value, temp: &Path, spec_base: &Path) -> Value {
 
 fn scrub_build_path_strings(value: Value, temp: &str, spec_base: &str) -> Value {
     match value {
-        Value::String(text) => Value::String(
-            text.replace(temp, "<build-stage>")
-                .replace(spec_base, "<spec-dir>"),
-        ),
+        Value::String(text) => {
+            let text = super::path_scrub::scrub_path_string(&text, temp, "<build-stage>");
+            Value::String(super::path_scrub::scrub_path_string(
+                &text,
+                spec_base,
+                "<spec-dir>",
+            ))
+        }
         Value::Array(values) => Value::Array(
             values
                 .into_iter()

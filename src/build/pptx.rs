@@ -588,7 +588,11 @@ fn stage_build_source(
 fn scrub_generated_paths(value: Value, temp: &Path) -> Value {
     let prefix = temp.to_string_lossy();
     match value {
-        Value::String(text) => Value::String(scrub_build_stage_string(&text, prefix.as_ref())),
+        Value::String(text) => Value::String(super::path_scrub::scrub_path_string(
+            &text,
+            prefix.as_ref(),
+            "<build-stage>",
+        )),
         Value::Array(values) => Value::Array(
             values
                 .into_iter()
@@ -603,38 +607,6 @@ fn scrub_generated_paths(value: Value, temp: &Path) -> Value {
         ),
         scalar => scalar,
     }
-}
-
-fn scrub_build_stage_string(text: &str, prefix: &str) -> String {
-    let native = prefix.replace('/', "\\");
-    let slashed = prefix.replace('\\', "/");
-    let mut path_variants = vec![prefix.to_string(), native.clone(), slashed.clone()];
-    if native.as_bytes().get(1) == Some(&b':') {
-        path_variants.push(format!(r"\\?\{native}"));
-        path_variants.push(format!("//?/{slashed}"));
-    }
-    path_variants.sort();
-    path_variants.dedup();
-
-    let mut replacements = Vec::new();
-    for variant in path_variants {
-        let escaped = variant.replace('\\', r"\\");
-        replacements.push(format!("'{escaped}'"));
-        replacements.push(format!("\"{escaped}\""));
-        replacements.push(escaped);
-        replacements.push(crate::command_arg(&variant));
-        replacements.push(format!("'{variant}'"));
-        replacements.push(format!("\"{variant}\""));
-        replacements.push(variant);
-    }
-    replacements.sort_by_key(|value| std::cmp::Reverse(value.len()));
-    replacements.dedup();
-
-    replacements
-        .into_iter()
-        .fold(text.to_string(), |text, from| {
-            text.replace(&from, "<build-stage>")
-        })
 }
 
 fn resolved_node_map(plan: &CompiledBuildPlan, envelope: &Value) -> Value {
