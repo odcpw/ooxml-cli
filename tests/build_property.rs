@@ -3,7 +3,9 @@ use ooxml_cli::build::{
     markdown_to_spec, schema_document,
 };
 use proptest::prelude::*;
-use proptest::test_runner::{Config, TestCaseError, TestError, TestRunner};
+use proptest::test_runner::{
+    Config, FileFailurePersistence, RngAlgorithm, RngSeed, TestCaseError, TestError, TestRunner,
+};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde_json::{Value, json};
@@ -17,6 +19,9 @@ const SOURCE_DATE_EPOCH: &str = "946684800";
 // The normal gate stays quick. Scheduled/deep proof runs set
 // OOXML_PROPERTY_CASES=1000; every property below honors the same override.
 const DEFAULT_CASES: u32 = 4;
+// Seed 75 generates the hosted macOS regression (`title: 7`) as the first
+// DOCX Markdown case, so every platform replays the discovery deterministically.
+const PROPERTY_RNG_SEED: u64 = 75;
 static NEXT_CASE: AtomicU64 = AtomicU64::new(1);
 
 fn property_cases() -> u32 {
@@ -31,7 +36,11 @@ fn runner() -> TestRunner {
     TestRunner::new(Config {
         cases: property_cases(),
         max_shrink_iters: 4_096,
-        failure_persistence: None,
+        failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
+            "tests/build_property.proptest-regressions",
+        ))),
+        rng_algorithm: RngAlgorithm::ChaCha,
+        rng_seed: RngSeed::Fixed(PROPERTY_RNG_SEED),
         ..Config::default()
     })
 }

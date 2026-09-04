@@ -509,6 +509,81 @@ fn yaml_scalar(source: &str) -> Value {
     }
 }
 
+fn front_matter_string(value: &Value, family: &str, field: &str) -> Result<String, MarkdownError> {
+    let text = match value {
+        Value::String(value) => value.clone(),
+        Value::Number(value) => value.to_string(),
+        Value::Bool(value) => value.to_string(),
+        Value::Null => "null".to_string(),
+        Value::Array(_) | Value::Object(_) => {
+            return Err(MarkdownError {
+                line: Some(2),
+                code: "MARKDOWN_FRONT_MATTER_INVALID".to_string(),
+                message: format!(
+                    "{family} {field} front matter must be a scalar value that can be represented as text"
+                ),
+            });
+        }
+    };
+    Ok(text)
+}
+
+fn copy_front_matter_string(
+    front_matter: &Map<String, Value>,
+    spec: &mut Map<String, Value>,
+    family: &str,
+    key: &str,
+) -> Result<(), MarkdownError> {
+    if let Some(value) = front_matter.get(key) {
+        spec.insert(
+            key.to_string(),
+            Value::String(front_matter_string(value, family, key)?),
+        );
+    }
+    Ok(())
+}
+
+fn copy_front_matter_brand(
+    front_matter: &Map<String, Value>,
+    spec: &mut Map<String, Value>,
+    family: &str,
+) -> Result<(), MarkdownError> {
+    let Some(value) = front_matter.get("brand") else {
+        return Ok(());
+    };
+    let value = match value {
+        Value::Object(_) => value.clone(),
+        Value::Array(_) => {
+            return Err(MarkdownError {
+                line: Some(2),
+                code: "MARKDOWN_FRONT_MATTER_INVALID".to_string(),
+                message: format!("{family} brand front matter must be a scalar path or an object"),
+            });
+        }
+        _ => Value::String(front_matter_string(value, family, "brand")?),
+    };
+    spec.insert("brand".to_string(), value);
+    Ok(())
+}
+
+fn normalize_object_string_fields(
+    object: &mut Map<String, Value>,
+    family: &str,
+    parent: &str,
+    fields: &[&str],
+) -> Result<(), MarkdownError> {
+    for field in fields {
+        if let Some(value) = object.get_mut(*field) {
+            *value = Value::String(front_matter_string(
+                value,
+                family,
+                &format!("{parent}.{field}"),
+            )?);
+        }
+    }
+    Ok(())
+}
+
 fn pptx_spec(
     parsed: ParsedMarkdown,
     source_name: &str,
@@ -520,10 +595,11 @@ fn pptx_spec(
     } = parsed;
     let split = front_matter
         .get("split")
-        .and_then(Value::as_str)
-        .unwrap_or("both");
+        .map(|value| front_matter_string(value, "PPTX", "split"))
+        .transpose()?
+        .unwrap_or_else(|| "both".to_string());
     if !matches!(
-        split,
+        split.as_str(),
         "both" | "heading" | "headings" | "h1" | "rule" | "separator"
     ) {
         return Err(MarkdownError {
@@ -532,8 +608,8 @@ fn pptx_spec(
             message: "pptx split must be both, heading, or rule".to_string(),
         });
     }
-    let split_heading = matches!(split, "both" | "heading" | "headings" | "h1");
-    let split_rule = matches!(split, "both" | "rule" | "separator");
+    let split_heading = matches!(split.as_str(), "both" | "heading" | "headings" | "h1");
+    let split_rule = matches!(split.as_str(), "both" | "rule" | "separator");
     let mut slides = Vec::<Vec<Block>>::new();
     let mut current = Vec::new();
     for block in blocks {
@@ -567,18 +643,17 @@ fn pptx_spec(
         ("family".to_string(), json!("pptx")),
         ("slides".to_string(), Value::Array(slide_specs)),
     ]);
-    for key in [
-        "theme",
-        "themeSeed",
-        "template",
-        "brand",
-        "size",
-        "footer",
-        "slideNumbers",
-    ] {
-        if let Some(value) = front_matter.get(key) {
-            spec.insert(key.to_string(), value.clone());
-        }
+    for key in ["theme", "themeSeed", "template", "size", "footer"] {
+        copy_front_matter_string(&front_matter, &mut spec, "PPTX", key)?;
+    }
+    copy_front_matter_brand(&front_matter, &mut spec, "PPTX")?;
+    if let Some(value) = front_matter.get("slideNumbers") {
+        let enabled = value.as_bool().ok_or_else(|| MarkdownError {
+            line: Some(2),
+            code: "MARKDOWN_FRONT_MATTER_INVALID".to_string(),
+            message: "PPTX slideNumbers front matter must be a boolean".to_string(),
+        })?;
+        spec.insert("slideNumbers".to_string(), Value::Bool(enabled));
     }
     for key in front_matter.keys() {
         if !matches!(
@@ -976,37 +1051,31 @@ fn docx_spec(
         ("family".to_string(), json!("docx")),
         ("blocks".to_string(), Value::Array(output)),
     ]);
-    for key in [
-        "template",
-        "theme",
-        "themeSeed",
-        "brand",
-        "title",
-        "subtitle",
-        "sections",
-    ] {
-        if let Some(value) = front_matter.get(key) {
-            spec.insert(key.to_string(), value.clone());
-        }
+    for key in ["template", "theme", "themeSeed", "title", "subtitle"] {
+        copy_front_matter_string(&front_matter, &mut spec, "DOCX", key)?;
+    }
+    copy_front_matter_brand(&front_matter, &mut spec, "DOCX")?;
+    if let Some(value) = front_matter.get("sections") {
+        spec.insert("sections".to_string(), value.clone());
     }
     let mut metadata = front_matter
         .get("metadata")
         .cloned()
         .unwrap_or_else(|| json!({}));
+    let metadata_object = metadata.as_object_mut().ok_or_else(|| MarkdownError {
+        line: Some(2),
+        code: "MARKDOWN_FRONT_MATTER_INVALID".to_string(),
+        message: "DOCX metadata front matter must be an object".to_string(),
+    })?;
+    normalize_object_string_fields(
+        metadata_object,
+        "DOCX",
+        "metadata",
+        &["title", "subject", "creator", "keywords", "description"],
+    )?;
     if let Some(author) = front_matter.get("author") {
-        let author = author.as_str().ok_or_else(|| MarkdownError {
-            line: Some(2),
-            code: "MARKDOWN_FRONT_MATTER_INVALID".to_string(),
-            message: "DOCX author front matter must be a string".to_string(),
-        })?;
-        metadata
-            .as_object_mut()
-            .ok_or_else(|| MarkdownError {
-                line: Some(2),
-                code: "MARKDOWN_FRONT_MATTER_INVALID".to_string(),
-                message: "DOCX metadata front matter must be an object".to_string(),
-            })?
-            .insert("creator".to_string(), json!(author));
+        let author = front_matter_string(author, "DOCX", "author")?;
+        metadata_object.insert("creator".to_string(), json!(author));
     }
     if metadata
         .as_object()
@@ -1152,6 +1221,7 @@ fn document_region_front_matter(
             });
         }
     }
+    normalize_object_string_fields(&mut region, "DOCX", plural, &["default", "first", "even"])?;
     if let Some(value) = front_matter.get(singular) {
         if region.contains_key("default") {
             return Err(MarkdownError {
@@ -1162,11 +1232,7 @@ fn document_region_front_matter(
                 ),
             });
         }
-        let text = value.as_str().ok_or_else(|| MarkdownError {
-            line: Some(2),
-            code: "MARKDOWN_FRONT_MATTER_INVALID".to_string(),
-            message: format!("DOCX {singular} front matter must be a string"),
-        })?;
+        let text = front_matter_string(value, "DOCX", singular)?;
         region.insert("default".to_string(), json!(text));
     }
     if include_page_numbers && let Some(value) = front_matter.get("pageNumbers") {
@@ -1565,6 +1631,32 @@ let x = 1;
         assert_eq!(blocks[4]["level"], 1);
         assert_eq!(blocks[5]["type"], "pageBreak");
         assert_eq!(blocks[6]["runs"][0]["inlineCode"], true);
+    }
+
+    #[test]
+    fn docx_string_front_matter_accepts_yaml_scalars_and_rejects_composites() {
+        let conversion = markdown_to_spec(
+            BuildFamily::Docx,
+            "---\ntitle: 7\nsubtitle: true\nauthor: 42\nheader: 9\nmetadata:\n  subject: 2026\n---\n# Body\n",
+            "scalar-front-matter.md",
+        )
+        .expect("stringify scalar DOCX front matter");
+        assert_eq!(conversion.spec["title"], "7");
+        assert_eq!(conversion.spec["subtitle"], "true");
+        assert_eq!(conversion.spec["metadata"]["creator"], "42");
+        assert_eq!(conversion.spec["metadata"]["subject"], "2026");
+        assert_eq!(conversion.spec["headers"]["default"], "9");
+
+        let error = markdown_to_spec(
+            BuildFamily::Docx,
+            "---\n{\"title\":{\"nested\":\"unsupported\"}}\n---\n# Body\n",
+            "composite-front-matter.md",
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "MARKDOWN_FRONT_MATTER_INVALID");
+        assert_eq!(error.line, Some(2));
+        assert!(error.message.contains("DOCX title"));
+        assert!(error.message.contains("scalar value"));
     }
 
     #[test]

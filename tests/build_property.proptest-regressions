@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 034aeaba2cbc9354edb4281c282936270c7f74e74e9edb34bf6716b88b51484e # shrinks to "---\ntitle: 7\nauthor: Property Test\n---\n# 7\n## Section\na with **bold**, *italic*, `code`, and a [link](https://example.test/property).\n- Item 1\n  * Nested item\n1. Numbered item\n\n| Label | Value |\n| --- | ---: |\n| a | 1 |\n\n![Generated image](asset.png) {width=2in}\n\n***\n\n```text\nvalue = 1\n```\n"
