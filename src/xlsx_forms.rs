@@ -134,7 +134,7 @@ fn write_entry_form_package(
         &mut writer,
         options,
         "_rels/.rels",
-        package_relationships_xml(),
+        &package_relationships_xml(),
     )?;
     write_zip_string(&mut writer, options, "docProps/core.xml", core_props_xml())?;
     write_zip_string(
@@ -153,7 +153,7 @@ fn write_entry_form_package(
         &mut writer,
         options,
         "xl/_rels/workbook.xml.rels",
-        workbook_relationships_xml(),
+        &workbook_relationships_xml(),
     )?;
     write_zip_string(
         &mut writer,
@@ -167,7 +167,7 @@ fn write_entry_form_package(
         &mut writer,
         options,
         FORM_SHEET_RELS_PART,
-        form_sheet_relationships_xml(),
+        &form_sheet_relationships_xml(),
     )?;
     write_zip_string(
         &mut writer,
@@ -355,8 +355,27 @@ fn content_types_xml() -> &'static str {
     r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="vml" ContentType="application/vnd.openxmlformats-officedocument.vmlDrawing"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.ms-excel.sheet.macroEnabled.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/vbaProject.bin" ContentType="application/vnd.ms-office.vbaProject"/></Types>"#
 }
 
-fn package_relationships_xml() -> &'static str {
-    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>"#
+fn package_relationships_xml() -> String {
+    crate::opc::render_relationships_xml(
+        &[
+            crate::opc::RelationshipEntry::new(
+                "rId1",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
+                "xl/workbook.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId2",
+                "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
+                "docProps/core.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId3",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties",
+                "docProps/app.xml",
+            ),
+        ],
+        true,
+    )
 }
 
 fn core_props_xml() -> &'static str {
@@ -379,12 +398,43 @@ fn workbook_xml(form_sheet: &str, data_sheet: &str) -> String {
     )
 }
 
-fn workbook_relationships_xml() -> &'static str {
-    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId4" Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject" Target="vbaProject.bin"/></Relationships>"#
+fn workbook_relationships_xml() -> String {
+    crate::opc::render_relationships_xml(
+        &[
+            crate::opc::RelationshipEntry::new(
+                "rId1",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet",
+                "worksheets/sheet1.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId2",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet",
+                "worksheets/sheet2.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId3",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
+                "styles.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId4",
+                "http://schemas.microsoft.com/office/2006/relationships/vbaProject",
+                "vbaProject.bin",
+            ),
+        ],
+        true,
+    )
 }
 
-fn form_sheet_relationships_xml() -> &'static str {
-    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing1.vml"/></Relationships>"#
+fn form_sheet_relationships_xml() -> String {
+    crate::opc::render_relationships_xml(
+        &[crate::opc::RelationshipEntry::new(
+            "rId1",
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing",
+            "../drawings/vmlDrawing1.vml",
+        )],
+        true,
+    )
 }
 
 fn xlsx_forms_styles_xml() -> &'static str {

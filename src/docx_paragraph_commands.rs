@@ -296,19 +296,10 @@ fn add_external_hyperlink_relationship(
     id: &str,
     target: &str,
 ) -> CliResult<String> {
-    let insert_at = relationships
-        .rfind("</Relationships>")
-        .ok_or_else(|| CliError::unexpected("invalid document relationships XML"))?;
-    let relationship = format!(
-        "<Relationship Id=\"{}\" Type=\"{DOCX_HYPERLINK_REL}\" Target=\"{}\" TargetMode=\"External\"/>",
-        crate::xml_attr_escape(id),
-        crate::xml_attr_escape(target)
-    );
-    let mut updated = String::with_capacity(relationships.len() + relationship.len());
-    updated.push_str(&relationships[..insert_at]);
-    updated.push_str(&relationship);
-    updated.push_str(&relationships[insert_at..]);
-    Ok(updated)
+    Ok(crate::opc::append_relationship_xml(
+        relationships.to_string(),
+        &crate::opc::RelationshipEntry::external(id, DOCX_HYPERLINK_REL, target),
+    ))
 }
 
 fn ensure_docx_relationship_namespace(xml: &str) -> CliResult<String> {

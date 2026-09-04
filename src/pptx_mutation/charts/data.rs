@@ -397,15 +397,17 @@ pub(super) fn create_slide_chart_package_updates(
             source.embedded_workbook.clone(),
         );
         let chart_rels_part = relationships_part_for(&chart_part);
-        let chart_rels_xml = zip_text(file, &chart_rels_part).unwrap_or_else(|_| {
-            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
-        });
+        let chart_rels_xml = zip_text(file, &chart_rels_part)
+            .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
         let chart_rels = relationship_entries_from_xml(&chart_rels_xml);
         let package_rid = crate::allocate_relationship_id(&chart_rels);
         let target = relationship_target_from_source_to_target(&chart_part, &embedded_part);
         text_overrides.insert(
             chart_rels_part,
-            crate::add_relationship_to_xml(chart_rels_xml, &package_rid, REL_PACKAGE, &target),
+            crate::opc::append_relationship_xml(
+                chart_rels_xml,
+                &crate::RelationshipEntry::new(&package_rid, REL_PACKAGE, &target),
+            ),
         );
         chart_xml = add_chart_external_data(&chart_xml, &package_rid)?;
     }
@@ -413,18 +415,15 @@ pub(super) fn create_slide_chart_package_updates(
 
     let slide_rels_part = relationships_part_for(&slide_ref.part_uri);
     let slide_rels_xml = zip_text(file, &slide_rels_part)?;
-    let mut slide_rels = relationship_entries(file, &slide_rels_part)?;
+    let slide_rels = relationship_entries(file, &slide_rels_part)?;
     let chart_rid = crate::allocate_relationship_id(&slide_rels);
     let chart_target = relationship_target_from_source_to_target(&slide_ref.part_uri, &chart_part);
-    slide_rels.push(crate::RelationshipEntry {
-        id: chart_rid.clone(),
-        rel_type: REL_CHART.to_string(),
-        target: chart_target.clone(),
-        target_mode: String::new(),
-    });
     text_overrides.insert(
         slide_rels_part,
-        crate::add_relationship_to_xml(slide_rels_xml, &chart_rid, REL_CHART, &chart_target),
+        crate::opc::append_relationship_xml(
+            slide_rels_xml,
+            &crate::RelationshipEntry::new(&chart_rid, REL_CHART, &chart_target),
+        ),
     );
 
     let slide_part_name = slide_ref.part_uri.trim_start_matches('/').to_string();

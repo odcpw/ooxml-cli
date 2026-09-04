@@ -16,7 +16,7 @@ use output::{select_xlsx_pivot, xlsx_pivot_item_json};
 
 use crate::{
     CliError, CliResult, RelationshipEntry, WorkbookSheet, XlsxRangeExportOptions,
-    add_relationship_to_xml, allocate_relationship_id, attr, col_name, command_arg,
+    allocate_relationship_id, append_relationship_xml, attr, col_name, command_arg,
     copy_zip_with_part_overrides, ensure_content_type_override, insert_xlsx_workbook_child_ordered,
     local_name, parse_cell_ref, parse_range, relationship_entries, relationship_entries_from_xml,
     relationship_target_from_source_to_target, relationships_part_for, resolve_relationship_target,
@@ -683,11 +683,14 @@ fn build_pivot_create_artifacts(
         cache_records_rid,
     );
     let cache_records_xml = render_cache_records_xml(&source.cells, &field_models);
-    let cache_rels_xml = render_relationships_xml(&[(
-        cache_records_rid,
-        REL_PIVOT_RECORDS,
-        relationship_target_from_source_to_target(&cache_definition_uri, &cache_records_uri),
-    )]);
+    let cache_rels_xml = crate::opc::render_relationships_xml(
+        &[RelationshipEntry::new(
+            cache_records_rid,
+            REL_PIVOT_RECORDS,
+            &relationship_target_from_source_to_target(&cache_definition_uri, &cache_records_uri),
+        )],
+        false,
+    );
     let pivot_table_xml = render_pivot_table_xml(
         &pivot_name,
         cache_id,
@@ -699,31 +702,38 @@ fn build_pivot_create_artifacts(
         &data_fields,
         &data_field_indices,
     );
-    let pivot_rels_xml = render_relationships_xml(&[(
-        "rId1",
-        REL_PIVOT_CACHE,
-        relationship_target_from_source_to_target(&pivot_table_uri, &cache_definition_uri),
-    )]);
+    let pivot_rels_xml = crate::opc::render_relationships_xml(
+        &[RelationshipEntry::new(
+            "rId1",
+            REL_PIVOT_CACHE,
+            &relationship_target_from_source_to_target(&pivot_table_uri, &cache_definition_uri),
+        )],
+        false,
+    );
 
     let worksheet_rels_part = relationships_part_for(&target_sheet_part_uri);
-    let worksheet_rels_xml =
-        optional_zip_text(file, &worksheet_rels_part)?.unwrap_or_else(empty_relationships_xml);
+    let worksheet_rels_xml = optional_zip_text(file, &worksheet_rels_part)?
+        .unwrap_or_else(|| crate::opc::empty_relationships_xml(false));
     let worksheet_rels = relationship_entries_from_xml(&worksheet_rels_xml);
     let pivot_rid = allocate_relationship_id(&worksheet_rels);
-    let worksheet_rels_xml = add_relationship_to_xml(
+    let worksheet_rels_xml = append_relationship_xml(
         worksheet_rels_xml,
-        &pivot_rid,
-        REL_PIVOT_TABLE,
-        &relationship_target_from_source_to_target(&target_sheet_part_uri, &pivot_table_uri),
+        &RelationshipEntry::new(
+            &pivot_rid,
+            REL_PIVOT_TABLE,
+            &relationship_target_from_source_to_target(&target_sheet_part_uri, &pivot_table_uri),
+        ),
     );
     let workbook_rels_xml = zip_text(file, "xl/_rels/workbook.xml.rels")?;
     let next_workbook_rid =
         allocate_relationship_id(&relationship_entries_from_xml(&workbook_rels_xml));
-    let workbook_rels_xml = add_relationship_to_xml(
+    let workbook_rels_xml = append_relationship_xml(
         workbook_rels_xml,
-        &next_workbook_rid,
-        REL_PIVOT_CACHE,
-        &relationship_target_from_source_to_target("/xl/workbook.xml", &cache_definition_uri),
+        &RelationshipEntry::new(
+            &next_workbook_rid,
+            REL_PIVOT_CACHE,
+            &relationship_target_from_source_to_target("/xl/workbook.xml", &cache_definition_uri),
+        ),
     );
     let workbook_xml = add_workbook_pivot_cache(
         &ensure_workbook_r_namespace(workbook_xml),
@@ -1157,20 +1167,6 @@ fn render_pivot_table_xml(
     xml
 }
 
-fn render_relationships_xml(relationships: &[(&str, &str, String)]) -> String {
-    let mut xml = r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#.to_string();
-    for (id, rel_type, target) in relationships {
-        xml.push_str(&format!(
-            r#"<Relationship Id="{}" Type="{}" Target="{}"/>"#,
-            xml_attr_escape(id),
-            xml_attr_escape(rel_type),
-            xml_attr_escape(target)
-        ));
-    }
-    xml.push_str("</Relationships>");
-    xml
-}
-
 fn add_workbook_pivot_cache(workbook_xml: &str, cache_id: i32, rid: &str) -> String {
     let prefix = find_xml_element_start(workbook_xml, "workbook")
         .and_then(|(_, root_name)| root_name.strip_suffix("workbook").map(str::to_string))
@@ -1389,10 +1385,6 @@ fn normalize_part_uri(part_uri: &str) -> String {
 
 fn part_name(part_uri: &str) -> String {
     part_uri.trim_start_matches('/').to_string()
-}
-
-fn empty_relationships_xml() -> String {
-    r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
 }
 
 fn parse_i32(value: Option<&str>, fallback: i32) -> i32 {

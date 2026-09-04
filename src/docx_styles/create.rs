@@ -5,9 +5,9 @@ use crate::docx_authoring::styles::{
     BUILT_IN_STYLES, BuiltInNumbering, BuiltInStyle, built_in_style_fragment, styles_xml,
 };
 use crate::{
-    CliError, CliResult, add_relationship_to_xml, allocate_relationship_id, content_type_for_part,
-    ensure_content_type_override, is_docx_numbering_part, relationship_entries,
-    relationship_entries_from_xml, relationship_target_from_source_to_target,
+    CliError, CliResult, RelationshipEntry, allocate_relationship_id, append_relationship_xml,
+    content_type_for_part, ensure_content_type_override, is_docx_numbering_part,
+    relationship_entries, relationship_entries_from_xml, relationship_target_from_source_to_target,
     relationships_part_for, resolve_relationship_target, zip_entry_names, zip_text,
 };
 
@@ -387,7 +387,7 @@ fn ensure_part_registration(
         if entries.iter().any(|entry| entry == &rels_part) {
             zip_text(file, &rels_part).unwrap_or_default()
         } else {
-            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
+            crate::opc::empty_relationships_xml(true)
         }
     });
     let relationships = relationship_entries_from_xml(&rels);
@@ -399,7 +399,10 @@ fn ensure_part_registration(
         let target = relationship_target_from_source_to_target(document_part, target_part);
         overrides.insert(
             rels_part,
-            add_relationship_to_xml(rels, &id, relationship_type, &target),
+            append_relationship_xml(
+                rels,
+                &RelationshipEntry::new(&id, relationship_type, &target),
+            ),
         );
     }
     let content_types = overrides

@@ -10,8 +10,8 @@ use crate::{
     ensure_content_type_override, find_docx_document_part, local_name, package_type,
     relationship_entries, relationship_target_from_source_to_target, relationships_part_for,
     resolve_optional_docx_paragraph_text, resolve_relationship_target,
-    validate_xlsx_mutation_output_flags, xml_attr_escape, xml_tag_prefix, xml_token_name,
-    zip_entry_exists, zip_entry_names, zip_text,
+    validate_xlsx_mutation_output_flags, xml_tag_prefix, xml_token_name, zip_entry_exists,
+    zip_entry_names, zip_text,
 };
 
 mod handles;
@@ -392,25 +392,16 @@ fn ensure_docx_comments_relationship_xml(
 
     let next_id = allocate_relationship_id(&rels);
     let target = relationship_target_from_source_to_target(document_uri, comments_part);
-    let rel = format!(
-        r#"<Relationship Id="{next_id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="{}"/>"#,
-        xml_attr_escape(&target)
+    let rels_xml =
+        zip_text(file, &rels_part).unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
+    let updated = crate::opc::append_relationship_xml(
+        rels_xml,
+        &crate::opc::RelationshipEntry::new(
+            &next_id,
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
+            &target,
+        ),
     );
-    let rels_xml = zip_text(file, &rels_part).unwrap_or_else(|_| {
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#
-            .to_string()
-    });
-    let updated = if let Some(pos) = rels_xml.rfind("</Relationships>") {
-        let mut out = String::with_capacity(rels_xml.len() + rel.len());
-        out.push_str(&rels_xml[..pos]);
-        out.push_str(&rel);
-        out.push_str(&rels_xml[pos..]);
-        out
-    } else {
-        format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
-        )
-    };
     Ok((rels_part, Some(updated), true))
 }
 

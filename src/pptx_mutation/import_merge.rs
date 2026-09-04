@@ -424,7 +424,7 @@ impl PptxPackageEditor {
         let rels_part = relationships_part_for(source_uri);
         self.entries.insert(rels_part.clone());
         self.text_overrides
-            .insert(rels_part, render_relationships_xml(rels));
+            .insert(rels_part, crate::opc::render_relationships_xml(rels, false));
     }
 
     fn replace_text_part(&mut self, uri: &str, text: String) {
@@ -1919,28 +1919,6 @@ fn content_type_from_xml(xml: &str, part_uri: &str) -> String {
         .and_then(|value| value.to_str())
         .unwrap_or_default();
     defaults.get(extension).cloned().unwrap_or_default()
-}
-
-fn render_relationships_xml(rels: &[RelationshipEntry]) -> String {
-    let mut out = String::from(
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
-    );
-    for rel in rels {
-        let target_mode = if rel.target_mode.is_empty() {
-            String::new()
-        } else {
-            format!(r#" TargetMode="{}""#, xml_attr_escape(&rel.target_mode))
-        };
-        out.push_str(&format!(
-            r#"<Relationship Id="{}" Type="{}" Target="{}"{} />"#,
-            xml_attr_escape(&rel.id),
-            xml_attr_escape(&rel.rel_type),
-            xml_attr_escape(&rel.target),
-            target_mode
-        ));
-    }
-    out.push_str("</Relationships>");
-    out
 }
 
 fn remint_pptx_creation_ids(xml: &str, scope: &str) -> String {

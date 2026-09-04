@@ -26,7 +26,7 @@ use std::path::Path;
 
 use crate::{
     CliError, CliResult, DOCX_W_NS, DocxParagraphMutationOptions, RelationshipEntry, XmlNamedRange,
-    add_relationship_to_xml, allocate_relationship_id, attr, command_arg, docx_body_content_bounds,
+    allocate_relationship_id, append_relationship_xml, attr, command_arg, docx_body_content_bounds,
     docx_body_prefix, docx_body_tag, docx_mutation_output_path_for_result,
     ensure_content_type_override, ensure_docx_package_kind, ensure_docx_word_prefix,
     find_docx_document_part, json_i64, json_optional_string, local_name, relationship_entries,
@@ -366,14 +366,10 @@ fn ensure_docx_header_footer(
         let part_uri = allocate_docx_header_footer_part_uri(ctx.entries, kind);
         let id = allocate_relationship_id(&rels);
         let target = relationship_target_from_source_to_target(ctx.document_uri, &part_uri);
-        let rel_xml = add_relationship_to_xml(
-            zip_text(ctx.file, &rels_part).unwrap_or_else(|_| {
-                r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#
-                    .to_string()
-            }),
-            &id,
-            docx_header_footer_relationship_type(kind),
-            &target,
+        let rel_xml = append_relationship_xml(
+            zip_text(ctx.file, &rels_part)
+                .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false)),
+            &RelationshipEntry::new(&id, docx_header_footer_relationship_type(kind), &target),
         );
         let content_xml = ensure_content_type_override(
             zip_text(ctx.file, "[Content_Types].xml")?,

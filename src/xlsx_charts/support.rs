@@ -103,10 +103,6 @@ pub(super) fn part_name(part_uri: &str) -> String {
     part_uri.trim_start_matches('/').to_string()
 }
 
-pub(super) fn empty_relationships_xml() -> String {
-    r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
-}
-
 pub(super) fn ensure_chart_xml_namespaces(root: &mut XmlNode) -> ChartXmlContext {
     let chart_prefix = root
         .namespace_prefix_for(NS_CHART)

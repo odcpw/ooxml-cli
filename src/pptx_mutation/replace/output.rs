@@ -8,9 +8,8 @@ use super::{
     TextOccurrenceMatch, TextOccurrencePlan, TextOccurrencesRequest, TextTargetReplacePlan,
 };
 use crate::{
-    CliError, CliResult, RelationshipEntry, command_arg,
-    copy_zip_with_binary_part_overrides_and_removals, copy_zip_with_part_overrides, package_type,
-    xml_attr_escape,
+    CliError, CliResult, command_arg, copy_zip_with_binary_part_overrides_and_removals,
+    copy_zip_with_part_overrides, package_type,
 };
 
 pub(super) fn text_from_xlsx_result_json(
@@ -483,29 +482,6 @@ fn image_destination_json(
         }),
     );
     Value::Object(result)
-}
-
-pub(super) fn render_relationships_xml(rels: &[RelationshipEntry]) -> String {
-    let mut out = String::from(
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
-    );
-    for rel in rels {
-        out.push_str(&format!(
-            r#"<Relationship Id="{}" Type="{}" Target="{}""#,
-            xml_attr_escape(&rel.id),
-            xml_attr_escape(&rel.rel_type),
-            xml_attr_escape(&rel.target)
-        ));
-        if !rel.target_mode.is_empty() {
-            out.push_str(&format!(
-                r#" TargetMode="{}""#,
-                xml_attr_escape(&rel.target_mode)
-            ));
-        }
-        out.push_str("/>");
-    }
-    out.push_str("</Relationships>");
-    out
 }
 
 pub(super) fn write_replace_mutation(

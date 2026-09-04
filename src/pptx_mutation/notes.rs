@@ -4,7 +4,7 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
 use crate::{
-    CliError, CliResult, RelationshipEntry, add_relationship_to_xml, allocate_relationship_id,
+    CliError, CliResult, RelationshipEntry, allocate_relationship_id, append_relationship_xml,
     attr, attr_exact, command_arg, copy_zip_with_part_overrides, ensure_content_type_override,
     local_name, package_type, relationship_entries_from_xml,
     relationship_target_from_source_to_target, relationships_part_for, resolve_relationship_target,
@@ -115,7 +115,8 @@ fn build_notes_mutation(file: &str, slide: u32, text: &str) -> CliResult<PptxNot
     let mut overrides = BTreeMap::new();
     let mut content_types = zip_text(file, "[Content_Types].xml")?;
     let slide_rels_part = relationships_part_for(&slide_ref.part);
-    let slide_rels_xml = zip_text(file, &slide_rels_part).unwrap_or_else(|_| relationships_xml());
+    let slide_rels_xml = zip_text(file, &slide_rels_part)
+        .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     let slide_rels = relationship_entries_from_xml(&slide_rels_xml);
     let existing_notes_uri =
         relationship_target_by_type(&slide_ref.part, &slide_rels, NOTES_REL_TYPE);
@@ -151,14 +152,17 @@ fn build_notes_mutation(file: &str, slide: u32, text: &str) -> CliResult<PptxNot
             overrides.insert(master_uri.clone(), create_notes_master_document());
             if let Some(theme_uri) = find_presentation_related_part(file, THEME_REL_TYPE)? {
                 let target = relationship_target_from_source_to_target(&master_uri, &theme_uri);
-                let rels_xml =
-                    append_allocated_relationship(relationships_xml(), THEME_REL_TYPE, &target);
+                let rels_xml = append_allocated_relationship(
+                    crate::opc::empty_relationships_xml(false),
+                    THEME_REL_TYPE,
+                    &target,
+                );
                 overrides.insert(relationships_part_for(&master_uri), rels_xml);
             }
 
             let pres_rels_part = relationships_part_for("ppt/presentation.xml");
-            let pres_rels_xml =
-                zip_text(file, &pres_rels_part).unwrap_or_else(|_| relationships_xml());
+            let pres_rels_xml = zip_text(file, &pres_rels_part)
+                .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
             let target =
                 relationship_target_from_source_to_target("ppt/presentation.xml", &master_uri);
             overrides.insert(
@@ -168,7 +172,7 @@ fn build_notes_mutation(file: &str, slide: u32, text: &str) -> CliResult<PptxNot
             notes_master_uri = Some(master_uri);
         }
 
-        let mut notes_rels_xml = relationships_xml();
+        let mut notes_rels_xml = crate::opc::empty_relationships_xml(false);
         if let Some(master_uri) = notes_master_uri.as_deref() {
             let target = relationship_target_from_source_to_target(&notes_uri, master_uri);
             notes_rels_xml =
@@ -268,7 +272,8 @@ fn relationship_target_by_type(
 
 fn find_presentation_related_part(file: &str, rel_type: &str) -> CliResult<Option<String>> {
     let rels_part = relationships_part_for("ppt/presentation.xml");
-    let rels_xml = zip_text(file, &rels_part).unwrap_or_else(|_| relationships_xml());
+    let rels_xml =
+        zip_text(file, &rels_part).unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     let rels = relationship_entries_from_xml(&rels_xml);
     Ok(relationship_target_by_type(
         "/ppt/presentation.xml",
@@ -301,7 +306,7 @@ fn allocate_numbered_part_name(
 fn append_allocated_relationship(xml: String, rel_type: &str, target: &str) -> String {
     let rels = relationship_entries_from_xml(&xml);
     let id = allocate_relationship_id(&rels);
-    add_relationship_to_xml(xml, &id, rel_type, target)
+    append_relationship_xml(xml, &RelationshipEntry::new(&id, rel_type, target))
 }
 
 fn set_notes_body_text(xml: &str, text: &str) -> CliResult<String> {
@@ -461,10 +466,6 @@ fn create_notes_slide_document() -> String {
 
 fn create_notes_master_document() -> String {
     r#"<p:notesMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/></p:notesMaster>"#.to_string()
-}
-
-fn relationships_xml() -> String {
-    r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
 }
 
 fn package_part_name(uri: &str) -> String {

@@ -14,11 +14,10 @@ use crate::{
     command_arg, copy_zip_with_part_overrides, local_name, normalize_xl_target,
     relationship_entries_from_xml, relationships, relationships_part_for, render_xml_attrs,
     replace_xml_span, resolve_sheet, selector_candidates, validate_xlsx_mutation_output_flags,
-    workbook_sheets, xml_attr_escape, xml_attrs_map, xml_direct_child_ranges,
-    xml_open_tag_from_start, xml_tag_prefix, zip_text,
+    workbook_sheets, xml_attrs_map, xml_direct_child_ranges, xml_open_tag_from_start,
+    xml_tag_prefix, zip_text,
 };
 
-const REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
 const OFFICE_R_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const REL_HYPERLINK: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
@@ -344,7 +343,7 @@ fn add_hyperlink(
     if rels_changed {
         text_overrides.insert(
             relationships_part_for(&context.part),
-            render_relationships(&rels),
+            crate::opc::render_relationships_xml(&rels, false),
         );
     }
     Ok(HyperlinkMutation {
@@ -455,7 +454,7 @@ fn update_hyperlink(
     if rels_changed {
         text_overrides.insert(
             relationships_part_for(&context.part),
-            render_relationships(&rels),
+            crate::opc::render_relationships_xml(&rels, false),
         );
     }
     Ok(HyperlinkMutation {
@@ -498,7 +497,7 @@ fn delete_hyperlink(
     if rels_changed {
         text_overrides.insert(
             relationships_part_for(&context.part),
-            render_relationships(&rels),
+            crate::opc::render_relationships_xml(&rels, false),
         );
     }
     Ok(HyperlinkMutation {
@@ -1043,33 +1042,7 @@ fn attr_local_name(key: &str) -> &str {
 }
 
 fn relationships_template() -> String {
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="{REL_NS}"></Relationships>"#
-    )
-}
-
-fn render_relationships(rels: &[RelationshipEntry]) -> String {
-    let body = rels.iter().map(render_relationship).collect::<String>();
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="{REL_NS}">{body}</Relationships>"#
-    )
-}
-
-fn render_relationship(rel: &RelationshipEntry) -> String {
-    let mut out = format!(
-        r#"<Relationship Id="{}" Type="{}" Target="{}""#,
-        xml_attr_escape(&rel.id),
-        xml_attr_escape(&rel.rel_type),
-        xml_attr_escape(&rel.target)
-    );
-    if !rel.target_mode.is_empty() {
-        out.push_str(&format!(
-            r#" TargetMode="{}""#,
-            xml_attr_escape(&rel.target_mode)
-        ));
-    }
-    out.push_str("/>");
-    out
+    crate::opc::empty_relationships_xml(false)
 }
 
 fn element_name(prefix: &str, local: &str) -> String {

@@ -15,7 +15,7 @@ use crate::pptx_mutation::paragraphs::{
 };
 use crate::pptx_readback::pptx_shapes_get;
 use crate::{
-    CliError, CliResult, RelationshipEntry, add_relationship_to_xml, allocate_relationship_id,
+    CliError, CliResult, RelationshipEntry, allocate_relationship_id, append_relationship_xml,
     attr, attr_exact, copy_zip_with_binary_part_overrides_and_removals,
     copy_zip_with_part_overrides_and_removals, ensure_content_type_override, local_name,
     package_type, relationship_entries_from_xml, relationship_target_from_source_to_target,
@@ -352,7 +352,8 @@ fn build_delete_slide_mutation(file: &str, slide: i64) -> CliResult<DeleteSlideM
     let updated_pres_rels = remove_relationship_by_id(&pres_rels_xml, &slide_ref.rel_id);
 
     let slide_rels_part = relationships_part_for(&slide_ref.part);
-    let slide_rels_xml = zip_text(file, &slide_rels_part).unwrap_or_else(|_| relationships_xml());
+    let slide_rels_xml = zip_text(file, &slide_rels_part)
+        .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     let removed_notes = related_part_by_type(&slide_ref.part, &slide_rels_xml, NOTES_REL_TYPE);
 
     let mut removals = BTreeSet::new();
@@ -368,9 +369,11 @@ fn build_delete_slide_mutation(file: &str, slide: i64) -> CliResult<DeleteSlideM
     if let Some(notes_part) = removed_notes.as_deref() {
         removed_content_types.insert(notes_part.to_string());
     }
-    let content_types = zip_text(file, "[Content_Types].xml")?;
-    let updated_content_types =
-        remove_content_type_overrides(&content_types, &removed_content_types);
+    let mut updated_content_types = zip_text(file, "[Content_Types].xml")?;
+    for part in &removed_content_types {
+        updated_content_types =
+            crate::opc::remove_content_type_override(updated_content_types, part)?;
+    }
 
     let mut overrides = BTreeMap::new();
     overrides.insert("ppt/presentation.xml".to_string(), updated_presentation);
@@ -507,7 +510,8 @@ fn build_clone_slide_mutation(
     let source_ref = &refs[slide as usize - 1];
     let slide_xml = zip_text(file, &source_ref.part)?;
     let source_rels_part = relationships_part_for(&source_ref.part);
-    let source_rels_xml = zip_text(file, &source_rels_part).unwrap_or_else(|_| relationships_xml());
+    let source_rels_xml = zip_text(file, &source_rels_part)
+        .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     let source_rels = relationship_entries_from_xml(&source_rels_xml);
     let mut content_types = ensure_content_type_override(
         zip_text(file, "[Content_Types].xml")?,
@@ -538,7 +542,7 @@ fn build_clone_slide_mutation(
         }
         cloned_rels.push(rel);
     }
-    let new_slide_rels = render_relationships_xml(&cloned_rels);
+    let new_slide_rels = crate::opc::render_relationships_xml(&cloned_rels, false);
 
     let new_slide_id = next_presentation_slide_id(&presentation_xml);
     let presentation_rels_xml = zip_text(file, "ppt/_rels/presentation.xml.rels")?;
@@ -546,11 +550,9 @@ fn build_clone_slide_mutation(
     let new_rel_id = allocate_relationship_id(&presentation_rels);
     let rel_target =
         relationship_target_from_source_to_target("ppt/presentation.xml", &new_slide_part);
-    let updated_presentation_rels = add_relationship_to_xml(
+    let updated_presentation_rels = append_relationship_xml(
         presentation_rels_xml,
-        &new_rel_id,
-        SLIDE_REL_TYPE,
-        &rel_target,
+        &RelationshipEntry::new(&new_rel_id, SLIDE_REL_TYPE, &rel_target),
     );
     let new_fragment = format!(r#"<p:sldId id="{new_slide_id}" r:id="{new_rel_id}"/>"#);
     let updated_presentation = insert_slide_fragment(
@@ -628,7 +630,7 @@ fn build_new_slide_from_layout_mutation(
             .cloned()
             .unwrap_or_else(|| {
                 zip_text(file, &relationships_part_for(&new_slide_part))
-                    .unwrap_or_else(|_| relationships_xml())
+                    .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false))
             });
         let mut content_types_xml = cloned
             .package
@@ -690,11 +692,9 @@ fn build_new_slide_from_layout_mutation(
     let new_rel_id = allocate_relationship_id(&presentation_rels);
     let slide_rel_target =
         relationship_target_from_source_to_target("ppt/presentation.xml", &new_slide_part);
-    let updated_presentation_rels = add_relationship_to_xml(
+    let updated_presentation_rels = append_relationship_xml(
         presentation_rels_xml,
-        &new_rel_id,
-        SLIDE_REL_TYPE,
-        &slide_rel_target,
+        &RelationshipEntry::new(&new_rel_id, SLIDE_REL_TYPE, &slide_rel_target),
     );
     let new_fragment = format!(r#"<p:sldId id="{new_slide_id}" r:id="{new_rel_id}"/>"#);
     let updated_presentation = insert_slide_fragment(
@@ -705,12 +705,15 @@ fn build_new_slide_from_layout_mutation(
     )?;
 
     let layout_target = relationship_target_from_source_to_target(&new_slide_uri, &layout.part_uri);
-    let mut slide_rels_xml = render_relationships_xml(&[RelationshipEntry {
-        id: "rId1".to_string(),
-        rel_type: SLIDE_LAYOUT_REL_TYPE.to_string(),
-        target: layout_target,
-        target_mode: String::new(),
-    }]);
+    let mut slide_rels_xml = crate::opc::render_relationships_xml(
+        &[RelationshipEntry {
+            id: "rId1".to_string(),
+            rel_type: SLIDE_LAYOUT_REL_TYPE.to_string(),
+            target: layout_target,
+            target_mode: String::new(),
+        }],
+        false,
+    );
     let mut content_types = ensure_content_type_override(
         zip_text(file, "[Content_Types].xml")?,
         &new_slide_part,
@@ -906,15 +909,6 @@ fn remove_relationship_by_id(xml: &str, rel_id: &str) -> String {
     remove_elements_matching(xml, "Relationship", "Id", rel_id)
 }
 
-fn remove_content_type_overrides(xml: &str, parts: &BTreeSet<String>) -> String {
-    let mut out = xml.to_string();
-    for part in parts {
-        let part_name = format!("/{}", part.trim_start_matches('/'));
-        out = remove_elements_matching(&out, "Override", "PartName", &part_name);
-    }
-    out
-}
-
 fn remove_elements_matching(xml: &str, local: &str, attr_name: &str, attr_value: &str) -> String {
     let spans = matching_element_spans(xml, local, attr_name, attr_value);
     let mut out = xml.to_string();
@@ -1036,7 +1030,7 @@ fn clone_notes_for_cloned_slide(
         }
         ctx.overrides.insert(
             relationships_part_for(&new_notes_part),
-            render_relationships_xml(&new_notes_rels),
+            crate::opc::render_relationships_xml(&new_notes_rels, false),
         );
     }
 
@@ -1120,32 +1114,6 @@ fn package_part_name(uri: &str) -> String {
     uri.trim_start_matches('/').to_string()
 }
 
-fn relationships_xml() -> String {
-    r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
-}
-
-fn render_relationships_xml(rels: &[RelationshipEntry]) -> String {
-    let mut out = String::from(
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
-    );
-    for rel in rels {
-        let target_mode = if rel.target_mode.is_empty() {
-            String::new()
-        } else {
-            format!(r#" TargetMode="{}""#, xml_attr_escape(&rel.target_mode))
-        };
-        out.push_str(&format!(
-            r#"<Relationship Id="{}" Type="{}" Target="{}"{} />"#,
-            xml_attr_escape(&rel.id),
-            xml_attr_escape(&rel.rel_type),
-            xml_attr_escape(&rel.target),
-            target_mode
-        ));
-    }
-    out.push_str("</Relationships>");
-    out
-}
-
 fn allocate_numbered_part_name(entries: &[String], prefix: &str, suffix: &str) -> String {
     let mut next = 1_u32;
     for entry in entries {
@@ -1221,8 +1189,8 @@ fn find_template_slide_for_layout(
 }
 
 fn slide_layout_uri(file: &str, slide_part: &str) -> CliResult<Option<String>> {
-    let rels_xml =
-        zip_text(file, &relationships_part_for(slide_part)).unwrap_or_else(|_| relationships_xml());
+    let rels_xml = zip_text(file, &relationships_part_for(slide_part))
+        .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     for rel in relationship_entries_from_xml(&rels_xml) {
         if rel.rel_type == SLIDE_LAYOUT_REL_TYPE {
             return Ok(Some(resolve_relationship_target(
@@ -1394,11 +1362,9 @@ fn apply_image_slot_assignments(
             &format!("/{}", package.slide_part),
             &payload.image_part,
         );
-        *slide_rels_xml = add_relationship_to_xml(
+        *slide_rels_xml = append_relationship_xml(
             slide_rels_xml.clone(),
-            &relationship_id,
-            IMAGE_REL_TYPE,
-            &rel_target,
+            &RelationshipEntry::new(&relationship_id, IMAGE_REL_TYPE, &rel_target),
         );
         *content_types_xml = ensure_content_type_override(
             std::mem::take(content_types_xml),

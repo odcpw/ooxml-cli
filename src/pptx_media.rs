@@ -385,9 +385,8 @@ fn build_add_mutation(input: AddMutationInput<'_>) -> CliResult<AddMutation> {
     let entries = zip_entry_names(input.file)?;
     let slide_xml = zip_text(input.file, &input.slide.part)?;
     let rels_part = relationships_part_for(&input.slide.part);
-    let rels_xml = zip_text(input.file, &rels_part).unwrap_or_else(|_| {
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
-    });
+    let rels_xml = zip_text(input.file, &rels_part)
+        .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     let mut rels = crate::relationship_entries_from_xml(&rels_xml);
     let shape_id = next_shape_id(&slide_xml);
     let media_uri = allocate_numbered_part(&entries, "/ppt/media/media", &input.media_ext);
@@ -436,7 +435,10 @@ fn build_add_mutation(input: AddMutationInput<'_>) -> CliResult<AddMutation> {
 
     let mut text_overrides = BTreeMap::new();
     text_overrides.insert(input.slide.part.clone(), new_slide_xml);
-    text_overrides.insert(rels_part, render_relationships_xml(&rels));
+    text_overrides.insert(
+        rels_part,
+        crate::opc::render_relationships_xml(&rels, false),
+    );
     let content_types = zip_text(input.file, "[Content_Types].xml")?;
     let content_types =
         ensure_content_type_override(content_types, &media_uri, &input.media_content_type)?;
@@ -593,7 +595,10 @@ fn build_replace_mutation(input: ReplaceMutationInput<'_>) -> CliResult<ReplaceM
 
     let mut text_overrides = BTreeMap::new();
     text_overrides.insert(input.slide.part.clone(), new_slide_xml);
-    text_overrides.insert(rels_part, render_relationships_xml(&rels));
+    text_overrides.insert(
+        rels_part,
+        crate::opc::render_relationships_xml(&rels, false),
+    );
     let mut content_types = zip_text(input.file, "[Content_Types].xml")?;
     content_types =
         ensure_content_type_override(content_types, &new_media_uri, &input.new_content_type)?;
@@ -1649,29 +1654,6 @@ fn set_relationship_type(rels: &mut [RelationshipEntry], id: &str, rel_type: &st
             rel.rel_type = rel_type.to_string();
         }
     }
-}
-
-fn render_relationships_xml(rels: &[RelationshipEntry]) -> String {
-    let mut out = String::from(
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
-    );
-    for rel in rels {
-        out.push_str(&format!(
-            r#"<Relationship Id="{}" Type="{}" Target="{}""#,
-            xml_attr_escape(&rel.id),
-            xml_attr_escape(&rel.rel_type),
-            xml_attr_escape(&rel.target)
-        ));
-        if !rel.target_mode.is_empty() {
-            out.push_str(&format!(
-                r#" TargetMode="{}""#,
-                xml_attr_escape(&rel.target_mode)
-            ));
-        }
-        out.push_str("/>");
-    }
-    out.push_str("</Relationships>");
-    out
 }
 
 fn allocate_numbered_part(entries: &[String], prefix: &str, ext: &str) -> String {

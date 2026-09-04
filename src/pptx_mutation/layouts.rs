@@ -9,13 +9,13 @@ use crate::pptx_readback::{
     pptx_presentation_layouts, pptx_shape_entry_matches,
 };
 use crate::{
-    CliError, CliResult, add_relationship_to_xml, allocate_relationship_id, attr, command_arg,
-    content_type_for_part, copy_zip_with_part_override, copy_zip_with_part_overrides,
-    ensure_content_type_override, has_flag, local_name, package_type, parse_i64_flag,
-    parse_string_flag, relationship_entries_from_xml, relationship_target_from_source_to_target,
-    relationships_part_for, remove_xml_span, replace_xml_span, resolve_relationship_target,
-    validate_xlsx_mutation_output_flags, xml_attr_escape, xml_direct_child_ranges, zip_entry_names,
-    zip_text,
+    CliError, CliResult, RelationshipEntry, allocate_relationship_id, append_relationship_xml,
+    attr, command_arg, content_type_for_part, copy_zip_with_part_override,
+    copy_zip_with_part_overrides, ensure_content_type_override, has_flag, local_name, package_type,
+    parse_i64_flag, parse_string_flag, relationship_entries_from_xml,
+    relationship_target_from_source_to_target, relationships_part_for, remove_xml_span,
+    replace_xml_span, resolve_relationship_target, validate_xlsx_mutation_output_flags,
+    xml_attr_escape, xml_direct_child_ranges, zip_entry_names, zip_text,
 };
 
 const LAYOUT_REL_TYPE: &str =
@@ -434,8 +434,10 @@ fn build_clone_layout_mutation(
     let master_rels = relationship_entries_from_xml(&master_rels_xml);
     let relationship_id = allocate_relationship_id(&master_rels);
     let target = relationship_target_from_source_to_target(&master_uri, &new_layout_uri);
-    let updated_master_rels =
-        add_relationship_to_xml(master_rels_xml, &relationship_id, LAYOUT_REL_TYPE, &target);
+    let updated_master_rels = append_relationship_xml(
+        master_rels_xml,
+        &RelationshipEntry::new(&relationship_id, LAYOUT_REL_TYPE, &target),
+    );
     let (updated_master_xml, layout_id) =
         append_master_layout_reference_xml(&master_xml, &relationship_id)?;
     let content_types = ensure_content_type_override(

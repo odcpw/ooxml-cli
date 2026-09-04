@@ -7,7 +7,7 @@ use std::fs;
 
 use crate::cli_args::value_flag_present;
 use crate::{
-    CliError, CliResult, RelationshipEntry, add_relationship_to_xml, allocate_relationship_id,
+    CliError, CliResult, RelationshipEntry, allocate_relationship_id, append_relationship_xml,
     append_xml_text_event, attr, attr_exact, copy_zip_with_part_overrides_and_removals,
     current_utc_rfc3339, ensure_content_type_override, is_xml_text_event, local_name, package_type,
     relationship_entries_from_xml, relationship_target_from_source_to_target,
@@ -352,7 +352,8 @@ fn build_add_comment_mutation(
     let mut content_types = zip_text(file, "[Content_Types].xml")?;
 
     let slide_rels_part = relationships_part_for(&slide_ref.part);
-    let slide_rels_xml = zip_text(file, &slide_rels_part).unwrap_or_else(|_| relationships_xml());
+    let slide_rels_xml = zip_text(file, &slide_rels_part)
+        .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     let slide_rels = relationship_entries_from_xml(&slide_rels_xml);
     let (comments_part, created_part, created_relationship) = if let Some(part) =
         slide_comments_part(&entries, &slide_ref.part, &slide_rels)
@@ -362,11 +363,13 @@ fn build_add_comment_mutation(
         let part = allocate_numbered_part_name(&entries, "ppt/comments/comment", ".xml");
         content_types = ensure_content_type_override(content_types, &part, COMMENTS_CONTENT_TYPE)?;
         let target = relationship_target_from_source_to_target(&slide_ref.part, &part);
-        let rels_xml = add_relationship_to_xml(
+        let rels_xml = append_relationship_xml(
             slide_rels_xml,
-            &allocate_relationship_id(&slide_rels),
-            COMMENTS_REL_TYPE,
-            &target,
+            &RelationshipEntry::new(
+                &allocate_relationship_id(&slide_rels),
+                COMMENTS_REL_TYPE,
+                &target,
+            ),
         );
         overrides.insert(slide_rels_part, rels_xml);
         overrides.insert(part.clone(), comments_template());
@@ -561,10 +564,10 @@ fn build_remove_comment_mutation(
     let removed_part = parse_comment_elements(&updated_comments).is_empty();
     if removed_part {
         removals.insert(comments_part.clone());
-        content_types = remove_content_type_override(&content_types, &comments_part)?;
+        content_types = crate::opc::remove_content_type_override(content_types, &comments_part)?;
         let slide_rels_part = relationships_part_for(&slide_ref.part);
-        let slide_rels_xml =
-            zip_text(file, &slide_rels_part).unwrap_or_else(|_| relationships_xml());
+        let slide_rels_xml = zip_text(file, &slide_rels_part)
+            .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
         let slide_rels = relationship_entries_from_xml(&slide_rels_xml);
         let kept = slide_rels
             .into_iter()
@@ -577,7 +580,10 @@ fn build_remove_comment_mutation(
                     )) == comments_part)
             })
             .collect::<Vec<_>>();
-        overrides.insert(slide_rels_part, render_relationships(&kept));
+        overrides.insert(
+            slide_rels_part,
+            crate::opc::render_relationships_xml(&kept, false),
+        );
     } else {
         overrides.insert(comments_part.clone(), updated_comments);
     }
@@ -665,10 +671,10 @@ fn ensure_presentation_comment_authors_rel(
     authors_part: &str,
 ) -> CliResult<()> {
     let pres_rels_part = relationships_part_for(PRESENTATION_PART);
-    let pres_rels_xml = overrides
-        .get(&pres_rels_part)
-        .cloned()
-        .unwrap_or_else(|| zip_text(file, &pres_rels_part).unwrap_or_else(|_| relationships_xml()));
+    let pres_rels_xml = overrides.get(&pres_rels_part).cloned().unwrap_or_else(|| {
+        zip_text(file, &pres_rels_part)
+            .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false))
+    });
     let rels = relationship_entries_from_xml(&pres_rels_xml);
     if rels
         .iter()
@@ -677,11 +683,13 @@ fn ensure_presentation_comment_authors_rel(
         return Ok(());
     }
     let target = relationship_target_from_source_to_target(PRESENTATION_PART, authors_part);
-    let updated = add_relationship_to_xml(
+    let updated = append_relationship_xml(
         pres_rels_xml,
-        &allocate_relationship_id(&rels),
-        COMMENT_AUTHORS_REL_TYPE,
-        &target,
+        &RelationshipEntry::new(
+            &allocate_relationship_id(&rels),
+            COMMENT_AUTHORS_REL_TYPE,
+            &target,
+        ),
     );
     overrides.insert(pres_rels_part, updated);
     Ok(())
@@ -693,8 +701,8 @@ fn existing_slide_comments_part(
     slide_part: &str,
     comment_id: i64,
 ) -> CliResult<String> {
-    let rels_xml =
-        zip_text(file, &relationships_part_for(slide_part)).unwrap_or_else(|_| relationships_xml());
+    let rels_xml = zip_text(file, &relationships_part_for(slide_part))
+        .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     let rels = relationship_entries_from_xml(&rels_xml);
     slide_comments_part(entries, slide_part, &rels)
         .ok_or_else(|| CliError::target_not_found("target not found: comment"))
@@ -737,7 +745,7 @@ fn slide_comments_part(
 
 fn find_comment_authors_part(file: &str, entries: &[String]) -> (String, bool) {
     let rels_xml = zip_text(file, &relationships_part_for(PRESENTATION_PART))
-        .unwrap_or_else(|_| relationships_xml());
+        .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     for rel in relationship_entries_from_xml(&rels_xml) {
         if rel.target_mode == "External" || rel.rel_type != COMMENT_AUTHORS_REL_TYPE {
             continue;
@@ -1101,7 +1109,7 @@ fn resolve_comment_handle_target(file: &str, handle: &str) -> CliResult<(u32, i6
     };
     let entries = zip_entry_names(file)?;
     let rels_xml = zip_text(file, &relationships_part_for(&slide.part))
-        .unwrap_or_else(|_| relationships_xml());
+        .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     let rels = relationship_entries_from_xml(&rels_xml);
     let comments_part = slide_comments_part(&entries, &slide.part, &rels).ok_or_else(|| {
         CliError::invalid_args(format!(
@@ -1202,57 +1210,6 @@ fn write_comment_mutation(
     )
 }
 
-fn remove_content_type_override(xml: &str, part: &str) -> CliResult<String> {
-    let normalized = package_uri(part);
-    let mut reader = Reader::from_str(xml);
-    let mut event_start = 0usize;
-    let mut ranges = Vec::new();
-    loop {
-        let event = reader.read_event().map_err(|error| {
-            CliError::unexpected(format!("invalid [Content_Types].xml: {error}"))
-        })?;
-        let event_end = reader.buffer_position() as usize;
-        match event {
-            Event::Empty(element)
-                if local_name(element.name().as_ref()) == "Override"
-                    && attr(&element, "PartName").as_deref() == Some(normalized.as_str()) =>
-            {
-                ranges.push((event_start, event_end));
-            }
-            Event::Eof => break,
-            _ => {}
-        }
-        event_start = event_end;
-    }
-    let mut out = xml.to_string();
-    for (start, end) in ranges.into_iter().rev() {
-        out = remove_xml_span(&out, start, end);
-    }
-    Ok(out)
-}
-
-fn render_relationships(rels: &[RelationshipEntry]) -> String {
-    let mut xml = String::from(
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
-    );
-    for rel in rels {
-        let target_mode = if rel.target_mode.is_empty() {
-            String::new()
-        } else {
-            format!(r#" TargetMode="{}""#, xml_attr_escape(&rel.target_mode))
-        };
-        xml.push_str(&format!(
-            r#"<Relationship Id="{}" Type="{}" Target="{}"{} />"#,
-            xml_attr_escape(&rel.id),
-            xml_attr_escape(&rel.rel_type),
-            xml_attr_escape(&rel.target),
-            target_mode
-        ));
-    }
-    xml.push_str("</Relationships>");
-    xml
-}
-
 fn allocate_numbered_part_name(entries: &[String], prefix: &str, suffix: &str) -> String {
     let mut next = 1u32;
     for entry in entries {
@@ -1277,10 +1234,6 @@ fn comment_authors_template() -> String {
     r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:cmAuthorLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"></p:cmAuthorLst>"#.to_string()
 }
 
-fn relationships_xml() -> String {
-    r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
-}
-
 fn package_uri(part: &str) -> String {
     format!("/{}", part.trim_start_matches('/'))
 }
@@ -1291,12 +1244,12 @@ fn package_part_name(uri: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::remove_content_type_override;
+    use crate::opc::remove_content_type_override;
 
     #[test]
     fn removing_last_comment_removes_its_content_type_after_xml_declaration() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/ppt/comments/comment1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.comments+xml"/><Override PartName="/ppt/commentAuthors.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.commentAuthors+xml"/></Types>"#;
-        let updated = remove_content_type_override(xml, "ppt/comments/comment1.xml")
+        let updated = remove_content_type_override(xml.to_string(), "ppt/comments/comment1.xml")
             .expect("remove comment content type");
         assert!(!updated.contains("/ppt/comments/comment1.xml"));
         assert!(updated.contains("/ppt/commentAuthors.xml"));

@@ -138,14 +138,14 @@ fn write_docx_scaffold_package(
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
     let parts = [
         ("[Content_Types].xml", content_types_xml().to_string()),
-        ("_rels/.rels", package_relationships_xml().to_string()),
+        ("_rels/.rels", package_relationships_xml()),
         (
             CORE_PROPERTIES_PART,
             properties::core_properties_xml(scaffold_core_properties(scaffold))?,
         ),
         (APP_PROPERTIES_PART, properties::app_properties_xml(text)),
         (DOCUMENT_PART, main_document_xml(text)),
-        (DOCUMENT_RELS_PART, document_relationships_xml().to_string()),
+        (DOCUMENT_RELS_PART, document_relationships_xml()),
         (STYLES_PART, styles::styles_xml().to_string()),
         (NUMBERING_PART, numbering::numbering_xml().to_string()),
         (SETTINGS_PART, settings::settings_xml().to_string()),
@@ -306,12 +306,60 @@ fn content_types_xml() -> &'static str {
     r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/><Override PartName="/word/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/></Types>"#
 }
 
-fn package_relationships_xml() -> &'static str {
-    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>"#
+fn package_relationships_xml() -> String {
+    crate::opc::render_relationships_xml(
+        &[
+            crate::opc::RelationshipEntry::new(
+                "rId1",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
+                "word/document.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId2",
+                "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
+                "docProps/core.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId3",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties",
+                "docProps/app.xml",
+            ),
+        ],
+        true,
+    )
 }
 
-fn document_relationships_xml() -> &'static str {
-    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/><Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/><Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/></Relationships>"#
+fn document_relationships_xml() -> String {
+    crate::opc::render_relationships_xml(
+        &[
+            crate::opc::RelationshipEntry::new(
+                "rId1",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
+                "styles.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId2",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
+                "numbering.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId3",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings",
+                "settings.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId4",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable",
+                "fontTable.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId5",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
+                "theme/theme1.xml",
+            ),
+        ],
+        true,
+    )
 }
 
 fn docx_scaffold_result(

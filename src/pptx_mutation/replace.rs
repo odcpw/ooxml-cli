@@ -19,8 +19,7 @@ use self::image_payload::{
 };
 use self::output::{
     ensure_pptx, image_batch_replace_result_json, image_replace_result_json,
-    plain_text_result_json, render_relationships_xml, sha256_string, text_occurrences_result_json,
-    write_replace_mutation,
+    plain_text_result_json, sha256_string, text_occurrences_result_json, write_replace_mutation,
 };
 use self::text_xlsx::{
     ReplaceTextFromXlsxRequest, ReplaceTextMapFromXlsxRequest, TextMapApplied,
@@ -933,7 +932,7 @@ fn plan_image_replace(
                 &new_target_uri,
             );
         }
-        let rels_xml = render_relationships_xml(&rels);
+        let rels_xml = crate::opc::render_relationships_xml(&rels, false);
         let slide_xml = update_picture_fit_mode(&slide_xml, target.span, fit_mode)?;
         return Ok(ImageReplacePlan {
             slide: slide_ref.number,

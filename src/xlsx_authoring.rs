@@ -137,7 +137,7 @@ fn write_xlsx_scaffold_package(
         &mut writer,
         options,
         "_rels/.rels",
-        package_relationships_xml(),
+        &package_relationships_xml(),
     )?;
     write_zip_string(
         &mut writer,
@@ -207,8 +207,27 @@ fn content_types_xml(sheet_count: usize) -> String {
     )
 }
 
-fn package_relationships_xml() -> &'static str {
-    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>"#
+fn package_relationships_xml() -> String {
+    crate::opc::render_relationships_xml(
+        &[
+            crate::opc::RelationshipEntry::new(
+                "rId1",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
+                "xl/workbook.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId2",
+                "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
+                "docProps/core.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId3",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties",
+                "docProps/app.xml",
+            ),
+        ],
+        true,
+    )
 }
 
 fn core_props_xml() -> CliResult<String> {
@@ -256,14 +275,26 @@ fn workbook_xml(sheet_names: &[String]) -> String {
 }
 
 fn workbook_relationships_xml(sheet_count: usize) -> String {
-    let worksheets = (1..=sheet_count)
-        .map(|index| format!(r#"<Relationship Id="rId{index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{index}.xml"/>"#))
-        .collect::<String>();
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{worksheets}<Relationship Id="rId{}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId{}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/></Relationships>"#,
-        sheet_count + 1,
-        sheet_count + 2
-    )
+    let mut relationships = (1..=sheet_count)
+        .map(|index| {
+            crate::opc::RelationshipEntry::new(
+                &format!("rId{index}"),
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet",
+                &format!("worksheets/sheet{index}.xml"),
+            )
+        })
+        .collect::<Vec<_>>();
+    relationships.push(crate::opc::RelationshipEntry::new(
+        &format!("rId{}", sheet_count + 1),
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
+        "styles.xml",
+    ));
+    relationships.push(crate::opc::RelationshipEntry::new(
+        &format!("rId{}", sheet_count + 2),
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
+        "theme/theme1.xml",
+    ));
+    crate::opc::render_relationships_xml(&relationships, true)
 }
 
 fn worksheet_xml() -> &'static str {

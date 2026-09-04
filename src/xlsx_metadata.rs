@@ -304,9 +304,8 @@ pub(crate) fn xlsx_workbook_metadata_update(
 
     if created_core || created_app {
         let mut content_types_xml = zip_text(file, "[Content_Types].xml")?;
-        let mut root_rels_xml = zip_text(file, "_rels/.rels").unwrap_or_else(|_| {
-            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
-        });
+        let mut root_rels_xml = zip_text(file, "_rels/.rels")
+            .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
         if created_core {
             content_types_xml = ensure_content_type_override(
                 content_types_xml,

@@ -1,5 +1,6 @@
 use crate::{
-    CliResult, allocate_relationship_id, normalize_xl_target, relationship_entries, zip_text,
+    CliResult, RelationshipEntry, allocate_relationship_id, normalize_xl_target,
+    relationship_entries, zip_text,
 };
 
 pub(super) fn resolve_or_add_xlsx_styles_part(file: &str) -> CliResult<(String, Option<String>)> {
@@ -17,20 +18,14 @@ pub(super) fn resolve_or_add_xlsx_styles_part(file: &str) -> CliResult<(String, 
         }
     }
     let next_id = allocate_relationship_id(&rels);
-    let rel = format!(
-        r#"<Relationship Id="{next_id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>"#
+    let updated = crate::opc::append_relationship_xml(
+        rels_xml,
+        &RelationshipEntry::new(
+            &next_id,
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
+            "styles.xml",
+        ),
     );
-    let updated = if let Some(pos) = rels_xml.rfind("</Relationships>") {
-        let mut out = String::with_capacity(rels_xml.len() + rel.len());
-        out.push_str(&rels_xml[..pos]);
-        out.push_str(&rel);
-        out.push_str(&rels_xml[pos..]);
-        out
-    } else {
-        format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
-        )
-    };
     Ok(("xl/styles.xml".to_string(), Some(updated)))
 }
 

@@ -29,7 +29,10 @@ pub(crate) fn add_xlsx_formula_recalc_package_updates(
     }
     overrides.insert(
         "[Content_Types].xml".to_string(),
-        remove_xlsx_calc_chain_content_type_overrides(&content_types_xml),
+        crate::opc::remove_content_type_overrides_by_type(
+            content_types_xml,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml",
+        )?,
     );
 
     let rels_part = relationships_part_for(workbook_part);
@@ -144,14 +147,6 @@ fn xlsx_calc_chain_parts_from_content_types(xml: &str) -> Vec<String> {
         }
     }
     parts
-}
-
-fn remove_xlsx_calc_chain_content_type_overrides(xml: &str) -> String {
-    remove_xml_elements_matching(xml, "Override", |attrs| {
-        attrs.get("ContentType").is_some_and(|value| {
-            value == "application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml"
-        })
-    })
 }
 
 fn remove_xlsx_calc_chain_relationships(xml: &str, workbook_part: &str) -> (String, Vec<String>) {

@@ -205,18 +205,18 @@ pub(super) fn write_package(
 
     let fixed_parts = [
         ("[Content_Types].xml", content_types_xml(layouts.len())),
-        ("_rels/.rels", package_relationships_xml().to_string()),
+        ("_rels/.rels", package_relationships_xml()),
         ("docProps/core.xml", core_props_xml()?),
         ("docProps/app.xml", app_props_xml(title, size)),
         (PRESENTATION_PART, presentation_xml(size)),
         (
             "ppt/_rels/presentation.xml.rels",
-            presentation_relationships_xml().to_string(),
+            presentation_relationships_xml(),
         ),
         (SLIDE_PART, slide_xml(title, subtitle)),
         (
             "ppt/slides/_rels/slide1.xml.rels",
-            slide_relationships_xml().to_string(),
+            slide_relationships_xml(),
         ),
     ];
     for (name, body) in fixed_parts {
@@ -234,7 +234,7 @@ pub(super) fn write_package(
             &mut writer,
             options,
             &format!("ppt/slideLayouts/_rels/slideLayout{number}.xml.rels"),
-            slide_layout_relationships_xml(),
+            &slide_layout_relationships_xml(),
         )?;
     }
     write_zip_string(
@@ -300,8 +300,27 @@ fn content_types_xml(layout_count: usize) -> String {
     )
 }
 
-fn package_relationships_xml() -> &'static str {
-    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>"#
+fn package_relationships_xml() -> String {
+    crate::opc::render_relationships_xml(
+        &[
+            crate::opc::RelationshipEntry::new(
+                "rId1",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
+                "ppt/presentation.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId2",
+                "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
+                "docProps/core.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId3",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties",
+                "docProps/app.xml",
+            ),
+        ],
+        true,
+    )
 }
 
 fn core_props_xml() -> CliResult<String> {
@@ -376,8 +395,32 @@ fn presentation_xml(size: &SlideSize) -> String {
     )
 }
 
-fn presentation_relationships_xml() -> &'static str {
-    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles" Target="tableStyles.xml"/><Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/></Relationships>"#
+fn presentation_relationships_xml() -> String {
+    crate::opc::render_relationships_xml(
+        &[
+            crate::opc::RelationshipEntry::new(
+                "rId1",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster",
+                "slideMasters/slideMaster1.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId2",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
+                "theme/theme1.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId3",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles",
+                "tableStyles.xml",
+            ),
+            crate::opc::RelationshipEntry::new(
+                "rId4",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide",
+                "slides/slide1.xml",
+            ),
+        ],
+        true,
+    )
 }
 
 fn slide_xml(title: &str, subtitle: &str) -> String {
@@ -417,8 +460,15 @@ fn group_shape_xml() -> &'static str {
     r#"<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>"#
 }
 
-fn slide_relationships_xml() -> &'static str {
-    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>"#
+fn slide_relationships_xml() -> String {
+    crate::opc::render_relationships_xml(
+        &[crate::opc::RelationshipEntry::new(
+            "rId1",
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout",
+            "../slideLayouts/slideLayout1.xml",
+        )],
+        true,
+    )
 }
 
 fn slide_layout_xml(layout: &LayoutSpec, size: &SlideSize) -> String {
@@ -467,8 +517,15 @@ fn scaled_rect(rect: [i64; 4], size: &SlideSize) -> [i64; 4] {
     ]
 }
 
-fn slide_layout_relationships_xml() -> &'static str {
-    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>"#
+fn slide_layout_relationships_xml() -> String {
+    crate::opc::render_relationships_xml(
+        &[crate::opc::RelationshipEntry::new(
+            "rId1",
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster",
+            "../slideMasters/slideMaster1.xml",
+        )],
+        true,
+    )
 }
 
 fn slide_master_xml(layout_count: usize, size: &SlideSize, styles: &MasterTextStyles) -> String {
@@ -549,17 +606,22 @@ fn text_run_style_xml(prefix: &str) -> String {
 }
 
 fn slide_master_relationships_xml(layout_count: usize) -> String {
-    let layout_relationships = (1..=layout_count)
+    let mut relationships = (1..=layout_count)
         .map(|number| {
-            format!(
-                r#"<Relationship Id="rId{number}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout{number}.xml"/>"#
+            crate::opc::RelationshipEntry::new(
+                &format!("rId{number}"),
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout",
+                &format!("../slideLayouts/slideLayout{number}.xml"),
             )
         })
-        .collect::<String>();
+        .collect::<Vec<_>>();
     let theme_id = layout_count + 1;
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{layout_relationships}<Relationship Id="rId{theme_id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>"#
-    )
+    relationships.push(crate::opc::RelationshipEntry::new(
+        &format!("rId{theme_id}"),
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
+        "../theme/theme1.xml",
+    ));
+    crate::opc::render_relationships_xml(&relationships, true)
 }
 
 fn theme_xml(theme: &ThemeChoice) -> String {

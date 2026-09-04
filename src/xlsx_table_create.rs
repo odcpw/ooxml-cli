@@ -12,8 +12,8 @@ use crate::xlsx_sheet_xml::{
     xlsx_worksheet_root_bounds as worksheet_root_bounds,
 };
 use crate::{
-    CellValue, CliError, CliResult, RangeBounds, WorkbookSheet, XlsxTableRef,
-    add_relationship_to_xml, add_xlsx_formula_recalc_package_updates, allocate_relationship_id,
+    CellValue, CliError, CliResult, RangeBounds, RelationshipEntry, WorkbookSheet, XlsxTableRef,
+    add_xlsx_formula_recalc_package_updates, allocate_relationship_id, append_relationship_xml,
     command_arg, copy_zip_with_part_overrides_and_removals, ensure_content_type_override,
     local_name, normalize_xl_target, parse_range, range_bounds_ref,
     reject_xlsx_merged_cell_intersection, relationship_entries_from_xml,
@@ -24,7 +24,6 @@ use crate::{
     xml_direct_child_ranges, xml_open_tag_from_start, xml_tag_prefix, zip_entry_names, zip_text,
 };
 
-const REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
 const OFFICE_R_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const REL_TYPE_TABLE: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/table";
@@ -88,11 +87,9 @@ pub(crate) fn xlsx_tables_create(
         zip_text(file, &sheet_rels_part).unwrap_or_else(|_| relationships_template());
     let table_target =
         relationship_target_from_source_to_target(&target.sheet_part, &target.table_part);
-    let updated_rels = add_relationship_to_xml(
+    let updated_rels = append_relationship_xml(
         sheet_rels_xml,
-        &target.rel_id,
-        REL_TYPE_TABLE,
-        &table_target,
+        &RelationshipEntry::new(&target.rel_id, REL_TYPE_TABLE, &table_target),
     );
 
     let (sheet_with_totals, total_stats) = write_xlsx_table_total_row(&target)?;
@@ -965,7 +962,5 @@ fn element_name(prefix: &str, local: &str) -> String {
 }
 
 fn relationships_template() -> String {
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="{REL_NS}"></Relationships>"#
-    )
+    crate::opc::empty_relationships_xml(false)
 }

@@ -12,8 +12,8 @@ use crate::image_pipeline::{
 };
 use crate::{
     CliError, CliResult, DOCX_W_NS, DocxParagraphMutationOptions, InspectPackageKind,
-    add_relationship_to_xml, allocate_relationship_id, attr, attr_exact, attr_prefixed_ns,
-    content_type_for_part, detect_inspect_package_type, docx_body_block_ranges,
+    RelationshipEntry, allocate_relationship_id, append_relationship_xml, attr, attr_exact,
+    attr_prefixed_ns, content_type_for_part, detect_inspect_package_type, docx_body_block_ranges,
     docx_body_content_bounds, docx_body_prefix, docx_body_tag, docx_rich_block_reports,
     element_in_ns, ensure_content_type_override, ensure_docx_body_table_scaffolds_xml,
     ensure_docx_package_kind, find_docx_document_part, local_name, package_type,
@@ -346,14 +346,15 @@ pub(crate) fn docx_images_insert(
 
     let media_uri = allocate_docx_media_uri(&entries, &new_content_type);
     let rels_part = relationships_part_for(&document_part);
-    let rels_xml = zip_text(file, &rels_part).unwrap_or_else(|_| {
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"></Relationships>".to_string()
-    });
+    let rels_xml =
+        zip_text(file, &rels_part).unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     let rels = relationship_entries(file, &rels_part).unwrap_or_default();
     let rel_id = allocate_relationship_id(&rels);
     let rel_target = relationship_target_from_source_to_target(&document_uri, &media_uri);
-    let updated_rels_xml =
-        add_relationship_to_xml(rels_xml, &rel_id, DOCX_IMAGE_REL_TYPE, &rel_target);
+    let updated_rels_xml = append_relationship_xml(
+        rels_xml,
+        &RelationshipEntry::new(&rel_id, DOCX_IMAGE_REL_TYPE, &rel_target),
+    );
     let doc_pr_id = next_docx_doc_pr_id(&document_xml);
     let prefix = docx_body_prefix(&body_tag);
     let align = normalize_docx_image_alignment(align)?;

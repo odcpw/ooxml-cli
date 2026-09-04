@@ -1,5 +1,3 @@
-use quick_xml::Reader;
-use quick_xml::events::Event;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -10,13 +8,12 @@ use crate::xlsx_sheet_xml::{
     xlsx_worksheet_root_bounds_permissive as worksheet_root_bounds,
 };
 use crate::{
-    CliError, CliResult, RelationshipEntry, WorkbookSheet, add_relationship_to_xml,
-    allocate_relationship_id, copy_zip_with_binary_part_overrides_and_removals,
-    ensure_content_type_override, local_name, normalize_xlsx_cell_ref,
-    relationship_entries_from_xml, relationship_target_from_source_to_target,
-    relationships_part_for, remove_xml_span, replace_xml_span, resolve_relationship_target,
-    resolve_sheet, resolve_sheet_by_sheet_id_unique, validate_xlsx_mutation_output_flags,
-    workbook_sheets, xml_attr_escape, xml_attrs_map, xml_direct_child_ranges,
+    CliError, CliResult, RelationshipEntry, WorkbookSheet, allocate_relationship_id,
+    append_relationship_xml, copy_zip_with_binary_part_overrides_and_removals,
+    ensure_content_type_override, normalize_xlsx_cell_ref, relationship_entries_from_xml,
+    relationship_target_from_source_to_target, relationships_part_for, remove_xml_span,
+    replace_xml_span, resolve_relationship_target, resolve_sheet, resolve_sheet_by_sheet_id_unique,
+    validate_xlsx_mutation_output_flags, workbook_sheets, xml_attr_escape, xml_direct_child_ranges,
     xml_open_tag_from_start, xml_tag_prefix, zip_entry_exists, zip_entry_names, zip_text,
 };
 
@@ -32,7 +29,6 @@ use self::output::{
 };
 
 const XLSX_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
-const REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
 const OFFICE_REL_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const REL_COMMENTS: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments";
@@ -457,9 +453,9 @@ pub(crate) fn xlsx_comments_remove(
     )?;
     let mut content_types = zip_text(file, "[Content_Types].xml")?;
     if removed_part {
-        content_types = remove_content_type_override(&content_types, &part.uri);
+        content_types = crate::opc::remove_content_type_override(content_types, &part.uri)?;
         if let Some(vml_uri) = vml_uri.as_deref().filter(|value| !value.is_empty()) {
-            content_types = remove_content_type_override(&content_types, vml_uri);
+            content_types = crate::opc::remove_content_type_override(content_types, vml_uri)?;
         }
     } else if let Some(vml_uri) = vml_uri.as_deref().filter(|value| !value.is_empty()) {
         content_types = ensure_content_type_override(content_types, vml_uri, CONTENT_TYPE_VML)?;
@@ -706,7 +702,10 @@ fn ensure_comments_relationship(
     let target = relationship_target_from_source_to_target(&worksheet_uri, comments_uri);
     text_overrides.insert(
         rels_part,
-        add_relationship_to_xml(rels_xml, &id, REL_COMMENTS, &target),
+        append_relationship_xml(
+            rels_xml,
+            &RelationshipEntry::new(&id, REL_COMMENTS, &target),
+        ),
     );
     Ok(true)
 }
@@ -718,13 +717,7 @@ fn remove_comments_relationship(
 ) -> CliResult<()> {
     let rels_part = relationships_part_for(worksheet_part);
     let rels_xml = relationships_xml_for_edit(file, &rels_part, text_overrides);
-    let updated = rewrite_relationships_xml(&rels_xml, |rel| {
-        if rel.rel_type == REL_COMMENTS {
-            None
-        } else {
-            Some(render_relationship(rel))
-        }
-    });
+    let updated = filter_relationships_xml(&rels_xml, |rel| rel.rel_type != REL_COMMENTS);
     if updated != rels_xml {
         text_overrides.insert(rels_part, updated);
     }
@@ -801,7 +794,10 @@ fn ensure_vml_relationship(
     let target = relationship_target_from_source_to_target(&worksheet_uri, vml_uri);
     text_overrides.insert(
         rels_part,
-        add_relationship_to_xml(rels_xml, &id, REL_VML_DRAWING, &target),
+        append_relationship_xml(
+            rels_xml,
+            &RelationshipEntry::new(&id, REL_VML_DRAWING, &target),
+        ),
     );
     Ok(id)
 }
@@ -813,13 +809,7 @@ fn remove_vml_relationship(
 ) -> CliResult<()> {
     let rels_part = relationships_part_for(worksheet_part);
     let rels_xml = relationships_xml_for_edit(file, &rels_part, text_overrides);
-    let updated = rewrite_relationships_xml(&rels_xml, |rel| {
-        if rel.rel_type == REL_VML_DRAWING {
-            None
-        } else {
-            Some(render_relationship(rel))
-        }
-    });
+    let updated = filter_relationships_xml(&rels_xml, |rel| rel.rel_type != REL_VML_DRAWING);
     if updated != rels_xml {
         text_overrides.insert(rels_part, updated);
     }
@@ -844,39 +834,18 @@ fn relationships_xml_for_edit(
 }
 
 fn relationships_template() -> String {
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="{REL_NS}"></Relationships>"#
-    )
+    crate::opc::empty_relationships_xml(false)
 }
 
-fn rewrite_relationships_xml<F>(xml: &str, mut mapper: F) -> String
+fn filter_relationships_xml<F>(xml: &str, mut keep: F) -> String
 where
-    F: FnMut(&RelationshipEntry) -> Option<String>,
+    F: FnMut(&RelationshipEntry) -> bool,
 {
-    let body = relationship_entries_from_xml(xml)
-        .iter()
-        .filter_map(&mut mapper)
-        .collect::<String>();
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="{REL_NS}">{body}</Relationships>"#
-    )
-}
-
-fn render_relationship(rel: &RelationshipEntry) -> String {
-    let mut out = format!(
-        r#"<Relationship Id="{}" Type="{}" Target="{}""#,
-        xml_attr_escape(&rel.id),
-        xml_attr_escape(&rel.rel_type),
-        xml_attr_escape(&rel.target)
-    );
-    if !rel.target_mode.is_empty() {
-        out.push_str(&format!(
-            r#" TargetMode="{}""#,
-            xml_attr_escape(&rel.target_mode)
-        ));
-    }
-    out.push_str("/>");
-    out
+    let relationships = relationship_entries_from_xml(xml)
+        .into_iter()
+        .filter(&mut keep)
+        .collect::<Vec<_>>();
+    crate::opc::render_relationships_xml(&relationships, false)
 }
 
 fn build_comments_vml(comments: &[XlsxCommentInfo]) -> CliResult<Vec<u8>> {
@@ -1083,78 +1052,6 @@ fn worksheet_child_order(local_name: &str) -> i32 {
         "extLst" => 380,
         _ => 1000,
     }
-}
-
-fn remove_content_type_override(xml: &str, part_uri: &str) -> String {
-    let normalized = format!("/{}", part_uri.trim_start_matches('/'));
-    remove_xml_elements_matching(xml, "Override", |attrs| {
-        attrs
-            .get("PartName")
-            .is_some_and(|value| value == &normalized)
-    })
-}
-
-fn remove_xml_elements_matching<F>(xml: &str, element_local: &str, predicate: F) -> String
-where
-    F: Fn(&BTreeMap<String, String>) -> bool,
-{
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(false);
-    let mut spans = Vec::<(usize, usize)>::new();
-    loop {
-        let start = reader.buffer_position() as usize;
-        match reader.read_event() {
-            Ok(Event::Empty(e)) if local_name(e.name().as_ref()) == element_local => {
-                if predicate(&xml_attrs_map(&e)) {
-                    spans.push((start, reader.buffer_position() as usize));
-                }
-            }
-            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == element_local => {
-                if predicate(&xml_attrs_map(&e)) {
-                    let mut depth = 1usize;
-                    loop {
-                        match reader.read_event() {
-                            Ok(Event::Start(inner))
-                                if local_name(inner.name().as_ref()) == element_local =>
-                            {
-                                depth += 1;
-                            }
-                            Ok(Event::End(inner))
-                                if local_name(inner.name().as_ref()) == element_local =>
-                            {
-                                depth -= 1;
-                                if depth == 0 {
-                                    spans.push((start, reader.buffer_position() as usize));
-                                    break;
-                                }
-                            }
-                            Ok(Event::Eof) | Err(_) => {
-                                spans.push((start, reader.buffer_position() as usize));
-                                break;
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(_) => break,
-            _ => {}
-        }
-    }
-    if spans.is_empty() {
-        return xml.to_string();
-    }
-    let mut out = String::with_capacity(xml.len());
-    let mut cursor = 0usize;
-    for (start, end) in spans {
-        if start > cursor {
-            out.push_str(&xml[cursor..start]);
-        }
-        cursor = end;
-    }
-    out.push_str(&xml[cursor..]);
-    out
 }
 
 fn write_xlsx_comment_mutation(

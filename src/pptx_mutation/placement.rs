@@ -15,14 +15,15 @@ use crate::pptx_mutation::paragraphs::{
     render_paragraphs,
 };
 use crate::{
-    CliError, CliResult, XlsxRangeExportOptions, add_relationship_to_xml, allocate_relationship_id,
-    attr, check_range_max_cells, copy_zip_with_binary_part_overrides_and_removals,
-    copy_zip_with_part_overrides, ensure_content_type_override, local_name,
-    needs_xml_space_preserve, package_type, parse_cli_range, parse_i64_flag, parse_range,
-    parse_string_flag, pptx_slide_show, range_bounds_ref, relationship_entries_from_xml,
-    relationship_target_from_source_to_target, relationships_part_for, select_xlsx_table,
-    validate_xlsx_mutation_output_flags, xlsx_range_export_with_options, xlsx_tables,
-    xml_attr_escape, xml_direct_child_ranges, xml_escape, zip_entry_names, zip_text,
+    CliError, CliResult, RelationshipEntry, XlsxRangeExportOptions, allocate_relationship_id,
+    append_relationship_xml, attr, check_range_max_cells,
+    copy_zip_with_binary_part_overrides_and_removals, copy_zip_with_part_overrides,
+    ensure_content_type_override, local_name, needs_xml_space_preserve, package_type,
+    parse_cli_range, parse_i64_flag, parse_range, parse_string_flag, pptx_slide_show,
+    range_bounds_ref, relationship_entries_from_xml, relationship_target_from_source_to_target,
+    relationships_part_for, select_xlsx_table, validate_xlsx_mutation_output_flags,
+    xlsx_range_export_with_options, xlsx_tables, xml_attr_escape, xml_direct_child_ranges,
+    xml_escape, zip_entry_names, zip_text,
 };
 
 mod output;
@@ -943,16 +944,16 @@ fn build_image_mutation(file: &str, request: &ImageRequest) -> CliResult<ImageMu
     let content_type = processed.content_type.to_string();
     let target_uri = allocate_image_part(file, shape_id, processed.extension)?;
     let rels_part = relationships_part_for(&slide_part);
-    let rels_xml = zip_text(file, &rels_part).unwrap_or_else(|_| {
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#
-            .to_string()
-    });
+    let rels_xml =
+        zip_text(file, &rels_part).unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     let rels = relationship_entries_from_xml(&rels_xml);
     let relationship_id = allocate_relationship_id(&rels);
     let rel_target =
         relationship_target_from_source_to_target(&format!("/{slide_part}"), &target_uri);
-    let updated_rels_xml =
-        add_relationship_to_xml(rels_xml, &relationship_id, REL_TYPE_IMAGE, &rel_target);
+    let updated_rels_xml = append_relationship_xml(
+        rels_xml,
+        &RelationshipEntry::new(&relationship_id, REL_TYPE_IMAGE, &rel_target),
+    );
     let content_types = zip_text(file, "[Content_Types].xml")?;
     let updated_content_types_xml =
         ensure_content_type_override(content_types, &target_uri, &content_type)?;

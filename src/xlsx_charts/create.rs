@@ -351,15 +351,17 @@ pub(super) fn build_or_update_chart_drawing(
         }
         ensure_drawing_xml_namespaces(&mut drawing_root);
         let drawing_rels_part = relationships_part_for(&drawing_uri);
-        let drawing_rels_xml =
-            optional_zip_text(file, &drawing_rels_part)?.unwrap_or_else(empty_relationships_xml);
+        let drawing_rels_xml = optional_zip_text(file, &drawing_rels_part)?
+            .unwrap_or_else(|| crate::opc::empty_relationships_xml(false));
         let drawing_rels = relationship_entries_from_xml(&drawing_rels_xml);
         let chart_rid = allocate_relationship_id(&drawing_rels);
-        let drawing_rels_xml = add_relationship_to_xml(
+        let drawing_rels_xml = append_relationship_xml(
             drawing_rels_xml,
-            &chart_rid,
-            REL_CHART,
-            &relationship_target_from_source_to_target(&drawing_uri, chart_uri),
+            &RelationshipEntry::new(
+                &chart_rid,
+                REL_CHART,
+                &relationship_target_from_source_to_target(&drawing_uri, chart_uri),
+            ),
         );
         let anchor = build_chart_anchor_node(
             drawing_root_prefix(&drawing_root).as_str(),
@@ -378,21 +380,26 @@ pub(super) fn build_or_update_chart_drawing(
     let drawing_uri = allocate_numbered_package_part(entries, "/xl/drawings/drawing", ".xml");
     let chart_rid = "rId1".to_string();
     let drawing_xml = build_drawing_part_xml(anchor_from, anchor_to, &chart_rid);
-    let drawing_rels_xml = render_relationships_xml(&[(
-        chart_rid.as_str(),
-        REL_CHART,
-        relationship_target_from_source_to_target(&drawing_uri, chart_uri),
-    )]);
+    let drawing_rels_xml = crate::opc::render_relationships_xml(
+        &[RelationshipEntry::new(
+            &chart_rid,
+            REL_CHART,
+            &relationship_target_from_source_to_target(&drawing_uri, chart_uri),
+        )],
+        false,
+    );
     let worksheet_rels_part = relationships_part_for(sheet_part_uri);
-    let worksheet_rels_xml =
-        optional_zip_text(file, &worksheet_rels_part)?.unwrap_or_else(empty_relationships_xml);
+    let worksheet_rels_xml = optional_zip_text(file, &worksheet_rels_part)?
+        .unwrap_or_else(|| crate::opc::empty_relationships_xml(false));
     let worksheet_rels = relationship_entries_from_xml(&worksheet_rels_xml);
     let drawing_rid = allocate_relationship_id(&worksheet_rels);
-    let worksheet_rels_xml = add_relationship_to_xml(
+    let worksheet_rels_xml = append_relationship_xml(
         worksheet_rels_xml,
-        &drawing_rid,
-        REL_DRAWING,
-        &relationship_target_from_source_to_target(sheet_part_uri, &drawing_uri),
+        &RelationshipEntry::new(
+            &drawing_rid,
+            REL_DRAWING,
+            &relationship_target_from_source_to_target(sheet_part_uri, &drawing_uri),
+        ),
     );
     let worksheet_xml = zip_text(file, sheet_part_uri.trim_start_matches('/'))?;
     let worksheet_xml = add_worksheet_drawing_ref(&worksheet_xml, sheet_part_uri, &drawing_rid)?;
@@ -1204,20 +1211,6 @@ pub(super) fn add_worksheet_drawing_ref(
     drawing.set_attr("r:id", rid);
     insert_child_in_order(&mut root, drawing, WORKSHEET_CHILD_ORDER);
     Ok(render_xml_document(&root))
-}
-
-pub(super) fn render_relationships_xml(relationships: &[(&str, &str, String)]) -> String {
-    let mut xml = r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#.to_string();
-    for (id, rel_type, target) in relationships {
-        xml.push_str(&format!(
-            r#"<Relationship Id="{}" Type="{}" Target="{}"/>"#,
-            xml_attr_escape(id),
-            xml_attr_escape(rel_type),
-            xml_attr_escape(target)
-        ));
-    }
-    xml.push_str("</Relationships>");
-    xml
 }
 
 pub(super) fn xlsx_chart_create_result(

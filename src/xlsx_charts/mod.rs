@@ -6,7 +6,7 @@ use std::path::Path;
 
 use crate::{
     CliError, CliResult, RangeBounds, RelationshipEntry, WorkbookSheet, XlsxRangeExportOptions,
-    add_relationship_to_xml, add_selector, allocate_relationship_id, append_xml_text_event,
+    add_selector, allocate_relationship_id, append_relationship_xml, append_xml_text_event,
     check_range_max_cells, col_name, command_arg, copy_zip_with_part_override,
     copy_zip_with_part_overrides, decode_xml_text, ensure_content_type_override, is_xml_text_event,
     local_name, parse_cell_ref, parse_range, relationship_entries, relationship_entries_from_xml,

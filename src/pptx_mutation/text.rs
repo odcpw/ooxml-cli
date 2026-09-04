@@ -19,7 +19,6 @@ use crate::{
 
 const HYPERLINK_REL_TYPE: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
-const REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
 const DRAWING_REL_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 #[derive(Clone)]
@@ -634,7 +633,8 @@ fn build_text_set_mutation(
             return Err(CliError::invalid_args("hyperlink URL cannot be empty"));
         }
         let rels_part = relationships_part_for(&slide_part);
-        let rels_xml = zip_text(file, &rels_part).unwrap_or_else(|_| relationships_xml());
+        let rels_xml = zip_text(file, &rels_part)
+            .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
         let mut rels = relationship_entries_from_xml(&rels_xml);
         let rel_id = register_external_hyperlink(&mut rels, url);
         opts.hyperlink_rel_id = Some(rel_id);
@@ -713,12 +713,13 @@ fn build_text_set_mutation(
 
     let rels_part = relationships_part_for(&slide_part);
     let updated_rels_xml = if opts.hyperlink_rel_id.is_some() {
-        let rels_xml = zip_text(file, &rels_part).unwrap_or_else(|_| relationships_xml());
+        let rels_xml = zip_text(file, &rels_part)
+            .unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
         let mut rels = relationship_entries_from_xml(&rels_xml);
         if let Some(url) = hyperlink {
             register_external_hyperlink(&mut rels, url.trim());
         }
-        Some(render_relationships_xml(&rels))
+        Some(crate::opc::render_relationships_xml(&rels, false))
     } else {
         None
     };
@@ -1289,34 +1290,6 @@ fn register_external_hyperlink(rels: &mut Vec<RelationshipEntry>, url: &str) -> 
         target_mode: "External".to_string(),
     });
     id
-}
-
-fn render_relationships_xml(rels: &[RelationshipEntry]) -> String {
-    let mut xml =
-        format!(r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="{REL_NS}">"#);
-    for rel in rels {
-        xml.push_str(&format!(
-            r#"<Relationship Id="{}" Type="{}" Target="{}""#,
-            xml_attr_escape(&rel.id),
-            xml_attr_escape(&rel.rel_type),
-            xml_attr_escape(&rel.target)
-        ));
-        if !rel.target_mode.is_empty() {
-            xml.push_str(&format!(
-                r#" TargetMode="{}""#,
-                xml_attr_escape(&rel.target_mode)
-            ));
-        }
-        xml.push_str("/>");
-    }
-    xml.push_str("</Relationships>");
-    xml
-}
-
-fn relationships_xml() -> String {
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="{REL_NS}"></Relationships>"#
-    )
 }
 
 fn ensure_relationship_namespace(xml: &str) -> CliResult<String> {

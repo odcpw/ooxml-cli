@@ -8,8 +8,8 @@ use crate::xlsx_sheet_xml::{
     XlsxWorksheetRootBounds, xlsx_direct_worksheet_child_range, xlsx_worksheet_root_bounds,
 };
 use crate::{
-    CliError, CliResult, RelationshipEntry, WorkbookSheet, add_relationship_to_xml,
-    allocate_relationship_id, command_arg, copy_zip_with_part_overrides_and_removals,
+    CliError, CliResult, RelationshipEntry, WorkbookSheet, allocate_relationship_id,
+    append_relationship_xml, command_arg, copy_zip_with_part_overrides_and_removals,
     ensure_content_type_override, local_name, normalize_xl_target, relationships,
     relationships_part_for, render_xml_attrs, replace_xml_span, resolve_relationship_target,
     resolve_sheet, validate_xlsx_mutation_output_flags, workbook_sheets, xlsx_sheet_selectors,
@@ -165,11 +165,13 @@ pub(crate) fn xlsx_sheets_add(file: &str, options: XlsxSheetsAddOptions<'_>) -> 
     let sheet_xml = new_worksheet_xml(workbook_prefix(&ctx.workbook_xml).as_deref());
     let updated_workbook =
         insert_workbook_sheet(&ctx.workbook_xml, name, sheet_id, &rel_id, after_position)?;
-    let updated_rels = add_relationship_to_xml(
+    let updated_rels = append_relationship_xml(
         ctx.rels_xml.clone(),
-        &rel_id,
-        REL_WORKSHEET,
-        &relationship_target("xl/workbook.xml", &part_uri),
+        &RelationshipEntry::new(
+            &rel_id,
+            REL_WORKSHEET,
+            &relationship_target("xl/workbook.xml", &part_uri),
+        ),
     );
     let updated_content_types = ensure_content_type_override(
         ctx.content_types_xml.clone(),
@@ -400,8 +402,15 @@ pub(crate) fn xlsx_sheets_delete(
     for part in &removed_parts {
         removals.insert(part.trim_start_matches('/').to_string());
     }
-    let updated_content_types =
-        remove_content_type_overrides(&ctx.content_types_xml, &removed_parts, true);
+    let mut updated_content_types = ctx.content_types_xml.clone();
+    for part in &removed_parts {
+        updated_content_types =
+            crate::opc::remove_content_type_override(updated_content_types, part)?;
+    }
+    updated_content_types = crate::opc::remove_content_type_overrides_by_type(
+        updated_content_types,
+        CONTENT_TYPE_CALC_CHAIN,
+    )?;
     let mut overrides = BTreeMap::new();
     overrides.insert("xl/workbook.xml".to_string(), updated_workbook);
     overrides.insert(ctx.rels_part.clone(), updated_rels);
@@ -1904,45 +1913,6 @@ fn remove_sheet_and_calc_chain_relationships(
         }
     }
     (apply_replacements(rels_xml, &removals), removed_parts)
-}
-
-fn remove_content_type_overrides(
-    xml: &str,
-    removed_parts: &[String],
-    remove_calc_chain: bool,
-) -> String {
-    let removed = removed_parts
-        .iter()
-        .map(|part| format!("/{}", part.trim_start_matches('/')))
-        .collect::<BTreeSet<_>>();
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(false);
-    let mut removals = Vec::<(usize, usize, String)>::new();
-    loop {
-        let start = reader.buffer_position() as usize;
-        match reader.read_event() {
-            Ok(Event::Empty(e)) | Ok(Event::Start(e))
-                if local_name(e.name().as_ref()) == "Override" =>
-            {
-                let end = reader.buffer_position() as usize;
-                let attrs = xml_attrs_map(&e);
-                let part_matches = attrs
-                    .get("PartName")
-                    .is_some_and(|part| removed.contains(part));
-                let calc_matches = remove_calc_chain
-                    && attrs
-                        .get("ContentType")
-                        .is_some_and(|content_type| content_type == CONTENT_TYPE_CALC_CHAIN);
-                if part_matches || calc_matches {
-                    removals.push((start, end, String::new()));
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(_) => break,
-            _ => {}
-        }
-    }
-    apply_replacements(xml, &removals)
 }
 
 fn visible_sheet_count(sheets: &[WorkbookSheet]) -> usize {

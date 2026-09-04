@@ -5,12 +5,69 @@ use std::path::Path;
 
 use crate::{CliError, CliResult, attr, attr_exact, local_name, xml_attr_escape, zip_text};
 
-#[derive(Clone)]
+const RELATIONSHIPS_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RelationshipEntry {
     pub(crate) id: String,
     pub(crate) rel_type: String,
     pub(crate) target: String,
     pub(crate) target_mode: String,
+}
+
+impl RelationshipEntry {
+    pub(crate) fn new(id: &str, rel_type: &str, target: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            rel_type: rel_type.to_string(),
+            target: target.to_string(),
+            target_mode: String::new(),
+        }
+    }
+
+    pub(crate) fn external(id: &str, rel_type: &str, target: &str) -> Self {
+        Self {
+            target_mode: "External".to_string(),
+            ..Self::new(id, rel_type, target)
+        }
+    }
+}
+
+pub(crate) fn empty_relationships_xml(standalone: bool) -> String {
+    render_relationships_xml(&[], standalone)
+}
+
+pub(crate) fn render_relationship_xml(rel: &RelationshipEntry) -> String {
+    let mut out = format!(
+        r#"<Relationship Id="{}" Type="{}" Target="{}""#,
+        xml_attr_escape(&rel.id),
+        xml_attr_escape(&rel.rel_type),
+        xml_attr_escape(&rel.target)
+    );
+    if !rel.target_mode.is_empty() {
+        out.push_str(&format!(
+            r#" TargetMode="{}""#,
+            xml_attr_escape(&rel.target_mode)
+        ));
+    }
+    out.push_str("/>");
+    out
+}
+
+pub(crate) fn render_relationships_xml(
+    relationships: &[RelationshipEntry],
+    standalone: bool,
+) -> String {
+    let declaration = if standalone {
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#
+    } else {
+        r#"<?xml version="1.0" encoding="UTF-8"?>"#
+    };
+    let body = relationships
+        .iter()
+        .map(render_relationship_xml)
+        .collect::<String>();
+    format!(r#"{declaration}<Relationships xmlns="{RELATIONSHIPS_NS}">{body}</Relationships>"#)
 }
 
 pub(crate) fn relationships_part_for(part: &str) -> String {
@@ -146,22 +203,10 @@ pub(crate) fn ensure_package_root_relationship_xml(
         return xml;
     }
     let next_id = allocate_relationship_id(&rels);
-    let rel = format!(
-        r#"<Relationship Id="{next_id}" Type="{}" Target="{}"/>"#,
-        xml_attr_escape(rel_type),
-        xml_attr_escape(target_uri.trim_start_matches('/'))
-    );
-    if let Some(pos) = xml.rfind("</Relationships>") {
-        let mut out = String::with_capacity(xml.len() + rel.len());
-        out.push_str(&xml[..pos]);
-        out.push_str(&rel);
-        out.push_str(&xml[pos..]);
-        out
-    } else {
-        format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
-        )
-    }
+    append_relationship_xml(
+        xml,
+        &RelationshipEntry::new(&next_id, rel_type, target_uri.trim_start_matches('/')),
+    )
 }
 
 pub(crate) fn ensure_content_type_override(
@@ -191,12 +236,11 @@ pub(crate) fn add_relationship_to_xml(
     rel_type: &str,
     target: &str,
 ) -> String {
-    let rel = format!(
-        r#"<Relationship Id="{}" Type="{}" Target="{}"/>"#,
-        xml_attr_escape(id),
-        xml_attr_escape(rel_type),
-        xml_attr_escape(target)
-    );
+    append_relationship_xml(xml, &RelationshipEntry::new(id, rel_type, target))
+}
+
+pub(crate) fn append_relationship_xml(xml: String, relationship: &RelationshipEntry) -> String {
+    let rel = render_relationship_xml(relationship);
     if let Some(pos) = xml.rfind("</Relationships>") {
         let mut out = String::with_capacity(xml.len() + rel.len());
         out.push_str(&xml[..pos]);
@@ -204,10 +248,72 @@ pub(crate) fn add_relationship_to_xml(
         out.push_str(&xml[pos..]);
         out
     } else {
-        format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{rel}</Relationships>"#
-        )
+        render_relationships_xml(std::slice::from_ref(relationship), false)
     }
+}
+
+pub(crate) fn append_relationship_if_absent_xml(
+    xml: String,
+    relationship: &RelationshipEntry,
+) -> String {
+    if relationship_entries_from_xml(&xml)
+        .iter()
+        .any(|existing| existing.id == relationship.id)
+    {
+        xml
+    } else {
+        append_relationship_xml(xml, relationship)
+    }
+}
+
+pub(crate) fn replace_relationship_xml(
+    xml: String,
+    relationship: &RelationshipEntry,
+) -> CliResult<String> {
+    let Some((start, end)) =
+        first_element_span_matching_attr(&xml, "Relationship", "Id", &relationship.id)?
+    else {
+        return Ok(xml);
+    };
+    Ok(replace_xml_range(
+        &xml,
+        start,
+        end,
+        &render_relationship_xml(relationship),
+    ))
+}
+
+pub(crate) fn remove_content_type_override(xml: String, part_name: &str) -> CliResult<String> {
+    let normalized = format!("/{}", part_name.trim_start_matches('/'));
+    let spans = element_spans_matching_attr(&xml, "Override", "PartName", &normalized)?;
+    Ok(remove_xml_ranges(xml, &spans))
+}
+
+pub(crate) fn remove_content_type_overrides_by_type(
+    xml: String,
+    content_type: &str,
+) -> CliResult<String> {
+    let spans = element_spans_matching_attr(&xml, "Override", "ContentType", content_type)?;
+    Ok(remove_xml_ranges(xml, &spans))
+}
+
+pub(crate) fn replace_or_append_content_type_override(
+    xml: String,
+    part_name: &str,
+    content_type: &str,
+) -> CliResult<String> {
+    let normalized = format!("/{}", part_name.trim_start_matches('/'));
+    let override_xml = format!(
+        r#"<Override PartName="{}" ContentType="{}"/>"#,
+        xml_attr_escape(&normalized),
+        xml_attr_escape(content_type)
+    );
+    if let Some((start, end)) =
+        first_element_span_matching_attr(&xml, "Override", "PartName", &normalized)?
+    {
+        return Ok(replace_xml_range(&xml, start, end, &override_xml));
+    }
+    ensure_content_type_override(xml, &normalized, content_type)
 }
 
 pub(crate) fn resolve_relationship_target(source_uri: &str, target: &str) -> String {
@@ -360,6 +466,85 @@ fn content_types_root_close_start(xml: &str) -> CliResult<usize> {
     ))
 }
 
+fn first_element_span_matching_attr(
+    xml: &str,
+    element_local_name: &str,
+    attr_name: &str,
+    attr_value: &str,
+) -> CliResult<Option<(usize, usize)>> {
+    Ok(
+        element_spans_matching_attr(xml, element_local_name, attr_name, attr_value)?
+            .into_iter()
+            .next(),
+    )
+}
+
+fn element_spans_matching_attr(
+    xml: &str,
+    element_local_name: &str,
+    attr_name: &str,
+    attr_value: &str,
+) -> CliResult<Vec<(usize, usize)>> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut spans = Vec::new();
+    loop {
+        let start = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Empty(element))
+                if local_name(element.name().as_ref()) == element_local_name
+                    && attr(&element, attr_name).as_deref() == Some(attr_value) =>
+            {
+                spans.push((start, reader.buffer_position() as usize));
+            }
+            Ok(Event::Start(element))
+                if local_name(element.name().as_ref()) == element_local_name
+                    && attr(&element, attr_name).as_deref() == Some(attr_value) =>
+            {
+                let mut depth = 1usize;
+                loop {
+                    match reader.read_event() {
+                        Ok(Event::Start(_)) => depth += 1,
+                        Ok(Event::End(_)) => {
+                            depth -= 1;
+                            if depth == 0 {
+                                spans.push((start, reader.buffer_position() as usize));
+                                break;
+                            }
+                        }
+                        Ok(Event::Eof) => {
+                            return Err(CliError::unexpected(format!(
+                                "unterminated {element_local_name} element"
+                            )));
+                        }
+                        Err(err) => return Err(CliError::unexpected(err.to_string())),
+                        _ => {}
+                    }
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+            _ => {}
+        }
+    }
+    Ok(spans)
+}
+
+fn remove_xml_ranges(mut xml: String, ranges: &[(usize, usize)]) -> String {
+    for &(start, end) in ranges.iter().rev() {
+        xml.replace_range(start..end, "");
+    }
+    xml
+}
+
+fn replace_xml_range(xml: &str, start: usize, end: usize, replacement: &str) -> String {
+    let mut out = String::with_capacity(xml.len() + replacement.len());
+    out.push_str(&xml[..start]);
+    out.push_str(replacement);
+    out.push_str(&xml[end..]);
+    out
+}
+
 fn percent_decode_package_uri(uri: &str) -> CliResult<String> {
     let bytes = uri.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
@@ -408,6 +593,49 @@ fn hex_value(byte: u8) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn relationship_renderer_preserves_input_order_and_emits_compact_target_mode() {
+        let relationships = vec![
+            RelationshipEntry::external("rId10", "external&type", "https://example.test/?a=1&b=2"),
+            RelationshipEntry::new("rId2", "internal", "../media/image1.png"),
+        ];
+
+        assert_eq!(allocate_relationship_id(&relationships), "rId11");
+        assert_eq!(
+            render_relationships_xml(&relationships, false),
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId10" Type="external&amp;type" Target="https://example.test/?a=1&amp;b=2" TargetMode="External"/><Relationship Id="rId2" Type="internal" Target="../media/image1.png"/></Relationships>"#
+        );
+    }
+
+    #[test]
+    fn append_if_absent_and_replace_are_distinct_operations() {
+        let original =
+            render_relationships_xml(&[RelationshipEntry::new("rId1", "old", "old.xml")], false);
+        let replacement = RelationshipEntry::new("rId1", "new", "new.xml");
+
+        assert_eq!(
+            append_relationship_if_absent_xml(original.clone(), &replacement),
+            original
+        );
+        let replaced = replace_relationship_xml(original, &replacement).expect("replace by id");
+        assert!(replaced.contains(r#"Type="new" Target="new.xml"/>"#));
+        assert!(!replaced.contains("old.xml"));
+    }
+
+    #[test]
+    fn content_type_override_remove_and_replace_are_exact() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/one.xml" ContentType="old"/><Override PartName="/two.xml" ContentType="keep"/></Types>"#;
+        let replaced =
+            replace_or_append_content_type_override(xml.to_string(), "one.xml", "new&type")
+                .expect("replace override");
+        assert!(replaced.contains(r#"PartName="/one.xml" ContentType="new&amp;type"/>"#));
+        assert_eq!(replaced.matches(r#"PartName="/one.xml""#).count(), 1);
+
+        let removed = remove_content_type_override(replaced, "/one.xml").expect("remove override");
+        assert!(!removed.contains(r#"PartName="/one.xml""#));
+        assert!(removed.contains(r#"PartName="/two.xml" ContentType="keep"/>"#));
+    }
 
     #[test]
     fn ensure_content_type_override_detects_legal_existing_override_serializations() {

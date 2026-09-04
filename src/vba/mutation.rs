@@ -15,8 +15,7 @@ use super::output::{
     vba_output_placeholder, vba_package_readback_command, vba_validate_command,
 };
 use super::package_xml::{
-    package_part_name, remove_content_type_override, remove_vba_relationships_xml,
-    set_content_type_override, upsert_vba_relationship_xml,
+    package_part_name, remove_vba_relationships_xml, upsert_vba_relationship_xml,
 };
 use super::xlsx_host::xlsx_vba_document_code_name_overrides;
 
@@ -60,19 +59,18 @@ pub(super) fn attach_vba_project_bytes(
     let mut text_overrides = BTreeMap::new();
     let mut binary_overrides = BTreeMap::new();
     let mut removals = BTreeSet::new();
-    let content_types = set_content_type_override(
-        &set_content_type_override(
-            &zip_text(file, "[Content_Types].xml")?,
+    let content_types = crate::opc::replace_or_append_content_type_override(
+        crate::opc::replace_or_append_content_type_override(
+            zip_text(file, "[Content_Types].xml")?,
             &info.main_part_uri,
             info.family.macro_content_type,
-        ),
+        )?,
         &target_part,
         VBA_PROJECT_CONTENT_TYPE,
-    );
+    )?;
     let rels_part = relationships_part_for(&info.main_part_uri);
-    let rels_xml = zip_text(file, &rels_part).unwrap_or_else(|_| {
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
-    });
+    let rels_xml =
+        zip_text(file, &rels_part).unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     text_overrides.insert("[Content_Types].xml".to_string(), content_types);
     text_overrides.insert(
         rels_part,
@@ -121,20 +119,19 @@ pub(super) fn remove_vba_project(file: &str, options: VbaMutationOptions<'_>) ->
         .iter()
         .find(|part| part.ends_with("vbaProject.bin"))
         .map(|part| format!("/{part}"));
-    let mut content_types = set_content_type_override(
-        &zip_text(file, "[Content_Types].xml")?,
+    let mut content_types = crate::opc::replace_or_append_content_type_override(
+        zip_text(file, "[Content_Types].xml")?,
         &info.main_part_uri,
         info.family.non_macro_content_type,
-    );
+    )?;
     for part in &removals {
         if part.ends_with("vbaProject.bin") {
-            content_types = remove_content_type_override(&content_types, part);
+            content_types = crate::opc::remove_content_type_override(content_types, part)?;
         }
     }
     let rels_part = relationships_part_for(&info.main_part_uri);
-    let rels_xml = zip_text(file, &rels_part).unwrap_or_else(|_| {
-        r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
-    });
+    let rels_xml =
+        zip_text(file, &rels_part).unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
     text_overrides.insert("[Content_Types].xml".to_string(), content_types);
     text_overrides.insert(
         rels_part,
