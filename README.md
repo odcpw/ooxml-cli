@@ -131,6 +131,654 @@ ooxml --json docx blocks .\report.docx
 ooxml --json docx replace .\report.docx --find "Draft" --replace "Final" --expect-count 1 --out .\final.docx
 ```
 
+<!-- BEGIN GENERATED OOXML RECIPES -->
+## Runnable recipes
+
+These sections are generated from `ooxml robot-docs recipes`; run `make docs-recipes` after changing the recipe contract. Replace angle-bracket placeholders with paths you control.
+
+### `deck-from-scratch` — Deck from scratch
+
+Create, orient on, and prove a new presentation.
+
+Inputs:
+
+- `<output.pptx>` — new presentation path; the recipe replaces it only because --force is explicit
+
+Typed MCP tools for the same intent: `build_presentation`, `outline_package`, `check_package`, `render_preview`.
+
+Steps:
+
+1. Create a validated 16:9 presentation with the standard layouts and theme.
+
+   ```console
+   ooxml --json pptx scaffold <output.pptx> --title Recipe --subtitle Generated --force
+   ```
+
+   Expected JSON fields: `/output`, `/validated`, `/family`, `/layouts`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+   ```
+
+2. Read the generated slide tree and stable selectors before editing.
+
+   ```console
+   ooxml --json outline <output.pptx> --depth 2
+   ```
+
+   Expected JSON fields: `/type`, `/summary/slides`, `/slides`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output.pptx> --depth 3
+```
+
+```console
+ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+```
+
+```console
+ooxml --json design-check <output.pptx>
+```
+
+### `deck-from-template` — Deck from template
+
+Create a presentation from an existing master, layouts, and theme.
+
+Inputs:
+
+- `<template.pptx>` — source presentation whose master, layouts, and theme are inherited
+- `<output.pptx>` — new presentation path
+
+Typed MCP tools for the same intent: `build_presentation`, `outline_package`, `check_package`, `render_preview`.
+
+Steps:
+
+1. Create a presentation that inherits the template master, layouts, and theme.
+
+   ```console
+   ooxml --json pptx scaffold <output.pptx> --template <template.pptx> --title Recipe --force
+   ```
+
+   Expected JSON fields: `/output`, `/validated`, `/template`, `/layouts`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+   ```
+
+2. Confirm the generated slide and layout tree.
+
+   ```console
+   ooxml --json outline <output.pptx> --depth 2
+   ```
+
+   Expected JSON fields: `/type`, `/summary/slides`, `/slides`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output.pptx> --depth 3
+```
+
+```console
+ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+```
+
+```console
+ooxml --json design-check <output.pptx>
+```
+
+### `workbook-report` — Workbook report
+
+Build, read back, and prove a structured workbook report.
+
+Inputs:
+
+- `<workbook-spec.json>` — XLSX build specification from capabilities --schema xlsx-build
+- `<output.xlsx>` — new workbook path
+
+Typed MCP tools for the same intent: `build_workbook`, `outline_package`, `check_package`.
+
+Steps:
+
+1. Compile and atomically publish the complete workbook report.
+
+   ```console
+   ooxml --json xlsx build --spec <workbook-spec.json> --out <output.xlsx> --check --force
+   ```
+
+   Expected JSON fields: `/output`, `/validated`, `/outline`, `/check/summary/errors`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.xlsx> --openxml-sdk skip --fail-on error
+   ```
+
+2. Read back the report header and typed data cells.
+
+   ```console
+   ooxml --json xlsx ranges export <output.xlsx> --sheet Sales --range A1:D4 --include-types
+   ```
+
+   Expected JSON fields: `/sheet`, `/range`, `/values`, `/types`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.xlsx> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output.xlsx> --depth 3
+```
+
+```console
+ooxml --json check <output.xlsx> --openxml-sdk skip --fail-on error
+```
+
+### `document-report` — Document report
+
+Build, read back, and prove a styled document report.
+
+Inputs:
+
+- `<document-spec.json>` — DOCX build specification from capabilities --schema docx-build
+- `<output.docx>` — new document path
+
+Typed MCP tools for the same intent: `build_document`, `outline_package`, `check_package`.
+
+Steps:
+
+1. Compile and atomically publish the styled document report.
+
+   ```console
+   ooxml --json docx build --spec <document-spec.json> --out <output.docx> --check --force
+   ```
+
+   Expected JSON fields: `/output`, `/validated`, `/outline`, `/check/summary/errors`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.docx> --openxml-sdk skip --fail-on error
+   ```
+
+2. Read back blocks, styles, lists, tables, and text.
+
+   ```console
+   ooxml --json docx text <output.docx>
+   ```
+
+   Expected JSON fields: `/blocks`, `/blockHashes`, `/documentHash`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.docx> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output.docx> --depth 3
+```
+
+```console
+ooxml --json check <output.docx> --openxml-sdk skip --fail-on error
+```
+
+### `macro-workbook` — Macro workbook
+
+Create an XLSM through the pure Rust VBA authoring path.
+
+Inputs:
+
+- `<module.bas>` — trusted VBA standard-module source
+- `<base.xlsx>` — temporary non-macro workbook path
+- `<output.xlsm>` — new macro-enabled workbook path
+
+Typed MCP tools for the same intent: `edit_package`, `outline_package`, `check_package`, `validate_package`.
+
+Steps:
+
+1. Create the validated workbook host.
+
+   ```console
+   ooxml --json xlsx scaffold <base.xlsx> --sheet Data --force
+   ```
+
+   Expected JSON fields: `/output`, `/validated`, `/sheet`.
+
+   Proof:
+
+   ```console
+   ooxml validate --strict <base.xlsx>
+   ```
+
+2. Build and attach vbaProject.bin with the pure Rust authoring path.
+
+   ```console
+   ooxml --json vba create <base.xlsx> --pure --family xlsx --source <module.bas> --out <output.xlsm>
+   ```
+
+   Expected JSON fields: `/output`, `/authoring/modules`, `/vba/hasVbaProject`, `/validateCommand`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.xlsm> --openxml-sdk skip --fail-on error
+   ```
+
+3. Confirm that the expected VBA module is discoverable.
+
+   ```console
+   ooxml --json vba list <output.xlsm>
+   ```
+
+   Expected JSON fields: `/project/modules`, `/project/moduleCount`, `/project/family`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.xlsm> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output.xlsm> --depth 3
+```
+
+```console
+ooxml --json check <output.xlsm> --openxml-sdk skip --fail-on error
+```
+
+### `find-replace-package` — Find and replace package text
+
+Find exact text, publish supported replacements, and verify the result.
+
+Inputs:
+
+- `<input-file>` — source PPTX, XLSX, or DOCX package containing the literal text Hello
+- `<output-file>` — new package path with the same family as the input
+
+Typed MCP tools for the same intent: `find_text`, `replace_text`, `outline_package`, `check_package`.
+
+Steps:
+
+1. Find exact text, generate supported mutations, validate, and publish in one call.
+
+   ```console
+   ooxml --json find Hello <input-file> --replace Replaced --apply --out <output-file>
+   ```
+
+   Expected JSON fields: `/opsCount`, `/validated`, `/applied`, `/output`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output-file> --openxml-sdk skip --fail-on error
+   ```
+
+2. Verify the replacement through the family-aware package outline.
+
+   ```console
+   ooxml --json outline <output-file> --depth 3
+   ```
+
+   Expected JSON fields: `/type`, `/summary`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output-file> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output-file> --depth 3
+```
+
+```console
+ooxml --json check <output-file> --openxml-sdk skip --fail-on error
+```
+
+### `translate-deck` — Translate a deck
+
+Export stable translation ids and apply a reviewed manifest safely.
+
+Inputs:
+
+- `<input.pptx>` — source presentation
+- `<manifest.json>` — translation manifest captured from the export step and edited by a translator
+- `<output.pptx>` — new translated presentation path
+
+Typed MCP tools for the same intent: `edit_package`, `outline_package`, `check_package`.
+
+Steps:
+
+1. Export stable translation ids, source hashes, and text into a JSON manifest.
+
+   ```console
+   ooxml --json pptx translate export <input.pptx> > <manifest.json>
+   ```
+
+   Expected JSON fields: `/metadata`, `/entries`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <input.pptx> --openxml-sdk skip --fail-on error
+   ```
+
+2. Apply the reviewed manifest with stale-source protection.
+
+   ```console
+   ooxml --json pptx translate apply <input.pptx> <manifest.json> --stale error --output <output.pptx>
+   ```
+
+   Expected JSON fields: `/entriesProcessed`, `/entriesApplied`, `/entriesSkipped`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output.pptx> --depth 3
+```
+
+```console
+ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+```
+
+```console
+ooxml --json design-check <output.pptx>
+```
+
+### `pivot-report` — Pivot report
+
+Create and read back a PivotTable from a named source table.
+
+Inputs:
+
+- `<input.xlsx>` — source workbook containing table Sales with Region and Revenue columns
+- `<output.xlsx>` — new workbook path
+
+Typed MCP tools for the same intent: `edit_package`, `outline_package`, `check_package`.
+
+Steps:
+
+1. Create a PivotTable from a stable table selector and explicit field names.
+
+   ```console
+   ooxml --json xlsx pivots create <input.xlsx> --sheet Data --table Sales --target-sheet Data --anchor D1 --name SalesPivot --rows Region --values Revenue:sum --out <output.xlsx>
+   ```
+
+   Expected JSON fields: `/output`, `/mutationEnvelope/validated`, `/pivotTableUri`, `/pivotsListCommand`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.xlsx> --openxml-sdk skip --fail-on error
+   ```
+
+2. Read back the authored pivot source, location, and fields.
+
+   ```console
+   ooxml --json xlsx pivots list <output.xlsx> --sheet Data
+   ```
+
+   Expected JSON fields: `/pivots`, `/validateCommand`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.xlsx> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output.xlsx> --depth 3
+```
+
+```console
+ooxml --json check <output.xlsx> --openxml-sdk skip --fail-on error
+```
+
+### `batch-edit-with-apply` — Batch edit with apply
+
+Apply an ordered mutation batch atomically and verify its readback.
+
+Inputs:
+
+- `<input-file>` — source PPTX, XLSX, or DOCX package
+- `<ops.json>` — ordered apply operation array
+- `<output-file>` — new package path with the same family as the input
+
+Typed MCP tools for the same intent: `edit_package`, `outline_package`, `check_package`.
+
+Steps:
+
+1. Apply the ordered operation batch through the Serve/MCP mutation seam.
+
+   ```console
+   ooxml --json apply <input-file> --ops <ops.json> --out <output-file>
+   ```
+
+   Expected JSON fields: `/output`, `/validated`, `/opsCount`, `/applied`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output-file> --openxml-sdk skip --fail-on error
+   ```
+
+2. Confirm the batch result using the family-aware package outline.
+
+   ```console
+   ooxml --json outline <output-file> --depth 3
+   ```
+
+   Expected JSON fields: `/type`, `/summary`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output-file> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output-file> --depth 3
+```
+
+```console
+ooxml --json check <output-file> --openxml-sdk skip --fail-on error
+```
+
+### `build-from-spec` — Build from specifications
+
+Build and prove one package for each supported family from published JSON schemas.
+
+Inputs:
+
+- `<presentation-spec.json>` — PPTX build specification
+- `<workbook-spec.json>` — XLSX build specification
+- `<document-spec.json>` — DOCX build specification
+- `<output.pptx>` — new presentation path
+- `<output.xlsx>` — new workbook path
+- `<output.docx>` — new document path
+
+Typed MCP tools for the same intent: `build_presentation`, `build_workbook`, `build_document`, `outline_package`, `check_package`.
+
+Steps:
+
+1. Build and check the presentation specification.
+
+   ```console
+   ooxml --json pptx build --spec <presentation-spec.json> --out <output.pptx> --check --force
+   ```
+
+   Expected JSON fields: `/output`, `/validated`, `/outline/type`, `/check/summary/errors`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+   ```
+
+2. Build and check the workbook specification.
+
+   ```console
+   ooxml --json xlsx build --spec <workbook-spec.json> --out <output.xlsx> --check --force
+   ```
+
+   Expected JSON fields: `/output`, `/validated`, `/outline/type`, `/check/summary/errors`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.xlsx> --openxml-sdk skip --fail-on error
+   ```
+
+3. Build and check the document specification.
+
+   ```console
+   ooxml --json docx build --spec <document-spec.json> --out <output.docx> --check --force
+   ```
+
+   Expected JSON fields: `/output`, `/validated`, `/outline/type`, `/check/summary/errors`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.docx> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output.pptx> --depth 3
+```
+
+```console
+ooxml --json outline <output.xlsx> --depth 3
+```
+
+```console
+ooxml --json outline <output.docx> --depth 3
+```
+
+```console
+ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+```
+
+```console
+ooxml --json check <output.xlsx> --openxml-sdk skip --fail-on error
+```
+
+```console
+ooxml --json check <output.docx> --openxml-sdk skip --fail-on error
+```
+
+```console
+ooxml --json design-check <output.pptx>
+```
+
+### `build-from-markdown` — Build from Markdown
+
+Build and prove PPTX and DOCX packages from the supported Markdown profile.
+
+Inputs:
+
+- `<deck.md>` — supported presentation Markdown source
+- `<document.md>` — supported document Markdown source
+- `<output.pptx>` — new presentation path
+- `<output.docx>` — new document path
+
+Typed MCP tools for the same intent: `build_presentation`, `build_document`, `outline_package`, `check_package`.
+
+Steps:
+
+1. Convert Markdown to the PPTX build spec, publish, and check the result.
+
+   ```console
+   ooxml --json pptx build --from-markdown <deck.md> --out <output.pptx> --check --force
+   ```
+
+   Expected JSON fields: `/output`, `/markdown`, `/validated`, `/outline/type`, `/check/summary/errors`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+   ```
+
+2. Convert Markdown to the DOCX build spec, publish, and check the result.
+
+   ```console
+   ooxml --json docx build --from-markdown <document.md> --out <output.docx> --check --force
+   ```
+
+   Expected JSON fields: `/output`, `/markdown`, `/validated`, `/outline/type`, `/check/summary/errors`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.docx> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output.pptx> --depth 3
+```
+
+```console
+ooxml --json outline <output.docx> --depth 3
+```
+
+```console
+ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+```
+
+```console
+ooxml --json check <output.docx> --openxml-sdk skip --fail-on error
+```
+
+```console
+ooxml --json design-check <output.pptx>
+```
+
+<!-- END GENERATED OOXML RECIPES -->
+
 ## VBA And Macro Files
 
 The preferred VBA path is pure Rust authoring. It works without desktop Office on Linux, macOS, and Windows. Desktop Office is used only for optional proof gates, such as opening the file or running the explicit smoke macro.

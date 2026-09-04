@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "groupCount": 64,
-  "leafCount": 267,
+  "leafCount": 269,
   "groupTopicRows": 52,
   "aliasOwnerRecords": 37,
   "aliasArgvCount": 35,
@@ -11,7 +11,7 @@
       "category": "root",
       "argv": [],
       "status": 0,
-      "stdout": "ooxml inspects, edits, validates, and proves Office Open XML packages for agents and scripts.\n\nIts typed manifest currently exposes 329 command contracts across direct CLI, build, batch/Serve, Markdown, and typed MCP surfaces. Use `ooxml --json capabilities` for the live machine-readable inventory.\n\nUsage:\n  ooxml [flags]\n  ooxml [command]\n\nAvailable Commands:\n  agent-triage  Emit one-call agent triage JSON with quick refs, health, discovery filters, and safe next actions.\n  apply         Apply a JSON batch of mutation operations to one OOXML package through the same session engine used by serve and MCP.\n  capabilities  Emit the Rust-supported machine-readable command and object inventory.\n  check         Run structural, strict, schema, layout, design, reference, and optional visual proof in one deterministic finding envelope.\n  completion    Generate shell completion scripts for Rust-supported top-level commands.\n  conformance   Show Rust-supported conformance reports.\n  convert       Convert supported OOXML packages.\n  design-check  Report deterministic, objective, fixable design findings for PPTX, DOCX, and XLSX packages.\n  diff          Compare two OOXML packages semantically, with optional visual render diff.\n  doctor        Run read-only environment checks for agent/release workflows.\n  docx          Work with Rust-supported DOCX document commands.\n  find          Search supported OOXML package text, formulas, and defined names; optionally emit or apply generated mutation ops.\n  help          Show Rust-supported command help.\n  inspect       Inspect a supported OOXML package.\n  mcp           Run the MCP stdio server with typed build, edit, outline, check, validate, render, find, and replace tools backed by the same Rust session engine.\n  outline       Return one compact, deterministic, family-aware orientation tree as JSON or readable CommonMark.\n  pptx          Work with Rust-supported PPTX presentation commands.\n  render        Render a PPTX, XLSX, or DOCX package to PDF and PNG pages through LibreOffice.\n  repair        Normalize recoverable OOXML package issues.\n  robot-docs    Print the Rust-supported agent guide.\n  serve         Run the JSON-RPC 2.0 stdio session server for web and agent workflows.\n  template      Extract and apply design tokens across PPTX/XLSX templates.\n  validate      Validate an OOXML package.\n  vba           Inspect and edit Rust-supported VBA macro project surfaces.\n  verify        Validate and compare a package against a baseline where supported.\n  version       Print the version of ooxml.\n  xlsx          Work with Rust-supported XLSX workbook commands.\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nUse \"ooxml help [command]\" for Rust-supported command help.\nParent/group capability paths are help surfaces; invoke a listed leaf command for work.\n",
+      "stdout": "ooxml inspects, edits, validates, and proves Office Open XML packages for agents and scripts.\n\nIts typed manifest currently exposes 331 command contracts across direct CLI, build, batch/Serve, Markdown, and typed MCP surfaces. Use `ooxml --json capabilities` for the live machine-readable inventory.\n\nUsage:\n  ooxml [flags]\n  ooxml [command]\n\nAvailable Commands:\n  agent-triage  Emit one-call agent triage JSON with family- and request-aware runnable recipe links, quick refs, health, discovery filters, and safe next actions.\n  apply         Apply a JSON batch of mutation operations to one OOXML package through the same session engine used by serve and MCP.\n  capabilities  Emit the Rust-supported machine-readable command and object inventory.\n  check         Run structural, strict, schema, layout, design, reference, and optional visual proof in one deterministic finding envelope.\n  completion    Generate shell completion scripts for Rust-supported top-level commands.\n  conformance   Show Rust-supported conformance reports.\n  convert       Convert supported OOXML packages.\n  design-check  Report deterministic, objective, fixable design findings for PPTX, DOCX, and XLSX packages.\n  diff          Compare two OOXML packages semantically, with optional visual render diff.\n  doctor        Run read-only environment checks for agent/release workflows.\n  docx          Work with Rust-supported DOCX document commands.\n  find          Search supported OOXML package text, formulas, and defined names; optionally emit or apply generated mutation ops.\n  help          Show Rust-supported command help.\n  inspect       Inspect a supported OOXML package.\n  mcp           Run the MCP stdio server with typed build, edit, outline, check, validate, render, find, and replace tools backed by the same Rust session engine.\n  outline       Return one compact, deterministic, family-aware orientation tree as JSON or readable CommonMark.\n  pptx          Work with Rust-supported PPTX presentation commands.\n  render        Render a PPTX, XLSX, or DOCX package to PDF and PNG pages through LibreOffice.\n  repair        Normalize recoverable OOXML package issues.\n  robot-docs    Print the Rust-supported agent guide.\n  serve         Run the JSON-RPC 2.0 stdio session server for web and agent workflows.\n  template      Extract and apply design tokens across PPTX/XLSX templates.\n  validate      Validate an OOXML package.\n  vba           Inspect and edit Rust-supported VBA macro project surfaces.\n  verify        Validate and compare a package against a baseline where supported.\n  version       Print the version of ooxml.\n  xlsx          Work with Rust-supported XLSX workbook commands.\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nUse \"ooxml help [command]\" for Rust-supported command help.\nParent/group capability paths are help surfaces; invoke a listed leaf command for work.\n",
       "stderr": ""
     },
     {
@@ -446,7 +446,7 @@
         "robot-docs"
       ],
       "status": 0,
-      "stdout": "Commands implemented in Rust under this group.\n\nUsage:\n  ooxml robot-docs [command]\n\nAvailable Commands:\n  guide  Print the Rust-supported agent guide.\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nRust-supported command group.\n",
+      "stdout": "Commands implemented in Rust under this group.\n\nUsage:\n  ooxml robot-docs [command]\n\nAvailable Commands:\n  guide    Print the Rust-supported agent guide.\n  recipe   Print one generated runnable recipe by its stable name.\n  recipes  Print the generated runnable recipe catalog with exact commands, expected fields, and proof commands.\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n\nRust-supported command group.\n",
       "stderr": ""
     },
     {
@@ -790,7 +790,7 @@
         "capabilities"
       ],
       "status": 0,
-      "stdout": "Emit the Rust-supported machine-readable command and object inventory.\n\nUsage:\n  ooxml capabilities [--for <filter>|--schema <name>]\n\nFlags:\n  --for                    filter by command family or object kind; natural plurals and group aliases such as slides, ranges, conditional-formats, and modules are accepted\n  --schema                 print a published input schema; supported values: brand, pptx-build, xlsx-build, docx-build\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Emit the Rust-supported machine-readable command and object inventory.\n\nUsage:\n  ooxml capabilities [--for <filter>|--schema <name>|--workflows]\n\nFlags:\n  --for                    filter by command family or object kind; natural plurals and group aliases such as slides, ranges, conditional-formats, and modules are accepted\n  --schema                 print a published input schema; supported values: brand, pptx-build, xlsx-build, docx-build\n  --workflows              print only the generated runnable recipe catalog\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
@@ -801,7 +801,7 @@
         "agent-triage"
       ],
       "status": 0,
-      "stdout": "Emit one-call agent triage JSON with quick refs, health, discovery filters, and safe next actions.\n\nUsage:\n  ooxml agent-triage\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stdout": "Emit one-call agent triage JSON with family- and request-aware runnable recipe links, quick refs, health, discovery filters, and safe next actions.\n\nUsage:\n  ooxml agent-triage [--file <file>] [--request <text>]\n\nFlags:\n  --file                   detect the OOXML family from this file path and prioritize matching recipes\n  --request                prioritize recipes that match this natural-language request\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {
@@ -4167,6 +4167,30 @@
       ],
       "status": 0,
       "stdout": "Build a complete document from a published DOCX build specification or the supported Markdown profile in one atomic batch.\n\nUsage:\n  ooxml docx build (--spec <document.json|-> | --from-markdown <document.md|->) --out <document.docx>\n\nFlags:\n  --spec                   DOCX build-spec JSON path, or - to read JSON from stdin\n  --from-markdown          Markdown path, or - to read Markdown from stdin; mutually exclusive with --spec\n  --emit-spec              write the validated intermediate JSON spec produced by --from-markdown\n  --out                    output document path\n  --check                  run check after publishing and embed its findings\n  --dry-run                compile, execute, and strictly validate the staged batch without publishing\n  --force                  allow replacement of an existing output or emitted spec\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stderr": ""
+    },
+    {
+      "name": "leaf:robot-docs recipes",
+      "category": "canonical-leaf",
+      "argv": [
+        "help",
+        "robot-docs",
+        "recipes"
+      ],
+      "status": 0,
+      "stdout": "Print the generated runnable recipe catalog with exact commands, expected fields, and proof commands.\n\nUsage:\n  ooxml robot-docs recipes\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
+      "stderr": ""
+    },
+    {
+      "name": "leaf:robot-docs recipe",
+      "category": "canonical-leaf",
+      "argv": [
+        "help",
+        "robot-docs",
+        "recipe"
+      ],
+      "status": 0,
+      "stdout": "Print one generated runnable recipe by its stable name.\n\nUsage:\n  ooxml robot-docs recipe <name>\n\nGlobal Flags:\n  -f, --format <kind>        emit json, text, or supported Markdown output\n      --json                 emit JSON output\n      --strict               enable strict validation mode\n",
       "stderr": ""
     },
     {

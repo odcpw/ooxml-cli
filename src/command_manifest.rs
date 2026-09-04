@@ -839,7 +839,7 @@ mod tests {
         let root = command_specs();
         let frozen = frozen_contract_commands();
 
-        assert_eq!(core.len(), 42);
+        assert_eq!(core.len(), 44);
         assert_eq!(
             root[..core.len()]
                 .iter()
@@ -987,14 +987,14 @@ mod tests {
         let forms = xlsx::forms_command_specs();
 
         assert_eq!(
-            xlsx_start, 154,
-            "XLSX starts after the 42 core + 112 PPTX command denominator"
+            xlsx_start, 156,
+            "XLSX starts after the 44 core + 112 PPTX command denominator"
         );
         assert_eq!(front.len(), xlsx::FRONT_COMMAND_COUNT);
         assert_eq!(xlsx::FRONT_COMMAND_COUNT, 23);
-        assert_segment_matches_frozen_contract(&front, &frozen[xlsx_start..177]);
+        assert_segment_matches_frozen_contract(&front, &frozen[xlsx_start..179]);
         assert_eq!(forms.len(), 1);
-        assert_segment_matches_frozen_contract(&forms, &frozen[232..233]);
+        assert_segment_matches_frozen_contract(&forms, &frozen[234..235]);
     }
 
     #[test]
@@ -1199,7 +1199,7 @@ mod tests {
     fn core_ids_paths_and_repeated_builds_are_unique_and_stable() {
         let first = core::command_specs();
         let second = core::command_specs();
-        assert_eq!(first.len(), 42);
+        assert_eq!(first.len(), 44);
         assert_eq!(
             first
                 .iter()
@@ -1418,8 +1418,8 @@ mod tests {
         let frozen = frozen_contract_commands();
         assert_eq!(
             first.len(),
-            329,
-            "complete command denominator after adding `docx build`"
+            331,
+            "complete command denominator after adding runnable recipe leaves"
         );
         assert_segment_matches_frozen_contract(&first, &frozen);
         assert_eq!(
@@ -1431,7 +1431,7 @@ mod tests {
     #[test]
     fn complete_shadow_family_counts_and_order_are_exact() {
         let specs = command_specs();
-        assert_eq!(core::CoreCommandId::ALL.len(), 42);
+        assert_eq!(core::CoreCommandId::ALL.len(), 44);
         assert_eq!(
             pptx::PptxCommandId::ALL.len(),
             112,
@@ -1441,33 +1441,33 @@ mod tests {
         assert_eq!(docx::DocxCommandId::ALL.len(), 51);
         assert_eq!(vba::VbaCommandId::ALL.len(), 16);
         assert!(
-            specs[..42]
+            specs[..44]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Core(_)))
         );
         assert!(
-            specs[42..154]
+            specs[44..156]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Pptx(_))),
-            "PPTX occupies [42, 154) in the 329-command denominator"
+            "PPTX occupies [44, 156) in the 331-command denominator"
         );
         assert!(
-            specs[154..262]
+            specs[156..264]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Xlsx(_))),
-            "XLSX occupies [154, 262) in the 329-command denominator"
+            "XLSX occupies [156, 264) in the 331-command denominator"
         );
         assert!(
-            specs[262..313]
+            specs[264..315]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Docx(_))),
-            "DOCX occupies [262, 313) in the 329-command denominator"
+            "DOCX occupies [264, 315) in the 331-command denominator"
         );
         assert!(
-            specs[313..329]
+            specs[315..331]
                 .iter()
                 .all(|spec| matches!(spec.id, CommandId::Vba(_))),
-            "VBA occupies [313, 329) in the 329-command denominator"
+            "VBA occupies [315, 331) in the 331-command denominator"
         );
     }
 
@@ -1481,8 +1481,8 @@ mod tests {
         let path_set = specs.iter().map(|spec| spec.path).collect::<BTreeSet<_>>();
         assert_eq!(
             declared.len(),
-            329,
-            "declared command denominator after adding `docx build`"
+            331,
+            "declared command denominator after adding runnable recipe leaves"
         );
         assert_eq!(declared_set.len(), declared.len());
         assert_eq!(spec_id_set, declared_set);
@@ -1499,8 +1499,8 @@ mod tests {
 
         assert_eq!(
             specs.len(),
-            329,
-            "canonical command denominator after adding `docx build`"
+            331,
+            "canonical command denominator after adding runnable recipe leaves"
         );
         for spec in &specs {
             let resolved = command_id_for_canonical_path(spec.path);
@@ -1537,8 +1537,8 @@ mod tests {
         assert_eq!(resolved_ids, declared);
         assert_eq!(
             resolved_paths.len(),
-            329,
-            "resolved canonical-path denominator after adding `docx build`"
+            331,
+            "resolved canonical-path denominator after adding runnable recipe leaves"
         );
     }
 
@@ -1556,8 +1556,8 @@ mod tests {
         );
         assert_eq!(
             inventory,
-            (58, 152, 45, 74),
-            "329-command execution denominator: groups, direct-only, serve-inspect, serve-mutation"
+            (58, 154, 45, 74),
+            "331-command execution denominator: groups, direct-only, serve-inspect, serve-mutation"
         );
         assert_eq!(
             specs

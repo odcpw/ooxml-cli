@@ -9,7 +9,7 @@ use crate::cli_args::{parse_string_flag, positional_args};
 use crate::{CliError, CliResult, reject_unknown_flags};
 
 pub(crate) fn agent_triage(args: &[String]) -> CliResult<Value> {
-    reject_unknown_flags(args, &["--format"], &["--json"])?;
+    reject_unknown_flags(args, &["--format", "--file", "--request"], &["--json"])?;
     if let Some(format) = parse_string_flag(args, "--format")?
         && format != "json"
     {
@@ -17,12 +17,16 @@ pub(crate) fn agent_triage(args: &[String]) -> CliResult<Value> {
             "invalid format: {format} (expected 'json')"
         )));
     }
-    let positionals = positional_args(args, &["--format"], &["--json"])?;
+    let positionals = positional_args(args, &["--format", "--file", "--request"], &["--json"])?;
     if !positionals.is_empty() {
         return Err(CliError::invalid_args(
-            "agent-triage does not accept positional arguments",
+            "agent-triage does not accept positional arguments; use --file or --request",
         ));
     }
+    let file = parse_string_flag(args, "--file")?;
+    let request = parse_string_flag(args, "--request")?;
+    let detected_family = file.as_deref().and_then(detect_family);
+    let recipes = crate::recipes::recipes_for(detected_family, request.as_deref());
 
     let commands = capability_commands();
     let op_compatible = commands
@@ -48,9 +52,21 @@ pub(crate) fn agent_triage(args: &[String]) -> CliResult<Value> {
                 "ooxml --json capabilities --for <filter>",
                 "ooxml --json doctor health",
                 "ooxml robot-docs guide",
+                "ooxml robot-docs recipes",
                 "ooxml validate --strict <file>"
             ]
         },
+        "triageInput": {
+            "file": file,
+            "request": request,
+            "detectedFamily": detected_family,
+        },
+        "recipes": recipes.iter().map(|recipe| json!({
+            "name": recipe.name,
+            "summary": recipe.summary,
+            "families": recipe.families,
+            "command": format!("ooxml --json robot-docs recipe {}", recipe.name),
+        })).collect::<Vec<_>>(),
         "capabilitySummary": {
             "commands": commands.len(),
             "opCompatibleCommands": op_compatible,
@@ -145,6 +161,21 @@ pub(crate) fn agent_triage(args: &[String]) -> CliResult<Value> {
     });
     document["dataHash"] = json!(data_hash(&document)?);
     Ok(document)
+}
+
+fn detect_family(file: &str) -> Option<&'static str> {
+    match std::path::Path::new(file)
+        .extension()
+        .and_then(|extension| extension.to_str())?
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "pptx" | "pptm" => Some("pptx"),
+        "xlsx" => Some("xlsx"),
+        "xlsm" => Some("xlsm"),
+        "docx" | "docm" => Some("docx"),
+        _ => None,
+    }
 }
 
 fn data_hash(value: &Value) -> CliResult<String> {

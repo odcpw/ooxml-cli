@@ -10,11 +10,48 @@ use crate::{CliError, CliResult, EXIT_SUCCESS, GlobalFlags, has_flag, reject_unk
 pub(crate) fn robot_docs(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {
     match args {
         [sub, rest @ ..] if sub == "guide" => guide(flags, rest),
+        [sub, name, rest @ ..] if sub == "recipe" => recipe(flags, name, rest),
+        [sub, rest @ ..] if sub == "recipes" => recipes(flags, rest),
+        [sub] if sub == "recipe" => Err(CliError::invalid_args(format!(
+            "robot-docs recipe requires <name>; valid recipes: {}",
+            crate::recipes::names().join(", ")
+        ))),
         [] => guide(flags, &[]),
         _ => Err(CliError::invalid_args(format!(
             "unsupported Rust-port contract command: robot-docs {}",
             args.join(" ")
         ))),
+    }
+}
+
+fn recipe(flags: &GlobalFlags, name: &str, args: &[String]) -> CliResult<DispatchOutput> {
+    reject_unknown_flags(args, &["--format"], &["--json"])?;
+    let recipe = crate::recipes::find(name)?;
+    if wants_json(flags, args) {
+        Ok(DispatchOutput {
+            body: DispatchBody::Json(crate::recipes::recipe_json(recipe)),
+            exit_code: EXIT_SUCCESS,
+        })
+    } else {
+        Ok(DispatchOutput {
+            body: DispatchBody::Text(crate::recipes::recipe_markdown(recipe, 2)),
+            exit_code: EXIT_SUCCESS,
+        })
+    }
+}
+
+fn recipes(flags: &GlobalFlags, args: &[String]) -> CliResult<DispatchOutput> {
+    reject_unknown_flags(args, &["--format"], &["--json"])?;
+    if wants_json(flags, args) {
+        Ok(DispatchOutput {
+            body: DispatchBody::Json(crate::recipes::catalog_json()),
+            exit_code: EXIT_SUCCESS,
+        })
+    } else {
+        Ok(DispatchOutput {
+            body: DispatchBody::Text(crate::recipes::catalog_markdown()),
+            exit_code: EXIT_SUCCESS,
+        })
     }
 }
 
@@ -80,6 +117,7 @@ pub(crate) fn guide_json() -> Value {
         },
         "commandAliases": command_alias_registry_json(),
         "flagAliases": flag_alias_registry_json(),
+        "recipes": crate::recipes::recipes_json(),
         "sections": [
             {
                 "name": "Discovery",
@@ -316,5 +354,7 @@ fn guide_text(value: &Value) -> String {
             out.push('\n');
         }
     }
+    out.push('\n');
+    out.push_str(&crate::recipes::catalog_markdown());
     out
 }

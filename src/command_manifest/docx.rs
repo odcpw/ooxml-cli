@@ -3,7 +3,7 @@ use serde_json::Value;
 use super::{CommandId, CommandSpec, ExecutionSupport, FlagSpec};
 
 pub(super) const COMMAND_COUNT: usize = 51;
-pub(super) const LEGACY_START: usize = 262;
+pub(super) const LEGACY_START: usize = 264;
 
 command_id_enum! {
 pub(crate) enum DocxCommandId {
@@ -1948,7 +1948,7 @@ mod tests {
             + crate::command_manifest::xlsx::command_specs().len();
         assert_eq!(
             start, LEGACY_START,
-            "DOCX starts at 262 within the 328-command denominator"
+            "DOCX starts at 264 within the 331-command denominator"
         );
         assert_eq!(specs.len(), COMMAND_COUNT);
         assert_segment_matches_frozen_contract(

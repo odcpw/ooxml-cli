@@ -1,4 +1,4 @@
-.PHONY: build test test-unit test-smoke fixtures install clean help web-smoke-agent web-smoke-nonpptx artifact-proof-matrix office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check clippy verify verify-strict rust-baseline-contract go-reference-build go-reference-test go-reference-test-short go-reference-contract go-reference-fmt-check go-reference-vet go-reference-render-smoke
+.PHONY: build docs-recipes test test-unit test-smoke fixtures install clean help web-smoke-agent web-smoke-nonpptx artifact-proof-matrix office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check clippy verify verify-strict rust-baseline-contract go-reference-build go-reference-test go-reference-test-short go-reference-contract go-reference-fmt-check go-reference-vet go-reference-render-smoke
 
 # Default target
 .DEFAULT_GOAL := help
@@ -35,6 +35,10 @@ build:
 	@echo "Building Rust $(BINARY_NAME)..."
 	@$(CARGO) build --bin $(BINARY_NAME)
 	@echo "Built $(RUST_DEBUG_BIN)"
+
+# docs-recipes: Regenerate README and agent-skill recipes from the binary contract
+docs-recipes: build
+	@OOXML_BIN="$(abspath $(RUST_DEBUG_BIN))" python3 tools/docs-recipes.py
 
 # test: Run every Rust unit and integration target
 test:

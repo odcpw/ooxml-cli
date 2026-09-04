@@ -8,7 +8,7 @@ use crate::agent_aliases::{
 };
 use crate::{
     CliError, CliResult, EXIT_FILE_NOT_FOUND, EXIT_INVALID_ARGS, EXIT_RENDER_FAILED, EXIT_SUCCESS,
-    EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED, EXIT_UNSUPPORTED_TYPE, parse_string_flag,
+    EXIT_TARGET_NOT_FOUND, EXIT_UNEXPECTED, EXIT_UNSUPPORTED_TYPE, has_flag, parse_string_flag,
 };
 
 pub(crate) fn capability_commands() -> Vec<Value> {
@@ -18,6 +18,20 @@ pub(crate) fn capability_commands() -> Vec<Value> {
 pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
     reject_capabilities_unknown_flags(args)?;
     let requested_filter = parse_string_flag(args, "--for")?;
+    let workflows_only = has_flag(args, "--workflows");
+    if workflows_only && requested_filter.is_some() {
+        return Err(CliError::invalid_args(
+            "--workflows cannot be combined with --for; inspect the recipe catalog first, then filter capabilities separately",
+        ));
+    }
+    if workflows_only {
+        return Ok(json!({
+            "tool": "ooxml",
+            "version": env!("CARGO_PKG_VERSION"),
+            "contractVersion": crate::recipes::RECIPE_CONTRACT_VERSION,
+            "workflows": crate::recipes::recipes_json(),
+        }));
+    }
     let normalized_filter = requested_filter.as_deref().map(normalize_capability_filter);
     let mut commands = capability_commands();
     if let Some(filter) = normalized_filter.as_deref() {
@@ -124,37 +138,7 @@ pub(crate) fn capabilities(args: &[String]) -> CliResult<Value> {
                 "explicitText": "fixed-layout diagnostics on stderr"
             }
         },
-        "workflows": [
-            {
-                "name": "pptx inspect then edit",
-                "commands": [
-                    "ooxml --json inspect deck.pptx",
-                    "ooxml --json pptx slides list deck.pptx",
-                    "ooxml --json pptx slides selectors deck.pptx --slide 1",
-                    "ooxml --json pptx slides show deck.pptx --slide 1 --include-text",
-                    "ooxml --json pptx shapes show deck.pptx --slide 1 --include-text --include-bounds",
-                    "ooxml --json pptx shapes get deck.pptx --slide 1 --target title --include-text --include-bounds",
-                    "ooxml --json pptx add-textbox deck.pptx --slide 1 --text 'New callout' --x 914400 --y 914400 --cx 3000000 --cy 600000 --out edited.pptx",
-                    "ooxml --json pptx place image deck.pptx --slide 1 --image logo.png --x 914400 --y 1700000 --cx 1200000 --cy 600000 --out edited.pptx",
-                    "ooxml --json pptx shapes set-bounds deck.pptx --slide 1 --target title --bounds 914400,914400,6000000,1000000 --out edited.pptx",
-                    "ooxml --json pptx replace text deck.pptx --slide 1 --target title --text NEW --out edited.pptx",
-                    "ooxml validate --strict edited.pptx"
-                ]
-            },
-            {
-                "name": "xlsx inspect then edit",
-                "commands": [
-                    "ooxml --json xlsx sheets list workbook.xlsx",
-                    "ooxml --json xlsx ranges export workbook.xlsx --sheet sheetId:1 --range A1 --include-types",
-                    "ooxml --json xlsx ranges set workbook.xlsx --sheet sheetId:1 --range A1:B2 --values '[[\"A\",\"B\"],[1,2]]' --out edited.xlsx",
-                    "ooxml --json xlsx colwidths set workbook.xlsx --sheet sheetId:1 --range B:D --width 18 --out edited.xlsx",
-                    "ooxml --json xlsx rowheights set workbook.xlsx --sheet sheetId:1 --range 2:5 --height 24 --out edited.xlsx",
-                    "ooxml --json xlsx ranges set-format workbook.xlsx --sheet Sheet1 --range B2:B20 --preset currency --out edited.xlsx",
-                    "ooxml --json apply workbook.xlsx --ops ops.json --out edited.xlsx",
-                    "serve op commands: pptx tables set-cell/delete-row/insert-row/delete-col/insert-col/update-from-xlsx, xlsx cells set, xlsx ranges set, xlsx ranges set-format, xlsx comments add, xlsx comments update, xlsx comments remove, xlsx tables append-rows, xlsx tables append-records, xlsx workbook metadata update"
-                ]
-            }
-        ],
+        "workflows": crate::recipes::recipes_json(),
         "conventions": [
             "stdout is data; explicit --json invalid-argument errors are structured result data on stdout, while text diagnostics go to stderr",
             "serve/MCP operation commands use op vocabulary without the leading ooxml",
@@ -244,7 +228,7 @@ fn reject_capabilities_unknown_flags(args: &[String]) -> CliResult<()> {
         }
         let flag = arg.split_once('=').map(|(flag, _)| flag).unwrap_or(arg);
         match flag {
-            "--json" | "--strict" => i += 1,
+            "--json" | "--strict" | "--workflows" => i += 1,
             "--for" => {
                 if arg.contains('=') {
                     i += 1;
@@ -276,7 +260,7 @@ fn reject_capabilities_unknown_flags(args: &[String]) -> CliResult<()> {
                 let hint = if matches!(flag, "--fr" | "--fro" | "--filter") {
                     "; did you mean --for? Try: ooxml --json capabilities --for <filter>"
                 } else {
-                    "; valid flags are --for <filter>, --json, --strict, and --format json"
+                    "; valid flags are --for <filter>, --workflows, --json, --strict, and --format json"
                 };
                 return Err(CliError::invalid_args(format!(
                     "unknown flag: {flag}{hint}"
