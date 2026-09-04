@@ -230,15 +230,6 @@ pub(crate) fn ensure_content_type_override(
     Ok(out)
 }
 
-pub(crate) fn add_relationship_to_xml(
-    xml: String,
-    id: &str,
-    rel_type: &str,
-    target: &str,
-) -> String {
-    append_relationship_xml(xml, &RelationshipEntry::new(id, rel_type, target))
-}
-
 pub(crate) fn append_relationship_xml(xml: String, relationship: &RelationshipEntry) -> String {
     let rel = render_relationship_xml(relationship);
     if let Some(pos) = xml.rfind("</Relationships>") {

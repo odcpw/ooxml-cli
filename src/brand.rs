@@ -520,11 +520,13 @@ fn add_xlsx_logo(
                 &worksheet_uri,
                 &format!("/{part}"),
             );
-            worksheet_rels = crate::add_relationship_to_xml(
+            worksheet_rels = crate::opc::append_relationship_xml(
                 worksheet_rels,
-                &id,
-                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing",
-                &target,
+                &crate::RelationshipEntry::new(
+                    &id,
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing",
+                    &target,
+                ),
             );
             let root = find_start_tag(&worksheet, "worksheet", 0)
                 .ok_or_else(|| CliError::unexpected("worksheet root not found"))?;
@@ -565,11 +567,13 @@ fn add_xlsx_logo(
     let drawing_uri = format!("/{}", drawing_part.trim_start_matches('/'));
     let media_target =
         crate::relationship_target_from_source_to_target(&drawing_uri, &format!("/{media_part}"));
-    drawing_rels = crate::add_relationship_to_xml(
+    drawing_rels = crate::opc::append_relationship_xml(
         drawing_rels,
-        &image_rel_id,
-        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
-        &media_target,
+        &crate::RelationshipEntry::new(
+            &image_rel_id,
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+            &media_target,
+        ),
     );
     let shape_id = next_drawing_shape_id(&drawing);
     let anchor = xlsx_logo_anchor_xml(logo, &image_rel_id, shape_id);
@@ -604,7 +608,7 @@ fn add_xlsx_logo(
 }
 
 fn relationships_template() -> String {
-    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>"#.to_string()
+    crate::opc::empty_relationships_xml(true)
 }
 
 fn next_numbered_part(entries: &[String], prefix: &str, suffix: &str) -> String {
