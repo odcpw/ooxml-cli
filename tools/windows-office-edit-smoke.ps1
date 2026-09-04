@@ -1591,7 +1591,7 @@ $scenarios = @(
         -Family "docx" `
         -Input $docxTableCreateSeed `
         -Output (Join-Path $caseDir "docx-tables-create-from-scaffold.docx") `
-        -Arguments @("--json", "docx", "tables", "create", $docxTableCreateSeed, "--values", '[[\"Region\",\"Units\",\"Notes\"],[\"West\",12,\"Ready\"],[\"North\",null,\"Review\"]]', "--out", (Join-Path $caseDir "docx-tables-create-from-scaffold.docx")) `
+        -Arguments @("--json", "docx", "tables", "create", $docxTableCreateSeed, "--values", '[["Region","Units","Notes"],["West",12,"Ready"],["North",null,"Review"]]', "--out", (Join-Path $caseDir "docx-tables-create-from-scaffold.docx")) `
         -InputFixtureType "scaffold-derived"),
 
     (New-Scenario `

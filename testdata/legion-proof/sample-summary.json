@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "ooxml-cli.legion-proof.v1",
+  "fixtureOnly": true,
+  "generatedAtUtc": "2026-09-04T00:00:00.0000000Z",
+  "status": "passed",
+  "host": "LEGION-FIXTURE",
+  "platform": "windows",
+  "skipOffice": false,
+  "outputDir": "C:\\work\\ooxml-cli\\target\\legion-proof",
+  "binary": "C:\\work\\ooxml-cli\\target\\release\\ooxml.exe",
+  "validator": "C:\\work\\ooxml-cli\\tools\\openxml-validator\\bin\\Release\\net8.0\\openxml-validator.dll",
+  "prerequisites": [
+    {"id": "cargo", "status": "passed", "detail": "cargo 1.98.0", "command": "cargo --version", "artifact": "", "elapsedMs": 20},
+    {"id": "dotnet-sdk", "status": "passed", "detail": "8.0.413", "command": "dotnet --list-sdks", "artifact": "", "elapsedMs": 35},
+    {"id": "openxml-validator-source", "status": "passed", "detail": "Validator project is present.", "command": "", "artifact": "tools/openxml-validator/openxml-validator.csproj", "elapsedMs": 0},
+    {"id": "office-smoke-script", "status": "passed", "detail": "Windows mutation and Office oracle smoke script is present.", "command": "", "artifact": "tools/windows-office-edit-smoke.ps1", "elapsedMs": 0},
+    {"id": "office-com", "status": "passed", "detail": "Excel, PowerPoint, and Word COM registrations are present.", "command": "", "artifact": "", "elapsedMs": 0}
+  ],
+  "stages": [
+    {"id": "release-build", "status": "passed", "detail": "Release binary built successfully.", "command": "cargo build --release --bin ooxml", "artifact": "target/release/ooxml.exe", "elapsedMs": 1000},
+    {"id": "openxml-validator-build", "status": "passed", "detail": "Open XML SDK validator built successfully.", "command": "dotnet build", "artifact": "openxml-validator.dll", "elapsedMs": 500},
+    {"id": "mutation-contract-evidence", "status": "passed", "detail": "Four family evidence files covering the pinned 152-command mutation matrix were written.", "command": "cargo test --test mutation_envelope", "artifact": "target/legion-proof/contract-proof/evidence", "elapsedMs": 12000},
+    {"id": "windows-office-edit-smoke", "status": "passed", "detail": "Every required proof tier passed.", "command": "tools/windows-office-edit-smoke.ps1", "artifact": "target/legion-proof/office-edit-smoke/summary.json", "elapsedMs": 20000},
+    {"id": "canonical-recipes", "status": "passed", "detail": "All five canonical recipes built and passed the required proof tiers.", "command": "", "artifact": "target/legion-proof/recipes", "elapsedMs": 0}
+  ],
+  "scenarios": [
+    {
+      "name": "contract-pptx-charts-create",
+      "family": "pptx",
+      "output": "target/legion-proof/office-edit-smoke/outputs/pptx-charts-create.pptx",
+      "proofLevel": "microsoft-office-com-open",
+      "mutation": {"status": "passed"},
+      "readback": {"status": "passed"},
+      "validation": {"status": "passed"},
+      "conformance": {"status": "passed"},
+      "openXmlSdk": {"status": "passed"},
+      "microsoftOffice": {"status": "passed"}
+    }
+  ],
+  "recipes": [
+    {
+      "id": "deck-spec", "family": "pptx", "sourceKind": "spec", "source": "testdata/pptx/build-spec/q3-review.json", "output": "target/legion-proof/recipes/q3-review.pptx",
+      "build": {"status": "passed"}, "strictValidation": {"status": "passed"}, "openXmlSdk": {"status": "passed"},
+      "office": {"status": "passed", "application": "PowerPoint", "officeVersion": "16.0", "officeBuild": "18000", "openStatus": "passed", "saveStatus": "passed", "repairPromptDetected": false, "repairPromptAssessment": "No modal prompt blocked the bounded operation."},
+      "roundTrip": {"path": "target/legion-proof/office-roundtrips/q3-review.pptx", "inputSha256": "1111111111111111111111111111111111111111111111111111111111111111", "sourceSha256After": "1111111111111111111111111111111111111111111111111111111111111111", "sourceUnchanged": true, "savedSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "strictValidation": "passed", "openXmlSdk": "passed"}
+    },
+    {
+      "id": "workbook-spec", "family": "xlsx", "sourceKind": "spec", "source": "testdata/xlsx/build-spec/sales.json", "output": "target/legion-proof/recipes/sales.xlsx",
+      "build": {"status": "passed"}, "strictValidation": {"status": "passed"}, "openXmlSdk": {"status": "passed"},
+      "office": {"status": "passed", "application": "Excel", "officeVersion": "16.0", "officeBuild": "18000", "openStatus": "passed", "saveStatus": "passed", "repairPromptDetected": false, "repairPromptAssessment": "No modal prompt blocked the bounded operation."},
+      "roundTrip": {"path": "target/legion-proof/office-roundtrips/sales.xlsx", "inputSha256": "2222222222222222222222222222222222222222222222222222222222222222", "sourceSha256After": "2222222222222222222222222222222222222222222222222222222222222222", "sourceUnchanged": true, "savedSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "strictValidation": "passed", "openXmlSdk": "passed"}
+    },
+    {
+      "id": "document-spec", "family": "docx", "sourceKind": "spec", "source": "testdata/docx/build-spec/quarterly-report.json", "output": "target/legion-proof/recipes/quarterly-report.docx",
+      "build": {"status": "passed"}, "strictValidation": {"status": "passed"}, "openXmlSdk": {"status": "passed"},
+      "office": {"status": "passed", "application": "Word", "officeVersion": "16.0", "officeBuild": "18000", "openStatus": "passed", "saveStatus": "passed", "repairPromptDetected": false, "repairPromptAssessment": "No modal prompt blocked the bounded operation."},
+      "roundTrip": {"path": "target/legion-proof/office-roundtrips/quarterly-report.docx", "inputSha256": "3333333333333333333333333333333333333333333333333333333333333333", "sourceSha256After": "3333333333333333333333333333333333333333333333333333333333333333", "sourceUnchanged": true, "savedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "strictValidation": "passed", "openXmlSdk": "passed"}
+    },
+    {
+      "id": "deck-markdown", "family": "pptx", "sourceKind": "markdown", "source": "testdata/markdown/q3-review.md", "output": "target/legion-proof/recipes/q3-review-markdown.pptx",
+      "build": {"status": "passed"}, "strictValidation": {"status": "passed"}, "openXmlSdk": {"status": "passed"},
+      "office": {"status": "passed", "application": "PowerPoint", "officeVersion": "16.0", "officeBuild": "18000", "openStatus": "passed", "saveStatus": "passed", "repairPromptDetected": false, "repairPromptAssessment": "No modal prompt blocked the bounded operation."},
+      "roundTrip": {"path": "target/legion-proof/office-roundtrips/q3-review-markdown.pptx", "inputSha256": "4444444444444444444444444444444444444444444444444444444444444444", "sourceSha256After": "4444444444444444444444444444444444444444444444444444444444444444", "sourceUnchanged": true, "savedSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "strictValidation": "passed", "openXmlSdk": "passed"}
+    },
+    {
+      "id": "document-markdown", "family": "docx", "sourceKind": "markdown", "source": "testdata/markdown/quarterly-report.md", "output": "target/legion-proof/recipes/quarterly-report-markdown.docx",
+      "build": {"status": "passed"}, "strictValidation": {"status": "passed"}, "openXmlSdk": {"status": "passed"},
+      "office": {"status": "passed", "application": "Word", "officeVersion": "16.0", "officeBuild": "18000", "openStatus": "passed", "saveStatus": "passed", "repairPromptDetected": false, "repairPromptAssessment": "No modal prompt blocked the bounded operation."},
+      "roundTrip": {"path": "target/legion-proof/office-roundtrips/quarterly-report-markdown.docx", "inputSha256": "5555555555555555555555555555555555555555555555555555555555555555", "sourceSha256After": "5555555555555555555555555555555555555555555555555555555555555555", "sourceUnchanged": true, "savedSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "strictValidation": "passed", "openXmlSdk": "passed"}
+    }
+  ],
+  "counts": {"scenariosTotal": 1, "scenariosPassed": 1, "recipesTotal": 5, "recipesPassed": 5, "failedRequiredStages": 0, "prerequisiteFailures": 0},
+  "proofBoundary": "Fixture data for the summary/report contract only; this file is not live Office proof."
+}
