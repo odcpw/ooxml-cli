@@ -888,6 +888,33 @@ mod tests {
         dir
     }
 
+    fn tracked_fixture(relative: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative)
+    }
+
+    #[test]
+    fn tracked_fixture_path_is_absolute_and_readable_from_manifest_root() {
+        let fixture = tracked_fixture("testdata/pptx/scaffold/eleven-layouts.pptx");
+        assert!(
+            fixture.is_absolute(),
+            "tracked fixture path must be absolute: {}",
+            fixture.display()
+        );
+        assert!(
+            fixture.is_file(),
+            "tracked fixture is not readable: {}",
+            fixture.display()
+        );
+        #[cfg(windows)]
+        assert!(
+            fixture
+                .to_string_lossy()
+                .contains(std::path::MAIN_SEPARATOR),
+            "tracked fixture path must use native separators: {}",
+            fixture.display()
+        );
+    }
+
     #[test]
     fn weighted_rows_and_columns_consume_the_inner_area_exactly() {
         let items = vec![item(2.0, None, None), item(3.0, None, None)];
@@ -1103,12 +1130,17 @@ mod tests {
             .expect("serialize items"),
         )
         .expect("write items");
-        let fixture = "testdata/pptx/scaffold/eleven-layouts.pptx";
+        // Other lib tests exercise relative-path resolution by changing the
+        // process CWD. Keep this tracked input anchored to the manifest so
+        // compose is independent of that test-global state and uses native
+        // separators on Windows.
+        let fixture = tracked_fixture("testdata/pptx/scaffold/eleven-layouts.pptx");
+        let fixture = fixture.to_string_lossy().into_owned();
         let first = dir.join("first.pptx");
         let second = dir.join("second.pptx");
         for output in [&first, &second] {
             let result = pptx_slides_compose(
-                fixture,
+                &fixture,
                 &[
                     "--slide".to_string(),
                     "7".to_string(),
