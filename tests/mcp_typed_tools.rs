@@ -1356,6 +1356,11 @@ fn strings(values: &[&str]) -> Vec<String> {
 }
 
 fn normalize_strings(value: &mut Value, replacements: &[(&str, &str)]) {
+    let replacements = normalize_replacement_variants(replacements);
+    normalize_strings_with_variants(value, &replacements);
+}
+
+fn normalize_strings_with_variants(value: &mut Value, replacements: &[(String, String)]) {
     match value {
         Value::String(text) => {
             for (from, to) in replacements {
@@ -1364,16 +1369,84 @@ fn normalize_strings(value: &mut Value, replacements: &[(&str, &str)]) {
         }
         Value::Array(values) => {
             for value in values {
-                normalize_strings(value, replacements);
+                normalize_strings_with_variants(value, replacements);
             }
         }
         Value::Object(fields) => {
             for value in fields.values_mut() {
-                normalize_strings(value, replacements);
+                normalize_strings_with_variants(value, replacements);
             }
         }
         Value::Null | Value::Bool(_) | Value::Number(_) => {}
     }
+}
+
+fn normalize_replacement_variants(replacements: &[(&str, &str)]) -> Vec<(String, String)> {
+    let mut variants = Vec::new();
+    for (from, to) in replacements {
+        if from.is_empty() {
+            continue;
+        }
+
+        let native = from.replace('/', "\\");
+        let slashed = from.replace('\\', "/");
+        let mut path_variants = vec![from.to_string(), native.clone(), slashed.clone()];
+        if native.as_bytes().get(1) == Some(&b':') {
+            path_variants.push(format!(r"\\?\{native}"));
+            path_variants.push(format!("//?/{slashed}"));
+        }
+        path_variants.sort();
+        path_variants.dedup();
+
+        for path in path_variants {
+            let escaped = path.replace('\\', r"\\");
+            for variant in [&path, &escaped] {
+                for quote in ['\'', '"'] {
+                    variants.push((
+                        format!("{quote}{variant}.render{quote}"),
+                        format!("{to}.render"),
+                    ));
+                    variants.push((format!("{quote}{variant}{quote}"), to.to_string()));
+                }
+                variants.push((variant.to_string(), to.to_string()));
+            }
+        }
+    }
+    variants.sort_by_key(|(from, _)| std::cmp::Reverse(from.len()));
+    variants.dedup();
+    variants
+}
+
+#[test]
+fn normalize_strings_scrubs_windows_path_forms_before_bare_paths() {
+    let path = r"C:\Users\RUNNER~1\AppData\Local\Temp\edited.xlsx";
+    let slashed = path.replace('\\', "/");
+    let escaped = path.replace('\\', r"\\");
+    let verbatim = format!(r"\\?\{path}");
+    let mut value = json!([
+        format!("ooxml validate --strict '{path}'"),
+        format!("ooxml validate --strict \"{path}\""),
+        format!("ooxml validate --strict {path}"),
+        format!("ooxml validate --strict {slashed}"),
+        format!("ooxml validate --strict '{escaped}'"),
+        format!("ooxml validate --strict {verbatim}"),
+        format!("ooxml render '{path}.render'"),
+    ]);
+
+    normalize_strings(&mut value, &[(path, "<output>")]);
+
+    assert_eq!(
+        value,
+        json!([
+            "ooxml validate --strict <output>",
+            "ooxml validate --strict <output>",
+            "ooxml validate --strict <output>",
+            "ooxml validate --strict <output>",
+            "ooxml validate --strict <output>",
+            "ooxml validate --strict <output>",
+            "ooxml render <output>.render",
+        ])
+    );
 }
 
 fn temp_dir(label: &str) -> PathBuf {
