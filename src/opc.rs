@@ -38,6 +38,13 @@ pub(crate) fn empty_relationships_xml(standalone: bool) -> String {
 }
 
 pub(crate) fn render_relationship_xml(rel: &RelationshipEntry) -> String {
+    render_relationship_xml_with_close_spacing(rel, false)
+}
+
+fn render_relationship_xml_with_close_spacing(
+    rel: &RelationshipEntry,
+    space_before_close: bool,
+) -> String {
     let mut out = format!(
         r#"<Relationship Id="{}" Type="{}" Target="{}""#,
         xml_attr_escape(&rel.id),
@@ -50,13 +57,28 @@ pub(crate) fn render_relationship_xml(rel: &RelationshipEntry) -> String {
             xml_attr_escape(&rel.target_mode)
         ));
     }
-    out.push_str("/>");
+    out.push_str(if space_before_close { " />" } else { "/>" });
     out
 }
 
 pub(crate) fn render_relationships_xml(
     relationships: &[RelationshipEntry],
     standalone: bool,
+) -> String {
+    render_relationships_xml_with_close_spacing(relationships, standalone, false)
+}
+
+pub(crate) fn render_relationships_xml_with_space_before_close(
+    relationships: &[RelationshipEntry],
+    standalone: bool,
+) -> String {
+    render_relationships_xml_with_close_spacing(relationships, standalone, true)
+}
+
+fn render_relationships_xml_with_close_spacing(
+    relationships: &[RelationshipEntry],
+    standalone: bool,
+    space_before_close: bool,
 ) -> String {
     let declaration = if standalone {
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#
@@ -65,7 +87,9 @@ pub(crate) fn render_relationships_xml(
     };
     let body = relationships
         .iter()
-        .map(render_relationship_xml)
+        .map(|relationship| {
+            render_relationship_xml_with_close_spacing(relationship, space_before_close)
+        })
         .collect::<String>();
     format!(r#"{declaration}<Relationships xmlns="{RELATIONSHIPS_NS}">{body}</Relationships>"#)
 }
@@ -596,6 +620,16 @@ mod tests {
         assert_eq!(
             render_relationships_xml(&relationships, false),
             r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId10" Type="external&amp;type" Target="https://example.test/?a=1&amp;b=2" TargetMode="External"/><Relationship Id="rId2" Type="internal" Target="../media/image1.png"/></Relationships>"#
+        );
+    }
+
+    #[test]
+    fn relationship_renderer_can_preserve_legacy_space_before_close() {
+        let relationships = [RelationshipEntry::new("rId1", "type", "target.xml")];
+
+        assert_eq!(
+            render_relationships_xml_with_space_before_close(&relationships, false),
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="type" Target="target.xml" /></Relationships>"#
         );
     }
 

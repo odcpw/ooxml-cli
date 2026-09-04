@@ -542,7 +542,8 @@ fn build_clone_slide_mutation(
         }
         cloned_rels.push(rel);
     }
-    let new_slide_rels = crate::opc::render_relationships_xml(&cloned_rels, false);
+    let new_slide_rels =
+        crate::opc::render_relationships_xml_with_space_before_close(&cloned_rels, false);
 
     let new_slide_id = next_presentation_slide_id(&presentation_xml);
     let presentation_rels_xml = zip_text(file, "ppt/_rels/presentation.xml.rels")?;
@@ -705,7 +706,7 @@ fn build_new_slide_from_layout_mutation(
     )?;
 
     let layout_target = relationship_target_from_source_to_target(&new_slide_uri, &layout.part_uri);
-    let mut slide_rels_xml = crate::opc::render_relationships_xml(
+    let mut slide_rels_xml = crate::opc::render_relationships_xml_with_space_before_close(
         &[RelationshipEntry {
             id: "rId1".to_string(),
             rel_type: SLIDE_LAYOUT_REL_TYPE.to_string(),
@@ -1030,7 +1031,7 @@ fn clone_notes_for_cloned_slide(
         }
         ctx.overrides.insert(
             relationships_part_for(&new_notes_part),
-            crate::opc::render_relationships_xml(&new_notes_rels, false),
+            crate::opc::render_relationships_xml_with_space_before_close(&new_notes_rels, false),
         );
     }
 

@@ -423,8 +423,10 @@ impl PptxPackageEditor {
     fn add_relationships(&mut self, source_uri: &str, rels: &[RelationshipEntry]) {
         let rels_part = relationships_part_for(source_uri);
         self.entries.insert(rels_part.clone());
-        self.text_overrides
-            .insert(rels_part, crate::opc::render_relationships_xml(rels, false));
+        self.text_overrides.insert(
+            rels_part,
+            crate::opc::render_relationships_xml_with_space_before_close(rels, false),
+        );
     }
 
     fn replace_text_part(&mut self, uri: &str, text: String) {

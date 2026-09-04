@@ -582,7 +582,7 @@ fn build_remove_comment_mutation(
             .collect::<Vec<_>>();
         overrides.insert(
             slide_rels_part,
-            crate::opc::render_relationships_xml(&kept, false),
+            crate::opc::render_relationships_xml_with_space_before_close(&kept, false),
         );
     } else {
         overrides.insert(comments_part.clone(), updated_comments);
