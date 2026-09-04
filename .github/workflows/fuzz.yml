@@ -1,0 +1,36 @@
+name: Scheduled fuzz smoke
+
+on:
+  schedule:
+    - cron: "17 3 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_TARGET_DIR: ${{ github.workspace }}/target-fuzz
+
+jobs:
+  parser-fuzz-smoke:
+    name: Parser fuzz smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nightly Rust
+        uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Run bounded parser campaigns
+        env:
+          FUZZ_SECONDS_PER_TARGET: "5"
+        run: bash fuzz/run-smoke.sh
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parser-fuzz-crashes
+          path: fuzz/artifacts/**
+          if-no-files-found: ignore

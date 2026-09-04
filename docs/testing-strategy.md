@@ -79,6 +79,45 @@ microbenchmark claims. Baseline changes require an intentional JSON diff plus
 an updated profiling note; normal CI failures are not resolved by silently
 regenerating or widening the baseline.
 
+## Parser Hardening And Fuzzing
+
+Five `cargo-fuzz` targets exercise the byte-oriented boundaries for declarative
+build specs, Markdown conversion, brand kits, `$ref` resolution, and image
+probing. Each target caps its input size, checks deterministic results, and
+requires every rejection to retain a non-empty error code and teaching message.
+Committed corpora contain at least five seeds per target, derived from the
+reviewed build-spec, Markdown, brand, and image fixtures; format dictionaries
+keep mutations focused on JSON fields, Markdown tokens, and image signatures.
+
+The scheduled workflow runs a short smoke outside the main gate:
+
+```bash
+rustup toolchain install nightly --profile minimal
+cargo install cargo-fuzz --locked
+CARGO_TARGET_DIR="$HOME/.cache/ooxml-cli-target/fuzz-smoke" \
+  FUZZ_SECONDS_PER_TARGET=5 bash fuzz/run-smoke.sh
+```
+
+Before a hardening bead is accepted, run each target for at least ten minutes.
+`cargo-fuzz` enables AddressSanitizer by default; the fuzz release profile also
+enables integer-overflow checks:
+
+```bash
+for target in build-spec markdown brand refs image; do
+  corpus="fuzz/corpus/${target//-/_}"
+  CARGO_TARGET_DIR="$HOME/.cache/ooxml-cli-target/fuzz-campaign" \
+    cargo +nightly fuzz run "$target" "$corpus" -- \
+      -max_total_time=600 -timeout=5 -rss_limit_mb=1024 \
+      -artifact_prefix="fuzz/artifacts/$target/"
+done
+```
+
+Do not discard a crashing input. Minimize it with `cargo fuzz tmin`, add the
+minimal input as a focused regression fixture, fix the production boundary,
+and open a bug bead that cites the sanitizer output and regression test. Seed
+growth is reviewed like other committed test data; transient `fuzz/artifacts/`
+and generated corpus outputs are never committed.
+
 Windows Office proof:
 
 ```powershell
