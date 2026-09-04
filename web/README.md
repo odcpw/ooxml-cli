@@ -1,6 +1,6 @@
 # OOXML Flue Workbench
 
-Small Flue 1.0 beta web workbench for uploading Office files, chatting with a
+Small Flue 1.0 beta.9 web workbench for uploading Office files, chatting with a
 thread-scoped OOXML agent, and previewing PPTX/PPTM outputs.
 
 ## Run
@@ -92,10 +92,20 @@ sudo apt-get install -y libreoffice-impress libreoffice-java-common default-jre-
 ## Verification
 
 ```bash
+npm run verify:stack
 npm run typecheck
 npm run build
+npm run smoke:tools
+npm audit
+npm audit --omit=dev
 curl -fsS http://localhost:3583/health
 ```
+
+`verify:stack` pins the requalified Flue and Cloudflare dependency closure,
+including the patched Undici line. It is a deterministic lockfile regression
+check, not a replacement for the online npm advisory audit. `smoke:tools`
+instantiates the Flue beta.9 tool registry and exercises structured status,
+capability discovery, and typed `check_package` without model credentials.
 
 With the dev server running and `EMAIL_TRANSPORT=dev`, verify auth isolation
 without spending model tokens:
@@ -112,6 +122,11 @@ Then exercise the real sign-in -> upload -> Flue agent -> stream -> OOXML edit
 ```bash
 npm run smoke:agent
 ```
+
+The model-backed smoke requires `OPENAI_API_KEY` in the server and smoke
+environment. It fails before making a request when the credential is absent,
+and passes only after observing capability discovery, OOXML inspection, the
+guarded edit, and typed `check_package` tool calls.
 
 For edited PPTX/PPTM artifacts, verify with:
 

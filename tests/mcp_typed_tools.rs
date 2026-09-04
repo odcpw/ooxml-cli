@@ -881,13 +881,43 @@ fn oversized_typed_output_spills_to_configured_lf_json_file() {
 }
 
 #[test]
-fn flue_smokes_require_the_typed_check_tool_where_applicable() {
+fn flue_beta9_and_smokes_require_the_typed_check_tool_where_applicable() {
+    let package: Value =
+        serde_json::from_str(&std::fs::read_to_string("web/package.json").unwrap()).unwrap();
+    for path in [
+        "/dependencies/@flue~1runtime",
+        "/dependencies/@flue~1sdk",
+        "/devDependencies/@flue~1cli",
+    ] {
+        assert_eq!(package.pointer(path).unwrap(), "1.0.0-beta.9");
+    }
+    assert_eq!(package["overrides"]["undici"], "7.29.0");
+
+    let tools = std::fs::read_to_string("web/src/shared/ooxml-tools.ts").unwrap();
+    assert!(tools.contains("input: v.object({"));
+    assert!(tools.contains("run: async ({ input:"));
+    assert!(!tools.contains("parameters:"));
+    assert!(!tools.contains("execute:"));
+
+    let tool_smoke = std::fs::read_to_string("web/scripts/smoke-flue-tools.mjs").unwrap();
+    assert!(tool_smoke.contains("get_ooxml_capabilities"));
+    assert!(tool_smoke.contains("check_package"));
+    assert!(tool_smoke.contains("tool.run({ input })"));
+
     let non_pptx = std::fs::read_to_string("web/scripts/smoke-nonpptx.mjs").unwrap();
     let agent_edit = std::fs::read_to_string("web/scripts/smoke-agent-edit.mjs").unwrap();
     assert!(non_pptx.contains("check_package"));
     assert!(non_pptx.contains("tools/call"));
-    assert!(agent_edit.contains("check_package"));
-    assert!(agent_edit.contains("summary.toolNames.includes('check_package')"));
+    for required in [
+        "get_ooxml_capabilities",
+        "inspect_current_with_ooxml",
+        "apply_ooxml_ops_to_current",
+        "check_package",
+    ] {
+        assert!(agent_edit.contains(required));
+    }
+    assert!(agent_edit.contains("smoke:agent requires OPENAI_API_KEY"));
+    assert!(!agent_edit.contains("summary.toolNames.length &&"));
 }
 
 #[test]

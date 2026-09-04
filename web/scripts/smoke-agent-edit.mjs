@@ -32,6 +32,7 @@ const summary = {
 await main();
 
 async function main() {
+  requireModelCredential();
   const tmp = await mkdtemp(join(tmpdir(), 'ooxml-flue-smoke-'));
   try {
     await healthCheck();
@@ -62,16 +63,25 @@ async function main() {
     await strictValidate(editedPath);
     await assertSlideContains(editedPath, marker);
 
-    if (summary.toolNames.length && !summary.toolNames.includes('apply_ooxml_ops_to_current')) {
-      throw new Error(`Agent did not use apply_ooxml_ops_to_current. Saw tools: ${summary.toolNames.join(', ')}`);
-    }
-    if (summary.toolNames.length && !summary.toolNames.includes('check_package')) {
-      throw new Error(`Agent did not use typed check_package. Saw tools: ${summary.toolNames.join(', ')}`);
+    const requiredTools = ['get_ooxml_capabilities', 'inspect_current_with_ooxml', 'apply_ooxml_ops_to_current', 'check_package'];
+    const missingTools = requiredTools.filter((tool) => !summary.toolNames.includes(tool));
+    if (missingTools.length) {
+      throw new Error(
+        `Agent smoke did not observe required tools: ${missingTools.join(', ')}. Saw tools: ${summary.toolNames.join(', ') || '(none)'}`,
+      );
     }
 
     console.log(JSON.stringify({ ok: true, ...summary }, null, 2));
   } finally {
     await rm(tmp, { recursive: true, force: true });
+  }
+}
+
+function requireModelCredential() {
+  if (!process.env.OPENAI_API_KEY?.trim()) {
+    throw new Error(
+      'smoke:agent requires OPENAI_API_KEY in the web server and smoke environment; run it only in the credentialed deployment environment.',
+    );
   }
 }
 
