@@ -8,16 +8,17 @@ validates, and proves Office Open XML packages for agents and scripts. Read
 
 ## Toolchain on this machine
 
-- `cargo` resolves through mise (`mise.toml` pins Rust 1.98). Use a private
-  target dir: `CARGO_TARGET_DIR` is set per pane by the orchestrator; if it is
-  not set, use `export CARGO_TARGET_DIR=$HOME/.cache/ooxml-cli-target/$USER-$$`.
-  Set `CARGO_PROFILE_DEV_DEBUG=0`.
+- `cargo` resolves through mise (`mise.toml` pins Rust 1.98). Keep target dirs
+  on disk: use the orchestrator's `CARGO_TARGET_DIR`, or set it to
+  `$HOME/.cache/ooxml-cli-target/<name>-<purpose>`. Never use `/tmp`; its 16 GB
+  tmpfs fills during Rust builds. Delete the private target dir when the bead
+  ends. Set `CARGO_PROFILE_DEV_DEBUG=0`.
 - Open XML SDK validator: `~/dotnet/dotnet tools/openxml-validator/bin/Release/net8.0/openxml-validator.dll <file>`
   (the runtime-only `dotnet` on PATH cannot build or run it; `doctor` is wrong
   about this until bead `ooxml-epic-a-xq9.7` lands).
 - LibreOffice: `/usr/bin/soffice` for `pptx render` and PDF conversion.
-- PowerShell: `~/pwsh/pwsh` (7.6.5). Use it to parse-check and dry-run
-  `tools/*.ps1` before committing; Office COM steps still require Windows.
+- PowerShell: `~/pwsh/pwsh` (7.6.5). Parse-check and dry-run `tools/*.ps1`
+  with `-SkipOffice` before committing; Office COM steps still require Windows.
 - Beads: `br` and `bv` in `~/.local/bin`. Never run bare `bv` (TUI).
 - Agent Mail: `am` CLI; project key is this repo's absolute path.
 
@@ -49,9 +50,14 @@ from validators alone.
   (`docs/mutation-validation-seam.md`): stage, strict validate, publish.
 - Stdout is data; stderr is diagnostics. JSON contracts and exit codes are
   stable. Output bytes are deterministic.
-- Every `CommandSpec` change ships in the same commit as its complete,
-  reviewed `UPDATE_GOLDENS=1` regeneration of the manifest, capabilities,
-  help, and process-matrix goldens. State the intended delta in the commit.
+- Every `CommandSpec` change ships in its own commit with a reviewed
+  `UPDATE_GOLDENS=1` regeneration of every pinned manifest, capabilities,
+  help, and process golden, plus all in-crate pinned counts and offsets. Pull
+  the shared committed HEAD into a clean worktree first, apply only the patch,
+  and state the intended delta; this prevents stale or mixed regenerations.
+- Add and prove a module before wiring it into shared dispatch or `lib.rs`.
+  Each committed step must compile and pass `clippy --all-targets`, so peers
+  never inherit a knowingly broken intermediate tree.
 - Before every commit, apply only the proposed patch to a clean worktree and
   run `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D
   warnings`, and `cargo check --all-targets` there.
@@ -59,12 +65,19 @@ from validators alone.
   explicit unshared paths separately, then review `git diff --cached` before
   committing. Never sweep peer changes into a commit.
 - Run `git diff --cached --stat` as its own command immediately before every
-  commit and read every path. Never chain staging and committing. If your
-  staging added an unauthorized path, unstage it; if peer work was already
-  staged, leave it intact, mail its owner, and commit only explicit owned paths.
+  commit and read every path. Unstage any peer path your staging added; preserve
+  peer work that was already staged, then commit only explicit owned paths as a
+  separate command. Never chain `git add && git commit`; the pause is the last
+  defense against sweeping peer work into your commit.
 - Build paths echoed into JSON from the original input string. Do not
   reconstruct them from normalized or canonicalized `Path` values; lexical
   path spelling is part of the cross-platform output contract.
+- Scrub quoted and native Windows path forms in tests before scrubbing bare
+  forms, or a shorter match can corrupt the contract. Mark every JSON and
+  Markdown golden with `text eol=lf` in `.gitattributes` to keep bytes stable.
+- Keep proof-chain goldens environment-neutral: record tool availability
+  outside the golden and prove the same contract locally both with and without
+  `soffice` or the Open XML SDK DLL. Machine inventory is not product output.
 - No destructive git: no history rewrites, no force-push, no `git reset --hard`
   on shared branches, no deleting peer work. Do not commit `target/`,
   `.beads/*.db*`, `.beads/issues.jsonl` (the orchestrator flushes beads), or
@@ -105,8 +118,11 @@ paths. Every claimed metric states its denominator.
 - Use the bead id as the mail thread subject prefix. Check your inbox at the
   start of each bead and when blocked. Reply to the orchestrator promptly;
   do not wait for replies to start real work.
-- Release file reservations as soon as ownership ends. A closed bead must not
-  retain reservations; release blocked or handed-off paths unless the
-  orchestrator explicitly asks you to keep them.
+- Release file reservations when the bead ends; release blocked or handed-off
+  paths unless the orchestrator explicitly asks you to keep them. Reserve
+  `src/lib.rs`, `src/cli_dispatch.rs`, and command-manifest files for one commit
+  only, because they are high-contention integration seams.
+- Only the orchestrator pushes, and only after the batch gates verify the exact
+  SHA. A later or locally tested SHA is not the artifact that passed.
 - When blocked: `br update <id> --status blocked --actor <name>` with a
   comment naming the blocker, then mail the orchestrator.
