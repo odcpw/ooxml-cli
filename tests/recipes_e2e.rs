@@ -745,37 +745,160 @@ fn run(args: &[String]) -> Output {
 }
 
 fn normalize_paths(value: Value, root: &Path) -> Value {
-    let root = root.to_string_lossy();
-    let repository = Path::new(env!("CARGO_MANIFEST_DIR")).to_string_lossy();
-    normalize_strings(value, &root, &repository)
+    let root = root.to_string_lossy().into_owned();
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .to_string_lossy()
+        .into_owned();
+    normalize_strings(
+        value,
+        &[(&root, "<artifact-root>"), (&repository, "<repo>")],
+    )
 }
 
-fn normalize_strings(value: Value, root: &str, repository: &str) -> Value {
+fn normalize_strings(value: Value, replacements: &[(&str, &str)]) -> Value {
+    let replacements = normalize_replacement_variants(replacements);
+    normalize_strings_with_variants(value, &replacements)
+}
+
+fn normalize_strings_with_variants(value: Value, replacements: &[(String, String)]) -> Value {
     match value {
         Value::String(text) => {
-            let normalized = text
-                .replace(root, "<artifact-root>")
-                .replace(repository, "<repo>");
-            if normalized.contains("<artifact-root>") || normalized.contains("<repo>") {
-                Value::String(normalized.replace('\\', "/"))
-            } else {
-                Value::String(normalized)
-            }
+            let normalized = replacements
+                .iter()
+                .fold(text, |text, (from, to)| text.replace(from, to));
+            Value::String(normalize_placeholder_path_forms(normalized))
         }
         Value::Array(values) => Value::Array(
             values
                 .into_iter()
-                .map(|value| normalize_strings(value, root, repository))
+                .map(|value| normalize_strings_with_variants(value, replacements))
                 .collect(),
         ),
         Value::Object(values) => Value::Object(
             values
                 .into_iter()
-                .map(|(key, value)| (key, normalize_strings(value, root, repository)))
+                .map(|(key, value)| (key, normalize_strings_with_variants(value, replacements)))
                 .collect(),
         ),
         other => other,
     }
+}
+
+fn normalize_replacement_variants(replacements: &[(&str, &str)]) -> Vec<(String, String)> {
+    let mut variants = Vec::new();
+    for &(from, to) in replacements {
+        if from.is_empty() {
+            continue;
+        }
+
+        let native = from.replace('/', "\\");
+        let slashed = from.replace('\\', "/");
+        let mut path_variants = vec![from.to_string(), native.clone(), slashed.clone()];
+        if native.as_bytes().get(1) == Some(&b':') {
+            path_variants.push(format!(r"\\?\{native}"));
+            path_variants.push(format!("//?/{slashed}"));
+        }
+        path_variants.sort();
+        path_variants.dedup();
+
+        for path in path_variants {
+            let escaped = path.replace('\\', r"\\");
+            for variant in [&path, &escaped] {
+                variants.push((variant.to_string(), to.to_string()));
+                variants.push((format!("'{variant}'"), to.to_string()));
+                variants.push((format!("\"{variant}\""), to.to_string()));
+            }
+        }
+    }
+    variants.sort_by_key(|(from, _)| std::cmp::Reverse(from.len()));
+    variants.dedup();
+    variants
+}
+
+fn normalize_placeholder_path_forms(mut text: String) -> String {
+    if !["<artifact-root>", "<repo>", "<build-stage>"]
+        .into_iter()
+        .any(|placeholder| text.contains(placeholder))
+    {
+        return text;
+    }
+
+    while text.contains(r"\\") {
+        text = text.replace(r"\\", "/");
+    }
+    strip_shell_quotes_around_placeholders(&text.replace('\\', "/"))
+}
+
+fn strip_shell_quotes_around_placeholders(text: &str) -> String {
+    let chars = text.chars().collect::<Vec<_>>();
+    let mut normalized = String::with_capacity(text.len());
+    let mut index = 0;
+
+    while index < chars.len() {
+        let quote = chars[index];
+        if matches!(quote, '\'' | '"')
+            && shell_quote_precedes_path(&chars, index)
+            && let Some(end) = quoted_placeholder_end(&chars, index, quote)
+        {
+            normalized.extend(&chars[index + 1..end]);
+            index = end + 1;
+        } else {
+            normalized.push(quote);
+            index += 1;
+        }
+    }
+    normalized
+}
+
+fn shell_quote_precedes_path(chars: &[char], index: usize) -> bool {
+    index == 0 || chars[index - 1].is_whitespace() || chars[index - 1] == '='
+}
+
+fn quoted_placeholder_end(chars: &[char], start: usize, quote: char) -> Option<usize> {
+    let mut end = start + 1;
+    while end < chars.len() && chars[end] != quote {
+        end += 1;
+    }
+    if end == chars.len() {
+        return None;
+    }
+
+    let segment = chars[start + 1..end].iter().collect::<String>();
+    ["<artifact-root>", "<repo>", "<build-stage>"]
+        .into_iter()
+        .any(|placeholder| segment.contains(placeholder))
+        .then_some(end)
+}
+
+#[test]
+fn normalize_paths_scrubs_windows_temp_path_forms() {
+    let root = Path::new(r"C:\Users\RUNNER~1\AppData\Local\Temp\ooxml-recipe-e2e");
+    let native = root.to_string_lossy();
+    let slashed = native.replace('\\', "/");
+    let escaped = native.replace('\\', r"\\");
+    let verbatim = format!(r"\\?\{native}");
+    let mut value = json!([
+        format!("ooxml --json check '{native}\\first.docx'"),
+        format!("ooxml --json check \"{slashed}/first.docx\""),
+        format!(r#"{{"file":"{escaped}\\first.docx"}}"#),
+        format!(r"ooxml --json check {verbatim}\first.docx"),
+        r"<build-stage>\external\image.png".to_string(),
+        r#"{"file":"<build-stage>\\external\\image.png"}"#.to_string(),
+    ]);
+
+    value = normalize_paths(value, root);
+
+    assert_eq!(
+        value,
+        json!([
+            "ooxml --json check <artifact-root>/first.docx",
+            "ooxml --json check <artifact-root>/first.docx",
+            r#"{"file":"<artifact-root>/first.docx"}"#,
+            "ooxml --json check <artifact-root>/first.docx",
+            "<build-stage>/external/image.png",
+            r#"{"file":"<build-stage>/external/image.png"}"#,
+        ])
+    );
 }
 
 fn normalize_volatiles(value: Value) -> Value {
