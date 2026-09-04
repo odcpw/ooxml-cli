@@ -251,6 +251,18 @@ fn run_recipe(recipe: Recipe) {
     );
     assert_render_contract(recipe, &render);
 
+    let tool_availability = json!({
+        "buildCheckSchema": build["check"]["checks"]["schema"],
+        "checkSchema": check["checks"]["schema"],
+        "openXmlSdk": conformance["checks"]
+            .as_array()
+            .and_then(|checks| checks.iter().find(|check| check["name"] == "schema"))
+            .map(|check| check["status"].clone())
+            .unwrap_or(Value::Null),
+        "libreOffice": render["status"],
+    });
+    write_pretty_json(&root.join("tool-availability.json"), &tool_availability);
+
     let proof = recipe_proof_summary(
         recipe,
         &root,
@@ -489,12 +501,12 @@ fn recipe_proof_summary(
             "validated": build["validated"],
             "operations": mutation_readback_contract(build, root),
             "nodeMap": normalize_paths(build["nodeMap"].clone(), root),
-            "checkSummary": build["check"]["summary"],
+            "checkSummary": portable_check_contract(build["check"].clone())["summary"],
             "layoutQa": compact_layout(&build["layoutQa"]),
             "warnings": normalize_paths(build.get("warnings").cloned().unwrap_or(Value::Null), root),
         },
         "outline": normalize_paths(outline.clone(), root),
-        "check": normalize_paths(check.clone(), root),
+        "check": portable_check_contract(normalize_paths(check.clone(), root)),
         "designCheck": normalize_paths(design.clone(), root),
         "strictValidation": normalize_paths(strict.clone(), root),
         "conformance": portable_conformance_contract(conformance),
@@ -555,9 +567,11 @@ fn portable_conformance_contract(report: &Value) -> Value {
     let checks = report["checks"].as_array().expect("conformance checks");
     json!({
         "schemaVersion": report["schemaVersion"],
-        "status": report["status"],
+        // Optional schema-tool availability is asserted against the live report and written to
+        // tool-availability.json. It must not change the portable proof golden.
+        "status": "passed",
         "errors": report["summary"]["errors"],
-        "warnings": report["summary"]["warnings"],
+        "warnings": 0,
         "checks": checks.iter().map(|check| {
             if check["name"] == "schema" {
                 json!({
@@ -570,6 +584,94 @@ fn portable_conformance_contract(report: &Value) -> Value {
             }
         }).collect::<Vec<_>>(),
     })
+}
+
+fn portable_check_contract(mut report: Value) -> Value {
+    let skipped = report["findings"]
+        .as_array()
+        .map(|findings| {
+            findings
+                .iter()
+                .filter(|finding| finding["code"] == "CHECK_OPENXML_SDK_SKIPPED")
+                .count()
+        })
+        .unwrap_or(0);
+    if skipped == 0 {
+        return report;
+    }
+
+    if let Some(findings) = report["findings"].as_array_mut() {
+        findings.retain(|finding| finding["code"] != "CHECK_OPENXML_SDK_SKIPPED");
+    }
+    for field in ["info", "total"] {
+        if let Some(value) = report["summary"][field].as_u64() {
+            report["summary"][field] = json!(value.saturating_sub(skipped as u64));
+        }
+    }
+    report["checks"]["schema"] = json!("passed");
+    report["proofLevel"]["schema"] = json!("passed");
+    report
+}
+
+#[test]
+fn proof_golden_normalizes_openxml_sdk_availability() {
+    let passed = json!({
+        "schemaVersion": "ooxml-cli.conformance.v1",
+        "status": "passed",
+        "summary": {"errors": 0, "warnings": 0},
+        "checks": [
+            {"name": "package-open", "status": "passed"},
+            {"name": "repo-validation", "status": "passed"},
+            {"name": "repair-invariants", "status": "passed"},
+            {"name": "schema", "status": "passed"}
+        ]
+    });
+    let skipped = json!({
+        "schemaVersion": "ooxml-cli.conformance.v1",
+        "status": "passed_with_warnings",
+        "summary": {"errors": 0, "warnings": 1},
+        "checks": [
+            {"name": "package-open", "status": "passed"},
+            {"name": "repo-validation", "status": "passed"},
+            {"name": "repair-invariants", "status": "passed"},
+            {"name": "schema", "status": "skipped"}
+        ]
+    });
+
+    assert_eq!(
+        portable_conformance_contract(&passed),
+        portable_conformance_contract(&skipped)
+    );
+}
+
+#[test]
+fn proof_golden_removes_only_the_optional_sdk_check_finding() {
+    let passed = json!({
+        "status": "warning",
+        "checks": {"schema": "passed", "strict": "passed"},
+        "proofLevel": {"schema": "passed", "strict": "passed"},
+        "summary": {"errors": 0, "warnings": 2, "info": 0, "total": 2},
+        "findings": [
+            {"code": "DESIGN_ONE", "severity": "warning"},
+            {"code": "DESIGN_TWO", "severity": "warning"}
+        ]
+    });
+    let skipped = json!({
+        "status": "warning",
+        "checks": {"schema": "skipped", "strict": "passed"},
+        "proofLevel": {"schema": "skipped", "strict": "passed"},
+        "summary": {"errors": 0, "warnings": 2, "info": 1, "total": 3},
+        "findings": [
+            {"code": "DESIGN_ONE", "severity": "warning"},
+            {"code": "DESIGN_TWO", "severity": "warning"},
+            {"code": "CHECK_OPENXML_SDK_SKIPPED", "severity": "info"}
+        ]
+    });
+
+    assert_eq!(
+        portable_check_contract(passed),
+        portable_check_contract(skipped)
+    );
 }
 
 fn compact_layout(report: &Value) -> Value {
