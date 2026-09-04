@@ -1433,15 +1433,15 @@ impl Drop for XlsxBuildTemp {
 }
 
 fn scrub_build_paths(value: Value, temp: &Path, spec_base: &Path) -> Value {
-    let temp = temp.to_string_lossy();
+    let temp_aliases = super::path_scrub::path_prefix_aliases(temp);
     let spec_base = spec_base.to_string_lossy();
-    scrub_build_path_strings(value, temp.as_ref(), spec_base.as_ref())
+    scrub_build_path_strings(value, &temp_aliases, spec_base.as_ref())
 }
 
-fn scrub_build_path_strings(value: Value, temp: &str, spec_base: &str) -> Value {
+fn scrub_build_path_strings(value: Value, temp_aliases: &[String], spec_base: &str) -> Value {
     match value {
         Value::String(text) => {
-            let text = super::path_scrub::scrub_path_string(&text, temp, "<build-stage>");
+            let text = super::path_scrub::scrub_path_aliases(&text, temp_aliases, "<build-stage>");
             Value::String(super::path_scrub::scrub_path_string(
                 &text,
                 spec_base,
@@ -1451,13 +1451,18 @@ fn scrub_build_path_strings(value: Value, temp: &str, spec_base: &str) -> Value 
         Value::Array(values) => Value::Array(
             values
                 .into_iter()
-                .map(|value| scrub_build_path_strings(value, temp, spec_base))
+                .map(|value| scrub_build_path_strings(value, temp_aliases, spec_base))
                 .collect(),
         ),
         Value::Object(values) => Value::Object(
             values
                 .into_iter()
-                .map(|(key, value)| (key, scrub_build_path_strings(value, temp, spec_base)))
+                .map(|(key, value)| {
+                    (
+                        key,
+                        scrub_build_path_strings(value, temp_aliases, spec_base),
+                    )
+                })
                 .collect(),
         ),
         scalar => scalar,

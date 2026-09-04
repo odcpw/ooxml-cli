@@ -586,23 +586,27 @@ fn stage_build_source(
 }
 
 fn scrub_generated_paths(value: Value, temp: &Path) -> Value {
-    let prefix = temp.to_string_lossy();
+    let aliases = super::path_scrub::path_prefix_aliases(temp);
+    scrub_generated_path_values(value, &aliases)
+}
+
+fn scrub_generated_path_values(value: Value, aliases: &[String]) -> Value {
     match value {
-        Value::String(text) => Value::String(super::path_scrub::scrub_path_string(
+        Value::String(text) => Value::String(super::path_scrub::scrub_path_aliases(
             &text,
-            prefix.as_ref(),
+            aliases,
             "<build-stage>",
         )),
         Value::Array(values) => Value::Array(
             values
                 .into_iter()
-                .map(|value| scrub_generated_paths(value, temp))
+                .map(|value| scrub_generated_path_values(value, aliases))
                 .collect(),
         ),
         Value::Object(values) => Value::Object(
             values
                 .into_iter()
-                .map(|(key, value)| (key, scrub_generated_paths(value, temp)))
+                .map(|(key, value)| (key, scrub_generated_path_values(value, aliases)))
                 .collect(),
         ),
         scalar => scalar,

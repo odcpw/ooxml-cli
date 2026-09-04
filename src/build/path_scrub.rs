@@ -10,6 +10,12 @@ pub(super) fn path_prefix_aliases(path: &Path) -> Vec<String> {
     aliases
 }
 
+pub(super) fn scrub_path_aliases(text: &str, aliases: &[String], replacement: &str) -> String {
+    aliases.iter().fold(text.to_string(), |text, prefix| {
+        scrub_path_string(&text, prefix, replacement)
+    })
+}
+
 pub(super) fn scrub_path_string(text: &str, prefix: &str, replacement: &str) -> String {
     let native = prefix.replace('/', "\\");
     let slashed = prefix.replace('\\', "/");
@@ -67,5 +73,19 @@ mod tests {
                 "missing token: {scrubbed}"
             );
         }
+    }
+
+    #[test]
+    fn scrubber_handles_macos_private_canonical_aliases() {
+        let aliases = vec![
+            "/private/var/folders/aa/bb/T/ooxml-pptx-build-123".to_string(),
+            "/var/folders/aa/bb/T/ooxml-pptx-build-123".to_string(),
+        ];
+        let text = "/private/var/folders/aa/bb/T/ooxml-pptx-build-123/generated/slide.json";
+
+        assert_eq!(
+            scrub_path_aliases(text, &aliases, "<build-stage>"),
+            "<build-stage>/generated/slide.json"
+        );
     }
 }
