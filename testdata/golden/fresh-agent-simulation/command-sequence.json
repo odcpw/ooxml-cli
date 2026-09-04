@@ -1,0 +1,89 @@
+{
+  "contractVersion": "ooxml-cli.fresh-agent-sequence.v1",
+  "steps": [
+    {
+      "argv": ["ooxml", "--help"],
+      "discoveredFrom": "ooxml --help",
+      "intent": "Ask the binary for its top-level command menu.",
+      "task": "discovery"
+    },
+    {
+      "argv": ["ooxml", "--json", "capabilities"],
+      "discoveredFrom": "ooxml --json capabilities",
+      "intent": "Read the machine-readable command and flag inventory.",
+      "task": "discovery"
+    },
+    {
+      "argv": ["ooxml", "--json", "pptx", "build", "--spec", "<branded-spec.json>", "--out", "<branded-deck.pptx>", "--check", "--force"],
+      "discoveredFrom": "README.md + skills/ooxml/SKILL.md build-from-spec recipe",
+      "intent": "Use the documented spec builder on the supplied branded deck spec.",
+      "task": "branded-deck-from-spec"
+    },
+    {
+      "argv": ["ooxml", "--json", "check", "<branded-deck.pptx>", "--openxml-sdk", "auto", "--fail-on", "error"],
+      "discoveredFrom": "capabilities command ooxml check",
+      "intent": "Run the advertised one-call strict and Open XML SDK package proof.",
+      "task": "branded-deck-from-spec"
+    },
+    {
+      "argv": ["ooxml", "--json", "xlsx", "build", "--spec", "<workbook-spec.json>", "--out", "<sales.xlsx>", "--check", "--force"],
+      "discoveredFrom": "README.md + skills/ooxml/SKILL.md workbook recipe",
+      "intent": "Use the documented workbook recipe on the supplied chart spec.",
+      "task": "workbook-with-chart"
+    },
+    {
+      "argv": ["ooxml", "--json", "check", "<sales.xlsx>", "--openxml-sdk", "auto", "--fail-on", "error"],
+      "discoveredFrom": "capabilities command ooxml check",
+      "intent": "Run the advertised one-call strict and Open XML SDK package proof.",
+      "task": "workbook-with-chart"
+    },
+    {
+      "argv": ["ooxml", "--json", "docx", "build", "--spec", "<document-spec.json>", "--out", "<report.docx>", "--check", "--force"],
+      "discoveredFrom": "README.md + skills/ooxml/SKILL.md document recipe",
+      "intent": "Use the documented document recipe on the supplied report spec.",
+      "task": "report-document"
+    },
+    {
+      "argv": ["ooxml", "--json", "check", "<report.docx>", "--openxml-sdk", "auto", "--fail-on", "error"],
+      "discoveredFrom": "capabilities command ooxml check",
+      "intent": "Run the advertised one-call strict and Open XML SDK package proof.",
+      "task": "report-document"
+    },
+    {
+      "argv": ["ooxml", "--json", "pptx", "build", "--from-markdown", "<deck.md>", "--out", "<markdown-deck.pptx>", "--check", "--force"],
+      "discoveredFrom": "README.md + skills/ooxml/SKILL.md build-from-markdown recipe",
+      "intent": "Use the documented Markdown builder without authoring intermediate JSON.",
+      "task": "markdown-sourced-deck"
+    },
+    {
+      "argv": ["ooxml", "--json", "check", "<markdown-deck.pptx>", "--openxml-sdk", "auto", "--fail-on", "error"],
+      "discoveredFrom": "capabilities command ooxml check",
+      "intent": "Run the advertised one-call strict and Open XML SDK package proof.",
+      "task": "markdown-sourced-deck"
+    },
+    {
+      "argv": ["ooxml", "--json", "pptx", "replace", "text", "<branded-deck.pptx>", "--slide", "1", "--target", "title", "--text", "Q3 review — fresh agent", "--out", "<edited-deck.pptx>"],
+      "discoveredFrom": "capabilities pptx inspect then edit workflow + command flags",
+      "intent": "Use the natural PPTX replace text vocabulary advertised by capabilities.",
+      "task": "edit-and-check-deck"
+    },
+    {
+      "argv": ["ooxml", "--json", "check", "<edited-deck.pptx>", "--openxml-sdk", "auto", "--fail-on", "error"],
+      "discoveredFrom": "capabilities command ooxml check",
+      "intent": "Run the advertised one-call strict and Open XML SDK package proof.",
+      "task": "edit-and-check-deck"
+    },
+    {
+      "argv": ["ooxml", "--json", "design-check", "<edited-deck.pptx>"],
+      "discoveredFrom": "capabilities command ooxml design-check",
+      "intent": "Run the advertised objective design review before rendering.",
+      "task": "design-check-and-render-deck"
+    },
+    {
+      "argv": ["ooxml", "--json", "render", "<edited-deck.pptx>", "--out", "<render-dir>", "--dpi", "96"],
+      "discoveredFrom": "capabilities command ooxml render",
+      "intent": "Render the reviewed presentation through the advertised shared renderer.",
+      "task": "design-check-and-render-deck"
+    }
+  ]
+}
