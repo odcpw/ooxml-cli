@@ -82,6 +82,10 @@ from validators alone.
   on shared branches, no deleting peer work. Do not commit `target/`,
   `.beads/*.db*`, `.beads/issues.jsonl` (the orchestrator flushes beads), or
   scratch files.
+- Never terminate a process you did not start. Clean up only your own exact
+  `cargo`, `rustc`, `ooxml`, `soffice`, or `pwsh` PIDs; never use broad
+  `pkill -f` patterns or touch orchestrator target dirs and scratchpads. Mail
+  the orchestrator when a shared process looks stuck, or you can kill its gate.
 - Do not run Office COM, `vba run-smoke`, or the Windows PowerShell gates from
   Linux; note them as follow-ups instead.
 
