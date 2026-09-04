@@ -1,3 +1,4 @@
+use ooxml_cli::build::{BuildFamily, load_spec_str};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
@@ -180,6 +181,173 @@ fn tools_list_pins_typed_schemas_and_matches_cli_contracts() {
         actual,
         std::fs::read_to_string(GOLDEN).expect("typed tools golden")
     );
+}
+
+#[test]
+fn typed_build_input_schemas_accept_markdown_and_spec_exclusively() {
+    let cases = [
+        (
+            "build_presentation",
+            BuildFamily::Pptx,
+            json!({
+                "schemaVersion": 1,
+                "family": "pptx",
+                "slides": [{"layout": "Title Slide", "title": "Schema"}],
+            }),
+        ),
+        (
+            "build_workbook",
+            BuildFamily::Xlsx,
+            json!({
+                "schemaVersion": 1,
+                "family": "xlsx",
+                "sheets": [{"name": "Data"}],
+            }),
+        ),
+        (
+            "build_document",
+            BuildFamily::Docx,
+            json!({
+                "schemaVersion": 1,
+                "family": "docx",
+                "blocks": [{"type": "paragraph", "text": "Schema"}],
+            }),
+        ),
+    ];
+    let tools = mcp(&[rpc(1, "tools/list", json!({}))], &[]).remove(0);
+    let tools = tools["result"]["tools"]
+        .as_array()
+        .expect("MCP tools array");
+    let requests = cases
+        .iter()
+        .flat_map(|(name, family, spec)| {
+            let tool = tools
+                .iter()
+                .find(|tool| tool["name"] == *name)
+                .unwrap_or_else(|| panic!("missing typed build tool {name}"));
+            let schema = &tool["inputSchema"];
+            let spec_text = serde_json::to_string(spec).expect("serialize build spec");
+            assert!(
+                load_spec_str(*family, &spec_text).is_ok(),
+                "test spec must match the published {} schema",
+                family.schema_name()
+            );
+
+            let output = "schema-output";
+            let markdown = "# Schema input\n";
+            let accepted = [
+                (
+                    "spec + output",
+                    json!({"spec": spec, "output": output}),
+                    true,
+                ),
+                (
+                    "markdown + output",
+                    json!({"markdown": markdown, "output": output}),
+                    true,
+                ),
+                (
+                    "spec + session",
+                    json!({"spec": spec, "session": "schema-session"}),
+                    true,
+                ),
+                (
+                    "markdown + session",
+                    json!({"markdown": markdown, "session": "schema-session"}),
+                    true,
+                ),
+                (
+                    "both sources",
+                    json!({
+                        "spec": spec,
+                        "markdown": markdown,
+                        "output": output,
+                    }),
+                    false,
+                ),
+                ("neither source", json!({"output": output}), false),
+                (
+                    "both destinations",
+                    json!({"spec": spec, "output": output, "session": "schema-session"}),
+                    false,
+                ),
+                ("neither destination", json!({"spec": spec}), false),
+            ];
+            for (label, request, expected) in accepted {
+                assert_eq!(
+                    build_input_schema_accepts(schema, &request),
+                    expected,
+                    "{name} schema acceptance drifted for {label}: {request}"
+                );
+            }
+
+            [
+                json!({
+                    "spec": spec,
+                    "markdown": markdown,
+                    "output": output,
+                }),
+                json!({"output": output}),
+            ]
+            .into_iter()
+            .map(|arguments| tool_call(1, name, arguments))
+            .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let responses = mcp(&requests, &[]);
+    for response in responses {
+        let result = &response["result"];
+        assert_eq!(result["isError"], true, "invalid build request succeeded");
+        assert_eq!(
+            result["structuredContent"]["error"]["message"],
+            "exactly one of spec or markdown is required"
+        );
+    }
+}
+
+fn build_input_schema_accepts(schema: &Value, request: &Value) -> bool {
+    let Some(request) = request.as_object() else {
+        return false;
+    };
+    if schema["type"] != "object" || schema["additionalProperties"] != false {
+        return false;
+    }
+    let Some(properties) = schema["properties"].as_object() else {
+        return false;
+    };
+    if request.keys().any(|field| !properties.contains_key(field)) {
+        return false;
+    }
+    schema["allOf"].as_array().is_some_and(|clauses| {
+        clauses.iter().all(|clause| {
+            let Some(variants) = clause["oneOf"].as_array() else {
+                return false;
+            };
+            variants
+                .iter()
+                .filter(|variant| schema_required_and_not_match(variant, request))
+                .count()
+                == 1
+        })
+    })
+}
+
+fn schema_required_and_not_match(schema: &Value, request: &serde_json::Map<String, Value>) -> bool {
+    let required = schema["required"].as_array().is_none_or(|fields| {
+        fields
+            .iter()
+            .filter_map(Value::as_str)
+            .all(|field| request.contains_key(field))
+    });
+    let not_match = schema["not"].as_object().is_none_or(|not| {
+        not["required"].as_array().is_none_or(|fields| {
+            !fields
+                .iter()
+                .filter_map(Value::as_str)
+                .all(|field| request.contains_key(field))
+        })
+    });
+    required && not_match
 }
 
 #[test]
