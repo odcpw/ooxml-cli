@@ -1,0 +1,118 @@
+{
+  "family": "pptx",
+  "parts": {
+    "ppt/charts/chart1.xml": {
+      "footerMark": false,
+      "tags": [
+        {
+          "attributes": {
+            "val": "316F8A"
+          },
+          "tag": "srgbClr"
+        },
+        {
+          "attributes": {
+            "val": "316F8A"
+          },
+          "tag": "srgbClr"
+        }
+      ]
+    },
+    "ppt/presentation.xml": {
+      "footerMark": false,
+      "tags": [
+        {
+          "attributes": {
+            "cx": "12192000",
+            "cy": "6858000",
+            "type": "screen16x9"
+          },
+          "tag": "sldSz"
+        }
+      ]
+    },
+    "ppt/slides/slide2.xml": {
+      "footerMark": true,
+      "tags": [
+        {
+          "attributes": {
+            "descr": "",
+            "id": "5",
+            "name": "Brand Logo"
+          },
+          "tag": "cNvPr"
+        }
+      ]
+    },
+    "ppt/slides/slide3.xml": {
+      "footerMark": true,
+      "tags": [
+        {
+          "attributes": {
+            "descr": "",
+            "id": "7",
+            "name": "Brand Logo"
+          },
+          "tag": "cNvPr"
+        }
+      ]
+    },
+    "ppt/slides/slide4.xml": {
+      "footerMark": true,
+      "tags": [
+        {
+          "attributes": {
+            "descr": "",
+            "id": "5",
+            "name": "Brand Logo"
+          },
+          "tag": "cNvPr"
+        }
+      ]
+    },
+    "ppt/slides/slide5.xml": {
+      "footerMark": true,
+      "tags": [
+        {
+          "attributes": {
+            "descr": "",
+            "id": "6",
+            "name": "Brand Logo"
+          },
+          "tag": "cNvPr"
+        }
+      ]
+    },
+    "ppt/slides/slide6.xml": {
+      "footerMark": true,
+      "tags": [
+        {
+          "attributes": {
+            "descr": "",
+            "id": "5",
+            "name": "Brand Logo"
+          },
+          "tag": "cNvPr"
+        }
+      ]
+    }
+  },
+  "theme": {
+    "bodyFont": "Liberation Sans",
+    "colors": {
+      "accent1": "316F8A",
+      "accent2": "6769A3",
+      "accent3": "824F70",
+      "accent4": "975A43",
+      "accent5": "696128",
+      "accent6": "35795A",
+      "dk1": "081115",
+      "dk2": "153543",
+      "folHlink": "2F6B4F",
+      "hlink": "815B0B",
+      "lt1": "FFFFFF",
+      "lt2": "E8F2F7"
+    },
+    "headingFont": "Arial"
+  }
+}

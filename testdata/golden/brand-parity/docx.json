@@ -1,0 +1,78 @@
+{
+  "family": "docx",
+  "parts": {
+    "word/document.xml": {
+      "footerMark": false,
+      "tags": [
+        {
+          "attributes": {
+            "val": "TableStyleMedium2"
+          },
+          "tag": "tblStyle"
+        },
+        {
+          "attributes": {
+            "h": "11906",
+            "orient": "landscape",
+            "w": "16838"
+          },
+          "tag": "pgSz"
+        },
+        {
+          "attributes": {
+            "bottom": "864",
+            "footer": "432",
+            "header": "432",
+            "left": "1152",
+            "right": "1152",
+            "top": "864"
+          },
+          "tag": "pgMar"
+        }
+      ]
+    },
+    "word/footer1.xml": {
+      "footerMark": true,
+      "tags": []
+    },
+    "word/header1.xml": {
+      "footerMark": false,
+      "tags": [
+        {
+          "attributes": {
+            "descr": "Brand Logo",
+            "id": "1",
+            "name": "Picture 1"
+          },
+          "tag": "docPr"
+        },
+        {
+          "attributes": {
+            "descr": "Brand Logo",
+            "id": "0",
+            "name": "image2.png"
+          },
+          "tag": "cNvPr"
+        }
+      ]
+    }
+  },
+  "theme": {
+    "bodyFont": "Liberation Sans",
+    "colors": {
+      "accent1": "316F8A",
+      "accent2": "6769A3",
+      "accent3": "824F70",
+      "accent4": "975A43",
+      "accent5": "696128",
+      "accent6": "35795A",
+      "dk1": "081115",
+      "dk2": "153543",
+      "folHlink": "2F6B4F",
+      "hlink": "815B0B",
+      "lt1": "FFFFFF",
+      "lt2": "E8F2F7"
+    },
+    "headingFont": "Arial"
+  }
+}

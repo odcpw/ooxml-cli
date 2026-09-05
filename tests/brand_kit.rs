@@ -3,7 +3,7 @@ use quick_xml::events::Event;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use zip::ZipArchive;
@@ -501,6 +501,9 @@ fn five_branded_recipes_match_the_documented_family_audit() {
         ]);
         assert_strict_valid(&output);
         assert_sdk_valid_if_available(&output);
+        if !name.starts_with("markdown-") {
+            assert_brand_application_golden(&output, family);
+        }
         let signature = theme_signature(&output, family);
         assert_eq!(signature.colors["accent1"], "316F8A");
         assert_eq!(signature.heading_font, "Arial");
@@ -532,7 +535,12 @@ fn five_branded_recipes_match_the_documented_family_audit() {
             assert!(xml.contains("TableStyleMedium2"));
         }
         if chart == "proven" {
-            assert!(xml.contains(r#"<a:srgbClr val="316F8A""#));
+            let chart_part = if family == "pptx" {
+                "ppt/charts/chart1.xml"
+            } else {
+                "xl/charts/chart1.xml"
+            };
+            assert!(zip_text(&output, chart_part).contains(r#"<a:srgbClr val="316F8A""#));
         }
         observed.insert(
             family,
@@ -599,6 +607,233 @@ fn five_branded_recipes_match_the_documented_family_audit() {
             "audit row differs from package evidence: {row}"
         );
     }
+    fs::remove_dir_all(temp).unwrap();
+}
+
+fn assert_brand_application_golden(file: &Path, family: &str) {
+    let theme = theme_signature(file, family);
+    let mut parts = BTreeMap::new();
+    for part in zip_entries(file)
+        .into_iter()
+        .filter(|part| part.ends_with(".xml"))
+    {
+        let xml = zip_text(file, &part);
+        let mut reader = Reader::from_str(&xml);
+        let mut tags = Vec::new();
+        let chart = part.contains("/charts/");
+        loop {
+            match reader.read_event().unwrap() {
+                Event::Start(element) | Event::Empty(element) => {
+                    let name = local_name(element.name().as_ref()).to_string();
+                    let attrs = element
+                        .attributes()
+                        .map(|a| {
+                            let a = a.unwrap();
+                            (
+                                local_name(a.key.as_ref()).to_string(),
+                                a.decode_and_unescape_value(reader.decoder())
+                                    .unwrap()
+                                    .into_owned(),
+                            )
+                        })
+                        .collect::<BTreeMap<_, _>>();
+                    let page_or_table = matches!(
+                        name.as_str(),
+                        "pgSz"
+                            | "pgMar"
+                            | "pageSetup"
+                            | "pageMargins"
+                            | "sldSz"
+                            | "tblStyle"
+                            | "tableStyleInfo"
+                            | "tableStyles"
+                    );
+                    let logo = matches!(name.as_str(), "docPr" | "cNvPr")
+                        && attrs
+                            .values()
+                            .any(|value| value == "Brand Logo" || value == "Brand logo");
+                    if page_or_table
+                        || logo
+                        || (chart && matches!(name.as_str(), "srgbClr" | "schemeClr"))
+                    {
+                        tags.push(serde_json::json!({"tag": name, "attributes": attrs}));
+                    }
+                }
+                Event::Eof => break,
+                _ => {}
+            }
+        }
+        if !tags.is_empty() || xml.contains("Northwind Confidential") {
+            parts.insert(part, serde_json::json!({"tags": tags, "footerMark": xml.contains("Northwind Confidential")}));
+        }
+    }
+    let snapshot = serde_json::json!({"family": family, "theme": {"colors": theme.colors, "headingFont": theme.heading_font, "bodyFont": theme.body_font}, "parts": parts});
+    let mut bytes = serde_json::to_vec_pretty(&snapshot).unwrap();
+    bytes.push(b'\n');
+    let golden = repo_path(&format!("testdata/golden/brand-parity/{family}.json"));
+    if std::env::var("UPDATE_GOLDENS").as_deref() == Ok("1") {
+        fs::create_dir_all(golden.parent().unwrap()).unwrap();
+        fs::write(&golden, &bytes).unwrap();
+    }
+    let expected = fs::read(&golden).unwrap();
+    assert!(!expected.contains(&b'\r'), "golden must use LF");
+    assert_eq!(
+        bytes, expected,
+        "{family} brand application contract drifted"
+    );
+}
+
+fn rewrite_package_part(source: &Path, output: &Path, part: &str, replacement: &str) {
+    let mut input = ZipArchive::new(File::open(source).unwrap()).unwrap();
+    let mut writer = zip::ZipWriter::new(File::create(output).unwrap());
+    for index in 0..input.len() {
+        let mut entry = input.by_index(index).unwrap();
+        let options =
+            zip::write::SimpleFileOptions::default().compression_method(entry.compression());
+        writer.start_file(entry.name(), options).unwrap();
+        if entry.name() == part {
+            writer.write_all(replacement.as_bytes()).unwrap();
+        } else {
+            std::io::copy(&mut entry, &mut writer).unwrap();
+        }
+    }
+    writer.finish().unwrap();
+}
+
+#[test]
+fn brand_adds_missing_table_style_info_and_styles_unstyled_document_tables() {
+    let temp = temp_dir("missing-table-style");
+    let brand = repo_path("testdata/brand/northwind.json");
+    for (family, spec, part, pattern) in [
+        (
+            "xlsx",
+            "testdata/xlsx/build-spec/sales.json",
+            "xl/tables/table1.xml",
+            r"<tableStyleInfo\b[^>]*/>",
+        ),
+        (
+            "docx",
+            "testdata/docx/build-spec/quarterly-report.json",
+            "word/document.xml",
+            r"<w:tblStyle\b[^>]*/>",
+        ),
+    ] {
+        let base = temp.join(format!("base.{family}"));
+        let source = temp.join(format!("unstyled.{family}"));
+        let output = temp.join(format!("branded.{family}"));
+        run_ok(&[
+            "--json",
+            family,
+            "build",
+            "--spec",
+            path(&repo_path(spec)),
+            "--out",
+            path(&base),
+        ]);
+        let xml = zip_text(&base, part);
+        let stripped = regex::Regex::new(pattern)
+            .unwrap()
+            .replace_all(&xml, "")
+            .into_owned();
+        assert_ne!(stripped, xml, "fixture must remove existing style");
+        rewrite_package_part(&base, &source, part, &stripped);
+        assert_strict_valid(&source);
+        assert_sdk_valid_if_available(&source);
+        run_ok(&[
+            "--json",
+            "template",
+            "apply",
+            path(&source),
+            "--brand",
+            path(&brand),
+            "--out",
+            path(&output),
+        ]);
+        assert!(zip_text(&output, part).contains("TableStyleMedium2"));
+        assert_strict_valid(&output);
+        assert_sdk_valid_if_available(&output);
+    }
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn brand_logo_can_populate_a_self_closing_default_header() {
+    let temp = temp_dir("empty-header");
+    let base = temp.join("base.docx");
+    let source = temp.join("empty-header.docx");
+    let output = temp.join("branded.docx");
+    run_ok(&[
+        "--json",
+        "docx",
+        "build",
+        "--spec",
+        path(&repo_path("testdata/docx/build-spec/quarterly-report.json")),
+        "--out",
+        path(&base),
+    ]);
+    rewrite_package_part(
+        &base,
+        &source,
+        "word/header1.xml",
+        r#"<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>"#,
+    );
+    assert_sdk_valid_if_available(&source);
+    let brand = temp.join("brand.json");
+    fs::write(&brand, serde_json::to_vec(&serde_json::json!({"name":"Empty header", "colors":{"seed":"316F8A"}, "fonts":{"heading":"Arial", "body":"Arial"}, "logo":{"path":repo_path("testdata/test_image.png"), "placement":"top-left"}})).unwrap()).unwrap();
+    run_ok(&[
+        "--json",
+        "template",
+        "apply",
+        path(&source),
+        "--brand",
+        path(&brand),
+        "--out",
+        path(&output),
+    ]);
+    assert!(zip_text(&output, "word/header1.xml").contains("Brand Logo"));
+    assert!(!zip_text(&output, "word/document.xml").contains("Brand Logo"));
+    assert_strict_valid(&output);
+    assert_sdk_valid_if_available(&output);
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn conflicting_document_table_style_refuses_without_replacing_destination() {
+    let temp = temp_dir("style-conflict");
+    let source = temp.join("source.docx");
+    let output = temp.join("existing.docx");
+    let brand = temp.join("brand.json");
+    run_ok(&["--json", "docx", "scaffold", path(&source)]);
+    let before = fs::read(&source).unwrap();
+    fs::write(&output, b"destination sentinel").unwrap();
+    fs::write(&brand, br#"{"name":"Conflict","colors":{"seed":"316F8A"},"fonts":{"heading":"Arial","body":"Arial"},"tableStyle":"Normal"}"#).unwrap();
+    let result = run(&[
+        "--json",
+        "template",
+        "apply",
+        path(&source),
+        "--brand",
+        path(&brand),
+        "--out",
+        path(&output),
+    ]);
+    assert_eq!(result.status.code(), Some(2));
+    let error: Value = serde_json::from_slice(if result.stdout.is_empty() {
+        &result.stderr
+    } else {
+        &result.stdout
+    })
+    .unwrap();
+    assert!(error.to_string().contains("not a table style"));
+    assert_eq!(fs::read(&source).unwrap(), before);
+    assert_eq!(fs::read(&output).unwrap(), b"destination sentinel");
+    assert!(!fs::read_dir(&temp).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .contains("brand-apply")
+    }));
     fs::remove_dir_all(temp).unwrap();
 }
 
@@ -718,8 +953,14 @@ fn assert_strict_valid(file: &Path) {
 }
 
 fn assert_sdk_valid_if_available(file: &Path) {
+    let required = std::env::var("OOXML_REQUIRE_OPENXML_SDK")
+        .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true"));
     let validator = repo_path("tools/openxml-validator/bin/Release/net8.0/openxml-validator.dll");
     if !validator.is_file() {
+        assert!(
+            !required,
+            "Open XML SDK required but validator DLL is absent"
+        );
         eprintln!(
             "SKIP Open XML SDK: validator is unavailable at {}",
             validator.display()
@@ -727,6 +968,7 @@ fn assert_sdk_valid_if_available(file: &Path) {
         return;
     }
     let Some(dotnet_root) = std::env::var_os("DOTNET_ROOT") else {
+        assert!(!required, "Open XML SDK required but DOTNET_ROOT is absent");
         eprintln!("SKIP Open XML SDK: DOTNET_ROOT is unavailable");
         return;
     };
@@ -736,6 +978,7 @@ fn assert_sdk_valid_if_available(file: &Path) {
         "dotnet"
     });
     if !dotnet.is_file() {
+        assert!(!required, "Open XML SDK required but dotnet host is absent");
         eprintln!(
             "SKIP Open XML SDK: dotnet host is unavailable at {}",
             dotnet.display()
