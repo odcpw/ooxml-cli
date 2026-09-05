@@ -626,7 +626,7 @@ fn build_tool(name: &str, family: BuildFamily) -> Value {
             json!({
                 "type": "string",
                 "minLength": 1,
-                "description": "Inline Markdown source for PPTX or DOCX. Relative asset paths resolve from the MCP server working directory. XLSX returns a teaching error because its tabular build spec is the unambiguous input."
+                "description": "Inline Markdown source for PPTX, DOCX, or XLSX. Workbook H1/H2 sections map tables to typed sheets; header type hints and chart fences use the XLSX build spec. Relative asset paths resolve from the MCP server working directory."
             }),
         ),
         (

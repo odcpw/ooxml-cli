@@ -151,8 +151,8 @@ pub(super) fn front_command_specs() -> Vec<CommandSpec> {
     specs.push(spec(
         XlsxCommandId::Build,
         &["xlsx", "build"],
-        "build --spec <book.json|-> --out <book.xlsx>",
-        "Build a complete workbook from a published XLSX build specification in one atomic batch.",
+        "build (--spec <book.json|-> | --from-markdown <book.md|->) --out <book.xlsx>",
+        "Build a complete workbook from JSON or Markdown tables in one atomic batch.",
         &["package", "sheet", "range", "table", "chart"],
         vec![
             flag(
@@ -160,6 +160,18 @@ pub(super) fn front_command_specs() -> Vec<CommandSpec> {
                 "spec",
                 "string",
                 "XLSX build-spec JSON path, or - to read JSON from stdin",
+            ),
+            flag(
+                "--from-markdown",
+                "fromMarkdown",
+                "string",
+                "Markdown workbook path, or - to read Markdown from stdin",
+            ),
+            flag(
+                "--emit-spec",
+                "emitSpec",
+                "string",
+                "write the validated intermediate JSON spec produced by --from-markdown",
             ),
             flag("--out", "out", "string", "output workbook path"),
             flag(
