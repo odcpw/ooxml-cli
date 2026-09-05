@@ -20,6 +20,7 @@ struct ShapeStyle {
     fonts: BTreeSet<String>,
     colors: BTreeSet<String>,
     alt_text: String,
+    cell_colors: BTreeSet<(String, Option<String>)>,
 }
 
 #[derive(Default)]
@@ -128,7 +129,16 @@ pub(super) fn analyze(
                         .filter(|font| !is_theme_font(font, &theme.fonts))
                         .cloned(),
                 );
-                for color in &style.colors {
+                let contrast_colors = style.colors.iter().map(|color| (color, None)).chain(
+                    style
+                        .cell_colors
+                        .iter()
+                        .map(|(color, fill)| (color, fill.as_deref())),
+                );
+                for (color, fill) in contrast_colors {
+                    let background = fill
+                        .and_then(|fill| resolve_color(fill, &theme.colors))
+                        .unwrap_or(background);
                     let foreground = resolve_color(color, &theme.colors).unwrap_or(Srgb::BLACK);
                     // Converting both colors to OKLCH is deliberate: the evidence records the
                     // perceptual coordinates while WCAG contrast remains luminance-defined.
@@ -380,7 +390,70 @@ fn scan_slide_styles(xml: &str) -> CliResult<BTreeMap<u32, ShapeStyle>> {
             _ => {}
         }
     }
+    scan_table_colors(xml, &mut styles)?;
     Ok(styles)
+}
+
+// Table cell properties follow their text body, so pair colors only after closing
+// the cell. Direct tcPr/solidFill excludes border colors and neighboring cells.
+fn scan_table_colors(xml: &str, styles: &mut BTreeMap<u32, ShapeStyle>) -> CliResult<()> {
+    let mut reader = Reader::from_str(xml);
+    let mut stack = Vec::<String>::new();
+    let mut shape_id = 0;
+    let mut colors = BTreeSet::new();
+    let mut fill = None;
+    let mut in_cell = false;
+    loop {
+        let event = reader.read_event().map_err(|error| {
+            CliError::unexpected(format!("failed to parse PPTX table styling: {error}"))
+        })?;
+        match event {
+            Event::Start(ref element) | Event::Empty(ref element) => {
+                let name = local_name(element.name().as_ref()).to_string();
+                if name == "cNvPr" {
+                    shape_id = attr(element, "id")
+                        .and_then(|id| id.parse().ok())
+                        .unwrap_or(0);
+                } else if name == "tc" {
+                    in_cell = true;
+                    colors.clear();
+                    fill = None;
+                    if let Some(style) = styles.get_mut(&shape_id) {
+                        style.colors.clear();
+                    }
+                } else if in_cell && matches!(name.as_str(), "srgbClr" | "schemeClr") {
+                    if stack.last().is_some_and(|name| name == "solidFill")
+                        && stack.iter().rev().nth(1).is_some_and(|name| name == "tcPr")
+                    {
+                        fill = attr(element, "val");
+                    } else if stack
+                        .iter()
+                        .any(|name| matches!(name.as_str(), "rPr" | "defRPr" | "endParaRPr"))
+                        && let Some(color) = attr(element, "val")
+                    {
+                        colors.insert(color);
+                    }
+                }
+                if matches!(event, Event::Start(_)) {
+                    stack.push(name);
+                }
+            }
+            Event::End(element) => {
+                if local_name(element.name().as_ref()) == "tc" {
+                    if let Some(style) = styles.get_mut(&shape_id) {
+                        style
+                            .cell_colors
+                            .extend(colors.iter().map(|color| (color.clone(), fill.clone())));
+                    }
+                    in_cell = false;
+                }
+                stack.pop();
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn scan_style_element(
@@ -629,6 +702,36 @@ fn image_pixel_size(bytes: &[u8]) -> Option<(u32, u32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn table_contrast_pairs_each_cell_with_its_own_fill_not_borders_or_slide() {
+        let xml = r#"<p:sld xmlns:p="p" xmlns:a="a"><p:graphicFrame><p:cNvPr id="7"/>
+          <a:tbl><a:tr><a:tc><a:txBody><a:p><a:r><a:rPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>White</a:t></a:r></a:p></a:txBody>
+          <a:tcPr><a:lnL><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:lnL><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:tcPr></a:tc>
+          <a:tc><a:txBody><a:p><a:r><a:rPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>Low contrast</a:t></a:r></a:p></a:txBody>
+          <a:tcPr><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:tcPr></a:tc></a:tr></a:tbl></p:graphicFrame></p:sld>"#;
+        let styles = scan_slide_styles(xml).unwrap();
+        let style = &styles[&7];
+        assert!(style.colors.is_empty());
+        assert_eq!(
+            style.cell_colors,
+            BTreeSet::from([
+                ("FFFFFF".to_string(), Some("000000".to_string())),
+                ("FFFFFF".to_string(), Some("lt1".to_string())),
+            ])
+        );
+        let theme = BTreeMap::from([("lt1".to_string(), "FFFFFF".to_string())]);
+        let ratios: Vec<_> = style
+            .cell_colors
+            .iter()
+            .map(|(color, fill)| {
+                resolve_color(color, &theme)
+                    .unwrap()
+                    .contrast_ratio(resolve_color(fill.as_deref().unwrap(), &theme).unwrap())
+            })
+            .collect();
+        assert_eq!(ratios, vec![21.0, 1.0]);
+    }
 
     #[test]
     fn slide_style_scanner_collects_font_size_color_font_and_alt() {

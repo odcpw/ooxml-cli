@@ -129,6 +129,7 @@ jobs:
       - name: Run Linux Open XML SDK schema gate
         run: |
           cargo test --test openxml_sdk_gate -- --nocapture
+          cargo test --test real_world_corpus -- --nocapture
           cargo test --test mutation_envelope all_152_mutation_contract_outputs_are_openxml_sdk_clean -- --exact --nocapture
           cargo test --test recipes_e2e -- --nocapture
 
