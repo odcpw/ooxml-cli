@@ -1,0 +1,122 @@
+{
+  "sheets": [
+    {
+      "cellCount": 24,
+      "charts": [
+        {
+          "anchor": {
+            "from": {
+              "column": 8,
+              "row": 1
+            },
+            "to": {
+              "column": 16,
+              "row": 16
+            },
+            "type": "twoCellAnchor"
+          },
+          "name": "Chart 1",
+          "number": 1,
+          "partUri": "/xl/charts/chart1.xml",
+          "primarySelector": "chart:1",
+          "title": "Units by region",
+          "types": [
+            "barChart"
+          ]
+        }
+      ],
+      "commentCount": 0,
+      "conditionalFormatCount": 0,
+      "dimensionDeclared": "A1:G4",
+      "freeze": {
+        "cols": 0,
+        "frozen": true,
+        "rows": 1,
+        "topLeftCell": "A2"
+      },
+      "name": "Sales",
+      "number": 1,
+      "partUri": "/xl/worksheets/sheet1.xml",
+      "pivots": [],
+      "primarySelector": "sheetId:1",
+      "rowCount": 4,
+      "sheetId": "1",
+      "state": "visible",
+      "tables": [
+        {
+          "displayName": "MarkdownTable1",
+          "name": "MarkdownTable1",
+          "partUri": "/xl/tables/table1.xml",
+          "primarySelector": "tableId:1",
+          "range": "A1:G4"
+        }
+      ],
+      "usedRange": {
+        "cols": 7,
+        "empty": false,
+        "maxCol": 7,
+        "maxRow": 4,
+        "minCol": 1,
+        "minRow": 1,
+        "ref": "A1:G4",
+        "rows": 4
+      },
+      "validationCount": 0
+    },
+    {
+      "cellCount": 12,
+      "charts": [],
+      "commentCount": 0,
+      "conditionalFormatCount": 0,
+      "dimensionDeclared": "A1:D3",
+      "freeze": {
+        "cols": 0,
+        "frozen": true,
+        "rows": 1,
+        "topLeftCell": "A2"
+      },
+      "name": "Targets",
+      "number": 2,
+      "partUri": "/xl/worksheets/sheet2.xml",
+      "pivots": [],
+      "primarySelector": "sheetId:2",
+      "rowCount": 3,
+      "sheetId": "2",
+      "state": "visible",
+      "tables": [
+        {
+          "displayName": "MarkdownTable2",
+          "name": "MarkdownTable2",
+          "partUri": "/xl/tables/table2.xml",
+          "primarySelector": "tableId:2",
+          "range": "A1:D3"
+        }
+      ],
+      "usedRange": {
+        "cols": 4,
+        "empty": false,
+        "maxCol": 4,
+        "maxRow": 3,
+        "minCol": 1,
+        "minRow": 1,
+        "ref": "A1:D3",
+        "rows": 3
+      },
+      "validationCount": 0
+    }
+  ],
+  "summary": {
+    "charts": 1,
+    "customXmlParts": 0,
+    "mediaAssets": 0,
+    "pivotCaches": 0,
+    "pivots": 0,
+    "sharedStrings": false,
+    "sheets": 2,
+    "styles": true,
+    "tables": 2,
+    "themes": 1,
+    "worksheets": 2
+  },
+  "type": "xlsx"
+}

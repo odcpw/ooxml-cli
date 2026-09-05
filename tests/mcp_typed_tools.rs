@@ -554,7 +554,7 @@ fn typed_build_tools_match_the_family_cli_contracts() {
 }
 
 #[test]
-fn typed_markdown_builds_match_family_cli_and_xlsx_refuses_with_a_teaching_error() {
+fn typed_markdown_builds_match_family_cli_and_empty_workbook_teaches_table_input() {
     let dir = temp_dir("markdown-build-parity");
     let cases = [
         (
@@ -647,11 +647,11 @@ fn typed_markdown_builds_match_family_cli_and_xlsx_refuses_with_a_teaching_error
     let error = &unsupported["result"]["structuredContent"]["error"];
     assert_eq!(unsupported["result"]["isError"], true);
     assert_eq!(error["code"], "invalid_args");
-    assert_eq!(error["diagnostics"]["code"], "MARKDOWN_FAMILY_UNSUPPORTED");
+    assert_eq!(error["diagnostics"]["code"], "MARKDOWN_EMPTY");
     assert!(
         error["message"]
             .as_str()
-            .is_some_and(|message| message.contains("not xlsx")),
+            .is_some_and(|message| message.contains("table")),
         "{error:#}"
     );
     assert_eq!(error["schemaResource"], "resource://schema/xlsx-build");

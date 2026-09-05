@@ -140,14 +140,7 @@ pub fn markdown_to_spec(
     let mut conversion = match family {
         BuildFamily::Pptx => pptx_spec(parsed, source_name)?,
         BuildFamily::Docx => docx_spec(parsed, source_name)?,
-        BuildFamily::Xlsx => {
-            return Err(MarkdownError {
-                line: None,
-                code: "MARKDOWN_FAMILY_UNSUPPORTED".to_string(),
-                message: "Markdown input is supported for pptx and docx builds, not xlsx"
-                    .to_string(),
-            });
-        }
+        BuildFamily::Xlsx => xlsx_spec(parsed)?,
     };
     let encoded = serde_json::to_vec(&conversion.spec).map_err(|error| MarkdownError {
         line: None,
@@ -582,6 +575,336 @@ fn normalize_object_string_fields(
         }
     }
     Ok(())
+}
+
+/// Workbook Markdown uses the same block parser as documents and presentations.
+/// A section owns one table and at most one chart; unsupported prose is reported.
+fn xlsx_spec(parsed: ParsedMarkdown) -> Result<MarkdownConversion, MarkdownError> {
+    let ParsedMarkdown {
+        front_matter,
+        blocks,
+        mut warnings,
+    } = parsed;
+    let mut sheets = Vec::new();
+    let mut name = "Sheet1".to_string();
+    let mut section = Vec::new();
+    for block in blocks {
+        if let Block::Heading {
+            level: 1 | 2,
+            content,
+            ..
+        } = &block
+        {
+            xlsx_section(&name, &section, &mut sheets, &mut warnings)?;
+            section.clear();
+            name = content.text.clone();
+        } else {
+            section.push(block);
+        }
+    }
+    xlsx_section(&name, &section, &mut sheets, &mut warnings)?;
+    if sheets.is_empty() {
+        return Err(MarkdownError { line: None, code: "MARKDOWN_EMPTY".into(), message: "XLSX Markdown requires a pipe table with a header and at least one data row; use H1/H2 headings to name sheets".into() });
+    }
+    let mut spec = json!({"schemaVersion": 1, "family": "xlsx", "sheets": sheets});
+    for (key, value) in front_matter {
+        if matches!(key.as_str(), "metadata" | "themeSeed" | "brand") {
+            spec[&key] = value;
+        } else {
+            warnings.push(warning(
+                2,
+                "MARKDOWN_FRONT_MATTER_IGNORED",
+                format!("XLSX does not map front matter field {key:?}"),
+            ));
+        }
+    }
+    // Reuse the compiler for typed-cell and chart validation before publishing
+    // the intermediate spec, including explicit hints with invalid values.
+    let loaded = load_spec_bytes(
+        BuildFamily::Xlsx,
+        &serde_json::to_vec(&spec).expect("JSON spec serializes"),
+    )
+    .map_err(|error| xlsx_markdown_error(None, &error.to_string()))?;
+    crate::build::compile_xlsx_spec(&loaded)
+        .map_err(|error| xlsx_markdown_error(None, &error.to_string()))?;
+    Ok(MarkdownConversion { spec, warnings })
+}
+
+fn xlsx_markdown_error(line: Option<usize>, message: &str) -> MarkdownError {
+    MarkdownError {
+        line,
+        code: "MARKDOWN_XLSX_INVALID".into(),
+        message: message.into(),
+    }
+}
+
+fn xlsx_section(
+    name: &str,
+    blocks: &[Block],
+    sheets: &mut Vec<Value>,
+    warnings: &mut Vec<MarkdownWarning>,
+) -> Result<(), MarkdownError> {
+    let tables = blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Table { line, rows } => Some((*line, rows)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if tables.len() > 1 {
+        return Err(xlsx_markdown_error(
+            Some(tables[1].0),
+            "each XLSX section supports one table; add an H1/H2 heading before the next table",
+        ));
+    }
+    let charts = blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Code {
+                line,
+                language,
+                text,
+            } if language == "chart" => Some((*line, text)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if charts.len() > 1 || (!charts.is_empty() && tables.is_empty()) {
+        return Err(xlsx_markdown_error(
+            Some(charts[0].0),
+            "a chart fence requires exactly one table and at most one chart in its H1/H2 section",
+        ));
+    }
+    for block in blocks {
+        if !matches!(block, Block::Table { .. } | Block::Rule { .. })
+            && !matches!(block, Block::Code { language, .. } if language == "chart")
+        {
+            warnings.push(warning(
+                block.line(),
+                "MARKDOWN_XLSX_BLOCK_IGNORED",
+                "XLSX maps tables and chart fences; this block is not worksheet data",
+            ));
+        }
+    }
+    let Some((line, source_rows)) = tables.first() else {
+        return Ok(());
+    };
+    let source_line = *line;
+    let line = Some(source_line);
+    if name.is_empty()
+        || name.chars().count() > 31
+        || name.contains(['[', ']', ':', '*', '?', '/', '\\'])
+        || name.starts_with('\'')
+        || name.ends_with('\'')
+    {
+        return Err(xlsx_markdown_error(
+            line,
+            "sheet headings must be 1–31 characters without []:*?/\\ or leading/trailing apostrophes",
+        ));
+    }
+    if sheets.iter().any(|sheet| {
+        sheet["name"]
+            .as_str()
+            .is_some_and(|prior| prior.to_lowercase() == name.to_lowercase())
+    }) {
+        return Err(xlsx_markdown_error(
+            line,
+            "sheet headings must be unique (case-insensitive)",
+        ));
+    }
+    let mut rows = (*source_rows).clone();
+    let has_totals = rows.iter().skip(1).any(|row| {
+        row.first()
+            .is_some_and(|cell| cell.trim().eq_ignore_ascii_case("total"))
+    });
+    if has_totals {
+        if !rows
+            .last()
+            .and_then(|row| row.first())
+            .is_some_and(|cell| cell.trim().eq_ignore_ascii_case("total"))
+            || rows[1..rows.len() - 1].iter().any(|row| {
+                row.first()
+                    .is_some_and(|cell| cell.trim().eq_ignore_ascii_case("total"))
+            })
+        {
+            return Err(xlsx_markdown_error(
+                line,
+                "Total must appear once as the final row",
+            ));
+        }
+        let total = rows.pop().expect("totals row exists");
+        if total.iter().skip(1).any(|cell| !cell.trim().is_empty()) {
+            warnings.push(warning(source_line, "MARKDOWN_XLSX_TOTALS_RECALCULATED", "Total row values are recalculated as sums for number/currency columns; other totals cells are blank"));
+        }
+    }
+    if rows.len() < 2 {
+        return Err(xlsx_markdown_error(
+            line,
+            "a workbook table requires at least one data row",
+        ));
+    }
+    let mut columns = Vec::new();
+    let mut headers = Vec::new();
+    let mut totals = Vec::new();
+    for column in 0..rows[0].len() {
+        let original = rows[0][column].trim();
+        let (header, hint) = original
+            .strip_suffix(')')
+            .and_then(|text| text.rsplit_once(" ("))
+            .filter(|(_, hint)| {
+                matches!(
+                    *hint,
+                    "text" | "number" | "currency" | "percent" | "percentage" | "date" | "boolean"
+                )
+            })
+            .map_or((original, None), |(header, hint)| {
+                (
+                    header.trim(),
+                    Some(if hint == "percentage" {
+                        "percent"
+                    } else {
+                        hint
+                    }),
+                )
+            });
+        if header.is_empty()
+            || headers
+                .iter()
+                .any(|prior: &String| prior.to_lowercase() == header.to_lowercase())
+        {
+            return Err(xlsx_markdown_error(
+                line,
+                "table headers must be nonempty and unique after removing type hints",
+            ));
+        }
+        let values = rows
+            .iter()
+            .skip(1)
+            .map(|row| row[column].trim())
+            .filter(|cell| !cell.is_empty())
+            .collect::<Vec<_>>();
+        let kind = hint.unwrap_or_else(|| xlsx_infer_column(&values));
+        let width = rows
+            .iter()
+            .skip(1)
+            .map(|row| row[column].chars().count())
+            .chain(std::iter::once(header.chars().count()))
+            .max()
+            .unwrap_or(0)
+            .saturating_add(2)
+            .clamp(8, 60);
+        columns.push(json!({"name": header, "type": kind, "width": width}));
+        if has_totals && column > 0 && matches!(kind, "number" | "currency") {
+            // The existing table writer accepts a colon-delimited header selector.
+            if header.contains([':', ',']) {
+                return Err(xlsx_markdown_error(
+                    line,
+                    "numeric totals headers cannot contain ':' or ','",
+                ));
+            }
+            totals.push(format!("{header}:sum"));
+        }
+        headers.push(header.to_string());
+    }
+    rows[0] = headers;
+    let rows = rows
+        .iter()
+        .enumerate()
+        .map(|(row_index, row)| {
+            Value::Array(
+                row.iter()
+                    .map(|cell| {
+                        if row_index > 0 && cell.trim().is_empty() {
+                            Value::Null
+                        } else {
+                            json!(cell)
+                        }
+                    })
+                    .collect(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let table_name = format!("MarkdownTable{}", sheets.len() + 1);
+    let mut table = json!({"name": table_name, "style": "TableStyleMedium2", "header": true});
+    if has_totals {
+        table["totalRow"] = json!(true);
+        if !totals.is_empty() {
+            table["totals"] = json!(totals);
+        }
+    }
+    let mut sheet = json!({"name": name, "rows": rows, "columns": columns, "freeze": "A2", "headerStyle": "header", "tables": [table]});
+    if let Some((line, text)) = charts.first() {
+        let mut chart: Value = serde_json::from_str(text).map_err(|error| {
+            xlsx_markdown_error(
+                Some(*line),
+                &format!("chart fence must contain a JSON chart object: {error}"),
+            )
+        })?;
+        if !chart.is_object() {
+            return Err(xlsx_markdown_error(
+                Some(*line),
+                "chart fence must contain a JSON chart object",
+            ));
+        }
+        if chart.get("source").is_none()
+            && chart
+                .get("options")
+                .and_then(|options| options.get("table"))
+                .is_none()
+        {
+            if chart.get("options").is_none() {
+                chart["options"] = json!({});
+            }
+            if !chart["options"].is_object() {
+                return Err(xlsx_markdown_error(
+                    Some(*line),
+                    "chart options must be an object",
+                ));
+            }
+            chart["options"]["table"] = json!(table_name);
+        }
+        sheet["charts"] = json!([chart]);
+    }
+    sheets.push(sheet);
+    Ok(())
+}
+
+fn xlsx_infer_column(values: &[&str]) -> &'static str {
+    if values.is_empty() {
+        return "text";
+    }
+    if values.iter().all(|value| {
+        matches!(
+            value.to_ascii_lowercase().as_str(),
+            "true" | "false" | "yes" | "no"
+        )
+    }) {
+        return "boolean";
+    }
+    if values.iter().all(|value| {
+        value
+            .strip_suffix('%')
+            .is_some_and(|number| number.trim().parse::<f64>().is_ok_and(f64::is_finite))
+    }) {
+        return "percent";
+    }
+    if values.iter().all(|value| {
+        value.len() == 10
+            && value.as_bytes()[4] == b'-'
+            && value.as_bytes()[7] == b'-'
+            && value
+                .bytes()
+                .enumerate()
+                .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
+    }) {
+        return "date";
+    }
+    if values
+        .iter()
+        .all(|value| value.parse::<f64>().is_ok_and(f64::is_finite))
+    {
+        return "number";
+    }
+    "text"
 }
 
 fn pptx_spec(
@@ -1704,11 +2027,11 @@ let x = 1;
     }
 
     #[test]
-    fn unsupported_family_is_an_explicit_teaching_error() {
+    fn workbook_without_a_table_is_an_explicit_teaching_error() {
         let error = markdown_to_spec(BuildFamily::Xlsx, "# Data\n", "data.md").unwrap_err();
         assert_eq!(error.line, None);
-        assert_eq!(error.code, "MARKDOWN_FAMILY_UNSUPPORTED");
-        assert!(error.message.contains("pptx and docx"));
+        assert_eq!(error.code, "MARKDOWN_EMPTY");
+        assert!(error.message.contains("table"));
     }
 
     #[test]

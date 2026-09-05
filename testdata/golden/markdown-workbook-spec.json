@@ -1,0 +1,157 @@
+{
+  "family": "xlsx",
+  "schemaVersion": 1,
+  "sheets": [
+    {
+      "charts": [
+        {
+          "options": {
+            "anchor": "I2"
+          },
+          "source": {
+            "path": "self",
+            "range": "A1:B3",
+            "sheet": "Sales"
+          },
+          "title": "Units by region",
+          "type": "column"
+        }
+      ],
+      "columns": [
+        {
+          "name": "Region",
+          "type": "text",
+          "width": 9
+        },
+        {
+          "name": "Units",
+          "type": "number",
+          "width": 8
+        },
+        {
+          "name": "Revenue",
+          "type": "currency",
+          "width": 11
+        },
+        {
+          "name": "Margin",
+          "type": "percent",
+          "width": 8
+        },
+        {
+          "name": "Active",
+          "type": "boolean",
+          "width": 8
+        },
+        {
+          "name": "Start",
+          "type": "date",
+          "width": 12
+        },
+        {
+          "name": "Code",
+          "type": "text",
+          "width": 8
+        }
+      ],
+      "freeze": "A2",
+      "headerStyle": "header",
+      "name": "Sales",
+      "rows": [
+        [
+          "Region",
+          "Units",
+          "Revenue",
+          "Margin",
+          "Active",
+          "Start",
+          "Code"
+        ],
+        [
+          "North",
+          "12",
+          "$1,506.00",
+          "25%",
+          "true",
+          "2026-01-15",
+          "001"
+        ],
+        [
+          "café 東京",
+          "9",
+          "$1,260.00",
+          "20%",
+          "false",
+          "2026-02-01",
+          "002"
+        ]
+      ],
+      "tables": [
+        {
+          "header": true,
+          "name": "MarkdownTable1",
+          "style": "TableStyleMedium2",
+          "totalRow": true,
+          "totals": [
+            "Units:sum",
+            "Revenue:sum"
+          ]
+        }
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "Region",
+          "type": "text",
+          "width": 8
+        },
+        {
+          "name": "Target",
+          "type": "number",
+          "width": 8
+        },
+        {
+          "name": "Owner",
+          "type": "text",
+          "width": 8
+        },
+        {
+          "name": "Approved",
+          "type": "boolean",
+          "width": 10
+        }
+      ],
+      "freeze": "A2",
+      "headerStyle": "header",
+      "name": "Targets",
+      "rows": [
+        [
+          "Region",
+          "Target",
+          "Owner",
+          "Approved"
+        ],
+        [
+          "North",
+          "1500",
+          "Alice",
+          "yes"
+        ],
+        [
+          "South",
+          "2000",
+          "Bob",
+          "no"
+        ]
+      ],
+      "tables": [
+        {
+          "header": true,
+          "name": "MarkdownTable2",
+          "style": "TableStyleMedium2"
+        }
+      ]
+    }
+  ]
+}
