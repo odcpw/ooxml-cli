@@ -1,4 +1,4 @@
-.PHONY: build docs-recipes test test-unit test-smoke fixtures install clean help web-smoke-agent web-smoke-nonpptx artifact-proof-matrix office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check clippy verify verify-strict rust-baseline-contract go-reference-build go-reference-test go-reference-test-short go-reference-contract go-reference-fmt-check go-reference-vet go-reference-render-smoke
+.PHONY: build docs-recipes test test-unit test-smoke fixtures install clean help web-smoke-agent web-smoke-nonpptx artifact-proof-matrix office-edit-smoke office-edit-smoke-fast office-edit-smoke-windows office-vba-smoke office-vba-smoke-fast check-fast check-local check-ci check-office-schema check-office-com check-office-vba-schema check-office-vba-com check-release-fast check-release-slow fmt-check clippy verify verify-strict rust-baseline-contract
 
 # Default target
 .DEFAULT_GOAL := help
@@ -6,8 +6,6 @@
 # Variables
 BINARY_NAME := ooxml
 CARGO ?= cargo
-GO ?= go
-GO_REFERENCE_DIR ?= $(if $(wildcard go/go.mod),go,.)
 CARGO_TARGET_DIR ?= target
 
 ifeq ($(OS),Windows_NT)
@@ -18,7 +16,6 @@ endif
 
 CARGO_TARGET_ROOT := $(CARGO_TARGET_DIR)
 RUST_DEBUG_BIN := $(CARGO_TARGET_ROOT)/debug/$(BINARY_NAME)$(EXE)
-GO_REFERENCE_BIN := target/go-reference/$(BINARY_NAME)$(EXE)
 ARTIFACT_PROOF_MATRIX_ARGS :=
 ifneq ($(strip $(OFFICE_EDIT_SMOKE_SUMMARY)),)
 ARTIFACT_PROOF_MATRIX_ARGS += -OfficeEditSmokeSummaryPath "$(OFFICE_EDIT_SMOKE_SUMMARY)"
@@ -184,34 +181,7 @@ verify-strict: verify
 	@$(CARGO) test --doc
 	@echo "Strict verification passed"
 
-# go-reference-build: Optional legacy Go reference build; not part of normal CI
-go-reference-build:
-	@mkdir -p target/go-reference
-	@$(GO) -C "$(GO_REFERENCE_DIR)" build -buildvcs=false -o "$(abspath $(GO_REFERENCE_BIN))" ./cmd/ooxml
-
-# go-reference-test: Optional legacy Go reference test suite; not part of normal CI
-go-reference-test:
-	@$(GO) -C "$(GO_REFERENCE_DIR)" test ./...
-
-# go-reference-test-short: Optional fast legacy Go reference tests; not part of normal CI
-go-reference-test-short:
-	@$(GO) -C "$(GO_REFERENCE_DIR)" test -short ./...
-
 # rust-baseline-contract: Run current-subject repeatability, or compare a distinct OOXML_RUST_COMPARISON_BIN
 rust-baseline-contract:
 	@$(CARGO) test --test rust_contract_smoke
 
-# go-reference-contract: Retired compatibility alias for rust-baseline-contract
-go-reference-contract: rust-baseline-contract
-
-# go-reference-fmt-check: Optional legacy Go formatting check; not part of normal CI
-go-reference-fmt-check:
-	@cd "$(GO_REFERENCE_DIR)" && files="$$(gofmt -l $$(git ls-files '*.go'))"; if [ -n "$$files" ]; then echo "$$files"; exit 1; fi
-
-# go-reference-vet: Optional legacy Go vet check; not part of normal CI
-go-reference-vet:
-	@$(GO) -C "$(GO_REFERENCE_DIR)" vet ./...
-
-# go-reference-render-smoke: Optional legacy Go render smoke; not part of normal CI
-go-reference-render-smoke:
-	@$(GO) -C "$(GO_REFERENCE_DIR)" test -v ./pkg/render -run TestRenderSmokeMinimalTitle

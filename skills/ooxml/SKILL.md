@@ -27,7 +27,7 @@ build or resolve ooxml
 ## Product State
 
 - Rust is the product path.
-- The Go code under `go/` is reference material only.
+- The deprecated Go implementation has been removed from the tree; it survives only at git tag `go-reference-final` and is not an oracle.
 - `v0.1.0` is the first formal Rust binary release; Cargo, Make, CI, and release assets all follow the Rust implementation.
 - Pure Rust VBA authoring is the preferred macro path for XLSM, PPTM, and DOCM.
 - Desktop Office COM is a proof oracle and legacy helper, not a core dependency.
@@ -1036,9 +1036,6 @@ make check-office-vba-com
 make check-release-fast
 make check-release-slow
 ```
-
-Run Go reference targets only when intentionally studying or refreshing legacy
-reference material; they are not a release oracle.
 
 Release tags must exactly match the Cargo version. A `vX.Y.Z` tag triggers the cross-platform GitHub release workflow, which reruns the Rust gate and publishes Linux x86_64, macOS arm64/x86_64, and Windows x86_64 archives with `SHA256SUMS`.
 

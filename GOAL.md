@@ -1,6 +1,6 @@
 # GOAL: Rust OOXML Product And First-Class VBA Authoring
 
-This repo is now a Rust product. Go is deprecated/reference-only.
+This repo is a Rust product. The former Go implementation was retired and removed; it remains reachable at git tag `go-reference-final` for archaeology only.
 
 The Rust implementation owns `master` and the release line. `v0.1.0` is the first formal cross-platform binary release; release candidates must pass the complete Rust `cargo test --all-targets` gate plus the Office-specific proof appropriate to the changed surfaces.
 
