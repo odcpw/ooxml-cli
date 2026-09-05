@@ -1,4 +1,6 @@
 mod finding;
+#[cfg(test)]
+mod remediation;
 mod xlsx;
 
 use finding::CheckFinding;

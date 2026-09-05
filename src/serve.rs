@@ -488,11 +488,21 @@ fn serve_mutation_envelope(
 }
 
 fn make_working_copy(file: &str, session_number: usize) -> CliResult<String> {
-    let dir = std::env::temp_dir().join(format!(
-        "ooxml-rust-serve-{}-{session_number}",
-        std::process::id()
-    ));
-    fs::create_dir_all(&dir).map_err(|err| CliError::unexpected(err.to_string()))?;
+    // Session numbers are local to a ServeState; multiple batch engines can
+    // coexist in one process. Allocate exclusively, including across PID reuse.
+    static NEXT_COPY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let dir = loop {
+        let copy = NEXT_COPY.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "ooxml-rust-serve-{}-{session_number}-{copy}",
+            std::process::id()
+        ));
+        match fs::create_dir(&dir) {
+            Ok(()) => break dir,
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(CliError::unexpected(err.to_string())),
+        }
+    };
     let extension = Path::new(file)
         .extension()
         .and_then(|extension| extension.to_str())
