@@ -487,6 +487,7 @@ fn run(flags: GlobalFlags, args: Vec<String>) -> CliResult<RunOutput> {
     }
     if let [cmd, rest @ ..] = command_args
         && cmd == "validate"
+        && !crate::help::is_help_request(command_args)
     {
         let (file, strict) = parse_validate_args(rest, flags.strict)?;
         let value = validate(file, strict)?;

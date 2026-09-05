@@ -744,7 +744,7 @@ fn resolve_slide_layout_target(
             .map(|layout| layout.part_uri)
             .ok_or_else(|| {
                 CliError::unexpected(format!(
-                    "layout-policy reuse requires an explicit compatible target layout; no exact match found for {source_layout_uri}"
+                    "layout-policy reuse found no exact compatible target layout for {source_layout_uri}; use --layout-policy import to copy the source layout, and --theme-policy import to preserve its source theme"
                 ))
             }),
         "import" => {

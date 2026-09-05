@@ -288,6 +288,7 @@ fn load_pptx_build_spec(path: &str) -> crate::CliResult<(BuildSpec, PathBuf)> {
     let spec = super::load_spec_file(BuildFamily::Pptx, path).map_err(build_spec_cli_error)?;
     let base = Path::new(path)
         .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."))
         .canonicalize()
         .map_err(|cause| {
@@ -316,6 +317,7 @@ fn load_pptx_markdown(path: &str) -> crate::CliResult<(BuildSpec, PathBuf, Markd
         })?;
         let base = Path::new(path)
             .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
             .unwrap_or_else(|| Path::new("."))
             .canonicalize()
             .map_err(|cause| {

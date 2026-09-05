@@ -33,3 +33,6 @@ testdata/golden/**/*.md text eol=lf
 testdata/**/*.json text eol=lf
 testdata/**/*.md text eol=lf
 tests/**/*.json text eol=lf
+
+# Generated quickstart is compared byte-for-byte on Windows as well.
+docs/agent-quickstart.md text eol=lf
