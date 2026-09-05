@@ -1,0 +1,246 @@
+{
+  "committed": false,
+  "dryRun": true,
+  "file": "<input.xlsx>",
+  "mutationEnvelope": {
+    "aliasesApplied": [],
+    "changed": [
+      {
+        "handle": "H:package/batch:batch/document",
+        "kind": "batch",
+        "selector": "batch:document"
+      }
+    ],
+    "checkCommand": "ooxml --json check <input.xlsx>",
+    "command": "check",
+    "conformanceCommand": "ooxml --json conformance check <input.xlsx>",
+    "destination": {
+      "handle": "H:package/batch:batch/document",
+      "kind": "batch",
+      "partUri": "/",
+      "primarySelector": "batch:document",
+      "selectors": [
+        "batch:document",
+        "H:package/batch:batch/document"
+      ],
+      "summary": {
+        "output": "<input.xlsx>",
+        "validated": true
+      }
+    },
+    "family": "xlsx",
+    "file": "<input.xlsx>",
+    "readbackCommand": "ooxml --json outline <input.xlsx> --depth 3",
+    "renderCommand": "ooxml --json render <input.xlsx> --out <input.xlsx.render>",
+    "validateCommand": "ooxml --json validate --strict <input.xlsx>",
+    "validated": true,
+    "warnings": []
+  },
+  "output": null,
+  "remediation": {
+    "after": {
+      "checkCommand": "ooxml --json check <input.xlsx> --openxml-sdk auto",
+      "checks": {
+        "conformance": "passed",
+        "design": "passed",
+        "layout": "not-applicable",
+        "references": "passed",
+        "schema": "skipped",
+        "strict": "passed",
+        "structural": "passed",
+        "visual": "skipped"
+      },
+      "failOn": "error",
+      "family": "xlsx",
+      "file": "<input.xlsx>",
+      "findings": [],
+      "proofLevel": {
+        "schema": "skipped",
+        "strict": "passed",
+        "structural": "passed",
+        "visual": "skipped"
+      },
+      "schemaVersion": "ooxml-cli.check.v1",
+      "status": "passed",
+      "summary": {
+        "errors": 0,
+        "info": 0,
+        "total": 0,
+        "warnings": 0
+      }
+    },
+    "before": {
+      "checkCommand": "ooxml --json check <input.xlsx> --openxml-sdk auto",
+      "checks": {
+        "conformance": "passed",
+        "design": "passed",
+        "layout": "not-applicable",
+        "references": "failed",
+        "schema": "skipped",
+        "strict": "passed",
+        "structural": "passed",
+        "visual": "skipped"
+      },
+      "failOn": "error",
+      "family": "xlsx",
+      "file": "<input.xlsx>",
+      "findings": [
+        {
+          "code": "XLSX_CHART_SOURCE_INVALID",
+          "docs": "docs/testing-strategy.md",
+          "fixCommand": "ooxml --json xlsx sheets add <input.xlsx> --name MissingChart --out <input.chart-source-fixed.xlsx>",
+          "location": {
+            "chart": "chart:1",
+            "role": "categories",
+            "series": 1
+          },
+          "message": "formula references missing worksheet \"MissingChart\": MissingChart!$A$2:$A$4",
+          "part": "/xl/charts/chart1.xml",
+          "severity": "error"
+        }
+      ],
+      "proofLevel": {
+        "schema": "skipped",
+        "strict": "passed",
+        "structural": "passed",
+        "visual": "skipped"
+      },
+      "schemaVersion": "ooxml-cli.check.v1",
+      "status": "failed",
+      "summary": {
+        "errors": 1,
+        "info": 0,
+        "total": 1,
+        "warnings": 0
+      }
+    },
+    "maxRounds": 8,
+    "rounds": [
+      {
+        "findings": [
+          {
+            "after": "resolved",
+            "before": "present",
+            "finding": {
+              "code": "XLSX_CHART_SOURCE_INVALID",
+              "docs": "docs/testing-strategy.md",
+              "fixCommand": "ooxml --json xlsx sheets add <input.xlsx> --name MissingChart --out <input.chart-source-fixed.xlsx>",
+              "location": {
+                "chart": "chart:1",
+                "role": "categories",
+                "series": 1
+              },
+              "message": "formula references missing worksheet \"MissingChart\": MissingChart!$A$2:$A$4",
+              "part": "/xl/charts/chart1.xml",
+              "severity": "error"
+            },
+            "op": {
+              "args": {
+                "name": "MissingChart"
+              },
+              "command": "xlsx sheets add"
+            },
+            "readback": {
+              "destination": {
+                "file": "<input.xlsx>",
+                "sheet": {
+                  "name": "MissingChart",
+                  "number": 2,
+                  "partUri": "/xl/worksheets/sheet2.xml",
+                  "position": 2,
+                  "primarySelector": "sheetId:2",
+                  "relationshipId": "rId2",
+                  "relationshipType": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet",
+                  "selectors": [
+                    "sheetId:2",
+                    "sheet:2",
+                    "#2",
+                    "rId:rId2",
+                    "rid:rId2",
+                    "part:/xl/worksheets/sheet2.xml",
+                    "name:MissingChart",
+                    "~MissingChart",
+                    "MissingChart"
+                  ],
+                  "sheetId": "2",
+                  "state": "visible"
+                },
+                "sheetCount": 2,
+                "sheets": [
+                  {
+                    "name": "Data",
+                    "number": 1,
+                    "partUri": "/xl/worksheets/sheet1.xml",
+                    "position": 1,
+                    "primarySelector": "sheetId:1",
+                    "relationshipId": "rId1",
+                    "relationshipType": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet",
+                    "selectors": [
+                      "sheetId:1",
+                      "sheet:1",
+                      "#1",
+                      "rId:rId1",
+                      "rid:rId1",
+                      "part:/xl/worksheets/sheet1.xml",
+                      "name:Data",
+                      "~Data",
+                      "Data"
+                    ],
+                    "sheetId": "1",
+                    "state": "visible"
+                  },
+                  {
+                    "name": "MissingChart",
+                    "number": 2,
+                    "partUri": "/xl/worksheets/sheet2.xml",
+                    "position": 2,
+                    "primarySelector": "sheetId:2",
+                    "relationshipId": "rId2",
+                    "relationshipType": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet",
+                    "selectors": [
+                      "sheetId:2",
+                      "sheet:2",
+                      "#2",
+                      "rId:rId2",
+                      "rid:rId2",
+                      "part:/xl/worksheets/sheet2.xml",
+                      "name:MissingChart",
+                      "~MissingChart",
+                      "MissingChart"
+                    ],
+                    "sheetId": "2",
+                    "state": "visible"
+                  }
+                ]
+              },
+              "dryRun": false,
+              "file": "<input.xlsx>",
+              "name": "MissingChart",
+              "number": 2,
+              "output": "<input.xlsx>",
+              "partUri": "/xl/worksheets/sheet2.xml",
+              "relationshipId": "rId2",
+              "sheetId": "2",
+              "sheetShowCommand": "ooxml --json xlsx sheets show <input.xlsx> --sheet sheetId:2",
+              "sheetsListCommand": "ooxml --json xlsx sheets list <input.xlsx>",
+              "validateCommand": "ooxml validate --strict <input.xlsx>"
+            }
+          }
+        ],
+        "ops": [
+          {
+            "args": {
+              "name": "MissingChart"
+            },
+            "command": "xlsx sheets add"
+          }
+        ],
+        "round": 1
+      }
+    ],
+    "roundsRun": 1,
+    "termination": "clean",
+    "unresolved": []
+  },
+  "validated": true
+}

@@ -25,7 +25,7 @@ const CONTENT_TYPE_WORKSHEET: &str =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml";
 const CONTENT_TYPE_CALC_CHAIN: &str =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml";
-const SHEET_ID_RANDOM_CEILING: u32 = 65_534;
+const SHEET_ID_CEILING: u32 = 65_534;
 
 pub(crate) struct XlsxSheetsAddOptions<'a> {
     pub(crate) name: Option<&'a str>,
@@ -1295,20 +1295,9 @@ fn allocate_sheet_id(sheets: &[WorkbookSheet]) -> CliResult<u32> {
         .iter()
         .map(|sheet| sheet.sheet_id)
         .collect::<BTreeSet<_>>();
-    if existing.len() >= SHEET_ID_RANDOM_CEILING as usize {
-        return Err(CliError::invalid_args("no available sheetId values remain"));
-    }
-    let mut seed = crate::chrono_like_counter()
-        ^ ((std::process::id() as u128) << 32)
-        ^ ((sheets.len() as u128) << 16);
-    for _ in 0..SHEET_ID_RANDOM_CEILING {
-        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
-        let candidate = ((seed % SHEET_ID_RANDOM_CEILING as u128) as u32) + 1;
-        if !existing.contains(&candidate) {
-            return Ok(candidate);
-        }
-    }
-    (1..=SHEET_ID_RANDOM_CEILING)
+    // Identical input packages and operations must produce identical bytes.
+    // Allocation depends only on occupied IDs, never process state or time.
+    (1..=SHEET_ID_CEILING)
         .find(|candidate| !existing.contains(candidate))
         .ok_or_else(|| CliError::invalid_args("no available sheetId values remain"))
 }

@@ -1,8 +1,10 @@
 //! Remediation uses generated command text as data, never as shell input.
 use crate::{CliError, CliResult};
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::Read;
 
 pub(crate) struct Options {
     pub(crate) out: Option<String>,
@@ -127,6 +129,11 @@ pub(crate) fn remediate(
                     if finding["code"] == "DOCX_DANGLING_STYLE" && op["command"] == "docx styles apply" {
                         op["args"]["create-style"] = json!(true);
                     }
+                    if matches!(op["command"].as_str(), Some("docx blocks delete" | "docx blocks replace")) && op["args"].get("expect-hash").is_none() {
+                        let block = op["args"]["block"].as_str().and_then(|value| value.parse::<usize>().ok()).ok_or_else(|| CliError::invalid_args("DOCX remediation requires a block index"))?;
+                        let readback = crate::docx_blocks_show(&stage.0, block, false)?;
+                        op["args"]["expect-hash"] = readback["blocks"][0]["contentHash"].clone();
+                    }
                     if !ops.contains(&op) { ops.push(op.clone()); }
                     items.push(json!({"finding":finding,"before":"present","op":op}));
                 }
@@ -141,7 +148,12 @@ pub(crate) fn remediate(
             termination = "max-rounds";
             break;
         }
-        let fingerprint = serde_json::to_string(&ops).expect("serialize remediation ops");
+        // Address-positional repairs can legitimately repeat while removing
+        // successive defects. A cycle requires both the same plan and package.
+        let fingerprint = (
+            serde_json::to_string(&ops).expect("serialize remediation ops"),
+            package_hash(&stage.0)?,
+        );
         if !seen.insert(fingerprint) {
             termination = "no-progress";
             break;
@@ -223,6 +235,23 @@ pub(crate) fn remediate(
 
 fn same_finding(left: &Value, right: &Value) -> bool {
     left["code"] == right["code"] && left["location"] == right["location"]
+}
+
+fn package_hash(file: &str) -> CliResult<[u8; 32]> {
+    let mut input =
+        fs::File::open(file).map_err(|error| CliError::unexpected(error.to_string()))?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0; 65536];
+    loop {
+        let count = input
+            .read(&mut buffer)
+            .map_err(|error| CliError::unexpected(error.to_string()))?;
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    Ok(hash.finalize().into())
 }
 
 fn display_paths(value: Value, stage: &str, file: &str) -> Value {
@@ -444,7 +473,8 @@ mod tests {
             Ok(json!({"findings":[{"code":"NEEDS_REVIEW","message":"Keep this teaching text.","fixCommand":""},{"code":"UNCHANGED","fixCommand":format!("ooxml --json xlsx cells set {} --sheet Sheet1 --cell A1 --value 1 --out ignored.xlsx",crate::command_arg(file))}]}))
         }).unwrap();
         assert_eq!(report["remediation"]["termination"], "no-progress");
-        assert_eq!(report["remediation"]["roundsRun"], 1);
+        // The first set changes A1; only the next identical set is a no-op.
+        assert_eq!(report["remediation"]["roundsRun"], 2);
         assert_eq!(
             report["remediation"]["unresolved"][0]["message"],
             "Keep this teaching text."
@@ -463,6 +493,50 @@ mod tests {
             assert_eq!(command_words(&crate::command_arg(value)).unwrap(), [value]);
         }
         assert!(command_words("'unfinished").is_err());
+    }
+
+    #[test]
+    fn failed_later_batch_op_rolls_back_source_and_destination() {
+        let source = "testdata/xlsx/minimal-workbook/workbook.xlsx";
+        let original = fs::read(source).unwrap();
+        let output = Stage(crate::package_mutation_temp_path(source, "rollback-test"));
+        fs::write(&output.0, b"preserve existing output").unwrap();
+        let error = remediate(source, "check", Options {out:Some(output.0.clone()),in_place:false,backup:None,dry_run:false,max_rounds:8}, |file| {
+            Ok(json!({"findings":[
+                {"code":"FIRST", "fixCommand":format!("ooxml --json xlsx cells set {} --sheet Sheet1 --cell A1 --value Changed --out unused.xlsx",crate::command_arg(file))},
+                {"code":"SECOND", "fixCommand":format!("ooxml --json xlsx cells set {} --sheet DoesNotExist --cell A1 --value Fail --out unused.xlsx",crate::command_arg(file))}
+            ]}))
+        }).unwrap_err();
+        assert!(error.message.contains("op 1"), "{}", error.message);
+        assert_eq!(fs::read(source).unwrap(), original);
+        assert_eq!(fs::read(&output.0).unwrap(), b"preserve existing output");
+    }
+
+    #[test]
+    fn independent_batch_engines_do_not_share_working_copies() {
+        let source = "testdata/xlsx/minimal-workbook/workbook.xlsx";
+        let mut first = crate::ServeState::default();
+        let mut second = crate::ServeState::default();
+        let a = first
+            .handle_method("open", &json!({"file":source,"dryRun":true}))
+            .unwrap();
+        let b = second
+            .handle_method("open", &json!({"file":source,"dryRun":true}))
+            .unwrap();
+        assert_eq!(
+            a["sessionId"], b["sessionId"],
+            "session IDs are local to each engine"
+        );
+        first
+            .handle_method("abort", &json!({"session":a["sessionId"]}))
+            .unwrap();
+        let report = second
+            .handle_method(
+                "inspect",
+                &json!({"session":b["sessionId"],"command":"check","args":{"openxmlSdk":"skip"}}),
+            )
+            .unwrap();
+        assert_eq!(report["checks"]["strict"], "passed");
     }
 
     #[test]

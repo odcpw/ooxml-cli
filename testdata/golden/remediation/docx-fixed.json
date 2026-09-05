@@ -1,0 +1,181 @@
+{
+  "committed": true,
+  "dryRun": false,
+  "file": "<input.docx>",
+  "mutationEnvelope": {
+    "aliasesApplied": [],
+    "changed": [
+      {
+        "handle": "H:package/batch:batch/document",
+        "kind": "batch",
+        "selector": "batch:document"
+      }
+    ],
+    "checkCommand": "ooxml --json check <output.docx>",
+    "command": "check",
+    "conformanceCommand": "ooxml --json conformance check <output.docx>",
+    "destination": {
+      "handle": "H:package/batch:batch/document",
+      "kind": "batch",
+      "partUri": "/",
+      "primarySelector": "batch:document",
+      "selectors": [
+        "batch:document",
+        "H:package/batch:batch/document"
+      ],
+      "summary": {
+        "output": "<output.docx>",
+        "validated": true
+      }
+    },
+    "family": "docx",
+    "file": "<output.docx>",
+    "readbackCommand": "ooxml --json outline <output.docx> --depth 3",
+    "renderCommand": "ooxml --json render <output.docx> --out <output.docx.render>",
+    "validateCommand": "ooxml --json validate --strict <output.docx>",
+    "validated": true,
+    "warnings": []
+  },
+  "output": "<output.docx>",
+  "remediation": {
+    "after": {
+      "checkCommand": "ooxml --json check <output.docx> --openxml-sdk auto",
+      "checks": {
+        "conformance": "passed",
+        "design": "passed",
+        "layout": "not-applicable",
+        "references": "not-applicable",
+        "schema": "skipped",
+        "strict": "passed",
+        "structural": "passed",
+        "visual": "skipped"
+      },
+      "failOn": "error",
+      "family": "docx",
+      "file": "<output.docx>",
+      "findings": [],
+      "proofLevel": {
+        "schema": "skipped",
+        "strict": "passed",
+        "structural": "passed",
+        "visual": "skipped"
+      },
+      "schemaVersion": "ooxml-cli.check.v1",
+      "status": "passed",
+      "summary": {
+        "errors": 0,
+        "info": 0,
+        "total": 0,
+        "warnings": 0
+      }
+    },
+    "before": {
+      "checkCommand": "ooxml --json check <input.docx> --openxml-sdk auto",
+      "checks": {
+        "conformance": "failed",
+        "design": "failed",
+        "layout": "not-applicable",
+        "references": "not-applicable",
+        "schema": "skipped",
+        "strict": "failed",
+        "structural": "passed",
+        "visual": "skipped"
+      },
+      "failOn": "error",
+      "family": "docx",
+      "file": "<input.docx>",
+      "findings": [
+        {
+          "code": "DOCX_DANGLING_STYLE",
+          "docs": "docs/bridge-plan-2026-09.md#d8-design-lint",
+          "fixCommand": "ooxml --json docx styles apply <input.docx> --target paragraph --index 2 --style Normal --out <input.style-fixed.docx> --create-style",
+          "location": {
+            "block": 2,
+            "element": "pStyle",
+            "part": "/word/document.xml"
+          },
+          "message": "pStyle references undefined DOCX style \"Heading1\" in /word/document.xml",
+          "part": "/word/document.xml",
+          "severity": "error"
+        }
+      ],
+      "proofLevel": {
+        "schema": "skipped",
+        "strict": "failed",
+        "structural": "passed",
+        "visual": "skipped"
+      },
+      "schemaVersion": "ooxml-cli.check.v1",
+      "status": "failed",
+      "summary": {
+        "errors": 1,
+        "info": 0,
+        "total": 1,
+        "warnings": 0
+      }
+    },
+    "maxRounds": 8,
+    "rounds": [
+      {
+        "findings": [
+          {
+            "after": "resolved",
+            "before": "present",
+            "finding": {
+              "code": "DOCX_DANGLING_STYLE",
+              "docs": "docs/bridge-plan-2026-09.md#d8-design-lint",
+              "fixCommand": "ooxml --json docx styles apply <input.docx> --target paragraph --index 2 --style Normal --out <input.style-fixed.docx> --create-style",
+              "location": {
+                "block": 2,
+                "element": "pStyle",
+                "part": "/word/document.xml"
+              },
+              "message": "pStyle references undefined DOCX style \"Heading1\" in /word/document.xml",
+              "part": "/word/document.xml",
+              "severity": "error"
+            },
+            "op": {
+              "args": {
+                "create-style": true,
+                "index": "2",
+                "style": "Normal",
+                "target": "paragraph"
+              },
+              "command": "docx styles apply"
+            },
+            "readback": {
+              "blockId": "body.b2",
+              "blockIndex": 2,
+              "blockKind": "paragraph",
+              "contentHash": "sha256:2631599a474455c2c75773d46f33aab76ec6f2a232104a53d8821a404e45da57",
+              "createdStyle": true,
+              "file": "<input.docx>",
+              "handle": "H:docx/pt:doc/para:m:2A37D2B4",
+              "index": 2,
+              "previousHash": "sha256:ec38e1dcab80ea83e433e958d83504334d203ad976f80cd12ca255d3f9a03c62",
+              "previousStyle": "Heading1",
+              "style": "Normal",
+              "target": "paragraph"
+            }
+          }
+        ],
+        "ops": [
+          {
+            "args": {
+              "create-style": true,
+              "index": "2",
+              "style": "Normal",
+              "target": "paragraph"
+            },
+            "command": "docx styles apply"
+          }
+        ],
+        "round": 1
+      }
+    ],
+    "roundsRun": 1,
+    "termination": "clean",
+    "unresolved": []
+  },
+  "validated": true
+}

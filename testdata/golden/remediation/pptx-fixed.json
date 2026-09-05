@@ -1,0 +1,219 @@
+{
+  "committed": true,
+  "dryRun": false,
+  "file": "<input.pptx>",
+  "mutationEnvelope": {
+    "aliasesApplied": [],
+    "changed": [
+      {
+        "handle": "H:package/batch:batch/document",
+        "kind": "batch",
+        "selector": "batch:document"
+      }
+    ],
+    "checkCommand": "ooxml --json check <output.pptx>",
+    "command": "check",
+    "conformanceCommand": "ooxml --json conformance check <output.pptx>",
+    "destination": {
+      "handle": "H:package/batch:batch/document",
+      "kind": "batch",
+      "partUri": "/",
+      "primarySelector": "batch:document",
+      "selectors": [
+        "batch:document",
+        "H:package/batch:batch/document"
+      ],
+      "summary": {
+        "output": "<output.pptx>",
+        "validated": true
+      }
+    },
+    "family": "pptx",
+    "file": "<output.pptx>",
+    "layoutCheckCommand": "ooxml --json pptx validate-layout <output.pptx>",
+    "readbackCommand": "ooxml --json outline <output.pptx> --depth 3",
+    "renderCommand": "ooxml --json render <output.pptx> --out <output.pptx.render>",
+    "validateCommand": "ooxml --json validate --strict <output.pptx>",
+    "validated": true,
+    "warnings": []
+  },
+  "output": "<output.pptx>",
+  "remediation": {
+    "after": {
+      "checkCommand": "ooxml --json check <output.pptx> --openxml-sdk auto",
+      "checks": {
+        "conformance": "passed",
+        "design": "passed",
+        "layout": "passed",
+        "references": "not-applicable",
+        "schema": "skipped",
+        "strict": "passed",
+        "structural": "passed",
+        "visual": "skipped"
+      },
+      "failOn": "error",
+      "family": "pptx",
+      "file": "<output.pptx>",
+      "findings": [],
+      "proofLevel": {
+        "schema": "skipped",
+        "strict": "passed",
+        "structural": "passed",
+        "visual": "skipped"
+      },
+      "schemaVersion": "ooxml-cli.check.v1",
+      "status": "passed",
+      "summary": {
+        "errors": 0,
+        "info": 0,
+        "total": 0,
+        "warnings": 0
+      }
+    },
+    "before": {
+      "checkCommand": "ooxml --json check <input.pptx> --openxml-sdk auto",
+      "checks": {
+        "conformance": "passed",
+        "design": "passed",
+        "layout": "warning",
+        "references": "not-applicable",
+        "schema": "skipped",
+        "strict": "passed",
+        "structural": "passed",
+        "visual": "skipped"
+      },
+      "failOn": "error",
+      "family": "pptx",
+      "file": "<input.pptx>",
+      "findings": [
+        {
+          "code": "PPTX_SHAPE_COLLISION",
+          "docs": "docs/layout-authoring.md",
+          "fixCommand": "ooxml --json pptx shapes set-bounds <input.pptx> --slide 2 --target shape:4 --bounds 457200,228600,8229600,1673225 --out <input.layout-fixed.pptx>",
+          "location": {
+            "shapeId1": 2,
+            "shapeId2": 4,
+            "shapeName1": "Title 1",
+            "shapeName2": "Chart 4",
+            "slide": 2
+          },
+          "message": "Shapes have overlapping bounding boxes",
+          "part": "/ppt/slides/slide2.xml",
+          "severity": "warning"
+        }
+      ],
+      "proofLevel": {
+        "schema": "skipped",
+        "strict": "passed",
+        "structural": "passed",
+        "visual": "skipped"
+      },
+      "schemaVersion": "ooxml-cli.check.v1",
+      "status": "warning",
+      "summary": {
+        "errors": 0,
+        "info": 0,
+        "total": 1,
+        "warnings": 1
+      }
+    },
+    "maxRounds": 8,
+    "rounds": [
+      {
+        "findings": [
+          {
+            "after": "resolved",
+            "before": "present",
+            "finding": {
+              "code": "PPTX_SHAPE_COLLISION",
+              "docs": "docs/layout-authoring.md",
+              "fixCommand": "ooxml --json pptx shapes set-bounds <input.pptx> --slide 2 --target shape:4 --bounds 457200,228600,8229600,1673225 --out <input.layout-fixed.pptx>",
+              "location": {
+                "shapeId1": 2,
+                "shapeId2": 4,
+                "shapeName1": "Title 1",
+                "shapeName2": "Chart 4",
+                "slide": 2
+              },
+              "message": "Shapes have overlapping bounding boxes",
+              "part": "/ppt/slides/slide2.xml",
+              "severity": "warning"
+            },
+            "op": {
+              "args": {
+                "bounds": "457200,228600,8229600,1673225",
+                "slide": "2",
+                "target": "shape:4"
+              },
+              "command": "pptx shapes set-bounds"
+            },
+            "readback": {
+              "destination": {
+                "bounds": {
+                  "cx": 8229600,
+                  "cy": 1673225,
+                  "inches": {
+                    "cx": 9.0,
+                    "cy": 1.8298611111111112,
+                    "x": 0.5,
+                    "y": 0.25
+                  },
+                  "x": 457200,
+                  "y": 228600
+                },
+                "file": "<input.pptx>",
+                "handle": "H:pptx/s:257/shape:n:4",
+                "primarySelector": "shape:4",
+                "selectors": [
+                  "shape:4",
+                  "~Chart 4"
+                ],
+                "shapeId": 4,
+                "shapeName": "Chart 4",
+                "slide": 2,
+                "target": "shape:4",
+                "targetKind": "shape"
+              },
+              "dryRun": false,
+              "file": "<input.pptx>",
+              "newCx": 8229600,
+              "newCy": 1673225,
+              "newX": 457200,
+              "newY": 228600,
+              "oldCx": 8229600,
+              "oldCy": 2468880,
+              "oldX": 457200,
+              "oldY": 274320,
+              "output": "<input.pptx>",
+              "partUri": "/ppt/slides/slide2.xml",
+              "readbackCommand": "ooxml --json pptx shapes get <input.pptx> --slide 2 --target shape:4 --include-bounds",
+              "renderCommand": "ooxml pptx render <input.pptx> --out render-check",
+              "shapeId": 4,
+              "shapeName": "Chart 4",
+              "shapeType": "graphicFrame",
+              "slide": 2,
+              "slideReadbackCommand": "ooxml --json pptx slides show <input.pptx> --slide 2 --include-text --include-bounds",
+              "target": "shape:4",
+              "validateCommand": "ooxml validate --strict <input.pptx>"
+            }
+          }
+        ],
+        "ops": [
+          {
+            "args": {
+              "bounds": "457200,228600,8229600,1673225",
+              "slide": "2",
+              "target": "shape:4"
+            },
+            "command": "pptx shapes set-bounds"
+          }
+        ],
+        "round": 1
+      }
+    ],
+    "roundsRun": 1,
+    "termination": "clean",
+    "unresolved": []
+  },
+  "validated": true
+}

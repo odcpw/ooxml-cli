@@ -102,11 +102,15 @@ pub(super) fn analyze(
                 ("element", json!(element)),
                 ("block", json!(index)),
             ]),
-            format!(
+            if diagnostic["code"] == "DOCX_DANGLING_NUMBERING" {
+                // Applying a paragraph style does not create the missing
+                // numbering instance. Keep the diagnostic without a false fix.
+                String::new()
+            } else { format!(
                 "ooxml --json docx styles apply {} --target {target} --index {index} --style Normal --out {}",
                 command_arg(file),
                 command_arg(&fixed_output_path(file, "style-fixed"))
-            ),
+            ) },
             Some(json!({"styleId": style_id})),
         ));
     }
