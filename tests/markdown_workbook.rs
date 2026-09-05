@@ -200,3 +200,165 @@ fn workbook_fixture_builds_deterministically_with_strict_and_sdk_proof() {
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn workbook_markdown_cli_preserves_lexical_paths_emits_spec_and_matches_json_build() {
+    let dir = std::env::temp_dir().join(format!(
+        "ooxml-markdown-workbook-cli-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = format!("{}/./input.md", dir.display());
+    let output = format!("{}/./output.xlsx", dir.display());
+    let emitted = format!("{}/./emitted.json", dir.display());
+    std::fs::write(&input, SOURCE).unwrap();
+    let result = run(&[
+        "--json",
+        "xlsx",
+        "build",
+        "--from-markdown",
+        &input,
+        "--emit-spec",
+        &emitted,
+        "--out",
+        &output,
+        "--force",
+    ]);
+    assert_eq!(result["markdown"], input);
+    assert_eq!(result["output"], output);
+    assert_eq!(result["emittedSpec"], emitted);
+    assert_eq!(result["spec"], Value::Null);
+    assert_eq!(result["validated"], true);
+    let conversion = markdown_to_spec(BuildFamily::Xlsx, SOURCE, &input).unwrap();
+    let spec: Value = serde_json::from_slice(&std::fs::read(&emitted).unwrap()).unwrap();
+    assert_eq!(spec, conversion.spec);
+    let twin = dir.join("twin.xlsx");
+    run(&[
+        "--json",
+        "xlsx",
+        "build",
+        "--spec",
+        &emitted,
+        "--out",
+        twin.to_str().unwrap(),
+        "--force",
+    ]);
+    assert_eq!(
+        std::fs::read(&output).unwrap(),
+        std::fs::read(&twin).unwrap()
+    );
+    let relative = std::process::Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .current_dir(&dir)
+        .args([
+            "--json",
+            "xlsx",
+            "build",
+            "--from-markdown",
+            "input.md",
+            "--out",
+            "relative.xlsx",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        relative.status.success(),
+        "{}",
+        String::from_utf8_lossy(&relative.stdout)
+    );
+    let relative: Value = serde_json::from_slice(&relative.stdout).unwrap();
+    assert_eq!(relative["markdown"], "input.md");
+    assert_eq!(relative["output"], "relative.xlsx");
+    assert_eq!(
+        std::fs::read(dir.join("relative.xlsx")).unwrap(),
+        std::fs::read(&output).unwrap()
+    );
+    let dry_output = dir.join("dry.xlsx");
+    let dry = run(&[
+        "--json",
+        "xlsx",
+        "build",
+        "--from-markdown",
+        &input,
+        "--out",
+        dry_output.to_str().unwrap(),
+        "--dry-run",
+    ]);
+    assert_eq!(dry["dryRun"], true);
+    assert!(!dry_output.exists());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn workbook_markdown_cli_stdin_and_invalid_input_preserve_existing_output() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let dir = std::env::temp_dir().join(format!(
+        "ooxml-markdown-workbook-stdin-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let output = dir.join("stdin.xlsx");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args([
+            "--json",
+            "xlsx",
+            "build",
+            "--from-markdown",
+            "-",
+            "--out",
+            output.to_str().unwrap(),
+            "--force",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(SOURCE.as_bytes())
+        .unwrap();
+    let response = child.wait_with_output().unwrap();
+    assert!(
+        response.status.success(),
+        "{}",
+        String::from_utf8_lossy(&response.stderr)
+    );
+    let result: Value = serde_json::from_slice(&response.stdout).unwrap();
+    assert_eq!(result["markdown"], "-");
+    let prior = std::fs::read(&output).unwrap();
+    let invalid = dir.join("invalid.md");
+    std::fs::write(
+        &invalid,
+        "# Data\n| Value (number) |\n| --- |\n| invalid |\n",
+    )
+    .unwrap();
+    for source_args in [
+        vec!["--from-markdown", invalid.to_str().unwrap()],
+        vec![
+            "--from-markdown",
+            invalid.to_str().unwrap(),
+            "--spec",
+            "missing.json",
+        ],
+        vec!["--emit-spec", "unused.json", "--spec", "missing.json"],
+    ] {
+        let failure = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+            .args([
+                "--json",
+                "xlsx",
+                "build",
+                "--out",
+                output.to_str().unwrap(),
+                "--force",
+            ])
+            .args(source_args)
+            .output()
+            .unwrap();
+        assert_eq!(failure.status.code(), Some(2));
+        assert_eq!(std::fs::read(&output).unwrap(), prior);
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}

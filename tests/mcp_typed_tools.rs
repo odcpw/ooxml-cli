@@ -569,6 +569,12 @@ fn typed_markdown_builds_match_family_cli_and_empty_workbook_teaches_table_input
             "docx",
             "# Typed report\n\nThe release is on track.\n\n- Proof is recorded\n- Follow-up is explicit\n",
         ),
+        (
+            "xlsx",
+            "build_workbook",
+            "xlsx",
+            include_str!("../testdata/markdown/mapping-xlsx.md"),
+        ),
     ];
     for (family, tool, extension, markdown) in cases {
         let mcp_output = dir.join(format!("typed-markdown.{extension}"));

@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{
     BuildCompileError, BuildCompiler, BuildFamily, BuildLength, BuildSpec, CompiledBuildPlan,
-    operation_reference,
+    MarkdownConversion, MarkdownError, markdown_to_spec, operation_reference,
 };
 
 static NEXT_STAGE: AtomicU64 = AtomicU64::new(1);
@@ -65,11 +65,30 @@ pub fn compile_xlsx_spec(spec: &BuildSpec) -> Result<CompiledXlsxBuild, BuildCom
 pub(crate) fn xlsx_build(args: &[String]) -> crate::CliResult<Value> {
     crate::reject_unknown_flags(
         args,
-        &["--spec", "--out"],
+        &["--spec", "--from-markdown", "--emit-spec", "--out"],
         &["--check", "--dry-run", "--force"],
     )?;
-    let spec_path = crate::parse_string_flag(args, "--spec")?
-        .ok_or_else(|| crate::CliError::invalid_args("--spec is required"))?;
+    let spec_path = crate::parse_string_flag(args, "--spec")?;
+    let markdown_path = crate::parse_string_flag(args, "--from-markdown")?;
+    let emit_spec_path = crate::parse_string_flag(args, "--emit-spec")?;
+    match (spec_path.as_deref(), markdown_path.as_deref()) {
+        (Some(_), Some(_)) => {
+            return Err(crate::CliError::invalid_args(
+                "--spec and --from-markdown are mutually exclusive",
+            ));
+        }
+        (None, None) => {
+            return Err(crate::CliError::invalid_args(
+                "exactly one of --spec or --from-markdown is required",
+            ));
+        }
+        _ => {}
+    }
+    if emit_spec_path.is_some() && markdown_path.is_none() {
+        return Err(crate::CliError::invalid_args(
+            "--emit-spec requires --from-markdown",
+        ));
+    }
     let output = crate::parse_string_flag(args, "--out")?
         .ok_or_else(|| crate::CliError::invalid_args("--out is required"))?;
     let dry_run = crate::has_flag(args, "--dry-run");
@@ -81,8 +100,24 @@ pub(crate) fn xlsx_build(args: &[String]) -> crate::CliResult<Value> {
     }
     validate_output_path(&output, crate::has_flag(args, "--force"))?;
 
-    let (spec, spec_base) = load_xlsx_build_spec(&spec_path)?;
+    if let Some(path) = emit_spec_path.as_deref() {
+        validate_emitted_spec_path(path, &output, crate::has_flag(args, "--force"))?;
+    }
+    let (spec, spec_base, warnings) = if let Some(path) = spec_path.as_deref() {
+        let (spec, base) = load_xlsx_build_spec(path)?;
+        (spec, base, Vec::new())
+    } else {
+        let (spec, base, conversion) = load_xlsx_markdown(
+            markdown_path
+                .as_deref()
+                .expect("source selection validated"),
+        )?;
+        (spec, base, conversion.warnings)
+    };
     let compiled = compile_xlsx_spec(&spec).map_err(build_compile_cli_error)?;
+    if let Some(path) = emit_spec_path.as_deref() {
+        write_emitted_spec(path, spec.document())?;
+    }
     let temp = XlsxBuildTemp::create()?;
     let operations = materialize_operations(
         &compiled.plan.operations,
@@ -135,7 +170,7 @@ pub(crate) fn xlsx_build(args: &[String]) -> crate::CliResult<Value> {
         Value::Null
     };
     let node_map = resolved_node_map(&compiled.plan, &mutation_envelope);
-    Ok(json!({
+    let mut result = json!({
         "schemaVersion": "ooxml-cli.xlsx-build.v1",
         "spec": spec_path,
         "output": if dry_run { Value::Null } else { json!(output) },
@@ -146,7 +181,21 @@ pub(crate) fn xlsx_build(args: &[String]) -> crate::CliResult<Value> {
         "nodeMap": node_map,
         "outline": outline,
         "check": check,
-    }))
+    });
+    let result_object = result.as_object_mut().expect("XLSX build result object");
+    if let Some(path) = markdown_path {
+        result_object.insert("markdown".to_string(), json!(path));
+    }
+    if let Some(path) = emit_spec_path {
+        result_object.insert("emittedSpec".to_string(), json!(path));
+    }
+    if !warnings.is_empty() {
+        result_object.insert(
+            "warnings".to_string(),
+            serde_json::to_value(warnings).expect("Markdown warnings serialize"),
+        );
+    }
+    Ok(result)
 }
 
 fn compile_sheet(
@@ -1132,6 +1181,82 @@ fn validate_output_path(output: &str, force: bool) -> crate::CliResult<()> {
         ));
     }
     Ok(())
+}
+
+fn validate_emitted_spec_path(path: &str, output: &str, force: bool) -> crate::CliResult<()> {
+    if path == "-" {
+        return Err(crate::CliError::invalid_args(
+            "--emit-spec requires a file path because stdout is reserved for the build result",
+        ));
+    }
+    if Path::new(path) == Path::new(output) {
+        return Err(crate::CliError::invalid_args(
+            "--emit-spec and --out must name different files",
+        ));
+    }
+    if Path::new(path).exists() && !force {
+        return Err(crate::CliError::invalid_args(
+            "emitted spec already exists; pass --force to replace it",
+        ));
+    }
+    Ok(())
+}
+
+fn write_emitted_spec(path: &str, document: &Value) -> crate::CliResult<()> {
+    let mut encoded = serde_json::to_vec_pretty(document).map_err(|cause| {
+        crate::CliError::unexpected(format!("failed to encode emitted XLSX build spec: {cause}"))
+    })?;
+    encoded.push(b'\n');
+    fs::write(path, encoded).map_err(|cause| {
+        crate::CliError::unexpected(format!(
+            "failed to write emitted XLSX build spec {path}: {cause}"
+        ))
+    })
+}
+
+fn load_xlsx_markdown(path: &str) -> crate::CliResult<(BuildSpec, PathBuf, MarkdownConversion)> {
+    let (source, base, source_name) = if path == "-" {
+        let mut source = String::new();
+        std::io::stdin()
+            .read_to_string(&mut source)
+            .map_err(|cause| {
+                crate::CliError::unexpected(format!("failed to read Markdown stdin: {cause}"))
+            })?;
+        let base = std::env::current_dir().map_err(|cause| {
+            crate::CliError::unexpected(format!("failed to resolve current directory: {cause}"))
+        })?;
+        (source, base, "<stdin>".to_string())
+    } else {
+        let source = fs::read_to_string(path).map_err(|cause| {
+            crate::CliError::file_not_found(format!("cannot read Markdown input {path}: {cause}"))
+        })?;
+        let base = Path::new(path)
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."))
+            .canonicalize()
+            .map_err(|cause| {
+                crate::CliError::unexpected(format!(
+                    "failed to resolve Markdown directory for {path}: {cause}"
+                ))
+            })?;
+        (source, base, path.to_string())
+    };
+    let conversion =
+        markdown_to_spec(BuildFamily::Xlsx, &source, &source_name).map_err(markdown_cli_error)?;
+    let encoded = serde_json::to_vec(&conversion.spec).map_err(|cause| {
+        crate::CliError::unexpected(format!(
+            "failed to encode generated XLSX build spec: {cause}"
+        ))
+    })?;
+    let spec = super::load_spec_bytes(BuildFamily::Xlsx, &encoded).map_err(build_spec_cli_error)?;
+    Ok((spec, base, conversion))
+}
+
+fn markdown_cli_error(error: MarkdownError) -> crate::CliError {
+    crate::CliError::invalid_args(
+        serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()),
+    )
 }
 
 fn load_xlsx_build_spec(path: &str) -> crate::CliResult<(BuildSpec, PathBuf)> {
