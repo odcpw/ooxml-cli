@@ -74,15 +74,51 @@ pub(crate) fn dispatch(flags: &GlobalFlags, args: &[String]) -> CliResult<Dispat
     if let [cmd, rest @ ..] = args
         && cmd == "design-check"
     {
+        let report = crate::design_check::dispatch(rest)?;
+        let failed_fix = report.get("remediation").is_some()
+            && (report["validated"] == false
+                || report["remediation"]["after"]["summary"]["errors"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    > 0);
         return Ok(DispatchOutput {
-            body: DispatchBody::Json(crate::design_check::dispatch(rest)?),
-            exit_code: EXIT_SUCCESS,
+            body: DispatchBody::Json(report),
+            exit_code: if failed_fix {
+                crate::EXIT_VALIDATION_FAILED
+            } else {
+                EXIT_SUCCESS
+            },
         });
     }
-    if let [cmd, file, rest @ ..] = args
+    if let [cmd, rest @ ..] = args
         && cmd == "check"
     {
-        return crate::check::dispatch(flags, file, rest);
+        let value_flags = [
+            "--openxml-sdk",
+            "--fail-on",
+            "--out",
+            "--backup",
+            "--max-rounds",
+        ];
+        let mut file_index = None;
+        let mut index = 0;
+        while index < rest.len() {
+            if value_flags.contains(&rest[index].as_str()) {
+                index += 2;
+            } else if rest[index].starts_with('-') {
+                index += 1;
+            } else {
+                if file_index.replace(index).is_some() {
+                    return Err(CliError::invalid_args("check requires one package path"));
+                }
+                index += 1;
+            }
+        }
+        let index =
+            file_index.ok_or_else(|| CliError::invalid_args("check requires one package path"))?;
+        let mut options = rest.to_vec();
+        let file = options.remove(index);
+        return crate::check::dispatch(flags, &file, &options);
     }
     if let [family, group, verb, file, rest @ ..] = args
         && family == "pptx"

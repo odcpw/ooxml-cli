@@ -394,15 +394,49 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
         spec(
             CoreCommandId::DesignCheck,
             &["design-check"],
-            "design-check <file> [--ignore <code>] [--config <path>] | design-check --rules",
+            "design-check <file> [--ignore <code>] [--config <path>] [--fix [--dry-run] [--out <path>] [--max-rounds <n>]] | design-check --rules",
             "Report deterministic, objective, fixable design findings for PPTX, DOCX, and XLSX packages.",
             &[
                 "package", "slide", "shape", "sheet", "table", "chart", "block", "image",
             ],
-            direct(
-                "read-only design analysis; findings include executable direct-CLI fix commands",
-            ),
+            direct("design analysis and direct-CLI atomic remediation; not a batch operation"),
             vec![
+                flag(
+                    "--fix",
+                    "fix",
+                    "bool",
+                    "atomically apply available fixes; default output is a sibling *.fixed.* package",
+                ),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "with --fix, print the executed staged plan and publish nothing",
+                ),
+                flag(
+                    "--out",
+                    "out",
+                    "string",
+                    "with --fix, write the validated repaired package here",
+                ),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "with --fix, replace the input after strict validation",
+                ),
+                flag(
+                    "--backup",
+                    "backup",
+                    "string",
+                    "with --fix --in-place, back up the input before publication",
+                ),
+                flag(
+                    "--max-rounds",
+                    "maxRounds",
+                    "int",
+                    "with --fix, bound remediation rounds (1-100; default 8)",
+                ),
                 flag(
                     "--rules",
                     "rules",
@@ -782,15 +816,53 @@ pub(super) fn command_specs() -> Vec<CommandSpec> {
         spec(
             CoreCommandId::Check,
             &["check"],
-            "check <file> [--render] [--openxml-sdk <auto|require|skip>] [--fail-on <error|warning>]",
+            "check <file> [--render] [--openxml-sdk <auto|require|skip>] [--fail-on <error|warning>] [--fix [--dry-run] [--out <path>] [--max-rounds <n>]]",
             "Run structural, strict, schema, layout, design, reference, and optional visual proof in one deterministic finding envelope.",
             &[
                 "package", "slide", "shape", "sheet", "table", "chart", "pivot", "block", "style",
             ],
             ExecutionSupport::ServeInspect {
-                reason: Some("read-only unified proof command exposed through serve/MCP inspect"),
+                reason: Some(
+                    "read-only unified proof through serve inspect; atomic remediation through direct CLI and typed MCP",
+                ),
             },
             vec![
+                flag(
+                    "--fix",
+                    "fix",
+                    "bool",
+                    "atomically apply available fixes; default output is a sibling *.fixed.* package",
+                ),
+                flag(
+                    "--dry-run",
+                    "dryRun",
+                    "bool",
+                    "with --fix, print the executed staged plan and publish nothing",
+                ),
+                flag(
+                    "--out",
+                    "out",
+                    "string",
+                    "with --fix, write the validated repaired package here",
+                ),
+                flag(
+                    "--in-place",
+                    "inPlace",
+                    "bool",
+                    "with --fix, replace the input after strict validation",
+                ),
+                flag(
+                    "--backup",
+                    "backup",
+                    "string",
+                    "with --fix --in-place, back up the input before publication",
+                ),
+                flag(
+                    "--max-rounds",
+                    "maxRounds",
+                    "int",
+                    "with --fix, bound remediation rounds (1-100; default 8)",
+                ),
                 flag(
                     "--render",
                     "render",

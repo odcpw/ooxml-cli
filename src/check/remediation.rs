@@ -12,6 +12,66 @@ pub(crate) struct Options {
     pub(crate) max_rounds: usize,
 }
 
+pub(crate) fn parse_options(
+    file: &str,
+    args: &[String],
+) -> CliResult<(Option<Options>, Vec<String>)> {
+    let fix = crate::has_flag(args, "--fix");
+    let mut read_args = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        if [
+            "--fix",
+            "--dry-run",
+            "--in-place",
+            "--out",
+            "--backup",
+            "--max-rounds",
+        ]
+        .contains(&arg.as_str())
+        {
+            if !fix {
+                return Err(CliError::invalid_args(format!("{arg} requires --fix")));
+            }
+            index += if ["--out", "--backup", "--max-rounds"].contains(&arg.as_str()) {
+                2
+            } else {
+                1
+            };
+        } else {
+            read_args.push(arg.clone());
+            index += 1;
+        }
+    }
+    if !fix {
+        return Ok((None, read_args));
+    }
+    let dry_run = crate::has_flag(args, "--dry-run");
+    let in_place = crate::has_flag(args, "--in-place");
+    let out = crate::parse_string_flag(args, "--out")?.or_else(|| {
+        (!dry_run && !in_place).then(|| crate::design_check::fixed_output_path(file, "fixed"))
+    });
+    let max_rounds = crate::parse_string_flag(args, "--max-rounds")?
+        .map(|value| {
+            value
+                .parse::<usize>()
+                .map_err(|_| CliError::invalid_args("--max-rounds must be between 1 and 100"))
+        })
+        .transpose()?
+        .unwrap_or(8);
+    Ok((
+        Some(Options {
+            out,
+            in_place,
+            backup: crate::parse_string_flag(args, "--backup")?,
+            dry_run,
+            max_rounds,
+        }),
+        read_args,
+    ))
+}
+
 struct Stage(String);
 impl Drop for Stage {
     fn drop(&mut self) {
@@ -61,7 +121,12 @@ pub(crate) fn remediate(
         let mut items = Vec::new();
         for finding in findings {
             match operation(finding["fixCommand"].as_str().unwrap_or_default(), &stage.0) {
-                Ok(op) => {
+                Ok(mut op) => {
+                    // The style repair also has to work when Normal itself is
+                    // absent, as it can be in an imported minimal document.
+                    if finding["code"] == "DOCX_DANGLING_STYLE" && op["command"] == "docx styles apply" {
+                        op["args"]["create-style"] = json!(true);
+                    }
                     if !ops.contains(&op) { ops.push(op.clone()); }
                     items.push(json!({"finding":finding,"before":"present","op":op}));
                 }

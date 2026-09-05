@@ -1,6 +1,5 @@
 mod finding;
-#[cfg(test)]
-mod remediation;
+pub(crate) mod remediation;
 mod xlsx;
 
 use finding::CheckFinding;
@@ -44,10 +43,23 @@ pub(crate) fn dispatch(
     file: &str,
     args: &[String],
 ) -> CliResult<DispatchOutput> {
-    let options = parse_options(args)?;
-    let report = run(file, options)?;
-    let exit_code = report_exit_code(&report, options.fail_on);
-    let body = if flags.format_text && !flags.json {
+    let (fix, read_args) = remediation::parse_options(file, args)?;
+    let options = parse_options(&read_args)?;
+    let report = if let Some(fix) = fix {
+        let config = crate::design_check::adjacent_config(file)?;
+        remediation::remediate(file, "check", fix, |working| {
+            run_with_config(working, options, config.as_deref())
+        })?
+    } else {
+        run(file, options)?
+    };
+    let readback = report.pointer("/remediation/after").unwrap_or(&report);
+    let exit_code = if report.get("validated") == Some(&json!(false)) {
+        EXIT_VALIDATION_FAILED
+    } else {
+        report_exit_code(readback, options.fail_on)
+    };
+    let body = if flags.format_text && !flags.json && report.get("remediation").is_none() {
         DispatchBody::Text(text_report(&report))
     } else {
         DispatchBody::Json(report)
@@ -128,6 +140,10 @@ fn parse_fail_on(value: &str) -> CliResult<FailOn> {
 }
 
 fn run(file: &str, options: CheckOptions) -> CliResult<Value> {
+    run_with_config(file, options, None)
+}
+
+fn run_with_config(file: &str, options: CheckOptions, config: Option<&str>) -> CliResult<Value> {
     let entries = zip_entry_names(file)?;
     let family = match detect_inspect_package_type(file, &entries) {
         InspectPackageKind::Pptx => "pptx",
@@ -195,7 +211,11 @@ fn run(file: &str, options: CheckOptions) -> CliResult<Value> {
         checks.insert("layout".to_string(), json!("not-applicable"));
     }
 
-    match crate::design_check::dispatch(&[file.to_string()]) {
+    let mut design_args = vec![file.to_string()];
+    if let Some(config) = config {
+        design_args.extend(["--config".to_string(), config.to_string()]);
+    }
+    match crate::design_check::dispatch(&design_args) {
         Ok(design) => {
             checks.insert("design".to_string(), design["status"].clone());
             add_design_findings(&design, &mut findings);

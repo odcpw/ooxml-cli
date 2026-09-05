@@ -43001,6 +43001,14 @@
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
+        "backup": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "dryRun": {
+          "default": false,
+          "type": "boolean"
+        },
         "failOn": {
           "default": "error",
           "enum": [
@@ -43013,6 +43021,21 @@
           "minLength": 1,
           "type": "string"
         },
+        "fix": {
+          "default": false,
+          "description": "Apply available fixes atomically; default output is a sibling *.fixed.* package.",
+          "type": "boolean"
+        },
+        "inPlace": {
+          "default": false,
+          "type": "boolean"
+        },
+        "maxRounds": {
+          "default": 8,
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
         "openXmlSdk": {
           "default": "auto",
           "enum": [
@@ -43020,6 +43043,10 @@
             "require",
             "skip"
           ],
+          "type": "string"
+        },
+        "output": {
+          "minLength": 1,
           "type": "string"
         },
         "render": {

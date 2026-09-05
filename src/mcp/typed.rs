@@ -68,6 +68,12 @@ pub(super) fn tools() -> Vec<Value> {
                     "openXmlSdk": {"type": "string", "enum": ["auto", "require", "skip"], "default": "auto"},
                     "failOn": {"type": "string", "enum": ["error", "warning"], "default": "error"},
                     "render": {"type": "boolean", "default": false},
+                    "fix": {"type":"boolean","default":false,"description":"Apply available fixes atomically; default output is a sibling *.fixed.* package."},
+                    "dryRun": {"type":"boolean","default":false},
+                    "output": {"type":"string","minLength":1},
+                    "inPlace": {"type":"boolean","default":false},
+                    "backup": {"type":"string","minLength":1},
+                    "maxRounds": {"type":"integer","minimum":1,"maximum":100,"default":8},
                 }),
                 &["file"],
             ),
@@ -453,7 +459,41 @@ fn call_check(arguments: &Value) -> CliResult<Value> {
         "failOn": json_optional_string(arguments, "failOn").unwrap_or_else(|| "error".to_string()),
         "render": json_bool(arguments, "render").unwrap_or(false),
     });
-    crate::check::inspect(&file, &args)
+    let mut argv = Vec::new();
+    for (field, flag) in [
+        ("fix", "--fix"),
+        ("dryRun", "--dry-run"),
+        ("inPlace", "--in-place"),
+        ("render", "--render"),
+    ] {
+        if json_bool(arguments, field).unwrap_or(false) {
+            argv.push(flag.to_string());
+        }
+    }
+    for (field, flag) in [
+        ("output", "--out"),
+        ("backup", "--backup"),
+        ("openXmlSdk", "--openxml-sdk"),
+        ("failOn", "--fail-on"),
+    ] {
+        push_string_flag(arguments, field, flag, &mut argv);
+    }
+    push_u32_flag(arguments, "maxRounds", "--max-rounds", &mut argv)?;
+    if arguments.get("fix").is_some()
+        || ["dryRun", "inPlace", "output", "backup", "maxRounds"]
+            .iter()
+            .any(|key| arguments.get(key).is_some())
+    {
+        let result = crate::check::dispatch(&crate::GlobalFlags::default(), &file, &argv)?;
+        match result.body {
+            crate::cli_dispatch::DispatchBody::Json(report) => Ok(report),
+            crate::cli_dispatch::DispatchBody::Text(_) => {
+                Err(CliError::unexpected("check returned text to typed MCP"))
+            }
+        }
+    } else {
+        crate::check::inspect(&file, &args)
+    }
 }
 
 fn call_render(arguments: &Value) -> CliResult<Value> {
@@ -830,7 +870,18 @@ fn valid_fields(tool: &str) -> &'static [&'static str] {
             "operations",
         ],
         "outline_package" => &["file", "depth", "textPreview", "slide", "sheet", "section"],
-        "check_package" => &["file", "openXmlSdk", "failOn", "render"],
+        "check_package" => &[
+            "file",
+            "openXmlSdk",
+            "failOn",
+            "render",
+            "fix",
+            "dryRun",
+            "output",
+            "inPlace",
+            "backup",
+            "maxRounds",
+        ],
         "validate_package" => &["file"],
         "render_preview" => &[
             "file",

@@ -44,6 +44,46 @@ impl DesignConfig {
 }
 
 pub(crate) fn dispatch(args: &[String]) -> CliResult<Value> {
+    if has_flag(args, "--fix") {
+        if has_flag(args, "--rules") {
+            return Err(CliError::invalid_args(
+                "--rules cannot be combined with --fix",
+            ));
+        }
+        let positionals = positional_args(
+            args,
+            &["--ignore", "--config", "--out", "--backup", "--max-rounds"],
+        );
+        if positionals.len() != 1 {
+            return Err(CliError::invalid_args(
+                "design-check --fix requires one package path",
+            ));
+        }
+        let file = positionals[0];
+        let (options, mut read_args) = crate::check::remediation::parse_options(file, args)?;
+        // Configuration belongs to the original package even when output is
+        // staged in another directory.
+        if parse_string_flag(&read_args, "--config")?.is_none() {
+            let (_, path) = load_config(file, None)?;
+            if let Some(path) = path {
+                read_args.extend(["--config".to_string(), path.to_string_lossy().into_owned()]);
+            }
+        }
+        return crate::check::remediation::remediate(
+            file,
+            "design-check",
+            options.expect("fix parsed"),
+            |working| {
+                let mut argv = read_args.clone();
+                let index = argv
+                    .iter()
+                    .position(|arg| arg == file)
+                    .expect("package positional");
+                argv[index] = working.to_string();
+                dispatch(&argv)
+            },
+        );
+    }
     reject_unknown_flags(args, &["--ignore", "--config"], &["--rules"])?;
     if has_flag(args, "--rules") {
         let positionals = positional_args(args, &["--ignore", "--config"]);
@@ -188,6 +228,12 @@ pub(crate) fn location(fields: &[(&str, Value)]) -> Value {
         object.insert((*name).to_string(), value.clone());
     }
     Value::Object(object)
+}
+
+pub(crate) fn adjacent_config(file: &str) -> CliResult<Option<String>> {
+    Ok(load_config(file, None)?
+        .1
+        .map(|path| path.to_string_lossy().into_owned()))
 }
 
 fn load_config(file: &str, explicit: Option<&str>) -> CliResult<(DesignConfig, Option<PathBuf>)> {
