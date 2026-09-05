@@ -29,7 +29,7 @@ const summary = {
   thumbnails: 0,
 };
 
-await main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
 
 async function main() {
   requireModelCredential();
@@ -160,9 +160,7 @@ async function runAgent(threadId) {
 }
 
 async function readAgentStream(admission) {
-  const streamUrl = new URL(admission.streamUrl, baseUrl);
-  streamUrl.searchParams.set('offset', String(admission.offset));
-  streamUrl.searchParams.set('live', 'sse');
+  const streamUrl = agentUpdateUrl(admission, baseUrl);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(new Error('Agent stream smoke timed out after 180s.')), 180_000);
   const response = await fetchWithCookies(streamUrl, {
@@ -199,7 +197,7 @@ async function readAgentStream(admission) {
           const events = safeJson(parsed.data);
           const batch = Array.isArray(events) ? events : events ? [events] : [];
           for (const event of batch) {
-            const eventDone = handleAgentEvent(event, { toolNames, appendText: (text) => (assistantText += text) });
+            const eventDone = handleAgentEvent(event, { toolNames, submissionId: admission.submissionId, appendText: (text) => (assistantText += text) });
             done = done || eventDone;
           }
         }
@@ -214,10 +212,28 @@ async function readAgentStream(admission) {
   return { assistantText, toolNames };
 }
 
-function handleAgentEvent(event, state) {
+export function agentUpdateUrl(admission, base) {
+  const url = new URL(admission.streamUrl, base);
+  url.searchParams.set('view', 'updates');
+  url.searchParams.set('offset', String(admission.offset));
+  url.searchParams.set('live', 'sse');
+  return url;
+}
+
+export function handleAgentEvent(event, state) {
   if (!event || typeof event !== 'object') return false;
-  if (event.type === 'tool_start' || event.type === 'tool' || event.type === 'tool_call') {
+  if (event.type === 'tool-input' || event.type === 'tool_start' || event.type === 'tool' || event.type === 'tool_call') {
     if (event.toolName) state.toolNames.add(event.toolName);
+  }
+  if (event.type === 'message-delta' && event.kind === 'text' && typeof event.delta === 'string') {
+    state.appendText(event.delta);
+  }
+  if (event.type === 'tool-output-error') {
+    throw new Error(`Agent tool failed: ${event.errorText || event.toolCallId}`);
+  }
+  if (event.type === 'submission-settled' && event.submissionId === state.submissionId) {
+    if (event.outcome !== 'completed') throw new Error(`Agent submission ${event.outcome}: ${JSON.stringify(event.error)}`);
+    return true;
   }
   if (event.type === 'text_delta' && typeof event.text === 'string') {
     state.appendText(event.text);

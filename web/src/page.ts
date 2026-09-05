@@ -864,6 +864,7 @@ ${themeCss()}
 	        let sawEvent = false;
 	        await new Promise((resolve, reject) => {
 	          const url = normalizedEventStreamUrl(streamUrl);
+	          url.searchParams.set('view', 'updates');
 	          url.searchParams.set('offset', offset);
 	          url.searchParams.set('live', 'sse');
 	          const source = new EventSource(url.toString());
@@ -905,7 +906,7 @@ ${themeCss()}
 	            for (const item of events) {
 	              sawEvent = true;
 	              handleAgentEvent(item);
-	              if (item?.type === 'idle') finish();
+	              if (item?.type === 'idle' || (item?.type === 'submission-settled' && item.submissionId === admission.submissionId)) finish();
 	            }
 	          });
 	          source.addEventListener('control', (event) => {
@@ -937,9 +938,23 @@ ${themeCss()}
             case 'operation_start': addMessage('trace', 'operation started'); break;
             case 'agent_start': addMessage('trace', 'agent started'); break;
             case 'turn_start': break;
+            case 'tool-input':
             case 'tool_start': addMessage('trace', 'tool started · ' + (event.toolName || 'unknown')); break;
             case 'tool':
             case 'tool_call': addMessage('trace', toolTraceText(event)); break;
+            case 'message-delta':
+              if (event.kind !== 'text') break;
+              assistantText += event.delta || '';
+              assistantNode.innerHTML = renderMarkdown(assistantText);
+              chat.scrollTop = chat.scrollHeight;
+              break;
+            case 'tool-output': addMessage('trace', 'tool finished'); break;
+            case 'tool-output-error': addMessage('error', 'Agent tool failed · ' + (event.errorText || 'unknown')); break;
+            case 'submission-settled':
+              if (event.submissionId !== admission.submissionId) break;
+              if (event.outcome === 'completed') addMessage('trace', 'done');
+              else addMessage('error', 'Agent submission ' + event.outcome + ' · ' + readableError(event.error));
+              break;
             case 'text_delta':
               assistantText += event.text || '';
               assistantNode.innerHTML = renderMarkdown(assistantText);

@@ -13,7 +13,8 @@
     "smoke:auth-abuse": "node scripts/smoke-auth-abuse.mjs",
     "smoke:nonpptx": "node scripts/smoke-nonpptx.mjs",
     "smoke:tools": "node scripts/smoke-flue-tools.mjs",
-    "verify:stack": "node scripts/check-dependency-stack.mjs"
+    "verify:stack": "node scripts/check-dependency-stack.mjs",
+    "test:stream": "node --test scripts/smoke-agent-edit.test.mjs"
   },
   "dependencies": {
     "@flue/runtime": "1.0.0-beta.9",
