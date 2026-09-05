@@ -272,7 +272,7 @@ fn brand_logo_is_embedded_and_positioned_in_all_three_families() {
         (
             "docx",
             temp.join("report.docx"),
-            "word/document.xml",
+            "word/footer1.xml",
             "Brand Logo",
             r#"w:jc w:val="right""#,
         ),
@@ -319,6 +319,285 @@ fn brand_logo_is_embedded_and_positioned_in_all_three_families() {
         );
         assert_strict_valid(&output);
         assert_sdk_valid_if_available(&output);
+    }
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn brand_application_recolors_existing_charts_and_defines_document_table_style() {
+    let temp = temp_dir("existing-brand");
+    let brand = repo_path("testdata/brand/northwind.json");
+    for (family, spec, part) in [
+        (
+            "xlsx",
+            "testdata/xlsx/build-spec/sales.json",
+            "xl/charts/chart1.xml",
+        ),
+        (
+            "docx",
+            "testdata/docx/build-spec/quarterly-report.json",
+            "word/document.xml",
+        ),
+    ] {
+        let source = temp.join(format!("source.{family}"));
+        let output = temp.join(format!("branded.{family}"));
+        run_ok(&[
+            "--json",
+            family,
+            "build",
+            "--spec",
+            path(&repo_path(spec)),
+            "--out",
+            path(&source),
+        ]);
+        let before = fs::read(&source).unwrap();
+        run_ok(&[
+            "--json",
+            "template",
+            "apply",
+            path(&source),
+            "--brand",
+            path(&brand),
+            "--out",
+            path(&output),
+        ]);
+        assert_eq!(fs::read(&source).unwrap(), before);
+        let xml = zip_text(&output, part);
+        if family == "xlsx" {
+            assert!(xml.contains(r#"<a:srgbClr val="316F8A""#), "{xml}");
+            assert!(xml.contains("<c:f>"), "chart source must survive");
+            assert!(
+                zip_text(&output, "xl/tables/table1.xml").contains(r#"name="TableStyleMedium2""#)
+            );
+        } else {
+            assert!(xml.contains(r#"w:tblStyle w:val="TableStyleMedium2""#));
+            let styles = zip_text(&output, "word/styles.xml");
+            assert!(
+                styles
+                    .contains(r#"w:type="table" w:customStyle="1" w:styleId="TableStyleMedium2""#)
+            );
+            assert!(styles.contains(r#"w:fill="316F8A" w:themeFill="accent1""#));
+        }
+        assert_strict_valid(&output);
+        assert_sdk_valid_if_available(&output);
+    }
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn docx_brand_logo_preserves_body_and_existing_footer_text() {
+    let temp = temp_dir("header-footer");
+    for placement in ["top-left", "bottom-right"] {
+        let source = temp.join(format!("{placement}.docx"));
+        run_ok(&[
+            "--json",
+            "docx",
+            "scaffold",
+            path(&source),
+            "--text",
+            "Body sentinel",
+        ]);
+        let body = zip_text(&source, "word/document.xml");
+        let mut kit: Value = serde_json::from_str(
+            &fs::read_to_string(repo_path("testdata/brand/logo.json")).unwrap(),
+        )
+        .unwrap();
+        kit["logo"]["path"] =
+            serde_json::json!(repo_path("testdata/pptx/template-branded/test-image.png"));
+        kit["logo"]["placement"] = serde_json::json!(placement);
+        kit["footerText"] = serde_json::json!("Footer sentinel");
+        let brand = temp.join("brand.json");
+        fs::write(&brand, serde_json::to_vec(&kit).unwrap()).unwrap();
+        let output = temp.join(format!("{placement}-branded.docx"));
+        run_ok(&[
+            "--json",
+            "template",
+            "apply",
+            path(&source),
+            "--brand",
+            path(&brand),
+            "--out",
+            path(&output),
+        ]);
+        let document = zip_text(&output, "word/document.xml");
+        assert!(body.contains("Body sentinel") && document.contains("Body sentinel"));
+        assert!(!document.contains("Brand Logo"));
+        let part = if placement.starts_with("top") {
+            "word/header1.xml"
+        } else {
+            "word/footer1.xml"
+        };
+        assert!(zip_text(&output, part).contains("Brand Logo"));
+        assert!(zip_text(&output, "word/footer1.xml").contains("Footer sentinel"));
+        assert_strict_valid(&output);
+        assert_sdk_valid_if_available(&output);
+    }
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn five_branded_recipes_match_the_documented_family_audit() {
+    let temp = temp_dir("recipe-parity");
+    let mut kit: Value = serde_json::from_str(
+        &fs::read_to_string(repo_path("testdata/brand/northwind.json")).unwrap(),
+    )
+    .unwrap();
+    kit["logo"] = serde_json::json!({"path": repo_path("testdata/test_image.png"), "placement": "top-right", "widthEmu": 457200, "heightEmu": 457200});
+    let brand = temp.join("brand.json");
+    fs::write(&brand, serde_json::to_vec(&kit).unwrap()).unwrap();
+    let mut observed = BTreeMap::<&str, Vec<&str>>::new();
+    for (name, family, flag, input) in [
+        (
+            "deck",
+            "pptx",
+            "--spec",
+            "testdata/pptx/build-spec/q3-review.json",
+        ),
+        (
+            "workbook",
+            "xlsx",
+            "--spec",
+            "testdata/xlsx/build-spec/sales.json",
+        ),
+        (
+            "document",
+            "docx",
+            "--spec",
+            "testdata/docx/build-spec/quarterly-report.json",
+        ),
+        (
+            "markdown-deck",
+            "pptx",
+            "--from-markdown",
+            "testdata/markdown/q3-review.md",
+        ),
+        (
+            "markdown-document",
+            "docx",
+            "--from-markdown",
+            "testdata/markdown/quarterly-report.md",
+        ),
+    ] {
+        let source = temp.join(format!("{name}.{family}"));
+        let output = temp.join(format!("{name}-branded.{family}"));
+        run_ok(&[
+            "--json",
+            family,
+            "build",
+            flag,
+            path(&repo_path(input)),
+            "--out",
+            path(&source),
+        ]);
+        run_ok(&[
+            "--json",
+            "template",
+            "apply",
+            path(&source),
+            "--brand",
+            path(&brand),
+            "--out",
+            path(&output),
+        ]);
+        assert_strict_valid(&output);
+        assert_sdk_valid_if_available(&output);
+        let signature = theme_signature(&output, family);
+        assert_eq!(signature.colors["accent1"], "316F8A");
+        assert_eq!(signature.heading_font, "Arial");
+        assert_eq!(signature.body_font, "Liberation Sans");
+        let parts = zip_entries(&output);
+        let xml = parts
+            .iter()
+            .filter(|p| p.ends_with(".xml"))
+            .map(|p| zip_text(&output, p))
+            .collect::<String>();
+        assert!(xml.contains("Brand Logo"));
+        assert!(xml.contains("Northwind Confidential"));
+        let (size, table, chart) = match family {
+            "pptx" => (
+                xml.contains(r#"cx="12192000" cy="6858000""#),
+                "partial",
+                "proven",
+            ),
+            "docx" => (xml.contains(r#"w:orient="landscape""#), "proven", "partial"),
+            "xlsx" => (
+                xml.contains(r#"paperSize="9""#) && xml.contains(r#"orientation="landscape""#),
+                "proven",
+                "proven",
+            ),
+            _ => unreachable!(),
+        };
+        assert!(size, "{name}: branded page dimensions missing");
+        if table == "proven" {
+            assert!(xml.contains("TableStyleMedium2"));
+        }
+        if chart == "proven" {
+            assert!(xml.contains(r#"<a:srgbClr val="316F8A""#));
+        }
+        observed.insert(
+            family,
+            vec![
+                "proven", "proven", "proven", chart, "proven", "proven", table,
+            ],
+        );
+        if std::env::var("OOXML_BRAND_RENDER").as_deref() == Ok("1") {
+            let render_dir = temp.join(format!("render-{name}"));
+            let report = run_ok(&[
+                "--json",
+                "render",
+                path(&output),
+                "--out",
+                path(&render_dir),
+                "--dpi",
+                "48",
+            ]);
+            assert_eq!(report["status"], "ok", "{report}");
+            let collection = if family == "pptx" { "slides" } else { "pages" };
+            let pages = report[collection].as_array().unwrap();
+            assert!(!pages.is_empty());
+            let branded_pixels: usize = pages
+                .iter()
+                .map(|page| {
+                    let image = image::open(page["imagePath"].as_str().unwrap())
+                        .unwrap()
+                        .to_rgb8();
+                    image
+                        .pixels()
+                        .filter(|pixel| {
+                            pixel
+                                .0
+                                .iter()
+                                .zip([49u8, 111, 138])
+                                .all(|(actual, expected)| actual.abs_diff(expected) <= 15)
+                        })
+                        .count()
+                })
+                .sum();
+            assert!(
+                branded_pixels > 20,
+                "{name}: rendered output must show the brand accent, got {branded_pixels} pixels"
+            );
+        }
+    }
+    let doc = fs::read_to_string(repo_path("docs/brand-parity.md")).unwrap();
+    let labels = [
+        "Theme colors",
+        "Heading and body fonts",
+        "Logo placement",
+        "Chart palette",
+        "Header/footer marks",
+        "Page/slide size defaults",
+        "Table styles",
+    ];
+    for (index, label) in labels.iter().enumerate() {
+        let row = format!(
+            "| {label} | {} | {} | {} |",
+            observed["pptx"][index], observed["docx"][index], observed["xlsx"][index]
+        );
+        assert!(
+            doc.lines().any(|line| line == row),
+            "audit row differs from package evidence: {row}"
+        );
     }
     fs::remove_dir_all(temp).unwrap();
 }

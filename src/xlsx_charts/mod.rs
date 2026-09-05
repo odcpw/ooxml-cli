@@ -40,7 +40,7 @@ pub(crate) use options::{
     XlsxChartSetLegendOptions, XlsxChartSetSeriesStyleOptions, XlsxChartSetTitleOptions,
     XlsxChartUpdateSourceOptions,
 };
-pub(crate) use style::apply_template_chart_series_style_xml;
+pub(crate) use style::{apply_brand_chart_palette_xml, apply_template_chart_series_style_xml};
 
 pub(in crate::xlsx_charts) use create::*;
 pub(in crate::xlsx_charts) use model::*;

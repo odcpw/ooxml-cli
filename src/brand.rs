@@ -360,6 +360,37 @@ fn brand_overrides(file: &str, family: &str, kit: &BrandKit) -> CliResult<BrandP
         &kit.fonts.body,
     )?;
     let mut binary_overrides = BTreeMap::new();
+    for part in zip_entry_names(file)?.into_iter().filter(|part| {
+        part.starts_with(&format!(
+            "{}/charts/",
+            if family == "xlsx" {
+                "xl"
+            } else if family == "pptx" {
+                "ppt"
+            } else {
+                "word"
+            }
+        )) && part.ends_with(".xml")
+            && !part.contains("/_rels/")
+    }) {
+        let xml = zip_text(file, &part)?;
+        if contains_local_tag(&xml, "chartSpace") {
+            overrides.insert(
+                part,
+                crate::xlsx_charts::apply_brand_chart_palette_xml(
+                    &xml,
+                    &[
+                        kit.palette.accent1.to_hex(),
+                        kit.palette.accent2.to_hex(),
+                        kit.palette.accent3.to_hex(),
+                        kit.palette.accent4.to_hex(),
+                        kit.palette.accent5.to_hex(),
+                        kit.palette.accent6.to_hex(),
+                    ],
+                )?,
+            );
+        }
+    }
     match family {
         "docx" => add_docx_overrides(file, kit, &mut overrides)?,
         "xlsx" => add_xlsx_overrides(file, kit, &mut overrides, &mut binary_overrides)?,
@@ -425,9 +456,28 @@ fn add_xlsx_overrides(
     {
         let table = zip_text(file, &part)?;
         let updated = if let Some(style) = kit.table_style.as_deref() {
-            rewrite_all_tags(&table, "tableStyleInfo", |tag| {
-                set_tag_attrs(tag, &[("name", style)])
-            })?
+            if contains_local_tag(&table, "tableStyleInfo") {
+                rewrite_all_tags(&table, "tableStyleInfo", |tag| {
+                    set_tag_attrs(tag, &[("name", style)])
+                })?
+            } else {
+                let (root, open_end) = find_start_tag(&table, "table", 0)
+                    .ok_or_else(|| CliError::unexpected("XLSX table root missing"))?;
+                let prefix = xml_tag_prefix(&table[root..open_end]);
+                let close = find_end_tag(&table, "table", open_end)
+                    .ok_or_else(|| CliError::unexpected("XLSX table close tag missing"))?
+                    .0;
+                let at = find_start_tag(&table, "extLst", open_end).map_or(close, |(at, _)| at);
+                let mut updated = table.clone();
+                updated.insert_str(
+                    at,
+                    &format!(
+                        "<{prefix}tableStyleInfo name=\"{}\" showRowStripes=\"1\"/>",
+                        xml_attr_escape(style)
+                    ),
+                );
+                updated
+            }
         } else {
             table.clone()
         };
@@ -789,47 +839,42 @@ fn apply_post_rewrite_features(file: &str, family: &str, kit: &BrandKit) -> CliR
 }
 
 fn apply_docx_logo(file: &str, logo: &BrandLogo) -> CliResult<()> {
-    let after = if logo.placement.starts_with("bottom") {
-        let document = zip_text(file, "word/document.xml")?;
-        crate::docx_rich_block_reports(&document, false)
-            .map_err(|err| CliError::unexpected(err.message))?
-            .len()
+    let kind = if logo.placement.starts_with("bottom") {
+        "footer"
     } else {
-        0
+        "header"
     };
-    crate::docx_images::docx_images_insert(
-        file,
-        crate::docx_images::DocxImageInsertOptions {
-            after,
-            image_file: &logo.path,
-            expected_hash: "",
-            width: logo.width_emu.unwrap_or(1_200_000),
-            height: logo.height_emu.unwrap_or(400_000),
-            caption: None,
-            align: if logo.placement.ends_with("right") {
-                "right"
-            } else {
-                "left"
-            },
-            image: crate::docx_images::DocxImagePipelineArgs {
-                fit: Some("contain"),
-                max_dpi: None,
-                keep_original: false,
-                alt: "Brand Logo",
-            },
-            mutation: crate::DocxParagraphMutationOptions {
-                text: None,
-                text_file: None,
-                style: "",
-                out: None,
-                backup: None,
-                dry_run: false,
-                in_place: true,
-                no_validate: true,
-            },
-        },
-    )?;
-    Ok(())
+    let target = match crate::docx_headers::docx_headers_footers_show(file, kind, &[]) {
+        Ok(target) => target,
+        Err(err) if err.code == "target_not_found" => {
+            crate::docx_headers::docx_headers_footers_set_text(
+                file,
+                kind,
+                crate::docx_headers::DocxHeaderFooterSetTextOptions {
+                    id: "",
+                    ref_type: "default",
+                    section: 0,
+                    index: 1,
+                    selector: None,
+                    selector_given: false,
+                    index_given: false,
+                    text: "",
+                    page_numbers: false,
+                    out: None,
+                    backup: None,
+                    dry_run: false,
+                    in_place: true,
+                    no_validate: true,
+                },
+            )?;
+            crate::docx_headers::docx_headers_footers_show(file, kind, &[])?
+        }
+        Err(err) => return Err(err),
+    };
+    let part = target["partUri"]
+        .as_str()
+        .ok_or_else(|| CliError::unexpected("brand header/footer has no part URI"))?;
+    crate::docx_images::insert_brand_header_footer_logo(file, part, logo)
 }
 
 fn apply_pptx_logo(file: &str, logo: &BrandLogo) -> CliResult<()> {
@@ -914,6 +959,34 @@ fn update_docx_styles(xml: &str, kit: &BrandKit) -> CliResult<String> {
     updated = rewrite_all_tags(&updated, "shd", |tag| {
         rewrite_theme_bound_color(tag, "themeFill", "fill", &kit.palette)
     })?;
+    if let Some(style) = kit.table_style.as_deref() {
+        let mut cursor = 0;
+        let mut found = false;
+        while let Some((start, end)) = find_start_tag(&updated, "style", cursor) {
+            let tag = &updated[start..end];
+            if tag_attr(tag, "styleId").as_deref() == Some(style) {
+                if tag_attr(tag, "type").as_deref() != Some("table") {
+                    return Err(CliError::invalid_args(format!(
+                        "brand tableStyle {style:?} is not a table style"
+                    )));
+                }
+                found = true;
+                break;
+            }
+            cursor = end;
+        }
+        if !found {
+            let color = kit.palette.accent1.to_hex();
+            let style = xml_attr_escape(style);
+            let definition = format!(
+                r#"<w:style w:type="table" w:customStyle="1" w:styleId="{style}"><w:name w:val="{style}"/><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:color="{color}"/><w:left w:val="single" w:sz="4" w:color="{color}"/><w:bottom w:val="single" w:sz="4" w:color="{color}"/><w:right w:val="single" w:sz="4" w:color="{color}"/><w:insideH w:val="single" w:sz="4" w:color="{color}"/><w:insideV w:val="single" w:sz="4" w:color="{color}"/></w:tblBorders></w:tblPr><w:tblStylePr w:type="firstRow"><w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr><w:tcPr><w:shd w:val="clear" w:fill="{color}" w:themeFill="accent1"/></w:tcPr></w:tblStylePr></w:style>"#
+            );
+            let close = find_end_tag(&updated, "styles", 0)
+                .ok_or_else(|| CliError::unexpected("DOCX styles root missing"))?
+                .0;
+            updated.insert_str(close, &definition);
+        }
+    }
     Ok(updated)
 }
 
@@ -965,6 +1038,32 @@ fn update_docx_document(xml: &str, kit: &BrandKit) -> CliResult<String> {
         updated = rewrite_all_tags(&updated, "tblStyle", |tag| {
             set_tag_attrs(tag, &[("val", style)])
         })?;
+        let mut cursor = 0;
+        while let Some((start, end)) = find_start_tag(&updated, "tblPr", cursor) {
+            let tag = updated[start..end].to_string();
+            let prefix = xml_tag_prefix(&tag);
+            let element = format!(
+                "<{prefix}tblStyle {prefix}val=\"{}\"/>",
+                xml_attr_escape(style)
+            );
+            if tag.ends_with("/>") {
+                let replacement = format!(
+                    "{}{element}</{prefix}tblPr>",
+                    tag.trim_end_matches("/>").to_string() + ">"
+                );
+                updated = replace_range(&updated, start, end, &replacement);
+                cursor = start + replacement.len();
+            } else {
+                let (close, _) = find_end_tag(&updated, "tblPr", end)
+                    .ok_or_else(|| CliError::unexpected("unterminated DOCX table properties"))?;
+                if !contains_local_tag(&updated[end..close], "tblStyle") {
+                    updated.insert_str(end, &element);
+                    cursor = close + element.len();
+                } else {
+                    cursor = close;
+                }
+            }
+        }
     }
     let Some(setup) = kit.page_setup.as_ref().and_then(Value::as_object) else {
         return Ok(updated);

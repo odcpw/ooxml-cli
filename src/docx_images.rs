@@ -289,6 +289,99 @@ pub(crate) fn docx_images_replace(
     Ok(Value::Object(result))
 }
 
+pub(crate) fn insert_brand_header_footer_logo(
+    file: &str,
+    part_uri: &str,
+    logo: &crate::brand::BrandLogo,
+) -> CliResult<()> {
+    let entries = zip_entry_names(file)?;
+    let part = package_part_name(part_uri);
+    let xml = zip_text(file, &part)?;
+    let root = crate::docx_headers::docx_header_footer_root_tag(&xml, part_uri)?;
+    let bytes = read_docx_image_file(&logo.path)?;
+    let processed = process_docx_image(
+        &bytes,
+        logo.width_emu.unwrap_or(1_200_000),
+        logo.height_emu.unwrap_or(400_000),
+        DocxImagePipelineArgs {
+            fit: Some("contain"),
+            max_dpi: None,
+            keep_original: false,
+            alt: "Brand Logo",
+        },
+    )?;
+    let media_uri = allocate_docx_media_uri(&entries, processed.content_type);
+    let rels_part = relationships_part_for(&part);
+    let rels = relationship_entries(file, &rels_part).unwrap_or_default();
+    let id = allocate_relationship_id(&rels);
+    let rel_xml =
+        zip_text(file, &rels_part).unwrap_or_else(|_| crate::opc::empty_relationships_xml(false));
+    let target = relationship_target_from_source_to_target(part_uri, &media_uri);
+    let rel_xml = append_relationship_xml(
+        rel_xml,
+        &RelationshipEntry::new(&id, DOCX_IMAGE_REL_TYPE, &target),
+    );
+    let paragraph = render_docx_image_paragraph(
+        "w",
+        &id,
+        &media_uri,
+        next_docx_doc_pr_id(&xml),
+        if logo.placement.ends_with("right") {
+            "right"
+        } else {
+            "left"
+        },
+        &processed,
+    );
+    // The drawing is self-contained even when the existing header uses other prefixes.
+    let paragraph = paragraph.replacen(
+        "<w:p>",
+        &format!(
+            "<w:p xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:wp=\"{DOCX_WP_NS}\" xmlns:r=\"{DOCX_REL_NS}\">"
+        ),
+        1,
+    );
+    let mut updated = xml.clone();
+    if let Some(close) = xml.rfind(&format!("</{root}>")) {
+        updated.insert_str(close, &paragraph);
+    } else {
+        let start = xml
+            .find(&format!("<{root}"))
+            .ok_or_else(|| CliError::unexpected("brand header/footer root missing"))?;
+        let end = xml[start..]
+            .find("/>")
+            .map(|end| start + end)
+            .ok_or_else(|| CliError::unexpected("brand header/footer has no closing tag"))?;
+        updated.replace_range(end..end + 2, &format!(">{paragraph}</{root}>"));
+    }
+    let mut text = BTreeMap::from([(part, updated), (rels_part, rel_xml)]);
+    text.insert(
+        "[Content_Types].xml".into(),
+        ensure_content_type_override(
+            zip_text(file, "[Content_Types].xml")?,
+            &media_uri,
+            processed.content_type,
+        )?,
+    );
+    let binary = BTreeMap::from([(package_part_name(&media_uri), processed.data)]);
+    write_docx_package_binary_mutation_output(
+        file,
+        &text,
+        &binary,
+        DocxParagraphMutationOptions {
+            text: None,
+            text_file: None,
+            style: "",
+            out: None,
+            backup: None,
+            dry_run: false,
+            in_place: true,
+            no_validate: true,
+        },
+    )?;
+    Ok(())
+}
+
 pub(crate) fn docx_images_insert(
     file: &str,
     options: DocxImageInsertOptions<'_>,

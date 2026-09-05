@@ -1,5 +1,27 @@
 use super::*;
 
+pub(crate) fn apply_brand_chart_palette_xml(xml: &str, colors: &[String; 6]) -> CliResult<String> {
+    let mut root = parse_xml_node(xml)?;
+    let ctx = ensure_chart_xml_namespaces(&mut root);
+    for index in 0..series_node_paths(&root).len() {
+        let color = colors[index % 6].clone();
+        apply_chart_set_series_style(
+            &mut root,
+            &ctx,
+            index + 1,
+            None,
+            &ChartSeriesStyleOptions {
+                fill_color: Some(color.clone()),
+                line_color: Some(color),
+                line_width_pt: None,
+                marker_symbol: None,
+                marker_size: None,
+            },
+        )?;
+    }
+    Ok(render_xml_document(&root))
+}
+
 pub(crate) fn apply_template_chart_series_style_xml(
     xml: &str,
     chart_uri: &str,
