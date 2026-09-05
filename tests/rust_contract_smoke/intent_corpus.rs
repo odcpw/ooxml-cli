@@ -1994,6 +1994,55 @@ fn corrected_command_reparses_and_dry_runs_a_manifest_mutation() {
 }
 
 #[test]
+fn read_intent_corrections_export_ranges_without_mutating_the_workbook() {
+    let input = "testdata/xlsx/minimal-workbook/workbook.xlsx";
+    let before = std::fs::read(input).expect("input workbook");
+    for (noun, verb) in [
+        ("range", "get"),
+        ("ranges", "get"),
+        ("range", "read"),
+        ("ranges", "show"),
+        ("rnages", "export"),
+    ] {
+        let value = explicit_json_error(&[
+            "--json", "xlsx", noun, verb, input, "--sheet", "Sheet1", "--range", "A1:B5",
+        ]);
+        let error = &value["error"];
+        let expected =
+            format!("ooxml --json xlsx ranges export {input} --sheet Sheet1 --range A1:B5");
+        assert_eq!(
+            error["correctedCommand"], expected,
+            "{noun} {verb}: {error}"
+        );
+        assert!(
+            error["didYouMean"]
+                .as_array()
+                .expect("suggestions")
+                .iter()
+                .all(|suggestion| suggestion != "ooxml xlsx ranges set"
+                    && suggestion != "ooxml xlsx ranges replace")
+        );
+        let output = run_ooxml_process(&expected.split_whitespace().skip(1).collect::<Vec<_>>());
+        assert_eq!(
+            output.code,
+            0,
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stderr.is_empty());
+        let exported: Value = serde_json::from_slice(&output.stdout).expect("range readback");
+        assert_eq!(exported["sheet"], "Sheet1");
+        assert_eq!(exported["range"], "A1:B5");
+        assert_eq!(std::fs::read(input).expect("unchanged input"), before);
+    }
+    let write = explicit_json_error(&["--json", "xlsx", "range", "set"]);
+    assert_eq!(
+        write["error"]["correctedCommand"],
+        "ooxml --json xlsx ranges set"
+    );
+}
+
+#[test]
 fn invalid_args_text_mode_prints_the_same_recovery_fields_on_stderr() {
     let output = run_ooxml_process(&["--format", "text", "capabilities", "--fro", "xlsx"]);
     assert_eq!(output.code, 2);

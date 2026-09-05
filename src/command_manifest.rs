@@ -295,10 +295,18 @@ pub(crate) fn command_path_suggestions(args: &[String]) -> Vec<String> {
         if exact.is_empty() {
             let mut ranked = candidates
                 .into_iter()
+                .filter(|spec| {
+                    // A read request must not recover to a package mutation merely
+                    // because its verb is a closer spelling (for example get/set).
+                    let read_intent = command_args
+                        .get(spec.path.len() - 1)
+                        .is_some_and(|arg| is_read_command_verb(arg));
+                    !read_intent || !spec_is_op_compatible(spec)
+                })
                 .filter_map(|spec| {
                     spec.path.get(index).map(|segment| {
                         (
-                            crate::cli_args::damerau_levenshtein(arg, segment),
+                            command_token_distance(arg, segment, index + 1 == spec.path.len()),
                             command_suffix_distance(&command_args, spec.path, index + 1),
                             spec.path.join(" "),
                         )
@@ -322,12 +330,30 @@ pub(crate) fn command_path_suggestions(args: &[String]) -> Vec<String> {
     Vec::new()
 }
 
+fn is_read_command_verb(verb: &str) -> bool {
+    matches!(
+        verb,
+        "get" | "read" | "show" | "list" | "inspect" | "export"
+    )
+}
+
+fn command_token_distance(provided: &str, expected: &str, is_verb: bool) -> usize {
+    if is_verb && is_read_command_verb(provided) && is_read_command_verb(expected) {
+        0
+    } else {
+        crate::cli_args::damerau_levenshtein(provided, expected)
+    }
+}
+
 fn command_suffix_distance(args: &[String], path: &[&str], start: usize) -> usize {
     let provided = args[start..].iter().take_while(|arg| !arg.starts_with('-'));
     let expected = path[start..].iter();
     let distance = provided
         .zip(expected)
-        .map(|(arg, segment)| crate::cli_args::damerau_levenshtein(arg, segment))
+        .enumerate()
+        .map(|(index, (arg, segment))| {
+            command_token_distance(arg, segment, start + index + 1 == path.len())
+        })
         .sum::<usize>();
     let provided_len = args[start..]
         .iter()
