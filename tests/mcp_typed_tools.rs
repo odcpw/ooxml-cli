@@ -1475,3 +1475,73 @@ fn typed_tool_names_are_unique() {
         TYPED_NAMES.len()
     );
 }
+
+#[test]
+fn typed_workbook_markdown_session_matches_cli_bytes_and_native_readback() {
+    let dir = temp_dir("workbook-markdown-session");
+    let source = dir.join("new-workbook.xlsx");
+    let output = dir.join("session-workbook.xlsx");
+    let direct = dir.join("direct-workbook.xlsx");
+    let markdown = include_str!("../testdata/markdown/mapping-xlsx.md");
+    let responses = mcp(
+        &[
+            tool_call(1, "open", json!({"file": source, "out": output})),
+            tool_call(
+                2,
+                "build_workbook",
+                json!({"session": "rust-session-1", "markdown": markdown}),
+            ),
+            tool_call(3, "commit", json!({"session": "rust-session-1"})),
+        ],
+        &[],
+    );
+    for response in &responses {
+        assert!(response.get("error").is_none(), "{response:#}");
+        assert_ne!(response["result"]["isError"], true, "{response:#}");
+    }
+    let build = &responses[1]["result"]["structuredContent"];
+    assert_eq!(build["family"], "xlsx");
+    assert_eq!(build["markdown"], "inline");
+    assert_eq!(build["committed"], false);
+    assert_eq!(
+        responses[2]["result"]["structuredContent"]["validated"],
+        true
+    );
+    run_cli_json(
+        &[
+            "--json".into(),
+            "xlsx".into(),
+            "build".into(),
+            "--from-markdown".into(),
+            "testdata/markdown/mapping-xlsx.md".into(),
+            "--out".into(),
+            direct.to_string_lossy().into_owned(),
+        ],
+        &[],
+    );
+    assert_eq!(
+        std::fs::read(&output).unwrap(),
+        std::fs::read(&direct).unwrap()
+    );
+    let outline = run_cli_json(
+        &[
+            "--json".into(),
+            "outline".into(),
+            output.to_string_lossy().into_owned(),
+        ],
+        &[],
+    );
+    assert_eq!(outline["summary"]["sheets"], 2);
+    assert_eq!(outline["summary"]["tables"], 2);
+    assert_eq!(outline["summary"]["charts"], 1);
+    let validation = run_cli_json(
+        &[
+            "--json".into(),
+            "validate".into(),
+            "--strict".into(),
+            output.to_string_lossy().into_owned(),
+        ],
+        &[],
+    );
+    assert_eq!(validation["valid"], true);
+}

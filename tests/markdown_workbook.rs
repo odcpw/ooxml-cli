@@ -80,7 +80,10 @@ fn workbook_mixed_columns_remain_text_and_chart_defaults_to_section_table() {
     assert_eq!(sheet["columns"][0]["type"], "text");
     assert_eq!(sheet["columns"][1]["type"], "text");
     assert_eq!(sheet["rows"][1][1], Value::Null);
-    assert_eq!(sheet["charts"][0]["options"]["table"], "MarkdownTable1");
+    assert_eq!(
+        sheet["charts"][0]["source"],
+        json!({"path": "self", "sheet": "Sheet1", "range": "A1:B3"})
+    );
 }
 
 fn run(args: &[&str]) -> Value {
@@ -360,5 +363,205 @@ fn workbook_markdown_cli_stdin_and_invalid_input_preserve_existing_output() {
         assert_eq!(failure.status.code(), Some(2));
         assert_eq!(std::fs::read(&output).unwrap(), prior);
     }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn workbook_construct_mapping_table_covers_inference_hints_blanks_and_warnings() {
+    // Each row is an independent source construct and expected column contract.
+    let cases = [
+        ("Value", "-2.5", "3e2", "number", "Value"),
+        ("Value", "25%", "12.5%", "percent", "Value"),
+        ("Value", "TRUE", "no", "boolean", "Value"),
+        ("Value", "2024-02-29", "2026-01-15", "date", "Value"),
+        ("Value (currency)", "$1,250.00", "€99", "currency", "Value"),
+        ("Value (number)", "1,200", "2", "number", "Value"),
+        ("Value (percentage)", "0.25", "50%", "percent", "Value"),
+        ("Value (boolean)", "1", "0", "boolean", "Value"),
+        ("Value (text)", "001", "002", "text", "Value"),
+        ("Value", "12", "pending", "text", "Value"),
+        ("Value", "", "", "text", "Value"),
+        ("Amount (USD)", "10", "20", "number", "Amount (USD)"),
+    ];
+    for (header, first, second, kind, name) in cases {
+        let source =
+            format!("# Workbook\n## Data\n| {header} |\n| --- |\n| {first} |\n| {second} |\n");
+        let conversion = markdown_to_spec(BuildFamily::Xlsx, &source, "construct.md").unwrap();
+        assert_eq!(conversion.spec["sheets"].as_array().unwrap().len(), 1);
+        let sheet = &conversion.spec["sheets"][0];
+        assert_eq!(sheet["name"], "Data");
+        assert_eq!(sheet["columns"][0]["type"], kind, "{source}");
+        assert_eq!(sheet["rows"][0][0], name, "{source}");
+        assert!((8..=60).contains(&sheet["columns"][0]["width"].as_u64().unwrap()));
+        if first.is_empty() {
+            assert_eq!(sheet["rows"][1][0], Value::Null);
+        }
+    }
+    let conversion = markdown_to_spec(BuildFamily::Xlsx,
+        "# Data\nIgnored prose.\n| Region | Sales |\n| --- | --- |\n| North | 5 |\n| Total | 999 |\n",
+        "totals.md").unwrap();
+    assert_eq!(
+        conversion.spec["sheets"][0]["tables"][0]["totals"],
+        json!(["Sales:sum"])
+    );
+    assert_eq!(
+        conversion.spec["sheets"][0]["rows"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(
+        conversion
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "MARKDOWN_XLSX_TOTALS_RECALCULATED")
+    );
+    assert!(
+        conversion
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "MARKDOWN_XLSX_BLOCK_IGNORED")
+    );
+}
+
+#[test]
+fn workbook_fixture_has_native_cell_types_totals_filter_widths_and_chart_references() {
+    use std::io::Read;
+    let mut package =
+        zip::ZipArchive::new(std::fs::File::open("testdata/xlsx/markdown/mapping.xlsx").unwrap())
+            .unwrap();
+    let mut read = |name: &str| {
+        let mut xml = String::new();
+        package
+            .by_name(name)
+            .unwrap()
+            .read_to_string(&mut xml)
+            .unwrap();
+        xml
+    };
+    let worksheet = read("xl/worksheets/sheet1.xml");
+    assert!(worksheet.contains("<c r=\"E2\" t=\"b\"><v>1</v></c>"));
+    assert!(worksheet.contains("<c r=\"G2\" t=\"inlineStr\"><is><t>001</t></is></c>"));
+    assert!(worksheet.contains("<v>46037.0</v>"));
+    assert!(worksheet.contains("<v>0.25</v>"));
+    assert!(worksheet.contains("SUBTOTAL(109,MarkdownTable1[Units])"));
+    assert!(worksheet.contains("SUBTOTAL(109,MarkdownTable1[Revenue])"));
+    assert!(worksheet.contains("state=\"frozen\" topLeftCell=\"A2\" ySplit=\"1\""));
+    assert_eq!(worksheet.matches("customWidth=\"1\"").count(), 7);
+    let table = read("xl/tables/table1.xml");
+    assert!(table.contains("<autoFilter "));
+    assert!(table.contains("totalsRowCount=\"1\""));
+    assert_eq!(table.matches("totalsRowFunction=\"sum\"").count(), 2);
+    assert!(table.contains("showRowStripes=\"1\""));
+    let chart = read("xl/charts/chart1.xml");
+    assert!(chart.contains("'Sales'!$A$2:$A$3"));
+    assert!(chart.contains("'Sales'!$B$2:$B$3"));
+    assert!(chart.contains("Units by region"));
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::test_runner::Config {
+        cases: 12,
+        failure_persistence: None,
+        rng_seed: proptest::test_runner::RngSeed::Fixed(0x584c53584d44),
+        ..proptest::test_runner::Config::default()
+    })]
+    #[test]
+    fn generated_tables_preserve_values_through_markdown_workbook_roundtrip(
+        data in proptest::collection::vec((0u16..1000, 0u8..100, proptest::prelude::any::<bool>()), 1..8)
+    ) {
+        let dir = std::env::temp_dir().join(format!("ooxml-markdown-workbook-property-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("input.md");
+        let first = dir.join("first.xlsx");
+        let second = dir.join("second.xlsx");
+        let mut source = "# Generated\n| Label | Count | Rate | Enabled |\n| --- | --- | --- | --- |\n".to_string();
+        let mut expected = vec![json!(["Label", "Count", "Rate", "Enabled"])];
+        for (index, (count, rate, enabled)) in data.iter().enumerate() {
+            source.push_str(&format!("| row {index} café 東京 | {count} | {rate}% | {enabled} |\n"));
+            expected.push(json!([format!("row {index} café 東京"), f64::from(*count), f64::from(*rate)/100.0, enabled]));
+        }
+        std::fs::write(&input, &source).unwrap();
+        run(&["--json", "xlsx", "build", "--from-markdown", input.to_str().unwrap(), "--out", first.to_str().unwrap(), "--force"]);
+        let range = format!("A1:D{}", data.len()+1);
+        let exported = run(&["--json", "xlsx", "ranges", "export", first.to_str().unwrap(), "--sheet", "Generated", "--range", &range, "--include-types"]);
+        proptest::prop_assert_eq!(&exported["values"], &json!(expected));
+        let markdown = std::process::Command::new(env!("CARGO_BIN_EXE_ooxml"))
+            .args(["--format", "markdown", "xlsx", "ranges", "export", first.to_str().unwrap(), "--sheet", "Generated", "--range", &range])
+            .output().unwrap();
+        proptest::prop_assert!(markdown.status.success(), "{}", String::from_utf8_lossy(&markdown.stderr));
+        proptest::prop_assert!(!markdown.stdout.contains(&b'\r'));
+        let markdown = String::from_utf8(markdown.stdout).unwrap();
+        std::fs::write(&input, format!("# Generated\n{markdown}")).unwrap();
+        run(&["--json", "xlsx", "build", "--from-markdown", input.to_str().unwrap(), "--out", second.to_str().unwrap(), "--force"]);
+        let roundtrip = run(&["--json", "xlsx", "ranges", "export", second.to_str().unwrap(), "--sheet", "Generated", "--range", &range, "--include-types"]);
+        proptest::prop_assert_eq!(&roundtrip["values"], &exported["values"]);
+        proptest::prop_assert_eq!(&roundtrip["types"], &exported["types"]);
+        for file in [&first, &second] {
+            let strict = run(&["--json", "validate", "--strict", file.to_str().unwrap()]);
+            proptest::prop_assert_eq!(&strict["valid"], &json!(true));
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
+fn workbook_chart_fence_without_source_uses_its_sections_data_table() {
+    use std::io::Read;
+    let dir = std::env::temp_dir().join(format!(
+        "ooxml-markdown-workbook-chart-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("chart.md");
+    let output = dir.join("chart.xlsx");
+    std::fs::write(&source, "# Data\n| Category | Value |\n| --- | --- |\n| A | 2 |\n| B | 5 |\n| Total | |\n\n```chart\n{\"type\":\"line\"}\n```\n").unwrap();
+    run(&[
+        "--json",
+        "xlsx",
+        "build",
+        "--from-markdown",
+        source.to_str().unwrap(),
+        "--out",
+        output.to_str().unwrap(),
+        "--force",
+    ]);
+    let mut package = zip::ZipArchive::new(std::fs::File::open(&output).unwrap()).unwrap();
+    let mut chart = String::new();
+    package
+        .by_name("xl/charts/chart1.xml")
+        .unwrap()
+        .read_to_string(&mut chart)
+        .unwrap();
+    assert!(chart.contains("<c:lineChart>"));
+    assert!(chart.contains("'Data'!$A$2:$A$3"), "{chart}");
+    assert!(chart.contains("'Data'!$B$2:$B$3"), "{chart}");
+    assert_eq!(
+        run(&["--json", "validate", "--strict", output.to_str().unwrap()])["valid"],
+        true
+    );
+    let schema = run(&[
+        "--json",
+        "conformance",
+        "check",
+        output.to_str().unwrap(),
+        "--openxml-sdk",
+    ]);
+    let schema = schema["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["name"] == "schema")
+        .unwrap();
+    if std::env::var("OOXML_REQUIRE_OPENXML_SDK").as_deref() == Ok("1") {
+        assert_eq!(schema["status"], "passed", "{schema}");
+    } else {
+        assert!(
+            schema["status"] == "passed" || schema["status"] == "skipped",
+            "{schema}"
+        );
+    }
+    drop(package);
     std::fs::remove_dir_all(dir).unwrap();
 }

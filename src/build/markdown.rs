@@ -851,16 +851,19 @@ fn xlsx_section(
                 .and_then(|options| options.get("table"))
                 .is_none()
         {
-            if chart.get("options").is_none() {
-                chart["options"] = json!({});
-            }
-            if !chart["options"].is_object() {
-                return Err(xlsx_markdown_error(
-                    Some(*line),
-                    "chart options must be an object",
-                ));
-            }
-            chart["options"]["table"] = json!(table_name);
+            // Source only the header and data rows. A native table's range
+            // also contains its uncalculated totals formulas after publication.
+            let column_count = u32::try_from(source_rows[0].len()).map_err(|_| {
+                xlsx_markdown_error(Some(*line), "table exceeds XLSX column limits")
+            })?;
+            let last_column = crate::xlsx_model::checked_col_name(column_count)
+                .map_err(|error| xlsx_markdown_error(Some(*line), &error.message))?;
+            let row_count = sheet["rows"].as_array().expect("generated rows").len();
+            chart["source"] = json!({
+                "path": "self",
+                "sheet": name,
+                "range": format!("A1:{last_column}{row_count}"),
+            });
         }
         sheet["charts"] = json!([chart]);
     }
@@ -1811,7 +1814,8 @@ fn is_slide_boundary(source: &str) -> bool {
 }
 
 fn looks_like_table_row(source: &str) -> bool {
-    source.contains('|') && table_cells(source).len() >= 2
+    source.contains('|')
+        && (table_cells(source).len() >= 2 || (source.starts_with('|') && source.ends_with('|')))
 }
 
 fn is_table_separator(source: &str) -> bool {
