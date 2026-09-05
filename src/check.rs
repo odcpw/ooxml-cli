@@ -231,6 +231,14 @@ fn run_with_config(file: &str, options: CheckOptions, config: Option<&str>) -> C
         }
     }
 
+    if family == "docx" {
+        for part in entries.iter().filter(|part| {
+            part.starts_with("word/") && part.ends_with(".xml") && !part.contains("/_rels/")
+        }) {
+            docx_justification_findings(file, part, &crate::zip_text(file, part)?, &mut findings)?;
+        }
+    }
+
     if family == "xlsx" {
         match xlsx::reference_findings(file, &entries) {
             Ok(reference_findings) => {
@@ -294,6 +302,64 @@ fn run_with_config(file: &str, options: CheckOptions, config: Option<&str>) -> C
         "findings": findings,
         "checkCommand": format!("ooxml --json check {} --openxml-sdk auto", command_arg(file)),
     }))
+}
+
+fn docx_justification_findings(
+    file: &str,
+    part: &str,
+    xml: &str,
+    findings: &mut Vec<CheckFinding>,
+) -> CliResult<()> {
+    use quick_xml::events::Event;
+    const NS: &[u8] = b"http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    let mut reader = quick_xml::NsReader::from_str(xml);
+    let mut stack = Vec::new();
+    let mut index = 0;
+    loop {
+        match reader.read_event() {
+            Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
+                let empty = matches!(event, Event::Empty(_));
+                let element = match &event {
+                    Event::Start(element) | Event::Empty(element) => element,
+                    _ => unreachable!(),
+                };
+                let name = crate::local_name(element.name().as_ref()).to_string();
+                let in_ns =
+                    crate::docx_block_readers::element_in_ns(reader.resolver(), element, NS);
+                index += 1;
+                let parent = stack
+                    .last()
+                    .map(|(name, in_ns): &(String, bool)| (name.as_str(), *in_ns));
+                let context = match (name.as_str(), parent) {
+                    ("jc", Some(("tblPr" | "tblPrEx", true))) => Some("table"),
+                    ("lvlJc", Some(("lvl", true))) => Some("numbering level"),
+                    _ => None,
+                };
+                let value = crate::xml_util::attr_bound_ns(element, reader.resolver(), NS, b"val");
+                if let (true, Some(context), Some(value @ ("start" | "end"))) =
+                    (in_ns, context, value.as_deref())
+                {
+                    findings.push(CheckFinding::new(
+                        "error", "DOCX_JUSTIFICATION_PRODUCER_VALUE", json!(format!("/{part}")),
+                        json!({"element": name, "elementIndex": index, "context": context, "value": value}),
+                        format!("The {context} justification value '{value}' is invalid in the Office2019 schema. Paragraph start/end justification is a different context. Automatic repair is unsupported because choosing left/right requires the intended writing direction. Set the intended alignment in the source application, re-export, and run schema validation; ordinary edits preserve this producer defect."),
+                        format!("ooxml --json conformance check {} --openxml-sdk", command_arg(file)),
+                        "docs/producer-limitations.md",
+                    ));
+                }
+                if !empty {
+                    stack.push((name, in_ns));
+                }
+            }
+            Ok(Event::End(_)) => {
+                stack.pop();
+            }
+            Ok(Event::Eof) => break,
+            Err(error) => return Err(CliError::unexpected(error.to_string())),
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn run_conformance(file: &str, schema: bool) -> CliResult<(Value, String)> {
@@ -707,6 +773,25 @@ impl Drop for TempRenderDir {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn docx_justification_producer_scan_preserves_valid_paragraph_and_namespace_contexts() {
+        let xml = r#"<q:document xmlns:q="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:f="urn:foreign"><q:body><q:p><q:pPr><q:jc q:val="start"/><q:jc q:val="end"/></q:pPr></q:p><q:tbl><q:tblPr><q:jc q:val="start"/><q:jc q:val="left"/><f:jc q:val="start"/><q:jc f:val="start"/></q:tblPr></q:tbl><q:lvl><q:lvlJc q:val="end"/></q:lvl></q:body></q:document>"#;
+        let mut findings = Vec::new();
+        docx_justification_findings("input.docx", "word/document.xml", xml, &mut findings).unwrap();
+        assert_eq!(findings.len(), 2);
+        assert_eq!(findings[0].location["context"], "table");
+        assert_eq!(findings[0].location["value"], "start");
+        assert_eq!(findings[1].location["context"], "numbering level");
+        assert_eq!(findings[1].location["value"], "end");
+        let clean = xml
+            .replace("q:val=\"start\"", "q:val=\"left\"")
+            .replace("q:val=\"end\"", "q:val=\"right\"");
+        findings.clear();
+        docx_justification_findings("input.docx", "word/document.xml", &clean, &mut findings)
+            .unwrap();
+        assert!(findings.is_empty());
+    }
 
     #[test]
     fn fail_on_warning_changes_only_exit_decision() {
