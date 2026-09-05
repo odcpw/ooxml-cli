@@ -779,6 +779,186 @@ ooxml --json check <output.docx> --openxml-sdk skip --fail-on error
 ooxml --json design-check <output.pptx>
 ```
 
+### `add-workbook-chart` — Add a chart to an existing workbook
+
+Read the source, create a chart, and verify the chart and unchanged worksheet values. The first guess `xlsx charts add --help` exited 2; parent help revealed `charts create`. See docs/agent-quickstart.md for the recorded discovery and full editing tutorial.
+
+Inputs:
+
+- `<input.xlsx>` — existing workbook; retained unchanged
+- `<sheet>` — sheet name discovered with xlsx sheets list
+- `<range>` — rectangular source with a header row, category column, and numeric series
+- `<output.xlsx>` — new workbook path containing the added chart
+
+Typed MCP tools for the same intent: `edit_package`, `outline_package`, `check_package`.
+
+Steps:
+
+1. Read the chart source and confirm its types before editing.
+
+   ```console
+   ooxml --json xlsx ranges export <input.xlsx> --sheet <sheet> --range <range> --include-types
+   ```
+
+   Expected JSON fields: `/sheet`, `/range`, `/values`, `/types`.
+
+   Proof:
+
+   ```console
+   ooxml validate --strict <input.xlsx>
+   ```
+
+2. Record existing charts so the added chart can be distinguished from them.
+
+   ```console
+   ooxml --json xlsx charts list <input.xlsx>
+   ```
+
+   Expected JSON fields: `/charts`.
+
+   Proof:
+
+   ```console
+   ooxml validate --strict <input.xlsx>
+   ```
+
+3. Create a native chart in a new output workbook.
+
+   ```console
+   ooxml --json xlsx charts create <input.xlsx> --sheet <sheet> --range <range> --type line --title Revenue --anchor L2 --out <output.xlsx>
+   ```
+
+   Expected JSON fields: `/output`, `/chartPartUri`, `/sourceRange`, `/seriesCount`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.xlsx> --openxml-sdk skip --fail-on error
+   ```
+
+4. Read back the new chart, its source formulas, and cached values.
+
+   ```console
+   ooxml --json xlsx charts list <output.xlsx>
+   ```
+
+   Expected JSON fields: `/charts`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.xlsx> --openxml-sdk skip --fail-on error
+   ```
+
+5. Compare worksheet values and types with the original readback.
+
+   ```console
+   ooxml --json xlsx ranges export <output.xlsx> --sheet <sheet> --range <range> --include-types
+   ```
+
+   Expected JSON fields: `/values`, `/types`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.xlsx> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output.xlsx> --depth 3
+```
+
+```console
+ooxml --json check <output.xlsx> --openxml-sdk skip --fail-on error
+```
+
+### `append-markdown-slide` — Append a Markdown slide to an existing deck
+
+Build a snippet, then import its first slide into a new copy of the deck. Explicit import policies retain the snippet layout and theme. See docs/agent-quickstart.md for the full editing tutorial and recorded first-guess failures.
+
+Inputs:
+
+- `<input.pptx>` — existing presentation; retained unchanged
+- `<snippet.md>` — one-slide Markdown snippet with front matter matching the destination canvas, for example size: 4:3 for a 10 by 7.5 inch deck
+- `<snippet.pptx>` — temporary presentation built from the snippet
+- `<output.pptx>` — new presentation path with the imported slide appended
+
+Typed MCP tools for the same intent: `build_presentation`, `edit_package`, `outline_package`, `check_package`.
+
+Steps:
+
+1. Record slide titles, order, and slideSize; set the snippet front-matter size to match before building.
+
+   ```console
+   ooxml --json outline <input.pptx> --depth 1
+   ```
+
+   Expected JSON fields: `/slides`, `/slideSize`.
+
+   Proof:
+
+   ```console
+   ooxml validate --strict <input.pptx>
+   ```
+
+2. Build the snippet as a presentation before importing its first slide.
+
+   ```console
+   ooxml --json pptx build --from-markdown <snippet.md> --out <snippet.pptx>
+   ```
+
+   Expected JSON fields: `/output`, `/validated`, `/outline`.
+
+   Proof:
+
+   ```console
+   ooxml validate --strict <snippet.pptx>
+   ```
+
+3. Append the slide with its source layout and theme; omitting insertion flags appends at the end.
+
+   ```console
+   ooxml --json pptx slides import-slide <input.pptx> --source <snippet.pptx> --slide 1 --layout-policy import --theme-policy import --out <output.pptx>
+   ```
+
+   Expected JSON fields: `/newSlideNumber`, `/newSlideUri`, `/mutationEnvelope/validated`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+   ```
+
+4. Confirm the appended title, slide order, and count against the original readback.
+
+   ```console
+   ooxml --json outline <output.pptx> --depth 1
+   ```
+
+   Expected JSON fields: `/slides`.
+
+   Proof:
+
+   ```console
+   ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+   ```
+
+Follow-ups:
+
+```console
+ooxml --json outline <output.pptx> --depth 3
+```
+
+```console
+ooxml --json check <output.pptx> --openxml-sdk skip --fail-on error
+```
+
+```console
+ooxml --json design-check <output.pptx>
+```
+
 <!-- END GENERATED OOXML RECIPES -->
 
 ## VBA And Macro Files

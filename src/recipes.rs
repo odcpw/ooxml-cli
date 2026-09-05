@@ -350,6 +350,97 @@ const BUILD_FROM_MARKDOWN_STEPS: &[RecipeStep] = &[
     ),
 ];
 
+const ADD_WORKBOOK_CHART_INPUTS: &[RecipeInput] = &[
+    input("<input.xlsx>", "existing workbook; retained unchanged"),
+    input("<sheet>", "sheet name discovered with xlsx sheets list"),
+    input(
+        "<range>",
+        "rectangular source with a header row, category column, and numeric series",
+    ),
+    input(
+        "<output.xlsx>",
+        "new workbook path containing the added chart",
+    ),
+];
+const ADD_WORKBOOK_CHART_STEPS: &[RecipeStep] = &[
+    step(
+        "ooxml --json xlsx ranges export <input.xlsx> --sheet <sheet> --range <range> --include-types",
+        "Read the chart source and confirm its types before editing.",
+        &["/sheet", "/range", "/values", "/types"],
+        "ooxml validate --strict <input.xlsx>",
+    ),
+    step(
+        "ooxml --json xlsx charts list <input.xlsx>",
+        "Record existing charts so the added chart can be distinguished from them.",
+        &["/charts"],
+        "ooxml validate --strict <input.xlsx>",
+    ),
+    step(
+        "ooxml --json xlsx charts create <input.xlsx> --sheet <sheet> --range <range> --type line --title Revenue --anchor L2 --out <output.xlsx>",
+        "Create a native chart in a new output workbook.",
+        &["/output", "/chartPartUri", "/sourceRange", "/seriesCount"],
+        CHECK_XLSX,
+    ),
+    step(
+        "ooxml --json xlsx charts list <output.xlsx>",
+        "Read back the new chart, its source formulas, and cached values.",
+        &["/charts"],
+        CHECK_XLSX,
+    ),
+    step(
+        "ooxml --json xlsx ranges export <output.xlsx> --sheet <sheet> --range <range> --include-types",
+        "Compare worksheet values and types with the original readback.",
+        &["/values", "/types"],
+        CHECK_XLSX,
+    ),
+];
+
+const APPEND_MARKDOWN_SLIDE_INPUTS: &[RecipeInput] = &[
+    input("<input.pptx>", "existing presentation; retained unchanged"),
+    input(
+        "<snippet.md>",
+        "one-slide Markdown snippet with front matter matching the destination canvas, for example size: 4:3 for a 10 by 7.5 inch deck",
+    ),
+    input(
+        "<snippet.pptx>",
+        "temporary presentation built from the snippet",
+    ),
+    input(
+        "<output.pptx>",
+        "new presentation path with the imported slide appended",
+    ),
+];
+const APPEND_MARKDOWN_SLIDE_STEPS: &[RecipeStep] = &[
+    step(
+        "ooxml --json outline <input.pptx> --depth 1",
+        "Record slide titles, order, and slideSize; set the snippet front-matter size to match before building.",
+        &["/slides", "/slideSize"],
+        "ooxml validate --strict <input.pptx>",
+    ),
+    step(
+        "ooxml --json pptx build --from-markdown <snippet.md> --out <snippet.pptx>",
+        "Build the snippet as a presentation before importing its first slide.",
+        &["/output", "/validated", "/outline"],
+        "ooxml validate --strict <snippet.pptx>",
+    ),
+    step(
+        "ooxml --json pptx slides import-slide <input.pptx> --source <snippet.pptx> --slide 1 --layout-policy import --theme-policy import --out <output.pptx>",
+        "Append the slide with its source layout and theme; omitting insertion flags appends at the end.",
+        &[
+            "/newSlideNumber",
+            "/newSlideUri",
+            "/mutationEnvelope/validated",
+        ],
+        CHECK_PPTX,
+    ),
+    step(
+        "ooxml --json outline <output.pptx> --depth 1",
+        "Confirm the appended title, slide order, and count against the original readback.",
+        &["/slides"],
+        CHECK_PPTX,
+    ),
+];
+
 pub(crate) const RECIPES: &[Recipe] = &[
     Recipe {
         name: "deck-from-scratch",
@@ -438,6 +529,22 @@ pub(crate) const RECIPES: &[Recipe] = &[
         families: &["pptx", "docx"],
         inputs: BUILD_FROM_MARKDOWN_INPUTS,
         steps: BUILD_FROM_MARKDOWN_STEPS,
+    },
+    Recipe {
+        name: "add-workbook-chart",
+        title: "Add a chart to an existing workbook",
+        summary: "Read the source, create a chart, and verify the chart and unchanged worksheet values. The first guess `xlsx charts add --help` exited 2; parent help revealed `charts create`. See docs/agent-quickstart.md for the recorded discovery and full editing tutorial.",
+        families: &["xlsx"],
+        inputs: ADD_WORKBOOK_CHART_INPUTS,
+        steps: ADD_WORKBOOK_CHART_STEPS,
+    },
+    Recipe {
+        name: "append-markdown-slide",
+        title: "Append a Markdown slide to an existing deck",
+        summary: "Build a snippet, then import its first slide into a new copy of the deck. Explicit import policies retain the snippet layout and theme. See docs/agent-quickstart.md for the full editing tutorial and recorded first-guess failures.",
+        families: &["pptx"],
+        inputs: APPEND_MARKDOWN_SLIDE_INPUTS,
+        steps: APPEND_MARKDOWN_SLIDE_STEPS,
     },
 ];
 
@@ -600,12 +707,14 @@ pub(crate) fn recipes_for(family: Option<&str>, request: Option<&str>) -> Vec<&'
 
 fn recipe_follow_ups(name: &str) -> &'static [&'static str] {
     match name {
-        "deck-from-scratch" | "deck-from-template" | "translate-deck" => &[
-            "ooxml --json outline <output.pptx> --depth 3",
-            CHECK_PPTX,
-            "ooxml --json design-check <output.pptx>",
-        ],
-        "workbook-report" | "pivot-report" => {
+        "deck-from-scratch" | "deck-from-template" | "translate-deck" | "append-markdown-slide" => {
+            &[
+                "ooxml --json outline <output.pptx> --depth 3",
+                CHECK_PPTX,
+                "ooxml --json design-check <output.pptx>",
+            ]
+        }
+        "workbook-report" | "pivot-report" | "add-workbook-chart" => {
             &["ooxml --json outline <output.xlsx> --depth 3", CHECK_XLSX]
         }
         "document-report" => &["ooxml --json outline <output.docx> --depth 3", CHECK_DOCX],
@@ -635,6 +744,12 @@ fn recipe_follow_ups(name: &str) -> &'static [&'static str] {
 
 fn typed_mcp_tools(name: &str) -> &'static [&'static str] {
     match name {
+        "append-markdown-slide" => &[
+            "build_presentation",
+            "edit_package",
+            "outline_package",
+            "check_package",
+        ],
         "deck-from-scratch" | "deck-from-template" => &[
             "build_presentation",
             "outline_package",
@@ -656,7 +771,7 @@ fn typed_mcp_tools(name: &str) -> &'static [&'static str] {
             "check_package",
         ],
         "translate-deck" => &["edit_package", "outline_package", "check_package"],
-        "pivot-report" | "batch-edit-with-apply" => {
+        "add-workbook-chart" | "pivot-report" | "batch-edit-with-apply" => {
             &["edit_package", "outline_package", "check_package"]
         }
         "build-from-spec" => &[

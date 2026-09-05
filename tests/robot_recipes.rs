@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const RECIPE_NAMES: [&str; 11] = [
+const RECIPE_NAMES: [&str; 13] = [
     "deck-from-scratch",
     "deck-from-template",
     "workbook-report",
@@ -16,6 +16,8 @@ const RECIPE_NAMES: [&str; 11] = [
     "batch-edit-with-apply",
     "build-from-spec",
     "build-from-markdown",
+    "add-workbook-chart",
+    "append-markdown-slide",
 ];
 
 #[test]
@@ -207,6 +209,20 @@ fn run_recipe(recipe: &Value) {
     let name = recipe["name"].as_str().unwrap();
     let temp = temp_dir(name);
     let replacements = recipe_replacements(name, &temp);
+    let original = match name {
+        "add-workbook-chart" => Some(replacements["<input.xlsx>"].clone()),
+        "append-markdown-slide" => Some(replacements["<input.pptx>"].clone()),
+        _ => None,
+    };
+    let original_bytes = original.as_ref().map(|path| std::fs::read(path).unwrap());
+    if name == "append-markdown-slide" {
+        std::fs::write(
+            &replacements["<snippet.md>"],
+            "---\nsize: 4:3\n---\n# Appended update\nA new decision for the existing deck.\n",
+        )
+        .unwrap();
+    }
+    let mut readbacks = Vec::new();
     if name == "batch-edit-with-apply" {
         let operations = json!([{
             "id": "set_cell",
@@ -238,6 +254,7 @@ fn run_recipe(recipe: &Value) {
                 "{name} command {command} omitted expected field {pointer}: {value:#}"
             );
         }
+        readbacks.push(value);
         if let Some(path) = captured {
             std::fs::write(path, &output.stdout).expect("capture recipe stdout");
         }
@@ -275,6 +292,62 @@ fn run_recipe(recipe: &Value) {
             assert_eq!(value["summary"]["errors"], 0, "{name}: {value}");
         }
     }
+    if let Some(path) = original {
+        assert_eq!(
+            std::fs::read(path).unwrap(),
+            original_bytes.unwrap(),
+            "{name} changed its source"
+        );
+    }
+    match name {
+        "add-workbook-chart" => {
+            assert_eq!(
+                readbacks[0]["values"],
+                json!([
+                    ["Region", "Revenue"],
+                    ["North", 100],
+                    ["South", 120],
+                    ["East", 90]
+                ])
+            );
+            assert_eq!(readbacks[4]["values"], readbacks[0]["values"]);
+            assert_eq!(readbacks[4]["types"], readbacks[0]["types"]);
+            let charts = readbacks[3]["charts"].as_array().unwrap();
+            assert_eq!(
+                charts.len(),
+                readbacks[1]["charts"].as_array().unwrap().len() + 1
+            );
+            let created = charts
+                .iter()
+                .find(|chart| chart["partUri"] == readbacks[2]["chartPartUri"])
+                .expect("created chart URI in readback");
+            assert_eq!(created["types"], json!(["lineChart"]));
+            assert_eq!(created["title"], "Revenue");
+            for original in readbacks[1]["charts"].as_array().unwrap() {
+                let retained = charts
+                    .iter()
+                    .find(|chart| chart["partUri"] == original["partUri"])
+                    .expect("existing chart retained");
+                assert_eq!(retained["series"], original["series"]);
+                assert_eq!(retained["title"], original["title"]);
+            }
+            assert_eq!(
+                created["series"][0]["values"]["cachePreview"],
+                json!(["100", "120", "90"])
+            );
+        }
+        "append-markdown-slide" => {
+            let before = readbacks[0]["slides"].as_array().unwrap();
+            let after = readbacks[3]["slides"].as_array().unwrap();
+            assert_eq!(after.len(), before.len() + 1);
+            for (original, retained) in before.iter().zip(after) {
+                assert_eq!(retained["title"], original["title"]);
+            }
+            assert_eq!(after.last().unwrap()["title"], "Appended update");
+            assert_eq!(readbacks[2]["newSlideNumber"], after.len());
+        }
+        _ => {}
+    }
     let _ = std::fs::remove_dir_all(temp);
 }
 
@@ -306,6 +379,10 @@ fn recipe_replacements(name: &str, temp: &Path) -> BTreeMap<&'static str, PathBu
             "<document.md>",
             root.join("testdata/markdown/quarterly-report.md"),
         ),
+        ("<snippet.md>", temp.join("snippet.md")),
+        ("<snippet.pptx>", temp.join("snippet.pptx")),
+        ("<sheet>", PathBuf::from("Data")),
+        ("<range>", PathBuf::from("A1:B4")),
         ("<output.pptx>", temp.join("output.pptx")),
         ("<output.xlsx>", temp.join("output.xlsx")),
         ("<output.docx>", temp.join("output.docx")),
@@ -321,7 +398,7 @@ fn recipe_replacements(name: &str, temp: &Path) -> BTreeMap<&'static str, PathBu
     ]);
     values.insert(
         "<input.xlsx>",
-        if name == "pivot-report" {
+        if matches!(name, "pivot-report" | "add-workbook-chart") {
             root.join("testdata/xlsx/outline-table/workbook.xlsx")
         } else {
             root.join("testdata/xlsx/minimal-workbook/workbook.xlsx")
