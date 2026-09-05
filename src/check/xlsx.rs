@@ -41,12 +41,91 @@ pub(super) fn reference_findings(file: &str, entries: &[String]) -> CliResult<Ve
         .collect::<BTreeSet<_>>();
     let mut findings = Vec::new();
 
+    scan_chart_styles(file, entries, &mut findings)?;
     scan_formula_parts(file, entries, &sheet_names, &mut findings)?;
     inspect_defined_names(file, &workbook_part, &sheet_names, &mut findings);
     inspect_tables(file, &sheet_names, &mut findings);
     inspect_charts(file, &sheet_names, &mut findings);
     inspect_pivots(file, &sheet_names, &mut findings);
     Ok(findings)
+}
+
+// Known producer defects are reported without deleting or guessing chart formatting.
+fn scan_chart_styles(
+    file: &str,
+    entries: &[String],
+    findings: &mut Vec<CheckFinding>,
+) -> CliResult<()> {
+    for part in entries.iter().filter(|part| {
+        part.starts_with("xl/charts/") && part.ends_with(".xml") && !part.contains("/_rels/")
+    }) {
+        chart_style_findings(file, part, &zip_text(file, part)?, findings)?;
+    }
+    Ok(())
+}
+
+fn chart_style_findings(
+    file: &str,
+    part: &str,
+    xml: &str,
+    findings: &mut Vec<CheckFinding>,
+) -> CliResult<()> {
+    const NS: &[u8] = b"http://schemas.microsoft.com/office/drawing/2012/chartStyle";
+    let mut reader = quick_xml::NsReader::from_str(xml);
+    let mut stack = Vec::new();
+    let mut index = 0;
+    loop {
+        match reader.read_event() {
+            Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
+                let empty = matches!(event, Event::Empty(_));
+                let element = match &event {
+                    Event::Start(element) | Event::Empty(element) => element,
+                    _ => unreachable!(),
+                };
+                let name = local_name(element.name().as_ref()).to_string();
+                let in_ns =
+                    crate::docx_block_readers::element_in_ns(reader.resolver(), element, NS);
+                if stack.is_empty() && !(in_ns && name == "chartStyle") {
+                    return Ok(());
+                }
+                index += 1;
+                let parent = stack
+                    .last()
+                    .map(|(name, in_ns): &(String, bool)| (name.as_str(), *in_ns));
+                let defect = if parent == Some(("dataPointMarkerLayout", true)) {
+                    Some((
+                        "XLSX_CHART_STYLE_MARKER_LAYOUT_CHILD",
+                        "dataPointMarkerLayout is a leaf element but contains formatting children. Removing these children can discard styling.",
+                    ))
+                } else if parent == Some(("fontRef", true)) && in_ns && name == "schemeClr" {
+                    Some((
+                        "XLSX_CHART_STYLE_COLOR_NAMESPACE",
+                        "fontRef contains schemeClr in the chart-style namespace; a DrawingML color is required.",
+                    ))
+                } else {
+                    None
+                };
+                if let Some((code, message)) = defect {
+                    findings.push(CheckFinding::new(
+                        "error", code, json!(format!("/{part}")), json!({"element": name, "elementIndex": index}),
+                        format!("{message} This producer schema defect is preserved by ordinary edits. Re-export from a corrected producer and run schema validation; automatic repair is unsupported."),
+                        format!("ooxml --json conformance check {} --openxml-sdk", command_arg(file)),
+                        "docs/producer-limitations.md",
+                    ));
+                }
+                if !empty {
+                    stack.push((name, in_ns));
+                }
+            }
+            Ok(Event::End(_)) => {
+                stack.pop();
+            }
+            Ok(Event::Eof) => break,
+            Err(error) => return Err(CliError::unexpected(error.to_string())),
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn scan_formula_parts(
@@ -362,6 +441,34 @@ fn array<'a>(value: &'a Value, key: &str) -> &'a [Value] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chart_style_producer_defects_are_namespace_aware() {
+        let mut findings = Vec::new();
+        let xml = r#"<s:chartStyle xmlns:s="http://schemas.microsoft.com/office/drawing/2012/chartStyle" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><s:dataPoint><s:fontRef><s:schemeClr val="tx1"/></s:fontRef></s:dataPoint><s:dataPointMarkerLayout><s:lnRef idx="0"/></s:dataPointMarkerLayout></s:chartStyle>"#;
+        chart_style_findings("input.xlsx", "xl/charts/style1.xml", xml, &mut findings).unwrap();
+        assert_eq!(findings.len(), 2);
+        assert_eq!(findings[0].code, "XLSX_CHART_STYLE_COLOR_NAMESPACE");
+        assert_eq!(findings[1].code, "XLSX_CHART_STYLE_MARKER_LAYOUT_CHILD");
+        let clean = xml
+            .replace("<s:schemeClr", "<a:schemeClr")
+            .replace("<s:lnRef idx=\"0\"/>", "");
+        findings.clear();
+        chart_style_findings("input.xlsx", "xl/charts/style1.xml", &clean, &mut findings).unwrap();
+        assert!(findings.is_empty());
+        let foreign = xml.replace(
+            "http://schemas.microsoft.com/office/drawing/2012/chartStyle",
+            "urn:foreign",
+        );
+        chart_style_findings(
+            "input.xlsx",
+            "xl/charts/style1.xml",
+            &foreign,
+            &mut findings,
+        )
+        .unwrap();
+        assert!(findings.is_empty());
+    }
 
     #[test]
     fn extracts_local_sheet_references_without_external_workbooks() {
