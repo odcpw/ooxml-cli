@@ -8,9 +8,10 @@ on:
   schedule:
     - cron: "23 6 * * 1"
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -55,6 +56,9 @@ jobs:
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
+
+      - name: Test release asset preparation
+        run: python3 -m unittest discover -s tools -p test_release_assets.py -v
 
       - name: Run CI gate
         run: make check-ci

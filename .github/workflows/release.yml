@@ -4,9 +4,11 @@ on:
   push:
     tags:
       - "v*"
+  # Manual dispatch always assembles a dry-run candidate; it never publishes.
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -15,36 +17,29 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  CARGO_PROFILE_DEV_DEBUG: "0"
 
 jobs:
-  verify:
+  version:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-
+    timeout-minutes: 15
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     steps:
-      - name: Check out release tag
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Check Cargo and requested tag versions
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
+        run: python3 tools/release_assets.py version --tag "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT"
 
-      - name: Set up Rust 1.96.0
-        run: |
-          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
-          rustup default 1.96.0
-
-      - name: Verify tag matches Cargo package version
-        shell: bash
-        run: |
-          package_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
-          test "${GITHUB_REF_NAME}" = "v${package_version}"
-
-      - name: Run release gate
-        run: |
-          cargo fmt --all -- --check
-          cargo clippy --all-targets --locked -- -D warnings
-          cargo test --all-targets --locked
+  verify:
+    needs: version
+    uses: ./.github/workflows/ci.yml
 
   build:
     name: Build ${{ matrix.target }}
-    needs: verify
+    needs: [version, verify]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -67,66 +62,95 @@ jobs:
             target: x86_64-pc-windows-msvc
             binary: ooxml.exe
             package: zip
-
+    env:
+      RELEASE_TAG: ${{ needs.version.outputs.tag }}
     steps:
-      - name: Check out release tag
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Set up Rust 1.96.0 target
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Set up Rust 1.98.0 target
         run: |
-          rustup toolchain install 1.96.0 --profile minimal --target ${{ matrix.target }}
-          rustup default 1.96.0
-
+          rustup toolchain install 1.98.0 --profile minimal --target ${{ matrix.target }}
+          rustup default 1.98.0
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }} --bin ooxml
-
+      - name: Verify Cargo source package
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo package --locked --no-verify
       - name: Package Unix binary
         if: matrix.package == 'tar'
         shell: bash
         run: |
           mkdir -p dist
-          asset="ooxml-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz"
+          asset="ooxml-${RELEASE_TAG}-${{ matrix.target }}.tar.gz"
           tar -C "target/${{ matrix.target }}/release" -czf "dist/${asset}" "${{ matrix.binary }}"
-
       - name: Package Windows binary
         if: matrix.package == 'zip'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $asset = "ooxml-$env:GITHUB_REF_NAME-${{ matrix.target }}.zip"
+          $asset = "ooxml-$env:RELEASE_TAG-${{ matrix.target }}.zip"
           Compress-Archive `
             -Path "target/${{ matrix.target }}/release/${{ matrix.binary }}" `
             -DestinationPath "dist/$asset"
-
       - name: Upload packaged binary
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
         with:
-          name: ooxml-${{ matrix.target }}
+          name: release-binary-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
 
-  release:
-    needs: build
+  assemble:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Download only this run's release binaries
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          pattern: release-binary-*
+          path: dist
+          merge-multiple: true
+      - name: Generate capabilities, closed-bead changelog, proof attachment, and checksums
+        run: |
+          mkdir -p release-bin
+          tar -xzf "dist/ooxml-${RELEASE_TAG}-x86_64-unknown-linux-gnu.tar.gz" -C release-bin
+          python3 tools/release_assets.py assemble --tag "$RELEASE_TAG" --dist dist --binary release-bin/ooxml
+          (cd dist && sha256sum --check SHA256SUMS)
+      - name: Upload complete candidate (also retained for dry runs)
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: release-candidate-${{ needs.version.outputs.tag }}
+          path: dist/*
+          if-no-files-found: error
+      - name: Describe candidate
+        run: |
+          cat dist/CHANGELOG.md >> "$GITHUB_STEP_SUMMARY"
+          printf '\nAssets and SHA-256 hashes:\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
+          cat dist/SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
+          printf '```\n' >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [version, assemble]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
-
     steps:
-      - name: Download packaged binaries
+      - name: Download verified candidate
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
         with:
+          name: release-candidate-${{ needs.version.outputs.tag }}
           path: dist
-          merge-multiple: true
-
-      - name: Generate checksums
-        shell: bash
-        run: |
-          cd dist
-          sha256sum ooxml-* > SHA256SUMS
-
+      - name: Verify candidate checksums again
+        run: (cd dist && sha256sum --check SHA256SUMS)
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/* --verify-tag --generate-notes --title "${GITHUB_REF_NAME}"
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
+        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --notes-file dist/CHANGELOG.md --title "$RELEASE_TAG"
