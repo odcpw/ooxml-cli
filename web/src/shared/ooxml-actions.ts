@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { isPreviewExtensionSupported, previewUnavailableReasonCopy } from './file-support.ts';
 import { runtimeDataRoot } from './runtime-paths.ts';
+import { normalizeLanguageTag, type Translator } from './translator.ts';
 import {
   absoluteVersionPath,
   artifactUrl,
@@ -362,6 +363,88 @@ function typedBuildNoun(family: TypedBuildFamily): 'presentation' | 'workbook' |
   if (family === 'pptx') return 'presentation';
   if (family === 'xlsx') return 'workbook';
   return 'document';
+}
+
+type TranslationManifest = {
+  entries: Array<{ id: string; sourceText?: string; targetText?: string } & Record<string, unknown>>;
+  metadata: Record<string, unknown>;
+};
+
+/**
+ * Translate the selected PPTX/PPTM through the CLI's manifest contract:
+ * `pptx translate export` -> translator -> `pptx translate apply --stale error`,
+ * then publish the result as a new strict-validated document version. The
+ * filled manifest is kept beside the version for review.
+ */
+export async function translateCurrentPresentation(input: {
+  threadId: string;
+  targetLang: string;
+  sourceLang?: string;
+  includeNotes?: boolean;
+  translate: Translator;
+  note?: string;
+}): Promise<Record<string, unknown>> {
+  const { thread, document, version } = await currentSelection(input.threadId);
+  const extension = extname(version.path).toLowerCase();
+  if (extension !== '.pptx' && extension !== '.pptm') {
+    throw new Error(
+      `Translation currently supports PPTX/PPTM presentations; the selected document is ${extension || 'extensionless'}.`,
+    );
+  }
+  const targetLang = normalizeLanguageTag(input.targetLang);
+  const sourceLang = input.sourceLang?.trim() ? normalizeLanguageTag(input.sourceLang) : '';
+  const dir = threadDir(thread.id);
+  const file = absoluteVersionPath(thread, version);
+  const exportArgs = ['--json', 'pptx', 'translate', 'export', file, '--target-lang', targetLang];
+  if (sourceLang) exportArgs.push('--source-lang', sourceLang);
+  if (input.includeNotes !== false) exportArgs.push('--include-notes');
+  const manifest = await runOoxmlJson<TranslationManifest>(exportArgs, dir);
+  const entries = Array.isArray(manifest.entries) ? manifest.entries : [];
+  const segments = entries
+    .filter(
+      (entry) => typeof entry.id === 'string' && typeof entry.sourceText === 'string' && entry.sourceText.trim() !== '',
+    )
+    .map((entry) => ({ id: entry.id, sourceText: entry.sourceText as string }));
+  if (segments.length === 0) {
+    throw new Error('The presentation has no translatable slide text.');
+  }
+  const translations = await input.translate(segments, { sourceLang: sourceLang || 'auto', targetLang });
+  const missing = segments.filter((segment) => !translations.has(segment.id));
+  if (missing.length > 0) {
+    throw new Error(`The translator returned no text for ${missing.length} segment(s).`);
+  }
+  const translated: TranslationManifest = {
+    ...manifest,
+    entries: entries.map((entry) => ({
+      ...entry,
+      targetText: translations.get(entry.id) ?? entry.sourceText ?? '',
+    })),
+  };
+  const versionId = nextVersionId(document);
+  await mkdir(join(dir, 'documents', document.id, 'versions'), { recursive: true });
+  const label = `translate-${targetLang.toLowerCase()}`;
+  const manifestPath = newVersionOutputPath(dir, document.id, versionId, label, '.manifest.json');
+  await writeFile(manifestPath, `${JSON.stringify(translated, null, 2)}\n`);
+  const outPath = newVersionOutputPath(dir, document.id, versionId, label, extension);
+  const applied = await runOoxmlJson<Record<string, unknown>>(
+    ['--json', 'pptx', 'translate', 'apply', file, manifestPath, '--stale', 'error', '--output', outPath],
+    dir,
+  );
+  return publishNewVersion({
+    thread,
+    document,
+    sourceVersion: version,
+    versionId,
+    outPath,
+    note: input.note?.trim() || `Translated to ${targetLang}`,
+    apply: applied,
+    extra: {
+      targetLang,
+      sourceLang: sourceLang || null,
+      entryCount: segments.length,
+      manifestPath: relativeToThread(thread.id, manifestPath),
+    },
+  });
 }
 
 export async function searchCurrent(input: {

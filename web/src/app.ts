@@ -34,9 +34,16 @@ import {
   type UploadedOfficeFile,
   versionById,
 } from './shared/storage.ts';
-import { publicThreadSummary, readVersionRenderArtifact, renderCurrent } from './shared/ooxml-actions.ts';
+import {
+  publicThreadSummary,
+  readVersionRenderArtifact,
+  renderCurrent,
+  translateCurrentPresentation,
+} from './shared/ooxml-actions.ts';
 import { themeCss } from './shared/theme.ts';
+import { createTranslator } from './shared/translator.ts';
 import { workbenchHtml } from './page.ts';
+import { translateHtml } from './translate-page.ts';
 
 const app = new Hono<AuthEnv>();
 
@@ -87,6 +94,51 @@ app.use('/flue/*', async (c, next) => {
 app.get('/', authMiddleware, (c) => {
   c.header('Cache-Control', 'no-store');
   return c.html(workbenchHtml());
+});
+
+app.get('/translate', authMiddleware, (c) => {
+  c.header('Cache-Control', 'no-store');
+  return c.html(translateHtml());
+});
+
+app.post('/api/translate', async (c) => {
+  try {
+    const user = requireAuthUser(c);
+    const limit = await checkRateLimit(
+      `translate:${user.id}`,
+      Number(process.env.OOXML_TRANSLATE_RATE_LIMIT_PER_HOUR || 30),
+      60 * 60 * 1000,
+    );
+    if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
+    const maxTotalBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_TOTAL_BYTES, 80 * 1024 * 1024);
+    const declaredBytes = Number(c.req.header('content-length') ?? 0);
+    if (Number.isFinite(declaredBytes) && declaredBytes > maxTotalBytes + 1024 * 1024) {
+      return c.json({ error: 'Upload is too large.' }, 413);
+    }
+    const form = await c.req.formData();
+    const targetLang = String(form.get('targetLang') ?? '').trim();
+    const sourceLang = String(form.get('sourceLang') ?? '').trim();
+    const includeNotes = String(form.get('includeNotes') ?? '1') !== '0';
+    if (!targetLang) return c.json({ error: 'Choose a target language.' }, 400);
+    const files = await officeFilesFromForm(form);
+    if (files.length !== 1) return c.json({ error: 'Drop exactly one presentation to translate.' }, 400);
+    const thread = await createThreadFromUploads({
+      files,
+      title: `Translate ${files[0].originalName} to ${targetLang}`,
+      ownerUserId: user.id,
+      ownerEmail: user.email,
+    });
+    const result = await translateCurrentPresentation({
+      threadId: thread.id,
+      targetLang,
+      sourceLang: sourceLang || undefined,
+      includeNotes,
+      translate: createTranslator(),
+    });
+    return c.json({ threadId: thread.id, ...result });
+  } catch (error) {
+    return errorResponse(c, error, 400, { expose: true });
+  }
 });
 
 app.get('/api/auth/me', (c) => currentUserResponse(c));

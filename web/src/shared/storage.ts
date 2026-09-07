@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { basename, extname, join, relative, resolve } from 'node:path';
+import { basename, extname, join, relative, resolve, sep } from 'node:path';
 import { withAppBasePath } from './app-url.ts';
 import { isUploadExtensionSupported } from './file-support.ts';
 import { runtimeDataRoot } from './runtime-paths.ts';
@@ -296,7 +296,9 @@ export async function withThreadMutation<T>(threadId: string, fn: () => Promise<
 export function safeJoin(base: string, unsafePath: string): string {
   const resolvedBase = resolve(base);
   const resolved = resolve(resolvedBase, unsafePath);
-  if (resolved !== resolvedBase && !resolved.startsWith(`${resolvedBase}/`)) {
+  // `resolve` yields native separators, so the containment check must too or
+  // every version path "escapes" on Windows hosts.
+  if (resolved !== resolvedBase && !resolved.startsWith(`${resolvedBase}${sep}`)) {
     throw new Error('Path escapes workspace');
   }
   return resolved;
