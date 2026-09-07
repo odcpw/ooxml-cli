@@ -14,6 +14,10 @@ const XLSX_ROWS: usize = 10_000;
 const XLSX_COLS: usize = 10;
 const XLSX_CELLS: usize = XLSX_ROWS * XLSX_COLS;
 const CELL_PAYLOAD_BYTES: usize = 500;
+// Largest known clean committed workbook when the workload was pinned (2026-09-05).
+// Both LibreOffice fixture sets contain intentional producer defects; discovering
+// fixtures by size lets unrelated additions change this performance workload.
+const PERF_WORKBOOK: &str = "testdata/xlsx/markdown/mapping.xlsx";
 
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -91,6 +95,27 @@ fn performance_baseline_contract_pins_all_release_workloads() {
     }
 
     assert_eq!(budget("xlsxRangesSet100kCells").max_rss_mib, Some(300));
+
+    // This correctness precondition runs even when timing measurements are disabled.
+    let workbook = pinned_workbook();
+    let output = Command::new(env!("CARGO_BIN_EXE_ooxml"))
+        .args([
+            "--json",
+            "check",
+            path_text(&workbook),
+            "--openxml-sdk",
+            "skip",
+        ])
+        .output()
+        .expect("check pinned performance workbook");
+    assert!(
+        output.status.success(),
+        "pinned performance workbook failed check: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).expect("pinned workbook check JSON");
+    assert_eq!(report["summary"]["errors"], 0, "{report}");
+    assert_eq!(report["checks"]["strict"], "passed", "{report}");
 }
 
 #[test]
@@ -160,19 +185,19 @@ fn xlsx_ranges_set_100k_cells_from_50mb_json_stays_within_release_budgets() {
 }
 
 #[test]
-fn outline_largest_committed_workbook_stays_within_release_budget() {
+fn outline_pinned_workbook_stays_within_release_budget() {
     if !release_perf_enabled() {
         return;
     }
-    measure_outline_largest_committed_workbook();
+    measure_outline_pinned_workbook();
 }
 
 #[test]
-fn check_largest_committed_workbook_without_render_stays_within_release_budget() {
+fn check_pinned_workbook_without_render_stays_within_release_budget() {
     if !release_perf_enabled() {
         return;
     }
-    measure_check_largest_committed_workbook();
+    measure_check_pinned_workbook();
 }
 
 fn measure_pptx_build_50_slides() {
@@ -231,18 +256,18 @@ fn measure_xlsx_ranges_set_100k_cells() {
     assert_strict_valid(&output);
 }
 
-fn measure_outline_largest_committed_workbook() {
-    let workbook = largest_committed_workbook();
+fn measure_outline_pinned_workbook() {
+    let workbook = pinned_workbook();
     let args = owned_args(&["--json", "outline", path_text(&workbook)]);
     run_ooxml_ok(&args, "outline warm-up");
 
     let measurement = measure_ooxml(&args);
-    assert_measurement_ok(&measurement, "outline largest committed workbook");
+    assert_measurement_ok(&measurement, "outline pinned clean workbook");
     assert_budget(&budget("outlineLargestCommittedWorkbook"), &measurement);
 }
 
-fn measure_check_largest_committed_workbook() {
-    let workbook = largest_committed_workbook();
+fn measure_check_pinned_workbook() {
+    let workbook = pinned_workbook();
     let args = owned_args(&[
         "--json",
         "check",
@@ -253,7 +278,7 @@ fn measure_check_largest_committed_workbook() {
     run_ooxml_ok(&args, "check warm-up");
 
     let measurement = measure_ooxml(&args);
-    assert_measurement_ok(&measurement, "check largest committed workbook");
+    assert_measurement_ok(&measurement, "check pinned clean workbook");
     assert_budget(&budget("checkLargestCommittedWorkbook"), &measurement);
 }
 
@@ -489,31 +514,13 @@ fn write_large_values(path: &Path) {
     );
 }
 
-fn largest_committed_workbook() -> PathBuf {
-    fn visit(directory: &Path, largest: &mut Option<(u64, PathBuf)>) {
-        let mut entries = fs::read_dir(directory)
-            .unwrap_or_else(|error| panic!("read {}: {error}", directory.display()))
-            .collect::<Result<Vec<_>, _>>()
-            .expect("read fixture directory entries");
-        entries.sort_by_key(std::fs::DirEntry::path);
-        for entry in entries {
-            let path = entry.path();
-            if path.is_dir() {
-                visit(&path, largest);
-            } else if path.extension().and_then(|value| value.to_str()) == Some("xlsx") {
-                let size = entry.metadata().expect("workbook metadata").len();
-                if largest.as_ref().is_none_or(|(current, _)| size > *current) {
-                    *largest = Some((size, path));
-                }
-            }
-        }
-    }
-
-    let mut largest = None;
-    visit(Path::new("testdata"), &mut largest);
-    let (bytes, path) = largest.expect("at least one committed XLSX fixture");
+fn pinned_workbook() -> PathBuf {
+    let path = PathBuf::from(PERF_WORKBOOK);
+    let bytes = fs::metadata(&path)
+        .expect("pinned performance workbook exists")
+        .len();
     eprintln!(
-        "PERF_FIXTURE largest_committed_workbook={} bytes={bytes}",
+        "PERF_FIXTURE pinned_workbook={} bytes={bytes}",
         path.display()
     );
     path
