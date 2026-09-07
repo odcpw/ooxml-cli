@@ -278,7 +278,17 @@ fn normalize_report(value: Value, workspace: &Workspace, family: &str) -> Value 
             }
         }
     }
-    paths.sort_by_key(|(aliases, _)| std::cmp::Reverse(aliases[0].len()));
+    scrub_workspace_paths(value, paths)
+}
+
+/// Scrub every alias of each workspace path. A name is scrubbed before every
+/// shorter name it extends (`output.docx.render` before `output.docx`), so the
+/// order follows the replacement token rather than the longest alias: an
+/// existing package gains a canonical alias (`/private/var/...` on macOS,
+/// `\\?\C:\Users\runneradmin\...` on hosted Windows) that is longer than the
+/// lexical alias of a render directory that does not exist yet.
+fn scrub_workspace_paths(value: Value, mut paths: Vec<(Vec<String>, String)>) -> Value {
+    paths.sort_by_key(|(_, replacement)| std::cmp::Reverse(replacement.len()));
     fn walk(value: Value, paths: &[(Vec<String>, String)]) -> Value {
         match value {
             Value::String(text) => {
@@ -299,6 +309,57 @@ fn normalize_report(value: Value, workspace: &Workspace, family: &str) -> Value 
         }
     }
     walk(value, &paths)
+}
+
+#[test]
+fn scrubber_orders_names_before_their_prefixes_when_canonical_aliases_are_longer() {
+    // macOS and hosted Windows canonicalize an existing package to a longer
+    // spelling than the lexical path of its render directory, which does not
+    // exist when the report is normalized. Both shapes reproduced the
+    // `<output.docx>.render` drift in the hosted matrix at 1b3cc17.
+    for (canonical_root, lexical_root, separator) in [
+        (
+            "/private/var/folders/aa/bb/T/ooxml-remediation-1-2",
+            "/var/folders/aa/bb/T/ooxml-remediation-1-2",
+            '/',
+        ),
+        (
+            r"\\?\C:\Users\runneradmin\AppData\Local\Temp\ooxml-remediation-1-2",
+            r"C:\Users\RUNNER~1\AppData\Local\Temp\ooxml-remediation-1-2",
+            '\\',
+        ),
+    ] {
+        let lexical = |name: &str| format!("{lexical_root}{separator}{name}");
+        let paths = vec![
+            (
+                vec![
+                    format!("{canonical_root}{separator}output.docx"),
+                    lexical("output.docx"),
+                ],
+                "<output.docx>".to_string(),
+            ),
+            (
+                vec![lexical("output.docx.render")],
+                "<output.docx.render>".to_string(),
+            ),
+        ];
+        let report = json!({
+            "file": lexical("output.docx"),
+            "renderCommand": format!(
+                "ooxml --json render {} --out {}",
+                command_arg(&lexical("output.docx")),
+                command_arg(&lexical("output.docx.render"))
+            ),
+        });
+        assert_eq!(
+            scrub_workspace_paths(report, paths),
+            json!({
+                "file": "<output.docx>",
+                "renderCommand": "ooxml --json render <output.docx> --out <output.docx.render>",
+            }),
+            "{lexical_root}"
+        );
+    }
 }
 
 #[test]
