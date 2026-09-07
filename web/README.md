@@ -28,6 +28,26 @@ Set `OOXML_BIN` to a command available on `PATH` or to an absolute executable
 path. Do not use a relative path: OOXML subprocesses run from per-thread data
 directories.
 
+## Translate page
+
+`GET /translate` (signed in) is a drag-and-drop page that translates one
+PPTX/PPTM: `pptx translate export` -> model -> `pptx translate apply --stale
+error`, strict validation, then a download link. The translated copy is also
+stored as a new version in the workbench library, with the filled manifest
+beside it for review.
+
+```bash
+OOXML_TRANSLATE_MODE=model             # identity: copy text unchanged, no credentials needed
+OOXML_TRANSLATE_MODEL=openai/gpt-5.5   # defaults to OOXML_FLUE_MODEL; OpenAI models only
+OOXML_TRANSLATE_BATCH_SIZE=40
+OOXML_TRANSLATE_RATE_LIMIT_PER_HOUR=30
+```
+
+`npm run smoke:translate` exercises `POST /api/translate` end to end against a
+dev server started with `EMAIL_TRANSPORT=dev` and `OOXML_TRANSLATE_MODE=identity`:
+a PPTX round trip whose re-exported text matches the source, plus the DOCX and
+missing-language refusals.
+
 `EMAIL_TRANSPORT=dev` writes magic links to
 `../.flue-ooxml-web-data/auth/magic-links.jsonl`. For real login, configure
 Microsoft or Google OAuth with:
