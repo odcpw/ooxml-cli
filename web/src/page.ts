@@ -480,11 +480,20 @@ async function refreshThread() {
 }
 async function restoreLastReply(threadId) {
   try {
+    const status=await readApiJson(await apiFetch('/api/threads/'+threadId+'/agent/status'),'Job status');
+    if(state.thread?.id!==threadId||state.busy)return;
+    if(status&&['queued','running'].includes(status.status)){
+      setBusy(true,status.status==='queued'?'Waiting for the worker…':'Continuing your saved job…');
+      try{await streamAgentEvents(status);state.followup=true;}catch(error){showError(error);}finally{if(state.thread?.id===threadId){await refreshThread().catch(showError);setBusy(false);}}
+      return;
+    }
     let offset='-1',lastMessage='',text='';
-    for(;;){const page=await readAgentUpdates('/flue/agents/ooxml-editor/'+threadId,offset);for(const event of page.events){if(event.type==='message-delta'&&event.kind==='text'){if(event.messageId!==lastMessage){lastMessage=event.messageId;text='';}text+=event.delta||'';}}
+    const historyUrl=status?'/api/threads/'+threadId+'/agent':'/flue/agents/ooxml-editor/'+threadId;
+    for(;;){const page=await readAgentUpdates(historyUrl,offset);for(const event of page.events){if(event.type==='message-delta'&&event.kind==='text'){if(event.messageId!==lastMessage){lastMessage=event.messageId;text='';}text+=event.delta||'';}}
       if(page.upToDate||page.next===offset)break;offset=page.next;
     }
     if(state.thread?.id===threadId&&text&&!state.busy&&chat.querySelector('.chat-empty'))addMessage('assistant',text);
+    if(state.thread?.id===threadId&&status?.status==='failed')showError(new Error(status.error||'This job did not finish. Saved edits are retained.'));
   } catch { /* A new job may not have a conversation yet. */ }
 }
 function fillSelect(select,docs,value,emptyLabel) {
@@ -571,7 +580,7 @@ chatForm.onsubmit=async event=>{
     const context={task:w.mode,source:docs.find(d=>d.id===w.sourceDocumentId)?.originalName,template:w.mode==='template'?docs.find(d=>d.id===w.templateDocumentId)?.originalName:undefined,language:w.mode==='translate'?w.language:undefined};
     addMessage('user',message);promptInput.value='';$('setupPanel').open=false;resetActivity('Starting');
     const body='Task settings: '+JSON.stringify(context)+'\\nUse get_thread_status to read the saved workflow, file IDs, references and preferred terms. Edit only the source deck.\\n\\n'+message;
-    const data=await readApiJson(await apiFetch('/flue/agents/ooxml-editor/'+state.thread.id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'user',body})}),'Request',agentErrorMessage);
+    const data=await readApiJson(await apiFetch('/api/threads/'+state.thread.id+'/agent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'user',body})}),'Request',agentErrorMessage);
     await streamAgentEvents(data);state.followup=true;
   } catch(error) {showError(error);if(!promptInput.value)promptInput.value=message;}
   finally {
@@ -608,7 +617,8 @@ async function streamAgentEvents(admission) {
 	          url.searchParams.set('view', 'updates');
 	          url.searchParams.set('offset', offset);
 	          url.searchParams.set('live', 'sse');
-	          const source = new EventSource(url.toString());
+	          const usePolling=admission.transport==='poll';
+          const source = usePolling ? {close(){},addEventListener(){}} : new EventSource(url.toString());
             const seenPositions=new Set();let pollOffset=String(offset),polling=false,pollTimer=null;
             const pollAbort=new AbortController();
           source.onopen = () => addMessage('trace', 'event stream connected');
@@ -678,6 +688,7 @@ async function streamAgentEvents(admission) {
               addMessage('trace','Live connection interrupted. Checking saved job updates…');
               void poll();
             };
+            if(usePolling){polling=true;void poll();}
 	        });
         if (!assistantText.trim()) assistantNode.textContent = '(no assistant text returned)';
 
@@ -852,7 +863,7 @@ async function readAgentUpdates(streamUrl,offset,signal) {
         const parsed = new URL(String(value || ''), window.location.origin);
         const unprefixedPath = removeAppBasePath(parsed.pathname);
         let streamPath = '';
-        if (unprefixedPath.startsWith('/flue/')) {
+        if (unprefixedPath.startsWith('/flue/') || (unprefixedPath.startsWith('/api/threads/') && unprefixedPath.endsWith('/agent'))) {
           streamPath = unprefixedPath;
         } else if (unprefixedPath.startsWith('/agents/') || unprefixedPath.startsWith('/runs/')) {
           streamPath = '/flue' + unprefixedPath;

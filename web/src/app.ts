@@ -47,8 +47,10 @@ import { workbenchHtml } from './page.ts';
 import { assertUploadSizes, uploadLimits, withUploadSlot } from './shared/upload-limits.ts';
 import { createLibraryFolder, libraryDownload, readLibrary, removeLibraryItem, saveJobDeck, updateLibraryItem, uploadLibraryDeck, useLibraryDeck } from './shared/deck-library.ts';
 import { apiCostSummary } from './shared/api-cost.ts';
+import { codexWorker } from './shared/codex-worker.ts';
 
 const app = new Hono<AuthEnv>();
+const worker = codexWorker();
 
 app.use('/api/auth/*', async (c, next) => {
   if (accessOnly() && !['/api/auth/access', '/api/auth/me', '/api/auth/logout'].includes(new URL(c.req.url).pathname)) {
@@ -142,6 +144,40 @@ app.get('/api/library', async c => {
   try { return c.json(await readLibrary(requireAuthUser(c).id)); }
   catch (error) { return errorResponse(c, error, 400, { expose: true }); }
 });
+
+app.get('/api/threads/:id/agent/status', async c => {
+  try { await readThread(c.req.param('id'), requireAuthUser(c).id); c.header('Cache-Control', 'no-store'); return c.json(worker.status(c.req.param('id'))); }
+  catch (error) { return errorResponse(c, error, 404); }
+});
+app.get('/api/threads/:id/agent', async c => {
+  try {
+    await readThread(c.req.param('id'), requireAuthUser(c).id);
+    const offset = Number(c.req.query('offset') || 0);
+    if (!Number.isSafeInteger(offset) || offset < -1) return c.json({ error: 'Invalid update offset.' }, 400);
+    const page = worker.store.events(c.req.param('id'), Math.max(0, offset));
+    c.header('Cache-Control', 'no-store'); c.header('stream-next-offset', String(page.next)); c.header('stream-up-to-date', String(page.upToDate));
+    return c.json(page.events);
+  } catch (error) { return errorResponse(c, error, 404); }
+});
+app.post('/api/threads/:id/agent', async c => {
+  try {
+    const user = requireAuthUser(c);
+    const limit = await checkRateLimit(`agent:${user.id}`, 20, 60_000);
+    if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
+    const body = await c.req.json(); if (typeof body.body !== 'string') return c.json({ error: 'Enter instructions.' }, 400);
+    return c.json(await worker.submit(c.req.param('id'), user.id, body.body), 202);
+  } catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+});
+
+app.use('/api/threads/:id/*', async (c, next) => {
+  if (c.req.method !== 'GET') {
+    try { await readThread(c.req.param('id'), requireAuthUser(c).id); }
+    catch (error) { return errorResponse(c, error, 404); }
+  }
+  const status = worker.status(c.req.param('id'));
+  if (c.req.method !== 'GET' && status && ['queued', 'running'].includes(status.status) && !c.req.path.endsWith('/render')) return c.json({ error: 'This job is running. Wait for it to finish before changing its files or settings.' }, 409);
+  return next();
+});
 app.post('/api/library/upload', async c => {
   try {
     const user = requireAuthUser(c);
@@ -180,6 +216,10 @@ app.post('/api/library/decks/:id/use', async c => {
   try {
     const user = requireAuthUser(c); const body = await c.req.json();
     if (body.threadId !== undefined && typeof body.threadId !== 'string') throw Error('Invalid job.');
+    if (body.threadId) {
+      await readThread(body.threadId, user.id);
+      if (['queued', 'running'].includes(worker.status(body.threadId)?.status || '')) throw Error('This job is running. Wait before adding files.');
+    }
     return c.json(publicThreadSummary(await useLibraryDeck(user.id, c.req.param('id'), body.threadId, user.email)));
   } catch (error) { return errorResponse(c, error, 400, { expose: true }); }
 });
@@ -204,6 +244,10 @@ app.post('/api/upload', async (c) => {
     const form = await c.req.formData();
     const title = String(form.get('title') ?? '');
     const threadId = String(form.get('threadId') ?? '').trim();
+    if (threadId) {
+      await readThread(threadId, user.id);
+      if (['queued', 'running'].includes(worker.status(threadId)?.status || '')) throw Error('This job is running. Wait before adding files.');
+    }
     const files = await officeFilesFromForm(form);
     const thread = threadId
       ? await addDocumentsToThread(threadId, files, user.id)
@@ -348,6 +392,8 @@ app.get('/api/threads/:id/versions/:versionId/artifact', async (c) => {
 
 app.use('/flue/agents/ooxml-editor/:id', agentOwnership);
 app.use('/flue/agents/ooxml-editor/:id/*', agentOwnership);
+// Historical Flue conversations remain readable; all new work uses Codex.
+app.use('/flue/agents/ooxml-editor/*', async (c, next) => c.req.method === 'GET' ? next() : c.json({ error: 'Use the current job interface.' }, 410));
 app.route('/flue/agents/ooxml-editor', createAgentRouter(OoxmlEditor));
 
 export default app;

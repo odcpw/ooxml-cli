@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { existsSync } from 'node:fs';
-import { runtimeDbPath } from './runtime-paths.ts';
+import { join } from 'node:path';
+import { runtimeDbPath, runtimeDataRoot } from './runtime-paths.ts';
 import { readThread } from './storage.ts';
 
 type Cost = { usd: number; calls: number; unpricedCalls: number };
@@ -13,6 +14,21 @@ export async function apiCostSummary(ownerUserId: string, threadId?: string) {
   if (threadId) await readThread(threadId, ownerUserId);
   const total = emptyCost(), job = emptyCost();
   let since: string | null = null;
+  const codexPath = join(runtimeDataRoot(), 'codex-jobs.db');
+  if (existsSync(codexPath)) {
+    const codex = new DatabaseSync(codexPath, { readOnly: true });
+    try {
+      for (const row of codex.prepare('SELECT data FROM usage').all()) {
+        const usage = JSON.parse(String(row.data));
+        if (usage.ownerId !== ownerUserId) continue;
+        const cost = codexUsageCost(usage);
+        for (const bucket of usage.threadId === threadId ? [total, job] : [total]) {
+          bucket.calls++; if (cost === null) bucket.unpricedCalls++; else bucket.usd += cost;
+        }
+        if (!since || usage.timestamp < since) since = usage.timestamp;
+      }
+    } finally { codex.close(); }
+  }
   const result = () => ({ total, job: threadId ? job : null, since, currency: 'USD', estimated: true });
   if (!existsSync(runtimeDbPath())) return result();
   const db = new DatabaseSync(runtimeDbPath(), { readOnly: true });
@@ -54,4 +70,10 @@ export async function apiCostSummary(ownerUserId: string, threadId?: string) {
     }
     return result();
   } finally { db.close(); }
+}
+
+// Cumulative snapshots carry their accumulated per-request estimate. Missing
+// prices stay explicitly unknown instead of displaying an invented zero.
+export function codexUsageCost(usage: Record<string, any>): number | null {
+  return typeof usage.usd === 'number' && Number.isFinite(usage.usd) && usage.usd >= 0 ? usage.usd : null;
 }
