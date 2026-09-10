@@ -6,6 +6,7 @@ import ooxmlSkill from '../../../skills/ooxml/SKILL.md';
 import { createOoxmlTools } from '../shared/ooxml-tools.ts';
 import { requireAuthUser } from '../shared/auth.ts';
 import { readThread } from '../shared/storage.ts';
+import '../shared/model-provider.ts';
 
 export const route: MiddlewareHandler = async (c, next) => {
   const threadId = c.req.param('id');
@@ -29,8 +30,8 @@ export const route: MiddlewareHandler = async (c, next) => {
 };
 
 export function OoxmlEditor({ id }: AgentProps) {
-  useModel(process.env.OOXML_FLUE_MODEL || 'openai/gpt-5.5', {
-    thinkingLevel: 'medium',
+  useModel(process.env.OOXML_FLUE_MODEL || 'openai/gpt-6-astra', {
+    thinkingLevel: 'low',
     compaction: { keepRecentTokens: 6000 },
   });
   useSkill(ooxmlSkill);
