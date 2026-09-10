@@ -5,6 +5,7 @@ import { withAppBasePath } from './app-url.ts';
 import { isUploadExtensionSupported } from './file-support.ts';
 import { runtimeDataRoot } from './runtime-paths.ts';
 import { atomicWriteFile } from './fs-atomic.ts';
+import { validateWorkflow, type SlideWorkflow } from './workflow.ts';
 
 export type FileVersion = {
   id: string;
@@ -37,6 +38,7 @@ export type ThreadDocument = {
 };
 
 export type ThreadRecord = {
+  workflow?: SlideWorkflow;
   id: string;
   ownerUserId?: string;
   ownerEmail?: string;
@@ -250,6 +252,17 @@ export async function selectDocument(threadId: string, documentId: string, owner
   });
 }
 
+export async function saveWorkflow(threadId: string, value: unknown, ownerUserId: string): Promise<ThreadRecord> {
+  return withThreadMutation(threadId, async () => {
+    const thread = await readThread(threadId, ownerUserId);
+    thread.workflow = validateWorkflow(value, thread.documents.map(document => document.id));
+    // Looking at a reference must never silently make it the conversion target.
+    if (thread.workflow.sourceDocumentId) thread.currentDocumentId = thread.workflow.sourceDocumentId;
+    await writeThread(thread);
+    return thread;
+  });
+}
+
 export async function removeDocumentFromThread(threadId: string, documentId: string, ownerUserId?: string): Promise<ThreadRecord> {
   return withThreadMutation(threadId, async () => {
     const thread = await readThread(threadId, ownerUserId);
@@ -259,6 +272,11 @@ export async function removeDocumentFromThread(threadId: string, documentId: str
     }
 
     thread.documents = thread.documents.filter((candidate) => candidate.id !== document.id);
+    if (thread.workflow) {
+      if (thread.workflow.sourceDocumentId === document.id) thread.workflow.sourceDocumentId = '';
+      if (thread.workflow.templateDocumentId === document.id) thread.workflow.templateDocumentId = '';
+      thread.workflow.referenceDocumentIds = thread.workflow.referenceDocumentIds.filter(id => id !== document.id);
+    }
     if (thread.currentDocumentId === document.id) {
       thread.currentDocumentId = thread.documents[0].id;
     }

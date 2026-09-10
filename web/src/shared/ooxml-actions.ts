@@ -263,6 +263,7 @@ export function publicThreadSummary(thread: ThreadRecord): Record<string, unknow
   return {
     id: thread.id,
     title: thread.title,
+    workflow: thread.workflow,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
     currentDocumentId: currentDoc.id,
@@ -841,8 +842,8 @@ function shapeRole(shape: PptxShapeInfo): string {
   const values = [shape.primarySelector, shape.targetKind, shape.placeholder?.role, shape.placeholder?.key]
     .filter((value): value is string => Boolean(value))
     .map((value) => value.toLowerCase());
-  if (values.some((value) => value === 'title' || value.includes('title'))) return 'title';
   if (values.some((value) => value === 'subtitle' || value.includes('subtitle'))) return 'subtitle';
+  if (values.some((value) => value === 'title' || value.includes('title'))) return 'title';
   if (values.some((value) => value === 'body' || value.startsWith('body'))) return 'body';
   return '';
 }
@@ -892,6 +893,10 @@ function buildTemplateTextAssignments(layout: PptxLayoutEntry, text: TemplateTex
   const subtitleTarget = firstPlaceholderForRole(placeholders, 'subtitle');
   const bodyTarget = firstPlaceholderForRole(placeholders, 'body');
   const assignments: TemplateTextAssignment[] = [];
+  if (text.title && !titleTarget) throw new Error('The selected template layout has no title placeholder. Choose another layout.');
+  if ((text.body || (text.subtitle && !subtitleTarget)) && !bodyTarget) {
+    throw new Error('The selected template layout cannot hold all source text. Choose a layout with a content placeholder.');
+  }
 
   if (titleTarget && text.title) assignments.push({ target: titleTarget, text: text.title });
   if (subtitleTarget && text.subtitle) assignments.push({ target: subtitleTarget, text: text.subtitle });
@@ -912,7 +917,9 @@ function buildTemplateTextAssignments(layout: PptxLayoutEntry, text: TemplateTex
 }
 
 function layoutPlaceholders(layout: PptxLayoutEntry): string[] {
-  return (layout.placeholders ?? []).map((placeholder) => placeholder.trim()).filter(Boolean);
+  // Layout lists expose literal OOXML types; new-slide accepts semantic handles.
+  return (layout.placeholders ?? []).map((placeholder) => placeholder.trim()
+    .replace(/^ctrTitle(?=:|$)/, 'title').replace(/^subTitle(?=:|$)/, 'subtitle')).filter(Boolean);
 }
 
 function firstPlaceholderForRole(placeholders: string[], role: 'title' | 'subtitle' | 'body'): string | undefined {
@@ -922,7 +929,8 @@ function firstPlaceholderForRole(placeholders: string[], role: 'title' | 'subtit
   if (role === 'subtitle') {
     return placeholders.find((placeholder) => placeholder === 'subtitle' || placeholder.startsWith('subtitle:'));
   }
-  return placeholders.find((placeholder) => placeholder === 'body' || placeholder.startsWith('body:'));
+  return placeholders.find((placeholder) => placeholder === 'body' || placeholder.startsWith('body:'))
+    ?? placeholders.find((placeholder) => /^shape:\d+$/.test(placeholder));
 }
 
 function findImportedLayout(layouts: PptxLayoutEntry[], imported: ImportLayoutCliResult): PptxLayoutEntry {
@@ -1044,8 +1052,10 @@ async function countSlidesSafe(file: string, cwd: string): Promise<number> {
   }
 }
 
-export async function renderCurrent(threadId: string): Promise<Record<string, unknown>> {
-  const { thread, document, version } = await currentSelection(threadId);
+export async function renderCurrent(threadId: string, documentId?: string, versionId?: string): Promise<Record<string, unknown>> {
+  const thread = await readThread(threadId);
+  const document = documentId ? documentById(thread, documentId) : currentDocument(thread);
+  const version = versionId ? versionById(document, versionId) : currentVersion(thread, document);
   if (!previewSupportedFor(version)) {
     return {
       rendered: false,

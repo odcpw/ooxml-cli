@@ -35,6 +35,7 @@ import {
   removeDocumentFromThread,
   safeId,
   selectDocument,
+  saveWorkflow,
   type UploadedOfficeFile,
   versionById,
 } from './shared/storage.ts';
@@ -159,13 +160,22 @@ app.get('/api/threads/:id', async (c) => {
   }
 });
 
+app.post('/api/threads/:id/workflow', async (c) => {
+  try {
+    const thread = await saveWorkflow(c.req.param('id'), await c.req.json(), requireAuthUser(c).id);
+    return c.json(publicThreadSummary(thread));
+  } catch (error) {
+    return errorResponse(c, error, 400, { expose: true });
+  }
+});
+
 app.post('/api/threads/:id/render', async (c) => {
   try {
     const user = requireAuthUser(c);
     await readThread(c.req.param('id'), user.id);
     const limit = await checkRateLimit(`render:${user.id}`, Number(process.env.OOXML_RENDER_RATE_LIMIT_PER_HOUR || 120), 60 * 60 * 1000);
     if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
-    return c.json(await renderCurrent(c.req.param('id')));
+    return c.json(await renderCurrent(c.req.param('id'), c.req.query('documentId'), c.req.query('versionId')));
   } catch (error) {
     return renderErrorResponse(c, error);
   }
