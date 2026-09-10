@@ -49,6 +49,10 @@ test('Codex costs count cumulative updates once, price each request tier and iso
     assert.equal((await apiCostSummary('owner', thread.id)).total.usd, 0.0141);
     store.usage(job, 'total', { inputTokens: 301000, cachedInputTokens: 100, outputTokens: 200 }, { inputTokens: 300000 });
     assert.equal((await apiCostSummary('owner')).total.usd, 6.0216);
+    const followup = { ...job, id: 'followup', createdAt: new Date().toISOString() };
+    store.inheritUsage(followup, job.id);
+    store.usage(followup, 'total', { inputTokens: 302000, cachedInputTokens: 200, outputTokens: 300 }, { inputTokens: 1000 });
+    assert.ok(Math.abs((await apiCostSummary('owner')).total.usd - 6.0357) < 1e-10, 'Follow-up usage must exclude already billed history');
     assert.equal((await apiCostSummary('outsider')).total.usd, 0);
     await assert.rejects(apiCostSummary('outsider', thread.id), /Thread not found/);
   } finally { store?.db.close(); if (previous === undefined) delete process.env.OOXML_WEB_DATA_DIR; else process.env.OOXML_WEB_DATA_DIR = previous; await rm(dir, { recursive: true, force: true }); }

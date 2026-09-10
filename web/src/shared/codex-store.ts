@@ -26,6 +26,11 @@ export class CodexStore {
     job.updatedAt = new Date().toISOString();
     this.db.prepare('INSERT INTO jobs VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,data=excluded.data').run(job.id, job.threadId, job.status, JSON.stringify(job));
   }
+  admit(job: Job, previousJobId?: string) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try { this.save(job); if (previousJobId) this.inheritUsage(job, previousJobId); this.db.exec('COMMIT'); }
+    catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
   latest(threadId: string): Job | undefined {
     const row = this.db.prepare('SELECT data FROM jobs WHERE thread_id=? ORDER BY rowid DESC LIMIT 1').get(threadId);
     return row ? JSON.parse(String(row.data)) : undefined;
@@ -39,6 +44,12 @@ export class CodexStore {
     return { events: rows.map(r => ({ ...JSON.parse(String(r.data)), position: { batch: Number(r.seq), index: 0 } })), next: rows.length ? Number(rows.at(-1)!.seq) : after, upToDate: rows.length < 200 };
   }
   offset(threadId: string): number { return Number(this.db.prepare('SELECT COALESCE(MAX(seq),0) AS seq FROM events WHERE thread_id=?').get(threadId)!.seq); }
+  inheritUsage(job: Job, previousJobId: string) {
+    const row = this.db.prepare("SELECT data FROM usage WHERE job_id=? AND turn_id='total'").get(previousJobId);
+    if (!row) return;
+    const previous = JSON.parse(String(row.data));
+    this.db.prepare("INSERT INTO usage VALUES(?,'total',?)").run(job.id, JSON.stringify({ ...previous, usd: 0, timestamp: job.createdAt }));
+  }
   usage(job: Job, turnId: string, tokens: any, last: any = tokens) {
     const row = this.db.prepare('SELECT data FROM usage WHERE job_id=? AND turn_id=?').get(job.id, turnId);
     const previous = row ? JSON.parse(String(row.data)) : {};

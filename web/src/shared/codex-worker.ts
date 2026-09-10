@@ -28,7 +28,8 @@ export class CodexWorker {
     const source = documentById(thread, sourceId);
     const offset = this.store.offset(threadId);
     const job: Job = { id: newJobId(), threadId, ownerId, prompt, status: 'queued', sourceId, initialVersion: source.currentVersionId, workflow: thread.workflow, slideCount: 0, slides: {}, eventOffset: offset, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-    this.store.save(job);
+    if (existing?.codexThreadId) job.codexThreadId = existing.codexThreadId;
+    this.store.admit(job, job.codexThreadId ? existing?.id : undefined);
     this.store.event(job, { type: 'agent_start' });
     void this.drain(); return this.admission(job, offset);
   }
