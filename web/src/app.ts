@@ -2,7 +2,9 @@ import { Hono, type Context } from 'hono';
 import { createAgentRouter } from '@flue/runtime/routing';
 import { OoxmlEditor, route as agentOwnership } from './agents/ooxml-editor.ts';
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { Readable } from 'node:stream';
 import { extname } from 'node:path';
 import {
   authMiddleware,
@@ -42,6 +44,7 @@ import {
 import { publicThreadSummary, readVersionRenderArtifact, renderCurrent } from './shared/ooxml-actions.ts';
 import { themeCss } from './shared/theme.ts';
 import { workbenchHtml } from './page.ts';
+import { assertUploadSizes, uploadLimits, withUploadSlot } from './shared/upload-limits.ts';
 
 const app = new Hono<AuthEnv>();
 
@@ -123,12 +126,15 @@ app.get('/api/threads', async (c) => {
   }
 });
 
+app.use('/api/upload', async (_c, next) => withUploadSlot(next));
+app.use('/api/threads/:id/upload', async (_c, next) => withUploadSlot(next));
+
 app.post('/api/upload', async (c) => {
   try {
     const user = requireAuthUser(c);
     const limit = await checkRateLimit(`upload:${user.id}`, Number(process.env.OOXML_UPLOAD_RATE_LIMIT_PER_HOUR || 60), 60 * 60 * 1000);
     if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
-    const maxTotalBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_TOTAL_BYTES, 80 * 1024 * 1024);
+    const maxTotalBytes = uploadLimits().maxBatchBytes;
     const declaredBytes = Number(c.req.header('content-length') ?? 0);
     if (Number.isFinite(declaredBytes) && declaredBytes > maxTotalBytes + 1024 * 1024) {
       return c.json({ error: 'Upload is too large.' }, 413);
@@ -186,7 +192,7 @@ app.post('/api/threads/:id/upload', async (c) => {
     const user = requireAuthUser(c);
     const limit = await checkRateLimit(`upload:${user.id}`, Number(process.env.OOXML_UPLOAD_RATE_LIMIT_PER_HOUR || 60), 60 * 60 * 1000);
     if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
-    const maxTotalBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_TOTAL_BYTES, 80 * 1024 * 1024);
+    const maxTotalBytes = uploadLimits().maxBatchBytes;
     const declaredBytes = Number(c.req.header('content-length') ?? 0);
     if (Number.isFinite(declaredBytes) && declaredBytes > maxTotalBytes + 1024 * 1024) {
       return c.json({ error: 'Upload is too large.' }, 413);
@@ -224,9 +230,9 @@ app.get('/api/threads/:id/documents/:documentId/versions/:versionId/download', a
     const document = documentById(thread, c.req.param('documentId'));
     const version = versionById(document, c.req.param('versionId'));
     const path = absoluteVersionPath(thread, version);
-    const bytes = await readFile(path);
+    c.header('Content-Length', String((await stat(path)).size));
     c.header('Content-Disposition', `attachment; filename="${version.originalName.replace(/"/g, '')}"`);
-    return c.body(toArrayBuffer(bytes), 200, { 'Content-Type': contentTypeFor(extname(version.path)) });
+    return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>, 200, { 'Content-Type': contentTypeFor(extname(version.path)) });
   } catch (error) {
     return errorResponse(c, error, 404, { expose: true });
   }
@@ -240,9 +246,9 @@ app.get('/api/threads/:id/versions/:versionId/download', async (c) => {
     if (!match.ok) return c.json({ error: match.error }, match.status);
     const { version } = match;
     const path = absoluteVersionPath(thread, version);
-    const bytes = await readFile(path);
+    c.header('Content-Length', String((await stat(path)).size));
     c.header('Content-Disposition', `attachment; filename="${version.originalName.replace(/"/g, '')}"`);
-    return c.body(toArrayBuffer(bytes), 200, { 'Content-Type': contentTypeFor(extname(version.path)) });
+    return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>, 200, { 'Content-Type': contentTypeFor(extname(version.path)) });
   } catch (error) {
     return errorResponse(c, error, 404, { expose: true });
   }
@@ -452,17 +458,7 @@ async function officeFilesFromForm(form: FormData): Promise<UploadedOfficeFile[]
   if (files.length === 0) {
     throw new Error('Missing Office file upload.');
   }
-  const maxFiles = positiveInteger(process.env.OOXML_UPLOAD_MAX_FILES, 8);
-  const maxBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_BYTES, 25 * 1024 * 1024);
-  const maxTotalBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_TOTAL_BYTES, 80 * 1024 * 1024);
-  if (files.length > maxFiles) throw new Error(`Upload at most ${maxFiles} file(s) at once.`);
-  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
-  if (totalBytes > maxTotalBytes) {
-    throw new Error(`Upload batches must be ${Math.floor(maxTotalBytes / 1024 / 1024)} MB or smaller.`);
-  }
-  for (const file of files) {
-    if (file.size > maxBytes) throw new Error(`Upload files must be ${Math.floor(maxBytes / 1024 / 1024)} MB or smaller.`);
-  }
+  assertUploadSizes(files);
   return Promise.all(
     files.map(async (file) => ({
       originalName: file.name,

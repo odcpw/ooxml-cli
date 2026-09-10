@@ -6,8 +6,10 @@ import { isUploadExtensionSupported } from './file-support.ts';
 import { runtimeDataRoot } from './runtime-paths.ts';
 import { atomicWriteFile } from './fs-atomic.ts';
 import { validateWorkflow, type SlideWorkflow } from './workflow.ts';
+import { uploadLimits } from './upload-limits.ts';
 
 export type FileVersion = {
+  sizeBytes?: number;
   id: string;
   originalName: string;
   path: string;
@@ -371,10 +373,7 @@ function assertThreadOwner(thread: ThreadRecord, ownerUserId: string | undefined
 // size; a small file can still inflate to many GB and OOM the shared host on the
 // first inspect/render. We read uncompressed sizes straight from the ZIP central
 // directory (no decompression) and refuse implausible packages before persisting.
-const maxUncompressedBytes = Math.max(
-  1,
-  Math.trunc(Number(process.env.OOXML_UPLOAD_MAX_UNCOMPRESSED_BYTES) || 500 * 1024 * 1024),
-);
+const maxUncompressedBytes = uploadLimits().maxUncompressedBytes;
 const maxCompressionRatio = Math.max(
   1,
   Math.trunc(Number(process.env.OOXML_UPLOAD_MAX_COMPRESSION_RATIO) || 300),
@@ -473,6 +472,7 @@ async function writeUploadedDocument(threadId: string, input: UploadedOfficeFile
         path: versionPath,
         createdAt,
         note: 'Uploaded original',
+        sizeBytes: input.bytes.byteLength,
       },
     ],
   };

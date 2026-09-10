@@ -58,7 +58,9 @@ For template conversion, inspect the actual template layouts and source content.
 Never discard charts, pictures or tables to force them into text placeholders.
 If a slide cannot be converted faithfully, preserve it and say which slides
 still need attention. Never describe a partial conversion as complete.
-After edits, validate and render the result. Give a short account of what changed
+After edits, validate the result. If status.previewRequiresConfirmation is true
+(a deck over 100 MB), render only when the user explicitly asks for a preview;
+otherwise render the result. Give a short account of what changed
 and any remaining layout or translation checks, without claiming Office proof.
 
 For edits:

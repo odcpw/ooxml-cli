@@ -1,8 +1,11 @@
 import { appPathPrefix } from './shared/app-url.ts';
 import { themeCss } from './shared/theme.ts';
+import { commandTimeoutMs, uploadLimits } from './shared/upload-limits.ts';
 
 export function workbenchHtml(): string {
   const basePath = appPathPrefix();
+  const maxUploadBytes = Math.min(uploadLimits().maxFileBytes, uploadLimits().maxBatchBytes);
+  const uploadSizeLabel = maxUploadBytes >= 1024 ** 3 ? `${maxUploadBytes / 1024 ** 3} GB` : `${maxUploadBytes / 1024 ** 2} MB`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -119,13 +122,13 @@ ${themeCss()}
       <div class="upload-slot">
         <label for="sourceSelect">Deck to change</label>
         <select id="sourceSelect" aria-label="Deck to change" hidden></select>
-        <p class="subtle">Your original is kept. Changes are saved as new versions.</p>
+        <p class="subtle">Up to ${uploadSizeLabel} per file. Your original is kept.</p>
         <input id="fileInput" type="file" accept=".pptx,.pptm" multiple aria-label="Upload source decks" />
       </div>
       <div class="upload-slot" id="templateSlot">
         <label for="templateSelect">New template</label>
         <select id="templateSelect" aria-label="New template" hidden></select>
-        <p class="subtle">Upload a PowerPoint with the design you want to use.</p>
+        <p class="subtle">PowerPoint with the design you want. Up to ${uploadSizeLabel}.</p>
         <input id="templateInput" type="file" accept=".pptx,.pptm" aria-label="Upload template" />
       </div>
       <div id="translationFields" hidden>
@@ -168,6 +171,8 @@ ${themeCss()}
 </div>
 <script>
 const APP_BASE_PATH = ${JSON.stringify(basePath)};
+const UPLOAD_MAX_BYTES = ${maxUploadBytes};
+const AGENT_IDLE_TIMEOUT_MS = ${commandTimeoutMs() + 60_000};
 const state = { threads: [], thread: null, busy: false, busyLabel: '', stopStream: null, csrfToken: '', activityLines: [], previewId: '', previewVersion: 'latest', slide: 0, previewKey: '', attemptedPreview: '', draft: null, followup: false, dirty: false };
 const $ = id => document.getElementById(id);
 const threadList=$('threadList'), newThreadBtn=$('newThreadBtn'), logoutBtn=$('logoutBtn');
@@ -231,22 +236,42 @@ newThreadBtn.onclick=()=>{
 for(const [input,role] of [[fileInput,'source'],[templateInput,'template'],[referenceInput,'reference']]) input.onchange=()=>uploadFiles(input,role);
 async function uploadFiles(input,role) {
   const files=Array.from(input.files||[]);if(!files.length||state.busy)return;
-  const oldIds=new Set(state.thread?.documents.map(doc=>doc.id)||[]);const w=structuredClone(workflow());
+  const w=structuredClone(workflow());
   setBusy(true,'Uploading '+(files.length===1?'file':'files')+'…');
   try {
     if(files.some(file=>! /\\.(pptx|pptm)$/i.test(file.name)))throw Error('Please choose a PowerPoint file (.pptx or .pptm).');
-    const form=new FormData();for(const file of files)form.append('files',file);
-    const url=state.thread ? '/api/threads/'+state.thread.id+'/upload' : '/api/upload';
-    const data=await readApiJson(await apiFetch(url,{method:'POST',body:form}),'Upload');state.thread=data;
-    const added=data.documents.filter(doc=>!oldIds.has(doc.id));
-    if(role==='source') { w.sourceDocumentId=added[0].id;w.referenceDocumentIds.push(...added.slice(1).map(doc=>doc.id));state.previewId=w.sourceDocumentId;state.previewVersion='latest'; }
-    if(role==='template') w.templateDocumentId=added[0].id;
-    if(role==='reference') w.referenceDocumentIds.push(...added.map(doc=>doc.id));
-    w.referenceDocumentIds=[...new Set(w.referenceDocumentIds)].filter(id=>id!==w.sourceDocumentId && id!==w.templateDocumentId);
-    state.draft=w;await saveSettings();await loadThreads(data.id,false);renderThread();
+    if(files.some(file=>file.size>UPLOAD_MAX_BYTES))throw Error('Each file can be up to ${uploadSizeLabel}. The oversized file has not been uploaded.');
+    for(let index=0;index<files.length;index++) {
+      const oldIds=new Set(state.thread?.documents.map(doc=>doc.id)||[]);
+      const form=new FormData();form.append('files',files[index]);
+      const url=state.thread ? '/api/threads/'+state.thread.id+'/upload' : '/api/upload';
+      const data=await readApiJson(await uploadWithProgress(url,form,files[index].name,index+1,files.length),'Upload');state.thread=data;
+      const added=data.documents.find(doc=>!oldIds.has(doc.id));
+      if(role==='source' && index===0) {w.sourceDocumentId=added.id;state.previewId=added.id;state.previewVersion='latest';}
+      else if(role==='template')w.templateDocumentId=added.id;
+      else w.referenceDocumentIds.push(added.id);
+      w.referenceDocumentIds=[...new Set(w.referenceDocumentIds)].filter(id=>id!==w.sourceDocumentId && id!==w.templateDocumentId);
+      state.draft=w;await saveSettings();renderThread();
+    }
+    await loadThreads(state.thread.id,false);
     addMessage('trace',files.length+' file(s) uploaded');
   } catch(error) {showError(error);renderThread();} finally {input.value='';setBusy(false);}
   await ensurePreview();
+}
+async function uploadWithProgress(url,form,name,index,total) {
+  const csrf=cookieValue('ooxml_csrf')||state.csrfToken||await refreshCsrfToken();
+  return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();xhr.open('POST',appUrl(url));xhr.setRequestHeader('Accept','application/json');
+    if(csrf)xhr.setRequestHeader('x-ooxml-csrf',csrf);
+    xhr.upload.onprogress=event=>{
+      const percent=event.lengthComputable?Math.round(100*event.loaded/event.total):0;
+      state.busyLabel=percent===100?'Upload transferred. Saving '+name+'…':'Uploading '+index+'/'+total+' · '+name+' · '+percent+'%';updateControls();
+    };
+    xhr.onload=()=>resolve(new Response(xhr.responseText,{status:xhr.status||502,headers:{'content-type':xhr.getResponseHeader('content-type')||'text/plain'}}));
+    xhr.onerror=()=>reject(Error('The upload connection was interrupted. Please try the file again. Files already uploaded are kept.'));
+    xhr.onabort=()=>reject(Error('Upload cancelled. Files already uploaded are kept.'));
+    xhr.send(form);
+  });
 }
 async function saveSettings() {
   if(!state.thread)return;
@@ -318,7 +343,8 @@ function renderPreview() {
   const thumbs=version?.render?.thumbnails||[];
   $('previewVersion').options[0].textContent=doc.versions.length>1?'Latest result':'Current upload';
   previewMeta.textContent=doc.originalName;
-  if(!thumbs.length){preview.innerHTML='<div class="empty">'+(doc.previewSupported?'Preparing your slide preview…':'This file has no slide preview. You can still download it.')+'</div>';return;}
+  renderBtn.textContent=thumbs.length?'Refresh preview':'Generate preview';
+  if(!thumbs.length){preview.innerHTML='<div class="empty">'+(version?.previewRequiresConfirmation?'Large deck uploaded. You can start working now. Choose “Generate preview” when you need to see the slides; this may take several minutes.':doc.previewSupported?'Preparing your slide preview…':'This file has no slide preview. You can still download it.')+'</div>';return;}
   state.slide=Math.min(state.slide,thumbs.length-1);const thumb=thumbs[state.slide];preview.innerHTML='';
   const frame=document.createElement('div');frame.className='slide-frame';const img=document.createElement('img');img.src=appUrl(thumb.url);img.alt='Slide '+thumb.index+' of '+thumbs.length;frame.append(img);
   const nav=document.createElement('div');nav.className='slide-nav';
@@ -329,6 +355,7 @@ function renderPreview() {
 }
 async function ensurePreview(force=false) {
   const {doc,version,key}=previewSelection();if(state.busy||!doc?.previewSupported||!version)return;
+  if(!force && version.previewRequiresConfirmation)return;
   if(!force && (version.render?.thumbnails?.length||state.attemptedPreview===key))return;
   state.attemptedPreview=key;setBusy(true,'Preparing slide preview…');
   try {
@@ -402,9 +429,9 @@ async function streamAgentEvents(admission) {
 	          const watchdog = setInterval(() => {
 	            if (settled) return;
 	            const idleMs = Date.now() - lastEventAt;
-	            if (idleMs > 90_000) {
+	            if (idleMs > AGENT_IDLE_TIMEOUT_MS) {
 	              source.close();
-	              addMessage('trace', 'event stream timed out after 90s · refreshing thread state');
+	              addMessage('trace', 'No recent update from the agent · refreshing thread state');
 	              finish(new Error('Agent stream timed out before completion.'));
 	            }
 	          }, 5_000);

@@ -1,11 +1,12 @@
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile, stat } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { isPreviewExtensionSupported, previewUnavailableReasonCopy } from './file-support.ts';
 import { runtimeDataRoot } from './runtime-paths.ts';
+import { commandTimeoutMs, previewRequiresConfirmation } from './upload-limits.ts';
 import {
   absoluteVersionPath,
   artifactUrl,
@@ -29,7 +30,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const OOXML_DEFAULT_BIN = 'ooxml';
-const OOXML_DEFAULT_TIMEOUT_MS = 120_000;
+const OOXML_DEFAULT_TIMEOUT_MS = commandTimeoutMs();
 const OOXML_DEFAULT_MAX_OUTPUT_BUFFER = 24 * 1024 * 1024;
 
 function resolveOoxmlBin(): string {
@@ -272,6 +273,8 @@ export function publicThreadSummary(thread: ThreadRecord): Record<string, unknow
     currentFile: current.originalName,
     currentExtension: extname(current.path).toLowerCase(),
     previewSupported: previewSupportedFor(current),
+    sizeBytes: current.sizeBytes,
+    previewRequiresConfirmation: previewRequiresConfirmation(current.sizeBytes),
     downloadUrl: fileUrlFor(thread.id, currentDoc.id, current.id),
     documents: thread.documents.map((document) => publicDocumentSummary(thread, document)),
     versions: currentDoc.versions.map((version) => publicVersionSummary(thread, currentDoc, version)),
@@ -1187,6 +1190,8 @@ function publicDocumentSummary(thread: ThreadRecord, document: ThreadDocument): 
     currentFile: version.originalName,
     currentExtension: extname(version.path).toLowerCase(),
     previewSupported: previewSupportedFor(version),
+    sizeBytes: version.sizeBytes,
+    previewRequiresConfirmation: previewRequiresConfirmation(version.sizeBytes),
     downloadUrl: fileUrlFor(thread.id, document.id, version.id),
     versions: document.versions.map((candidate) => publicVersionSummary(thread, document, candidate)),
   };
@@ -1199,6 +1204,8 @@ function publicVersionSummary(thread: ThreadRecord, document: ThreadDocument, ve
     createdAt: version.createdAt,
     note: version.note,
     extension: extname(version.path).toLowerCase(),
+    sizeBytes: version.sizeBytes,
+    previewRequiresConfirmation: previewRequiresConfirmation(version.sizeBytes),
     previewSupported: previewSupportedFor(version),
     downloadUrl: fileUrlFor(thread.id, document.id, version.id),
     render: version.render
@@ -1248,6 +1255,7 @@ async function publishNewVersion(input: {
         path: relativeToThread(input.thread.id, input.outPath),
         createdAt: now,
         note: input.note,
+        sizeBytes: (await stat(input.outPath)).size,
       };
       latestDocument.versions.push(newVersion);
       latestDocument.currentVersionId = input.versionId;
