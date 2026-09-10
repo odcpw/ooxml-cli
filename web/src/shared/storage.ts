@@ -5,8 +5,11 @@ import { withAppBasePath } from './app-url.ts';
 import { isUploadExtensionSupported } from './file-support.ts';
 import { runtimeDataRoot } from './runtime-paths.ts';
 import { atomicWriteFile } from './fs-atomic.ts';
+import { validateWorkflow, type SlideWorkflow } from './workflow.ts';
+import { uploadLimits } from './upload-limits.ts';
 
 export type FileVersion = {
+  sizeBytes?: number;
   id: string;
   originalName: string;
   path: string;
@@ -37,6 +40,7 @@ export type ThreadDocument = {
 };
 
 export type ThreadRecord = {
+  workflow?: SlideWorkflow;
   id: string;
   ownerUserId?: string;
   ownerEmail?: string;
@@ -250,6 +254,17 @@ export async function selectDocument(threadId: string, documentId: string, owner
   });
 }
 
+export async function saveWorkflow(threadId: string, value: unknown, ownerUserId: string): Promise<ThreadRecord> {
+  return withThreadMutation(threadId, async () => {
+    const thread = await readThread(threadId, ownerUserId);
+    thread.workflow = validateWorkflow(value, thread.documents.map(document => document.id));
+    // Looking at a reference must never silently make it the conversion target.
+    if (thread.workflow.sourceDocumentId) thread.currentDocumentId = thread.workflow.sourceDocumentId;
+    await writeThread(thread);
+    return thread;
+  });
+}
+
 export async function removeDocumentFromThread(threadId: string, documentId: string, ownerUserId?: string): Promise<ThreadRecord> {
   return withThreadMutation(threadId, async () => {
     const thread = await readThread(threadId, ownerUserId);
@@ -259,6 +274,11 @@ export async function removeDocumentFromThread(threadId: string, documentId: str
     }
 
     thread.documents = thread.documents.filter((candidate) => candidate.id !== document.id);
+    if (thread.workflow) {
+      if (thread.workflow.sourceDocumentId === document.id) thread.workflow.sourceDocumentId = '';
+      if (thread.workflow.templateDocumentId === document.id) thread.workflow.templateDocumentId = '';
+      thread.workflow.referenceDocumentIds = thread.workflow.referenceDocumentIds.filter(id => id !== document.id);
+    }
     if (thread.currentDocumentId === document.id) {
       thread.currentDocumentId = thread.documents[0].id;
     }
@@ -353,16 +373,13 @@ function assertThreadOwner(thread: ThreadRecord, ownerUserId: string | undefined
 // size; a small file can still inflate to many GB and OOM the shared host on the
 // first inspect/render. We read uncompressed sizes straight from the ZIP central
 // directory (no decompression) and refuse implausible packages before persisting.
-const maxUncompressedBytes = Math.max(
-  1,
-  Math.trunc(Number(process.env.OOXML_UPLOAD_MAX_UNCOMPRESSED_BYTES) || 500 * 1024 * 1024),
-);
+const maxUncompressedBytes = uploadLimits().maxUncompressedBytes;
 const maxCompressionRatio = Math.max(
   1,
   Math.trunc(Number(process.env.OOXML_UPLOAD_MAX_COMPRESSION_RATIO) || 300),
 );
 
-function assertSafeOoxmlZip(bytes: Uint8Array): void {
+export function assertSafeOoxmlZip(bytes: Uint8Array): void {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const len = bytes.byteLength;
   if (len < 22) throw new Error('Upload is not a valid Office package.');
@@ -455,6 +472,7 @@ async function writeUploadedDocument(threadId: string, input: UploadedOfficeFile
         path: versionPath,
         createdAt,
         note: 'Uploaded original',
+        sizeBytes: input.bytes.byteLength,
       },
     ],
   };

@@ -5,14 +5,12 @@ import { fileURLToPath } from 'node:url';
 const lockPath = fileURLToPath(new URL('../package-lock.json', import.meta.url));
 const lock = JSON.parse(await readFile(lockPath, 'utf8'));
 const expected = new Map([
-  ['@flue/cli', new Set(['1.0.0-beta.9'])],
-  ['@flue/runtime', new Set(['1.0.0-beta.9'])],
-  ['@flue/sdk', new Set(['1.0.0-beta.9'])],
-  ['@cloudflare/vite-plugin', new Set(['1.54.4'])],
-  ['wrangler', new Set(['4.129.0'])],
-  ['miniflare', new Set(['5.20260903.0-alpha'])],
+  ['@flue/cli', new Set(['2.0.3'])],
+  ['@flue/runtime', new Set(['2.0.3'])],
+  ['@flue/sdk', new Set(['2.0.3'])],
+  ['@flue/vite', new Set(['2.0.3'])],
+  ['vite', new Set(['8.2.2'])],
   ['esbuild', new Set(['0.28.1'])],
-  ['undici', new Set(['7.29.0'])],
   ['ws', new Set(['8.21.0'])],
 ]);
 

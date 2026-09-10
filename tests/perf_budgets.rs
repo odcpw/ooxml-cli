@@ -384,6 +384,7 @@ fn measure_ooxml(args: &[OsString]) -> Measurement {
         .spawn()
         .expect("spawn ooxml performance workload");
     let started = Instant::now();
+    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
     let mut peak_rss_kib = None;
     loop {
         #[cfg(target_os = "linux")]

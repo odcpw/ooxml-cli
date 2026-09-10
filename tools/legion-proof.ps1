@@ -22,6 +22,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $script:IsWindowsPlatform = $env:OS -eq "Windows_NT"
+# Office round-trip children run under this runner's own PowerShell 7 host.
+# Windows PowerShell 5.1 defines Get-FileHash in the script part of its Utility
+# module; a -File child that already has the binary Utility module loaded never
+# imports that part, so every Office child failed before COM opened
+# (Legion, 2026-09-07).
+$script:OfficeChildHost = if ($PSVersionTable.PSEdition -eq "Core") { (Get-Process -Id $PID).Path } else { "" }
 
 function Write-Utf8NoBom {
     param(
@@ -448,7 +454,16 @@ function Invoke-BoundedOfficeRoundTrip {
     if ($Visible) { $arguments += "-Visible" }
     $argumentLine = (@($arguments) | ForEach-Object { ConvertTo-NativeArgument ([string]$_) }) -join " "
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
-    $process = Start-Process -FilePath "powershell.exe" -ArgumentList $argumentLine -WorkingDirectory $Root -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -WindowStyle Hidden -PassThru
+    if ($script:OfficeChildHost -eq "" -or -not (Test-Path -LiteralPath $script:OfficeChildHost -PathType Leaf)) {
+        return [pscustomobject]@{
+            status = "failed"; application = switch ($Family) { "xlsx" { "Excel" } "pptx" { "PowerPoint" } "docx" { "Word" } }; officeVersion = ""; officeBuild = ""
+            openStatus = "not-run"; saveStatus = "not-run"; repairPromptDetected = $null
+            repairPromptAssessment = "Unknown; the Office child was not started."
+            inputSha256 = (Get-FileHash -LiteralPath $InputPath -Algorithm SHA256).Hash.ToLowerInvariant(); sourceSha256After = ""; sourceUnchanged = $null; savedSha256 = ""
+            elapsedMs = 0; errorType = "ChildHostUnavailable"; errorMessage = "Office round-trip children require the PowerShell 7 host that runs this script; start tools/legion-proof.ps1 with pwsh."
+        }
+    }
+    $process = Start-Process -FilePath $script:OfficeChildHost -ArgumentList $argumentLine -WorkingDirectory $Root -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -WindowStyle Hidden -PassThru
     $finished = $process.WaitForExit($TimeoutSeconds * 1000)
     $timer.Stop()
     if (-not $finished) {

@@ -1,10 +1,16 @@
 import { Hono, type Context } from 'hono';
-import { flue } from '@flue/runtime/routing';
+import { createAgentRouter } from '@flue/runtime/routing';
+import { OoxmlEditor, route as agentOwnership } from './agents/ooxml-editor.ts';
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { Readable } from 'node:stream';
 import { extname } from 'node:path';
 import {
   authMiddleware,
+  accessOnly,
+  privateAccessHtml,
+  privateAccessRoute,
   checkRateLimit,
   confirmMagicLinkHtml as authConfirmMagicLinkHtml,
   currentUserResponse,
@@ -31,14 +37,33 @@ import {
   removeDocumentFromThread,
   safeId,
   selectDocument,
+  saveWorkflow,
   type UploadedOfficeFile,
   versionById,
 } from './shared/storage.ts';
 import { publicThreadSummary, readVersionRenderArtifact, renderCurrent } from './shared/ooxml-actions.ts';
 import { themeCss } from './shared/theme.ts';
 import { workbenchHtml } from './page.ts';
+import { assertUploadSizes, uploadLimits, withUploadSlot } from './shared/upload-limits.ts';
+import { createLibraryFolder, libraryDownload, readLibrary, removeLibraryItem, saveJobDeck, updateLibraryItem, uploadLibraryDeck, useLibraryDeck } from './shared/deck-library.ts';
+import { apiCostSummary } from './shared/api-cost.ts';
+import { codexWorker } from './shared/codex-worker.ts';
 
 const app = new Hono<AuthEnv>();
+const worker = codexWorker();
+
+app.use('/api/auth/*', async (c, next) => {
+  if (accessOnly() && !['/api/auth/access', '/api/auth/me', '/api/auth/logout'].includes(new URL(c.req.url).pathname)) {
+    return c.json({ error: 'Use your private access link to sign in.' }, 404);
+  }
+  return next();
+});
+app.get('/access', c => {
+  c.header('Cache-Control', 'no-store');
+  c.header('Referrer-Policy', 'no-referrer');
+  return c.html(privateAccessHtml());
+});
+app.post('/api/auth/access', privateAccessRoute);
 
 app.get('/signin', (c) => c.html(authSignInHtml({ returnTo: c.req.query('returnTo') })));
 
@@ -93,6 +118,12 @@ app.get('/api/auth/me', (c) => currentUserResponse(c));
 
 app.post('/api/auth/logout', (c) => logoutRoute(c));
 
+app.get('/api/cost', async c => {
+  c.header('Cache-Control', 'no-store');
+  try { return c.json(await apiCostSummary(requireAuthUser(c).id, c.req.query('threadId'))); }
+  catch (error) { return errorResponse(c, error, 500); }
+});
+
 app.get('/api/threads', async (c) => {
   try {
     const user = requireAuthUser(c);
@@ -105,12 +136,107 @@ app.get('/api/threads', async (c) => {
   }
 });
 
+app.use('/api/upload', async (_c, next) => withUploadSlot(next));
+app.use('/api/threads/:id/upload', async (_c, next) => withUploadSlot(next));
+app.use('/api/library/upload', async (_c, next) => withUploadSlot(next));
+
+app.get('/api/library', async c => {
+  try { return c.json(await readLibrary(requireAuthUser(c).id)); }
+  catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+});
+
+app.get('/api/threads/:id/agent/status', async c => {
+  try { await readThread(c.req.param('id'), requireAuthUser(c).id); c.header('Cache-Control', 'no-store'); return c.json(worker.status(c.req.param('id'))); }
+  catch (error) { return errorResponse(c, error, 404); }
+});
+app.get('/api/threads/:id/agent', async c => {
+  try {
+    await readThread(c.req.param('id'), requireAuthUser(c).id);
+    const offset = Number(c.req.query('offset') || 0);
+    if (!Number.isSafeInteger(offset) || offset < -1) return c.json({ error: 'Invalid update offset.' }, 400);
+    const page = worker.store.events(c.req.param('id'), Math.max(0, offset));
+    c.header('Cache-Control', 'no-store'); c.header('stream-next-offset', String(page.next)); c.header('stream-up-to-date', String(page.upToDate));
+    return c.json(page.events);
+  } catch (error) { return errorResponse(c, error, 404); }
+});
+app.post('/api/threads/:id/agent', async c => {
+  try {
+    const user = requireAuthUser(c);
+    const limit = await checkRateLimit(`agent:${user.id}`, 20, 60_000);
+    if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
+    const body = await c.req.json(); if (typeof body.body !== 'string') return c.json({ error: 'Enter instructions.' }, 400);
+    return c.json(await worker.submit(c.req.param('id'), user.id, body.body), 202);
+  } catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+});
+
+app.use('/api/threads/:id/*', async (c, next) => {
+  if (c.req.method !== 'GET') {
+    try { await readThread(c.req.param('id'), requireAuthUser(c).id); }
+    catch (error) { return errorResponse(c, error, 404); }
+  }
+  const status = worker.status(c.req.param('id'));
+  if (c.req.method !== 'GET' && status && ['queued', 'running'].includes(status.status) && !c.req.path.endsWith('/render')) return c.json({ error: 'This job is running. Wait for it to finish before changing its files or settings.' }, 409);
+  return next();
+});
+app.post('/api/library/upload', async c => {
+  try {
+    const user = requireAuthUser(c);
+    const limit = await checkRateLimit(`upload:${user.id}`, Number(process.env.OOXML_UPLOAD_RATE_LIMIT_PER_HOUR || 60), 60 * 60 * 1000);
+    if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
+    if (Number(c.req.header('content-length')) > uploadLimits().maxBatchBytes + 1024 * 1024) return c.json({ error: 'Upload is too large.' }, 413);
+    const form = await c.req.formData(); const files = await officeFilesFromForm(form);
+    const decks = [];
+    for (const file of files) decks.push(await uploadLibraryDeck(user.id, file, String(form.get('folderId') || '')));
+    return c.json({ decks });
+  } catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+});
+app.post('/api/library/folders', async c => {
+  try { return c.json(await createLibraryFolder(requireAuthUser(c).id, (await c.req.json()).name)); }
+  catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+});
+for (const kind of ['decks', 'folders'] as const) {
+  app.patch(`/api/library/${kind}/:id`, async c => {
+    try { await updateLibraryItem(requireAuthUser(c).id, kind, c.req.param('id'), await c.req.json()); return c.json({ ok: true }); }
+    catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+  });
+  app.delete(`/api/library/${kind}/:id`, async c => {
+    try { await removeLibraryItem(requireAuthUser(c).id, kind, c.req.param('id')); return c.json({ ok: true }); }
+    catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+  });
+}
+app.get('/api/library/decks/:id/download', async c => {
+  try {
+    const { deck, path } = await libraryDownload(requireAuthUser(c).id, c.req.param('id'));
+    c.header('Content-Length', String((await stat(path)).size));
+    c.header('Content-Disposition', `attachment; filename="deck${extname(deck.originalName)}"; filename*=UTF-8''${encodeURIComponent(deck.originalName)}`);
+    return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>, 200, { 'Content-Type': contentTypeFor(extname(path)) });
+  } catch (error) { return errorResponse(c, error, 404, { expose: true }); }
+});
+app.post('/api/library/decks/:id/use', async c => {
+  try {
+    const user = requireAuthUser(c); const body = await c.req.json();
+    if (body.threadId !== undefined && typeof body.threadId !== 'string') throw Error('Invalid job.');
+    if (body.threadId) {
+      await readThread(body.threadId, user.id);
+      if (['queued', 'running'].includes(worker.status(body.threadId)?.status || '')) throw Error('This job is running. Wait before adding files.');
+    }
+    return c.json(publicThreadSummary(await useLibraryDeck(user.id, c.req.param('id'), body.threadId, user.email)));
+  } catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+});
+app.post('/api/threads/:id/library', async c => {
+  try {
+    const body = await c.req.json();
+    if (typeof body.documentId !== 'string' || typeof body.versionId !== 'string' || (body.folderId !== undefined && typeof body.folderId !== 'string')) throw Error('Choose a file and version to save.');
+    return c.json(await saveJobDeck(requireAuthUser(c).id, c.req.param('id'), body.documentId, body.versionId, body.folderId));
+  } catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+});
+
 app.post('/api/upload', async (c) => {
   try {
     const user = requireAuthUser(c);
     const limit = await checkRateLimit(`upload:${user.id}`, Number(process.env.OOXML_UPLOAD_RATE_LIMIT_PER_HOUR || 60), 60 * 60 * 1000);
     if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
-    const maxTotalBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_TOTAL_BYTES, 80 * 1024 * 1024);
+    const maxTotalBytes = uploadLimits().maxBatchBytes;
     const declaredBytes = Number(c.req.header('content-length') ?? 0);
     if (Number.isFinite(declaredBytes) && declaredBytes > maxTotalBytes + 1024 * 1024) {
       return c.json({ error: 'Upload is too large.' }, 413);
@@ -118,6 +244,10 @@ app.post('/api/upload', async (c) => {
     const form = await c.req.formData();
     const title = String(form.get('title') ?? '');
     const threadId = String(form.get('threadId') ?? '').trim();
+    if (threadId) {
+      await readThread(threadId, user.id);
+      if (['queued', 'running'].includes(worker.status(threadId)?.status || '')) throw Error('This job is running. Wait before adding files.');
+    }
     const files = await officeFilesFromForm(form);
     const thread = threadId
       ? await addDocumentsToThread(threadId, files, user.id)
@@ -142,13 +272,22 @@ app.get('/api/threads/:id', async (c) => {
   }
 });
 
+app.post('/api/threads/:id/workflow', async (c) => {
+  try {
+    const thread = await saveWorkflow(c.req.param('id'), await c.req.json(), requireAuthUser(c).id);
+    return c.json(publicThreadSummary(thread));
+  } catch (error) {
+    return errorResponse(c, error, 400, { expose: true });
+  }
+});
+
 app.post('/api/threads/:id/render', async (c) => {
   try {
     const user = requireAuthUser(c);
     await readThread(c.req.param('id'), user.id);
     const limit = await checkRateLimit(`render:${user.id}`, Number(process.env.OOXML_RENDER_RATE_LIMIT_PER_HOUR || 120), 60 * 60 * 1000);
     if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
-    return c.json(await renderCurrent(c.req.param('id')));
+    return c.json(await renderCurrent(c.req.param('id'), c.req.query('documentId'), c.req.query('versionId')));
   } catch (error) {
     return renderErrorResponse(c, error);
   }
@@ -159,7 +298,7 @@ app.post('/api/threads/:id/upload', async (c) => {
     const user = requireAuthUser(c);
     const limit = await checkRateLimit(`upload:${user.id}`, Number(process.env.OOXML_UPLOAD_RATE_LIMIT_PER_HOUR || 60), 60 * 60 * 1000);
     if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
-    const maxTotalBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_TOTAL_BYTES, 80 * 1024 * 1024);
+    const maxTotalBytes = uploadLimits().maxBatchBytes;
     const declaredBytes = Number(c.req.header('content-length') ?? 0);
     if (Number.isFinite(declaredBytes) && declaredBytes > maxTotalBytes + 1024 * 1024) {
       return c.json({ error: 'Upload is too large.' }, 413);
@@ -197,9 +336,9 @@ app.get('/api/threads/:id/documents/:documentId/versions/:versionId/download', a
     const document = documentById(thread, c.req.param('documentId'));
     const version = versionById(document, c.req.param('versionId'));
     const path = absoluteVersionPath(thread, version);
-    const bytes = await readFile(path);
+    c.header('Content-Length', String((await stat(path)).size));
     c.header('Content-Disposition', `attachment; filename="${version.originalName.replace(/"/g, '')}"`);
-    return c.body(toArrayBuffer(bytes), 200, { 'Content-Type': contentTypeFor(extname(version.path)) });
+    return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>, 200, { 'Content-Type': contentTypeFor(extname(version.path)) });
   } catch (error) {
     return errorResponse(c, error, 404, { expose: true });
   }
@@ -213,9 +352,9 @@ app.get('/api/threads/:id/versions/:versionId/download', async (c) => {
     if (!match.ok) return c.json({ error: match.error }, match.status);
     const { version } = match;
     const path = absoluteVersionPath(thread, version);
-    const bytes = await readFile(path);
+    c.header('Content-Length', String((await stat(path)).size));
     c.header('Content-Disposition', `attachment; filename="${version.originalName.replace(/"/g, '')}"`);
-    return c.body(toArrayBuffer(bytes), 200, { 'Content-Type': contentTypeFor(extname(version.path)) });
+    return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>, 200, { 'Content-Type': contentTypeFor(extname(version.path)) });
   } catch (error) {
     return errorResponse(c, error, 404, { expose: true });
   }
@@ -251,7 +390,11 @@ app.get('/api/threads/:id/versions/:versionId/artifact', async (c) => {
   }
 });
 
-app.route('/flue', flue());
+app.use('/flue/agents/ooxml-editor/:id', agentOwnership);
+app.use('/flue/agents/ooxml-editor/:id/*', agentOwnership);
+// Historical Flue conversations remain readable; all new work uses Codex.
+app.use('/flue/agents/ooxml-editor/*', async (c, next) => c.req.method === 'GET' ? next() : c.json({ error: 'Use the current job interface.' }, 410));
+app.route('/flue/agents/ooxml-editor', createAgentRouter(OoxmlEditor));
 
 export default app;
 
@@ -423,17 +566,7 @@ async function officeFilesFromForm(form: FormData): Promise<UploadedOfficeFile[]
   if (files.length === 0) {
     throw new Error('Missing Office file upload.');
   }
-  const maxFiles = positiveInteger(process.env.OOXML_UPLOAD_MAX_FILES, 8);
-  const maxBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_BYTES, 25 * 1024 * 1024);
-  const maxTotalBytes = positiveInteger(process.env.OOXML_UPLOAD_MAX_TOTAL_BYTES, 80 * 1024 * 1024);
-  if (files.length > maxFiles) throw new Error(`Upload at most ${maxFiles} file(s) at once.`);
-  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
-  if (totalBytes > maxTotalBytes) {
-    throw new Error(`Upload batches must be ${Math.floor(maxTotalBytes / 1024 / 1024)} MB or smaller.`);
-  }
-  for (const file of files) {
-    if (file.size > maxBytes) throw new Error(`Upload files must be ${Math.floor(maxBytes / 1024 / 1024)} MB or smaller.`);
-  }
+  assertUploadSizes(files);
   return Promise.all(
     files.map(async (file) => ({
       originalName: file.name,

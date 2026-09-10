@@ -1,11 +1,12 @@
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile, stat } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { isPreviewExtensionSupported, previewUnavailableReasonCopy } from './file-support.ts';
 import { runtimeDataRoot } from './runtime-paths.ts';
+import { commandTimeoutMs, previewRequiresConfirmation } from './upload-limits.ts';
 import {
   absoluteVersionPath,
   artifactUrl,
@@ -29,7 +30,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const OOXML_DEFAULT_BIN = 'ooxml';
-const OOXML_DEFAULT_TIMEOUT_MS = 120_000;
+const OOXML_DEFAULT_TIMEOUT_MS = commandTimeoutMs();
 const OOXML_DEFAULT_MAX_OUTPUT_BUFFER = 24 * 1024 * 1024;
 
 function resolveOoxmlBin(): string {
@@ -263,6 +264,7 @@ export function publicThreadSummary(thread: ThreadRecord): Record<string, unknow
   return {
     id: thread.id,
     title: thread.title,
+    workflow: thread.workflow,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
     currentDocumentId: currentDoc.id,
@@ -271,6 +273,8 @@ export function publicThreadSummary(thread: ThreadRecord): Record<string, unknow
     currentFile: current.originalName,
     currentExtension: extname(current.path).toLowerCase(),
     previewSupported: previewSupportedFor(current),
+    sizeBytes: current.sizeBytes,
+    previewRequiresConfirmation: previewRequiresConfirmation(current.sizeBytes),
     downloadUrl: fileUrlFor(thread.id, currentDoc.id, current.id),
     documents: thread.documents.map((document) => publicDocumentSummary(thread, document)),
     versions: currentDoc.versions.map((version) => publicVersionSummary(thread, currentDoc, version)),
@@ -841,8 +845,8 @@ function shapeRole(shape: PptxShapeInfo): string {
   const values = [shape.primarySelector, shape.targetKind, shape.placeholder?.role, shape.placeholder?.key]
     .filter((value): value is string => Boolean(value))
     .map((value) => value.toLowerCase());
-  if (values.some((value) => value === 'title' || value.includes('title'))) return 'title';
   if (values.some((value) => value === 'subtitle' || value.includes('subtitle'))) return 'subtitle';
+  if (values.some((value) => value === 'title' || value.includes('title'))) return 'title';
   if (values.some((value) => value === 'body' || value.startsWith('body'))) return 'body';
   return '';
 }
@@ -892,6 +896,10 @@ function buildTemplateTextAssignments(layout: PptxLayoutEntry, text: TemplateTex
   const subtitleTarget = firstPlaceholderForRole(placeholders, 'subtitle');
   const bodyTarget = firstPlaceholderForRole(placeholders, 'body');
   const assignments: TemplateTextAssignment[] = [];
+  if (text.title && !titleTarget) throw new Error('The selected template layout has no title placeholder. Choose another layout.');
+  if ((text.body || (text.subtitle && !subtitleTarget)) && !bodyTarget) {
+    throw new Error('The selected template layout cannot hold all source text. Choose a layout with a content placeholder.');
+  }
 
   if (titleTarget && text.title) assignments.push({ target: titleTarget, text: text.title });
   if (subtitleTarget && text.subtitle) assignments.push({ target: subtitleTarget, text: text.subtitle });
@@ -912,7 +920,9 @@ function buildTemplateTextAssignments(layout: PptxLayoutEntry, text: TemplateTex
 }
 
 function layoutPlaceholders(layout: PptxLayoutEntry): string[] {
-  return (layout.placeholders ?? []).map((placeholder) => placeholder.trim()).filter(Boolean);
+  // Layout lists expose literal OOXML types; new-slide accepts semantic handles.
+  return (layout.placeholders ?? []).map((placeholder) => placeholder.trim()
+    .replace(/^ctrTitle(?=:|$)/, 'title').replace(/^subTitle(?=:|$)/, 'subtitle')).filter(Boolean);
 }
 
 function firstPlaceholderForRole(placeholders: string[], role: 'title' | 'subtitle' | 'body'): string | undefined {
@@ -922,7 +932,8 @@ function firstPlaceholderForRole(placeholders: string[], role: 'title' | 'subtit
   if (role === 'subtitle') {
     return placeholders.find((placeholder) => placeholder === 'subtitle' || placeholder.startsWith('subtitle:'));
   }
-  return placeholders.find((placeholder) => placeholder === 'body' || placeholder.startsWith('body:'));
+  return placeholders.find((placeholder) => placeholder === 'body' || placeholder.startsWith('body:'))
+    ?? placeholders.find((placeholder) => /^shape:\d+$/.test(placeholder));
 }
 
 function findImportedLayout(layouts: PptxLayoutEntry[], imported: ImportLayoutCliResult): PptxLayoutEntry {
@@ -1044,8 +1055,10 @@ async function countSlidesSafe(file: string, cwd: string): Promise<number> {
   }
 }
 
-export async function renderCurrent(threadId: string): Promise<Record<string, unknown>> {
-  const { thread, document, version } = await currentSelection(threadId);
+export async function renderCurrent(threadId: string, documentId?: string, versionId?: string): Promise<Record<string, unknown>> {
+  const thread = await readThread(threadId);
+  const document = documentId ? documentById(thread, documentId) : currentDocument(thread);
+  const version = versionId ? versionById(document, versionId) : currentVersion(thread, document);
   if (!previewSupportedFor(version)) {
     return {
       rendered: false,
@@ -1070,13 +1083,14 @@ export async function renderCurrent(threadId: string): Promise<Record<string, un
   const rendered = await runOoxml(['--json', 'pptx', 'render', file, '--out', renderDir, '--thumbnails', ...slideArgs], dir);
   const parsed = JSON.parse(rendered.stdout) as {
     pdfPath?: string;
-    thumbnails?: Array<{ index?: number; slide?: number; path?: string; imagePath?: string; width?: number; height?: number }>;
+    slides?: Array<{ slide: number; imagePath: string; width?: number; height?: number }>;
   };
-  const thumbnails = (parsed.thumbnails ?? []).map((thumb, index) => {
-    const rawPath = thumb.path ?? thumb.imagePath;
+  if (!parsed.slides?.length) throw new Error('Render returned no slide previews.');
+  const thumbnails = parsed.slides.map((thumb) => {
+    const rawPath = thumb.imagePath;
     if (!rawPath) throw new Error('Render manifest did not include a thumbnail path');
     return {
-      index: thumb.index ?? thumb.slide ?? index + 1,
+      index: thumb.slide,
       path: relativeToThread(threadId, rawPath),
       width: thumb.width,
       height: thumb.height,
@@ -1086,7 +1100,6 @@ export async function renderCurrent(threadId: string): Promise<Record<string, un
   const renderInfo: RenderInfo = {
     dir: relativeToThread(threadId, renderDir),
     pdfPath: parsed.pdfPath ? relativeToThread(threadId, parsed.pdfPath) : undefined,
-    manifestPath: relativeToThread(threadId, join(renderDir, 'thumbnails-manifest.json')),
     thumbnails,
   };
   try {
@@ -1177,6 +1190,8 @@ function publicDocumentSummary(thread: ThreadRecord, document: ThreadDocument): 
     currentFile: version.originalName,
     currentExtension: extname(version.path).toLowerCase(),
     previewSupported: previewSupportedFor(version),
+    sizeBytes: version.sizeBytes,
+    previewRequiresConfirmation: previewRequiresConfirmation(version.sizeBytes),
     downloadUrl: fileUrlFor(thread.id, document.id, version.id),
     versions: document.versions.map((candidate) => publicVersionSummary(thread, document, candidate)),
   };
@@ -1189,6 +1204,8 @@ function publicVersionSummary(thread: ThreadRecord, document: ThreadDocument, ve
     createdAt: version.createdAt,
     note: version.note,
     extension: extname(version.path).toLowerCase(),
+    sizeBytes: version.sizeBytes,
+    previewRequiresConfirmation: previewRequiresConfirmation(version.sizeBytes),
     previewSupported: previewSupportedFor(version),
     downloadUrl: fileUrlFor(thread.id, document.id, version.id),
     render: version.render
@@ -1238,6 +1255,7 @@ async function publishNewVersion(input: {
         path: relativeToThread(input.thread.id, input.outPath),
         createdAt: now,
         note: input.note,
+        sizeBytes: (await stat(input.outPath)).size,
       };
       latestDocument.versions.push(newVersion);
       latestDocument.currentVersionId = input.versionId;

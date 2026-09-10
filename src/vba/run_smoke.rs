@@ -149,6 +149,13 @@ pub(crate) fn vba_run_smoke(
 }
 
 fn resolve_input_xlsm_path(input_file: &str) -> CliResult<PathBuf> {
+    resolve_input_xlsm_path_from(&invocation_dir(), input_file)
+}
+
+/// Resolve `input_file` against `base`. Tests pass their own base instead of
+/// changing the process-wide working directory, which breaks the relative
+/// fixture paths of every test running in parallel with them.
+fn resolve_input_xlsm_path_from(base: &Path, input_file: &str) -> CliResult<PathBuf> {
     let input_path = Path::new(input_file);
     let extension = input_path
         .extension()
@@ -159,7 +166,7 @@ fn resolve_input_xlsm_path(input_file: &str) -> CliResult<PathBuf> {
             "vba run-smoke executes Excel macros and requires an .xlsm input when a file is provided",
         ));
     }
-    let absolute = absolute_path(input_path);
+    let absolute = absolute_path_from(base, input_path);
     if !fs::metadata(&absolute).is_ok_and(|info| info.is_file()) {
         return Err(CliError::file_not_found(format!(
             "vba run-smoke input file was not found: {}",
@@ -321,8 +328,12 @@ fn vba_run_smoke_script_candidates_from(start: &Path) -> Vec<PathBuf> {
 }
 
 fn prepare_output_dir(out_dir: Option<&str>) -> CliResult<PathBuf> {
+    prepare_output_dir_from(&invocation_dir(), out_dir)
+}
+
+fn prepare_output_dir_from(base: &Path, out_dir: Option<&str>) -> CliResult<PathBuf> {
     if let Some(out_dir) = out_dir.filter(|value| !value.trim().is_empty()) {
-        let absolute = absolute_path(Path::new(out_dir));
+        let absolute = absolute_path_from(base, Path::new(out_dir));
         fs::create_dir_all(&absolute).map_err(|err| {
             CliError::unexpected(format!("failed to create output directory: {err}"))
         })?;
@@ -365,13 +376,19 @@ fn find_on_path(program: &str) -> Option<PathBuf> {
     None
 }
 
+fn invocation_dir() -> PathBuf {
+    env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
 fn absolute_path(path: &Path) -> PathBuf {
+    absolute_path_from(&invocation_dir(), path)
+}
+
+fn absolute_path_from(base: &Path, path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else {
-        env::current_dir()
-            .map(|cwd| cwd.join(path))
-            .unwrap_or_else(|_| path.to_path_buf())
+        base.join(path)
     }
 }
 
@@ -415,47 +432,51 @@ fn process_output_detail(output: &Output) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
 
-    static CWD_LOCK: Mutex<()> = Mutex::new(());
-
-    #[test]
-    fn input_xlsm_path_resolves_against_current_directory() {
-        let _guard = CWD_LOCK.lock().unwrap();
-        let original_cwd = env::current_dir().unwrap();
+    fn temp_dir(label: &str) -> PathBuf {
         let temp = env::temp_dir().join(format!(
-            "ooxml-run-smoke-path-test-{}-{}",
+            "ooxml-run-smoke-{label}-{}-{}",
             std::process::id(),
             unique_suffix()
         ));
         fs::create_dir_all(&temp).unwrap();
+        temp
+    }
+
+    #[test]
+    fn input_xlsm_path_resolves_against_the_given_base_directory() {
+        let temp = temp_dir("path-test");
         let workbook = temp.join("book.xlsm");
         fs::write(&workbook, b"dummy").unwrap();
         let expected = canonical_path_for_powershell(&workbook);
 
-        env::set_current_dir(&temp).unwrap();
-        let resolved = resolve_input_xlsm_path("book.xlsm").unwrap();
-        env::set_current_dir(&original_cwd).unwrap();
+        let resolved = resolve_input_xlsm_path_from(&temp, "book.xlsm").unwrap();
         fs::remove_dir_all(&temp).unwrap();
 
         assert_eq!(resolved, expected);
     }
 
     #[test]
-    fn output_dir_resolves_against_current_directory() {
-        let _guard = CWD_LOCK.lock().unwrap();
-        let original_cwd = env::current_dir().unwrap();
-        let temp = env::temp_dir().join(format!(
-            "ooxml-run-smoke-out-test-{}-{}",
-            std::process::id(),
-            unique_suffix()
-        ));
-        fs::create_dir_all(&temp).unwrap();
+    fn output_dir_resolves_against_the_given_base_directory() {
+        let temp = temp_dir("out-test");
 
-        env::set_current_dir(&temp).unwrap();
-        let resolved = prepare_output_dir(Some("proof")).unwrap();
+        let resolved = prepare_output_dir_from(&temp, Some("proof")).unwrap();
         let expected = canonical_path_for_powershell(&temp.join("proof"));
-        env::set_current_dir(&original_cwd).unwrap();
+        fs::remove_dir_all(&temp).unwrap();
+
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn absolute_inputs_ignore_the_base_directory() {
+        let temp = temp_dir("absolute-test");
+        let workbook = temp.join("book.xlsm");
+        fs::write(&workbook, b"dummy").unwrap();
+        let expected = canonical_path_for_powershell(&workbook);
+
+        let resolved =
+            resolve_input_xlsm_path_from(Path::new("unrelated"), workbook.to_str().unwrap())
+                .unwrap();
         fs::remove_dir_all(&temp).unwrap();
 
         assert_eq!(resolved, expected);

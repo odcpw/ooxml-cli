@@ -165,3 +165,15 @@ fn timeout_cleanup_targets_only_the_spawned_powershell_child() {
     assert!(!script.contains("Stop-NewOfficeProcesses"));
     assert!(script.contains("stopped only its own PowerShell child"));
 }
+
+#[test]
+fn office_round_trip_children_run_under_the_powershell_7_host() {
+    let script = fs::read_to_string("tools/legion-proof.ps1").expect("read Legion proof script");
+    // Windows PowerShell 5.1 cannot resolve Get-FileHash in a -File child once
+    // the binary Utility module is loaded under the same name; every Office
+    // round trip on Legion failed before COM opened (2026-09-07).
+    assert!(!script.contains("-FilePath \"powershell.exe\""));
+    assert!(script.contains("Start-Process -FilePath $script:OfficeChildHost"));
+    assert!(script.contains("$PSVersionTable.PSEdition -eq \"Core\""));
+    assert!(script.contains("ChildHostUnavailable"));
+}

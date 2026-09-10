@@ -51,6 +51,11 @@ recovery, first-run, or add-in prompt may be blocking Office. Other COM failures
 record the value as `null` rather than pretending that prompt state was known.
 If diagnosis needs visible Office windows, rerun with `-Visible`.
 
+Office round-trip children always run under the same PowerShell 7 host as the
+runner. Windows PowerShell 5.1 cannot resolve `Get-FileHash` in such a child, so
+the runner refuses to start Office children from any other host instead of
+reporting a false COM failure.
+
 ## Non-Office rehearsal
 
 Maintainers can exercise the same build, contract, strict, conformance, SDK,

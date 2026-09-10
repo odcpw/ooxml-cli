@@ -102,11 +102,17 @@ async function uploadFixture() {
     }),
     basename(fixture),
   );
-  const response = await fetchWithCookies(new URL('/api/upload', baseUrl), { method: 'POST', body: form });
+  const response = await fetchWithCookies(appUrl('/api/upload'), { method: 'POST', body: form });
   return parseJsonResponse(response, 'upload');
 }
 
 async function signIn() {
+  if (process.env.OOXML_WEB_ACCESS_TOKEN) {
+    const verified = await postJson('/api/auth/access', { token: process.env.OOXML_WEB_ACCESS_TOKEN });
+    if (!verified.user?.id) throw new Error('Private access did not return a user.');
+    log('signed_in', { method: 'private-link' });
+    return;
+  }
   await postJson('/api/auth/magic-link/request', { email: smokeEmail });
   const link = await newestMagicLinkFor(smokeEmail);
   const token = new URL(link.magicLinkUrl).searchParams.get('token');
@@ -151,10 +157,10 @@ async function runAgent(threadId) {
     '',
     'Do not use replace_text_in_current_document or set_current_presentation_slide_shape_text for this smoke.',
   ].join('\n');
-  const admission = await postJson(`/flue/agents/ooxml-editor/${encodeURIComponent(threadId)}`, { message: prompt });
+  const admission = await postJson(`/flue/agents/ooxml-editor/${encodeURIComponent(threadId)}`, { kind: 'user', body: prompt });
   log('admitted', { submissionId: admission.submissionId, offset: admission.offset });
-  if (!admission.streamUrl || admission.offset === undefined || admission.offset === null) {
-    return { assistantText: extractAgentText(admission), toolNames: new Set() };
+  if (!admission.streamUrl || admission.offset === undefined || admission.offset === null || !admission.submissionId) {
+    throw new Error('Agent did not return a complete Flue admission receipt.');
   }
   return readAgentStream(admission);
 }
@@ -172,12 +178,18 @@ async function readAgentStream(admission) {
     throw new Error(`Stream failed with HTTP ${response.status}: ${await response.text()}`);
   }
 
+  if (!/^text\/event-stream(?:;|$)/i.test(response.headers.get('content-type') || '')) {
+    clearTimeout(timeout);
+    await response.body.cancel();
+    throw new Error('Agent stream returned a non-SSE content type: ' + (response.headers.get('content-type') || '(missing)'));
+  }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   const toolNames = new Set();
   let assistantText = '';
   let buffer = '';
   let done = false;
+  let settled = false;
 
   try {
     while (!done) {
@@ -198,6 +210,7 @@ async function readAgentStream(admission) {
           const batch = Array.isArray(events) ? events : events ? [events] : [];
           for (const event of batch) {
             const eventDone = handleAgentEvent(event, { toolNames, submissionId: admission.submissionId, appendText: (text) => (assistantText += text) });
+            settled = settled || eventDone;
             done = done || eventDone;
           }
         }
@@ -209,11 +222,19 @@ async function readAgentStream(admission) {
     await reader.cancel().catch(() => {});
   }
 
+  if (!settled) throw new Error('Agent stream ended before the admitted submission settled.');
   return { assistantText, toolNames };
 }
 
 export function agentUpdateUrl(admission, base) {
-  const url = new URL(admission.streamUrl, base);
+  const origin = new URL(base);
+  const prefix = origin.pathname.replace(/\/$/, '');
+  const returned = new URL(admission.streamUrl, origin);
+  let path = returned.pathname;
+  if (prefix && path.startsWith(prefix + '/')) path = path.slice(prefix.length);
+  if (path.startsWith('/agents/')) path = '/flue' + path;
+  if (!path.startsWith('/flue/agents/')) throw new Error('Unexpected agent stream path: ' + returned.pathname);
+  const url = new URL(prefix + path + returned.search, origin.origin);
   url.searchParams.set('view', 'updates');
   url.searchParams.set('offset', String(admission.offset));
   url.searchParams.set('live', 'sse');
@@ -244,7 +265,7 @@ export function handleAgentEvent(event, state) {
   if (event.type === 'operation' && (event.isError || event.error)) {
     throw new Error(`Agent operation failed: ${JSON.stringify(event.error || event, null, 2)}`);
   }
-  return event.type === 'idle';
+  return false;
 }
 
 function parseSseBlock(block) {
@@ -285,13 +306,22 @@ async function assertSlideContains(file, expected) {
   log('readback', { containsMarker: true });
 }
 
+function appUrl(path) {
+  const base = new URL(baseUrl);
+  const prefix = base.pathname.replace(/\/$/, '');
+  base.pathname = prefix + path;
+  base.search = '';
+  base.hash = '';
+  return base;
+}
+
 async function getJson(path) {
-  const response = await fetchWithCookies(new URL(path, baseUrl));
+  const response = await fetchWithCookies(appUrl(path));
   return parseJsonResponse(response, path);
 }
 
 async function postJson(path, body) {
-  const response = await fetchWithCookies(new URL(path, baseUrl), {
+  const response = await fetchWithCookies(appUrl(path), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -305,7 +335,7 @@ async function fetchWithCookies(url, init = {}) {
   if (cookie) headers.set('Cookie', cookie);
   const method = String(init.method || 'GET').toUpperCase();
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-    if (!headers.has('Origin')) headers.set('Origin', new URL(baseUrl).origin);
+    if (!headers.has('Origin')) headers.set('Origin', new URL(process.env.APP_BASE_URL || baseUrl).origin);
     const csrf = cookieJar.get('ooxml_csrf');
     if (csrf) headers.set('x-ooxml-csrf', csrf);
   }
