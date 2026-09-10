@@ -21,6 +21,10 @@ test('chat displays readable download links without enabling executable URLs or 
   const rendered = render('[Download Italian deck](/api/threads/example/download)');
   assert.match(rendered, /href="\/api\/threads\/example\/download"/);
   assert.match(rendered, />Download Italian deck<\/a>/);
+  const mounted = render('[Download Italian deck]( /ooxml/api/threads/example/download )');
+  assert.match(mounted, /href="\/ooxml\/api\/threads\/example\/download"/);
+  assert.match(mounted, />Download Italian deck<\/a>/);
+  assert.doesNotMatch(mounted, /\[Download/);
   assert.doesNotMatch(render('[bad](javascript:alert(1))'), /<a /);
   assert.doesNotMatch(render('<img src=x onerror=alert(1)>'), /<img/);
 });

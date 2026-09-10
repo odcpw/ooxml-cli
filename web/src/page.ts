@@ -9,6 +9,7 @@ export function workbenchHtml(): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Slides · SafetySecretary</title>
+  <link rel="icon" href="data:," />
   <style>
 ${themeCss()}
     :root { --color-accent:#4655ae; --color-muted:#595e6c; --color-bg:#f3f4f7; --color-surface:#fff; }
@@ -535,7 +536,7 @@ async function streamAgentEvents(admission) {
         return text
           .replace(/\`([^\`]+)\`/g, '<code>$1</code>')
           .replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>')
-          .replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+|\\/(?!\\/)[^\\s)]+)\\)|(\\/api\\/[^\\s<)]+)/g,
+          .replace(/\\[([^\\]]+)\\]\\(\\s*(https?:\\/\\/[^\\s)]+|\\/(?!\\/)[^\\s)]+)\\s*\\)|(\\/api\\/[^\\s<)]+)/g,
             (match, label, url, bare) => '<a href="' + appUrl(url || bare) + '" rel="noopener noreferrer">' + (label || 'Download file') + '</a>');
       }
 
