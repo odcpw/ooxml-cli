@@ -56,14 +56,33 @@ function encodeJsonInput(value: string | Record<string, unknown> | Record<string
 function structured(value: unknown) {
   return JSON.parse(JSON.stringify(value));
 }
+export function compactAgentStatus(value: Record<string, unknown>) {
+  const summary = structured(value);
+  // Browser preview URLs are not useful model context, especially with hundreds
+  // of slides. Keep document/version identities and every workflow assignment.
+  const compactDocument = (doc: Record<string, unknown>) => {
+    const { versions, render, ...rest } = doc;
+    return { ...rest, versions: Array.isArray(versions) ? versions.map(({ render, ...version }) => version) : versions };
+  };
+  return structured({ ...compactDocument(summary), documents: summary.documents.map(compactDocument) });
+}
+export function compactSlideList(value: Record<string, unknown>, command: string) {
+  if (command.trim().replace(/^ooxml\s+/, '') !== 'pptx slides list') return structured(value);
+  const result = value.result as Record<string, unknown> | undefined;
+  if (!Array.isArray(result?.slides)) return structured(value);
+  return structured({ ...value, result: { ...result, slides: result.slides.map(slide => {
+    const { readbackCommand, selectorsCommand, shapesCommand, layoutReadbackCommand, selectors, notesPartUri, layoutPartUri, relationshipId, partUri, primarySelector, ...compact } = slide;
+    return compact;
+  }) } });
+}
 
 export function createOoxmlTools(threadId: string) {
   return [
     defineTool({
       name: 'get_thread_status',
-      description: 'Show the uploaded Office document library, selected document, current version, previous versions, and preview artifacts for this thread.',
+      description: 'Show source, template and reference decks, saved workflow, selected document and version IDs. Preview image URLs are omitted to keep the response compact.',
       input: emptyParameters,
-      run: async () => ({ output: structured(publicThreadSummary(await readThread(threadId))) }),
+      run: async () => ({ output: compactAgentStatus(publicThreadSummary(await readThread(threadId))) }),
     }),
     defineTool({
       name: 'select_document',
@@ -71,7 +90,7 @@ export function createOoxmlTools(threadId: string) {
       input: v.object({
         documentId: describedString('Document id from get_thread_status.'),
       }),
-      run: async ({ data: { documentId } }) => ({ output: structured(publicThreadSummary(await selectDocument(threadId, String(documentId)))) }),
+      run: async ({ data: { documentId } }) => ({ output: compactAgentStatus(publicThreadSummary(await selectDocument(threadId, String(documentId)))) }),
     }),
     defineTool({
       name: 'get_ooxml_capabilities',
@@ -174,13 +193,13 @@ export function createOoxmlTools(threadId: string) {
         command: describedString('OOXML command words, with or without leading "ooxml", and without flags.'),
         argsJson: v.optional(jsonObjectInput('JSON object of command flags/args. Use flag names without leading --.')),
       }),
-      run: async ({ data: { command, argsJson } }) => ({ output: JSON.parse(
+      run: async ({ data: { command, argsJson } }) => ({ output: compactSlideList(JSON.parse(
           await inspectCurrentWithOoxml({
             threadId,
             command: String(command),
             argsJson: argsJson === undefined ? undefined : encodeJsonInput(argsJson),
           }),
-        ) }),
+        ), String(command)) }),
     }),
     defineTool({
       name: 'apply_ooxml_ops_to_current',

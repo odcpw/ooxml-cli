@@ -23,6 +23,6 @@ export function validateWorkflow(value: unknown, documentIds: string[]): SlideWo
   const referenceDocumentIds = [...new Set(data.referenceDocumentIds as string[])];
   const assigned = [sourceDocumentId, templateDocumentId, ...referenceDocumentIds].filter(Boolean);
   if (assigned.some(id => !documentIds.includes(id))) throw new Error('An assigned file is no longer available. Please choose it again.');
-  if (new Set(assigned).size !== assigned.length) throw new Error('The deck to change, template, and references must be different files.');
+  if (new Set(assigned).size !== assigned.length) throw new Error('The source deck, template deck, and reference decks must be different files.');
   return { mode: data.mode, sourceDocumentId, templateDocumentId, referenceDocumentIds, language: text('language', 80), glossary: text('glossary', 50000) };
 }

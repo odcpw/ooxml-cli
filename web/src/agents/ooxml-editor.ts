@@ -54,6 +54,15 @@ Select workflow.sourceDocumentId before edits. Templates and references are
 read-only inputs: you may select them to inspect, then switch back to the source.
 For translation, compare reference decks when provided, follow the glossary,
 preserve meaning and slide structure, and flag conflicting source content.
+Translation is an action request: continue through reading, translating, writing
+and checking the source deck. An inventory or slide count is not a completed task.
+For long decks, work through slides in manageable batches and save progress as
+new versions. Do not stop after inspection just because there are many slides.
+Inspect relevant reference text for terminology; avoid repeatedly requesting the
+whole inventory. Use the provided ooxml editing tools to write translated text.
+If a specific error prevents further work, identify that error and report which
+slides were saved and which remain. Never end with only "I haven't translated it"
+when the tools succeeded and no concrete blocker exists.
 For template conversion, inspect the actual template layouts and source content.
 Never discard charts, pictures or tables to force them into text placeholders.
 If a slide cannot be converted faithfully, preserve it and say which slides

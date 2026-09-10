@@ -58,7 +58,7 @@ test('rendered browser stream consumes Flue 2 text and matching settlement', asy
     close() { closed = true; }
   }
   const context = vm.createContext({
-    URL, EventSource: Stream, Date, setInterval, clearInterval,
+    URL, EventSource: Stream, Date, setInterval, clearInterval, setTimeout, clearTimeout, AbortController, AbortSignal,
     state: {}, chat: { scrollTop: 0, scrollHeight: 1 },
     normalizedEventStreamUrl: value => new URL(value, 'http://localhost:3583'),
     renderMarkdown: value => value,
@@ -72,7 +72,7 @@ test('rendered browser stream consumes Flue 2 text and matching settlement', asy
   assert(closed);
 });
 
-for (const ending of ['disconnect', 'closed', 'failed']) {
+for (const ending of ['closed', 'failed']) {
   test('browser rejects ' + ending + ' before successful settlement', async () => {
     const script = workbenchHtml().match(/<script>([\s\S]*?)<\/script>/)[1];
     const start = script.indexOf('async function streamAgentEvents(admission)');
@@ -89,7 +89,7 @@ for (const ending of ['disconnect', 'closed', 'failed']) {
       close() {}
     }
     const context = vm.createContext({
-      URL, EventSource: Stream, Date, setInterval, clearInterval,
+      URL, EventSource: Stream, Date, setInterval, clearInterval, setTimeout, clearTimeout, AbortController, AbortSignal,
       state: {}, chat: { scrollTop: 0, scrollHeight: 1 },
       normalizedEventStreamUrl: value => new URL(value, 'http://localhost:3583'),
       renderMarkdown: value => value, readableError: value => value?.message || String(value),
@@ -99,6 +99,28 @@ for (const ending of ['disconnect', 'closed', 'failed']) {
     await assert.rejects(context.streamAgentEvents({ streamUrl: '/flue/agents/editor/thread', offset: '0', submissionId }), /before completion|submission failed/);
   });
 }
+
+test('browser recovers a blocked stream through saved updates without duplicate text or resubmitting work', async () => {
+  const script = workbenchHtml().match(/<script>([\s\S]*?)<\/script>/)[1];
+  const start = script.indexOf('async function streamAgentEvents(admission)');
+  const end = script.indexOf('function renderMarkdown(', start);
+  const first = { type: 'message-delta', messageId: 'm', kind: 'text', delta: 'Translated ', position: { batch: 1, index: 0 } };
+  const messages = []; let polls = 0;
+  class Stream {
+    addEventListener(name, listener) { if (name === 'data') queueMicrotask(() => { listener({ data: JSON.stringify([first]) }); this.onerror(); }); }
+    close() {}
+  }
+  const context = vm.createContext({
+    URL, EventSource: Stream, Date, setInterval, clearInterval, setTimeout, clearTimeout, AbortController, AbortSignal,
+    state: {}, chat: { scrollTop: 0, scrollHeight: 1 },
+    normalizedEventStreamUrl: value => new URL(value, 'https://example.test'), renderMarkdown: value => value,
+    addMessage: (kind, text) => { const node = { kind, textContent: text, innerHTML: '' }; messages.push(node); return node; },
+    apiFetch: async url => { polls++; assert(!url.includes('live=')); return new Response(JSON.stringify([first, { ...first, delta: 'slides.', position: { batch: 1, index: 1 } }, { type: 'submission-settled', submissionId, outcome: 'completed' }]), { headers: { 'stream-next-offset': '0_3', 'stream-up-to-date': 'true' } }); },
+  });
+  vm.runInContext(script.slice(start, end), context);
+  await context.streamAgentEvents({ streamUrl: '/flue/agents/editor/thread', offset: '0_0', submissionId });
+  assert.equal(polls, 1); assert.equal(messages.find(m => m.kind === 'assistant').innerHTML, 'Translated slides.');
+});
 
 for (const streamUrl of ['/flue/agents/editor/thread', '/ooxml/flue/agents/editor/thread', 'http://127.0.0.1:3594/flue/agents/editor/thread']) {
   test('public mounted stream normalizes ' + streamUrl, () => {

@@ -151,21 +151,21 @@ ${themeCss()}
         <button id="translateMode" type="button" aria-pressed="false">Translate</button>
       </div>
       <div class="upload-slot">
-        <label for="sourceSelect">Deck to change</label>
-        <select id="sourceSelect" aria-label="Deck to change" hidden></select>
-        <p class="subtle">Up to ${uploadSizeLabel} per file. Your original is kept.</p>
+        <label for="sourceSelect">Source deck</label>
+        <select id="sourceSelect" aria-label="Source deck" hidden></select>
+        <p class="subtle">The presentation to translate or adapt. Up to ${uploadSizeLabel}; your original is kept.</p>
         <input id="fileInput" type="file" accept=".pptx,.pptm" multiple aria-label="Upload source decks" />
         <button class="library-open" data-library-role="source" type="button">Choose from library</button>
       </div>
       <div class="upload-slot" id="templateSlot">
-        <label for="templateSelect">New template</label>
+        <label for="templateSelect">Template deck</label>
         <select id="templateSelect" aria-label="New template" hidden></select>
         <p class="subtle">PowerPoint with the design you want. Up to ${uploadSizeLabel}.</p>
         <input id="templateInput" type="file" accept=".pptx,.pptm" aria-label="Upload template" />
         <button class="library-open" data-library-role="template" type="button">Choose from library</button>
       </div>
       <div id="translationFields" hidden>
-        <div class="field"><label for="languageInput">Translate into</label><input id="languageInput" type="text" value="Italian" placeholder="For example, Italian" maxlength="80" /></div>
+        <div class="field"><label for="languageInput">Translate to</label><select id="languageInput"><option value="German">German (DE)</option><option value="French">French (FR)</option><option value="English">English (EN)</option><option value="Italian" selected>Italian (IT)</option></select></div>
         <div class="upload-slot">
           <label for="referenceInput">Reference decks <span class="optional">· optional</span></label>
           <p class="subtle">For example, the French version of your German source deck.</p>
@@ -181,7 +181,7 @@ ${themeCss()}
         </details>
       </div>
       <p id="setupHint" class="subtle setup-hint">Upload your source deck, then the new template.</p>
-      <details class="field" id="filesPanel"><summary>Manage uploaded files</summary><div id="documentList"></div></details>
+      <details class="field" id="filesPanel"><summary>Files in this job</summary><div id="documentList"></div></details>
     </details>
     <div id="chat" role="log" aria-label="Conversation"><div class="chat-empty">2. Tell me what you want to change.<br>You can add details now, or use the task above as your starting point.</div></div>
     <form id="chatForm" class="composer">
@@ -224,6 +224,7 @@ const UPLOAD_MAX_BYTES = ${maxUploadBytes};
 const AGENT_IDLE_TIMEOUT_MS = ${commandTimeoutMs() + 60_000};
 const state = { threads: [], thread: null, busy: false, busyLabel: '', stopStream: null, csrfToken: '', activityLines: [], previewId: '', previewVersion: 'latest', slide: 0, previewKey: '', attemptedPreview: '', draft: null, followup: false, dirty: false };
 const libraryState = { data:{folders:[],decks:[]}, folder:'*', action:'manage', save:null };
+const previewLoads=new Set(), previewErrors=new Map();
 let costLoading=false;
 const $ = id => document.getElementById(id);
 const threadList=$('threadList'), newThreadBtn=$('newThreadBtn'), logoutBtn=$('logoutBtn');
@@ -278,7 +279,7 @@ function setBusy(busy,label='Working…') {
 function updateStatus() { updateControls(); }
 function markDirty() { state.dirty=true; updateControls(); }
 for (const [id,mode] of [['templateMode','template'],['translateMode','translate']]) $(id).onclick=()=>{ workflow().mode=mode; state.followup=false; markDirty(); };
-languageInput.oninput=()=>{workflow().language=languageInput.value;markDirty();};
+languageInput.onchange=()=>{workflow().language=languageInput.value;markDirty();};
 glossaryInput.oninput=()=>{workflow().glossary=glossaryInput.value;markDirty();};
 sourceSelect.onchange=()=>{
   const w=workflow();w.sourceDocumentId=sourceSelect.value;w.referenceDocumentIds=w.referenceDocumentIds.filter(id=>id!==w.sourceDocumentId);
@@ -472,10 +473,19 @@ async function openThread(id) {
     languageInput.value=workflow().language;glossaryInput.value=workflow().glossary;promptInput.value='';
     chat.innerHTML='<div class="chat-empty">Job reopened. Your files and settings are saved. Add instructions to continue.</div>';
     $('recentWork').open=false;renderThread();
-  } catch(error) {showError(error);} finally {setBusy(false);}await ensurePreview();
+  } catch(error) {showError(error);} finally {setBusy(false);}void restoreLastReply(id);await ensurePreview();
 }
 async function refreshThread() {
   if(!state.thread)return;state.thread=await readApiJson(await apiFetch('/api/threads/'+state.thread.id),'Refresh job');renderThread();
+}
+async function restoreLastReply(threadId) {
+  try {
+    let offset='-1',lastMessage='',text='';
+    for(;;){const page=await readAgentUpdates('/flue/agents/ooxml-editor/'+threadId,offset);for(const event of page.events){if(event.type==='message-delta'&&event.kind==='text'){if(event.messageId!==lastMessage){lastMessage=event.messageId;text='';}text+=event.delta||'';}}
+      if(page.upToDate||page.next===offset)break;offset=page.next;
+    }
+    if(state.thread?.id===threadId&&text&&!state.busy&&chat.querySelector('.chat-empty'))addMessage('assistant',text);
+  } catch { /* A new job may not have a conversation yet. */ }
 }
 function fillSelect(select,docs,value,emptyLabel) {
   select.innerHTML='';if(emptyLabel){const o=new Option(emptyLabel,'');select.add(o);}
@@ -491,7 +501,7 @@ function renderThread() {
   for(const doc of docs) {
     const row=document.createElement('div');row.className='doc-card';const name=document.createElement('span');
     const role=doc.id===w.sourceDocumentId?'Source':doc.id===w.templateDocumentId?'Template':w.referenceDocumentIds.includes(doc.id)?'Reference':'Unassigned';
-    name.textContent=doc.originalName+' · '+role;row.append(name);
+    name.textContent=doc.originalName+' · '+role+' deck';row.append(name);
     if(role==='Unassigned'){const ref=document.createElement('button');ref.textContent='Use as reference';ref.onclick=()=>{w.referenceDocumentIds.push(doc.id);markDirty();renderThread();};row.append(ref);}
     const remove=document.createElement('button');remove.textContent='Remove';remove.dataset.keepDisabled=String(docs.length<2);remove.disabled=state.busy||docs.length<2;remove.onclick=()=>removeDocument(doc.id,doc.originalName);row.append(remove);documentList.append(row);
   }
@@ -516,8 +526,9 @@ function renderPreview() {
   const thumbs=version?.render?.thumbnails||[];
   $('previewVersion').options[0].textContent=doc.versions.length>1?'Latest result':'Current upload';
   previewMeta.textContent=doc.originalName;
-  renderBtn.textContent=thumbs.length?'Refresh preview':'Generate preview';
-  if(!thumbs.length){preview.innerHTML='<div class="empty">'+(version?.previewRequiresConfirmation?'Large deck uploaded. You can start working now. Choose “Generate preview” when you need to see the slides; this may take several minutes.':doc.previewSupported?'Preparing your slide preview…':'This file has no slide preview. You can still download it.')+'</div>';return;}
+  const loading=previewLoads.has(key);renderBtn.disabled=state.busy||loading;
+  renderBtn.textContent=loading?'Loading preview…':thumbs.length?'Refresh preview':'Generate preview';
+  if(!thumbs.length){preview.innerHTML='<div class="empty" role="status">'+(loading?'Loading slide preview… You can keep choosing source and reference decks, or start your task.':previewErrors.has(key)?'The preview could not be loaded. Your deck is uploaded and you can still work with it. Choose “Generate preview” to retry.':version?.previewRequiresConfirmation?'Large deck uploaded. Choose “Generate preview” when you want to see the slides. You can start your task now.':doc.previewSupported?'Your deck is uploaded. The slide preview will appear here.':'This file has no slide preview. You can still download it.')+'</div>';return;}
   state.slide=Math.min(state.slide,thumbs.length-1);const thumb=thumbs[state.slide];preview.innerHTML='';
   const frame=document.createElement('div');frame.className='slide-frame';const img=document.createElement('img');img.src=appUrl(thumb.url);img.alt='Slide '+thumb.index+' of '+thumbs.length;frame.append(img);
   const nav=document.createElement('div');nav.className='slide-nav';
@@ -529,13 +540,15 @@ function renderPreview() {
 async function ensurePreview(force=false) {
   const {doc,version,key}=previewSelection();if(state.busy||!doc?.previewSupported||!version)return;
   if(!force && version.previewRequiresConfirmation)return;
-  if(!force && (version.render?.thumbnails?.length||state.attemptedPreview===key))return;
-  state.attemptedPreview=key;setBusy(true,'Preparing slide preview…');
+  if(previewLoads.has(key)||!force && (version.render?.thumbnails?.length||state.attemptedPreview===key))return;
+  const threadId=state.thread.id;state.attemptedPreview=key;previewLoads.add(key);previewErrors.delete(key);renderPreview();
   try {
-    const url='/api/threads/'+state.thread.id+'/render?documentId='+encodeURIComponent(doc.id)+'&versionId='+encodeURIComponent(version.id);
-    await readApiJson(await apiFetch(url,{method:'POST'}),'Preview');await refreshThread();
-  } catch(error) {preview.innerHTML='<div class="empty">The preview could not be created. Use “Refresh preview” to try again. Your file is still available to download.</div>';showError(error);}
-  finally {setBusy(false);}
+    const url='/api/threads/'+threadId+'/render?documentId='+encodeURIComponent(doc.id)+'&versionId='+encodeURIComponent(version.id);
+    await readApiJson(await apiFetch(url,{method:'POST'}),'Preview');
+    const fresh=await readApiJson(await apiFetch('/api/threads/'+threadId),'Preview');
+    if(state.thread?.id===threadId){const current=state.thread.documents.find(d=>d.id===doc.id)?.versions.find(v=>v.id===version.id);const rendered=fresh.documents.find(d=>d.id===doc.id)?.versions.find(v=>v.id===version.id);if(current&&rendered)current.render=rendered.render;}
+  } catch(error) {previewErrors.set(key,error.message);}
+  finally {previewLoads.delete(key);if(state.thread?.id===threadId)renderPreview();}
 }
 $('previewDocument').onchange=()=>{state.previewId=$('previewDocument').value;state.slide=0;renderPreview();ensurePreview();};
 $('previewVersion').onchange=()=>{state.previewVersion=$('previewVersion').value;state.slide=0;renderPreview();ensurePreview();};
@@ -596,6 +609,8 @@ async function streamAgentEvents(admission) {
 	          url.searchParams.set('offset', offset);
 	          url.searchParams.set('live', 'sse');
 	          const source = new EventSource(url.toString());
+            const seenPositions=new Set();let pollOffset=String(offset),polling=false,pollTimer=null;
+            const pollAbort=new AbortController();
           source.onopen = () => addMessage('trace', 'event stream connected');
 	          let settled = false;
 	          let lastEventAt = Date.now();
@@ -612,6 +627,7 @@ async function streamAgentEvents(admission) {
 		            if (settled) return;
 		            settled = true;
 		            clearInterval(watchdog);
+                  clearTimeout(pollTimer);pollAbort.abort();
 		            state.stopStream = null;
 		            source.close();
 		            if (error) reject(error); else resolve();
@@ -633,6 +649,7 @@ async function streamAgentEvents(admission) {
 	            }
 	            for (const item of events) {
 	              sawEvent = true;
+                  const position=item?.position;const key=position?position.batch+':'+position.index:null;if(key&&seenPositions.has(key))continue;if(key)seenPositions.add(key);
 	              handleAgentEvent(item);
 	              if (item?.type === 'submission-settled' && item.submissionId === admission.submissionId) {
                 finish(item.outcome === 'completed' ? undefined : new Error('Agent submission ' + item.outcome + ' · ' + readableError(item.error)));
@@ -646,20 +663,21 @@ async function streamAgentEvents(admission) {
               if (control.streamClosed) finish(new Error('Agent stream closed before completion.'));
             } catch {}
           });
-	          source.onerror = () => {
-	            if (!settled) {
-	              source.close();
-	              if (sawEvent || assistantText.trim()) {
-	                addMessage('trace', 'event stream closed early · refreshing thread state');
-	                finish(new Error('Agent stream disconnected before completion.'));
-	              } else {
-		                settled = true;
-		                clearInterval(watchdog);
-		                state.stopStream = null;
-		                reject(new Error('Agent event stream disconnected before any events arrived.'));
-	              }
-	            }
-	          };
+            async function poll() {
+              if(settled)return;
+              try {
+                const page=await readAgentUpdates(streamUrl,pollOffset,pollAbort.signal);lastEventAt=Date.now();
+                for(const item of page.events){const position=item?.position;const key=position?position.batch+':'+position.index:null;if(key&&seenPositions.has(key))continue;if(key)seenPositions.add(key);sawEvent=true;handleAgentEvent(item);
+                  if(item?.type==='submission-settled'&&item.submissionId===admission.submissionId){finish(item.outcome==='completed'?undefined:new Error('Agent submission '+item.outcome+' · '+readableError(item.error)));return;}}
+                pollOffset=page.next;
+              } catch(error) {if(settled)return;addMessage('trace','Waiting to reconnect to job updates…');}
+              if(!settled)pollTimer=setTimeout(poll,1500);
+            }
+            source.onerror = () => {
+              if(settled||polling)return;polling=true;source.close();
+              addMessage('trace','Live connection interrupted. Checking saved job updates…');
+              void poll();
+            };
 	        });
         if (!assistantText.trim()) assistantNode.textContent = '(no assistant text returned)';
 
@@ -714,6 +732,12 @@ async function streamAgentEvents(admission) {
         }
       }
 
+async function readAgentUpdates(streamUrl,offset,signal) {
+  const url=normalizedEventStreamUrl(streamUrl);url.searchParams.set('view','updates');url.searchParams.set('offset',String(offset));url.searchParams.delete('live');
+  const response=await apiFetch(url.pathname+url.search,{signal:signal?AbortSignal.any([signal,AbortSignal.timeout(20000)]):AbortSignal.timeout(20000)});
+  if(!response.ok)throw Error('Could not read job updates.');const events=await response.json();if(!Array.isArray(events))throw Error('Invalid job update response.');
+  return {events,next:response.headers.get('stream-next-offset')||String(offset),upToDate:response.headers.get('stream-up-to-date')==='true'};
+}
       function renderMarkdown(text) {
         const escaped = escapeHtml(text || '');
         const lines = escaped.split('\\n');
