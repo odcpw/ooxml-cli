@@ -36,6 +36,11 @@ ${themeCss()}
     .topbar { height:72px; padding:12px 28px; background:white; border-bottom:1px solid var(--color-border); display:flex; align-items:center; justify-content:space-between; gap:16px; }
     .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .recent { position:relative; }
+    .api-cost { position:relative; }
+    .api-cost > summary { border:1px solid var(--color-border); border-radius:8px; padding:10px 12px; font-variant-numeric:tabular-nums; }
+    .cost-panel { position:absolute; z-index:6; top:44px; right:0; width:290px; padding:16px; background:white; border:1px solid var(--color-border); border-radius:10px; box-shadow:0 10px 30px #19204420; }
+    .cost-panel p { display:flex; justify-content:space-between; gap:12px; margin-top:10px; font-size:13px; }
+    .cost-panel .subtle { display:block; margin-top:12px; }
     summary { cursor:pointer; font-size:13px; padding:8px 0; }
     .recent .thread-list { position:absolute; z-index:5; right:0; top:40px; width:300px; max-height:360px; overflow:auto; padding:10px; border:1px solid var(--color-border); background:white; border-radius:10px; box-shadow:0 10px 30px #19204420; }
     .thread-row { display:block; width:100%; text-align:left; margin:4px 0; }
@@ -130,6 +135,7 @@ ${themeCss()}
 <header class="topbar">
   <div><h1>SafetySecretary <span style="font-weight:400;color:#747989">/ Slides</span></h1><p class="subtle">Change a template. Translate a presentation.</p></div>
   <div class="row">
+    <details class="api-cost" id="apiCost"><summary id="apiCostBadge" aria-label="Estimated API cost" title="Estimated API cost in US dollars">$…</summary><div class="cost-panel"><strong>API cost · USD</strong><p><span>All saved jobs</span><b id="apiCostTotal">Loading…</b></p><p><span>This job</span><b id="apiCostJob">—</b></p><span id="apiCostNote" class="subtle">Estimated from recorded usage. Updates as calls finish.</span></div></details>
     <button id="libraryBtn" type="button">Deck library</button>
     <details class="recent" id="recentWork"><summary>Previous work</summary><div id="threadList" class="thread-list"></div></details>
     <button id="newThreadBtn" type="button">New job</button>
@@ -218,6 +224,7 @@ const UPLOAD_MAX_BYTES = ${maxUploadBytes};
 const AGENT_IDLE_TIMEOUT_MS = ${commandTimeoutMs() + 60_000};
 const state = { threads: [], thread: null, busy: false, busyLabel: '', stopStream: null, csrfToken: '', activityLines: [], previewId: '', previewVersion: 'latest', slide: 0, previewKey: '', attemptedPreview: '', draft: null, followup: false, dirty: false };
 const libraryState = { data:{folders:[],decks:[]}, folder:'*', action:'manage', save:null };
+let costLoading=false;
 const $ = id => document.getElementById(id);
 const threadList=$('threadList'), newThreadBtn=$('newThreadBtn'), logoutBtn=$('logoutBtn');
 const fileInput=$('fileInput'), templateInput=$('templateInput'), referenceInput=$('referenceInput');
@@ -232,6 +239,22 @@ function workflow() {
   return state.draft;
 }
 function currentSource() { return state.thread?.documents.find(doc=>doc.id===workflow().sourceDocumentId); }
+function costAmount(value) {return '$'+value.toFixed(value>0&&value<.01?4:2);}
+async function refreshCosts() {
+  if(costLoading||document.hidden)return;costLoading=true;const id=state.thread?.id;
+  try {
+    const response=await apiFetch('/api/cost'+(id?'?threadId='+encodeURIComponent(id):''));if(!response.ok)throw Error('Cost unavailable');const data=await response.json();
+    if(id!==state.thread?.id)return;
+    const total=costAmount(data.total.usd)+(data.total.unpricedCalls?' +':'');
+    $('apiCostBadge').textContent=total;$('apiCostTotal').textContent=total;$('apiCostJob').textContent=data.job?costAmount(data.job.usd)+(data.job.unpricedCalls?' +':''):'—';
+    const since=data.since?' Recorded since '+new Date(data.since).toLocaleDateString()+'.':'';
+    $('apiCostNote').textContent='Estimated from recorded usage; excludes hosting.'+since+(data.total.unpricedCalls?' Some calls have no price and are excluded.':' Updates as calls finish.');
+  } catch { $('apiCostBadge').textContent='$—';$('apiCostTotal').textContent='Unavailable';$('apiCostJob').textContent='—';$('apiCostNote').textContent='Cost information is temporarily unavailable. It will refresh automatically.'; }
+  finally {costLoading=false;}
+}
+$('apiCost').ontoggle=()=>{if($('apiCost').open)refreshCosts();};
+setInterval(refreshCosts,15000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshCosts();});
 function showError(error) { addMessage('error', error.message || String(error)); }
 function ready() { const w=workflow(); return Boolean(state.thread && w.sourceDocumentId && (w.mode==='translate' ? w.language.trim() : w.templateDocumentId)); }
 function updateControls() {
@@ -479,7 +502,7 @@ function renderThread() {
   if(!docs.some(doc=>doc.id===state.previewId))state.previewId=w.sourceDocumentId||docs[0]?.id||'';
   fillSelect($('previewDocument'),docs,state.previewId);
   $('previewVersion').value=state.previewVersion;
-  renderPreview();updateControls();
+  renderPreview();updateControls();refreshCosts();
 }
 function previewSelection() {
   const doc=state.thread?.documents.find(doc=>doc.id===state.previewId);const versions=doc?.versions||[];

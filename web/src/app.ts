@@ -46,6 +46,7 @@ import { themeCss } from './shared/theme.ts';
 import { workbenchHtml } from './page.ts';
 import { assertUploadSizes, uploadLimits, withUploadSlot } from './shared/upload-limits.ts';
 import { createLibraryFolder, libraryDownload, readLibrary, removeLibraryItem, saveJobDeck, updateLibraryItem, uploadLibraryDeck, useLibraryDeck } from './shared/deck-library.ts';
+import { apiCostSummary } from './shared/api-cost.ts';
 
 const app = new Hono<AuthEnv>();
 
@@ -114,6 +115,12 @@ app.get('/', authMiddleware, (c) => {
 app.get('/api/auth/me', (c) => currentUserResponse(c));
 
 app.post('/api/auth/logout', (c) => logoutRoute(c));
+
+app.get('/api/cost', async c => {
+  c.header('Cache-Control', 'no-store');
+  try { return c.json(await apiCostSummary(requireAuthUser(c).id, c.req.query('threadId'))); }
+  catch (error) { return errorResponse(c, error, 500); }
+});
 
 app.get('/api/threads', async (c) => {
   try {
