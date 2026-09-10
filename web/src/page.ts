@@ -91,6 +91,30 @@ ${themeCss()}
     .doc-card { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; font-size:12px; }
     .doc-card span { overflow-wrap:anywhere; } .doc-card button { font-size:12px; padding:4px 8px; min-height:30px; }
     .file-list { font-size:12px; color:var(--color-muted); margin-top:7px; overflow-wrap:anywhere; }
+    .library-open { margin-top:8px; font-size:12px; }
+    dialog { border:1px solid var(--color-border); border-radius:14px; padding:0; width:min(940px,calc(100vw - 24px)); max-height:90dvh; color:var(--color-text); box-shadow:0 20px 80px #15203a40; }
+    dialog::backdrop { background:#19203970; }
+    .library-header { padding:20px; border-bottom:1px solid var(--color-border); display:flex; justify-content:space-between; gap:12px; }
+    .library-body { display:grid; grid-template-columns:200px minmax(0,1fr); min-height:360px; }
+    .library-sidebar { padding:16px; background:#f8f9fc; border-right:1px solid var(--color-border); }
+    .library-sidebar button { display:block; width:100%; text-align:left; margin-bottom:6px; overflow-wrap:anywhere; }
+    .library-sidebar button[aria-current=true] { background:#eef0fc; border-color:var(--color-accent); }
+    .library-main { padding:18px; min-width:0; }
+    .library-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+    .library-toolbar input[type=search] { min-width:120px; flex:1; padding:10px; border:1px solid #ced1db; border-radius:7px; }
+    .library-toolbar select { width:auto; }
+    .library-drop { border:2px dashed #c6cad9; border-radius:9px; padding:14px; margin-bottom:14px; }
+    .drop-active { background:#e9edff!important; outline:2px solid var(--color-accent); }
+    .library-list { max-height:40dvh; overflow:auto; }
+    .library-card { display:flex; gap:10px; align-items:center; padding:12px 0; border-bottom:1px solid #e6e8ee; }
+    .library-name { flex:1; min-width:0; overflow-wrap:anywhere; cursor:grab; }
+    .library-name strong { display:block; font-size:13px; }
+    .library-actions { position:relative; }
+    .library-actions > summary { padding:8px; }
+    .library-menu { position:fixed; z-index:3; background:white; border:1px solid var(--color-border); border-radius:8px; padding:10px; width:190px; box-shadow:0 8px 24px #19204420; }
+    .library-menu button,.library-menu a,.library-menu select { display:block; width:100%; margin-bottom:6px; text-align:left; font-size:12px; }
+    .library-footer { padding:12px 20px; border-top:1px solid var(--color-border); min-height:44px; }
+    @media(max-width:600px) { .library-body { grid-template-columns:1fr; } .library-sidebar { border-right:0; border-bottom:1px solid var(--color-border); } #libraryFolders { display:flex; gap:6px; overflow:auto; } .library-sidebar button { width:auto; min-width:100px; } .library-list { max-height:30dvh; } .library-header,.library-main { padding:14px; } }
     @media(max-width:1050px) { .app { grid-template-columns:360px minmax(0,1fr); } .preview-pane { padding:20px; } .topbar { padding:12px 20px; } }
     @media(max-width:760px) {
       .topbar { height:auto; min-height:72px; padding:12px 16px; flex-wrap:wrap; } .topbar .subtle { display:none; }
@@ -106,6 +130,7 @@ ${themeCss()}
 <header class="topbar">
   <div><h1>SafetySecretary <span style="font-weight:400;color:#747989">/ Slides</span></h1><p class="subtle">Change a template. Translate a presentation.</p></div>
   <div class="row">
+    <button id="libraryBtn" type="button">Deck library</button>
     <details class="recent" id="recentWork"><summary>Previous work</summary><div id="threadList" class="thread-list"></div></details>
     <button id="newThreadBtn" type="button">New job</button>
     <button id="logoutBtn" type="button">Sign out</button>
@@ -124,12 +149,14 @@ ${themeCss()}
         <select id="sourceSelect" aria-label="Deck to change" hidden></select>
         <p class="subtle">Up to ${uploadSizeLabel} per file. Your original is kept.</p>
         <input id="fileInput" type="file" accept=".pptx,.pptm" multiple aria-label="Upload source decks" />
+        <button class="library-open" data-library-role="source" type="button">Choose from library</button>
       </div>
       <div class="upload-slot" id="templateSlot">
         <label for="templateSelect">New template</label>
         <select id="templateSelect" aria-label="New template" hidden></select>
         <p class="subtle">PowerPoint with the design you want. Up to ${uploadSizeLabel}.</p>
         <input id="templateInput" type="file" accept=".pptx,.pptm" aria-label="Upload template" />
+        <button class="library-open" data-library-role="template" type="button">Choose from library</button>
       </div>
       <div id="translationFields" hidden>
         <div class="field"><label for="languageInput">Translate into</label><input id="languageInput" type="text" value="Italian" placeholder="For example, Italian" maxlength="80" /></div>
@@ -137,6 +164,7 @@ ${themeCss()}
           <label for="referenceInput">Reference decks <span class="optional">· optional</span></label>
           <p class="subtle">For example, the French version of your German source deck.</p>
           <input id="referenceInput" type="file" accept=".pptx,.pptm" multiple />
+          <button class="library-open" data-library-role="reference" type="button">Choose from library</button>
           <div id="referenceList" class="file-list"></div>
         </div>
         <details class="field" id="termsPanel"><summary>Preferred terms <span class="optional">· optional</span></summary>
@@ -164,16 +192,32 @@ ${themeCss()}
       <select id="previewDocument" aria-label="File to preview"></select>
       <select id="previewVersion" aria-label="Version to preview"><option value="latest">Latest result</option><option value="original">Original upload</option></select>
       <button id="renderBtn" type="button">Refresh preview</button>
+      <button id="saveLibraryBtn" type="button">Save to library</button>
     </div>
     <div id="preview" class="preview-body"><div class="empty"><h2>A fresh version of your slides.</h2><p>Start with the presentation you already have.</p><ol><li>Upload a source deck.</li><li>Add a template or choose a language.</li><li>Describe the changes, then review and download.</li></ol></div></div>
     <div class="preview-foot"><span class="subtle" id="resultHint">Original files stay available.</span><a class="subtle" href="${basePath}/privacy">Privacy</a></div>
   </main>
 </div>
+<dialog id="libraryDialog" aria-labelledby="libraryTitle">
+  <div class="library-header"><div><h2 id="libraryTitle">Deck library</h2><p id="libraryHelp" class="subtle">Upload once. Reuse in any job. Drag decks into folders to organise them.</p></div><button id="libraryClose" type="button" aria-label="Close deck library">Close</button></div>
+  <div class="library-body">
+    <aside class="library-sidebar" aria-label="Library folders"><div id="libraryFolders"></div><button id="libraryNewFolder" type="button">+ New folder</button></aside>
+    <section class="library-main" aria-label="Saved decks">
+      <div class="library-toolbar"><input id="librarySearch" type="search" placeholder="Find a deck…" aria-label="Find a deck" /><select id="libraryRole" aria-label="Use saved deck as"><option value="source">Use as source</option><option value="template">Use as template</option><option value="reference">Use as reference</option></select></div>
+      <div class="library-toolbar" id="libraryFolderActions" hidden><strong id="libraryFolderName"></strong><button id="libraryRenameFolder" type="button">Rename folder</button><button id="libraryRemoveFolder" type="button">Remove folder</button></div>
+      <div id="libraryDrop" class="library-drop"><label for="libraryUpload">Drop PowerPoint files here, or choose files</label><input id="libraryUpload" type="file" accept=".pptx,.pptm" multiple /><p class="subtle">Up to ${uploadSizeLabel} per file. Saved in the folder you are viewing.</p></div>
+      <button id="librarySaveVersion" class="primary" type="button" hidden>Save this version here</button>
+      <div id="libraryList" class="library-list"></div>
+    </section>
+  </div>
+  <div id="libraryStatus" class="library-footer subtle" role="status" aria-live="polite"></div>
+</dialog>
 <script>
 const APP_BASE_PATH = ${JSON.stringify(basePath)};
 const UPLOAD_MAX_BYTES = ${maxUploadBytes};
 const AGENT_IDLE_TIMEOUT_MS = ${commandTimeoutMs() + 60_000};
 const state = { threads: [], thread: null, busy: false, busyLabel: '', stopStream: null, csrfToken: '', activityLines: [], previewId: '', previewVersion: 'latest', slide: 0, previewKey: '', attemptedPreview: '', draft: null, followup: false, dirty: false };
+const libraryState = { data:{folders:[],decks:[]}, folder:'*', action:'manage', save:null };
 const $ = id => document.getElementById(id);
 const threadList=$('threadList'), newThreadBtn=$('newThreadBtn'), logoutBtn=$('logoutBtn');
 const fileInput=$('fileInput'), templateInput=$('templateInput'), referenceInput=$('referenceInput');
@@ -204,7 +248,7 @@ function updateControls() {
 }
 function setBusy(busy,label='Working…') {
   state.busy=busy; state.busyLabel=label;
-  document.querySelectorAll('.setup input,.setup select,.setup textarea,.setup button,.thread-row,#newThreadBtn,#previewDocument,#previewVersion,#renderBtn').forEach(el=>el.disabled=busy || el.dataset.keepDisabled==='true');
+  document.querySelectorAll('.setup input,.setup select,.setup textarea,.setup button,.thread-row,#newThreadBtn,#previewDocument,#previewVersion,#renderBtn,#saveLibraryBtn,#libraryBtn,#libraryDialog button,#libraryDialog input,#libraryDialog select').forEach(el=>el.disabled=busy || el.dataset.keepDisabled==='true');
   promptInput.disabled=busy; stopBtn.hidden=!state.stopStream;
   updateControls();
 }
@@ -266,12 +310,118 @@ async function uploadWithProgress(url,form,name,index,total) {
     xhr.upload.onprogress=event=>{
       const percent=event.lengthComputable?Math.round(100*event.loaded/event.total):0;
       state.busyLabel=percent===100?'Upload transferred. Saving '+name+'…':'Uploading '+index+'/'+total+' · '+name+' · '+percent+'%';updateControls();
+      if($('libraryDialog').open)$('libraryStatus').textContent=state.busyLabel;
     };
     xhr.onload=()=>resolve(new Response(xhr.responseText,{status:xhr.status||502,headers:{'content-type':xhr.getResponseHeader('content-type')||'text/plain'}}));
     xhr.onerror=()=>reject(Error('The upload connection was interrupted. Please try the file again. Files already uploaded are kept.'));
     xhr.onabort=()=>reject(Error('Upload cancelled. Files already uploaded are kept.'));
     xhr.send(form);
   });
+}
+const libraryDialog=$('libraryDialog');
+$('libraryBtn').onclick=()=>openLibrary('manage');
+$('libraryClose').onclick=()=>libraryDialog.close();
+libraryDialog.addEventListener('cancel',event=>{if(state.busy)event.preventDefault();});
+for(const button of document.querySelectorAll('[data-library-role]'))button.onclick=()=>openLibrary('pick',button.dataset.libraryRole);
+$('saveLibraryBtn').onclick=()=>openLibrary('save');
+$('librarySearch').oninput=renderLibrary;
+$('libraryRole').onchange=renderLibrary;
+async function openLibrary(action,role='source') {
+  if(state.busy)return;libraryState.action=action;libraryState.save=action==='save'?previewSelection():null;
+  $('libraryRole').value=role;$('librarySearch').value='';$('libraryStatus').textContent='Loading library…';libraryDialog.showModal();
+  await libraryTask(async()=>{await reloadLibrary();$('libraryStatus').textContent='';});
+}
+async function libraryTask(action) {
+  if(state.busy)return;setBusy(true,'Updating library…');
+  try {await action();}catch(error){$('libraryStatus').textContent=error.message||String(error);}finally{setBusy(false);}
+}
+async function reloadLibrary() {
+  libraryState.data=await readApiJson(await apiFetch('/api/library'),'Library');
+  if(libraryState.folder!=='*'&&libraryState.folder&&!libraryState.data.folders.some(f=>f.id===libraryState.folder))libraryState.folder='';
+  renderLibrary();
+}
+function libraryFolder() {return libraryState.folder==='*'?'':libraryState.folder;}
+function formatSize(bytes) {return bytes>=1024**3?(bytes/1024**3).toFixed(1)+' GB':Math.max(.1,bytes/1024**2).toFixed(1)+' MB';}
+function renderLibrary() {
+  const {folders,decks}=libraryState.data,folder=folders.find(f=>f.id===libraryState.folder),saving=libraryState.action==='save';
+  $('libraryTitle').textContent=saving?'Save to deck library':'Deck library';
+  $('libraryHelp').textContent=saving?'Choose a folder for '+libraryState.save?.doc?.originalName+'. This saves the version selected in the preview.':'Upload once. Reuse in any job. Drag decks into folders to organise them.';
+  $('libraryRole').hidden=saving;$('libraryDrop').hidden=saving;$('librarySaveVersion').hidden=!saving;
+  $('libraryFolderActions').hidden=!folder;$('libraryFolderName').textContent=folder?.name||'';
+  const nav=$('libraryFolders');nav.innerHTML='';
+  for(const f of [{id:'*',name:'All decks'},{id:'',name:'Unfiled'},...folders]) {
+    const b=document.createElement('button');b.type='button';b.textContent=f.name+' ('+decks.filter(d=>f.id==='*'||d.folderId===f.id).length+')';b.dataset.folderId=f.id;
+    b.setAttribute('aria-current',String(libraryState.folder===f.id));b.disabled=state.busy;b.onclick=()=>{libraryState.folder=f.id;renderLibrary();};
+    if(f.id!=='*')attachLibraryDrop(b,f.id);nav.append(b);
+  }
+  const list=$('libraryList');list.innerHTML='';const query=$('librarySearch').value.trim().toLowerCase();
+  const shown=decks.filter(d=>(libraryState.folder==='*'||d.folderId===libraryState.folder)&&(d.name+' '+d.originalName).toLowerCase().includes(query));
+  if(!shown.length){const empty=document.createElement('p');empty.className='empty';empty.textContent=query?'No decks match your search.':saving?'This folder is empty.':'No decks here yet. Drop a PowerPoint above to keep it for future jobs.';list.append(empty);}
+  for(const deck of shown) {
+    const row=document.createElement('div');row.className='library-card';row.dataset.deckId=deck.id;
+    const name=document.createElement('div');name.className='library-name';name.draggable=!state.busy;name.title='Drag this deck onto a folder';
+    name.ondragstart=event=>{if(state.busy){event.preventDefault();return;}event.dataTransfer.setData('application/x-ooxml-library',deck.id);event.dataTransfer.effectAllowed='move';};
+    const title=document.createElement('strong');title.textContent=deck.name;const sub=document.createElement('span');sub.className='subtle';sub.textContent=formatSize(deck.sizeBytes)+' · '+(folders.find(f=>f.id===deck.folderId)?.name||'Unfiled');name.append(title,sub);row.append(name);
+    if(!saving){const use=document.createElement('button');use.className='primary';use.textContent='Use '+$('libraryRole').value;use.disabled=state.busy;use.onclick=()=>useSavedDeck(deck);row.append(use);}
+    const more=document.createElement('details');more.className='library-actions';const summary=document.createElement('summary');summary.textContent='Manage';summary.setAttribute('aria-label','Manage '+deck.name);
+    const menu=document.createElement('div');menu.className='library-menu';const rename=document.createElement('button');rename.textContent='Rename';rename.disabled=state.busy;rename.onclick=()=>renameLibraryItem('decks',deck);menu.append(rename);
+    const move=document.createElement('select');move.setAttribute('aria-label','Move '+deck.name+' to folder');move.add(new Option('Unfiled',''));for(const f of folders)move.add(new Option(f.name,f.id));move.value=deck.folderId;move.disabled=state.busy;move.onchange=()=>moveLibraryDeck(deck.id,move.value);menu.append(move);
+    const download=document.createElement('a');download.textContent='Download';download.href=appUrl('/api/library/decks/'+deck.id+'/download');menu.append(download);
+    const remove=document.createElement('button');remove.textContent='Remove from library';remove.disabled=state.busy;remove.onclick=()=>removeLibraryItem('decks',deck);menu.append(remove);more.append(summary,menu);row.append(more);list.append(row);
+    more.ontoggle=()=>{if(more.open){const rect=summary.getBoundingClientRect();menu.style.left=Math.max(12,Math.min(innerWidth-210,rect.right-190))+'px';menu.style.top=Math.max(12,Math.min(innerHeight-230,rect.bottom+4))+'px';}};
+  }
+}
+function attachLibraryDrop(element,folderId) {
+  element.ondragover=event=>{if(state.busy)return;event.preventDefault();event.stopPropagation();element.classList.add('drop-active');};
+  element.ondragleave=()=>element.classList.remove('drop-active');
+  element.ondrop=event=>{event.preventDefault();event.stopPropagation();element.classList.remove('drop-active');if(state.busy)return;
+    const id=event.dataTransfer.getData('application/x-ooxml-library');const folder=folderId===undefined?libraryFolder():folderId;
+    if(id)moveLibraryDeck(id,folder);else if(event.dataTransfer.files.length)uploadToLibrary(Array.from(event.dataTransfer.files),folder);
+  };
+}
+attachLibraryDrop($('libraryDrop'));
+// Catch external files anywhere inside the library without letting the browser navigate away.
+libraryDialog.ondragover=event=>event.preventDefault();libraryDialog.ondrop=event=>{event.preventDefault();if(!state.busy&&event.dataTransfer.files.length)uploadToLibrary(Array.from(event.dataTransfer.files),libraryFolder());};
+$('libraryUpload').onchange=event=>{const files=Array.from(event.target.files);event.target.value='';uploadToLibrary(files,libraryFolder());};
+async function uploadToLibrary(files,folderId) {
+  if(!files.length)return;await libraryTask(async()=>{
+    if(files.some(f=>! /\\.(pptx|pptm)$/i.test(f.name)))throw Error('Choose PowerPoint files (.pptx or .pptm).');
+    if(files.some(f=>f.size>UPLOAD_MAX_BYTES))throw Error('Each file can be up to ${uploadSizeLabel}.');
+    for(let i=0;i<files.length;i++) {
+      const form=new FormData();form.append('files',files[i]);form.append('folderId',folderId);
+      await readApiJson(await uploadWithProgress('/api/library/upload',form,files[i].name,i+1,files.length),'Library upload');
+      await reloadLibrary();
+    }
+    libraryState.folder=folderId;renderLibrary();$('libraryStatus').textContent='Saved to the library. Identical files are kept only once.';
+  });
+}
+function moveLibraryDeck(id,folderId) {return libraryTask(async()=>{
+  await readApiJson(await apiFetch('/api/library/decks/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({folderId})}),'Move deck');await reloadLibrary();$('libraryStatus').textContent='Deck moved.';
+});}
+$('libraryNewFolder').onclick=()=>{const name=prompt('New folder name');if(name===null)return;libraryTask(async()=>{const folder=await readApiJson(await apiFetch('/api/library/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),'New folder');libraryState.folder=folder.id;await reloadLibrary();$('libraryStatus').textContent='Folder created. Drop files here to add them.';});};
+function renameLibraryItem(kind,item) {const name=prompt('New name',item.name);if(name===null)return;return libraryTask(async()=>{await readApiJson(await apiFetch('/api/library/'+kind+'/'+item.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),'Rename');await reloadLibrary();$('libraryStatus').textContent='Name updated.';});}
+function removeLibraryItem(kind,item) {
+  const message=kind==='folders'?'Remove folder “'+item.name+'”? Its decks will move to Unfiled.':'Remove “'+item.name+'” from the library? Existing jobs keep their copies.';
+  if(!confirm(message))return;return libraryTask(async()=>{await readApiJson(await apiFetch('/api/library/'+kind+'/'+item.id,{method:'DELETE'}),'Remove');await reloadLibrary();$('libraryStatus').textContent=kind==='folders'?'Folder removed. Its decks are in Unfiled.':'Removed from library. Existing jobs are unchanged.';});
+}
+$('libraryRenameFolder').onclick=()=>renameLibraryItem('folders',libraryState.data.folders.find(f=>f.id===libraryState.folder));
+$('libraryRemoveFolder').onclick=()=>removeLibraryItem('folders',libraryState.data.folders.find(f=>f.id===libraryState.folder));
+$('librarySaveVersion').onclick=()=>libraryTask(async()=>{
+  const {doc,version}=libraryState.save;if(!doc||!version)throw Error('Choose a deck in the preview first.');
+  await readApiJson(await apiFetch('/api/threads/'+state.thread.id+'/library',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({documentId:doc.id,versionId:version.id,folderId:libraryFolder()})}),'Save to library');
+  libraryState.action='manage';await reloadLibrary();$('libraryStatus').textContent='Saved. You can reuse this version in future jobs.';
+});
+async function useSavedDeck(deck) {
+  const role=$('libraryRole').value,w=structuredClone(workflow());
+  await libraryTask(async()=>{
+    $('libraryStatus').textContent='Adding '+deck.name+' to your job…';const oldIds=new Set(state.thread?.documents.map(d=>d.id)||[]);
+    const thread=await readApiJson(await apiFetch('/api/library/decks/'+deck.id+'/use',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({threadId:state.thread?.id})}),'Use library deck');
+    state.thread=thread;const doc=thread.documents.find(d=>!oldIds.has(d.id));
+    if(role==='source'){w.sourceDocumentId=doc.id;state.previewId=doc.id;state.previewVersion='latest';}
+    else if(role==='template')w.templateDocumentId=doc.id;else w.referenceDocumentIds.push(doc.id);
+    state.draft=w;await saveSettings();await loadThreads(thread.id,false);renderThread();libraryDialog.close();
+  });
+  if(!libraryDialog.open)await ensurePreview();
 }
 async function saveSettings() {
   if(!state.thread)return;

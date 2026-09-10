@@ -379,7 +379,7 @@ const maxCompressionRatio = Math.max(
   Math.trunc(Number(process.env.OOXML_UPLOAD_MAX_COMPRESSION_RATIO) || 300),
 );
 
-function assertSafeOoxmlZip(bytes: Uint8Array): void {
+export function assertSafeOoxmlZip(bytes: Uint8Array): void {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const len = bytes.byteLength;
   if (len < 22) throw new Error('Upload is not a valid Office package.');

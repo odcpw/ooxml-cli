@@ -45,6 +45,7 @@ import { publicThreadSummary, readVersionRenderArtifact, renderCurrent } from '.
 import { themeCss } from './shared/theme.ts';
 import { workbenchHtml } from './page.ts';
 import { assertUploadSizes, uploadLimits, withUploadSlot } from './shared/upload-limits.ts';
+import { createLibraryFolder, libraryDownload, readLibrary, removeLibraryItem, saveJobDeck, updateLibraryItem, uploadLibraryDeck, useLibraryDeck } from './shared/deck-library.ts';
 
 const app = new Hono<AuthEnv>();
 
@@ -128,6 +129,60 @@ app.get('/api/threads', async (c) => {
 
 app.use('/api/upload', async (_c, next) => withUploadSlot(next));
 app.use('/api/threads/:id/upload', async (_c, next) => withUploadSlot(next));
+app.use('/api/library/upload', async (_c, next) => withUploadSlot(next));
+
+app.get('/api/library', async c => {
+  try { return c.json(await readLibrary(requireAuthUser(c).id)); }
+  catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+});
+app.post('/api/library/upload', async c => {
+  try {
+    const user = requireAuthUser(c);
+    const limit = await checkRateLimit(`upload:${user.id}`, Number(process.env.OOXML_UPLOAD_RATE_LIMIT_PER_HOUR || 60), 60 * 60 * 1000);
+    if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
+    if (Number(c.req.header('content-length')) > uploadLimits().maxBatchBytes + 1024 * 1024) return c.json({ error: 'Upload is too large.' }, 413);
+    const form = await c.req.formData(); const files = await officeFilesFromForm(form);
+    const decks = [];
+    for (const file of files) decks.push(await uploadLibraryDeck(user.id, file, String(form.get('folderId') || '')));
+    return c.json({ decks });
+  } catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+});
+app.post('/api/library/folders', async c => {
+  try { return c.json(await createLibraryFolder(requireAuthUser(c).id, (await c.req.json()).name)); }
+  catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+});
+for (const kind of ['decks', 'folders'] as const) {
+  app.patch(`/api/library/${kind}/:id`, async c => {
+    try { await updateLibraryItem(requireAuthUser(c).id, kind, c.req.param('id'), await c.req.json()); return c.json({ ok: true }); }
+    catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+  });
+  app.delete(`/api/library/${kind}/:id`, async c => {
+    try { await removeLibraryItem(requireAuthUser(c).id, kind, c.req.param('id')); return c.json({ ok: true }); }
+    catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+  });
+}
+app.get('/api/library/decks/:id/download', async c => {
+  try {
+    const { deck, path } = await libraryDownload(requireAuthUser(c).id, c.req.param('id'));
+    c.header('Content-Length', String((await stat(path)).size));
+    c.header('Content-Disposition', `attachment; filename="deck${extname(deck.originalName)}"; filename*=UTF-8''${encodeURIComponent(deck.originalName)}`);
+    return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>, 200, { 'Content-Type': contentTypeFor(extname(path)) });
+  } catch (error) { return errorResponse(c, error, 404, { expose: true }); }
+});
+app.post('/api/library/decks/:id/use', async c => {
+  try {
+    const user = requireAuthUser(c); const body = await c.req.json();
+    if (body.threadId !== undefined && typeof body.threadId !== 'string') throw Error('Invalid job.');
+    return c.json(publicThreadSummary(await useLibraryDeck(user.id, c.req.param('id'), body.threadId, user.email)));
+  } catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+});
+app.post('/api/threads/:id/library', async c => {
+  try {
+    const body = await c.req.json();
+    if (typeof body.documentId !== 'string' || typeof body.versionId !== 'string' || (body.folderId !== undefined && typeof body.folderId !== 'string')) throw Error('Choose a file and version to save.');
+    return c.json(await saveJobDeck(requireAuthUser(c).id, c.req.param('id'), body.documentId, body.versionId, body.folderId));
+  } catch (error) { return errorResponse(c, error, 400, { expose: true }); }
+});
 
 app.post('/api/upload', async (c) => {
   try {
