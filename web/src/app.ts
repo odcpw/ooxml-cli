@@ -1,10 +1,14 @@
 import { Hono, type Context } from 'hono';
-import { flue } from '@flue/runtime/routing';
+import { createAgentRouter } from '@flue/runtime/routing';
+import { OoxmlEditor, route as agentOwnership } from './agents/ooxml-editor.ts';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import {
   authMiddleware,
+  accessOnly,
+  privateAccessHtml,
+  privateAccessRoute,
   checkRateLimit,
   confirmMagicLinkHtml as authConfirmMagicLinkHtml,
   currentUserResponse,
@@ -39,6 +43,19 @@ import { themeCss } from './shared/theme.ts';
 import { workbenchHtml } from './page.ts';
 
 const app = new Hono<AuthEnv>();
+
+app.use('/api/auth/*', async (c, next) => {
+  if (accessOnly() && !['/api/auth/access', '/api/auth/me', '/api/auth/logout'].includes(new URL(c.req.url).pathname)) {
+    return c.json({ error: 'Use your private access link to sign in.' }, 404);
+  }
+  return next();
+});
+app.get('/access', c => {
+  c.header('Cache-Control', 'no-store');
+  c.header('Referrer-Policy', 'no-referrer');
+  return c.html(privateAccessHtml());
+});
+app.post('/api/auth/access', privateAccessRoute);
 
 app.get('/signin', (c) => c.html(authSignInHtml({ returnTo: c.req.query('returnTo') })));
 
@@ -251,7 +268,9 @@ app.get('/api/threads/:id/versions/:versionId/artifact', async (c) => {
   }
 });
 
-app.route('/flue', flue());
+app.use('/flue/agents/ooxml-editor/:id', agentOwnership);
+app.use('/flue/agents/ooxml-editor/:id/*', agentOwnership);
+app.route('/flue/agents/ooxml-editor', createAgentRouter(OoxmlEditor));
 
 export default app;
 

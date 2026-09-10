@@ -1055,28 +1055,29 @@ fn oversized_typed_output_spills_to_configured_lf_json_file() {
 }
 
 #[test]
-fn flue_beta9_and_smokes_require_the_typed_check_tool_where_applicable() {
+fn flue_v2_and_smokes_require_the_typed_check_tool_where_applicable() {
     let package: Value =
         serde_json::from_str(&std::fs::read_to_string("web/package.json").unwrap()).unwrap();
     for path in [
         "/dependencies/@flue~1runtime",
         "/dependencies/@flue~1sdk",
         "/devDependencies/@flue~1cli",
+        "/devDependencies/@flue~1vite",
     ] {
-        assert_eq!(package.pointer(path).unwrap(), "1.0.0-beta.9");
+        assert_eq!(package.pointer(path).unwrap(), "2.0.3");
     }
     assert_eq!(package["overrides"]["undici"], "7.29.0");
 
     let tools = std::fs::read_to_string("web/src/shared/ooxml-tools.ts").unwrap();
     assert!(tools.contains("input: v.object({"));
-    assert!(tools.contains("run: async ({ input:"));
+    assert!(tools.contains("run: async ({ data:"));
     assert!(!tools.contains("parameters:"));
     assert!(!tools.contains("execute:"));
 
     let tool_smoke = std::fs::read_to_string("web/scripts/smoke-flue-tools.mjs").unwrap();
     assert!(tool_smoke.contains("get_ooxml_capabilities"));
     assert!(tool_smoke.contains("check_package"));
-    assert!(tool_smoke.contains("tool.run({ input })"));
+    assert!(tool_smoke.contains("tool.run({ data: v.parse(tool.input, input) })"));
 
     let non_pptx = std::fs::read_to_string("web/scripts/smoke-nonpptx.mjs").unwrap();
     let agent_edit = std::fs::read_to_string("web/scripts/smoke-agent-edit.mjs").unwrap();

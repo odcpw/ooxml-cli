@@ -63,7 +63,10 @@ async function main() {
   await expectStatus(jarB, version.downloadUrl, {}, 404, 'cross-user download');
 
   const render = await postJson(jarA, `/api/threads/${encodeURIComponent(thread.id)}/render`, {});
-  if (render.rendered && render.thumbnails?.[0]?.path) {
+  if (!render.rendered || !render.thumbnails?.[0]?.path) {
+    throw new Error('Presentation render did not produce a thumbnail for artifact isolation checks.');
+  }
+  {
     const artifactPath =
       `/api/threads/${encodeURIComponent(thread.id)}` +
       `/documents/${encodeURIComponent(render.currentDocumentId)}` +

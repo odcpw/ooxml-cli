@@ -35,6 +35,24 @@ function describedBoolean(description: string) {
   return v.pipe(v.boolean(), v.description(description));
 }
 
+const jsonObject = v.pipe(
+  v.unknown(),
+  v.check(value => typeof value === 'object' && value !== null && !Array.isArray(value), 'Expected a JSON object.'),
+  v.record(v.string(), v.unknown()),
+);
+
+function jsonObjectInput(description: string) {
+  return v.pipe(v.union([v.string(), jsonObject]), v.description(description + ' Pass an object or a JSON-encoded string.'));
+}
+
+function jsonOperationsInput(description: string) {
+  return v.pipe(v.union([v.string(), v.array(jsonObject)]), v.description(description + ' Pass an array or a JSON-encoded string.'));
+}
+
+function encodeJsonInput(value: string | Record<string, unknown> | Record<string, unknown>[]): string {
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
 function structured(value: unknown) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -45,7 +63,7 @@ export function createOoxmlTools(threadId: string) {
       name: 'get_thread_status',
       description: 'Show the uploaded Office document library, selected document, current version, previous versions, and preview artifacts for this thread.',
       input: emptyParameters,
-      run: async () => structured(publicThreadSummary(await readThread(threadId))),
+      run: async () => ({ output: structured(publicThreadSummary(await readThread(threadId))) }),
     }),
     defineTool({
       name: 'select_document',
@@ -53,8 +71,7 @@ export function createOoxmlTools(threadId: string) {
       input: v.object({
         documentId: describedString('Document id from get_thread_status.'),
       }),
-      run: async ({ input: { documentId } }) =>
-        structured(publicThreadSummary(await selectDocument(threadId, String(documentId)))),
+      run: async ({ data: { documentId } }) => ({ output: structured(publicThreadSummary(await selectDocument(threadId, String(documentId)))) }),
     }),
     defineTool({
       name: 'get_ooxml_capabilities',
@@ -64,13 +81,12 @@ export function createOoxmlTools(threadId: string) {
         filter: v.optional(describedString('Optional command family or object kind filter.')),
         includeDetails: v.optional(describedBoolean('Return the full raw capabilities JSON. Use sparingly; it can be large.')),
       }),
-      run: async ({ input: { filter, includeDetails } }) =>
-        JSON.parse(
+      run: async ({ data: { filter, includeDetails } }) => ({ output: JSON.parse(
           await getOoxmlCapabilities(
             typeof filter === 'string' ? filter : undefined,
             Boolean(includeDetails),
           ),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'get_ooxml_command_help',
@@ -79,62 +95,58 @@ export function createOoxmlTools(threadId: string) {
       input: v.object({
         command: v.optional(describedString('Optional command words. Omit for top-level ooxml help.')),
       }),
-      run: async ({ input: { command } }) =>
-        getOoxmlCommandHelp(typeof command === 'string' ? command : undefined),
+      run: async ({ data: { command } }) => ({ output: await getOoxmlCommandHelp(typeof command === 'string' ? command : undefined) }),
     }),
     defineTool({
       name: 'build_presentation',
       description:
         'Build and strictly validate a complete PPTX from the published pptx-build specification through the typed MCP tool, then publish it as a new immutable version of the selected PPTX.',
       input: v.object({
-        specJson: describedString('JSON object conforming to resource://schema/pptx-build.'),
+        specJson: jsonObjectInput('JSON object conforming to resource://schema/pptx-build.'),
         note: v.optional(describedString('Short version note for the published presentation.')),
       }),
-      run: async ({ input: { specJson, note } }) =>
-        structured(
+      run: async ({ data: { specJson, note } }) => ({ output: structured(
           await buildCurrentWithTypedMcp({
             threadId,
             family: 'pptx',
-            specJson: String(specJson),
+            specJson: encodeJsonInput(specJson),
             note: typeof note === 'string' ? note : undefined,
           }),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'build_workbook',
       description:
         'Build and strictly validate a complete XLSX from the published xlsx-build specification through the typed MCP tool, then publish it as a new immutable version of the selected XLSX.',
       input: v.object({
-        specJson: describedString('JSON object conforming to resource://schema/xlsx-build.'),
+        specJson: jsonObjectInput('JSON object conforming to resource://schema/xlsx-build.'),
         note: v.optional(describedString('Short version note for the published workbook.')),
       }),
-      run: async ({ input: { specJson, note } }) =>
-        structured(
+      run: async ({ data: { specJson, note } }) => ({ output: structured(
           await buildCurrentWithTypedMcp({
             threadId,
             family: 'xlsx',
-            specJson: String(specJson),
+            specJson: encodeJsonInput(specJson),
             note: typeof note === 'string' ? note : undefined,
           }),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'build_document',
       description:
         'Build and strictly validate a complete DOCX from the published docx-build specification through the typed MCP tool, then publish it as a new immutable version of the selected DOCX.',
       input: v.object({
-        specJson: describedString('JSON object conforming to resource://schema/docx-build.'),
+        specJson: jsonObjectInput('JSON object conforming to resource://schema/docx-build.'),
         note: v.optional(describedString('Short version note for the published document.')),
       }),
-      run: async ({ input: { specJson, note } }) =>
-        structured(
+      run: async ({ data: { specJson, note } }) => ({ output: structured(
           await buildCurrentWithTypedMcp({
             threadId,
             family: 'docx',
-            specJson: String(specJson),
+            specJson: encodeJsonInput(specJson),
             note: typeof note === 'string' ? note : undefined,
           }),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'check_package',
@@ -145,15 +157,14 @@ export function createOoxmlTools(threadId: string) {
         failOn: v.optional(describedString('Finding threshold: error or warning. Defaults to error.')),
         render: v.optional(describedBoolean('Include the shared visual renderer proof pass.')),
       }),
-      run: async ({ input: { openXmlSdk, failOn, render } }) =>
-        JSON.parse(
+      run: async ({ data: { openXmlSdk, failOn, render } }) => ({ output: JSON.parse(
           await checkCurrentWithTypedMcp({
             threadId,
             openXmlSdk: openXmlSdk === 'require' || openXmlSdk === 'skip' ? openXmlSdk : 'auto',
             failOn: failOn === 'warning' ? 'warning' : 'error',
             render: Boolean(render),
           }),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'inspect_current_with_ooxml',
@@ -161,51 +172,49 @@ export function createOoxmlTools(threadId: string) {
         'Run any serve-allowed read-only ooxml command against the selected document. The app supplies the current file. Put command words in command and flags in argsJson, for example command="pptx slides show", argsJson={"slide":1,"include-text":true}.',
       input: v.object({
         command: describedString('OOXML command words, with or without leading "ooxml", and without flags.'),
-        argsJson: v.optional(describedString('JSON object of command flags/args. Use flag names without leading --.')),
+        argsJson: v.optional(jsonObjectInput('JSON object of command flags/args. Use flag names without leading --.')),
       }),
-      run: async ({ input: { command, argsJson } }) =>
-        JSON.parse(
+      run: async ({ data: { command, argsJson } }) => ({ output: JSON.parse(
           await inspectCurrentWithOoxml({
             threadId,
             command: String(command),
-            argsJson: typeof argsJson === 'string' ? argsJson : undefined,
+            argsJson: argsJson === undefined ? undefined : encodeJsonInput(argsJson),
           }),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'apply_ooxml_ops_to_current',
       description:
         'Apply one or more generic ooxml serve/MCP-compatible mutation operations to the selected document and publish a new immutable version. Use commands from get_ooxml_capabilities where opCompatible=true. Do not include file/out/in-place/dry-run/no-validate args; the app owns the file and output path.',
       input: v.object({
-        opsJson: describedString(
+        opsJson: jsonOperationsInput(
           'JSON array of operations, e.g. [{"command":"pptx replace text","args":{"slide":1,"target":"title","text":"New title"}}].',
         ),
         note: v.optional(describedString('Short version note for the published output.')),
         expectedDocumentId: v.optional(describedString('Current document id from inspect_current_with_ooxml or get_thread_status. Guards against editing the wrong file if selection changes.')),
         expectedVersionId: v.optional(describedString('Current version id from inspect_current_with_ooxml or get_thread_status. Guards against stale edits.')),
       }),
-      run: async ({ input: { opsJson, note, expectedDocumentId, expectedVersionId } }) =>
-        structured(
+      run: async ({ data: { opsJson, note, expectedDocumentId, expectedVersionId } }) => ({ output: structured(
           await applyOoxmlOpsToCurrent({
             threadId,
-            opsJson: String(opsJson),
+            opsJson: encodeJsonInput(opsJson),
             note: typeof note === 'string' ? note : undefined,
             expectedDocumentId: typeof expectedDocumentId === 'string' ? expectedDocumentId : undefined,
             expectedVersionId: typeof expectedVersionId === 'string' ? expectedVersionId : undefined,
           }),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'inspect_current_document',
       description: 'Run ooxml inspect on the current Office file and return machine-readable package information.',
       input: emptyParameters,
-      run: async () => JSON.parse(await inspectCurrent(threadId)),
+      run: async () => ({ output: JSON.parse(await inspectCurrent(threadId)) }),
     }),
     defineTool({
       name: 'validate_current_document',
       description: 'Run strict OOXML validation on the current Office file.',
       input: emptyParameters,
-      run: async () => JSON.parse(await validateCurrent(threadId)),
+      run: async () => ({ output: JSON.parse(await validateCurrent(threadId)) }),
     }),
     defineTool({
       name: 'search_current_document_text',
@@ -214,14 +223,13 @@ export function createOoxmlTools(threadId: string) {
         query: describedString('Exact text or search query.'),
         ignoreCase: v.optional(describedBoolean('Match case-insensitively.')),
       }),
-      run: async ({ input: { query, ignoreCase } }) =>
-        JSON.parse(
+      run: async ({ data: { query, ignoreCase } }) => ({ output: JSON.parse(
           await searchCurrent({
             threadId,
             query: String(query),
             ignoreCase: Boolean(ignoreCase),
           }),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'show_current_presentation_slide',
@@ -230,14 +238,13 @@ export function createOoxmlTools(threadId: string) {
         slide: describedNumber('One-based slide number.'),
         includeBounds: v.optional(describedBoolean('Include shape bounds; defaults to true.')),
       }),
-      run: async ({ input: { slide, includeBounds } }) =>
-        JSON.parse(
+      run: async ({ data: { slide, includeBounds } }) => ({ output: JSON.parse(
           await showSlideCurrent({
             threadId,
             slide: Number(slide),
             includeBounds: includeBounds === undefined ? true : Boolean(includeBounds),
           }),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'replace_text_in_current_document',
@@ -248,15 +255,14 @@ export function createOoxmlTools(threadId: string) {
         replacement: describedString('Replacement text.'),
         ignoreCase: v.optional(describedBoolean('Match case-insensitively.')),
       }),
-      run: async ({ input: { query, replacement, ignoreCase } }) =>
-        structured(
+      run: async ({ data: { query, replacement, ignoreCase } }) => ({ output: structured(
           await replaceTextCurrent({
             threadId,
             query: String(query),
             replacement: String(replacement),
             ignoreCase: Boolean(ignoreCase),
           }),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'set_current_presentation_slide_shape_text',
@@ -267,15 +273,14 @@ export function createOoxmlTools(threadId: string) {
         target: describedString('Shape target selector from show_current_presentation_slide.'),
         text: describedString('Replacement text for the whole target shape.'),
       }),
-      run: async ({ input: { slide, target, text } }) =>
-        structured(
+      run: async ({ data: { slide, target, text } }) => ({ output: structured(
           await setSlideShapeTextCurrent({
             threadId,
             slide: Number(slide),
             target: String(target),
             text: String(text),
           }),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'apply_template_to_current_document',
@@ -286,15 +291,14 @@ export function createOoxmlTools(threadId: string) {
         targetTextStyles: v.optional(describedBoolean('Apply PPTX master default text styles by role. Defaults to true.')),
         targetCharts: v.optional(describedBoolean('Also apply chart styling when the document contains charts.')),
       }),
-      run: async ({ input: { templateDocumentId, targetTextStyles, targetCharts } }) =>
-        structured(
+      run: async ({ data: { templateDocumentId, targetTextStyles, targetCharts } }) => ({ output: structured(
           await applyTemplateToCurrentDocument({
             threadId,
             templateDocumentId: String(templateDocumentId),
             targetTextStyles: targetTextStyles === undefined ? undefined : Boolean(targetTextStyles),
             targetCharts: Boolean(targetCharts),
           }),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'create_template_form_slide_from_current',
@@ -312,7 +316,7 @@ export function createOoxmlTools(threadId: string) {
         expectedVersionId: v.optional(describedString('Current version id from inspect_current_with_ooxml or get_thread_status. Guards against stale edits.')),
       }),
       run: async ({
-        input: {
+        data: {
           templateDocumentId,
           sourceSlide,
           templateLayout,
@@ -323,8 +327,7 @@ export function createOoxmlTools(threadId: string) {
           expectedDocumentId,
           expectedVersionId,
         },
-      }) =>
-        structured(
+      }) => ({ output: structured(
           await createTemplateFormSlideFromCurrent({
             threadId,
             templateDocumentId: String(templateDocumentId),
@@ -337,13 +340,13 @@ export function createOoxmlTools(threadId: string) {
             expectedDocumentId: typeof expectedDocumentId === 'string' ? expectedDocumentId : undefined,
             expectedVersionId: typeof expectedVersionId === 'string' ? expectedVersionId : undefined,
           }),
-        ),
+        ) }),
     }),
     defineTool({
       name: 'render_current_presentation_preview',
       description: `Render the current ${previewSupportedLabel} version to PDF and PNG thumbnails for the browser preview. DOCX/XLSX render is not wired yet.`,
       input: emptyParameters,
-      run: async () => structured(await renderCurrent(threadId)),
+      run: async () => ({ output: structured(await renderCurrent(threadId)) }),
     }),
   ];
 }

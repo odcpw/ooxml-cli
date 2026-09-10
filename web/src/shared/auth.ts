@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import { atomicWriteFile } from './fs-atomic.ts';
 import { dirname, join } from 'node:path';
@@ -36,6 +36,7 @@ type SessionRecord = {
   createdAt: string;
   expiresAt: string;
   lastSeenAt: string;
+  accessKeyHash?: string;
 };
 
 type MagicLinkRecord = {
@@ -168,6 +169,7 @@ export function rateLimitResponse(c: Context, retryAfterSeconds: number): Respon
 }
 
 export function signInHtml(input: { returnTo?: string | null } = {}): string {
+  if (accessOnly()) return privateAccessHtml();
   const returnTo = safeReturnTo(input.returnTo);
   const microsoftConfigured = isOAuthConfigured('microsoft');
   const googleConfigured = isOAuthConfigured('google');
@@ -539,6 +541,46 @@ export async function logoutRoute(c: Context): Promise<Response> {
   return c.json({ message: 'Signed out.' });
 }
 
+export function accessOnly(): boolean {
+  return process.env.OOXML_AUTH_ACCESS_ONLY === '1';
+}
+
+export function privateAccessHtml(): string {
+  const endpoint = JSON.stringify(withAppBasePath('/api/auth/access'));
+  const destination = JSON.stringify(withAppBasePath('/'));
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>OOXML Workbench</title><style>${themeCss()}body{min-height:100vh;display:grid;place-items:center}main{max-width:420px;padding:32px}p{line-height:1.5}</style></head><body><main><h1>OOXML Workbench</h1><p id="status">Open your private access link to sign in.</p></main><script>
+const token = location.hash.slice(1);
+history.replaceState(null, '', location.pathname);
+if (token) {
+  document.getElementById('status').textContent = 'Signing in…';
+  fetch(${endpoint}, {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})})
+    .then(response => { if (!response.ok) throw new Error(); location.replace(${destination}); })
+    .catch(() => { document.getElementById('status').textContent = 'This access link is invalid or unavailable. Ask for a new link.'; });
+}
+</script></body></html>`;
+}
+
+export async function privateAccessRoute(c: Context): Promise<Response> {
+  c.header('Cache-Control', 'no-store');
+  c.header('Referrer-Policy', 'no-referrer');
+  const configured = process.env.OOXML_ACCESS_KEY_SHA256 || '';
+  if (!/^[a-f0-9]{64}$/.test(configured)) return c.json({ error: 'Private access is not configured.' }, 404);
+  // Browsers exchange the URL fragment in a same-origin JSON POST, never a URL
+  // query. This keeps the bearer secret out of proxy access logs and referrers.
+  const origin = c.req.header('Origin');
+  if (!origin || !allowedOrigins(c).has(origin)) return c.json({ error: 'Invalid origin.' }, 403);
+  const limit = await checkRateLimit('private-access', 60, 60_000);
+  if (!limit.allowed) return rateLimitResponse(c, limit.retryAfterSeconds);
+  const input = await readJsonOrForm(c);
+  const token = stringValue(input.token);
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token) || !timingSafeEqual(Buffer.from(hashToken(token), 'hex'), Buffer.from(configured, 'hex'))) {
+    return c.json({ error: 'Invalid access link.' }, 401);
+  }
+  const user = await mutateAuthState(state => findOrCreateUserByEmail(state, 'owner@private.ooxml', new Date()));
+  await issueSession(c, user, configured);
+  return c.json({ user: authUserResponse(user) });
+}
+
 function isPublicPath(pathname: string): boolean {
   if (pathname === '/signin' || pathname === '/health' || pathname === '/favicon.ico' || pathname === '/robots.txt') {
     return true;
@@ -547,6 +589,7 @@ function isPublicPath(pathname: string): boolean {
     pathname === '/api/auth/magic-link/request' ||
     pathname === '/api/auth/magic-link/verify' ||
     pathname === '/api/auth/dev-session' ||
+    pathname === '/api/auth/access' ||
     /^\/api\/auth\/oauth\/[^/]+\/(?:start|callback)$/.test(pathname)
   );
 }
@@ -564,6 +607,8 @@ async function validateAuthContext(c: AppContext): Promise<AuthContext | null> {
     pruneExpired(state, now);
     const session = state.sessions.find((candidate) => candidate.tokenHash === tokenHash);
     if (!session) return null;
+    if (session.accessKeyHash && session.accessKeyHash !== process.env.OOXML_ACCESS_KEY_SHA256) return null;
+    if (accessOnly() && !session.accessKeyHash) return null;
     const user = state.users.find((candidate) => candidate.id === session.userId);
     if (!user) return null;
     session.lastSeenAt = now.toISOString();
@@ -572,7 +617,7 @@ async function validateAuthContext(c: AppContext): Promise<AuthContext | null> {
   });
 }
 
-async function issueSession(c: Context, user: AuthUser): Promise<void> {
+async function issueSession(c: Context, user: AuthUser, accessKeyHash?: string): Promise<void> {
   const now = new Date();
   const sessionToken = randomToken();
   const csrfToken = randomUUID();
@@ -586,6 +631,7 @@ async function issueSession(c: Context, user: AuthUser): Promise<void> {
       createdAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + sessionTtlMs).toISOString(),
       lastSeenAt: now.toISOString(),
+      ...(accessKeyHash ? { accessKeyHash } : {}),
     });
   });
 

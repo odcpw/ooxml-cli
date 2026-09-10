@@ -1,6 +1,6 @@
 # OOXML Flue Workbench
 
-Small Flue 1.0 beta.9 web workbench for uploading Office files, chatting with a
+Flue 2 web workbench for uploading Office files, chatting with a
 thread-scoped OOXML agent, and previewing PPTX/PPTM outputs.
 
 ## Run
@@ -67,7 +67,7 @@ sudo apt-get install -y libreoffice-impress libreoffice-java-common default-jre-
 ## Architecture
 
 - `src/app.ts` owns the Hono app, upload/download/render APIs, and mounts Flue
-  at `/flue`.
+  at `/flue/agents/ooxml-editor` using an explicit agent router.
 - `src/shared/auth.ts` implements the SafetySecretary-style custom auth layer:
   server-side session cookies, double-submit CSRF, magic links, Microsoft/Google
   OAuth, dev sessions, and simple file-backed rate limits.
@@ -101,11 +101,11 @@ npm audit --omit=dev
 curl -fsS http://localhost:3583/health
 ```
 
-`verify:stack` pins the requalified Flue and Cloudflare dependency closure,
-including the patched Undici line. It is a deterministic lockfile regression
+`verify:stack` pins the qualified Flue, Vite and selected transitive versions.
+It is a deterministic lockfile regression
 check, not a replacement for the online npm advisory audit. `smoke:tools`
-instantiates the Flue beta.9 tool registry and exercises structured status,
-capability discovery, and typed `check_package` without model credentials.
+instantiates the Flue 2 tool registry and exercises status, capability discovery,
+structured inspection and editing, and typed `check_package` without model credentials.
 
 With the dev server running and `EMAIL_TRANSPORT=dev`, verify auth isolation
 without spending model tokens:
@@ -145,3 +145,26 @@ ooxml --json pptx slides show <file>.pptx --slide 1 --include-text
 - Generic mutations in multi-file threads require `expectedDocumentId` and
   `expectedVersionId` guards so selection changes fail instead of editing the
   wrong uploaded file.
+
+## Private access links
+
+For a personal installation, set `OOXML_AUTH_ACCESS_ONLY=1` and
+`OOXML_ACCESS_KEY_SHA256` to the SHA-256 hex digest of a cryptographically random
+32-byte base64url token (43 characters). The private link is
+`https://your-host/ooxml/access#<token>`. Store and share it like a password:
+everyone with this link signs into the same account and can access its files.
+There is no email step. The sign-in page tells visitors to use their private link;
+email, OAuth and development login endpoints are disabled in this mode.
+
+The browser removes the fragment from its address bar and exchanges it through a
+same-origin POST for a normal HttpOnly session with CSRF protection. The server
+stores only the token hash. Set `NODE_ENV=production` for Secure cookies. Rotating
+or removing the hash revokes the link and all sessions issued through that link.
+The link itself does not expire; sessions use the existing 30-day lifetime.
+
+Run `node --test scripts/private-access.test.mjs` to verify access rejection,
+session creation, CSRF protection, repeated sign-in and revocation.
+
+Flue 2 requires a fresh conversation database for this beta deployment. Keep
+the old database separate from the new data directory. See `UPGRADE_LOG.md` for
+the selected versions and migration evidence.

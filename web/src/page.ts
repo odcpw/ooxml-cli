@@ -586,7 +586,7 @@ ${themeCss()}
           const response = await apiFetch('/flue/agents/ooxml-editor/' + encodeURIComponent(threadId), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message })
+            body: JSON.stringify({ kind: 'user', body: message })
           });
           const data = await readApiJson(response, 'Agent request', agentErrorMessage);
           if (data.submissionId) addMessage('trace', 'submission accepted · ' + String(data.submissionId).slice(0, 8));
@@ -877,16 +877,16 @@ ${themeCss()}
 	            if (idleMs > 90_000) {
 	              source.close();
 	              addMessage('trace', 'event stream timed out after 90s · refreshing thread state');
-	              finish();
+	              finish(new Error('Agent stream timed out before completion.'));
 	            }
 	          }, 5_000);
-		          const finish = () => {
+		          const finish = (error) => {
 		            if (settled) return;
 		            settled = true;
 		            clearInterval(watchdog);
 		            state.stopStream = null;
 		            source.close();
-		            resolve();
+		            if (error) reject(error); else resolve();
 		          };
 		          state.stopStream = () => {
 		            if (settled) return;
@@ -906,14 +906,16 @@ ${themeCss()}
 	            for (const item of events) {
 	              sawEvent = true;
 	              handleAgentEvent(item);
-	              if (item?.type === 'idle' || (item?.type === 'submission-settled' && item.submissionId === admission.submissionId)) finish();
+	              if (item?.type === 'submission-settled' && item.submissionId === admission.submissionId) {
+                finish(item.outcome === 'completed' ? undefined : new Error('Agent submission ' + item.outcome + ' · ' + readableError(item.error)));
+              }
 	            }
 	          });
 	          source.addEventListener('control', (event) => {
 	            lastEventAt = Date.now();
 	            try {
               const control = JSON.parse(event.data);
-              if (control.streamClosed) finish();
+              if (control.streamClosed) finish(new Error('Agent stream closed before completion.'));
             } catch {}
           });
 	          source.onerror = () => {
@@ -921,7 +923,7 @@ ${themeCss()}
 	              source.close();
 	              if (sawEvent || assistantText.trim()) {
 	                addMessage('trace', 'event stream closed early · refreshing thread state');
-	                finish();
+	                finish(new Error('Agent stream disconnected before completion.'));
 	              } else {
 		                settled = true;
 		                clearInterval(watchdog);

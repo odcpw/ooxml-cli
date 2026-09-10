@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2024",
-    "lib": ["ES2024", "DOM"],
+    "lib": [
+      "ES2024",
+      "DOM"
+    ],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "allowImportingTsExtensions": true,
@@ -10,7 +13,13 @@
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*.ts", "flue.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "flue.config.ts",
+    "vite.config.ts"
+  ]
 }

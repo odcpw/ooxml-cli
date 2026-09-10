@@ -1070,13 +1070,14 @@ export async function renderCurrent(threadId: string): Promise<Record<string, un
   const rendered = await runOoxml(['--json', 'pptx', 'render', file, '--out', renderDir, '--thumbnails', ...slideArgs], dir);
   const parsed = JSON.parse(rendered.stdout) as {
     pdfPath?: string;
-    thumbnails?: Array<{ index?: number; slide?: number; path?: string; imagePath?: string; width?: number; height?: number }>;
+    slides?: Array<{ slide: number; imagePath: string; width?: number; height?: number }>;
   };
-  const thumbnails = (parsed.thumbnails ?? []).map((thumb, index) => {
-    const rawPath = thumb.path ?? thumb.imagePath;
+  if (!parsed.slides?.length) throw new Error('Render returned no slide previews.');
+  const thumbnails = parsed.slides.map((thumb) => {
+    const rawPath = thumb.imagePath;
     if (!rawPath) throw new Error('Render manifest did not include a thumbnail path');
     return {
-      index: thumb.index ?? thumb.slide ?? index + 1,
+      index: thumb.slide,
       path: relativeToThread(threadId, rawPath),
       width: thumb.width,
       height: thumb.height,
@@ -1086,7 +1087,6 @@ export async function renderCurrent(threadId: string): Promise<Record<string, un
   const renderInfo: RenderInfo = {
     dir: relativeToThread(threadId, renderDir),
     pdfPath: parsed.pdfPath ? relativeToThread(threadId, parsed.pdfPath) : undefined,
-    manifestPath: relativeToThread(threadId, join(renderDir, 'thumbnails-manifest.json')),
     thumbnails,
   };
   try {
